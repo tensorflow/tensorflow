@@ -3,7 +3,7 @@ Outline
 
 General outline: Update as document matures!!
 
-The document will begin with a concise introduction to Tensorflow, reviewing key
+The document will begin with a concise introduction to TensorFlow, reviewing key
 concepts of graph definition and suggest some useful references to dive into
 graph development. Three preliminary scripts are then presented to introduce
 some of the basic aspects of targeting the IPU, beginning with a plain graph
@@ -27,12 +27,12 @@ Poplar and the poplibs libraries support the following data types:
 Unsupported operations
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Tensorflow core operations which use variable buffers or strings are not
- supported. For instance, ``JpegDecode``.
+TensorFlow core operations which use variable buffers or strings are not
+supported. For instance, ``JpegDecode``.
 
 Unsupported operations will cause the compilation to fail. By including
 ``config=tf.ConfigProto(log_device_placement=True)`` as an argument to the
-creation of the session, you can checkwhether the operations in your graph have
+creation of the session, you can check whether the operations in your graph have
 been targeted at the Poplar device:
 
 ::

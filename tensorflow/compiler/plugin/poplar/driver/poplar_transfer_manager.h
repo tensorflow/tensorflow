@@ -72,6 +72,12 @@ class PoplarXfeedQueueManager {
   // Sets a maximum size on the fifo the manager owns.
   void set_size(size_t size);
 
+  // Sets the queue name.
+  void set_queue_name(const std::string& name);
+
+  // Gets the queue name.
+  const std::string queue_name() const;
+
   // Returns the number enqueued buffers.
   size_t size() const;
 
@@ -83,7 +89,7 @@ class PoplarXfeedQueueManager {
   size_t WaitForBuffers(size_t num_expected = 1);
 
  private:
-  const string queue_name_;
+  string queue_name_;
 
   mutable tensorflow::mutex mu_;
 

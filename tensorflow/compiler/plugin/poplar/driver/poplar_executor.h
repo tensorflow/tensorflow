@@ -250,7 +250,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   Status ConfigurePoplarDevice(const IpuOptions&);
 
-  const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
+  bool HasPoplarDevice();
+
+  // Requires HasPoplarDevice() to return true.
+  const poplar::Device& GetPoplarDevice() { return poplar_device_; };
 
   const poplar::OptionFlags& GetOptionsFlags() const { return option_flags_; }
 
@@ -318,14 +321,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.retain_control_dependencies();
   }
 
-  int64 GetNumberOfReplicas() const {
-    if (current_config_.device_config_size() > ordinal_) {
-      return current_config_.device_config(ordinal_).num_replicas();
-    } else {
-      return 0;
-    }
-  }
-
   int64 GetMaxAllReduceBufferSize() const {
     return current_config_.max_cross_replica_sum_buffer_size();
   }
@@ -372,6 +367,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
       const std::string&, std::unique_ptr<tensorflow::data::IteratorBase>,
       std::unique_ptr<tensorflow::data::IteratorContext>,
       const std::vector<xla::Shape>&);
+
+  Status RegisterOutfeeds(const OutfeedInfos& outfeed_infos);
 
  private:
   struct TensorControl {
@@ -530,18 +527,16 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   // Connect buffers provided by transfer manager to Poplar
   // deviceToHostFIFO()
-  void ConnectOutfeedToStreamCallback(se::StreamExecutor* executor,
-                                      const OutfeedInfos& outfeed_infos,
+  void ConnectOutfeedToStreamCallback(const OutfeedInfos& outfeed_infos,
                                       const uint32 replication_factor);
 
   // Creates and launches the thread which will fetch inputs from
-  // the InfeedDatasetIterator and enqueue them in the TransferManager.
-  // The thread is joined when the pointer is deleted.
-  void LaunchInfeedThread(se::StreamExecutor* executor,
-                          const InfeedInfos& infeed_infos);
+  // the InfeedDatasetIterator and enqueue them.
+  // The thread is joined when the infeed is cancelled.
+  void LaunchInfeedThread(const InfeedInfos& infeed_infos);
 
   std::function<void()> CreateInfeedIOThreadFunction(
-      se::StreamExecutor* executor, const InfeedInfos& infeed_infos);
+      const InfeedInfos& infeed_infos);
 
   // Sets cancellation flags and notifies the threads running in thread_pool_
   void StopThreadPool();
@@ -616,6 +611,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   absl::flat_hash_map<std::string, std::unique_ptr<InfeedDatasetIterator>>
       infeed_dataset_iterators_;
+
+  absl::flat_hash_set<std::string> registered_outfeeds_;
 };
 
 }  // namespace poplarplugin

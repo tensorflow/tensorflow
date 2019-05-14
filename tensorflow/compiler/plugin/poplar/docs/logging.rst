@@ -1,4 +1,4 @@
-Retreiving information about the Poplar compilation and execution
+Retrieving information about the Poplar compilation and execution
 -----------------------------------------------------------------
 
 Several mechanisms are available to retrieve trace information about the
@@ -6,7 +6,7 @@ Poplar IPU compilation and executions.  Firstly, there are environment variables
 provided by Poplar itself to dump the compilation and execution reports into a
 file.  The Poplar documentation can give more information about these.
 
-Within Tensorflow, the basic steps for this are.
+Within TensorFlow, the basic steps for this are.
 
 * Include an operation in the graph that can retrieve reports
 * Enable tracing in the hardware configuration options
@@ -29,7 +29,7 @@ _____________________
 
 This is an op which retrieves all IPU events since the last time it was
 executed. The operation must be placed on the CPU, and returns the events as a
-one dimensional tensor of strings containing serialized IPU event protobufs,
+one dimensional tensor of strings containing serialised IPU event protobufs,
 from ``tensorflow.compiler.plugin.poplar.driver.trace_pb2.IpuTraceEvent``.
 
 ::
@@ -124,7 +124,7 @@ Instead of a JSON format report, a CBOR format report will be generated.
 _____________________
 
 When this is set to true, then EXECUTE events will be generated in addition to
-compialtion events.
+compilation events.
 
 ``report_every_nth_execution``
 ______________________________
@@ -137,7 +137,7 @@ ___________________
 
 Poplar reports can get very large.  This parameter can be used to restrict the
 maximum size of report generated.  Reports larger than this value will be
-discarded and a warning message sent to the Tensorflow log.
+discarded and a warning message sent to the TensorFlow log.
 
 ``report_directory``
 ____________________
@@ -152,7 +152,7 @@ Extract the reports from the returned events
 
 If the summary event generator has been used then the events will be inside
 Tensor type events in the Tensorboard logs.  A tool is available for extracting
-these all from the log.  This is available in the Graphcore Toolshed repository
+these all from the log.  This is available in the GraphCore Toolshed repository
 on GitHub.
 
 If the individual report gathering event is used then executing it will return
@@ -196,18 +196,8 @@ name, a timestamp, an ordinal and some compilation trace fields.
   the IPU tiles where those tensors are mapped.
 
 
-EXECUTE
-_______
-
-This event contains the Poplar execution report in the ``execution_report``
-field.
-
-
-``tensor_map``
-~~~~~~~~~~~~~~
-
-The ``tensor_map`` field of the COMPILE_END event has the following format. In
-order to keep it dense, it is mostly JSON lists, instead of keyed dictionaries.
+The ``tensor_map`` field has the following format. It is JSON, but in order to
+keep it dense, it is mostly JSON lists, instead of keyed dictionaries.
 
 At the top level there is a map called 'mappings' which contains an entry for
 each XLA computation, keyed by the name of that computation.  The value is a
@@ -225,22 +215,27 @@ Each tensor in that list is also a list, consisting of the following items.
   1 - the ordinal of the tensor produced by that instruction.
   2 - a list of integers indicating the shape of the tensor.
   3 - a string indicating the tensor element type.
-  4 - a boolean indicating if the tensor contains any constant elements.
-  5 - a boolean indicating if the tensor contains any aliases.
+  4 - a Boolean indicating if the tensor contains any constant elements.
+  5 - a Boolean indicating if the tensor contains any aliases.
   6 - the total number of elements in the tensor.
   7 - a list of information about the elements on each tile.
 
   [ 'add.0', 0, [32, 32], 'float', 0, 0, 2, 256, [ ... ] ]
 
-The list of elements on each tile has one entry per tile where there are
-elements, and each entry is itself a list, containing the following items.
+The list of elements on each tile has one entry per tile that contains
+elements of the tensor. Each entry is itself a list, containing the following
+items.
 
 ::
 
   - the tile index number.
-  - the number of independent ranges (Intervals) of elements on the tile.
-  - the total number of elements in all of those Intervals.
+  - the total number of elements on that tile.
 
-The mapping is for actual ranges of values, not total elements.  So, if a single
-scalar element is broadcast to a large shape, then it will appear in the list
-once and be listed a single value.
+
+EXECUTE
+_______
+
+This event contains the Poplar execution report in the ``execution_report``
+field.
+
+

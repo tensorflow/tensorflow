@@ -31,7 +31,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
-from tensorflow.contrib.ipu.python import popops_cross_replica_sum
+from tensorflow.contrib.ipu import popops_cross_replica_sum
 from tensorflow.contrib.ipu import ipu_infeed_queue
 from tensorflow.contrib.ipu import ipu_outfeed_queue
 from tensorflow.contrib.ipu import loops
@@ -62,7 +62,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(
         profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -93,7 +93,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(
         profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -131,7 +131,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(
         profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -183,7 +183,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(
         profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -246,7 +246,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(
         profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -329,7 +329,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(
         profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -368,7 +368,7 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(
         profiling=False, max_cross_replica_sum_buffer_size=10000)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -376,6 +376,70 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           'This is not a valid replicated graph because'):
+        result = sess.run(res)
+
+  def testCreateSimpleReplicatedInfeedWrongReplicationFactor(self):
+    shape = [2]
+    dataset = tu.create_single_increasing_dataset(3, shape)
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
+        dataset, feed_name=next_feed_id(), replication_factor=4)
+
+    def body(v, x):
+      v = popops_cross_replica_sum.cross_replica_sum(v + x)
+      return v
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=shape, dtype=np.float32)
+      r = loops.repeat(5, body, [v], infeed_queue)
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = ipu_compiler.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      sess.run(infeed_queue.initializer)
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          'Current program has been created with replication_factor 2'):
+        result = sess.run(res)
+
+  def testCreateSimpleReplicatedOutfeedWrongReplicationFactor(self):
+    shape = [2]
+    dataset = tu.create_single_increasing_dataset(3, shape)
+
+    outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
+        feed_name=next_feed_id(), replication_factor=4)
+
+    def body(v):
+      v = popops_cross_replica_sum.cross_replica_sum(v)
+      outfeed = outfeed_queue.enqueue(v)
+      return (v, outfeed)
+
+    def my_net():
+      v = constant_op.constant(0.0, shape=shape, dtype=np.float32)
+      r = loops.repeat(5, body, [v])
+      return r
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      res = ipu_compiler.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config(
+        profiling=False, max_cross_replica_sum_buffer_size=10000)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          'Current program has been created with replication_factor 2'):
         result = sess.run(res)
 
 

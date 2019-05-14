@@ -52,7 +52,8 @@ def _PopnnLSTM(x, h, c, y):
       dtype=dataType,
       weights_initializer=init_ops.zeros_initializer(dtype=dataType),
       bias_initializer=init_ops.zeros_initializer(dtype=dataType))
-  outputs, _ = lstm_cell(x, initial_state=(h, c), training=True)
+  state = rnn_cell.LSTMStateTuple(c, h)
+  outputs, _ = lstm_cell(x, initial_state=state, training=True)
   softmax = nn.softmax_cross_entropy_with_logits_v2(
       logits=outputs[-1], labels=array_ops.stop_gradient(y))
   loss = math_ops.reduce_mean(softmax)
@@ -67,7 +68,7 @@ def _tfLSTM(x, h, c, y):
       forget_bias=0.,
       initializer=init_ops.zeros_initializer(dtype=dataType))
   state = rnn_cell.LSTMStateTuple(c, h)
-  outputs, states = rnn.dynamic_rnn(
+  outputs, _ = rnn.dynamic_rnn(
       lstm_cell, x, dtype=dataType, initial_state=state, time_major=True)
   softmax = nn.softmax_cross_entropy_with_logits_v2(
       logits=outputs[-1], labels=array_ops.stop_gradient(y))
@@ -103,7 +104,7 @@ def get_one_hot(a, num_classes):
   return np.squeeze(np.eye(num_classes)[a.reshape(-1)])
 
 
-class LstmSizeTest(test_util.TensorFlowTestCase):
+class LstmTrainingTest(test_util.TensorFlowTestCase):
   # Check that the loss goes down (and is identical to reference version).
   def testTraining(self):
     np.random.seed(42)

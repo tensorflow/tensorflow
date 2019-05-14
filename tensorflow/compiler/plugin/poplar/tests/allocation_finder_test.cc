@@ -2764,6 +2764,188 @@ ENTRY %top (arg0: (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32
   EXPECT_EQ(annotations.deferred_allocations, expected_deferred_allocations);
 }
 
+TEST_F(AllocationFinderTest, ForwardAllocationTupleHasTupleSharding) {
+  // Check that the layout gets forwarded to a custom op.
+  std::string hlo = R"(
+HloModule top
+ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[2]) {
+  %arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
+      sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}
+  %gte0 = f32[1,4,4,2] get-tuple-element(%arg0), index=0,
+      sharding={maximal device=0}
+  %gte1 = f32[2] get-tuple-element(%arg0), index=1,
+      sharding={maximal device=0}
+  %gte2 = f32[2] get-tuple-element(%arg0), index=2,
+      sharding={maximal device=0}
+  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %gte0, f32[2] %gte1, f32[2] %gte2), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module0);
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
+
+  const auto* custom_op = module0->entry_computation()->root_instruction();
+  const auto* ip0 = custom_op->operand(0);
+  const auto* ip1 = custom_op->operand(1);
+  const auto* ip2 = custom_op->operand(2);
+  const auto* arg0 = ip0->operand(0);
+
+  InplaceFinder inplace_finder(annotations);
+  EXPECT_TRUE(inplace_finder.Run(module0).ValueOrDie());
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    num_succesful_runs++;
+  }
+
+  // Depending on the order we either expect this to be executed successfully 1
+  // or 2 times.
+  EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
+
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, custom_op);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, ip0);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+  DeferredAllocationsPath expected_deferred_allocations_path0 = {
+      std::make_pair(arg0, 1)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, custom_op);
+  EXPECT_EQ(t.input_index, 2);
+  EXPECT_EQ(t.layout, ip0);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+  DeferredAllocationsPath expected_deferred_allocations_path1 = {
+      std::make_pair(arg0, 2)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path1);
+}
+
+TEST_F(AllocationFinderTest, ForwardAllocationTupleHasNonTupleSharding) {
+  // Check that the layout gets forwarded to a custom op.
+  std::string hlo = R"(
+HloModule top
+ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[2]) {
+  %arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
+      sharding={maximal device=0}
+  %gte0 = f32[1,4,4,2] get-tuple-element(%arg0), index=0,
+      sharding={maximal device=0}
+  %gte1 = f32[2] get-tuple-element(%arg0), index=1,
+      sharding={maximal device=0}
+  %gte2 = f32[2] get-tuple-element(%arg0), index=2,
+      sharding={maximal device=0}
+  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %gte0, f32[2] %gte1, f32[2] %gte2), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module0);
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
+
+  const auto* custom_op = module0->entry_computation()->root_instruction();
+  const auto* ip0 = custom_op->operand(0);
+  const auto* ip1 = custom_op->operand(1);
+  const auto* ip2 = custom_op->operand(2);
+  const auto* arg0 = ip0->operand(0);
+
+  InplaceFinder inplace_finder(annotations);
+  EXPECT_TRUE(inplace_finder.Run(module0).ValueOrDie());
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    num_succesful_runs++;
+  }
+
+  // Depending on the order we either expect this to be executed successfully 1
+  // or 2 times.
+  EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
+
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, custom_op);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, ip0);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+  DeferredAllocationsPath expected_deferred_allocations_path0 = {
+      std::make_pair(arg0, 1)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, custom_op);
+  EXPECT_EQ(t.input_index, 2);
+  EXPECT_EQ(t.layout, ip0);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+  DeferredAllocationsPath expected_deferred_allocations_path1 = {
+      std::make_pair(arg0, 2)};
+  EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path1);
+}
+
+TEST_F(AllocationFinderTest, ForwardAllocationTupleHasTupleShardingDoesnMatch) {
+  // Check that the layout gets forwarded to a custom op.
+  std::string hlo = R"(
+HloModule top
+ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[2]) {
+  %arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
+      sharding={{maximal device=0}, {maximal device=0}, {maximal device=1}}
+  %gte0 = f32[1,4,4,2] get-tuple-element(%arg0), index=0,
+      sharding={maximal device=0}
+  %gte1 = f32[2] get-tuple-element(%arg0), index=1,
+      sharding={maximal device=0}
+  %gte2 = f32[2] get-tuple-element(%arg0), index=2,
+      sharding={maximal device=0}
+  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %gte0, f32[2] %gte1, f32[2] %gte2), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module0);
+  CustomOpReplacer custom_op_replacer;
+  EXPECT_TRUE(custom_op_replacer.Run(module0).ValueOrDie());
+
+  const auto* custom_op = module0->entry_computation()->root_instruction();
+  const auto* ip0 = custom_op->operand(0);
+  const auto* ip1 = custom_op->operand(1);
+  const auto* ip2 = custom_op->operand(2);
+
+  InplaceFinder inplace_finder(annotations);
+  EXPECT_TRUE(inplace_finder.Run(module0).ValueOrDie());
+
+  ForwardAllocation fwd_finder(annotations);
+  EXPECT_FALSE(fwd_finder.Run(module0).ValueOrDie());
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 0);
+}
+
 // TODO:
 // - can forward path traverse in-place ops
 // - is forward path rejected when going through non-layout preserving inputs

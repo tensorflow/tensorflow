@@ -24,9 +24,9 @@ or locally in a specific scope:
 Note on the global_step counter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-More advanced execution control frameworks in Tensorflow use a scalar counter
+More advanced execution control frameworks in TensorFlow use a scalar counter
 called ``global_step`` to count the number of iterations of training which have
-occurred. This counter is serialized along with the model. It allows the model
+occurred. This counter is serialised along with the model. It allows the model
 to base parameters on the step count, even if the model is run multiple times.
 
 There is an ``add`` operation which adds to the ``global_step`` scalar on each

@@ -435,13 +435,25 @@ Status BaseVisitor::HandleInfeed(HloInstruction* inst) {
 
 Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-
-  if (resources_.annotations.outfeed_infos.size() > 1) {
-    return InvalidArgument("Only one outfeed supported per graph");
+  if (resources_.annotations.outfeed_infos.size()) {
+    return InvalidArgument("Only one IPUOutfeedQueue supported per graph.");
   }
 
   HloOutfeedInstruction* outfeed = Cast<HloOutfeedInstruction>(inst);
   poplar::program::Sequence& seq = sequence;
+  xla::poplarplugin::PoplarFeedConfig outfeed_config;
+  outfeed_config.ParseFromString(outfeed->outfeed_config());
+
+  // Check that the replication factor matches.
+  if (resources_.replication_factor != outfeed_config.replication_factor()) {
+    return xla::FailedPrecondition(
+        "Current program has been created with replication_factor %d, however "
+        "the IPUOutfeedQueue has been configured with replication_factor %d. "
+        "Either reduce the number of IPUs in your TensorFlow device, or set "
+        "the `replication_factor` to %d when creating IPUOutfeedQueue.",
+        resources_.replication_factor, outfeed_config.replication_factor(),
+        resources_.replication_factor);
+  }
 
   // operand 1 is the input
   // operand 2 is the token
@@ -483,7 +495,7 @@ Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
 
   FeedInfo info;
   info.stream_prefix = outfeed->name();
-  info.config = outfeed->outfeed_config();
+  info.config = outfeed_config;
   info.shape = outfeed->operands()[0]->shape();
 
   resources_.annotations.outfeed_infos.push_back(info);

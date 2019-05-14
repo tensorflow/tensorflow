@@ -68,13 +68,11 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     self.assertTrue(cfg.device_config[1].auto_count, 4)
 
     cfg = ipu.utils.create_ipu_config()
-    cfg = ipu.utils.auto_select_ipus(cfg, [4, 4], number_of_replicas=[2, 1])
+    cfg = ipu.utils.auto_select_ipus(cfg, [4, 4])
     self.assertTrue(isinstance(cfg, IpuOptions))
     self.assertTrue(len(cfg.device_config), 2)
     self.assertTrue(cfg.device_config[0].auto_count, 4)
-    self.assertTrue(cfg.device_config[0].num_replicas, 2)
     self.assertTrue(cfg.device_config[1].auto_count, 4)
-    self.assertTrue(cfg.device_config[1].num_replicas, 1)
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.select_ipus(cfg, [2, 3])
@@ -93,16 +91,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     with self.assertRaises(Exception):
       cfg = ipu.utils.create_ipu_config()
-      cfg = ipu.utils.auto_select_ipus(cfg, [4, 4])
       cfg = ipu.utils.select_ipus(cfg, [4, 4])
-
-    with self.assertRaises(Exception):
-      cfg = ipu.utils.create_ipu_config()
-      cfg = ipu.utils.auto_select_ipus(cfg, [4, 4], number_of_replicas=1)
-
-    with self.assertRaises(Exception):
-      cfg = ipu.utils.create_ipu_config()
-      cfg = ipu.utils.select_ipus(cfg, [4, 4], number_of_replicas=1)
 
     with self.assertRaises(Exception):
       cfg = ipu.utils.create_ipu_config(profiling=True, enable_ipu_events=True)

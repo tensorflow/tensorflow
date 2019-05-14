@@ -1,32 +1,32 @@
 Tutorial
 --------
 
-Tensorflow is a powerful graph-modeling framework that can be used for the
-development, training and deployment of deep learning models. In the Graphcore
-software stack, Tensorflow sits at the highest level of abstraction where Poplar
-and PopLibs interface Tensorflow to actual IPU operations:
+TensorFlow is a powerful graph-modelling framework that can be used for the
+development, training and deployment of deep learning models. In the GraphCore
+software stack, TensorFlow sits at the highest level of abstraction where Poplar
+and PopLibs interface TensorFlow to actual IPU operations:
 
 .. figure:: figures/Tensorflow_Poplar.png
     :width: 500px
-    :alt: Tensorflow abstraction
+    :alt: TensorFlow abstraction
     :align: center
 
-    Tensorflow abstraction in relation to Poplar and the IPU
+    TensorFlow abstraction in relation to Poplar and the IPU
 
 For the discussion that follows, the three key concepts of graph, session and
-device as well as their functional interdependency are important to review.
+device as well as their functional interdependence are important to review.
 
 .. figure:: figures/Session_Graph.png
     :width: 500px
     :alt: Session graph device illustration
     :align: center
 
-    Interdependency between session, graph and device in Tensorflow
+    Interdependence between session, graph and device in TensorFlow
 
 Graph
     A computational graph is the connectivity framework of a deep learning
     model, where nodes are operators and edges are the data streams the connect
-    them. Building a deep learning model in Tensorflow is the functional
+    them. Building a deep learning model in TensorFlow is the functional
     equivalent of designing a graph, where specified layer operations, (e.g.
     fully-connected layers), are nodes, and the sequence and connectivity of
     layers, (e.g. a convolutional layer followed by max-pooling), prescribe the
@@ -34,7 +34,7 @@ Graph
 
 Session
     A session is the computational platform that encapsulates a graph. It
-    handles data flow into and out of the graph, variable initialization,
+    handles data flow into and out of the graph, variable initialisation,
     model/weight storage and weight restoration along with a number of other
     operations that are required to manage the computational task.
 
@@ -46,7 +46,7 @@ Device
     to undertake.
 
 In the sections that follow, these three concepts will form a recurrent theme in
-building and deploying models from Tensorflow.
+building and deploying models from TensorFlow.
 
 There are a number of references, user guides, model repos and texts that can
 prove valuable in learning the framework. See the :ref:`references-section`
@@ -59,7 +59,7 @@ Preliminary Graphs
 The focus now is to implement our first basic graphs targeting the IPU. The
 first step will be a straightforward additive graph with nothing save the
 fundamental components required for running on an IPU. From there, we add the
-*XLA* construct, which is required for a number of Tensorflow operators.
+*XLA* construct, which is required for a number of TensorFlow operators.
 Finally, we add the concept of *sharding*, in which we take our first steps to
 model parallelism by splitting a basic graph across four IPUs and consolidate
 calculations spread across separate IPUs to produce a single final result.
@@ -80,7 +80,7 @@ We begin with the most humble of aspirations: the ability to add.
     # Configure arguments for targeting the IPU
     cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 1, sharded=True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 1)
     ipu.utils.configure_ipu_system(cfg)
 
     with tf.device("cpu"):
@@ -107,13 +107,13 @@ We begin with the most humble of aspirations: the ability to add.
 
 Let's review the various key sections of the code as they are presented. In
 lines *1-4* are the basic import statements, two of which pertain to the IPU
-specifically. Line *3* imports the *ipu* API, which will be the main interface
+specifically. Line *3* imports the *IPU* API, which will be the main interface
 to set configuration options for the IPU session run. *ipu_scope* is a helper
 function that insures the device and resource scopes are set, (i.e. the hardware
 is properly initiated when called by the script).
 
 In lines *7-10*, basic configuration options are being defined. In line *7*,
-boolean flags are passed to *create_ipu_config*, which results in turning on
+Boolean flags are passed to *create_ipu_config*, which results in turning on
 *profiling* and *use_poplar_text_report*. *profiling* enables trace event
 logging on the IPU, which will monitor operations on the tile architecture of
 the chip, disclosing a detailed description of the session as it runs on
@@ -122,7 +122,7 @@ OOM-debugging section.) *use_poplar_text_report* configures the textual nature
 of the generated report, making it more readable for debugging purposes.
 
 In line 8, we are setting options for *set_ipu_model_options*, which consists of
-one boolean flag: *compile_ipu_code*. If set to true, Poplar will compile code
+one Boolean flag: *compile_ipu_code*. If set to true, Poplar will compile code
 that will emulate IPU hardware, which will then be deployed to run on host; i.e.
 the CPU. When using *IPU_Model* over actual IPU hardware, the runtime operations
 will behave exactly as they would on hardware, with the pivotal exception of
@@ -157,7 +157,7 @@ In line *18*, the graph is defined, which returns a tensor representing the
 specified sum.
 
 Line *26* uses the IPU helper function to build the graph on the IPU, and so
-when the Tensorflow session is initiated and the graph is processed, it will
+when the TensorFlow session is initiated and the graph is processed, it will
 run on hardware. The result gives
 
 ::
@@ -183,8 +183,8 @@ applications, it will be necessary to incorporate control flow structures, as in
 conditionals of the nature of *if* or *while* statements. Certain recurrent
 neural network (RNN) layers and long-short term memory (LSTM) cells have
 conditionals implicitly defined in their source code. In those cases, it will be
-necessary to use the *XLA* library to define the graph. *XLA* is an optimized
-linear algebra library that interfaces the graph to a set of optimization
+necessary to use the *XLA* library to define the graph. *XLA* is an optimised
+linear algebra library that interfaces the graph to a set of optimisation
 parsers that render highly efficient computation sets.
 
 Using *XLA* has certain restrictions, the most pertinent of which for the
@@ -213,7 +213,7 @@ available here:
 
 https://www.tensorflow.org/xla/tutorials/xla_compile
 
-Let's now build on our previous Tensorflow script by adding *xla.compile* to the
+Let's now build on our previous TensorFlow script by adding *xla.compile* to the
 session definition.
 
 .. code-block:: python
@@ -229,7 +229,7 @@ session definition.
     # Configure argument for targetting the IPU
     cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 1, sharded=True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 1)
     ipu.utils.configure_ipu_system(cfg)
 
     with tf.device("cpu"):
@@ -330,7 +330,7 @@ Let's now return to our basic script and add the sharding component.
     cfg = ipu.utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     # Request 4 IPUs to run the model
-    cfg = ipu.utils.auto_select_ipus(cfg, 4, sharded=True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 4)
     ipu.utils.configure_ipu_system(cfg)
 
     with tf.device("cpu"):
@@ -370,7 +370,7 @@ Let's now return to our basic script and add the sharding component.
 Focusing on the sharding facets of this new script, line *11* uses
 *auto_select_ipus* to select 4 separate IPUs for the task. This will allow the
 script to go through the IPUs currently available to the host, determine which
-are being utilized and which are free, and then subscribe to those IPUs that are
+are being utilised and which are free, and then subscribe to those IPUs that are
 available.
 
 In lines *26-35*, the standard sum graph is defined, (with the addition of one
@@ -378,6 +378,7 @@ more sum for shard *2*), and now each portion of the sum is performed on a
 distinct shard, using
 
 ::
+
     with ipu.ops.ipu_shard(shard_index):
 
 

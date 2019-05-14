@@ -73,7 +73,6 @@ main {
 
   IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -123,7 +122,6 @@ main {
 
   IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -174,7 +172,6 @@ main {
 
   IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -235,7 +232,6 @@ main {
 
   IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -300,7 +296,6 @@ main {
 
   IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -357,7 +352,6 @@ main {
 
   IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -415,7 +409,6 @@ main {
 
   IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 

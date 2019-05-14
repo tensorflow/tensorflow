@@ -34,8 +34,8 @@ def _PopnnLSTM(x, h, c):
       dtype=dataType,
       weights_initializer=init_ops.zeros_initializer(dtype=dataType),
       bias_initializer=init_ops.zeros_initializer(dtype=dataType))
-  outputs, _ = lstm_cell(x, initial_state=(h, c), training=False)
-  return outputs
+  state = rnn_cell.LSTMStateTuple(c, h)
+  return lstm_cell(x, initial_state=state, training=False)
 
 
 def _tfLSTM(x, h, c):
@@ -45,9 +45,8 @@ def _tfLSTM(x, h, c):
       forget_bias=0.,
       initializer=init_ops.zeros_initializer(dtype=dataType))
   state = rnn_cell.LSTMStateTuple(c, h)
-  outputs, states = rnn.dynamic_rnn(
+  return rnn.dynamic_rnn(
       lstm_cell, x, dtype=dataType, initial_state=state, time_major=True)
-  return outputs
 
 
 def RunLayer(layer_func, x):

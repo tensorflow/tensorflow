@@ -17,9 +17,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
+
+#include <fstream>
 
 namespace xla {
 namespace poplarplugin {
@@ -45,7 +49,8 @@ PoplarExecutable::PoplarExecutable(
       execution_count_(0),
       replication_factor_(replication_factor),
       infeed_infos_(std::move(infeed_infos)),
-      outfeed_infos_(std::move(outfeed_infos)) {}
+      outfeed_infos_(std::move(outfeed_infos)),
+      loaded_from_cache_(false) {}
 
 PoplarExecutable::~PoplarExecutable() {
   if (poplar_engine_.get() != nullptr) {
@@ -150,16 +155,10 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
     std::unique_ptr<HloProfilePrinterData> profile_printer,
     std::unique_ptr<HloProfileIndexMap> profile_index_map,
     const std::string& filename) {
-  VLOG(1) << "Restoring executable from " << filename;
-
   PoplarExecutableProto proto;
 
-  // TODO expand this when poplar engine serialization support is ready
   TF_RETURN_IF_ERROR(
       ReadBinaryProto(tensorflow::Env::Default(), filename, &proto));
-
-  // TODO Load poplar executable
-  std::string poplar_executable_filename = proto.engine();
 
   // Load metadata
   int replication_factor = proto.replication_factor();
@@ -190,54 +189,60 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteAsyncOnStream(
     opts.set(flag.key(), flag.value());
   }
 
-  // TODO
-  // Actually load the executable rather than creating an empty one
+  // Load the executable
+  std::string poplar_executable_filename = proto.engine();
+  std::unique_ptr<poplar::Engine> engine;
+  try {
+    std::ifstream file(poplar_executable_filename, std::ios::binary);
+    auto poplar_executable = poplar::Executable::deserialize(file);
+    engine.reset(new poplar::Engine(std::move(poplar_executable), opts));
+  } catch (const std::exception& e) {
+    return PoplarExceptionToTensorflowStatus("[Deserialize] ", e);
+  }
 
-  // TODO
-  //
-  // verify that the streams in the loaded poplar executable match the streams
-  // in the TF PoplarExecutable.  Maybe we can use Engine::listStreams()
+  auto iomap = InputOutputAliasingMap(hlo_module.get());
 
-  return new PoplarExecutable(
+  auto executable = new PoplarExecutable(
       std::move(hlo_module), std::move(profile_printer),
-      std::move(profile_index_map), std::move(nullptr),
-      std::move(InputOutputAliasingMap(hlo_module.get())), false, {}, false, {},
-      replication_factor, std::move(infeeds), std::move(outfeeds));
+      std::move(profile_index_map), std::move(engine), std::move(iomap), false,
+      {}, false, {}, replication_factor, std::move(infeeds),
+      std::move(outfeeds));
+
+  executable->loaded_from_cache_ = true;
+
+  return executable;
 }
 
 /*static*/ Status PoplarExecutable::Serialize(
-    const PoplarExecutable& executable, const std::string& filename,
-    const poplar::OptionFlags& opts) {
+    const std::string& filename, const poplar::Executable& executable,
+    const InfeedInfos& infeeds, const OutfeedInfos& outfeeds,
+    uint32 replication_count, const poplar::OptionFlags& opts) {
   PoplarExecutableProto proto;
 
-  if (executable.is_constant_graph_) {
-    return xla::FailedPrecondition("Cannot serialize constant module %s.",
-                                   executable.module().name().c_str());
-  }
-
-  if (executable.is_remap_graph_) {
-    return xla::FailedPrecondition("Cannot serialize remap module %s.",
-                                   executable.module().name().c_str());
-  }
-
-  // Write engine to a file
+  // Write poplar executable to a file
   std::string poplar_executable_filename = filename + ".poplar_exec";
+  try {
+    auto file = std::ofstream(poplar_executable_filename, std::ios::binary);
+    executable.serialize(file);
+  } catch (const std::exception& e) {
+    return PoplarExceptionToTensorflowStatus("[Serialize] ", e);
+  }
 
   proto.set_engine(poplar_executable_filename);
 
-  proto.set_replication_factor(executable.replication_factor_);
+  proto.set_replication_factor(replication_count);
 
-  for (const auto& infeed : executable.infeed_infos_) {
+  for (const auto& infeed : infeeds) {
     auto* feed = proto.add_infeeds();
     feed->set_stream_prefix(infeed.stream_prefix);
-    feed->set_config(infeed.config);
+    *(feed->mutable_config()) = infeed.config;
     *(feed->mutable_shape()) = infeed.shape.ToProto();
   }
 
-  for (const auto& outfeed : executable.outfeed_infos_) {
+  for (const auto& outfeed : outfeeds) {
     auto* feed = proto.add_infeeds();
     feed->set_stream_prefix(outfeed.stream_prefix);
-    feed->set_config(outfeed.config);
+    *(feed->mutable_config()) = outfeed.config;
     *(feed->mutable_shape()) = outfeed.shape.ToProto();
   }
 

@@ -90,7 +90,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
        def body(v):
          v = v + 1
@@ -111,7 +111,7 @@ class IPUOutfeedQueue:
 
      .. code-block:: python
 
-       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
        def body(v):
          v = v + 1
@@ -133,7 +133,7 @@ class IPUOutfeedQueue:
 
      .. code-block:: python
 
-       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+       outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
        def body(v):
          v = v + 1
@@ -160,7 +160,9 @@ class IPUOutfeedQueue:
     with ops.device(self._device_str):
       outfeed_op = gen_pop_datastream_ops.pop_datastream_outfeed_enqueue(
           self._structure.to_tensor_list(tensors),
-          outfeed_mode=self._outfeed_mode)
+          outfeed_mode=self._outfeed_mode,
+          feed_id=self._feed_name,
+          replication_factor=self._replication_factor)
 
     self._enqueued = True
     return outfeed_op
@@ -181,7 +183,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed", replication_factor=2)
 
         def body(input):
           output = input + 1
@@ -219,7 +221,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed")
 
         def body(input):
           output = input + 1
@@ -260,7 +262,7 @@ class IPUOutfeedQueue:
 
     .. code-block:: python
 
-        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=8)
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(feed_name="outfeed", replication_factor=8)
 
         def body(input):
           output = input + 1
@@ -310,7 +312,9 @@ class IPUOutfeedQueue:
       outfeed_dequeue = \
         gen_pop_datastream_ops.pop_datastream_outfeed_dequeue(
           output_types=self._structure.flat_types,
-          output_shapes=outfeed_shapes)
+          output_shapes=outfeed_shapes,
+          feed_id=self._feed_name,
+          replication_factor=self._replication_factor)
 
     return self._structure.from_tensor_list(outfeed_dequeue)
 

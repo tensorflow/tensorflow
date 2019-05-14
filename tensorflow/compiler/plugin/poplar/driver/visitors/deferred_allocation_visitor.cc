@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/deferred_allocation_visitor.h"
 
+#include "google/protobuf/util/message_differencer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
@@ -147,16 +148,31 @@ Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
   }
 
   HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(inst);
+
+  xla::poplarplugin::PoplarFeedConfig infeed_config;
+  infeed_config.ParseFromString(infeed->infeed_config());
   // We allow the same infeed queue to be dequeued multiple times, however
   // we don't support multiple infeed queues in the same program.
   if (absl::c_any_of(resources_.annotations.infeed_infos,
                      [&](const FeedInfo& info) {
-                       return info.config != infeed->infeed_config();
+                       return info.config.feed_id() != infeed_config.feed_id();
                      })) {
     return xla::FailedPrecondition(
         "Currently multiple IPUInfeedQueue in the same program are not "
         "supported.");
   }
+
+  // Check that the replication factor matches.
+  if (resources_.replication_factor != infeed_config.replication_factor()) {
+    return xla::FailedPrecondition(
+        "Current program has been created with replication_factor %d, however "
+        "the IPUInfeedQueue has been configured with replication_factor %d. "
+        "Either reduce the number of IPUs in your TensorFlow device, or set "
+        "the `replication_factor` to %d when creating IPUInfeedQueue.",
+        resources_.replication_factor, infeed_config.replication_factor(),
+        resources_.replication_factor);
+  }
+
   std::vector<Shape> shapes = FlattenedXlaShape(infeed->infeed_shape());
   for (int64 i = 0; i < shapes.size(); i++) {
     if (!DeferAllocation(inst, i)) {
@@ -170,7 +186,7 @@ Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
 
   FeedInfo info;
   info.stream_prefix = infeed->name();
-  info.config = infeed->infeed_config();
+  info.config = infeed_config;
   info.shape = infeed->shape();
 
   resources_.annotations.infeed_infos.push_back(info);

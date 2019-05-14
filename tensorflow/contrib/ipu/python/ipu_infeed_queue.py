@@ -57,7 +57,7 @@ class IPUInfeedQueue:
     # The resulting dataset has a nested structure of: {features, labels}.
     dataset = dataset.map(dataset_parser)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, feed_name="training_infeed")
 
     # dataset can no longer be used beyond this point.
 
@@ -120,12 +120,17 @@ class IPUInfeedQueue:
 tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
     with ops.device('/device:CPU:0'):
-      # Apply the dataset and take ownership.
-      dataset = dataset._apply_options()
-      self._structure = dataset._element_structure
-      self._flat_structure = dataset_ops.flat_structure(dataset)
+      self._replication_factor = replication_factor
+      self._dataset = dataset
+      self._structure = self._dataset._element_structure
+      self._flat_structure = dataset_ops.flat_structure(self._dataset)
       # Batch the dataset to take replication into account.
-      self._dataset = dataset.batch(replication_factor, drop_remainder=True)
+      if self._replication_factor > 1:
+        self._dataset = self._dataset.batch(
+            self._replication_factor, drop_remainder=True)
+      # Apply the dataset and take ownership.
+      self._dataset = self._dataset._apply_options()
+
       try:
         ds_variant = self._dataset._variant_tensor
       except TypeError:
@@ -136,7 +141,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       # Dataset iterator creator.
       self._initializer = gen_pop_datastream_ops.ipu_consume_dataset(
           input_dataset=ds_variant,
-          id=self._id,
+          feed_id=self._id,
           device_ordinal=device_ordinal,
           **dataset_ops.flat_structure(self._dataset))
 
@@ -154,7 +159,9 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       A nested structure of `tf.Tensor` objects.
     """
     flat_ret = gen_pop_datastream_ops.pop_datastream_infeed_dequeue(
-        infeed_id=self._id, **self._flat_structure)
+        feed_id=self._id,
+        replication_factor=self._replication_factor,
+        **self._flat_structure)
     self._dequeued = True
     return self._structure._from_tensor_list(flat_ret)
 

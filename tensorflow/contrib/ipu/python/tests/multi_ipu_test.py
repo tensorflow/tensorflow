@@ -74,8 +74,8 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
           tiles = set()
           for tensor in js['mappings'][mods[0]]:
-            for tile in tensor['tiles']:
-              tiles.add(tile['tile_id'])
+            for tile in tensor[7]:
+              tiles.add(tile[0])
 
           self.assertEqual(len(tiles), 2)
           self.assertTrue(0 in tiles)
@@ -191,8 +191,8 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
           tiles = set()
           for tensor in js['mappings'][mods[0]]:
-            for tile in tensor['tiles']:
-              tiles.add(tile['tile_id'])
+            for tile in tensor[7]:
+              tiles.add(tile[0])
 
           self.assertEqual(len(tiles), 2)
           self.assertTrue(0 in tiles)

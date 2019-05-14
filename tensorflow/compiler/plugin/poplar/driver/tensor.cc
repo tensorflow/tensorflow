@@ -1550,41 +1550,40 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
 
     for (auto pair : tm.second) {
       const auto& pop_tensor = pair.second;
-
-      Json::Value tensor;
-      tensor["inst_name"] = Json::Value(pair.first.first);
-      tensor["output_index"] = Json::Value::UInt64(pair.first.second);
-      tensor["constant"] = Json::Value::UInt64(pop_tensor.containsConstant());
-      tensor["has_aliases"] = Json::Value::UInt64(pop_tensor.containsAliases());
-      tensor["tiles"] = Json::Value(Json::arrayValue);
-
       const auto& mapping = graph.getTileMapping(pop_tensor);
-      unsigned tiles_used = 0;
-      size_t total_elements = 0;
+      Json::Value tiles = Json::Value(Json::arrayValue);
 
+      size_t total_elements = 0;
       for (size_t tile_idx = 0; tile_idx < mapping.size(); tile_idx++) {
         const auto& tile = mapping[tile_idx];
-        if (tile.size() != 0) {
-          tiles_used++;
-          size_t tile_element_count = 0;
+        if (tile.size() > 0) {
+          size_t element_count = 0;
           for (const auto& interval : tile) {
-            tile_element_count += interval.size();
+            element_count += interval.size();
           }
+          Json::Value tile_info(Json::arrayValue);
+          tile_info.append(Json::Value::UInt64(tile_idx));
+          tile_info.append(Json::Value::UInt64(element_count));
+          tiles.append(tile_info);
 
-          Json::Value tile;
-          tile["tile_id"] = Json::Value::UInt64(tile_idx);
-          tile["num_intervals"] = Json::Value::UInt64(tile.size());
-          tile["num_elements"] = Json::Value::UInt64(tile_element_count);
-          tile["element_type"] =
-              Json::Value(pop_tensor.elementType().toString());
-          tensor["tiles"].append(tile);
-
-          total_elements += tile_element_count;
+          total_elements += element_count;
         }
       }
 
-      tensor["tiles_used"] = Json::Value::UInt64(tiles_used);
-      tensor["total_elements"] = Json::Value::UInt64(total_elements);
+      Json::Value tensor_shape(Json::arrayValue);
+      for (auto d : pop_tensor.shape()) {
+        tensor_shape.append(Json::Value::UInt64(d));
+      }
+
+      Json::Value tensor(Json::arrayValue);
+      tensor.append(Json::Value(pair.first.first));
+      tensor.append(Json::Value::UInt64(pair.first.second));
+      tensor.append(tensor_shape);
+      tensor.append(Json::Value(pop_tensor.elementType().toString()));
+      tensor.append(Json::Value::UInt64(pop_tensor.containsConstant()));
+      tensor.append(Json::Value::UInt64(pop_tensor.containsAliases()));
+      tensor.append(Json::Value::UInt64(total_elements));
+      tensor.append(tiles);
 
       mappings[tm.first].append(tensor);
     }
