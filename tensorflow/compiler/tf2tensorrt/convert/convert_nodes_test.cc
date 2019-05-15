@@ -5613,8 +5613,6 @@ TEST_F(OpConverterTest, ConvertSquaredDifference) {
   TestConvertSquaredDifference<DT_HALF>(this);
 }
 
-<<<<<<< HEAD
-=======
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 template <typename OpType>
 NodeDef MakeResizeNodeDef(std::string name, DataType dtype,
@@ -5744,7 +5742,6 @@ TEST_F(OpConverterTest, ConvertResize) {
 }
 #endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
->>>>>>> 2cb745ef1e0b4082a618c81274fca39be0cb4fc6
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

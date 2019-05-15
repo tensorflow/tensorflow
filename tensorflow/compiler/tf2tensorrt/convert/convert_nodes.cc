@@ -4741,8 +4741,6 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 }
 #endif  // CombinedNonMaxSuppression
 
-<<<<<<< HEAD
-=======
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertResize(OpConverterParams* params) {
   const auto& inputs = params->inputs;
@@ -4820,7 +4818,6 @@ Status ConvertResize(OpConverterParams* params) {
 }  // ConvertResize
 #endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
->>>>>>> 2cb745ef1e0b4082a618c81274fca39be0cb4fc6
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   (*registration)["BatchMatMul"] = ConvertBatchMatMul;
