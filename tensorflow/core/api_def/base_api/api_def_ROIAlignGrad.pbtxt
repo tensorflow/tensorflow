@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "ROIAlignGrad"
+  summary: "      Gradient for RoiAlign op."
+}

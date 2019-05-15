@@ -821,20 +821,7 @@ REGISTER_OP("ROIAlign")
 
       c->set_output(0, output_shape);
       return Status::OK();
-    })
-    .Doc(R"doc(
-      This op implements Region of Interest(RoI) align op as documented in arXiv:1703.06870.
-      In short, it creates and pooled_height x pooled_width image from RoI using bilinear interpolation. 
-      input: is a 5D tensor from feature layers of the layout [Batch, Level, Channel, Height, Width]
-      rois: is a 3D tensor for describing region of interest boxes and has layout [Batch, Roi Id, 4]. 
-        last 4 elements define the corners of the roi box and is of the form  [y1, x1, y2, x2]
-      output: is 5D tensor  of [Batch, Roi Id, Channel, Pooled Height, Pooled Width]
-      pooled_height and pooled_width are the height and width of pooled window
-      min_level and max_level defines minimum and maximum levels in FPN pyramid
-      canonical_scale and canonical_level are parameters for assingning roi boxes to corresponding 
-        FPN level
-      spatial_scale is the scaling factor for the roi boxes.
-    )doc");
+    });
 
 REGISTER_OP("ROIAlignGrad")
     .Input("grads: float")
@@ -853,10 +840,7 @@ REGISTER_OP("ROIAlignGrad")
     .SetShapeFn([](InferenceContext* c) -> Status {
       c->set_output(0, c->input(1));
       return Status::OK();
-    })
-    .Doc(R"doc(
-      Gradient for RoiAlign op.
-    )doc");
+    });
 
 // -----------------------------------------------------------------------------------------
 
