@@ -133,6 +133,11 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 3;
       break;
     }
+    case BuiltinOperator_DIV:
+      property.input_indexes = {0, 1};
+      property.output_indexes = {0};
+      property.version = 2;
+      break;
     case BuiltinOperator_EQUAL:
     case BuiltinOperator_NOT_EQUAL:
     case BuiltinOperator_GREATER:

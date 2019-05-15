@@ -275,6 +275,17 @@ class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports int8 & uint8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8 ||
+        input_array.data_type == ArrayDataType::kUint8) {
+      return 2;
+    }
+    return 1;
+  }
 };
 
 class BatchToSpaceND

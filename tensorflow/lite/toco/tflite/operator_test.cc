@@ -413,6 +413,15 @@ TEST_F(OperatorTest, BuiltinMul) {
             output_toco_op->fused_activation_function);
 }
 
+TEST_F(OperatorTest, BuiltinDiv) {
+  DivOperator op;
+  op.fused_activation_function = FusedActivationFunctionType::kRelu6;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("DIV", OperatorType::kDiv), op);
+  EXPECT_EQ(op.fused_activation_function,
+            output_toco_op->fused_activation_function);
+}
+
 TEST_F(OperatorTest, ResizeBilinear) {
   ResizeBilinearOperator op;
   op.align_corners = true;
@@ -907,6 +916,32 @@ TEST_F(OperatorTest, VersioningSliceTest) {
   OperatorSignature string_signature = {.op = &op, .model = &string_model};
   EXPECT_EQ(base_op->GetVersion(string_signature), 3);
 }
+
+TEST_F(OperatorTest, VersioningDivTest) {
+  DivOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 2);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+
+  Model int32_model;
+  Array& int32_array = int32_model.GetOrCreateArray(op.inputs[0]);
+  int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
+  EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
+}
+
 
 TEST_F(OperatorTest, VersioningLogisticTest) {
   SimpleVersioningTest<LogisticOperator>();

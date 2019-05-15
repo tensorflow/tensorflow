@@ -586,7 +586,6 @@ inline void Div(const ArithmeticParams& params,
   ruy::profiler::ScopeLabel label("Div/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
-
   DivElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
