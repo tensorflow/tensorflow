@@ -520,6 +520,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           BufferSizeBytesFunction(),
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
