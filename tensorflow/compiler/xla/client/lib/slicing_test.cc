@@ -154,6 +154,18 @@ XLA_TEST_F(SlicingTest, TorchIndexSelectOn1) {
       {input_data.get(), index_data.get()});
 }
 
+XLA_TEST_F(SlicingTest, EmptyIndexSelect) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp input, index;
+  auto input_data =
+      CreateR2Parameter<float>({{0}, {0}, {0}}, 0, "input", &builder, &input);
+  auto index_data = CreateR1Parameter<int>({}, 1, "index", &builder, &index);
+  TorchIndexSelect(input, index, 1);
+  ComputeAndCompareR2<float>(&builder, {{}, {}, {}},
+                             {input_data.get(), index_data.get()});
+}
+
 XLA_TEST_F(SlicingTest, BatchTorchIndexSelectOn0) {
   xla::XlaBuilder builder(TestName());
 
