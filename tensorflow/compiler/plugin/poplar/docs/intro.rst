@@ -1,42 +1,12 @@
 Outline
 -------
 
-General outline: Update as document matures!!
-
-The document will begin with a concise introduction to TensorFlow, reviewing key
-concepts of graph definition and suggest some useful references to dive into
-graph development. Three preliminary scripts are then presented to introduce
-some of the basic aspects of targeting the IPU, beginning with a plain graph
-definition, subsequently introducing *XLA*, (the *Accelerated Linear Algebra*),
-and finishing up with an example of sharding.
-
-General outline: Update as document matures!!
-
-Supported types
-~~~~~~~~~~~~~~~
-
-Poplar and the poplibs libraries support the following data types:
-
-::
-
-  tf.float32
-  tf.float16
-  tf.int32
-  tf.bool
-
-Unsupported operations
-~~~~~~~~~~~~~~~~~~~~~~
-
-TensorFlow core operations which use variable buffers or strings are not
-supported. For instance, ``JpegDecode``.
-
-Unsupported operations will cause the compilation to fail. By including
-``config=tf.ConfigProto(log_device_placement=True)`` as an argument to the
-creation of the session, you can check whether the operations in your graph have
-been targeted at the Poplar device:
-
-::
-
-  # Creates a session with log_device_placement set to True.
-  sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-
+The purpose of this document is to introduce the TensorFlow framework from the
+perspective of developing and training models for the IPU. To some extent,
+implementing at the framework level is relatively agnostic to the underlying
+hardware as it pertains to the specifics of graph definition and its various
+components, (e.g. how a convolutional layer is defined), but there are critical
+facets of targeting the IPU from TensorFlow that need to be understood to
+use it as a training and inference engine successfully. These elements include
+IPU-specific API configurations, model parallelism, error logging and report
+generation, as well as strategies for dealing with out-of-memory (OOM) issues.

@@ -44,3 +44,5 @@ sessions.  This will ensure that the global_step variable is on the CPU.
   with tf.device("cpu"):
     tf.train.get_or_create_global_step()
 
+  with ipu.ops.ipu_scope("/device:IPU:0"):
+    out = ipu.ipu_compiler.compile(model_fn, [...])
