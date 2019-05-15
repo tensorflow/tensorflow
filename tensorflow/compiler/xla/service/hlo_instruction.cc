@@ -631,6 +631,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
+  instruction->outer_dimension_partitions_.assign(
+      proto.outer_dimension_partitions().begin(),
+      proto.outer_dimension_partitions().end());
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -1524,6 +1527,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
+  clone->set_outer_dimension_partitions(outer_dimension_partitions_);
   clone->set_raw_backend_config_string(backend_config_);
   if (context != nullptr) {
     context->MapInstruction(this, clone.get());
@@ -2414,6 +2418,11 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (has_sharding()) {
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
+  if (!outer_dimension_partitions_.empty()) {
+    extra.push_back(absl::StrFormat("outer_dimension_partitions={%s}",
+                                    StrJoin(outer_dimension_partitions_, ",")));
+  }
+
   if (options.print_control_dependencies() && !control_predecessors_.empty()) {
     extra.push_back(StrCat("control-predecessors={",
                            StrJoin(control_predecessors_, ", ",
@@ -2462,6 +2471,11 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
+  }
+  if (!outer_dimension_partitions_.empty()) {
+    for (const auto& idx : outer_dimension_partitions_) {
+      proto.mutable_outer_dimension_partitions()->Add(idx);
+    }
   }
 
   return proto;
