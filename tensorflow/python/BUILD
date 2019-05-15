@@ -3436,7 +3436,6 @@ py_library(
         ":check_ops",
         ":confusion_matrix",
         ":control_flow_ops",
-        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
@@ -3448,6 +3447,7 @@ py_library(
         ":variable_scope",
         ":variables",
         ":weights_broadcast_ops",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
@@ -4097,6 +4097,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
