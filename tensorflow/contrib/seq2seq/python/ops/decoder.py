@@ -123,8 +123,8 @@ class Decoder(object):
 
     Returns:
       `(final_outputs, final_state)`: `final_outputs` is an object containing
-      the final decoder output, `final_state` is a (structure of) state tensors and
-      TensorArrays.
+      the final decoder output, `final_state` is a (structure of) state tensors
+      and TensorArrays.
     """
     raise NotImplementedError
 
