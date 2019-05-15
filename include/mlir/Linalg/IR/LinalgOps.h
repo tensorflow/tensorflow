@@ -18,6 +18,7 @@
 #ifndef MLIR_LINALG_LINALGOPS_H_
 #define MLIR_LINALG_LINALGOPS_H_
 
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Linalg/IR/LinalgTraits.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
@@ -274,6 +275,9 @@ public:
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgOps.h.inc"
 
+#define GET_OP_CLASSES
+#include "mlir/Linalg/IR/LinalgLibraryOps.h.inc"
+
 /// Returns the list of maps that map loops to operands of a Linalg op.
 /// The i-th affine map identifies loop indices to subscripts that are used when
 /// accessing the i-th operand.
@@ -291,6 +295,116 @@ public:
 ///
 /// Only permutation maps are currently supported.
 SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
+
+/// A LinalgOp behaves like a base class for the Linalg operations that are
+/// defined in LinalgLibraryOps.td. The implementation does not use inheritance
+/// directly. Instead, a LinalgOp directly derives from Op, hides the `classof`
+/// method and dispatches to the appropriate LinalgLibraryOp.
+/// This allows writing generic passes, like tiling, for all current and future
+/// LinalgOps without requiring templating and dispatch in multiple places.
+class LinalgOp : public Op<LinalgOp> {
+public:
+  using Op::Op;
+
+  LinalgOp(Operation *op) : Op<LinalgOp>(op) {
+    impl = ModelDispatch<
+#define GET_OP_LIST
+#include "mlir/Linalg/IR/LinalgLibraryOps.cpp.inc"
+        >::dispatch(op);
+  }
+
+  static bool classof(Operation *op) {
+    return ModelDispatch<
+#define GET_OP_LIST
+#include "mlir/Linalg/IR/LinalgLibraryOps.cpp.inc"
+        >::classof(op);
+  }
+
+  unsigned getNumParallelLoops() {
+    return impl->getNumParallelLoops(getOperation());
+  }
+  unsigned getNumReductionLoops() {
+    return impl->getNumReductionLoops(getOperation());
+  }
+  unsigned getNumWindowLoops() {
+    return impl->getNumWindowLoops(getOperation());
+  }
+  unsigned getNumInputsAndOutputs() {
+    return impl->getNumInputsAndOutputs(getOperation());
+  }
+  Operation *create(FuncBuilder &builder, Location loc,
+                    ArrayRef<Value *> operands) {
+    return impl->create(builder, loc, operands);
+  }
+
+private:
+  struct Concept {
+    virtual ~Concept() = default;
+    virtual unsigned getNumInputsAndOutputs(Operation *op) = 0;
+    virtual unsigned getNumParallelLoops(Operation *op) = 0;
+    virtual unsigned getNumReductionLoops(Operation *op) = 0;
+    virtual unsigned getNumWindowLoops(Operation *op) = 0;
+    virtual unsigned getNumLoops(Operation *op) = 0;
+    virtual Operation *create(FuncBuilder &builder, Location loc,
+                              ArrayRef<Value *> operands) = 0;
+  };
+
+  /// The implementation is inspired from Sean Parent's concept-based
+  /// polymorphism. A key difference is that the set of classes erased is
+  /// statically known, which alleviates the need for using dynamic memory
+  /// allocation.
+  /// We use a zero-sized templated class `Model<ConcreteOp>` to emit the
+  /// virtual table and generate a singleton object for each instantiation of
+  /// this class.
+  /// We pay the cost of initialization once on construction (find which class
+  /// to dispatch to) and then a virtual dispatch on every call.
+  template <typename ConcreteOp> struct Model : public Concept {
+    static Model<ConcreteOp> &instance() {
+      static Model<ConcreteOp> singleton;
+      return singleton;
+    }
+    unsigned getNumInputsAndOutputs(Operation *op) override {
+      return cast<ConcreteOp>(op).getNumInputsAndOutputs();
+    }
+    unsigned getNumParallelLoops(Operation *op) override {
+      return cast<ConcreteOp>(op).getNumParallelLoops();
+    }
+    unsigned getNumReductionLoops(Operation *op) override {
+      return cast<ConcreteOp>(op).getNumReductionLoops();
+    }
+    unsigned getNumWindowLoops(Operation *op) override {
+      return cast<ConcreteOp>(op).getNumWindowLoops();
+    }
+    unsigned getNumLoops(Operation *op) override {
+      return cast<ConcreteOp>(op).getNumLoops();
+    }
+    Operation *create(FuncBuilder &builder, Location loc,
+                      ArrayRef<Value *> operands) override {
+      return builder.create<ConcreteOp>(loc, operands);
+    }
+  };
+  Concept *impl;
+
+  template <typename... Types> struct ModelDispatch;
+
+  template <typename First, typename... Rest>
+  struct ModelDispatch<First, Rest...> {
+    static bool classof(Operation *op) {
+      return isa<First>(op) || ModelDispatch<Rest...>::classof(op);
+    }
+    static Concept *dispatch(Operation *op) {
+      return isa<First>(op) ? &Model<First>::instance()
+                            : ModelDispatch<Rest...>::dispatch(op);
+    }
+  };
+
+  template <typename...> struct ModelDispatch {
+    static bool classof(Operation *op) { return false; }
+    static Concept *dispatch(Operation *op) {
+      llvm_unreachable("Invalid LinalgOp");
+    }
+  };
+};
 
 } // namespace linalg
 } // namespace mlir

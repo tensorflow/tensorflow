@@ -248,7 +248,6 @@ static SmallVector<Value *, 4> makeTiledViews(FuncBuilder *b, Location loc,
   return res;
 }
 
-template <class LinalgOp>
 static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
                                   PerFunctionState &state) {
   // Enforce the convention that "tiling by zero" skips tiling a particular
@@ -278,7 +277,7 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
     assert(op.getNumInputsAndOutputs() == op.getOperation()->getNumOperands());
     auto views =
         makeTiledViews(b, loc, op.getOperation(), ivValues, tileSizes, state);
-    b->create<LinalgOp>(loc, views);
+    op.create(*b, loc, views);
     /// NestedBuilders expect handles, we thus return an IndexHandle.
     return IndexHandle();
   }()});
@@ -286,7 +285,6 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
   return success();
 }
 
-template <class LinalgOp>
 static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
                                   PerFunctionState &state) {
   if (tileSizes.empty())
@@ -319,13 +317,8 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
 // TODO(ntv) expose as a primitive for other passes.
 static LogicalResult tileLinalgOp(Operation *op, ArrayRef<int64_t> tileSizes,
                                   PerFunctionState &state) {
-  if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
-    return tileLinalgOp(matmulOp, tileSizes, state);
-  } else if (auto matvecOp = dyn_cast<MatvecOp>(op)) {
-    return tileLinalgOp(matvecOp, tileSizes, state);
-  } else if (auto dotOp = dyn_cast<DotOp>(op)) {
-    return tileLinalgOp(dotOp, tileSizes, state);
-  }
+  if (auto linalgOp = dyn_cast<LinalgOp>(op))
+    return tileLinalgOp(linalgOp, tileSizes, state);
   return failure();
 }
 

@@ -37,6 +37,10 @@ mlir::linalg::LinalgDialect::LinalgDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Linalg/IR/LinalgOps.cpp.inc"
       >();
+  addOperations<
+#define GET_OP_LIST
+#include "mlir/Linalg/IR/LinalgLibraryOps.cpp.inc"
+      >();
 }
 
 struct mlir::linalg::BufferTypeStorage : public TypeStorage {

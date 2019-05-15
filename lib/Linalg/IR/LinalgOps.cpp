@@ -593,6 +593,9 @@ namespace mlir {
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgOps.cpp.inc"
 
+#define GET_OP_CLASSES
+#include "mlir/Linalg/IR/LinalgLibraryOps.cpp.inc"
+
 } // namespace mlir
 
 // Ideally this should all be Tablegen'd but there is no good story for
