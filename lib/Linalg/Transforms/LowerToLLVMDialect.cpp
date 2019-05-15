@@ -166,18 +166,15 @@ public:
     auto indexType = IndexType::get(op->getContext());
     auto voidPtrTy = LLVM::LLVMType::get(
         op->getContext(),
-        lowering.convertType(IntegerType::get(8, op->getContext()))
-            .cast<LLVM::LLVMType>()
-            .getUnderlyingType()
-            ->getPointerTo());
+        llvm::IntegerType::get(lowering.getLLVMContext(), 8)->getPointerTo());
     auto int64Ty = lowering.convertType(operands[0]->getType());
     // Insert the `malloc` declaration if it is not already present.
-    Function *mallocFunc =
-        op->getFunction()->getModule()->getNamedFunction("malloc");
+    auto *module = op->getFunction()->getModule();
+    Function *mallocFunc = module->getNamedFunction("malloc");
     if (!mallocFunc) {
       auto mallocType = rewriter.getFunctionType(int64Ty, voidPtrTy);
       mallocFunc = new Function(rewriter.getUnknownLoc(), "malloc", mallocType);
-      op->getFunction()->getModule()->getFunctions().push_back(mallocFunc);
+      module->getFunctions().push_back(mallocFunc);
     }
 
     // Get MLIR types for injecting element pointer.
@@ -225,17 +222,14 @@ public:
                                   FuncBuilder &rewriter) const override {
     auto voidPtrTy = LLVM::LLVMType::get(
         op->getContext(),
-        lowering.convertType(IntegerType::get(8, op->getContext()))
-            .cast<LLVM::LLVMType>()
-            .getUnderlyingType()
-            ->getPointerTo());
+        llvm::IntegerType::get(lowering.getLLVMContext(), 8)->getPointerTo());
     // Insert the `free` declaration if it is not already present.
-    Function *freeFunc =
-        op->getFunction()->getModule()->getNamedFunction("free");
+    auto *module = op->getFunction()->getModule();
+    Function *freeFunc = module->getNamedFunction("free");
     if (!freeFunc) {
       auto freeType = rewriter.getFunctionType(voidPtrTy, {});
       freeFunc = new Function(rewriter.getUnknownLoc(), "free", freeType);
-      op->getFunction()->getModule()->getFunctions().push_back(freeFunc);
+      module->getFunctions().push_back(freeFunc);
     }
 
     // Get MLIR types for extracting element pointer.

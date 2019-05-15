@@ -40,6 +40,11 @@
 
 using namespace mlir;
 
+// Get the LLVM context.
+llvm::LLVMContext &LLVMLowering::getLLVMContext() {
+  return module->getContext();
+}
+
 // Wrap the given LLVM IR type into an LLVM IR dialect type.
 Type LLVMLowering::wrap(llvm::Type *llvmType) {
   return LLVM::LLVMType::get(llvmDialect->getContext(), llvmType);

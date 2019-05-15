@@ -131,7 +131,8 @@ public:
   // Setup the object layer to use our custom memory manager in order to
   // resolve calls to library functions present in the process.
   OrcJIT(llvm::orc::JITTargetMachineBuilder machineBuilder,
-         llvm::DataLayout layout, IRTransformer transform)
+         llvm::DataLayout layout, IRTransformer transform,
+         ArrayRef<StringRef> sharedLibPaths)
       : irTransformer(transform),
         objectLayer(
             session,
@@ -144,11 +145,12 @@ public:
         threadSafeCtx(llvm::make_unique<llvm::LLVMContext>()) {
     session.getMainJITDylib().setGenerator(
         SearchGenerator(layout.getGlobalPrefix()));
+    loadLibraries(sharedLibPaths);
   }
 
   // Create a JIT engine for the current host.
   static Expected<std::unique_ptr<OrcJIT>>
-  createDefault(IRTransformer transformer) {
+  createDefault(IRTransformer transformer, ArrayRef<StringRef> sharedLibPaths) {
     auto machineBuilder = llvm::orc::JITTargetMachineBuilder::detectHost();
     if (!machineBuilder)
       return machineBuilder.takeError();
@@ -158,7 +160,8 @@ public:
       return dataLayout.takeError();
 
     return llvm::make_unique<OrcJIT>(std::move(*machineBuilder),
-                                     std::move(*dataLayout), transformer);
+                                     std::move(*dataLayout), transformer,
+                                     sharedLibPaths);
   }
 
   // Add an LLVM module to the main library managed by the JIT engine.
@@ -190,6 +193,10 @@ private:
     };
   }
 
+  // Iterate over shareLibPaths and load the corresponding libraries for symbol
+  // resolution.
+  void loadLibraries(ArrayRef<StringRef> sharedLibPaths);
+
   IRTransformer irTransformer;
   llvm::orc::ExecutionSession session;
   llvm::orc::RTDyldObjectLinkingLayer objectLayer;
@@ -201,6 +208,29 @@ private:
 };
 } // end namespace impl
 } // namespace mlir
+
+void mlir::impl::OrcJIT::loadLibraries(ArrayRef<StringRef> sharedLibPaths) {
+  for (auto libPath : sharedLibPaths) {
+    auto mb = llvm::MemoryBuffer::getFile(libPath);
+    if (!mb) {
+      llvm::errs() << "Could not create MemoryBuffer for: " << libPath << " "
+                   << mb.getError().message() << "\n";
+      continue;
+    }
+    auto &JD = session.createJITDylib(libPath);
+    auto loaded = llvm::orc::DynamicLibrarySearchGenerator::Load(
+        libPath.data(), dataLayout.getGlobalPrefix());
+    if (!loaded) {
+      llvm::errs() << "Could not load: " << libPath << " " << loaded.takeError()
+                   << "\n";
+      continue;
+    }
+    JD.setGenerator(loaded.get());
+    auto res = objectLayer.add(JD, std::move(mb.get()));
+    if (res)
+      llvm::errs() << "Could not add: " << libPath << " " << res << "\n";
+  }
+}
 
 // Wrap a string into an llvm::StringError.
 static inline Error make_string_error(const llvm::Twine &message) {
@@ -318,11 +348,12 @@ void packFunctionArguments(llvm::Module *module) {
 // Out of line for PIMPL unique_ptr.
 ExecutionEngine::~ExecutionEngine() = default;
 
-Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
-    Module *m, PassManager *pm,
-    std::function<llvm::Error(llvm::Module *)> transformer) {
+Expected<std::unique_ptr<ExecutionEngine>>
+ExecutionEngine::create(Module *m, PassManager *pm,
+                        std::function<llvm::Error(llvm::Module *)> transformer,
+                        ArrayRef<StringRef> sharedLibPaths) {
   auto engine = llvm::make_unique<ExecutionEngine>();
-  auto expectedJIT = impl::OrcJIT::createDefault(transformer);
+  auto expectedJIT = impl::OrcJIT::createDefault(transformer, sharedLibPaths);
   if (!expectedJIT)
     return expectedJIT.takeError();
 
@@ -345,12 +376,14 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
   return std::move(engine);
 }
 
-Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
-    Module *m, std::function<llvm::Error(llvm::Module *)> transformer) {
+Expected<std::unique_ptr<ExecutionEngine>>
+ExecutionEngine::create(Module *m,
+                        std::function<llvm::Error(llvm::Module *)> transformer,
+                        ArrayRef<StringRef> sharedLibPaths) {
   // Construct and run the default MLIR pipeline.
   PassManager manager;
   getDefaultPasses(manager, {});
-  return create(m, &manager, transformer);
+  return create(m, &manager, transformer, sharedLibPaths);
 }
 
 Expected<void (*)(void **)> ExecutionEngine::lookup(StringRef name) const {

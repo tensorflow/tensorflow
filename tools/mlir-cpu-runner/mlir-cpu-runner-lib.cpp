@@ -79,6 +79,12 @@ static llvm::cl::opt<bool> optO2("O2", llvm::cl::desc("Run opt O2 passes"),
 static llvm::cl::opt<bool> optO3("O3", llvm::cl::desc("Run opt O3 passes"),
                                  llvm::cl::cat(optFlags));
 
+static llvm::cl::OptionCategory clOptionsCategory("linking options");
+static llvm::cl::list<std::string>
+    clSharedLibs("shared-libs", llvm::cl::desc("Libraries to link dynamically"),
+                 llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated,
+                 llvm::cl::cat(clOptionsCategory));
+
 static std::unique_ptr<Module> parseMLIRInput(StringRef inputFilename,
                                               MLIRContext *context) {
   // Set up the input file.
@@ -156,7 +162,9 @@ static Error compileAndExecuteFunctionWithMemRefs(
   if (!expectedArguments)
     return expectedArguments.takeError();
 
-  auto expectedEngine = mlir::ExecutionEngine::create(module, transformer);
+  SmallVector<StringRef, 4> libs(clSharedLibs.begin(), clSharedLibs.end());
+  auto expectedEngine =
+      mlir::ExecutionEngine::create(module, transformer, libs);
   if (!expectedEngine)
     return expectedEngine.takeError();
 
@@ -193,7 +201,9 @@ static Error compileAndExecuteSingleFloatReturnFunction(
   if (llvmTy != llvmTy->getFloatTy(llvmTy->getContext()))
     return make_string_error("only single llvm.f32 function result supported");
 
-  auto expectedEngine = mlir::ExecutionEngine::create(module, transformer);
+  SmallVector<StringRef, 4> libs(clSharedLibs.begin(), clSharedLibs.end());
+  auto expectedEngine =
+      mlir::ExecutionEngine::create(module, transformer, libs);
   if (!expectedEngine)
     return expectedEngine.takeError();
 

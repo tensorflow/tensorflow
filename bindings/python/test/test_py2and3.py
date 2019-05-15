@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# RUN: $(dirname %s)/test_edsc %s | FileCheck %s
+# RUN: %p/test_edsc %s | FileCheck %s
 """Python2 and 3 test for the MLIR EDSC Python bindings"""
 
 import google_mlir.bindings.python.pybind as E

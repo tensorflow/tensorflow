@@ -4,6 +4,10 @@ llvm_canonicalize_cmake_booleans(
   LLVM_BUILD_EXAMPLES
   )
 
+# Passed to lit.site.cfg.py.in to set up the path where to find the libraries
+# for linalg integration tests.
+set(MLIR_LINALG_INTEGRATION_TEST_LIB_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
@@ -20,13 +24,12 @@ configure_lit_site_cfg(
 set(MLIR_TEST_DEPENDS
   FileCheck count not
   MLIRUnitTests
-  mlir-blas-cpu-runner
   mlir-cpu-runner
   mlir-opt
   mlir-tblgen
   mlir-translate
+  sdot
   )
-
 
 if(LLVM_BUILD_EXAMPLES)
   list(APPEND MLIR_TEST_DEPENDS

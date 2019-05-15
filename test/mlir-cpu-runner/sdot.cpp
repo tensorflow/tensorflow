@@ -1,4 +1,4 @@
-//===- mlir-blas-cpu-runner.cpp - MLIR CPU Execution Driver + Blas Support ===//
+//===- sdot.cpp - Simple sdot Blas Function -------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,33 +15,14 @@
 // limitations under the License.
 // =============================================================================
 //
-// Main entry point.
+// Sdot implementation.
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/DynamicLibrary.h"
-
-#ifdef WITH_LAPACK
-#include "lapack/cblas.h"
-#else
 extern "C" float cblas_sdot(const int N, const float *X, const int incX,
                             const float *Y, const int incY) {
   float res = 0.0f;
   for (int i = 0; i < N; ++i)
     res += X[i * incX] * Y[i * incY];
   return res;
-}
-#endif
-
-extern int run(int argc, char **argv);
-
-void addSymbols() {
-  using llvm::sys::DynamicLibrary;
-  DynamicLibrary::AddSymbol("cblas_sdot", (void *)(&cblas_sdot));
-}
-
-int main(int argc, char **argv) {
-  addSymbols();
-  return run(argc, argv);
 }

@@ -28,6 +28,7 @@
 
 namespace llvm {
 class IntegerType;
+class LLVMContext;
 class Module;
 class Type;
 }
@@ -50,6 +51,9 @@ public:
   /// returned, create an LLVM IR structure type with elements that correspond
   /// to each of the MLIR types converted with `convertType`.
   Type packFunctionResults(ArrayRef<Type> types);
+
+  /// Returns the LLVM context.
+  llvm::LLVMContext &getLLVMContext();
 
 protected:
   /// Create a set of converters that live in the pass object by passing them a
