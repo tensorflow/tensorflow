@@ -268,18 +268,18 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       if (kernel_type == kReference) {
         if (need_broadcast) {
-          TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, uint8_t);
+          TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, uint8_t);
         } else {
-          TF_LITE_ADD(reference_ops, Add, uint8_t);
+          TF_LITE_ADD(reference_integer_ops, Add, uint8_t);
         }
       } else {
         if (op_params.broadcast_category ==
             BroadcastableOpCategory::kGenericBroadcast) {
-          TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow, uint8_t);
+          TF_LITE_ADD(reference_integer_ops, BroadcastAdd4DSlow, uint8_t);
         } else if (need_broadcast) {
-          TF_LITE_ADD(optimized_ops, BroadcastAddFivefold, uint8_t);
+          TF_LITE_ADD(reference_integer_ops, BroadcastAddFivefold, uint8_t);
         } else {
-          TF_LITE_ADD(optimized_ops, Add, uint8_t);
+          TF_LITE_ADD(reference_integer_ops, Add, uint8_t);
         }
       }
     }
