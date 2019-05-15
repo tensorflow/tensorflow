@@ -74,6 +74,7 @@ def verify_build_defines(params):
     """
     missing = []
     for param in [
+        "cc_toolchain_config_file",
         "cxx_builtin_include_directories",
         "extra_no_canonical_prefixes_flags",
         "host_compiler_path",
@@ -1191,6 +1192,8 @@ def _create_local_cuda_repository(repository_ctx):
         )
 
     cuda_defines.update(_get_win_cuda_defines(repository_ctx))
+
+    cuda_defines["%{cc_toolchain_config_file}"] = "cc_toolchain_config.bzl"
 
     verify_build_defines(cuda_defines)
 
