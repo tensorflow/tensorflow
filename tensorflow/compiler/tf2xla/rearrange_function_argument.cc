@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/rearrange_function_argument_pass.h"
+#include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 
 #include <algorithm>
 
@@ -158,8 +158,9 @@ Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
 
 // Given mapping between original input index and rearranged input index, change
 // "index" attribute for _Arg nodes.
-void RearrangeArgNodes(gtl::InlinedVector<Node*, 4>* arg_nodes,  // non-absl ok
-                       const std::vector<int>& index_mapping) {
+void RearrangeArgNodes(
+    const gtl::InlinedVector<Node*, 4>* arg_nodes,  // non-absl ok
+    const std::vector<int>& index_mapping) {
   for (int i = 0; i < arg_nodes->size(); i++) {
     Node* n = (*arg_nodes)[i];
     int new_index = index_mapping.at(i);
@@ -271,8 +272,10 @@ void RearrangeRetvalNodes(
   }
 }
 
-Status MaybeRewriteWhileNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
-                             bool* node_rewritten) {
+Status MaybeRewriteWhileNode(
+    std::function<Status(const NameAttrList&, const FunctionBody**)>
+        get_function_body_fn,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld, bool* node_rewritten) {
   // Check if this While node needs rewrite.
   std::vector<DataType> types;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &types));
@@ -303,11 +306,8 @@ Status MaybeRewriteWhileNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
   for (auto const& attr_name : std::vector<string>{"cond", "body"}) {
     NameAttrList attr_value;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &attr_value));
-    const FunctionDef* fdef = fld->Find(attr_value.name());
-    TF_RET_CHECK(fdef != nullptr);
-    std::unique_ptr<FunctionBody> fbody;
-    TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(*fdef, AttrSlice(), fld, &fbody));
+    const FunctionBody* fbody;
+    TF_RETURN_IF_ERROR(get_function_body_fn(attr_value, &fbody));
 
     // Check that resource _Arg nodes for While node are always returned with
     // the same index, and we don't have cases like this:
@@ -375,8 +375,10 @@ Status MaybeRewriteWhileNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
   return Status::OK();
 }
 
-Status MaybeRewriteIfNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
-                          bool* node_rewritten) {
+Status MaybeRewriteIfNode(
+    std::function<Status(const NameAttrList&, const FunctionBody**)>
+        get_function_body_fn,
+    Graph* g, Node* n, FunctionLibraryDefinition* fld, bool* node_rewritten) {
   // This node needs rewrite when either of these is true:
   // 1) Tin has DT_RESOURCE which requires rearrange;
   // 2) Tout has DT_RESOURCE.
@@ -428,11 +430,8 @@ Status MaybeRewriteIfNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
        std::vector<string>{"then_branch", "else_branch"}) {
     NameAttrList f;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &f));
-    const FunctionDef* fdef = fld->Find(f.name());
-    TF_RET_CHECK(fdef != nullptr);
-    std::unique_ptr<FunctionBody> fbody;
-    TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(*fdef, AttrSlice(), fld, &fbody));
+    const FunctionBody* fbody;
+    TF_RETURN_IF_ERROR(get_function_body_fn(f, &fbody));
 
     if (input_need_rearrange) {
       // Change _Arg node index.
@@ -501,95 +500,10 @@ Status MaybeRewriteIfNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
 
 }  // namespace
 
-Status RearrangeFunctionArgumentForFunction(
-    const string& func_name, const string& new_func_name,
-    const protobuf::Map<string, tensorflow::AttrValue>& attrs,
-    FunctionLibraryDefinition* fld, FunctionLibraryRuntime* flr,
-    std::map<string, absl::optional<string>>* canonicalized_name_to_new_name,
-    bool* modified) {
-  *modified = false;
-
-  // Convert the function to Graph.
-  FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(flr->Instantiate(func_name, AttrSlice(&attrs), &handle));
-  Status ret_status = Status::OK();
-  auto cleanup_handle = gtl::MakeCleanup([&]() {
-    auto s = flr->ReleaseHandle(handle);
-    if (!s.ok()) {
-      ret_status.Update(s);
-    }
-  });
-  const FunctionBody* body = flr->GetFunctionBody(handle);
-  Graph* g = body->graph;
-
-  // If any node has associated functions, rewrite them first.
-  // Gather nodes with associated functions first, because rewriting those nodes
-  // might involve node deletion/addition. Avoid modifying nodes while iterating
-  // it.
-  std::vector<std::pair<Node*, std::vector<AssociatedFunctionInfo>>>
-      nodes_to_associated_functions;
-  for (auto* n : g->nodes()) {
-    auto associated_functions = GetAssociatedFunctions(*n, fld);
-    if (!associated_functions.empty()) {
-      nodes_to_associated_functions.push_back({n, associated_functions});
-    }
-  }
-  for (auto iter : nodes_to_associated_functions) {
-    Node* n = iter.first;
-    auto associated_functions = iter.second;
-    for (auto& associated_function : associated_functions) {
-      string name = associated_function.func_name();
-      string canonicalized_name =
-          Canonicalize(name, AttrSlice(&associated_function.attrs()));
-      auto iter = canonicalized_name_to_new_name->find(canonicalized_name);
-      string new_name;
-      bool function_modified;
-      if (iter != canonicalized_name_to_new_name->end()) {
-        // If we already processed this function, check if it was rewritten. If
-        // the function was rewritten, the entry will be non-empty. Otherwise
-        // the entry will be empty.
-        function_modified = iter->second.has_value();
-        if (function_modified) {
-          new_name = iter->second.value();
-        }
-      } else {
-        if (associated_function.type() ==
-            AssociatedFunctionInfo::AssociatedFunctionType::kSymbolicGradient) {
-          // For SymbolicGradient, `name` is always "SymbolicGradient",
-          // which is not very informative. Use node name instead.
-          new_name =
-              fld->UniqueFunctionName(absl::StrCat(n->name(), "_rearrange_"));
-        } else {
-          new_name = fld->UniqueFunctionName(absl::StrCat(name, "_rearrange_"));
-        }
-        TF_RETURN_IF_ERROR(RearrangeFunctionArgumentForFunction(
-            name, new_name, associated_function.attrs(), fld, flr,
-            canonicalized_name_to_new_name, &function_modified));
-        if (function_modified) {
-          // If the function was rewritten, add an non-empty entry. So later we
-          // know we have processed this function, and it was rewritten into
-          // another function.
-          (*canonicalized_name_to_new_name)[canonicalized_name] = new_name;
-        } else {
-          // If the function was not rewritten, add an empty entry. So later
-          // we know we have processed this function, and it does not need to be
-          // rewritten.
-          (*canonicalized_name_to_new_name)[canonicalized_name] = absl::nullopt;
-        }
-      }
-      if (function_modified) {
-        *modified = true;
-
-        // Notice that if "n" is a function call, RewriteAssociatedFunction()
-        // will delete it and create a new node instead, making "n" an invalid
-        // pointer. That's fine because in that case, associated_functions will
-        // only have one member and the loop will only run once.
-        TF_RETURN_IF_ERROR(RewriteAssociatedFunction(
-            g, n, fld, associated_function, new_name));
-      }
-    }
-  }
-
+Status RearrangeFunctionArguments(
+    std::function<Status(const NameAttrList&, const FunctionBody**)>
+        get_function_body_fn,
+    Graph* g, FunctionLibraryDefinition* fld) {
   // Inline StatefulPartitionedCall nodes.
   std::vector<Node*> call_nodes;
   for (Node* n : g->nodes()) {
@@ -598,114 +512,30 @@ Status RearrangeFunctionArgumentForFunction(
     }
   }
   for (Node* n : call_nodes) {
-    *modified = true;
-
     NameAttrList func_name_attrs;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func_name_attrs));
-    const FunctionDef* fdef = fld->Find(func_name_attrs.name());
-    if (!fdef) {
-      return errors::InvalidArgument("Cannot find function ",
-                                     func_name_attrs.name(), " for node ",
-                                     n->DebugString());
-    }
-    std::unique_ptr<FunctionBody> fbody;
-    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-        *fdef, AttrSlice(&func_name_attrs.attr()), fld, &fbody));
+    const FunctionBody* fbody;
+    TF_RETURN_IF_ERROR(get_function_body_fn(func_name_attrs, &fbody));
     InlineFunctionBodyOptions opts;
-    TF_RETURN_IF_ERROR(InlineFunctionBody(*fld, g, n, fbody.get(), opts));
+    Status s = InlineFunctionBody(*fld, g, n, fbody, opts);
+    // Inlining might fail because the function is marked with attribute
+    // _noinline.
+    s.IgnoreError();
   }
 
+  // Rewrite If/While nodes.
   for (Node* n : g->nodes()) {
     if (n->type_string() == "While") {
       bool node_rewritten;
-      TF_RETURN_IF_ERROR(MaybeRewriteWhileNode(g, n, fld, &node_rewritten));
-      if (node_rewritten) {
-        *modified = true;
-      }
+      TF_RETURN_IF_ERROR(MaybeRewriteWhileNode(get_function_body_fn, g, n, fld,
+                                               &node_rewritten));
     } else if (n->type_string() == "If") {
       bool node_rewritten;
-      TF_RETURN_IF_ERROR(MaybeRewriteIfNode(g, n, fld, &node_rewritten));
-      if (node_rewritten) {
-        *modified = true;
-      }
-    }
-  }
-
-  if (*modified) {
-    // Add rewritten FunctionDef into library.
-    FunctionDef functionalized_fdef;
-    TF_RETURN_IF_ERROR(
-        GraphToFunctionDef(*g, new_func_name, &functionalized_fdef));
-    if (func_name == new_func_name) {
-      VLOG(2) << "Replacing function " << func_name;
       TF_RETURN_IF_ERROR(
-          fld->ReplaceFunction(new_func_name, functionalized_fdef));
-    } else {
-      VLOG(2) << "Adding function " << new_func_name;
-      TF_RETURN_IF_ERROR(fld->AddFunctionDef(functionalized_fdef));
+          MaybeRewriteIfNode(get_function_body_fn, g, n, fld, &node_rewritten));
     }
   }
 
-  return ret_status;
-}  // namespace tensorflow
-
-Status RearrangeFunctionArgumentPass::Run(
-    const GraphOptimizationPassOptions& options) {
-  Graph* graph = options.graph->get();
-  if (VLOG_IS_ON(4)) {
-    DumpGraphToFile("rearrange_function_argument_before", *graph,
-                    options.flib_def);
-  }
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(
-          /*device_mgr=*/nullptr, options.session_options->env,
-          TF_GRAPH_DEF_VERSION, options.flib_def, OptimizerOptions()));
-  FunctionLibraryRuntime* flr =
-      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
-
-  // Find XLA compile ops and its corresponding FunctionDef.
-  static std::map<string, string>* kNodeTypeToFunctionAttrMapping =
-      new std::map<string, string>{
-          // TPUReplicate ops are generated by EncapsulateTPUComputationsPass.
-          {"TPUReplicate", "computation"},
-          // XlaLaunch ops are generated by EncapsulateXlaComputationsPass.
-          {"XlaLaunch", "function"},
-      };
-  std::map<string, absl::optional<string>> canonicalized_name_to_new_name;
-  bool fld_modified = false;
-  for (Node* n : graph->nodes()) {
-    auto it = kNodeTypeToFunctionAttrMapping->find(n->type_string());
-    if (it == kNodeTypeToFunctionAttrMapping->end()) {
-      continue;
-    }
-    const string func_attr = it->second;
-    NameAttrList func;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), func_attr, &func));
-    VLOG(2) << "Graph has node " << n->type_string()
-            << ". Corresponding function: " << func.name();
-    string new_func_name = options.flib_def->UniqueFunctionName(
-        absl::StrCat(func.name(), "_rearrange_"));
-    bool modified = false;
-    TF_RETURN_IF_ERROR(RearrangeFunctionArgumentForFunction(
-        func.name(), new_func_name, func.attr(), options.flib_def, flr,
-        &canonicalized_name_to_new_name, &modified));
-    if (modified) {
-      n->ClearAttr(func_attr);
-      func.set_name(new_func_name);
-      n->AddAttr(func_attr, func);
-
-      fld_modified = true;
-    }
-  }
-  if (fld_modified) {
-    TF_RETURN_IF_ERROR(
-        PruneUnreachableFunctionsFromGraph(**options.graph, options.flib_def));
-  }
-
-  if (VLOG_IS_ON(4)) {
-    DumpGraphToFile("rearrange_function_argument_after", *graph,
-                    options.flib_def);
-  }
   return Status::OK();
 }
 

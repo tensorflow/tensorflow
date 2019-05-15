@@ -196,6 +196,7 @@ cc_library(
         ":tf2xla_util",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_cluster_util",
+        "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -514,12 +515,12 @@ cc_library(
 )
 
 cc_library(
-    name = "rearrange_function_argument_pass",
+    name = "rearrange_function_argument",
     srcs = [
-        "rearrange_function_argument_pass.cc",
+        "rearrange_function_argument.cc",
     ],
     hdrs = [
-        "rearrange_function_argument_pass.h",
+        "rearrange_function_argument.h",
     ],
     deps = [
         "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -533,17 +534,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
     ],
-)
-
-cc_library(
-    name = "rearrange_function_argument_pass_registration",
-    srcs = [
-        "rearrange_function_argument_pass_registration.cc",
-    ],
-    deps = [
-        ":rearrange_function_argument_pass",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
