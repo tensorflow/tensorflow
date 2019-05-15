@@ -2661,6 +2661,14 @@ tf_module {
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ROIAlign"
+    argspec: "args=[\'input\', \'rois\', \'spatial_scale\', \'pooled_height\', \'pooled_width\', \'sampling_ratio\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'debug\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'1\', \'-1\', \'2\', \'5\', \'224\', \'4\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "ROIAlignGrad"
+    argspec: "args=[\'grads\', \'input\', \'rois\', \'spatial_scale\', \'pooled_height\', \'pooled_width\', \'sampling_ratio\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'debug\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'1\', \'-1\', \'2\', \'5\', \'224\', \'4\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "RaggedGather"
     argspec: "args=[\'params_nested_splits\', \'params_dense_values\', \'indices\', \'OUTPUT_RAGGED_RANK\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
