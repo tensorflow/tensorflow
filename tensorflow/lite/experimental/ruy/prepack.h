@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
+#include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
 
@@ -46,7 +47,7 @@ void PrePackForMulInternal(const Matrix<LhsScalar>& lhs,
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
 
-  Tuning tuning = GetTuning(context);
+  Tuning tuning = context->GetMainThreadTuning();
   if (prepacked_lhs) {
     prepacked_lhs->data_size = DataSize(params.packed_lhs);
     prepacked_lhs->sums_size = SumsSize(params.packed_lhs);

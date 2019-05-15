@@ -300,26 +300,6 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   }
 }
 
-// Returns a vector of potential locations of the CUDA root directory.
-// Searches through tensorflow CUDA locations AND through the CUDA location
-// specified in HLO configuration.
-std::vector<string> GetCudaRootCandidates(
-    PtxCompilationOptions compile_ptx_options) {
-  std::vector<string> potential_cuda_roots = tensorflow::CandidateCudaRoots();
-
-  // "." is our last resort, even though it probably won't work.
-  potential_cuda_roots.push_back(".");
-
-  // CUDA location explicitly specified by user via --xla_gpu_cuda_data_dir has
-  // highest priority.
-  string xla_gpu_cuda_data_dir = compile_ptx_options.xla_gpu_cuda_data_dir;
-  if (!xla_gpu_cuda_data_dir.empty()) {
-    potential_cuda_roots.insert(potential_cuda_roots.begin(),
-                                xla_gpu_cuda_data_dir);
-  }
-  return potential_cuda_roots;
-}
-
 StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
     se::StreamExecutor* executor, absl::string_view ptx,
     PtxCompilationOptions compilation_options) {
@@ -360,7 +340,8 @@ StatusOr<std::vector<uint8>> CompilePtx(
       "Compile PTX", tensorflow::profiler::TraceMeLevel::kInfo);
   auto env = tensorflow::Env::Default();
   string ptxas_path;
-  for (const string& cuda_root : GetCudaRootCandidates(compile_ptx_options)) {
+  for (const string& cuda_root : tensorflow::CandidateCudaRoots(
+           /*preferred_location=*/compile_ptx_options.xla_gpu_cuda_data_dir)) {
     ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", "ptxas");
     VLOG(2) << "Looking for ptxas at " << ptxas_path;
     if (env->FileExists(ptxas_path).ok()) {

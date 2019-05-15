@@ -585,7 +585,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
-        dataset, self._input_workers, self._num_replicas_in_sync)
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -598,12 +601,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_input_pipelines=num_workers,
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
-    return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, input_contexts)
+    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
+                                           input_contexts,
+                                           self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset):
-    return input_lib.get_distributed_dataset(dataset, self._input_workers,
-                                             self._num_replicas_in_sync)
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(

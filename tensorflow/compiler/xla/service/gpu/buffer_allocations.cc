@@ -80,17 +80,18 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
         se::OwningDeviceMemory buffer;
         TF_ASSIGN_OR_RETURN(
             buffer, memory_allocator->Allocate(device_ordinal, buffer_size));
-        if (reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment !=
+        if (reinterpret_cast<uintptr_t>(buffer->opaque()) %
+                expected_alignment !=
             0) {
           return InternalError(
               "Address returned by memory_allocator->Allocate must be a "
               "multiple of 0x%x, but was %p",
-              kXlaAllocatedBufferAlignBytes, buffer.opaque());
+              kXlaAllocatedBufferAlignBytes, buffer->opaque());
         }
         // We do manual memory management within BufferAllocations.  Be sure not
         // to do a TF_RETURN_IF_ERROR between this line and the
         // buffer_allocations->SetBuffer(buffer_address) call below!
-        buffer_address = buffer.Forget();
+        buffer_address = buffer.Release();
       }
 
       buffer_allocations->SetBuffer(i, buffer_address);

@@ -161,7 +161,7 @@ __global__ void __launch_bounds__(1024)
       Eigen::array<T, 4> z;
       Eigen::array<T, 4> g;
 
-      const T plusFactor = (normMin < T(0)) ? T(0) : normMin * normMin;
+      const T plusFactor = (normMin < T(0)) ? T(0) : T(normMin * normMin);
 
       int numIterations = 0;
       while (numIterations < kMaxIterations) {

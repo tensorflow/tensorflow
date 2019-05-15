@@ -184,6 +184,29 @@ void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
   }
 }
 
+template <typename T>
+void ExpectArrayAlmostEqual(const std::vector<T>& lhs, absl::Span<const T> rhs,
+                            T tolerance) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_NEAR(lhs[i], rhs[i], tolerance);
+  }
+}
+
+// Eigen::half cannot implicitly convert to float which is required for
+// EXPECT_NEAR.
+template <>
+void ExpectArrayAlmostEqual(const std::vector<Eigen::half>& lhs,
+                            absl::Span<const Eigen::half> rhs,
+                            Eigen::half tolerance) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_NEAR(Eigen::half_impl::half_to_float(lhs[i]),
+                Eigen::half_impl::half_to_float(rhs[i]),
+                Eigen::half_impl::half_to_float(tolerance));
+  }
+}
+
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
   return TrtDimsEquals(lhs.shape_, rhs.shape_) &&
@@ -5462,6 +5485,135 @@ TEST_F(OpConverterTest, ConvertSquaredDifference) {
   TestConvertSquaredDifference<DT_FLOAT>(this);
   TestConvertSquaredDifference<DT_HALF>(this);
 }
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+template <typename OpType>
+NodeDef MakeResizeNodeDef(std::string name, DataType dtype,
+                          bool align_corners) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+  auto size = ops::Placeholder(s.WithOpName("size"), DT_INT32);
+  auto attrs = typename OpType::Attrs().AlignCorners(align_corners);
+  auto resize = OpType(s.WithOpName(name), input, size, attrs);
+  return resize.operation.node()->def();
+}
+
+template <typename CType>
+struct ResizeTestParams {
+  std::vector<int> input_dims;
+  std::vector<int> output_resize_dims;
+  std::vector<CType> input_values;
+  bool align_corners;
+  std::vector<int> expected_output_dims;
+  std::vector<CType> expected_nearest_output_values;
+  std::vector<CType> expected_bilinear_output_values;
+};
+
+template <typename OpType, DataType dtype>
+void TestConvertResize(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  std::vector<ResizeTestParams<CType>> params{
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
+          /*output_resize_dims=*/{2, 3},  // H_out, W_out
+          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
+          /*align_corners=*/false,
+          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
+          /*expected_nearest_output_values=*/
+          CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
+          /*expected_bilinear_output_values=*/
+          CastTestVector<float, CType>({2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f}),
+      },
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
+          /*output_resize_dims=*/{2, 3},  // H_out, W_out
+          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
+          /*align_corners=*/true,
+          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
+          /*expected_nearest_output_values=*/
+          CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
+          /*expected_bilinear_output_values=*/
+          CastTestVector<float, CType>({2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f}),
+      }};
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+    // Create resize node.
+    NodeDef node_def =
+        MakeResizeNodeDef<OpType>("my_resize", dtype, params[i].align_corners);
+    // Create input tensor
+    test->AddTestTensor("input", params[i].input_dims, /*batch_size=*/1,
+                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+    // Create output size.
+    test->AddTestWeights<int32>("size", {2}, params[i].output_resize_dims);
+
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_resize", &output));
+
+    // Create input data for tensors.
+    const DataVec input_data{
+        {"input", test::AsTensor<CType>(params[i].input_values)}};
+    DataVec output_data{
+        {"my_resize", ConstructTensor<CType>(
+                          params[i].expected_nearest_output_values.size())}};
+
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+
+    if (node_def.op() == "ResizeBilinear") {
+      ExpectArrayAlmostEqual(params[i].expected_bilinear_output_values,
+                             GetSpanForData<CType>(output_data[0]),
+                             CType(1e-3));
+    } else if (node_def.op() == "ResizeNearestNeighbor") {
+      ExpectArrayAlmostEqual(params[i].expected_nearest_output_values,
+                             GetSpanForData<CType>(output_data[0]),
+                             CType(1e-3));
+    }
+  }
+}
+
+TEST_F(OpConverterTest, ConvertResize) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_resize", "ResizeBilinear", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "ResizeBilinear got 0 inputs but expected 2, at my_resize");
+  }
+  {
+    // First input is weight, should fail.
+    Reset();
+    NodeDef node_def =
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+    AddTestWeights<float>("input", {1, 2}, {1, 2});
+    AddTestWeights<int>("size", {1, 2}, {1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for ResizeBilinear must be a "
+        "tensor, at my_resize");
+  }
+  {
+    // output dimension is a tensor, should fail.
+    Reset();
+    NodeDef node_def =
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+    AddTestTensor("input", {1, 2});
+    AddTestTensor("size", {1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"size\" for ResizeBilinear must be a "
+        "constant, at my_resize");
+  }
+  TestConvertResize<ops::ResizeBilinear, DT_FLOAT>(this);
+  TestConvertResize<ops::ResizeBilinear, DT_HALF>(this);
+  TestConvertResize<ops::ResizeNearestNeighbor, DT_FLOAT>(this);
+  TestConvertResize<ops::ResizeNearestNeighbor, DT_HALF>(this);
+}
+#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 }  // namespace convert
 }  // namespace tensorrt

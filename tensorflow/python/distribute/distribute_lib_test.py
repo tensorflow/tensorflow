@@ -83,8 +83,9 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, [distribute_lib.InputContext()])
+    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
+                                           [distribute_lib.InputContext()],
+                                           self._container_strategy())
 
   def _local_results(self, value):
     return (value,)

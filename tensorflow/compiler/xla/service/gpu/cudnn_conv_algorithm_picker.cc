@@ -130,22 +130,29 @@ void PrintPlatformInfo(const se::Stream* stream) {
 // If the redzones are modified, logs an error, sets the appropriate failure
 // bits on `result`, and returns false.
 //
+// Returns a status if an unexpected error has occurred, and the stream
+// has been poisoned.
+//
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
-                   absl::string_view name, const HloInstruction* instr,
-                   AutotuneResult* result) {
+StatusOr<bool> CheckRedzones(const RedzoneAllocator& allocator,
+                             se::Stream* stream, absl::string_view name,
+                             const HloInstruction* instr,
+                             AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
+  using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
-  Status status = allocator.CheckRedzones(stream);
-  if (status.ok()) {
+  TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
+                      allocator.CheckRedzones(stream));
+
+  if (redzone_check.ok()) {
     return true;
   }
 
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
-  *fail->mutable_msg() = status.ToString();
+  *fail->mutable_msg() = redzone_check.redzone_failure_msg;
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -156,7 +163,7 @@ bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
       "the problem, please file a bug with this full error message and we'll "
       "contact nvidia.",
       name);
-  LOG(ERROR) << status.ToString();
+  LOG(ERROR) << redzone_check.redzone_failure_msg;
   LOG(ERROR) << "HloInstruction " << instr->ToString();
   PrintPlatformInfo(stream);
   return false;
@@ -383,9 +390,16 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
     // Check for writes to redzones.
-    if (!CheckRedzones(input_output_allocator, &stream, "input/output", instr,
-                       &result) ||
-        !CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result)) {
+    TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
+                        CheckRedzones(input_output_allocator, &stream,
+                                      "input/output", instr, &result));
+
+    TF_ASSIGN_OR_RETURN(
+        bool scratch_allocator_redzone_clear,
+        CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result));
+
+    if (!input_output_allocator_redzone_clear ||
+        !scratch_allocator_redzone_clear) {
       continue;
     }
 

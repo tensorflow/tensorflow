@@ -2354,6 +2354,20 @@ class Select : public SimpleOperator<SelectOperator> {
   }
 };
 
+class FloorDiv : public SimpleOperator<FloorDivOperator> {
+ public:
+  explicit FloorDiv() : SimpleOperator("FLOOR_DIV", OperatorType::kFloorDiv) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports float input types.
+    if (input_array.data_type == ArrayDataType::kFloat) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 namespace {
 // Build a vector containing all the known operators.
 std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
@@ -2560,8 +2574,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "LOGICAL_AND", OperatorType::kLogicalAnd));
   ops.emplace_back(new SimpleOperator<LogicalNotOperator>(
       "LOGICAL_NOT", OperatorType::kLogicalNot));
-  ops.emplace_back(new SimpleOperator<FloorDivOperator>(
-      "FLOOR_DIV", OperatorType::kFloorDiv));
+  ops.push_back(MakeUnique<FloorDiv>());
   ops.emplace_back(new SimpleOperator<FloorModOperator>(
       "FLOOR_MOD", OperatorType::kFloorMod));
   ops.emplace_back(

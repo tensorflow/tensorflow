@@ -1071,12 +1071,11 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    data = [":grpc_tensorflow_server"],
+    data = [":grpc_tensorflow_server.par"],
     grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
-        "notap",  # TODO(b/132281726): re-enable this test.
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit

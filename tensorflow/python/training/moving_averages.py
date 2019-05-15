@@ -521,6 +521,7 @@ class ExponentialMovingAverage(object):
       conv_4/conv2d_params/ExponentialMovingAverage: conv_4/conv2d_params,
       global_step: global_step
     ```
+
     Args:
       moving_avg_variables: a list of variables that require to use of the
         moving average variable name to be restored. If None, it will default to

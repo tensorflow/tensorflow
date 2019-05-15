@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 

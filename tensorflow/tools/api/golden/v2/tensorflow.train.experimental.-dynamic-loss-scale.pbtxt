@@ -1,7 +1,7 @@
-path: "tensorflow.keras.mixed_precision.experimental.DynamicLossScale"
+path: "tensorflow.train.experimental.DynamicLossScale"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.loss_scale.DynamicLossScale\'>"
-  is_instance: "<class \'tensorflow.python.keras.mixed_precision.experimental.loss_scale.LossScale\'>"
+  is_instance: "<class \'tensorflow.python.training.experimental.loss_scale.DynamicLossScale\'>"
+  is_instance: "<class \'tensorflow.python.training.experimental.loss_scale.LossScale\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {

@@ -4,6 +4,7 @@ package(
     default_visibility = [
         "//intelligence/datum/prensor:__pkg__",
         "//learning/brain/contrib/text:__pkg__",
+        "//nlp/nlx/bert:__pkg__",
         "//nlp/projects/atc/tf/ops:__pkg__",
         "//tensorflow:internal",
     ],

@@ -26,13 +26,13 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale as loss_scale_module
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
 
 

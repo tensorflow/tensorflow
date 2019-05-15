@@ -33,6 +33,7 @@ RUN bash install/install_centos_pip_packages.sh
 # /opt/ to switch to alternative configurations. For bazel remote builds,
 # the python path between the local machine running bazel and the remote setup
 # must be the same.
+RUN update-alternatives --install /usr/bin/python2 python2 /opt/rh/python27/root/usr/bin/python2.7 0
 RUN update-alternatives --install /usr/bin/python3 python3 /opt/rh/rh-python35/root/usr/bin/python3 0
 
 # Install a ubuntu-compatible openjdk link so that ubuntu JAVA_HOME works

@@ -167,7 +167,7 @@ class ScopedShapedBuffer : public ShapedBuffer {
     if (!buffer.is_null()) {
       CHECK_EQ(buffer.device_ordinal(), device_ordinal());
       CHECK_EQ(buffer.allocator(), allocator_);
-      *buffers_.mutable_element(index) = buffer.Forget();
+      *buffers_.mutable_element(index) = buffer.Release();
     } else {
       *buffers_.mutable_element(index) = se::DeviceMemoryBase();
     }

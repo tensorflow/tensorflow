@@ -120,13 +120,18 @@ namespace {
 
 namespace tracing = tensorflow::tracing;
 
+static std::vector<std::string> CandidateCudaRoots(
+    const HloModuleConfig& config) {
+  return tensorflow::CandidateCudaRoots(
+      config.debug_options().xla_gpu_cuda_data_dir());
+}
+
 void PrintCantFindCudaMessage(absl::string_view msg,
                               const HloModuleConfig& hlo_module_config) {
   LOG(WARNING) << msg;
   LOG(WARNING) << "Searched in the following directories:";
 
-  for (const auto& dir :
-       GetCudaRootCandidates(PtxCompilationOptions(hlo_module_config))) {
+  for (const auto& dir : CandidateCudaRoots(hlo_module_config)) {
     LOG(WARNING) << "  " << dir;
   }
   LOG(WARNING)
@@ -137,9 +142,7 @@ void PrintCantFindCudaMessage(absl::string_view msg,
 
 // Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  const auto& candidate_dirs =
-      GetCudaRootCandidates(PtxCompilationOptions(hlo_module_config));
-  for (const string& cuda_root : candidate_dirs) {
+  for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     string libdevice_dir =
         tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
@@ -517,7 +520,6 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           BufferSizeBytesFunction(),
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 

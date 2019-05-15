@@ -145,12 +145,6 @@ StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
     se::StreamExecutor* executor, absl::string_view ptx,
     PtxCompilationOptions compilation_options);
 
-// Returns a vector of potential locations of the CUDA root directory.
-// Searches through tensorflow CUDA locations AND through the CUDA location
-// specified in compile_ptx_options (can be constructed from HloModuleConfig).
-std::vector<string> GetCudaRootCandidates(
-    PtxCompilationOptions compile_ptx_options);
-
 }  // namespace gpu
 }  // namespace xla
 

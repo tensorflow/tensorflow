@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_IMPL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_RUY_IMPL_H_
+#include "tensorflow/lite/experimental/ruy/trmul.h"
 
 #include <cstring>
 
@@ -22,49 +21,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 #include "tensorflow/lite/experimental/ruy/block_map.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
-#include "tensorflow/lite/experimental/ruy/context.h"
-#include "tensorflow/lite/experimental/ruy/kernel.h"
-#include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
-#include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/thread_pool.h"
 #include "tensorflow/lite/experimental/ruy/trace.h"
-#include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
 
-// Type-erased data needed for implementing TrMul.
-struct TrMulParams {
-  // Helper functions for invoking the function pointers.
-  void LhsRunPack(Tuning tuning, int start_c, int end_c) {
-    lhs_run_pack(tuning, lhs, &packed_lhs, start_c, end_c);
-  }
-  void RhsRunPack(Tuning tuning, int start_c, int end_c) {
-    rhs_run_pack(tuning, rhs, &packed_rhs, start_c, end_c);
-  }
-  void RunKernel(Tuning tuning, int start_r, int start_c, int end_r,
-                 int end_c) {
-    run_kernel(tuning, packed_lhs, packed_rhs, spec, start_r, start_c, end_r,
-               end_c, &dst);
-  }
-
-  // Function pointers to type-erased entry points for kernels and packers.
-  RunPackFn* lhs_run_pack = nullptr;
-  RunPackFn* rhs_run_pack = nullptr;
-  RunKernelFn* run_kernel = nullptr;
-
-  // Matrices and packed matrices.
-  DMatrix lhs;
-  DMatrix rhs;
-  DMatrix dst;
-  PMatrix packed_lhs;
-  PMatrix packed_rhs;
-  bool lhs_is_prepacked = false;
-  bool rhs_is_prepacked = false;
-
-  // Type-erased Spec.
-  void* spec = nullptr;
-};
+namespace {
 
 struct TrMulTask final : Task {
   TrMulTask(TrMulParams* params_, const BlockMap& block_map_,
@@ -193,12 +156,12 @@ struct TrMulTask final : Task {
   Trace* trace;
 };
 
-inline void AllocatePMatrix(Allocator* allocator, PMatrix* packed) {
+void AllocatePMatrix(Allocator* allocator, PMatrix* packed) {
   packed->data = allocator->AllocateBytes(DataSize(*packed));
   packed->sums = allocator->AllocateBytes(SumsSize(*packed));
 }
 
-inline int GetThreadCount(Context* context, int rows, int cols, int depth) {
+int GetThreadCount(Context* context, int rows, int cols, int depth) {
   // Empirically determined rule for reasonable number of
   // threads to use. This is proportional to the number of arithmetic ops
   // in this Mul (product of the 3 sizes).
@@ -206,8 +169,8 @@ inline int GetThreadCount(Context* context, int rows, int cols, int depth) {
   return clamp(guess, 1, context->max_num_threads);
 }
 
-inline LoopStructure GetLoopStructure(int thread_count, int rows, int cols,
-                                      int depth) {
+LoopStructure GetLoopStructure(int thread_count, int rows, int cols,
+                               int depth) {
   if (thread_count == 1 &&
       (rows + cols) * depth < kCacheFriendlyLoopThreshold) {
     return LoopStructure::kSimple;
@@ -215,15 +178,9 @@ inline LoopStructure GetLoopStructure(int thread_count, int rows, int cols,
   return LoopStructure::kGeneral;
 }
 
-inline Tuning GetTuning(Context* context) {
-  context->EnsureNPerThreadStates(1);
-  TuningResolver* tuning_resolver =
-      &context->per_thread_states[0]->tuning_resolver;
-  tuning_resolver->SetTuning(context->explicit_tuning);
-  return tuning_resolver->Resolve();
-}
+}  // namespace
 
-inline void TrMul(TrMulParams* params, Context* context) {
+void TrMul(TrMulParams* params, Context* context) {
   gemmlowp::ScopedProfilingLabel label("TrMul");
 
   PMatrix& packed_lhs = params->packed_lhs;
@@ -239,7 +196,6 @@ inline void TrMul(TrMulParams* params, Context* context) {
 
   int thread_count = GetThreadCount(context, rows, cols, depth);
   const auto loop_structure = GetLoopStructure(thread_count, rows, cols, depth);
-  const Tuning tuning = GetTuning(context);
   Allocator* allocator = context->GetMainAllocator();
 
   if (!params->lhs_is_prepacked) {
@@ -251,6 +207,7 @@ inline void TrMul(TrMulParams* params, Context* context) {
 
   if (loop_structure == LoopStructure::kSimple) {
     gemmlowp::ScopedProfilingLabel label_simple("TrMulImpl, simple loop");
+    Tuning tuning = context->GetMainThreadTuning();
 
     if (!params->lhs_is_prepacked) {
       params->LhsRunPack(tuning, 0, rows_rounded_up);
@@ -338,5 +295,3 @@ inline void TrMul(TrMulParams* params, Context* context) {
 }
 
 }  // namespace ruy
-
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_IMPL_H_

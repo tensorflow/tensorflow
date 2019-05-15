@@ -120,7 +120,7 @@ Status AllocateScopedShapedBuffer(
         se::OwningDeviceMemory buffer,
         allocator->Allocate(device_ordinal, size, /*retry_on_failure=*/false));
     // Move our buffer into shaped_buffer, which takes ownership of it.
-    index_to_buffer.second = buffer.Forget();
+    index_to_buffer.second = buffer.Release();
     VLOG(2) << "Allocated buffer at " << index_to_buffer.second.opaque()
             << " index " << index_to_buffer.first.ToString();
   }
@@ -450,7 +450,7 @@ typedef XRTBufferAllocation* XRTBufferAllocationPtr;
           TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
                               allocator->Allocate(device_ordinal, size,
                                                   /*retry_on_failure=*/false));
-          VLOG(2) << "Allocated buffer at " << buffer.opaque() << " index "
+          VLOG(2) << "Allocated buffer at " << buffer->opaque() << " index "
                   << index.ToString();
           // Move the new buffer into new_tuple_buffers, which takes ownership
           // of it.

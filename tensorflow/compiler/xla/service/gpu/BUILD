@@ -537,7 +537,6 @@ cc_library(
         ":gpu_constants",
         ":partition_assignment",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -548,6 +547,8 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
