@@ -746,6 +746,23 @@ def _apply_aggregation(strategy, value, aggregation, destinations):
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 
+_aggregation_error_msg = (
+    "You must specify an aggregation method to update a "
+    "{variable_type} in Replica Context. You can do so by passing "
+    "an explicit value for argument `aggregation` to tf.Variable(..)."
+    "e.g. `tf.Variable(..., aggregation=tf.VariableAggregation.SUM)`"
+    "`tf.VariableAggregation` lists the possible aggregation methods."
+    "This is required because {variable_type} should always be "
+    "kept in sync. When updating them or assigning to them in a "
+    "replica context, we automatically try to aggregate the values "
+    "before updating the variable. For this aggregation, we need to "
+    "know the aggregation method. "
+    "Another alternative is to not try to update such "
+    "{variable_type} in replica context, but in cross replica "
+    "context. You can enter cross replica context by calling "
+    "`tf.distribute.get_replica_context().merge_call(merge_fn, ..)`."
+    "Inside `merge_fn`, you can then update the {variable_type} "
+    "using `tf.distribute.StrategyExtended.update()`.")
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
   """Class for defining how to restore a MirroredVariable."""
@@ -801,8 +818,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
         # We call the function on each of the mirrored variables with the
         # reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "MirroredVariable in Replica Context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="MirroredVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1097,8 +1114,8 @@ class TPUMirroredVariable(variables_lib.Variable):
         # We call the function on each of the mirrored variables with the
         # reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "TPUMirroredVariable in Replica Context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="TPUMirroredVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1635,8 +1652,8 @@ class AggregatingVariable(variables_lib.Variable):
         # we handle the different use cases can be found in the _reduce method.
         # We call the function with the reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "a variable in replica context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="AggregatingVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
