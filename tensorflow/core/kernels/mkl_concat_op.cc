@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::concat;
 using mkldnn::stream;
@@ -152,9 +152,8 @@ class EigenConcatBaseOp : public OpKernel {
 
     int32 axis = (concat_dim < 0) ? (concat_dim + input_dims) : concat_dim;
     OP_REQUIRES(
-        c,
-        (0 <= axis && axis < input_dims) ||
-            (allow_legacy_scalars() && concat_dim == 0),
+        c, (0 <= axis && axis < input_dims) ||
+               (allow_legacy_scalars() && concat_dim == 0),
         errors::InvalidArgument(
             "ConcatOp : Expected concatenating dimensions in the range [",
             -input_dims, ", ", input_dims, "), but got ", concat_dim));
@@ -184,13 +183,12 @@ class EigenConcatBaseOp : public OpKernel {
       const auto in = values[i];
       const bool in_is_scalar = IsLegacyScalar(input_shapes[i]);
       OP_REQUIRES(
-          c,
-          (input_shapes[i].dims() == input_dims) ||
-              (input_is_scalar && in_is_scalar),
+          c, (input_shapes[i].dims() == input_dims) ||
+                 (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i,
-              "] = ", input_shapes[i].DebugString()));
+              input_shape.DebugString(), " vs. shape[", i, "] = ",
+              input_shapes[i].DebugString()));
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
@@ -274,6 +272,7 @@ class MklConcatOp : public OpKernel {
       // check that ranks of all tensors match
       // and that their shapes match except for concat_dim.
       int i = 0;
+      int num_of_empty_inputs = 0;
       bool invoke_eigen = false;
       bool are_all_mkl_inputs = true, are_all_tf_inputs = true;
       const TensorShape expected_shape = mkl_input_shapes[0].IsMklTensor()
@@ -313,10 +312,14 @@ class MklConcatOp : public OpKernel {
         else
           are_all_mkl_inputs = false;
 
-        if (s_dims != 4) invoke_eigen = true;
+        if (s_dims != 4 && s_dims != 2) invoke_eigen = true;
+
+        if (input_tensors[i].NumElements() == 0) num_of_empty_inputs++;
 
         ++i;
       }
+
+      if (num_of_empty_inputs == i) invoke_eigen = true;
 
       // All inputs are not in one format (TF or MKL). This is mixed input case.
       // We can potentially optimize this case by converting all TF inputs
@@ -550,9 +553,9 @@ class MklConcatOp : public OpKernel {
       }
 
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
