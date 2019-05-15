@@ -1688,9 +1688,9 @@ def _collect_deps_aspect_impl(target, ctx):
     alldeps = depset()
     if hasattr(ctx.rule.attr, "deps"):
         for dep in ctx.rule.attr.deps:
-            alldeps = alldeps | depset([dep.label])
+            alldeps = depset([dep.label], transitive = [alldeps])
             if hasattr(dep, "tf_collected_deps"):
-                alldeps = alldeps | dep.tf_collected_deps
+                alldeps = depset(transitive = [alldeps, dep.tf_collected_deps])
     return struct(tf_collected_deps = alldeps)
 
 collect_deps_aspect = aspect(
