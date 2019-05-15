@@ -26,13 +26,13 @@
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
+class FunctionPassBase;
 class ModulePassBase;
 
 namespace linalg {
-ModulePassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
+FunctionPassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
 
 ModulePassBase *createLowerLinalgToLLVMPass();
-
 } // namespace linalg
 } // namespace mlir
 

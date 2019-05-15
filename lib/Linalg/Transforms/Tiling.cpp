@@ -331,14 +331,11 @@ static void tileLinalgOps(Function &f, ArrayRef<int64_t> tileSizes) {
 }
 
 namespace {
-struct LinalgTilingPass : public ModulePass<LinalgTilingPass> {
+struct LinalgTilingPass : public FunctionPass<LinalgTilingPass> {
   LinalgTilingPass();
   LinalgTilingPass(ArrayRef<int64_t> sizes);
 
-  void runOnModule() {
-    for (auto &f : getModule())
-      tileLinalgOps(f, tileSizes);
-  }
+  void runOnFunction() { tileLinalgOps(getFunction(), tileSizes); }
 
   SmallVector<int64_t, 8> tileSizes;
 };
@@ -353,7 +350,7 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes)
     this->tileSizes.assign(sizes.begin(), sizes.end());
 }
 
-ModulePassBase *
+FunctionPassBase *
 mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes) {
   return new LinalgTilingPass(tileSizes);
 }
