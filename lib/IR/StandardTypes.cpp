@@ -61,7 +61,7 @@ unsigned IntegerType::getWidth() const { return getImpl()->width; }
 // Float Type
 //===----------------------------------------------------------------------===//
 
-unsigned FloatType::getWidth() const {
+unsigned FloatType::getWidth() {
   switch (getKind()) {
   case StandardTypes::BF16:
   case StandardTypes::F16:
@@ -76,7 +76,7 @@ unsigned FloatType::getWidth() const {
 }
 
 /// Returns the floating semantics for the given type.
-const llvm::fltSemantics &FloatType::getFloatSemantics() const {
+const llvm::fltSemantics &FloatType::getFloatSemantics() {
   if (isBF16())
     // Treat BF16 like a double. This is unfortunate but BF16 fltSemantics is
     // not defined in LLVM.
@@ -93,7 +93,7 @@ const llvm::fltSemantics &FloatType::getFloatSemantics() const {
   llvm_unreachable("non-floating point type used");
 }
 
-unsigned Type::getIntOrFloatBitWidth() const {
+unsigned Type::getIntOrFloatBitWidth() {
   assert(isIntOrFloat() && "only ints and floats have a bitwidth");
   if (auto intType = dyn_cast<IntegerType>()) {
     return intType.getWidth();

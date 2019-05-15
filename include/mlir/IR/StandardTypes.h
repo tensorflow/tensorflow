@@ -71,12 +71,12 @@ enum Kind {
 
 } // namespace StandardTypes
 
-inline bool Type::isBF16() const { return getKind() == StandardTypes::BF16; }
-inline bool Type::isF16() const { return getKind() == StandardTypes::F16; }
-inline bool Type::isF32() const { return getKind() == StandardTypes::F32; }
-inline bool Type::isF64() const { return getKind() == StandardTypes::F64; }
+inline bool Type::isBF16() { return getKind() == StandardTypes::BF16; }
+inline bool Type::isF16() { return getKind() == StandardTypes::F16; }
+inline bool Type::isF32() { return getKind() == StandardTypes::F32; }
+inline bool Type::isF64() { return getKind() == StandardTypes::F64; }
 
-inline bool Type::isIndex() const { return getKind() == StandardTypes::Index; }
+inline bool Type::isIndex() { return getKind() == StandardTypes::Index; }
 
 /// Index is a special integer-like type with unknown platform-dependent bit
 /// width.
@@ -126,21 +126,21 @@ public:
 };
 
 /// Return true if this is an integer type with the specified width.
-inline bool Type::isInteger(unsigned width) const {
+inline bool Type::isInteger(unsigned width) {
   if (auto intTy = dyn_cast<IntegerType>())
     return intTy.getWidth() == width;
   return false;
 }
 
-inline bool Type::isIntOrIndex() const {
+inline bool Type::isIntOrIndex() {
   return isa<IndexType>() || isa<IntegerType>();
 }
 
-inline bool Type::isIntOrIndexOrFloat() const {
+inline bool Type::isIntOrIndexOrFloat() {
   return isa<IndexType>() || isa<IntegerType>() || isa<FloatType>();
 }
 
-inline bool Type::isIntOrFloat() const {
+inline bool Type::isIntOrFloat() {
   return isa<IntegerType>() || isa<FloatType>();
 }
 
@@ -174,10 +174,10 @@ public:
   }
 
   /// Return the bitwidth of this float type.
-  unsigned getWidth() const;
+  unsigned getWidth();
 
   /// Return the floating semantics of this float type.
-  const llvm::fltSemantics &getFloatSemantics() const;
+  const llvm::fltSemantics &getFloatSemantics();
 };
 
 /// This is a common base class between Vector, UnrankedTensor, and RankedTensor

@@ -481,7 +481,7 @@ class Attr<Pred condition, string descr = ""> :
   // Whether the attribute is optional. Typically requires a custom
   // convertFromStorage method to handle the case where the attribute is
   // not present.
-  bit isOptional = 0b0;
+  bit isOptional = 0;
 }
 
 // Decorates an attribute to have an (unvalidated) default value if not present.
@@ -510,7 +510,7 @@ class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
   let returnType = "Optional<" # attr.returnType #">";
   let convertFromStorage = "$_self ? " # returnType # "(" #
                            attr.convertFromStorage # ") : (llvm::None)";
-  let isOptional = 0b1;
+  let isOptional = 1;
 
   // Remember `attr`'s def name.
   // TOOD(b/132458159): consider embedding Attr as a field.
@@ -923,13 +923,13 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // TODO(b/120163349): figure out a better way to write canonicalization
   // patterns in TableGen rules directly instead of using this marker
   // and C++ implementations.
-  bit hasCanonicalizer = 0b0;
+  bit hasCanonicalizer = 0;
 
   // Whether this op has a constant folder.
-  bit hasConstantFolder = 0b0;
+  bit hasConstantFolder = 0;
 
   // Whether this op has a folder.
-  bit hasFolder = 0b0;
+  bit hasFolder = 0;
 
   // Op traits.
   list<OpTrait> traits = props;

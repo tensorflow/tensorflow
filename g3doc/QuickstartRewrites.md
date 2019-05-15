@@ -61,7 +61,7 @@ def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [NoSideEffect, SameValueType]>,
 
   // TFLite specific attribute that is used when generating the output
   // flatbuffer.
-  let hasOptions = 0b1;
+  let hasOptions = 1;
 }
 ```
 

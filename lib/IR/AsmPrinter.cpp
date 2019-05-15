@@ -1628,12 +1628,12 @@ void Attribute::dump() const {
   llvm::errs() << "\n";
 }
 
-void Type::print(raw_ostream &os) const {
+void Type::print(raw_ostream &os) {
   ModuleState state(getContext());
   ModulePrinter(os, state).printType(*this);
 }
 
-void Type::dump() const { print(llvm::errs()); }
+void Type::dump() { print(llvm::errs()); }
 
 void AffineMap::dump() const {
   print(llvm::errs());

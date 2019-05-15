@@ -105,9 +105,8 @@ void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
       VectorType::get(shape, FloatType::getF32(f->getContext()));
   // Only filter operations that operate on a strict super-vector and have one
   // return. This makes testing easier.
-  auto filter = [subVectorType](Operation &op) {
-    assert(subVectorType.getElementType() ==
-               FloatType::getF32(subVectorType.getContext()) &&
+  auto filter = [&](Operation &op) {
+    assert(subVectorType.getElementType().isF32() &&
            "Only f32 supported for now");
     if (!matcher::operatesOnSuperVectorsOf(op, subVectorType)) {
       return false;

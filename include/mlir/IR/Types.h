@@ -141,36 +141,36 @@ public:
   unsigned getKind() const;
 
   /// Return the LLVMContext in which this type was uniqued.
-  MLIRContext *getContext() const;
+  MLIRContext *getContext();
 
   /// Get the dialect this type is registered to.
-  const Dialect &getDialect() const;
+  const Dialect &getDialect();
 
   // Convenience predicates.  This is only for floating point types,
   // derived types should use isa/dyn_cast.
-  bool isIndex() const;
-  bool isBF16() const;
-  bool isF16() const;
-  bool isF32() const;
-  bool isF64() const;
+  bool isIndex();
+  bool isBF16();
+  bool isF16();
+  bool isF32();
+  bool isF64();
 
   /// Return true if this is an integer type with the specified width.
-  bool isInteger(unsigned width) const;
+  bool isInteger(unsigned width);
 
   /// Return the bit width of an integer or a float type, assert failure on
   /// other types.
-  unsigned getIntOrFloatBitWidth() const;
+  unsigned getIntOrFloatBitWidth();
 
   /// Return true if this is an integer or index type.
-  bool isIntOrIndex() const;
+  bool isIntOrIndex();
   /// Return true if this is an integer, index, or float type.
-  bool isIntOrIndexOrFloat() const;
+  bool isIntOrIndexOrFloat();
   /// Return true of this is an integer or a float type.
-  bool isIntOrFloat() const;
+  bool isIntOrFloat();
 
   /// Print the current type.
-  void print(raw_ostream &os) const;
-  void dump() const;
+  void print(raw_ostream &os);
+  void dump();
 
   friend ::llvm::hash_code hash_value(Type arg);
 
