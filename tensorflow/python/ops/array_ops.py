@@ -1320,6 +1320,10 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
 
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
+
   Args:
     tensor:  N-D tensor.
     mask:  K-D boolean tensor, K <= N and K must be known statically.
@@ -1403,6 +1407,10 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   The `axis` could be used with `mask` to indicate the axis to mask from.
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
+
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
 
   Args:
     tensor:  N-D tensor.
