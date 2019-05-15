@@ -375,86 +375,6 @@ Status MaybeRewriteWhileNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
   return Status::OK();
 }
 
-Status MaybeRewriteCallNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
-                            bool* node_rewritten) {
-  // This node needs rewrite when either of these is true:
-  // 1) Tin has DT_RESOURCE which requires rearrange;
-  // 2) Tout has DT_RESOURCE.
-  std::vector<DataType> in_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &in_types));
-  bool input_need_rearrange;
-  int resource_input_count;
-  std::vector<int> index_mapping;
-  TF_RETURN_IF_ERROR(InputTypesNeedsRearrange(
-      in_types, &input_need_rearrange, &resource_input_count, &index_mapping));
-  std::vector<DataType> out_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tout", &out_types));
-  bool has_resource_output = std::find(out_types.begin(), out_types.end(),
-                                       DT_RESOURCE) != out_types.end();
-  if (!resource_input_count && !has_resource_output) {
-    *node_rewritten = false;
-    return Status::OK();
-  }
-
-  *node_rewritten = true;
-
-  string attr_name = "f";
-  NameAttrList f;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &f));
-  const FunctionDef* fdef = fld->Find(f.name());
-  TF_RET_CHECK(fdef != nullptr);
-  std::unique_ptr<FunctionBody> fbody;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(), fld, &fbody));
-
-  if (input_need_rearrange) {
-    // Reorder input edges.
-    TF_RETURN_IF_ERROR(ReorderInputEdges(g, n, index_mapping));
-
-    // Change Tin attribute.
-    std::vector<DataType> new_in_types =
-        ShuffleInputDataTypeAttribute(in_types, index_mapping);
-    n->ClearAttr("Tin");
-    n->AddAttr("Tin", new_in_types);
-
-    // Change _Arg node index.
-    RearrangeArgNodes(&fbody->arg_nodes, index_mapping);
-  }
-
-  if (has_resource_output) {
-    // Resource _Retval must come from resource _Arg directly, or we do not
-    // support it.
-    std::map<int, int> resource_retval_to_arg, retval_index_mapping;
-    TF_RETURN_IF_ERROR(CalculateRetvalRearrange(
-        fbody->ret_nodes, &retval_index_mapping, &resource_retval_to_arg));
-
-    // Rearrange output edges.
-    TF_RETURN_IF_ERROR(RearrangeOutputEdges(n, g, retval_index_mapping,
-                                            resource_retval_to_arg));
-
-    // Change Tout attribute for the node.
-    std::vector<DataType> new_out_types =
-        ShuffleOutputDataTypeAttribute(out_types, retval_index_mapping);
-    n->ClearAttr("Tout");
-    n->AddAttr("Tout", new_out_types);
-
-    // Change index for _Retval nodes.
-    RearrangeRetvalNodes(fbody->ret_nodes, fbody->graph, retval_index_mapping);
-  }
-
-  // Save the new FunctionDef.
-  FunctionDef new_fdef;
-  string new_name =
-      fld->UniqueFunctionName(absl::StrCat(f.name(), "_rearrange_"));
-  TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
-  TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef));
-
-  // Change node to use rewritten function.
-  f.set_name(new_name);
-  n->ClearAttr(attr_name);
-  n->AddAttr(attr_name, f);
-  return Status::OK();
-}
-
 Status MaybeRewriteIfNode(Graph* g, Node* n, FunctionLibraryDefinition* fld,
                           bool* node_rewritten) {
   // This node needs rewrite when either of these is true:
@@ -670,16 +590,35 @@ Status RearrangeFunctionArgumentForFunction(
     }
   }
 
+  // Inline StatefulPartitionedCall nodes.
+  std::vector<Node*> call_nodes;
+  for (Node* n : g->nodes()) {
+    if (n->type_string() == "StatefulPartitionedCall") {
+      call_nodes.push_back(n);
+    }
+  }
+  for (Node* n : call_nodes) {
+    *modified = true;
+
+    NameAttrList func_name_attrs;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func_name_attrs));
+    const FunctionDef* fdef = fld->Find(func_name_attrs.name());
+    if (!fdef) {
+      return errors::InvalidArgument("Cannot find function ",
+                                     func_name_attrs.name(), " for node ",
+                                     n->DebugString());
+    }
+    std::unique_ptr<FunctionBody> fbody;
+    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+        *fdef, AttrSlice(&func_name_attrs.attr()), fld, &fbody));
+    InlineFunctionBodyOptions opts;
+    TF_RETURN_IF_ERROR(InlineFunctionBody(*fld, g, n, fbody.get(), opts));
+  }
+
   for (Node* n : g->nodes()) {
     if (n->type_string() == "While") {
       bool node_rewritten;
       TF_RETURN_IF_ERROR(MaybeRewriteWhileNode(g, n, fld, &node_rewritten));
-      if (node_rewritten) {
-        *modified = true;
-      }
-    } else if (n->type_string() == "StatefulPartitionedCall") {
-      bool node_rewritten;
-      TF_RETURN_IF_ERROR(MaybeRewriteCallNode(g, n, fld, &node_rewritten));
       if (node_rewritten) {
         *modified = true;
       }

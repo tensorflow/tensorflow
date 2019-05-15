@@ -116,32 +116,26 @@ TEST_F(RearrangeFunctionArgumentForFunctionTest, Basic) {
   {
     // Build the XLA computation func.
     // "arg0" (T=DT_RESOURCE), "arg1" (T=DT_INT32)
-    // "arg0", "arg1" -> "call" (StatefulPartitionedCall) -> "ret0", "ret1"
-    // "arg0", "arg1" -> "if" (If) -> "ret2", "ret3"
-    // "arg0", "arg1" -> "while" (While) -> "ret4", "ret5"
+    // "arg0", "arg1" -> "if" (If) -> "ret0", "ret1"
+    // "arg0", "arg1" -> "while" (While) -> "ret2", "ret3"
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
     Output arg0 = ops::_Arg(s.WithOpName("arg0"), DT_RESOURCE, 0);
     Output arg1 = ops::_Arg(s.WithOpName("arg1"), DT_BOOL, 1);
     NameAttrList f;
     f.set_name("f1");
-    auto call = ops::StatefulPartitionedCall(
-        s.WithOpName("call"), {arg0, arg1},
-        std::vector<DataType>{DT_BOOL, DT_RESOURCE}, f);
-    auto ret0 = ops::_Retval(s.WithOpName("ret0"), call.output[0], 0);
-    auto ret1 = ops::_Retval(s.WithOpName("ret1"), call.output[1], 1);
     auto if_op = ops::If(s.WithOpName("if"), arg1,
                          std::initializer_list<Input>{arg0, arg1},
                          {DT_BOOL, DT_RESOURCE}, f, f);
-    auto ret2 = ops::_Retval(s.WithOpName("ret2"), if_op.output[0], 2);
-    auto ret3 = ops::_Retval(s.WithOpName("ret3"), if_op.output[1], 3);
+    auto ret0 = ops::_Retval(s.WithOpName("ret0"), if_op.output[0], 0);
+    auto ret1 = ops::_Retval(s.WithOpName("ret1"), if_op.output[1], 1);
     NameAttrList cond_fn, body_fn;
     cond_fn.set_name("f3");
     body_fn.set_name("f2");
     auto while_op =
         ops::While(s.WithOpName("while"),
                    std::initializer_list<Input>{arg0, arg1}, cond_fn, body_fn);
-    auto ret4 = ops::_Retval(s.WithOpName("ret4"), while_op.output[0], 4);
-    auto ret5 = ops::_Retval(s.WithOpName("ret5"), while_op.output[1], 5);
+    auto ret2 = ops::_Retval(s.WithOpName("ret2"), while_op.output[0], 2);
+    auto ret3 = ops::_Retval(s.WithOpName("ret3"), while_op.output[1], 3);
     std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
     TF_CHECK_OK(s.ToGraph(g.get()));
     FunctionDef *xla_fdef = fdl.add_function();
@@ -164,36 +158,22 @@ TEST_F(RearrangeFunctionArgumentForFunctionTest, Basic) {
   ASSERT_EQ(f1_rewritten->signature().output_arg_size(), 1);
   EXPECT_EQ(f1_rewritten->signature().output_arg(0).type(), DT_BOOL);
 
-  // Check node "call" input and output edges.
+  // Check node "if" input and output edges.
   std::unique_ptr<FunctionBody> xla_fbody;
   TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
                                       AttrSlice(), &fld, &xla_fbody));
   auto node_name_index = xla_fbody->graph->BuildNodeNameIndex();
-  const Node *call_node = node_name_index.at("call");
-  ASSERT_NE(call_node, nullptr);
-  const Node *input_node;
-  TF_CHECK_OK(call_node->input_node(0, &input_node));
-  EXPECT_EQ(input_node->name(), "arg1");
-  TF_CHECK_OK(call_node->input_node(1, &input_node));
-  EXPECT_EQ(input_node->name(), "arg0");
-  const Node *ret0_node = xla_fbody->ret_nodes[0];
-  TF_CHECK_OK(ret0_node->input_node(0, &input_node));
-  EXPECT_EQ(input_node->name(), "call");
-  const Node *ret1_node = xla_fbody->ret_nodes[1];
-  TF_CHECK_OK(ret1_node->input_node(0, &input_node));
-  EXPECT_EQ(input_node->name(), "arg0");
-
-  // Check node "if" input and output edges.
   const Node *if_node = node_name_index.at("if");
   ASSERT_NE(if_node, nullptr);
+  const Node *input_node;
   TF_CHECK_OK(if_node->input_node(1, &input_node));
   EXPECT_EQ(input_node->name(), "arg1");
   TF_CHECK_OK(if_node->input_node(2, &input_node));
   EXPECT_EQ(input_node->name(), "arg0");
-  const Node *ret2_node = xla_fbody->ret_nodes[2];
+  const Node *ret2_node = xla_fbody->ret_nodes[0];
   TF_CHECK_OK(ret2_node->input_node(0, &input_node));
   EXPECT_EQ(input_node->name(), "if");
-  const Node *ret3_node = xla_fbody->ret_nodes[3];
+  const Node *ret3_node = xla_fbody->ret_nodes[1];
   TF_CHECK_OK(ret3_node->input_node(0, &input_node));
   EXPECT_EQ(input_node->name(), "arg0");
 
@@ -204,10 +184,10 @@ TEST_F(RearrangeFunctionArgumentForFunctionTest, Basic) {
   EXPECT_EQ(input_node->name(), "arg1");
   TF_CHECK_OK(while_node->input_node(1, &input_node));
   EXPECT_EQ(input_node->name(), "arg0");
-  const Node *ret4_node = xla_fbody->ret_nodes[4];
+  const Node *ret4_node = xla_fbody->ret_nodes[2];
   TF_CHECK_OK(ret4_node->input_node(0, &input_node));
   EXPECT_EQ(input_node->name(), "arg0");
-  const Node *ret5_node = xla_fbody->ret_nodes[5];
+  const Node *ret5_node = xla_fbody->ret_nodes[3];
   TF_CHECK_OK(ret5_node->input_node(0, &input_node));
   EXPECT_EQ(input_node->name(), "while");
 }
