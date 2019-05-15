@@ -189,9 +189,14 @@ class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
   def __init__(self, input_workers, iterators, strategy, **kwargs):
-    # TODO(b/128995245): Remove this temporary flag once the zero batch case can
-    # be correctly handled.
-    self._enable_get_next_as_optional = False
+    # TODO(b/128995245): We only enable get_next_as_optional in eager mode. In
+    # graph mode, the zero batch case in batch norm is not handled due to
+    # XLA-GPU regression.
+    if ops.executing_eagerly_outside_functions():
+      self._enable_get_next_as_optional = True
+    else:
+      self._enable_get_next_as_optional = False
+
     if len(kwargs) > 1:
       raise ValueError("DistributedIterator constructor only takes one "
                        "experimental flag now")
