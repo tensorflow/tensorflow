@@ -218,7 +218,7 @@ REGISTER_OP("FusedBatchNormV3")
     .Attr("epsilon: float = 0.0001")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormShape);
+    .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
 
 REGISTER_OP("FusedBatchNormGrad")
     .Input("y_backprop: T")
