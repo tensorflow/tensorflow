@@ -1,0 +1,251 @@
+# Introduction and Usage Guide to MLIR's Diagnostics Infrastructure
+
+[TOC]
+
+This document presents an introduction to using and interfacing with MLIR's
+diagnostics infrastucture.
+
+See [MLIR specification](LangRef.md) for more information about MLIR, the
+structure of the IR, operations, etc.
+
+## Source Locations
+
+Source location information is extremely important for any compiler, because it
+provides a baseline for debuggability and error-reporting. MLIR provides several
+different location types depending on the situational need.
+
+### CallSite Location
+
+``` {.ebnf}
+callsite-location ::= 'callsite' '(' location 'at' location ')'
+```
+
+An instance of this location allows for representing a directed stack of
+location usages. This connects a location of a `callee` with the location of a
+`caller`.
+
+### FileLineCol Location
+
+``` {.ebnf}
+filelinecol-location ::= string-literal ':' integer-literal ':' integer-literal
+```
+
+An instance of this location represents a tuple of file, line number, and column
+number. This is similar to the type of location that you get from most source
+languages.
+
+### Fused Location
+
+``` {.ebnf}
+fused-location ::= `fused` fusion-metadata? '[' location (location ',')* ']'
+fusion-metadata ::= '<' attribute-value '>'
+```
+
+An instance of a `fused` location represents a grouping of several other source
+locations, with optional metadata that describes the context of the fusion.
+There are many places within a compiler in which several constructs may be fused
+together, e.g. pattern rewriting, that normally result partial or even total
+loss of location information. With `fused` locations, this is a non-issue.
+
+### Name Location
+
+``` {.ebnf}
+name-location ::= string-literal ('(' location ')')?
+```
+
+An instance of this location allows for attaching a name to a child location.
+This can be useful for representing the locations of variable, or node,
+definitions.
+
+### Unknown Location
+
+``` {.ebnf}
+unknown-location ::= `unknown`
+```
+
+Source location information is an extremely integral part of the MLIR
+infrastructure. As such, location information is always present in the IR, and
+must explicitly be set to unknown. Thus an instance of the `unknown` location,
+represents an unspecified source location.
+
+## Diagnostic Engine
+
+The `DiagnosticEngine` acts as the main interface for diagnostics in MLIR. It
+manages the registration of diagnostic handlers, as well as the core API for
+diagnostic emission. It can be interfaced with via an `MLIRContext` instance.
+
+```c++
+DiagnosticEngine engine = ctx->getDiagEngine();
+engine.setHandler([](Diagnostic diag) {
+  // Handle the reported diagnostic.
+});
+```
+
+### Constructing a Diagnostic
+
+As stated above, the `DiagnosticEngine` holds the core API for diagnostic
+emission. A new diagnostic can be emitted with the engine via `emit`. This
+method returns an [InFlightDiagnostic](#inflight-diagnostic) that can be
+modified further.
+
+```c++
+InFlightDiagnostic emit(Location loc, DiagnosticSeverity severity);
+```
+
+Using the `DiagnosticEngine`, though, is generally not the preferred way to emit
+diagnostics in MLIR. `MLIRContext`, [`function`](LangRef.md#functions), and
+[`operation`](LangRef.md#operations) all provide utility methods for emitting
+diagnostics:
+
+```c++
+InFlightDiagnostic MLIRContext::emitError/Remark/Warning(Location);
+
+// These methods use the location attached to the function/operation.
+InFlightDiagnostic Function::emitError/Remark/Warning();
+InFlightDiagnostic Operation::emitError/Remark/Warning();
+
+// This method creates a diagnostic prefixed with "'op-name' op ".
+InFlightDiagnostic Operation::emitOpError();
+```
+
+## Diagnostic
+
+A `Diagnostic` in MLIR contains all of the necessary information for reporting a
+message to the user. A `Diagnostic` essentially boils down to three main
+components:
+
+*   [Source Location](#source-locations)
+*   Severity Level
+    -   Error, Note, Remark, Warning
+*   Diagnostic Arguments
+    -   The diagnostic arguments are used when constructing the output message.
+
+### Appending arguments
+
+One a diagnostic has been constructed, the user can start composing it. The
+output message of a diagnostic is composed of a set of diagnostic arguments that
+have been attached to it. New arguments can be attached to a diagnostic in a few
+different ways:
+
+```c++
+// A few interesting things to use when composing a diagnostic.
+Attribute fooAttr;
+Type fooType;
+SmallVector<int> fooInts;
+
+// Diagnostics can be composed via the streaming operators.
+op->emitError() << "Compose an interesting error: " << fooAttr << ", " << fooType
+                << ", (" << fooInts << ')';
+
+// This could generate something like (FuncAttr:@foo, IntegerType:i32, {0,1,2}):
+"Compose an interesting error: @foo, i32, (0, 1, 2)"
+```
+
+### Attaching notes
+
+Unlike many other compiler frameworks, notes in MLIR cannot be emitted directly.
+They must be explicitly attached to another diagnostic non-note diagnostic. When
+emitting a diagnostic, notes can be directly attached via `attachNote`. When
+attaching a note, if the user does not provide an explicit source location the
+note will inherit the location of the parent diagnostic.
+
+```c++
+// Emit a note with an explicit source location.
+op->emitError("...").attachNote(noteLoc) << "...";
+
+// Emit a note that inherits the parent location.
+op->emitError("...").attachNote() << "...";
+```
+
+## InFlight Diagnostic
+
+Now that [Diagnostics](#diagnostic) have been explained, we introduce the
+`InFlightDiagnostic`. is an RAII wrapper around a diagnostic that is set to be
+reported. This allows for modifying a diagnostic while it is still in flight. If
+it is not reported directly by the user it will automatically report when
+destroyed.
+
+```c++
+{
+  InFlightDiagnostic diag = op->emitError() << "...";
+}  // The diagnostic is automatically reported here.
+```
+
+## Common Diagnostic Handlers
+
+To interface with the diagnostics infrastructure, users will need to register a
+diagnostic handler with the [`DiagnosticEngine`](#diagnostic-engine).
+Recognizing the many users will want the same handler functionality, MLIR
+provides several common diagnostic handlers for immediate use.
+
+### SourceMgr Diagnostic Handler
+
+This diagnostic handler is a wrapper around an llvm::SourceMgr instance. It
+provides support for displaying diagnostic messages inline with a line of a
+respective source file. This handler will also automatically load newly seen
+source files into the SourceMgr when attempting to display the source line of a
+diagnostic. Example usage of this handler can be seen in the `mlir-opt` tool.
+
+```shell
+$ mlir-opt foo.mlir
+
+/tmp/test.mlir:6:24: error: expected non-function type
+func @foo() -> (index, ind) {
+                       ^
+```
+
+To use this handler in your tool, add the following:
+
+```c++
+SourceMgr sourceMgr;
+MLIRContext context;
+SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
+```
+
+### SourceMgr Diagnostic Verifier Handler
+
+This handler is a wrapper around a llvm::SourceMgr that is used to verify that
+certain diagnostics have been emitted to the context. To use this handler,
+annotate your source file with expected diagnostics in the form of:
+
+*   `expected-(error|note|remark|warning) {{ message }}`
+
+A few examples are shown below:
+
+```mlir {.mlir}
+// Expect an error on the same line.
+func @bad_branch() {
+  br ^missing  // expected-error {{reference to an undefined block}}
+}
+
+// Expect an error on an adjacent line.
+func @foo(%a : f32) {
+  // expected-error@+1 {{unknown comparison predicate "foo"}}
+  %result = cmpf "foo", %a, %a : f32
+  return
+}
+```
+
+The handler will report an error if any unexpected diagnostics were seen, or if
+any expected diagnostics weren't.
+
+```shell
+$ mlir-opt foo.mlir
+
+/tmp/test.mlir:6:24: error: unexpected error: expected non-function type
+func @foo() -> (index, ind) {
+                       ^
+
+/tmp/test.mlir:15:4: error: expected remark "expected some remark" was not produced
+// expected-remark {{expected some remark}}
+   ^~~~~~~~~~~~~~~~~~~~~~~~~~
+```
+
+Similarly to the [SourceMgr Diagnostic Handler](#sourcemgr-diagnostic-handler),
+this handler can be added to any tool via the following:
+
+```c++
+SourceMgr sourceMgr;
+MLIRContext context;
+SourceMgrDiagnosticVerifierHandler sourceMgrHandler(sourceMgr, &context);
+```
