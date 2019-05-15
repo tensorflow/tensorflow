@@ -184,6 +184,29 @@ void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
   }
 }
 
+template <typename T>
+void ExpectArrayAlmostEqual(const std::vector<T>& lhs, absl::Span<const T> rhs,
+                            T tolerance) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_NEAR(lhs[i], rhs[i], tolerance);
+  }
+}
+
+// Eigen::half cannot implicitly convert to float which is required for
+// EXPECT_NEAR.
+template <>
+void ExpectArrayAlmostEqual(const std::vector<Eigen::half>& lhs,
+                            absl::Span<const Eigen::half> rhs,
+                            Eigen::half tolerance) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_NEAR(Eigen::half_impl::half_to_float(lhs[i]),
+                Eigen::half_impl::half_to_float(rhs[i]),
+                Eigen::half_impl::half_to_float(tolerance));
+  }
+}
+
 bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
                             const TRT_ShapedWeights& rhs) {
   return TrtDimsEquals(lhs.shape_, rhs.shape_) &&

@@ -4842,6 +4842,11 @@ static void RegisterValidatableOpConverters(
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  for (auto resize_mode : {"ResizeBilinear", "ResizeNearestNeighbor"}) {
+    (*registration)[resize_mode] = ConvertResize;
+  }
+#endif
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Softmax"] = ConvertSoftmax;
