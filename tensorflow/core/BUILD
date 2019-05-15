@@ -5411,9 +5411,7 @@ transitive_hdrs(
     ],
 )
 
-# -----------------------------------------------------------------------------
-# Google-internal targets go here (must be at the end).
-
+# Placeholder for Google-internal load statements.
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 genrule(
