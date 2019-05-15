@@ -57,6 +57,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool getBatch(void* bindings[], const char* names[],
                 int num_bindings) override;
 
+  // Feed calibration data to the calibrator, and return true if the data is
+  // accepted. Return false if the calibrator has been terminated.
   bool setBatch(const std::unordered_map<string, void*>& data,
                 const cudaStream_t stream);
 

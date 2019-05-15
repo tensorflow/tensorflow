@@ -317,7 +317,17 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                                 ->stream()
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
-  calib_res->calibrator_->setBatch(input_data, *stream);
+  // If calibrator is terminated before, it means an error has occurred.
+  //
+  // Note: setBatch() will wait until TRTInt8Calibrator::getBatch() is called
+  // the first time before proceeding, so if buildCudaEngine() returns an error,
+  // it means getBatch() is never called, and the setBatch() here will hang
+  // until setDone() is called later by the calibration thread in
+  // AllocateCalibrationResources(). In that case, this setBatch() will always
+  // be able to detect the error and return false.
+  OP_REQUIRES_ASYNC(ctx, calib_res->calibrator_->setBatch(input_data, *stream),
+                    errors::Internal("Failed to feed calibration data"),
+                    *helper);
   VLOG(2) << "Passed calibration data";
   ExecuteNativeSegment(ctx, helper);
 }
