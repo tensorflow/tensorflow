@@ -1479,7 +1479,6 @@ StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
   auto inplace_indexes = inplace_description.GetInplaceOperandIndexes();
 
   ArgVectors tensors(inplace_indexes.size());
-
   if (inst->opcode() == HloOpcode::kGetTupleElement) {
     // For GTEs there is only one input, and it is always inplace
     CHECK_EQ(inplace_indexes.size(), 1);
@@ -1494,15 +1493,54 @@ StatusOr<ArgVectors> FindInplaceOutputTensors(TensorMap& map,
     }
   }
 
+  // For tuples, we allow the same instruction to be used as multiple inplace
+  // operands.
+  //
+  // For example:
+  // t = tuple(x, y, x, x, z)
+  // Here x is used thrice, at indices 0, 2 and 3. We therefore allow the first
+  // occurrence (index 0) to be inplace and we add copies for all other
+  // occurrences (index 2 and 3).
+  //
+  // We keep a vector which keeps track whether the tuple inplace
+  // operand at index `i` is used at some other inplace index `j` and therefore
+  // requires a copy.
+  std::vector<bool> tuple_repeated_use(inplace_indexes.size(), false);
+  if (inst->opcode() == HloOpcode::kTuple) {
+    // Go through all the indices, and for operand and index `i`, find all other
+    // occurrences of that operand (set K).
+    // Then we need to do a copy for all operands indices K - {i}.
+
+    // Keep a set of indices which we have already made the decision for.
+    absl::flat_hash_set<int64> visited_indices;
+
+    for (uint64 i = 0; i < inplace_indexes.size(); i++) {
+      if (visited_indices.contains(i)) {
+        continue;
+      }
+      const auto* operand = inst->operand(i);
+      auto indices = inst->OperandIndices(operand);
+      // Add copies for  all operands indices indices - {indices[0]}.
+      for (auto i = 1; i < indices.size(); i++) {
+        tuple_repeated_use[indices[i]] = true;
+      }
+      // Add all the indices to the visited set.
+      absl::c_copy(indices,
+                   std::inserter(visited_indices, visited_indices.end()));
+    }
+  }
+
   // Go through all the inplace tensors and check if we need to add copies.
   for (uint64 i = 0; i < inplace_indexes.size(); i++) {
     for (uint64 tuple_idx = 0; tuple_idx < tensors[i].size(); tuple_idx++) {
       poplar::Tensor t = tensors[i][tuple_idx];
 
       // We need to add a copy before an inplace op if:
-      // 1. inst is not marked as inplace.
-      // 2. inst is inplace read/write type, but t is not ParallelWriteable.
-      bool requires_copy_of_inplace_operand = !is_still_inplace;
+      // 1. inst is not marked as inplace, or
+      // 2. this is a repeated use of the same operand, or
+      // 3. inst is inplace read/write type, but t is not ParallelWriteable.
+      bool requires_copy_of_inplace_operand =
+          !is_still_inplace || tuple_repeated_use[i];
       if (is_inplace_read_write) {
         requires_copy_of_inplace_operand |= !t.isParallelWriteable();
       }
