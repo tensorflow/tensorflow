@@ -49,9 +49,8 @@ VAR_MAP_V1 = {
 VAR_MAP_V2 = {
     "SGD": ("dense/bias", "learning_rate", "decay", "iter", "dense/kernel",
             "momentum"),
-    "Adagrad": ("iter", "epsilon", "dense/bias", "dense/kernel",
-                "learning_rate", "decay", "dense/kernel/accumulator",
-                "dense/bias/accumulator")
+    "Adagrad": ("iter", "dense/bias", "dense/kernel", "learning_rate", "decay",
+                "dense/kernel/accumulator", "dense/bias/accumulator")
 }
 
 

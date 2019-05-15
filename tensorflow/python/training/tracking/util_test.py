@@ -317,7 +317,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         "optimizer/learning_rate",
         "optimizer/beta_1",
         "optimizer/beta_2",
-        "optimizer/epsilon",
         "optimizer/iter",
         "optimizer/decay",
     ) + expected_slot_keys
@@ -352,7 +351,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     six.assertCountEqual(
         self,
         # Non-slot dependencies
-        ["beta_1", "beta_2", "iter", "decay", "epsilon", "learning_rate"],
+        ["beta_1", "beta_2", "iter", "decay", "learning_rate"],
         children)
     serialized_slot_keys = []
     for slot in optimizer_node.slot_variables:
