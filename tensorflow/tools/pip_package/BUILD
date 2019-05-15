@@ -65,7 +65,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
     "//tensorflow/python/autograph/core:test_lib",
-    "//tensorflow/python/autograph/pyct/testing:test_modules",
+    "//tensorflow/python/autograph/pyct/testing",
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
