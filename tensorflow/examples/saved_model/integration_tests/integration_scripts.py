@@ -61,5 +61,4 @@ def MaybeRunScriptInstead():
     # Append current path to import path and execute `SCRIPT_NAME` main.
     sys.path.extend([os.path.dirname(__file__)])
     module_name = os.environ["SCRIPT_NAME"]
-    retval = app.run(importlib.import_module(module_name).main)
-    sys.exit(retval)
+    app.run(importlib.import_module(module_name).main)
