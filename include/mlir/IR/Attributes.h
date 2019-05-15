@@ -430,7 +430,7 @@ public:
   }
 };
 
-/// An attribute that represents a reference to a splat vecctor or tensor
+/// An attribute that represents a reference to a splat vector or tensor
 /// constant, meaning all of the elements have the same value.
 class SplatElementsAttr
     : public Attribute::AttrBase<SplatElementsAttr, ElementsAttr,
