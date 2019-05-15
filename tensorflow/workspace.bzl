@@ -137,11 +137,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "9184c2b1c62010e3c8cb1e5cad2ef397109d26c39c6f7967104a044e1dc899bc",
-        strip_prefix = "abseil-cpp-436ba6c4a0ea3a06eca6e055f9c8d296bf3bae12",
+        sha256 = "7433bedd6b665ce46073768964c5b1276cf163887a3b87f507409f994b62beb6",
+        strip_prefix = "abseil-cpp-fa00c321073c7ea40a4fc3dfc8a06309eae3d025",
         urls = [
-            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/436ba6c4a0ea3a06eca6e055f9c8d296bf3bae12.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/436ba6c4a0ea3a06eca6e055f9c8d296bf3bae12.tar.gz",
+            "http://mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/fa00c321073c7ea40a4fc3dfc8a06309eae3d025.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/fa00c321073c7ea40a4fc3dfc8a06309eae3d025.tar.gz",
         ],
     )
 
