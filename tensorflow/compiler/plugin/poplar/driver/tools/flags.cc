@@ -119,6 +119,12 @@ void AllocateAndParseFlags() {
 #undef ADD_FLAG
   };
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_POPLAR_FLAGS", flag_list);
+
+  // Store all the flags as a string.
+  poplar_xla_flags->as_string = "";
+  if (const char* flag_buffer = std::getenv("TF_POPLAR_FLAGS")) {
+    poplar_xla_flags->as_string = flag_buffer;
+  }
 }
 
 }  // namespace
@@ -126,11 +132,6 @@ void AllocateAndParseFlags() {
 const PoplarXlaFlags& GetPoplarXlaFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
   return *poplar_xla_flags;
-}
-
-const std::string& GetPoplarXlaFlagsString() {
-  static std::string flag_string = getenv("TF_POPLAR_FLAGS");
-  return flag_string;
 }
 
 const std::string GetFlagUsageString() {

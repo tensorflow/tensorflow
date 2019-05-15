@@ -57,14 +57,14 @@ struct PoplarXlaFlags {
 
   // Path to the executable cache.
   std::string executable_cache_path;
+
+  // Stores all the values as a string.
+  std::string as_string;
 };
 
 // Getters for flags structs defined above.  The first call to any of these
 // parses TF_POPLAR_FLAGS for all of them.
 const PoplarXlaFlags& GetPoplarXlaFlags();
-
-// Get the TF_POPLAR_FLAGS env var as a string
-const std::string& GetPoplarXlaFlagsString();
 
 // Getter for the flag usage string.
 const std::string GetFlagUsageString();

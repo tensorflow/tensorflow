@@ -762,7 +762,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
   poplar_target.push_back(std::hash<string>()(poplar::packageHash()));
 
   // Get envionment flag hash
-  const auto& flag_string = tensorflow::GetPoplarXlaFlagsString();
+  const auto& flag_string = tensorflow::GetPoplarXlaFlags().as_string;
   poplar_target.push_back(std::hash<string>()(flag_string));
 
   for (int64 h : poplar_target) {
