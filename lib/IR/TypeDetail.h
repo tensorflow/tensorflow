@@ -52,7 +52,7 @@ struct OpaqueTypeStorage : public TypeStorage {
         OpaqueTypeStorage(key.first, tyData);
   }
 
-  // The unknown dialect namespace.
+  // The dialect namespace.
   Identifier dialectNamespace;
 
   // The parser type data for this opaque type.

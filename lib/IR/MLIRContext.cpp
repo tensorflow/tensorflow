@@ -139,8 +139,9 @@ struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
     addAttributes<AffineMapAttr, ArrayAttr, BoolAttr, DenseIntElementsAttr,
                   DenseFPElementsAttr, FloatAttr, FunctionAttr, IntegerAttr,
-                  IntegerSetAttr, OpaqueElementsAttr, SparseElementsAttr,
-                  SplatElementsAttr, StringAttr, TypeAttr, UnitAttr>();
+                  IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
+                  SparseElementsAttr, SplatElementsAttr, StringAttr, TypeAttr,
+                  UnitAttr>();
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
              MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
              UnrankedTensorType, VectorType>();

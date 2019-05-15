@@ -36,6 +36,7 @@ class VectorOrTensorType;
 
 namespace detail {
 
+struct OpaqueAttributeStorage;
 struct BoolAttributeStorage;
 struct IntegerAttributeStorage;
 struct FloatAttributeStorage;
@@ -153,6 +154,7 @@ inline raw_ostream &operator<<(raw_ostream &os, Attribute attr) {
 namespace StandardAttributes {
 enum Kind {
   Unit = Attribute::FIRST_STANDARD_ATTR,
+  Opaque,
   Bool,
   Integer,
   Float,
@@ -184,6 +186,41 @@ public:
   }
 
   static bool kindof(unsigned kind) { return kind == StandardAttributes::Unit; }
+};
+
+/// Opaque attributes represent attributes of non-registered dialects. These are
+/// attribute represented in their raw string form, and can only usefully be
+/// tested for attribute equality.
+class OpaqueAttr : public Attribute::AttrBase<OpaqueAttr, Attribute,
+                                              detail::OpaqueAttributeStorage> {
+public:
+  using Base::Base;
+
+  /// Get or create a new OpaqueAttr with the provided dialect and string data.
+  static OpaqueAttr get(Identifier dialect, StringRef attrData,
+                        MLIRContext *context);
+
+  /// Get or create a new OpaqueAttr with the provided dialect and string data.
+  /// If the given identifier is not a valid namespace for a dialect, then a
+  /// null attribute is returned.
+  static OpaqueAttr getChecked(Identifier dialect, StringRef attrData,
+                               MLIRContext *context, Location location);
+
+  /// Returns the dialect namespace of the opaque attribute.
+  Identifier getDialectNamespace() const;
+
+  /// Returns the raw attribute data of the opaque attribute.
+  StringRef getAttrData() const;
+
+  /// Verify the construction of an opaque attribute.
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc,
+                               MLIRContext *context, Identifier dialect,
+                               StringRef attrData);
+
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Opaque;
+  }
 };
 
 class BoolAttr : public Attribute::AttrBase<BoolAttr, Attribute,

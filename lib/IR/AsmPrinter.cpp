@@ -507,6 +507,89 @@ void ModulePrinter::printLocation(Location loc) {
   }
 }
 
+/// Returns if the given dialect symbol data is simple enough to print in the
+/// pretty form, i.e. without the enclosing "".
+static bool isDialectSymbolSimpleEnoughForPrettyForm(StringRef symName) {
+  // The name must start with an identifier.
+  if (symName.empty() || !isalpha(symName.front()))
+    return false;
+
+  // Ignore all the characters that are valid in an identifier in the symbol
+  // name.
+  symName =
+      symName.drop_while([](char c) { return llvm::isAlnum(c) || c == '.'; });
+  if (symName.empty())
+    return true;
+
+  // If we got to an unexpected character, then it must be a <>.  Check those
+  // recursively.
+  if (symName.front() != '<' || symName.back() != '>')
+    return false;
+
+  SmallVector<char, 8> nestedPunctuation;
+  do {
+    // If we ran out of characters, then we had a punctuation mismatch.
+    if (symName.empty())
+      return false;
+
+    auto c = symName.front();
+    symName = symName.drop_front();
+
+    switch (c) {
+    // We never allow null characters. This is an EOF indicator for the lexer
+    // which we could handle, but isn't important for any known dialect.
+    case '\0':
+      return false;
+    case '<':
+    case '[':
+    case '(':
+    case '{':
+      nestedPunctuation.push_back(c);
+      continue;
+    // Reject types with mismatched brackets.
+    case '>':
+      if (nestedPunctuation.pop_back_val() != '<')
+        return false;
+      break;
+    case ']':
+      if (nestedPunctuation.pop_back_val() != '[')
+        return false;
+      break;
+    case ')':
+      if (nestedPunctuation.pop_back_val() != '(')
+        return false;
+      break;
+    case '}':
+      if (nestedPunctuation.pop_back_val() != '{')
+        return false;
+      break;
+    default:
+      continue;
+    }
+
+    // We're done when the punctuation is fully matched.
+  } while (!nestedPunctuation.empty());
+
+  // If there were extra characters, then we failed.
+  return symName.empty();
+}
+
+/// Print the given dialect symbol to the stream.
+static void printDialectSymbol(raw_ostream &os, StringRef symPrefix,
+                               StringRef dialectName, StringRef symString) {
+  os << symPrefix << dialectName;
+
+  // If this symbol name is simple enough, print it directly in pretty form,
+  // otherwise, we print it as an escaped string.
+  if (isDialectSymbolSimpleEnoughForPrettyForm(symString)) {
+    os << '.' << symString;
+    return;
+  }
+
+  // TODO: escape the symbol name, it could contain " characters.
+  os << "<\"" << symString << "\">";
+}
+
 void ModulePrinter::printAttributeOptionalType(Attribute attr,
                                                bool includeType) {
   if (!attr) {
@@ -522,10 +605,25 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   }
 
   switch (attr.getKind()) {
-  default:
-    // TODO(riverriddle) Support parsing/printing dialect attributes.
-    llvm_unreachable("unhandled attribute kind");
+  default: {
+    auto &dialect = attr.getDialect();
 
+    // Ask the dialect to serialize the attribute to a string.
+    std::string attrName;
+    {
+      llvm::raw_string_ostream attrNameStr(attrName);
+      dialect.printAttribute(attr, attrNameStr);
+    }
+
+    printDialectSymbol(os, "#", dialect.getNamespace(), attrName);
+    break;
+  }
+  case StandardAttributes::Opaque: {
+    auto opaqueAttr = attr.cast<OpaqueAttr>();
+    printDialectSymbol(os, "#", opaqueAttr.getDialectNamespace(),
+                       opaqueAttr.getAttrData());
+    break;
+  }
   case StandardAttributes::Unit:
     os << "unit";
     break;
@@ -686,71 +784,6 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
     os << ']';
 }
 
-static bool isDialectTypeSimpleEnoughForPrettyForm(StringRef typeName) {
-  // The type name must start with an identifier.
-  if (typeName.empty() || !isalpha(typeName.front()))
-    return false;
-
-  // Ignore all the characters that are valid in an identifier in the type
-  // name.
-  typeName =
-      typeName.drop_while([](char c) { return llvm::isAlnum(c) || c == '.'; });
-  if (typeName.empty())
-    return true;
-
-  // If we got to an unexpected character, then it must be a <>.  Check those
-  // recursively.
-  if (typeName.front() != '<' || typeName.back() != '>')
-    return false;
-
-  SmallVector<char, 8> nestedPunctuation;
-  do {
-    // If we ran out of characters, then we had a punctuation mismatch.
-    if (typeName.empty())
-      return false;
-
-    auto c = typeName.front();
-    typeName = typeName.drop_front();
-
-    switch (c) {
-    // We never allow nul characters.  This is an EOF indicator for the lexer
-    // which we could handle, but isn't important for any known dialect.
-    case '\0':
-      return false;
-    case '<':
-    case '[':
-    case '(':
-    case '{':
-      nestedPunctuation.push_back(c);
-      continue;
-    // Reject types with mismatched brackets.
-    case '>':
-      if (nestedPunctuation.pop_back_val() != '<')
-        return false;
-      break;
-    case ']':
-      if (nestedPunctuation.pop_back_val() != '[')
-        return false;
-      break;
-    case ')':
-      if (nestedPunctuation.pop_back_val() != '(')
-        return false;
-      break;
-    case '}':
-      if (nestedPunctuation.pop_back_val() != '{')
-        return false;
-      break;
-    default:
-      continue;
-    }
-
-    // We're done when the punctuation is fully matched.
-  } while (!nestedPunctuation.empty());
-
-  // If there were extra characters, then we failed.
-  return typeName.empty();
-}
-
 void ModulePrinter::printType(Type type) {
   // Check for an alias for this type.
   StringRef alias = state.getTypeAlias(type);
@@ -758,20 +791,6 @@ void ModulePrinter::printType(Type type) {
     os << '!' << alias;
     return;
   }
-
-  auto printDialectType = [&](StringRef dialectName, StringRef typeString) {
-    os << '!' << dialectName;
-
-    // If this type name is simple enough, print it directly in pretty form,
-    // otherwise, we print it as an escaped string.
-    if (isDialectTypeSimpleEnoughForPrettyForm(typeString)) {
-      os << '.' << typeString;
-      return;
-    }
-
-    // TODO: escape the type name, it could contain " characters.
-    os << "<\"" << typeString << "\">";
-  };
 
   switch (type.getKind()) {
   default: {
@@ -784,12 +803,13 @@ void ModulePrinter::printType(Type type) {
       dialect.printType(type, typeNameStr);
     }
 
-    printDialectType(dialect.getNamespace(), typeName);
+    printDialectSymbol(os, "!", dialect.getNamespace(), typeName);
     return;
   }
   case Type::Kind::Opaque: {
     auto opaqueTy = type.cast<OpaqueType>();
-    printDialectType(opaqueTy.getDialectNamespace(), opaqueTy.getTypeData());
+    printDialectSymbol(os, "!", opaqueTy.getDialectNamespace(),
+                       opaqueTy.getTypeData());
     return;
   }
   case StandardTypes::Index:

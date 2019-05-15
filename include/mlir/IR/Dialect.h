@@ -25,8 +25,6 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
-class AffineMap;
-class IntegerSet;
 class Type;
 
 using DialectConstantDecodeHook =
@@ -82,14 +80,20 @@ public:
         return Attribute();
       };
 
+  /// Parse an attribute registered to this dialect.
+  virtual Attribute parseAttribute(StringRef attrData, Location loc) const;
+
+  /// Print an attribute registered to this dialect.
+  virtual void printAttribute(Attribute, raw_ostream &) const {
+    llvm_unreachable("dialect has no registered attribute printing hook");
+  }
+
   /// Parse a type registered to this dialect.
   virtual Type parseType(StringRef tyData, Location loc) const;
 
   /// Print a type registered to this dialect.
-  /// Note: The data printed for the provided type must not include any '"'
-  /// characters.
   virtual void printType(Type, raw_ostream &) const {
-    assert(0 && "dialect has no registered type printing hook");
+    llvm_unreachable("dialect has no registered type printing hook");
   }
 
   /// Registered hooks for getting identifier aliases for symbols. The

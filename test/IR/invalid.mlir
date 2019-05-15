@@ -34,7 +34,7 @@ func @memrefs(memref<2x4xi8, >) // expected-error {{expected list element}}
 
 // -----
 // Test non-existent map in memref type.
-func @memrefs(memref<2x4xi8, #map7>) // expected-error {{undefined attribute alias id 'map7'}}
+func @memrefs(memref<2x4xi8, #map7>) // expected-error {{undefined symbol alias id 'map7'}}
 
 // -----
 // Test non affine map in memref type.
@@ -44,7 +44,7 @@ func @memrefs(memref<2x4xi8, i8>) // expected-error {{expected affine map in mem
 // Test non-existent map in map composition of memref type.
 #map0 = (d0, d1) -> (d0, d1)
 
-func @memrefs(memref<2x4xi8, #map0, #map8>) // expected-error {{undefined attribute alias id 'map8'}}
+func @memrefs(memref<2x4xi8, #map0, #map8>) // expected-error {{undefined symbol alias id 'map8'}}
 
 // -----
 // Test multiple memory space error.
@@ -749,19 +749,19 @@ func @dialect_type_empty_namespace(!<"">) -> () { // expected-error {{invalid ty
 
 // -----
 
-func @dialect_type_no_string_type_data(!foo<>) -> () { // expected-error {{expected string literal type data in dialect type}}
+func @dialect_type_no_string_type_data(!foo<>) -> () { // expected-error {{expected string literal data in dialect symbol}}
   return
 }
 
 // -----
 
-func @dialect_type_missing_greater(!foo<"") -> () { // expected-error {{expected '>' in dialect type}}
+func @dialect_type_missing_greater(!foo<"") -> () { // expected-error {{expected '>' in dialect symbol}}
   return
 }
 
 // -----
 
-func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined type alias id 'unknown_alias'}}
+func @type_alias_unknown(!unknown_alias) -> () { // expected-error {{undefined symbol alias id 'unknown_alias'}}
   return
 }
 

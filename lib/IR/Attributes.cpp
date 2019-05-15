@@ -98,6 +98,42 @@ Attribute Attribute::remapFunctionAttrs(
 }
 
 //===----------------------------------------------------------------------===//
+// OpaqueAttr
+//===----------------------------------------------------------------------===//
+
+OpaqueAttr OpaqueAttr::get(Identifier dialect, StringRef attrData,
+                           MLIRContext *context) {
+  return Base::get(context, StandardAttributes::Opaque, dialect, attrData);
+}
+
+OpaqueAttr OpaqueAttr::getChecked(Identifier dialect, StringRef attrData,
+                                  MLIRContext *context, Location location) {
+  return Base::getChecked(location, context, StandardAttributes::Opaque,
+                          dialect, attrData);
+}
+
+/// Returns the dialect namespace of the opaque attribute.
+Identifier OpaqueAttr::getDialectNamespace() const {
+  return getImpl()->dialectNamespace;
+}
+
+/// Returns the raw attribute data of the opaque attribute.
+StringRef OpaqueAttr::getAttrData() const { return getImpl()->attrData; }
+
+/// Verify the construction of an opaque attribute.
+LogicalResult OpaqueAttr::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, Identifier dialect,
+    StringRef attrData) {
+  if (!Dialect::isValidNamespace(dialect.strref())) {
+    if (loc)
+      context->emitError(*loc)
+          << "invalid dialect namespace '" << dialect << "'";
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BoolAttr
 //===----------------------------------------------------------------------===//
 

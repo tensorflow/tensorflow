@@ -867,6 +867,31 @@ func @pretty_form_multi_result() -> (i16, i16) {
   return %quot, %rem : i16, i16
 }
 
+// CHECK-LABEL: func @pretty_dialect_attribute()
+func @pretty_dialect_attribute() {
+
+  // CHECK: "foo.unknown_op"() {foo: #foo.simpleattr} : () -> ()
+  "foo.unknown_op"() {foo: #foo.simpleattr} : () -> ()
+
+  // CHECK: "foo.unknown_op"() {foo: #foo.complexattr<abcd>} : () -> ()
+  "foo.unknown_op"() {foo: #foo.complexattr<abcd>} : () -> ()
+
+  // CHECK: "foo.unknown_op"() {foo: #foo.complexattr<abcd<f32>>} : () -> ()
+  "foo.unknown_op"() {foo: #foo.complexattr<abcd<f32>>} : () -> ()
+
+  // CHECK: "foo.unknown_op"() {foo: #foo.complexattr<abcd<[f]$$[32]>>} : () -> ()
+  "foo.unknown_op"() {foo: #foo.complexattr<abcd<[f]$$[32]>>} : () -> ()
+
+  // CHECK: "foo.unknown_op"() {foo: #foo.dialect<!x@#!@#>} : () -> ()
+  "foo.unknown_op"() {foo: #foo.dialect<!x@#!@#>} : () -> ()
+
+  // Extraneous extra > character can't use the pretty syntax.
+  // CHECK: "foo.unknown_op"() {foo: #foo<"dialect<!x@#!@#>>">} : () -> ()
+  "foo.unknown_op"() {foo: #foo<"dialect<!x@#!@#>>">} : () -> ()
+
+  return
+}
+
 // CHECK-LABEL: func @pretty_dialect_type()
 func @pretty_dialect_type() {
 

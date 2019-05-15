@@ -36,6 +36,30 @@
 
 namespace mlir {
 namespace detail {
+/// Opaque Attribute Storage and Uniquing.
+struct OpaqueAttributeStorage : public AttributeStorage {
+  OpaqueAttributeStorage(Identifier dialectNamespace, StringRef attrData)
+      : dialectNamespace(dialectNamespace), attrData(attrData) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = std::pair<Identifier, StringRef>;
+  bool operator==(const KeyTy &key) const {
+    return key == KeyTy(dialectNamespace, attrData);
+  }
+
+  static OpaqueAttributeStorage *construct(AttributeStorageAllocator &allocator,
+                                           const KeyTy &key) {
+    return new (allocator.allocate<OpaqueAttributeStorage>())
+        OpaqueAttributeStorage(key.first, allocator.copyInto(key.second));
+  }
+
+  // The dialect namespace.
+  Identifier dialectNamespace;
+
+  // The parser attribute data for this opaque attribute.
+  StringRef attrData;
+};
+
 /// An attribute representing a boolean value.
 struct BoolAttributeStorage : public AttributeStorage {
   using KeyTy = std::pair<MLIRContext *, bool>;

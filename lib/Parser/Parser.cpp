@@ -177,7 +177,7 @@ public:
   ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
                                        bool allowDynamic);
   Type parseExtendedType();
-  ParseResult parsePrettyDialectTypeName(StringRef &prettyName);
+  ParseResult parsePrettyDialectSymbolName(StringRef &prettyName);
   Type parseTensorType();
   Type parseComplexType();
   Type parseTupleType();
@@ -192,6 +192,7 @@ public:
   // Attribute parsing.
   Function *resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
                                      FunctionType type);
+  Attribute parseExtendedAttribute(Type type);
   Attribute parseAttribute(Type type = {});
 
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
@@ -479,19 +480,19 @@ Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
   return success();
 }
 
-/// Parse the body of a pretty dialect type, which starts and ends with <>'s,
+/// Parse the body of a pretty dialect symbol, which starts and ends with <>'s,
 /// and may be recursive.  Return with the 'prettyName' StringRef encompasing
 /// the entire pretty name.
 ///
-///   pretty-dialect-type-body ::= '<' pretty-dialect-type-contents+ '>'
-///   pretty-dialect-type-contents ::= pretty-dialect-type-body
-///                                  | '(' pretty-dialect-type-contents+ ')'
-///                                  | '[' pretty-dialect-type-contents+ ']'
-///                                  | '{' pretty-dialect-type-contents+ '}'
+///   pretty-dialect-sym-body ::= '<' pretty-dialect-sym-contents+ '>'
+///   pretty-dialect-sym-contents ::= pretty-dialect-sym-body
+///                                  | '(' pretty-dialect-sym-contents+ ')'
+///                                  | '[' pretty-dialect-sym-contents+ ']'
+///                                  | '{' pretty-dialect-sym-contents+ '}'
 ///                                  | '[^[<({>\])}\0]+'
 ///
-ParseResult Parser::parsePrettyDialectTypeName(StringRef &prettyName) {
-  // Pretty type names are a relatively unstructured format that contains a
+ParseResult Parser::parsePrettyDialectSymbolName(StringRef &prettyName) {
+  // Pretty symbol names are a relatively unstructured format that contains a
   // series of properly nested punctuation, with anything else in the middle.
   // Scan ahead to find it and consume it if successful, otherwise emit an
   // error.
@@ -548,82 +549,93 @@ ParseResult Parser::parsePrettyDialectTypeName(StringRef &prettyName) {
   return success();
 }
 
-/// Parse an extended type.
-///
-///   extended-type ::= (dialect-type | type-alias)
-///   dialect-type  ::= `!` dialect-namespace `<` '"' type-data '"' `>`
-///   dialect-type  ::= `!` alias-name pretty-dialect-type-body?
-///   type-alias    ::= `!` alias-name
-///
-Type Parser::parseExtendedType() {
-  assert(getToken().is(Token::exclamation_identifier));
-
+/// Parse an extended dialect symbol.
+template <typename Symbol, typename SymbolAliasMap, typename CreateFn>
+static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
+                                  SymbolAliasMap &aliases,
+                                  CreateFn &&createSymbol) {
   // Parse the dialect namespace.
-  StringRef identifier = getTokenSpelling().drop_front();
-  auto loc = getToken().getLoc();
-  consumeToken(Token::exclamation_identifier);
+  StringRef identifier = p.getTokenSpelling().drop_front();
+  auto loc = p.getToken().getLoc();
+  p.consumeToken(identifierTok);
 
   // If there is no '<' token following this, and if the typename contains no
-  // dot, then we are parsing a type alias.
-  if (getToken().isNot(Token::less) && !identifier.contains('.')) {
+  // dot, then we are parsing a symbol alias.
+  if (p.getToken().isNot(Token::less) && !identifier.contains('.')) {
     // Check for an alias for this type.
-    auto aliasIt = state.typeAliasDefinitions.find(identifier);
-    if (aliasIt == state.typeAliasDefinitions.end())
-      return (emitError("undefined type alias id '" + identifier + "'"),
+    auto aliasIt = aliases.find(identifier);
+    if (aliasIt == aliases.end())
+      return (p.emitError("undefined symbol alias id '" + identifier + "'"),
               nullptr);
     return aliasIt->second;
   }
 
-  // Otherwise, we are parsing a dialect-specific type.  If the name contains a
-  // dot, then this is the "pretty" form.  If not, it is the verbose form that
+  // Otherwise, we are parsing a dialect-specific symbol.  If the name contains
+  // a dot, then this is the "pretty" form.  If not, it is the verbose form that
   // looks like <"...">.
-  std::string typeData;
+  std::string symbolData;
   auto dialectName = identifier;
 
   // Handle the verbose form, where "identifier" is a simple dialect name.
   if (!identifier.contains('.')) {
     // Consume the '<'.
-    if (parseToken(Token::less, "expected '<' in dialect type"))
+    if (p.parseToken(Token::less, "expected '<' in dialect type"))
       return nullptr;
 
-    // Parse the type specific data.
-    if (getToken().isNot(Token::string))
-      return (emitError("expected string literal type data in dialect type"),
+    // Parse the symbol specific data.
+    if (p.getToken().isNot(Token::string))
+      return (p.emitError("expected string literal data in dialect symbol"),
               nullptr);
-    typeData = getToken().getStringValue();
-    loc = getToken().getLoc();
-    consumeToken(Token::string);
+    symbolData = p.getToken().getStringValue();
+    loc = p.getToken().getLoc();
+    p.consumeToken(Token::string);
 
     // Consume the '>'.
-    if (parseToken(Token::greater, "expected '>' in dialect type"))
+    if (p.parseToken(Token::greater, "expected '>' in dialect symbol"))
       return nullptr;
   } else {
     // Ok, the dialect name is the part of the identifier before the dot, the
-    // part after the dot is the dialect's type, or the start thereof.
+    // part after the dot is the dialect's symbol, or the start thereof.
     auto dotHalves = identifier.split('.');
     dialectName = dotHalves.first;
     auto prettyName = dotHalves.second;
 
-    // If the dialect's type is followed immediately by a <, then lex the body
+    // If the dialect's symbol is followed immediately by a <, then lex the body
     // of it into prettyName.
-    if (getToken().is(Token::less) &&
-        prettyName.bytes_end() == getTokenSpelling().bytes_begin()) {
-      if (parsePrettyDialectTypeName(prettyName))
+    if (p.getToken().is(Token::less) &&
+        prettyName.bytes_end() == p.getTokenSpelling().bytes_begin()) {
+      if (p.parsePrettyDialectSymbolName(prettyName))
         return nullptr;
     }
 
-    typeData = prettyName.str();
+    symbolData = prettyName.str();
   }
 
-  auto encodedLoc = getEncodedSourceLocation(loc);
+  // Call into the provided symbol construction function.
+  auto encodedLoc = p.getEncodedSourceLocation(loc);
+  return createSymbol(dialectName, symbolData, encodedLoc);
+}
 
-  // If we found a registered dialect, then ask it to parse the type.
-  if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-    return dialect->parseType(typeData, encodedLoc);
+/// Parse an extended type.
+///
+///   extended-type ::= (dialect-type | type-alias)
+///   dialect-type  ::= `!` dialect-namespace `<` `"` type-data `"` `>`
+///   dialect-type  ::= `!` alias-name pretty-dialect-attribute-body?
+///   type-alias    ::= `!` alias-name
+///
+Type Parser::parseExtendedType() {
+  return parseExtendedSymbol<Type>(
+      *this, Token::exclamation_identifier, state.typeAliasDefinitions,
+      [&](StringRef dialectName, StringRef symbolData, Location loc) -> Type {
+        // If we found a registered dialect, then ask it to parse the type.
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
+          return dialect->parseType(symbolData, loc);
 
-  // Otherwise, form a new opaque type.
-  return OpaqueType::getChecked(Identifier::get(dialectName, state.context),
-                                typeData, state.context, encodedLoc);
+        // Otherwise, form a new opaque type.
+        return OpaqueType::getChecked(
+            Identifier::get(dialectName, state.context), symbolData,
+            state.context, loc);
+      });
 }
 
 /// Parse a tensor type.
@@ -1012,6 +1024,37 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
   return function;
 }
 
+/// Parse an extended attribute.
+///
+///   extended-attribute ::= (dialect-attribute | attribute-alias)
+///   dialect-attribute  ::= `#` dialect-namespace `<` `"` attr-data `"` `>`
+///   dialect-attribute  ::= `#` alias-name pretty-dialect-sym-body?
+///   attribute-alias    ::= `#` alias-name
+///
+Attribute Parser::parseExtendedAttribute(Type type) {
+  Attribute attr = parseExtendedSymbol<Attribute>(
+      *this, Token::hash_identifier, state.attributeAliasDefinitions,
+      [&](StringRef dialectName, StringRef symbolData,
+          Location loc) -> Attribute {
+        // If we found a registered dialect, then ask it to parse the attribute.
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
+          return dialect->parseAttribute(symbolData, loc);
+
+        // Otherwise, form a new opaque attribute.
+        return OpaqueAttr::getChecked(
+            Identifier::get(dialectName, state.context), symbolData,
+            state.context, loc);
+      });
+
+  // Ensure that the attribute has the same type as requested.
+  if (type && attr.getType() != type) {
+    emitError("attribute type different than expected: expected ")
+        << type << ", but got " << attr.getType();
+    return nullptr;
+  }
+  return attr;
+}
+
 /// Attribute parsing.
 ///
 ///  attribute-value ::= `unit`
@@ -1028,28 +1071,12 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///                          attribute-value `,` attribute-value `>`
 ///                    | `opaque` `<` dialect-namespace  `,`
 ///                      (tensor-type | vector-type) `,` hex-string-literal `>`
+///                    | extended-attribute
 ///
 Attribute Parser::parseAttribute(Type type) {
-  // If this is a hash_identifier, we are parsing an attribute alias.
-  if (getToken().is(Token::hash_identifier)) {
-    StringRef id = getTokenSpelling().drop_front();
-    consumeToken(Token::hash_identifier);
-
-    // Check for an alias for this attribute.
-    auto aliasIt = state.attributeAliasDefinitions.find(id);
-    if (aliasIt == state.attributeAliasDefinitions.end())
-      return (emitError("undefined attribute alias id '" + id + "'"), nullptr);
-
-    // Ensure that the attribute alias has the same type as requested.
-    if (type && aliasIt->second.getType() != type) {
-      emitError("requested attribute type different then alias attribute type");
-      return nullptr;
-    }
-
-    return aliasIt->second;
-  }
-
   switch (getToken().getKind()) {
+  case Token::hash_identifier:
+    return parseExtendedAttribute(type);
   case Token::kw_unit:
     consumeToken(Token::kw_unit);
     return builder.getUnitAttr();
@@ -2642,7 +2669,7 @@ ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
   if (parseToken(Token::percent_identifier, "expected SSA operand"))
     return failure();
 
-  // If we have an affine map ID, it is a result number.
+  // If we have an attribute ID, it is a result number.
   if (getToken().is(Token::hash_identifier)) {
     if (auto value = getToken().getHashIdentifierNumber())
       result.number = value.getValue();
