@@ -1210,7 +1210,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_version}": cuda_config.cuda_version,
             "%{cuda_lib_version}": cuda_config.cuda_lib_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
-            "%{cuda_compute_capabilities}": to_list_of_strings([
+            "%{cuda_compute_capabilities}": ", ".join([
                 "CudaVersion(\"%s\")" % c
                 for c in cuda_config.compute_capabilities
             ]),
