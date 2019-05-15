@@ -99,6 +99,7 @@ cuda_py_tests(
         "test/batch_matmul_test.py",
         "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
+        "test/combined_nms_test.py",
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
