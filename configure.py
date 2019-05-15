@@ -1039,10 +1039,8 @@ def set_other_cuda_vars(environ_cp):
   # If CUDA is enabled, always use GPU during build and test.
   if environ_cp.get('TF_CUDA_CLANG') == '1':
     write_to_bazelrc('build --config=cuda_clang')
-    write_to_bazelrc('test --config=cuda_clang')
   else:
     write_to_bazelrc('build --config=cuda')
-    write_to_bazelrc('test --config=cuda')
 
 
 def set_host_cxx_compiler(environ_cp):
@@ -1498,7 +1496,6 @@ def main():
       else:
         # Use downloaded LLD for linking.
         write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
-        write_to_bazelrc('test:cuda_clang --config=download_clang_use_lld')
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
@@ -1511,7 +1508,6 @@ def main():
     set_tf_download_clang(environ_cp)
     if environ_cp.get('TF_DOWNLOAD_CLANG') == '1':
       write_to_bazelrc('build --config=download_clang')
-      write_to_bazelrc('test --config=download_clang')
 
   # SYCL / ROCm / CUDA are mutually exclusive.
   # At most 1 GPU platform can be configured.
