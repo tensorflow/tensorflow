@@ -174,48 +174,54 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_size);
 }
 
+template <typename T>
+void EvalAddImpl(TfLiteContext* context, TfLiteNode* node,
+                 TfLiteAddParams* params, const OpData* data,
+                 const TfLiteTensor* input1, const TfLiteTensor* input2,
+                 TfLiteTensor* output, KernelType kernel_type) {
+  T output_activation_min, output_activation_max;
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
+  tflite::ArithmeticParams op_params;
+  SetActivationParams(output_activation_min, output_activation_max, &op_params);
+  if (kernel_type == kReference) {
+    if (data->requires_broadcast) {
+      reference_ops::BroadcastAdd4DSlow(
+          op_params, GetTensorShape(input1), GetTensorData<T>(input1),
+          GetTensorShape(input2), GetTensorData<T>(input2),
+          GetTensorShape(output), GetTensorData<T>(output));
+    } else {
+      reference_ops::Add(op_params, GetTensorShape(input1),
+                         GetTensorData<T>(input1), GetTensorShape(input2),
+                         GetTensorData<T>(input2), GetTensorShape(output),
+                         GetTensorData<T>(output));
+    }
+  } else {
+    if (data->requires_broadcast) {
+      optimized_ops::BroadcastAdd4DSlow(
+          op_params, GetTensorShape(input1), GetTensorData<T>(input1),
+          GetTensorShape(input2), GetTensorData<T>(input2),
+          GetTensorShape(output), GetTensorData<T>(output));
+    } else {
+      optimized_ops::Add(op_params, GetTensorShape(input1),
+                         GetTensorData<T>(input1), GetTensorShape(input2),
+                         GetTensorData<T>(input2), GetTensorShape(output),
+                         GetTensorData<T>(output));
+    }
+  }
+}
+
 void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output,
              KernelType kernel_type) {
-#define TF_LITE_ADD(data_type)                                                 \
-  data_type output_activation_min, output_activation_max;                      \
-  CalculateActivationRange(params->activation, &output_activation_min,         \
-                           &output_activation_max);                            \
-  tflite::ArithmeticParams op_params;                                          \
-  SetActivationParams(output_activation_min, output_activation_max,            \
-                      &op_params);                                             \
-  if (kernel_type == kReference) {                                             \
-    if (data->requires_broadcast) {                                            \
-      reference_ops::BroadcastAdd4DSlow(                                       \
-          op_params, GetTensorShape(input1), GetTensorData<data_type>(input1), \
-          GetTensorShape(input2), GetTensorData<data_type>(input2),            \
-          GetTensorShape(output), GetTensorData<data_type>(output));           \
-    } else {                                                                   \
-      reference_ops::Add(                                                      \
-          op_params, GetTensorShape(input1), GetTensorData<data_type>(input1), \
-          GetTensorShape(input2), GetTensorData<data_type>(input2),            \
-          GetTensorShape(output), GetTensorData<data_type>(output));           \
-    }                                                                          \
-  } else {                                                                     \
-    if (data->requires_broadcast) {                                            \
-      optimized_ops::BroadcastAdd4DSlow(                                       \
-          op_params, GetTensorShape(input1), GetTensorData<data_type>(input1), \
-          GetTensorShape(input2), GetTensorData<data_type>(input2),            \
-          GetTensorShape(output), GetTensorData<data_type>(output));           \
-    } else {                                                                   \
-      optimized_ops::Add(                                                      \
-          op_params, GetTensorShape(input1), GetTensorData<data_type>(input1), \
-          GetTensorShape(input2), GetTensorData<data_type>(input2),            \
-          GetTensorShape(output), GetTensorData<data_type>(output));           \
-    }                                                                          \
-  }
   if (output->type == kTfLiteInt32) {
-    TF_LITE_ADD(int32_t);
+    EvalAddImpl<int32_t>(context, node, params, data, input1, input2, output,
+                         kernel_type);
   } else if (output->type == kTfLiteFloat32) {
-    TF_LITE_ADD(float);
+    EvalAddImpl<float>(context, node, params, data, input1, input2, output,
+                       kernel_type);
   }
-#undef TF_LITE_ADD
 }
 
 TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
