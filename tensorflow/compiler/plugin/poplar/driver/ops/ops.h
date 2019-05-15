@@ -61,7 +61,7 @@ typedef void (*popops_inplace_fn)(poplar::Graph& graph, poplar::Tensor A,
 
 StatusOr<std::shared_ptr<SubComputationVisitor>> GetOrCompileSubComputation(
     CompilerResources& res, const ArgVectors& inputs,
-    const HloComputation* comp, bool inplace_inputs = false,
+    const HloComputation* comp,
     const std::vector<const SubComputationVisitor*>& dependent_subcomputations =
         {});
 

@@ -33,13 +33,29 @@ namespace xla {
 namespace poplarplugin {
 
 SubComputationVisitor::SubComputationVisitor(
-    CompilerResources& res, const ArgVectors& inputs, bool inplace_inputs,
+    CompilerResources& res, const ArgVectors& inputs,
     const std::vector<const SubComputationVisitor*>& dependent_subcomputations)
     : DeferredAllocationVisitor(res),
       temp_inputs_(inputs),
-      inputs_(temp_inputs_.size()),
-      inplace_inputs_(inplace_inputs),
-      dependent_subcomputations_(dependent_subcomputations) {}
+      inputs_(inputs.size()),
+      dependent_subcomputations_(dependent_subcomputations),
+      used_tensors_(inputs.size()),
+      allocated_tensors_(inputs.size()),
+      has_allocation_target_(inputs.size()) {
+  for (int64 i = 0; i < inputs.size(); i++) {
+    inputs_[i].resize(inputs[i].size());
+    used_tensors_[i].resize(inputs[i].size());
+    allocated_tensors_[i].resize(inputs[i].size());
+    has_allocation_target_[i].resize(inputs[i].size());
+  }
+}
+
+InplaceSubComputationVisitor::InplaceSubComputationVisitor(
+    CompilerResources& res, const ArgVectors& inputs,
+    const TensorInputDescription& input_has_layout,
+    const std::vector<const SubComputationVisitor*>& dependent_subcomputations)
+    : SubComputationVisitor(res, inputs, dependent_subcomputations),
+      input_has_layout_(input_has_layout) {}
 
 bool SubComputationVisitor::InputIsUsedInThisSubComputation(
     HloParameterInstruction* inst, const std::vector<xla::Shape>& shapes,
@@ -96,12 +112,8 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   auto& used = used_tensors_[param_num];
   auto& allocated = allocated_tensors_[param_num];
   auto& allocated_targets = has_allocation_target_[param_num];
-  inputs.resize(shapes.size());
-  used.resize(shapes.size());
-  allocated.resize(shapes.size());
-  allocated_targets.resize(shapes.size(), false);
+
   for (unsigned int i = 0; i < shapes.size(); i++) {
-    auto src = std::make_pair(inst, i);
     auto& t = temp_inputs_[param_num][i];
     used[i] = InputIsUsedInThisSubComputation(param_inst, shapes, i);
     allocated[i] =
@@ -113,48 +125,10 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
       // For tensors which are not allocated we just forward them.
       inputs[i] = t;
     } else {
-      poplar::Graph& graph = GetGraphWithOutputIndex(resources_, param_inst, i);
-      // We deal with the inputs differently depending on whether this
-      // computation is inplace or not.
-      if (inplace_inputs_) {
-        // For inplace inputs - if there is a deferred allocation then we use
-        // that
-        if (DeferAllocation(inst, i)) {
-          VLOG(1) << "Deferring allocation of " << inst->name()
-                  << " sub tensor " << i << ".";
-          add_output_tensor = false;
-        } else if (HasTensorAllocationTarget(src, resources_)) {
-          // If the input has an allocation target, then we use that layout
-          // rather than the input layout.
-          TF_ASSIGN_OR_RETURN(inputs[i], AddTensor(graph, src, shapes[i],
-                                                   resources_, tensor_map));
-          allocated_targets[i] = true;
-        } else {
-          inputs[i] = t;
-        }
-      } else {
-        // For used non-inplace inputs we have the following cases:
-        // 1. This is a deferred allocation.
-        // 2. This input has an allocation target.
-        // 3. This input contains constants.
-        // 4. This input does not have a target.
-        // For cases 2 and 3 we allocate a new tensor. For case 3 we clone the
-        // layout of the input.
-        if (DeferAllocation(inst, i)) {
-          VLOG(1) << "Deferring allocation of " << inst->name()
-                  << " sub tensor " << i << ".";
-          add_output_tensor = false;
-        } else {
-          if (HasTensorAllocationTarget(src, resources_) ||
-              t.containsConstant()) {
-            TF_ASSIGN_OR_RETURN(inputs[i], AddTensor(graph, src, shapes[i],
-                                                     resources_, tensor_map));
-          } else {
-            auto name = StrCat(GetDebugName(inst), "_in_", i);
-            inputs[i] = graph.clone(t, name);
-          }
-        }
-      }
+      // Handle the allocated tensor depending on whether this is inplace or
+      // not.
+      TF_ASSIGN_OR_RETURN(add_output_tensor,
+                          HandleTensor(param_inst, shapes[i], i, t));
     }
     if (add_output_tensor) {
       TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, inputs[i]));
@@ -162,6 +136,75 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   }
 
   return Status::OK();
+}
+
+StatusOr<bool> SubComputationVisitor::HandleTensor(
+    HloParameterInstruction* inst, Shape& shape, const uint64 tuple_index,
+    poplar::Tensor& tensor) {
+  const auto param_num = inst->parameter_number();
+  auto src = std::make_pair(inst, tuple_index);
+
+  auto& inputs = inputs_[param_num];
+  auto& allocated_targets = has_allocation_target_[param_num];
+
+  // If we have a deferred allocation then we can't add the output tensor yet
+  // for the tensor mapping.
+  bool add_output_tensor = true;
+  poplar::Graph& graph = GetGraphWithOutputIndex(resources_, inst, tuple_index);
+
+  // For used inputs we have the following cases:
+  // 1. This is a deferred allocation.
+  // 2. This input has an allocation target.
+  // 3. This input contains constants.
+  // 4. This input does not have a target.
+  // For cases 2 and 3 we allocate a new tensor. For case 3 we clone the
+  // layout of the input.
+  if (DeferAllocation(inst, tuple_index)) {
+    VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
+            << tuple_index << ".";
+    add_output_tensor = false;
+  } else if (HasTensorAllocationTarget(src, resources_) ||
+             tensor.containsConstant()) {
+    TF_ASSIGN_OR_RETURN(inputs[tuple_index],
+                        AddTensor(graph, src, shape, resources_, tensor_map));
+  } else {
+    auto name = StrCat(GetDebugName(inst), "_in_", tuple_index);
+    inputs[tuple_index] = graph.clone(tensor, name);
+  }
+  return add_output_tensor;
+}
+
+StatusOr<bool> InplaceSubComputationVisitor::HandleTensor(
+    HloParameterInstruction* inst, Shape& shape, const uint64 tuple_index,
+    poplar::Tensor& tensor) {
+  const auto param_num = inst->parameter_number();
+  auto src = std::make_pair(inst, tuple_index);
+
+  auto& inputs = inputs_[param_num];
+  auto& allocated_targets = has_allocation_target_[param_num];
+
+  // If we have a deferred allocation then we can't add the output tensor yet
+  // for the tensor mapping.
+  bool add_output_tensor = true;
+  poplar::Graph& graph = GetGraphWithOutputIndex(resources_, inst, tuple_index);
+
+  // For inplace inputs - if there is a deferred allocation then we use
+  // that
+  if (DeferAllocation(inst, tuple_index)) {
+    VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
+            << tuple_index << ".";
+    add_output_tensor = false;
+  } else if (HasTensorAllocationTarget(src, resources_)) {
+    // If the input has an allocation target, then we use that layout
+    // rather than the input layout.
+    TF_ASSIGN_OR_RETURN(inputs[tuple_index],
+                        AddTensor(graph, src, shape, resources_, tensor_map));
+    allocated_targets[tuple_index] = true;
+  } else {
+    // Otherwise we just use the tensor as is.
+    inputs[tuple_index] = tensor;
+  }
+  return add_output_tensor;
 }
 
 StatusOr<poplar::Tensor> SubComputationVisitor::PostProcessParameterAllocation(
@@ -188,22 +231,16 @@ const OutVector& SubComputationVisitor::outputs() { return outputs_; }
 
 bool SubComputationVisitor::InputIsAllocated(int64 param,
                                              unsigned int index) const {
-  return (param < allocated_tensors_.size() &&
-          index < allocated_tensors_.at(param).size() &&
-          allocated_tensors_.at(param)[index]);
+  return allocated_tensors_[param][index];
 }
 
 bool SubComputationVisitor::InputIsUsed(int64 param, unsigned int index) const {
-  return (param < used_tensors_.size() &&
-          index < used_tensors_.at(param).size() &&
-          used_tensors_.at(param)[index]);
+  return used_tensors_[param][index];
 }
 
 bool SubComputationVisitor::InputHasAllocationTarget(int64 param,
                                                      unsigned int index) const {
-  return (param < has_allocation_target_.size() &&
-          index < has_allocation_target_.at(param).size() &&
-          has_allocation_target_.at(param)[index]);
+  return has_allocation_target_[param][index];
 }
 
 }  // namespace poplarplugin

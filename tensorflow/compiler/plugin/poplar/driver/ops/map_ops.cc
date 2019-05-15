@@ -145,33 +145,44 @@ ArgVectors GetCallInputs(CompilerResources& res, const HloInstruction* inst,
   return args;
 }
 
+StatusOr<std::shared_ptr<InplaceSubComputationVisitor>>
+CompileInplaceSubComputation(CompilerResources& res, const ArgVectors& inputs,
+                             const HloComputation* comp,
+                             const TensorInputDescription& input_has_layout,
+                             const std::vector<const SubComputationVisitor*>&
+                                 dependent_subcomputations = {}) {
+  VLOG(2) << "Compiling inplace sub-computation " << comp->name();
+  XLA_VLOG_LINES(2, comp->ToString());
+
+  auto visitor = std::make_shared<InplaceSubComputationVisitor>(
+      res, inputs, input_has_layout, dependent_subcomputations);
+  auto order = comp->parent()->schedule().sequence(comp).instructions();
+  TF_RETURN_IF_ERROR(comp->AcceptOrdered(visitor.get(), order));
+
+  return visitor;
+}
+
 }  // namespace
 
 StatusOr<std::shared_ptr<SubComputationVisitor>> GetOrCompileSubComputation(
     CompilerResources& res, const ArgVectors& inputs,
-    const HloComputation* comp, bool inplace_inputs,
+    const HloComputation* comp,
     const std::vector<const SubComputationVisitor*>&
         dependent_subcomputations) {
-  // We can reuse sub computation if it's not inplace.
-  if (!inplace_inputs) {
-    auto itr = res.computation_map.find(comp);
-    if (itr != res.computation_map.end()) {
-      return itr->second;
-    }
+  auto itr = res.computation_map.find(comp);
+  if (itr != res.computation_map.end()) {
+    return itr->second;
   }
 
   VLOG(2) << "Compiling sub-computation " << comp->name();
   XLA_VLOG_LINES(2, comp->ToString());
 
   auto visitor = std::make_shared<SubComputationVisitor>(
-      res, inputs, inplace_inputs, dependent_subcomputations);
+      res, inputs, dependent_subcomputations);
   auto order = comp->parent()->schedule().sequence(comp).instructions();
   TF_RETURN_IF_ERROR(comp->AcceptOrdered(visitor.get(), order));
 
-  // We can reuse sub computation if it's not inplace.
-  if (!inplace_inputs) {
-    res.computation_map[comp] = visitor;
-  }
+  res.computation_map[comp] = visitor;
 
   return visitor;
 }
@@ -359,14 +370,13 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
   CHECK_EQ(inputs.size(), 1);
 
   // Conditional should not change the inputs - therefore it's not inplace.
-  TF_ASSIGN_OR_RETURN(
-      auto cond,
-      GetOrCompileSubComputation(res, inputs, inst->while_condition(), false));
+  TF_ASSIGN_OR_RETURN(auto cond, GetOrCompileSubComputation(
+                                     res, inputs, inst->while_condition()));
 
   // Body of the while loop is inplace.
   TF_ASSIGN_OR_RETURN(
-      auto body, GetOrCompileSubComputation(res, inputs, inst->while_body(),
-                                            true, {cond.get()}));
+      auto body, CompileInplaceSubComputation(res, inputs, inst->while_body(),
+                                              {}, {cond.get()}));
 
   unsigned int param_count = inputs[0].size();
   const ArgVector& inplace_inputs = inputs[0];
@@ -443,8 +453,8 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
                                              tensor_map, res, inst, main_seq));
   CHECK_EQ(inputs.size(), 1);
 
-  TF_ASSIGN_OR_RETURN(auto body, GetOrCompileSubComputation(
-                                     res, inputs, inst->to_apply(), true));
+  TF_ASSIGN_OR_RETURN(auto body, CompileInplaceSubComputation(
+                                     res, inputs, inst->to_apply(), {}));
 
   unsigned int param_count = inputs[0].size();
 
