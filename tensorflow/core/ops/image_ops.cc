@@ -925,4 +925,54 @@ REGISTER_OP("CombinedNonMaxSuppression")
     .Attr("clip_boxes: bool = true")
     .SetShapeFn(CombinedNMSShapeFn);
 
+REGISTER_OP("GenerateBoundingBoxProposals")
+    .Input("scores: float")
+    .Input("bbox_deltas: float")
+    .Input("image_info: float")
+    .Input("anchors: float")
+    .Output("rois: float")
+    .Output("roi_probabilities: float")
+    .Attr("pre_nms_topn: int = 6000")
+    .Attr("post_nms_topn: int = 300")
+    .Attr("nms_threshold: float = 0.7")
+    .Attr("min_size: float = 16")
+    .Attr("debug: bool = false")
+    .Attr("correct_transform_coords: bool = true")
+    .SetShapeFn([](InferenceContext* c) -> Status {
+      // make sure input tensors have are correct rank
+      ShapeHandle scores, images, bounding_boxes, anchors;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &scores));  //(N, H, W, A)
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(1), 4, &bounding_boxes));         //(N,H,W,A4)
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &images));  // (N,5)
+      auto im_info = c->Dim(images, 1);
+      TF_RETURN_IF_ERROR(c->WithValue(im_info, 5, &im_info));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &anchors));  // (A4)
+      // TODO(skama): verify that the inputs are compatible
+      int post_nms_top_n;
+      TF_RETURN_IF_ERROR(c->GetAttr("post_nms_topn", &post_nms_top_n));
+      auto roi_shape = c->MakeShape(
+          {c->Dim(scores, 0), post_nms_top_n, 4});  //(N,post_nms_top_n,4)
+      auto prob_shape = c->MakeShape(
+          {c->Dim(scores, 0), post_nms_top_n});  // (N,post_nms_top_n)
+      c->set_output(0, roi_shape);
+      c->set_output(1, prob_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+      This op produces Region of Interests from given bounding boxes(bbox_deltas) encoded wrt 
+      anchors according to eq.2 in arXiv:1506.01497
+      The op selects top pre_nms_topn scoring boxes, decodes them with respect to anchors, 
+      applies non-maximal suppression on overlapping boxes with higher than 
+      nms_threshold intersection-over-union (iou) value, discarding boxes where shorter 
+      side is less than min_size.
+
+      scores: A 4D tensor of shape [Batch, Height, Width, Num Anchors] containing the scores per anchor at given postion
+      bbox_deltas: is a tensor of shape [Batch, Height, Width, 4 x Num Anchors] boxes encoded to each anchor
+      anchors: A 1D tensor of shape [4 x Num Anchors], representing the anchors.
+
+      rois: output RoIs, a 3D tensor of shape [Batch, post_nms_topn, 4], padded by 0 if less than post_nms_topn candidates found.
+      roi_probabilities: probability scores of each roi in 'rois', a 2D tensor of shape [Batch,post_nms_topn], padded with 0 if needed.
+      
+    )doc");
 }  // namespace tensorflow

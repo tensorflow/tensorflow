@@ -2636,6 +2636,7 @@ cc_library(
         ":encode_jpeg_op",
         ":encode_png_op",
         ":extract_jpeg_shape_op",
+        ":generate_box_proposals_op",
         ":non_max_suppression_op",
         ":random_crop_op",
         ":resize_area_op",
@@ -2737,6 +2738,12 @@ tf_kernel_library(
     name = "extract_jpeg_shape_op",
     prefix = "extract_jpeg_shape_op",
     deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "generate_box_proposals_op",
+    prefix = "generate_box_proposals_op",
+    deps = [":non_max_suppression_op"] + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
