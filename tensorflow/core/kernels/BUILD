@@ -2742,7 +2742,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "non_max_suppression_op",
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
