@@ -1,17 +1,58 @@
-Build TensorFlow with Seastar as Follows:
+# BUILD
+## Build TensorFlow with Seastar:
 1. ./configure
 2. bazel build --config=opt --config=seastar //tensorflow/tools/pip_package:build_pip_package
 
-List of Dependencies:
+## List of Dependencies:
 libaio-dev
 libunwind-dev
 libsctp-dev
 xfslibs-dev
 systemtap-sdt-dev
 
+# RUN
 Run with grpc+seastar:
 Use grpc+seastar you have to create .endpoint_map file in launch dir.
 (42353 and 42354 are grpc ports, 46068 and 47079 are seastar ports)
 127.0.0.1:42353=127.0.0.1:46068
 127.0.0.1:42354=127.0.0.1:47079
 
+# Seastar-based RPC for TF Worker Service
+
+## User API
+To use it in low level API, specify protocol=grpc+seastar in tf.train.Server.
+To use it in TF 2.0 higher API, specify rpc_layer=grpc+seastar in distribution
+strategy or TF_CONFIG environment variable. 
+
+## Design Goal
+The grpc+seastar RPC protocol is designed to improve the performance of
+distributed sparse model training, typically with hundreds or more worker
+nodes and large-scale embedding variables in the model. In particular, the
+protocol is proposed to address two performance bottlenecks induced by gRPC:
+(1) low QPS for small RPC message (2) extra copying of large RPC message.
+
+Some of the existing networking plugins (such as grpc+verbs) could partially
+address the second bottleneck, but they do not resolve the first one, which
+is the main obstacle for us to scale when our parameter synchronization
+process occurs, once a couple of milliseconds with hundreds of nodes.
+
+## Architecture
+The grpc+seastar RPC protocol has three components:
+Seastar: an Apache 2.0 licensed high-performance server-side application
+framework. It uses kernel-bypass networking and userspace networking
+protocol stack to avoid frequent threading, context switching,
+and memory copying.
+
+TF2Seastar: wrapper classes of Seastar servers and clients to initialize RPC
+handlers to process RPC requests and responses. Seastar itself is not an RPC
+library like gRPC, so we wrap it to act like an RPC system. We also design
+a zero-copy wire format so that we could avoid extra memory copy with
+transmitting tensor data.
+
+Distributed runtime: TF WorkerService stubs implemented using TF2Seastar.
+Some RPC methods in WorkerServices uses the zero-copy wire format
+above (such as RecvTensor and RunGraph), while others still use Protocol
+Buffer. We keep the original gRPC implementation in TF MasterService stubs.
+
+## Design Details
+(https://docs.google.com/document/d/1f1m-98rbH33WE0qNb3tP0yt9Jjbb-rprvweLobRbTCA/edit?usp=sharing) 
