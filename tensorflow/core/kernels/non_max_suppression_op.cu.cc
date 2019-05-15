@@ -42,6 +42,7 @@ struct __align__(16) Box {
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
+typedef Eigen::ThreadPoolDevice CPUDevice;
 
 const int NMS_BOXES_PER_THREAD = 8 * sizeof(int);
 
