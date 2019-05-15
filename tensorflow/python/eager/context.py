@@ -1261,7 +1261,7 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
 
   def disable_graph_collection(self):
-    """Disables graph collections of executed functions."""
+    """Disables graph collection of executed functions."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
@@ -1600,16 +1600,16 @@ def disable_run_metadata():
 
 
 def enable_graph_collection():
-  """Enables tracing of op execution via RunMetadata.
+  """Enables graph collection of executed functions.
 
-  To retrieve the accumulated metadata call context.export_run_metadata()
-  and to stop tracing call context.disable_run_metadata().
+  To retrieve the accumulated graphs call context.export_run_metadata()
+  and to stop collecting graphs call context.disable_graph_collection().
   """
   context().enable_graph_collection()
 
 
 def disable_graph_collection():
-  """Disables tracing of op execution via RunMetadata."""
+  """Disables graph collection of executed functions."""
   context().disable_graph_collection()
 
 
