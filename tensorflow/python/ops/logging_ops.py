@@ -159,7 +159,6 @@ def print_v2(*inputs, **kwargs):
   Example:
     Single-input usage:
     ```python
-    tf.enable_eager_execution()
     tensor = tf.range(10)
     tf.print(tensor, output_stream=sys.stderr)
     ```
@@ -167,7 +166,6 @@ def print_v2(*inputs, **kwargs):
 
     Multi-input usage:
     ```python
-    tf.enable_eager_execution()
     tensor = tf.range(10)
     tf.print("tensors:", tensor, {2: tensor * 2}, output_stream=sys.stdout)
     ```
@@ -176,9 +174,7 @@ def print_v2(*inputs, **kwargs):
 
     Usage in a defun:
     ```python
-    tf.enable_eager_execution()
-
-    @tf.contrib.eager.defun
+    @tf.function
     def f():
         tensor = tf.range(10)
         tf.print(tensor, output_stream=sys.stderr)
@@ -190,14 +186,15 @@ def print_v2(*inputs, **kwargs):
 
     Usage when constructing graphs:
     ```python
-    sess = tf.Session()
     with sess.as_default():
+    @tf.function
+    def f():
         tensor = tf.range(10)
         print_op = tf.print("tensors:", tensor, {2: tensor * 2},
                             output_stream=sys.stdout)
         with tf.control_dependencies([print_op]):
           tripled_tensor = tensor * 3
-        sess.run(tripled_tensor)
+    range_tensor_multi = f()
     ```
     (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
     sys.stdout)
