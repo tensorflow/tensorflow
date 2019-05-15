@@ -1,6 +1,7 @@
 # Description:
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
+
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -276,19 +277,9 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
-    additional_deps = [":multi_worker_test_main_lib"],
-    shard_count = 32,
-    tags = [
-        "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        # TODO(b/123307453): Add "multi_and_single_gpu",
-    ],
-)
-
-py_library(
-    name = "multi_worker_test_main_lib",
-    srcs = ["multi_worker_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
+        ":multi_worker_testing_utils",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -310,7 +301,11 @@ py_library(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras/optimizer_v2",
-        "@absl_py//absl/testing:parameterized",
+    ],
+    shard_count = 32,
+    tags = [
+        "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
+        # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
 )
 
@@ -325,6 +320,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:distribute_coordinator",
+        ":multi_worker_testing_utils",
         "//tensorflow/python/keras",
     ],
     shard_count = 14,
@@ -389,5 +385,20 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+    ],
+)
+
+py_library(
+    name = "multi_worker_testing_utils",
+    srcs = [
+        "multi_worker_testing_utils.py",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/optimizer_v2",
     ],
 )

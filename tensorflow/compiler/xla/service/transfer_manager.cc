@@ -331,7 +331,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape)));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
-    memory_base = memory.Forget();
+    memory_base = memory.Release();
   }
 
   return std::move(shaped_buffer);

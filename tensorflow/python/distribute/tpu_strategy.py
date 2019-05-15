@@ -316,9 +316,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
-    return input_lib.DatasetIterator(dataset, self._input_workers,
-                                     self._num_replicas_in_sync,
-                                     _enable_get_next_as_optional=True)
+    return input_lib.DatasetIterator(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync,
+        _enable_get_next_as_optional=True)
 
   def _make_input_fn_iterator(
       self,
@@ -332,7 +335,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
     return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, input_contexts,
+        input_fn,
+        self._input_workers,
+        input_contexts,
+        self._container_strategy(),
         _enable_get_next_as_optional=True)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
@@ -341,8 +347,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         session)
 
   def _experimental_distribute_dataset(self, dataset):
-    return input_lib.get_distributed_dataset(dataset, self._input_workers,
-                                             self._num_replicas_in_sync)
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have

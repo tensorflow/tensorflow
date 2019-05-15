@@ -1599,6 +1599,9 @@ tf_cuda_cc_test(
     name = "conv_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_ops_benchmark_test.cc"],
+    tags = [
+        "nomac",  # b/132448918
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -1728,6 +1731,25 @@ tf_cc_test(
     srcs = ["fused_batch_norm_op_test.cc"],
     deps = [
         ":fused_batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cc_test(
+    name = "in_topk_op_test",
+    size = "small",
+    srcs = ["in_topk_op_test.cc"],
+    deps = [
+        ":in_topk_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -3245,7 +3267,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tridiagonal_matmul_op",
     srcs = ["tridiagonal_matmul_op.cc"],
-    deps = LINALG_DEPS,
+    gpu_srcs = ["tridiagonal_matmul_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
+    ]),
 )
 
 tf_kernel_library(
@@ -4145,7 +4170,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "in_topk_op",
     prefix = "in_topk_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":reduction_ops"],
 )
 
 tf_kernel_library(
@@ -6058,6 +6083,7 @@ filegroup(
         "dynamic_stitch_op.cc",
         "fft_ops.cc",
         "in_topk_op.cc",
+        "in_topk_op.h",
         "initializable_lookup_table.cc",
         "logging_ops.cc",
         "lookup_table_init_op.cc",
@@ -7615,9 +7641,6 @@ tf_kernel_library(
         "@icu//:common",
     ],
 )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.

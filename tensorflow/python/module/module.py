@@ -37,24 +37,24 @@ class Module(tracking.AutoTrackable):
   network might be implemented as a `tf.Module`:
 
   ```python
-  >>> class Dense(tf.Module):
-  ...   def __init__(self, in_features, output_features, name=None):
-  ...     super(Dense, self).__init__(name=name)
-  ...     self.w = tf.Variable(
-  ...         tf.random.normal([input_features, output_features]), name='w')
-  ...     self.b = tf.Variable(tf.zeros([output_features]), name='b')
-  ...
-  ...   def __call__(self, x):
-  ...     y = tf.matmul(x, self.w) + self.b
-  ...     return tf.nn.relu(y)
+   class Dense(tf.Module):
+     def __init__(self, in_features, output_features, name=None):
+       super(Dense, self).__init__(name=name)
+       self.w = tf.Variable(
+           tf.random.normal([input_features, output_features]), name='w')
+       self.b = tf.Variable(tf.zeros([output_features]), name='b')
+
+     def __call__(self, x):
+       y = tf.matmul(x, self.w) + self.b
+       return tf.nn.relu(y)
   ```
 
   You can use the Dense layer as you would expect:
 
   ```python
-  >>> d = Dense(input_features=64, output_features=10)
-  >>> d(tf.ones([100, 64]))
-  <tf.Tensor: ...>
+  d = Dense(input_features=64, output_features=10)
+  d(tf.ones([100, 64]))
+  #==> <tf.Tensor: ...>
   ```
 
   By subclassing `tf.Module` instead of `object` any `tf.Variable` or
@@ -62,8 +62,8 @@ class Module(tracking.AutoTrackable):
   the `variables`, `trainable_variables` or `submodules` property:
 
   ```python
-  >>> d.variables
-  (<tf.Variable 'b:0' ...>, <tf.Variable 'w:0' ...>)
+  d.variables
+  #==> (<tf.Variable 'b:0' ...>, <tf.Variable 'w:0' ...>)
   ```
 
   Subclasses of `tf.Module` can also take advantage of the `_flatten` method
@@ -78,20 +78,20 @@ class Module(tracking.AutoTrackable):
   with `@tf.Module.with_name_scope`.
 
   ```python
-  >>> class MLP(tf.Module):
-  ...   def __init__(self, input_size, sizes, name=None):
-  ...     super(MLP, self).__init__(name=name)
-  ...     self.layers = []
-  ...     with self.name_scope:
-  ...       for size in sizes:
-  ...         self.layers.append(Dense(input_size=input_size, output_size=size))
-  ...         input_size = size
-  ...
-  ...   @tf.Module.with_name_scope
-  ...   def __call__(self, x):
-  ...     for layer in self.layers:
-  ...       x = layer(x)
-  ...     return x
+  class MLP(tf.Module):
+    def __init__(self, input_size, sizes, name=None):
+      super(MLP, self).__init__(name=name)
+      self.layers = []
+      with self.name_scope:
+        for size in sizes:
+          self.layers.append(Dense(input_size=input_size, output_size=size))
+          input_size = size
+
+    @tf.Module.with_name_scope
+    def __call__(self, x):
+      for layer in self.layers:
+        x = layer(x)
+      return x
   ```
   """
 
@@ -168,14 +168,16 @@ class Module(tracking.AutoTrackable):
     Submodules are modules which are properties of this module, or found as
     properties of modules which are properties of this module (and so on).
 
-    >>> a = tf.Module()
-    >>> b = tf.Module()
-    >>> c = tf.Module()
-    >>> a.b = b
-    >>> b.c = c
-    >>> assert list(a.submodules) == [b, c]
-    >>> assert list(b.submodules) == [c]
-    >>> assert list(c.submodules) == []
+    ```
+    a = tf.Module()
+    b = tf.Module()
+    c = tf.Module()
+    a.b = b
+    b.c = c
+    assert list(a.submodules) == [b, c]
+    assert list(b.submodules) == [c]
+    assert list(c.submodules) == []
+    ```
 
     Returns:
       A sequence of all submodules.
@@ -195,24 +197,26 @@ class Module(tracking.AutoTrackable):
     flattened to find leaves. Finally every leaf value is optionally tested
     against the given `predicate` and finally yielded.
 
-    >>> class Foo(tf.Module):
-    ...   def __init__(self):
-    ...     super(Foo, self).__init__()
-    ...     self.x = [tf.constant('a'), tf.constant('b')]
-    ...     self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
-    ...     self.z = tf.constant('e')
-    ...
-    ...   @property
-    ...   def tensors(self):
-    ...     return tuple(self._flatten(predicate=is_tensor, with_path=True))
+    ```
+    class Foo(tf.Module):
+      def __init__(self):
+        super(Foo, self).__init__()
+        self.x = [tf.constant('a'), tf.constant('b')]
+        self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
+        self.z = tf.constant('e')
 
-    >>> foo = Foo()
-    >>> foo.tensors
-    ((('x', 0),   <tf.Tensor: ...'a'>),
-     (('x', 1),   <tf.Tensor: ...'b'>),
-     (('y', 'i'), <tf.Tensor: ...'c'>),
-     (('y', 'j'), <tf.Tensor: ...'d'>),
-     (('z',),     <tf.Tensor: ...'e'>))
+      @property
+      def tensors(self):
+        return tuple(self._flatten(predicate=is_tensor, with_path=True))
+
+    foo = Foo()
+    foo.tensors
+    # ==> ((('x', 0),   <tf.Tensor: ...'a'>),
+    #     (('x', 1),   <tf.Tensor: ...'b'>),
+    #     (('y', 'i'), <tf.Tensor: ...'c'>),
+    #     (('y', 'j'), <tf.Tensor: ...'d'>),
+    #     (('z',),     <tf.Tensor: ...'e'>))
+    ```
 
     `attribute_traversal_key` controls the order object properties are visited.
     If not set objects are visited in ascending order by name.
@@ -249,21 +253,25 @@ class Module(tracking.AutoTrackable):
   def with_name_scope(cls, method):
     """Decorator to automatically enter the module name scope.
 
-    >>> class MyModule(tf.Module):
-    ...   @tf.Module.with_name_scope
-    ...   def __call__(self, x):
-    ...     if not hasattr(self, 'w'):
-    ...       self.w = tf.Variable(tf.random.normal([x.shape[1], 64]))
-    ...     return tf.matmul(x, self.w)
+    ```
+    class MyModule(tf.Module):
+      @tf.Module.with_name_scope
+      def __call__(self, x):
+        if not hasattr(self, 'w'):
+          self.w = tf.Variable(tf.random.normal([x.shape[1], 64]))
+        return tf.matmul(x, self.w)
+    ```
 
     Using the above module would produce `tf.Variable`s and `tf.Tensor`s whose
     names included the module name:
 
-    >>> mod = MyModule()
-    >>> mod(tf.ones([8, 32]))
-    <tf.Tensor: ...>
-    >>> mod.w
-    <tf.Variable ...'my_module/w:0'>
+    ```
+    mod = MyModule()
+    mod(tf.ones([8, 32]))
+    # ==> <tf.Tensor: ...>
+    mod.w
+    # ==> <tf.Variable ...'my_module/w:0'>
+    ```
 
     Args:
       method: The method to wrap.

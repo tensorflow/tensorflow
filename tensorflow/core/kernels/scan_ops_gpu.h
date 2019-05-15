@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/scan_ops.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/permutation_output_iterator.h"

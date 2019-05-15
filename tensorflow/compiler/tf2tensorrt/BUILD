@@ -28,8 +28,7 @@ load(
     "tf_proto_library",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-
-# Google-internal targets go here (must be at the end).
+# Placeholder for Google-internal load statements.
 
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",

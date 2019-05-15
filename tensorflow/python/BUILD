@@ -1130,6 +1130,7 @@ py_test(
     name = "framework_composite_tensor_test",
     srcs = ["framework/composite_tensor_test.py"],
     main = "framework/composite_tensor_test.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":composite_tensor",
@@ -2027,6 +2028,7 @@ py_test(
     name = "batch_ops_test",
     size = "small",
     srcs = ["ops/batch_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -2910,6 +2912,7 @@ py_test(
     name = "loss_scale_optimizer_test",
     size = "small",
     srcs = ["training/experimental/loss_scale_optimizer_test.py"],
+    python_version = "PY2",
     deps = [
         ":loss_scale_optimizer",
         "//tensorflow/python:client_testlib",
@@ -2924,6 +2927,7 @@ py_test(
     name = "loss_scale_test",
     size = "medium",
     srcs = ["training/experimental/loss_scale_test.py"],
+    python_version = "PY2",
     deps = [
         ":loss_scale",
         "//tensorflow/python:client_testlib",
@@ -3432,7 +3436,6 @@ py_library(
         ":check_ops",
         ":confusion_matrix",
         ":control_flow_ops",
-        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
@@ -3444,6 +3447,7 @@ py_library(
         ":variable_scope",
         ":variables",
         ":weights_broadcast_ops",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
@@ -4093,6 +4097,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -6345,6 +6350,7 @@ py_binary(
     srcs = [
         "grappler/cost_analyzer_tool.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":cost_analyzer",
@@ -6509,6 +6515,7 @@ py_binary(
     srcs = [
         "grappler/graph_analyzer.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_for_generated_wrappers",

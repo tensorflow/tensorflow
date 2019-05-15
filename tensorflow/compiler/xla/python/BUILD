@@ -214,7 +214,6 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:name_uniquer",
@@ -229,6 +228,7 @@ tf_pybind_extension(
         # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+        "//tensorflow/stream_executor:device_memory_allocator",
     ] + xla_python_default_plugins(),
 )
 

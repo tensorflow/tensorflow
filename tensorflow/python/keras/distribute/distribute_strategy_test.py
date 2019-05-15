@@ -508,11 +508,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertEqual(batch_size, 20 // replica_scale_factor)
       self.assertEqual(steps, 1)
 
-      #  Default global batch size 32 cannot be used with 63 samples.
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_63_samples, steps=None, batch_size=None)
-
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_with_steps_no_batch_size(self,
                                                              distribution):
@@ -582,16 +577,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           distribution, input_64_samples, steps=None, batch_size=32)
       self.assertEqual(batch_size, 32)
       self.assertEqual(steps, 2 // replica_scale_factor)
-
-      # Number of samples is not divisible by the global batch size
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=None, batch_size=20)
-
-      # Number of samples is not divisible by the global batch size
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=None, batch_size=3)
 
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_with_steps_with_batch_size(self,

@@ -264,8 +264,9 @@ cc_library(
     name = "ruy",
     srcs = [
         "dispatch.h",
-        "impl.h",
         "prepack.h",
+        "trmul.cc",
+        "trmul.h",
     ],
     hdrs = [
         "matrix.h",
@@ -280,6 +281,7 @@ cc_library(
         ":check_macros",
         ":common",
         ":context",
+        ":internal_matrix",
         ":kernel",
         ":opt_set",
         ":pack",

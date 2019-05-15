@@ -41,7 +41,6 @@ limitations under the License.
 #define gpuSuccess cudaSuccess
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
-
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 using gpuStream_t = hipStream_t;
@@ -51,6 +50,41 @@ using gpuError_t = hipError_t;
 #define GetGPUStream(context) context->eigen_gpu_device().stream()
 
 namespace tensorflow {
+// Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
+// hipLaunchKernel in ROCm environment with the given arguments.
+//
+// The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
+template <typename... Ts, typename... Args>
+Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
+                       size_t shared_memory_size_bytes, gpuStream_t stream,
+                       Args... arguments) {
+  static_assert(detail::NoneIsReference<Ts...>(),
+                "Kernels with reference arguments have undefined behaviour.");
+#if GOOGLE_CUDA
+  auto func_ptr = absl::bit_cast<const void*>(function);
+  // Cast arguments and forward them as an array of pointers.
+  auto args_tuple = std::tuple<Ts...>(arguments...);
+  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
+  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
+                                 shared_memory_size_bytes, stream);
+  if (result != cudaSuccess) {
+    return errors::Internal(cudaGetErrorString(result));
+  }
+#elif TENSORFLOW_USE_ROCM
+  hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
+                     stream, std::forward<Args>(arguments)...);
+#endif
+  return Status::OK();
+}
+
+// Perfect forwarding to make CudaLaunchKernel available to both ROCm and CUDA
+// builds
+template <typename... Args>
+auto CudaLaunchKernel(Args&&... args)
+    -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
+  return GpuLaunchKernel(std::forward<Args>(args)...);
+}
+
 __host__ __device__ inline tensorflow::bfloat16 CudaLdg(
     const tensorflow::bfloat16* address) {
   tensorflow::bfloat16 return_value;

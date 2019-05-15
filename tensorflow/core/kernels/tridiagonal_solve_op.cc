@@ -101,11 +101,11 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
                      MatrixMaps* outputs) final {
     const auto diagonals = inputs[0];
 
-    // Subdiagonal elements, first is ignored.
+    // Superdiagonal elements, first is ignored.
     const auto& superdiag = diagonals.row(0);
     // Diagonal elements.
     const auto& diag = diagonals.row(1);
-    // Superdiagonal elements, n-th is ignored.
+    // Subdiagonal elements, n-th is ignored.
     const auto& subdiag = diagonals.row(2);
     // Right-hand sides.
     const auto& rhs = inputs[1];

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
@@ -130,11 +131,11 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
     const auto diagonals = inputs[0];
-    // Subdiagonal elements, first is ignored.
+    // Superdiagonal elements, first is ignored.
     const auto& superdiag = diagonals.row(0);
     // Diagonal elements.
     const auto& diag = diagonals.row(1);
-    // Superdiagonal elements, last is ignored.
+    // Subdiagonal elements, last is ignored.
     const auto& subdiag = diagonals.row(2);
     // Right-hand sides.
     const auto& rhs = inputs[1];

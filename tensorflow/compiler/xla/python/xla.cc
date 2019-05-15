@@ -298,9 +298,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>())
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
-           py::call_guard<py::gil_scoped_release>());
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def_property("xla_cpu_enable_fast_math",

@@ -132,7 +132,7 @@ static void PopulateShapedBufferFromBuffer(
     ShapeTree<se::DeviceMemoryBase>::iterator* iterator,
     const ShapeTree<se::DeviceMemoryBase>::iterator& end) {
   CHECK(*iterator != end);
-  (*iterator)->second = buffer.device_memory().AsDeviceMemoryBase();
+  (*iterator)->second = *buffer.device_memory();
   ++*iterator;
   for (const auto& child : buffer.children()) {
     PopulateShapedBufferFromBuffer(*child, iterator, end);

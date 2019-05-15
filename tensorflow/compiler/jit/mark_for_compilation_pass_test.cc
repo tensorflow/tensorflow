@@ -1548,5 +1548,59 @@ TEST(XlaCompilationTest, DontClusterNodesWithForwardFromAttr) {
   EXPECT_EQ(clusters["test/z"], "");
 }
 
+// Note, this relies on other implementation details to test the
+// specific heuristic we care about here, so other changes might be at fault if
+// this CL breaks. What we care about is that if a ShapeConsumingOp can be
+// connected with a producer or consumer and cannot be clustered with both, it
+// should be clustered with the producer.
+TEST(XlaCompilationTest, ClusterShapeConsumerWithProducer) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
+
+  Output x = ops::MatMul(root.WithOpName("test/x"), a, b);
+  Output y = ops::Size(root.WithOpName("test/y"), x);
+  Output z = ops::Add(root.WithOpName("test/z"), y, y);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  // Ensure that the "Size" op can only be clustered with either the producer or
+  // consumer by putting them on different devices.
+  FindNodeByName(graph.get(), "test/x")->set_assigned_device_name(kGPU0);
+  FindNodeByName(graph.get(), "test/y")->set_assigned_device_name(kCPU0);
+  FindNodeByName(graph.get(), "test/z")->set_assigned_device_name(kGPU1);
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+
+  EXPECT_NE(clusters["test/y"], "");
+  EXPECT_EQ(clusters["test/x"], clusters["test/y"]);
+  EXPECT_NE(clusters["test/z"], clusters["test/y"]);
+}
+
+// Test that ShapeConsuming ops are still fully clustered whenever possible.
+TEST(XlaCompilationTest, ClusterShapeConsumerWithProducerAndConsumer) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
+
+  Output x = ops::MatMul(root.WithOpName("test/x"), a, b);
+  Output y = ops::Size(root.WithOpName("test/y"), x);
+  Output z = ops::Add(root.WithOpName("test/z"), y, y);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+
+  EXPECT_NE(clusters["test/y"], "");
+  EXPECT_EQ(clusters["test/y"], clusters["test/x"]);
+  EXPECT_EQ(clusters["test/y"], clusters["test/z"]);
+}
+
 }  // namespace
 }  // namespace tensorflow

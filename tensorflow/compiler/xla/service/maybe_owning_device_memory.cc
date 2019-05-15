@@ -19,8 +19,7 @@ namespace xla {
 
 tensorflow::se::DeviceMemoryBase MaybeOwningDeviceMemory::AsDeviceMemoryBase() {
   if (HasOwnership()) {
-    return absl::get<tensorflow::se::OwningDeviceMemory>(mem_)
-        .AsDeviceMemoryBase();
+    return *absl::get<tensorflow::se::OwningDeviceMemory>(mem_);
   } else {
     return absl::get<tensorflow::se::DeviceMemoryBase>(mem_);
   }
@@ -35,11 +34,7 @@ MaybeOwningDeviceMemory::Release() {
   if (!HasOwnership()) {
     return {};
   }
-  tensorflow::se::OwningDeviceMemory result =
-      std::move(absl::get<tensorflow::se::OwningDeviceMemory>(mem_));
-  mem_ = result.AsDeviceMemoryBase();
-  return absl::make_optional<tensorflow::se::OwningDeviceMemory>(
-      std::move(result));
+  return std::move(absl::get<tensorflow::se::OwningDeviceMemory>(mem_));
 }
 
 }  // namespace xla

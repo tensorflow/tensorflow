@@ -173,38 +173,78 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
               structure.Structure.from_value(incompatible_value)))
 
   @parameterized.named_parameters(
-      ("Tensor", lambda: constant_op.constant(37.0),
-       lambda: constant_op.constant(42.0), lambda: constant_op.constant([5])),
-      ("TensorArray", lambda: tensor_array_ops.TensorArray(
-          dtype=dtypes.float32, element_shape=(3,), size=0),
+      ("Tensor",
+       lambda: constant_op.constant(37.0),
+       lambda: constant_op.constant(42.0),
+       lambda: constant_op.constant([5])),
+      ("TensorArray",
+       lambda: tensor_array_ops.TensorArray(
+           dtype=dtypes.float32, element_shape=(3,), size=0),
        lambda: tensor_array_ops.TensorArray(
            dtype=dtypes.float32, element_shape=(3,), size=0),
        lambda: tensor_array_ops.TensorArray(
            dtype=dtypes.int32, element_shape=(), size=0)),
-      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
-          indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+      ("SparseTensor",
        lambda: sparse_tensor.SparseTensor(
-           indices=[[1, 2]], values=[42], dense_shape=[4, 5]), lambda:
-       sparse_tensor.SparseTensor(indices=[[3]], values=[-1], dense_shape=[5])),
-      ("Nested", lambda: {
-          "a": constant_op.constant(37.0),
-          "b": constant_op.constant([1, 2, 3])
-      }, lambda: {
-          "a": constant_op.constant(42.0),
-          "b": constant_op.constant([4, 5, 6])
-      }, lambda: {
-          "a": constant_op.constant([1, 2, 3]),
-          "b": constant_op.constant(37.0)
-      }),
-  )
-  def testEquality(self, value1_fn, value2_fn, value3_fn):
+           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
+       lambda: sparse_tensor.SparseTensor(
+           indices=[[1, 2]], values=[42], dense_shape=[4, 5]),
+       lambda: sparse_tensor.SparseTensor(
+           indices=[[3]], values=[-1], dense_shape=[5]),
+       lambda: sparse_tensor.SparseTensor(
+           indices=[[3, 4]], values=[1.0], dense_shape=[4, 5])),
+      ("RaggedTensor",
+       lambda: ragged_factory_ops.constant([[[1, 2]], [[3]]]),
+       lambda: ragged_factory_ops.constant([[[5]], [[8], [3, 2]]]),
+       lambda: ragged_factory_ops.constant([[[1]], [[2], [3]]],
+                                           ragged_rank=1),
+       lambda: ragged_factory_ops.constant([[[1.0, 2.0]], [[3.0]]]),
+       lambda: ragged_factory_ops.constant([[[1]], [[2]], [[3]]])),
+      ("Nested",
+       lambda: {
+           "a": constant_op.constant(37.0),
+           "b": constant_op.constant([1, 2, 3])},
+       lambda: {
+           "a": constant_op.constant(42.0),
+           "b": constant_op.constant([4, 5, 6])},
+       lambda: {
+           "a": constant_op.constant([1, 2, 3]),
+           "b": constant_op.constant(37.0)
+       }),
+  )  # pyformat: disable
+  def testStructureFromValueEquality(self, value1_fn, value2_fn,
+                                     *not_equal_value_fns):
+    # pylint: disable=g-generic-assert
     s1 = structure.Structure.from_value(value1_fn())
     s2 = structure.Structure.from_value(value2_fn())
-    s3 = structure.Structure.from_value(value3_fn())
-    self.assertEqual(s1, s1)
-    self.assertEqual(s1, s2)
-    self.assertNotEqual(s1, s3)
-    self.assertNotEqual(s2, s3)
+    self.assertEqual(s1, s1)  # check __eq__ operator.
+    self.assertEqual(s1, s2)  # check __eq__ operator.
+    self.assertFalse(s1 != s1)  # check __ne__ operator.
+    self.assertFalse(s1 != s2)  # check __ne__ operator.
+    self.assertEqual(hash(s1), hash(s1))
+    self.assertEqual(hash(s1), hash(s2))
+    for value_fn in not_equal_value_fns:
+      s3 = structure.Structure.from_value(value_fn())
+      self.assertNotEqual(s1, s3)  # check __ne__ operator.
+      self.assertNotEqual(s2, s3)  # check __ne__ operator.
+      self.assertFalse(s1 == s3)  # check __eq_ operator.
+      self.assertFalse(s2 == s3)  # check __eq_ operator.
+
+  @parameterized.named_parameters(
+      ("RaggedTensor_RaggedRank",
+       structure.RaggedTensorStructure(dtypes.int32, None, 1),
+       structure.RaggedTensorStructure(dtypes.int32, None, 2)),
+      ("RaggedTensor_Shape",
+       structure.RaggedTensorStructure(dtypes.int32, [3, None], 1),
+       structure.RaggedTensorStructure(dtypes.int32, [5, None], 1)),
+      ("RaggedTensor_DType",
+       structure.RaggedTensorStructure(dtypes.int32, None, 1),
+       structure.RaggedTensorStructure(dtypes.float32, None, 1)),
+      )
+  def testInequality(self, s1, s2):
+    # pylint: disable=g-generic-assert
+    self.assertNotEqual(s1, s2)  # check __ne__ operator.
+    self.assertFalse(s1 == s2)  # check __eq__ operator.
 
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),

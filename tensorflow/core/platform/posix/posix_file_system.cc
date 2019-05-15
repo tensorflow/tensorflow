@@ -336,11 +336,13 @@ Status PosixFileSystem::CopyFile(const string& src, const string& target) {
     return IOError(src, errno);
   }
   string translated_target = TranslateName(target);
-  // O_WRONLY | O_CREAT:
+  // O_WRONLY | O_CREAT | O_TRUNC:
   //   Open file for write and if file does not exist, create the file.
+  //   If file exists, truncate its size to 0.
   // When creating file, use the same permissions as original
   mode_t mode = sbuf.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
-  int target_fd = open(translated_target.c_str(), O_WRONLY | O_CREAT, mode);
+  int target_fd =
+      open(translated_target.c_str(), O_WRONLY | O_CREAT | O_TRUNC, mode);
   if (target_fd < 0) {
     close(src_fd);
     return IOError(target, errno);

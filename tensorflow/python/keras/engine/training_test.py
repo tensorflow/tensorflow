@@ -78,7 +78,7 @@ class CompileTest(keras_parameterized.TestCase):
       self.assertIsInstance(model.loss_functions[i], losses.LossFunctionWrapper)
       if not isinstance(loss_list[i], losses.LossFunctionWrapper):
         self.assertEqual(model.loss_functions[i].fn, loss_list[i])
-    self.assertAllEqual(model.loss_weights_list, [1.] * len(loss_list))
+    self.assertAllEqual(model._loss_weights_list, [1.] * len(loss_list))
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(('loss_string', 'mse'),
@@ -108,7 +108,7 @@ class CompileTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(model.loss_functions[0].fn, losses.mean_squared_error)
     self.assertEqual(model.loss_functions[1].fn, losses.mean_absolute_error)
-    self.assertAllEqual(model.loss_weights_list, [1., 1.])
+    self.assertAllEqual(model._loss_weights_list, [1., 1.])
 
     # Test loss is a dict.
     loss = {'dense_1': 'mae', 'dense_2': 'mse'}
@@ -118,7 +118,7 @@ class CompileTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(model.loss_functions[0].fn, losses.mean_absolute_error)
     self.assertEqual(model.loss_functions[1].fn, losses.mean_squared_error)
-    self.assertAllEqual(model.loss_weights_list, [1., 1.])
+    self.assertAllEqual(model._loss_weights_list, [1., 1.])
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_multi_output_and_loss_weights_list(self):
@@ -129,14 +129,14 @@ class CompileTest(keras_parameterized.TestCase):
         loss='mse',
         loss_weights=loss_weights,
         run_eagerly=testing_utils.should_run_eagerly())
-    self.assertAllEqual(model.loss_weights_list, [1., 2.])
+    self.assertAllEqual(model._loss_weights_list, [1., 2.])
 
   def test_compile_with_multi_output_and_loss_weights_dict(self):
     with context.graph_mode():
       model = self._get_multi_output_model()
       loss_weights = {'dense_1': 1., 'dense_2': 2.}
       model.compile(optimizer='adam', loss='mse', loss_weights=loss_weights)
-      self.assertAllEqual(model.loss_weights_list, [1., 2.])
+      self.assertAllEqual(model._loss_weights_list, [1., 2.])
 
       input_np = np.random.random((10, 3))
       output_a_np = np.random.random((10, 1))
@@ -1195,6 +1195,24 @@ class TrainingTest(keras_parameterized.TestCase):
 
     self.assertEqual(model.training, expected_training_arg)
     self.assertEqual(model.l1.training, expected_training_arg)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_error_when_model_is_not_compiled(self):
+    inputs = keras.Input(shape=(1,))
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
+      model.fit(np.ones((1, 1)), np.ones((1, 1)))
+
+    class MyModel(keras.Model):
+
+      def call(self, x):
+        self.add_loss(math_ops.reduce_sum(x))
+        return x
+
+    model = MyModel()
+    with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
+      model.fit(np.random.random((32, 1)), epochs=2)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):

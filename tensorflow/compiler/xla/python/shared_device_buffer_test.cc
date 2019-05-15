@@ -114,11 +114,9 @@ TEST(PySharedDeviceBufferTest, AsShapedBuffer) {
             abc_tuple_buffer->on_device_shape());
 
   std::vector<se::DeviceMemoryBase> expected_buffer_sequence = {
-      abc_tuple_buffer->device_memory().AsDeviceMemoryBase(),
-      c_buffer->device_memory().AsDeviceMemoryBase(),
-      ab_tuple_buffer->device_memory().AsDeviceMemoryBase(),
-      a_buffer->device_memory().AsDeviceMemoryBase(),
-      b_buffer->device_memory().AsDeviceMemoryBase(),
+      *abc_tuple_buffer->device_memory(), *c_buffer->device_memory(),
+      *ab_tuple_buffer->device_memory(),  *a_buffer->device_memory(),
+      *b_buffer->device_memory(),
   };
   auto it = shaped_buffer.buffers().begin();
   auto expected_it = expected_buffer_sequence.begin();

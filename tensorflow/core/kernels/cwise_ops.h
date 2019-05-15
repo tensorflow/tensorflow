@@ -984,7 +984,7 @@ struct scalar_atan2_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
 #if GOOGLE_CUDA
-    return ::atan2(y, x);
+    return std::atan2(y, x);
 #else
     return std::atan2(y, x);
 #endif

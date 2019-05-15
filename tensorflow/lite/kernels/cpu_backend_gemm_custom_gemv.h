@@ -412,28 +412,29 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
       reduced = vaddq_s32(reduced, bias_vec);
 
       // Get multiplier parameters.
-      int multiplier_exponent;
-      std::int32_t multiplier_fixedpoint;
+      int32x4_t multiplier_fixedpoint;
+      int32x4_t multiplier_exponent;
       if (quantization_flavor ==
           QuantizationFlavor::kIntegerWithPerRowMultiplier) {
-        multiplier_exponent = params.multiplier_exponent_perchannel[row];
-        multiplier_fixedpoint = params.multiplier_fixedpoint_perchannel[row];
+        multiplier_exponent =
+            vld1q_s32(params.multiplier_exponent_perchannel + row);
+        multiplier_fixedpoint =
+            vld1q_s32(params.multiplier_fixedpoint_perchannel + row);
       } else {
-        multiplier_exponent = params.multiplier_exponent;
-        multiplier_fixedpoint = params.multiplier_fixedpoint;
+        multiplier_exponent = vdupq_n_s32(params.multiplier_exponent);
+        multiplier_fixedpoint = vdupq_n_s32(params.multiplier_fixedpoint);
       }
 
       // If positive exponent, shift left.
-      if (multiplier_exponent > 0) {
-        reduced = vshlq_s32(reduced, vdupq_n_s32(multiplier_exponent));
-      }
+      int32x4_t exponent_positive_part =
+          vmaxq_s32(multiplier_exponent, vdupq_n_s32(0));
+      reduced = vshlq_s32(reduced, exponent_positive_part);
       // Multiply by the fixed-point multiplier.
-      reduced = vqrdmulhq_n_s32(reduced, multiplier_fixedpoint);
+      reduced = vqrdmulhq_s32(reduced, multiplier_fixedpoint);
       // If negative exponent, rounding-shift-right.
-      if (multiplier_exponent < 0) {
-        using gemmlowp::RoundingDivideByPOT;
-        reduced = RoundingDivideByPOT(reduced, -multiplier_exponent);
-      }
+      int32x4_t exponent_negative_part =
+          vminq_s32(multiplier_exponent, vdupq_n_s32(0));
+      reduced = vrshlq_s32(reduced, exponent_negative_part);
 
       // Add the output offset.
       const int32x4_t output_offset_vec = vdupq_n_s32(dst_params.zero_point);

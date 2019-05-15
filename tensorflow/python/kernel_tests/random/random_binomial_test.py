@@ -38,7 +38,7 @@ class RandomBinomialTest(test.TestCase):
   def _Sampler(self, num, counts, probs, dtype, seed=None):
 
     def func():
-      rng = stateful_random_ops.Generator(seed=seed).binomial(
+      rng = stateful_random_ops.Generator.from_seed(seed).binomial(
           shape=[10 * num], counts=counts, probs=probs, dtype=dtype)
       ret = array_ops.reshape(rng, [10, num])
       ret = self.evaluate(ret)
@@ -80,11 +80,11 @@ class RandomBinomialTest(test.TestCase):
       self.assertAllEqual(sx(), sy())
 
   def testZeroShape(self):
-    rnd = stateful_random_ops.Generator(seed=12345).binomial([0], [], [])
+    rnd = stateful_random_ops.Generator.from_seed(12345).binomial([0], [], [])
     self.assertEqual([0], rnd.shape.as_list())
 
   def testShape(self):
-    rng = stateful_random_ops.Generator(seed=12345)
+    rng = stateful_random_ops.Generator.from_seed(12345)
     # Scalar parameters.
     rnd = rng.binomial(shape=[10], counts=np.float32(2.), probs=np.float32(0.5))
     self.assertEqual([10], rnd.shape.as_list())

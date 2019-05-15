@@ -127,8 +127,11 @@ class ArCrsCombiner : public HloModulePass {
 
   // Returns a vector of tuple instructions.
   // If all instructions that flow to "instruction" are tuples, return them.
-  // Otherwise, return an empty vector.
-  std::vector<HloInstruction*> GetAllTuples(HloInstruction* instruction);
+  // Otherwise, return absl::nullopt. Returns an empty vector if the instruction
+  // is already in the visited set.
+  absl::optional<std::vector<HloInstruction*>> GetAllTuples(
+      HloInstruction* instruction,
+      absl::flat_hash_set<HloInstruction*>* visited);
 
   // Checks whether two different elements in the same tuple compute the same
   // value.

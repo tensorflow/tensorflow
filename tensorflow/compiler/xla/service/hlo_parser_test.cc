@@ -364,6 +364,18 @@ ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
 
 )"
 },
+// CustomCall with backend_config.
+{
+"CustomCallWithOpaque",
+R"(HloModule custom_call
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", backend_config="this string is opaque"
+}
+
+)"
+},
 // reduce window
 {
 "ReduceWindow",
@@ -1288,18 +1300,6 @@ ENTRY CustomCall {
 
 )"
 },
-// CustomCall with opaque value.
-{
-"CustomCallWithOpaque",
-R"(HloModule custom_call
-
-ENTRY CustomCall {
-  constant = f32[1]{0} constant({12345})
-  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", opaque="this string is opaque"
-}
-
-)"
-},
 // Variables with non-default names
 {
 "NonDefaultNames",
@@ -1559,7 +1559,17 @@ ENTRY BitcastConvertUsage {
 }
 
 )"
+},
+{
+"OuterDimensionPartitions",
+R"(HloModule OuterDimensionPartitions
+
+ENTRY Test {
+  ROOT foo = f32[100]{0} parameter(0), outer_dimension_partitions={0,10,20}
 }
+
+)"
+},
 });
   // clang-format on
 }
