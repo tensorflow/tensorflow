@@ -12,6 +12,21 @@ load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
 py_library(
+    name = "distribute_test_lib_pip",
+    deps = [
+        ":combinations",
+        ":model_combinations",
+        ":multi_worker_test_base",
+        ":saved_model_test_base",
+        ":single_loss_example",
+        ":strategy_combinations",
+        ":strategy_test_lib",
+        "//tensorflow/python/keras/distribute:keras_correctness_test_lib",
+        "//tensorflow/python/keras/distribute:keras_test_lib",
+    ],
+)
+
+py_library(
     name = "all_reduce",
     srcs = [
         "all_reduce.py",
@@ -201,9 +216,6 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",  # b/131691139
-    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -710,9 +722,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
-    tags = [
-        "no_pip",  # b/131691139
-    ],
 )
 
 py_library(
@@ -813,7 +822,6 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_pip",  # b/131691139
     ],
     deps = [
         ":mirrored_strategy",
@@ -866,7 +874,6 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_pip",  # b/131691139
     ],
     deps = [
         ":single_loss_example",
@@ -926,7 +933,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_pip",  # b/131691139
         "no_windows_gpu",  # TODO(b/130551176)
     ],
 )
