@@ -4126,44 +4126,130 @@ Status ConvertGather(OpConverterParams* params) {
   return Status::OK();
 }
 
-Status ConvertMatMulHelper(OpConverterParams* params,
-                           TRT_TensorOrWeights tensor_input,
-                           TRT_ShapedWeights weights_raw, bool transpose_weight,
-                           string node_name) {
-  if (!tensor_input.is_tensor()) {
-    return errors::InvalidArgument("Input 0 expects tensor");
-  }
-  nvinfer1::ITensor* tensor = tensor_input.tensor();
-
-  TRT_ShapedWeights weights(weights_raw.TrtDType());
-  if (transpose_weight) {
-    weights = weights_raw;
-  } else {
-    weights = params->weight_store->GetTempWeights(weights_raw);
-    ReorderCKtoKC(weights_raw, &weights);
-  }
-  TRT_ShapedWeights biases(weights.TrtDType());
-
-  int noutput = weights.shape_.d[0];
-
-  auto input_dim = tensor->getDimensions();
-  while (input_dim.nbDims != 3) {
+Status ConvertFullyConnectedHelper(OpConverterParams* params,
+                                   nvinfer1::ITensor* tensor_a,
+                                   TRT_ShapedWeights weights_b,
+                                   bool transpose_b, const string& node_name) {
+  // Reshape input to 3D - this will be a no-op unless using int8 precision.
+  auto input_dim = tensor_a->getDimensions();
+  while (input_dim.nbDims < 3) {
     input_dim.d[input_dim.nbDims++] = 1;
   }
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      tensor_input, input_dim, /*validation_only=*/false, &tensor));
+      TRT_TensorOrWeights(tensor_a), input_dim, /*validation_only=*/false,
+      &tensor_a));
 
+  // FC layer will transpose weights, so we need to pre-transpose.
+  TRT_ShapedWeights weights(weights_b.TrtDType());
+  if (!transpose_b) {
+    weights = params->weight_store->GetTempWeights(weights_b);
+    ReorderCKtoKC(weights_b, &weights);
+  } else {
+    weights = weights_b;
+  }
+  TRT_ShapedWeights biases(weights.TrtDType());
+  const int noutput = weights.shape_.d[0];
   nvinfer1::IFullyConnectedLayer* layer =
       params->converter->network()->addFullyConnected(
-          *tensor, noutput, weights.GetTrtWeights(), biases.GetTrtWeights());
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
+          *tensor_a, noutput, weights.GetTrtWeights(), biases.GetTrtWeights());
 
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  // Reshape output to 1D - this will be a no-op unless using int8 precision.
   auto output_dim = output_tensor->getDimensions();
   output_dim.nbDims = 1;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
       &output_tensor));
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return Status::OK();
+}
+
+Status ConvertMatMulHelper(OpConverterParams* params,
+                           TRT_TensorOrWeights input_a,
+                           TRT_TensorOrWeights input_b, bool transpose_a,
+                           bool transpose_b, string node_name) {
+  // TODO: ReorderCKtoKC is currently not general enough to transpose weights
+  // that are not 2D.
+  if ((transpose_a && input_a.is_weights() &&
+       input_a.GetTrtDims().nbDims != 2) ||
+      (transpose_b && input_b.is_weights() &&
+       input_b.GetTrtDims().nbDims != 2)) {
+    return errors::InvalidArgument(
+        "Cannot currently transpose constant input if it is not 2 dimensional");
+  }
+
+  // If A is a tensor, we can only transpose if it is at least 3D in TF,
+  // or TRT will not do the correct transposition.
+  if (transpose_a && input_a.is_tensor() && input_a.GetTrtDims().nbDims < 2) {
+    return errors::InvalidArgument(
+        "Cannot transpose first input if it is a tensor with fewer than 2 "
+        "non-batch dimensions.");
+  }
+
+  // If B is a tensor, then it must be at least 3D in TF,
+  // or TRT won't be able to handle the multiply correctly.
+  if (input_b.is_tensor() && input_b.GetTrtDims().nbDims < 2) {
+    return errors::InvalidArgument(
+        "Second input must either be a constant, or contain at least 2 "
+        "non-batch dimensions.");
+  }
+  if (params->validation_only) return Status::OK();
+
+  // If an FC layer can be used and would be faster, use that instead.
+  const bool should_use_fc =
+      !transpose_a && input_a.is_tensor() && input_b.is_weights() &&
+      input_a.GetTrtDims().nbDims >= 3 && input_b.GetTrtDims().nbDims == 2;
+  // If int8 is specified, FC must be used, as MM does not support int8 at this
+  // time.
+  if (should_use_fc ||
+      params->converter->precision_mode() == TrtPrecisionMode::INT8) {
+    return ConvertFullyConnectedHelper(
+        params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
+  }
+
+  constexpr auto get_matrix_op =
+      [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
+    return (in->getDimensions().nbDims < 2)
+               ? nvinfer1::MatrixOperation::kVECTOR
+               : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
+                             : nvinfer1::MatrixOperation::kNONE;
+  };
+
+  // If the MatMul operand is a constant, applies transposes at conversion-time
+  // as necessary. If the operand is a tensor, does nothing. If required
+  // transposes were applied, sets transpose to false.
+  const auto prepare_matmul_operand =
+      [&params](TRT_TensorOrWeights operand,
+                bool* transpose) -> nvinfer1::ITensor* {
+    if (operand.is_tensor()) {
+      return operand.tensor();
+    } else {
+      TRT_ShapedWeights weights(operand.weights().TrtDType());
+      if (*transpose) {
+        weights = params->weight_store->GetTempWeights(operand.weights());
+        ReorderCKtoKC(operand.weights(), &weights);
+        // Weights have been transposed, can set transpose to false
+        *transpose = false;
+      } else {
+        weights = operand.weights();
+      }
+      return params->converter->CreateConstantLayer(weights, weights.shape_);
+    }
+  };
+
+  nvinfer1::ITensor* tensor_a = prepare_matmul_operand(input_a, &transpose_a);
+  nvinfer1::ITensor* tensor_b = prepare_matmul_operand(input_b, &transpose_b);
+
+  nvinfer1::IMatrixMultiplyLayer* layer =
+      params->converter->network()->addMatrixMultiply(
+          *tensor_a, get_matrix_op(tensor_a, transpose_a), *tensor_b,
+          get_matrix_op(tensor_b, transpose_b));
+
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -4172,7 +4258,11 @@ Status ConvertMatMulHelper(OpConverterParams* params,
 Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"a", false}, {"b", true}}));
+  if (inputs.size() != 2) {
+    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
+                                   " inputs but expected 2, at ",
+                                   node_def.name());
+  }
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
@@ -4180,82 +4270,68 @@ Status ConvertMatMul(OpConverterParams* params) {
   bool transpose_a = attrs.get<bool>("transpose_a");
   bool transpose_b = attrs.get<bool>("transpose_b");
 
-  // FullyConnected:
-  if (transpose_a) {
-    return errors::InvalidArgument(
-        "transpose_a is not supported for TensorRT FullyConnected (op: ",
-        node_def.op(), "), at: ", node_def.name());
-  }
-  if (params->validation_only) return Status::OK();
-  return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1).weights(),
+  return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1), transpose_a,
                              transpose_b, node_def.name());
 }
 
 Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  // TODO(tmorris): Enable once false is updated to mean either tensor or weight
-  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
-  // false}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (inputs.size() != 2) {
     return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
                                    " inputs but expected 2, at ",
                                    node_def.name());
   }
+  // TODO(tmorris): Enable once false is updated to mean either tensor or weight
+  // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
+  // false}}));
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   if (inputs[0].is_weights() && inputs[1].is_weights()) {
     return errors::InvalidArgument(
         "All inputs are weights, but Grappler is expected to fold them.");
   }
+
   TFAttrs attrs(node_def);
   const bool transpose_a = attrs.get<bool>("adj_x");
   const bool transpose_b = attrs.get<bool>("adj_y");
-  const auto dims = inputs.at(0).GetTrtDims();
-  if (dims.nbDims == 1) {  // NC * CK is only supported through fully connected
-    if (transpose_a == false && inputs.at(0).is_tensor() &&
-        inputs.at(1).is_weights()) {
-      return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1).weights(),
-                                 transpose_b, node_def.name());
-    } else {
-      return errors::InvalidArgument("Invalid configuration for MatMul, at: ",
-                                     node_def.name());
-    }
+
+  // Removes the batch dimension from weights.
+  const auto remove_weights_batch_dim =
+      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
+        auto dims = input.GetTrtDims();
+        if (input.is_weights()) {
+          // The other operand must be a tensor, this is ensured by earlier
+          // checks. Checks that the batch dimension is not changed by
+          // broadcasting.
+          if (dims.d[0] != 1) {
+            return errors::InvalidArgument(
+                "Input weight attempts to broadcast across batch dimension for "
+                "BatchMatMul, at ",
+                params->node_def.name());
+          }
+          // Remove the batch dimension from the weights.
+          TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
+        }
+        // Create tensor and reshape if necessary.
+        nvinfer1::ITensor* t{nullptr};
+        TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+            input, dims, params->validation_only, &t));
+        *tensor = TRT_TensorOrWeights{t};
+        return Status::OK();
+      };
+
+  TRT_TensorOrWeights tensor_l{nullptr};
+  TRT_TensorOrWeights tensor_r{nullptr};
+  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), &tensor_l));
+  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), &tensor_r));
+
+  if (params->validation_only) {
+    return Status::OK();
   }
 
-  auto get_tensor_with_proper_dims = [params](const TRT_TensorOrWeights& input,
-                                              nvinfer1::ITensor** tensor) {
-    auto dims = input.GetTrtDims();
-    if (input.is_weights()) {
-      // The other operand must be a tensor, this is ensured by earlier checks.
-      // Checks that the batch dimension is not changed by broadcasting.
-      if (dims.d[0] != 1) {
-        return errors::InvalidArgument(
-            "Input weight attempts to broadcast across batch dimension for "
-            "BatchMatMul, at ",
-            params->node_def.name());
-      }
-      // Remove the batch dimension from the weights.
-      TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
-    }
-    // Create tensor and reshape if necessary.
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        input, dims, params->validation_only, tensor));
-    return Status::OK();
-  };
-  nvinfer1::ITensor* tensor_l;
-  nvinfer1::ITensor* tensor_r;
-  TF_RETURN_IF_ERROR(get_tensor_with_proper_dims(inputs.at(0), &tensor_l));
-  TF_RETURN_IF_ERROR(get_tensor_with_proper_dims(inputs.at(1), &tensor_r));
-  if (params->validation_only) return Status::OK();
-
-  nvinfer1::IMatrixMultiplyLayer* layer =
-      params->converter->network()->addMatrixMultiply(*tensor_l, transpose_a,
-                                                      *tensor_r, transpose_b);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return Status::OK();
+  return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
+                             transpose_b, node_def.name());
 }
 
 Status ConvertSoftmax(OpConverterParams* params) {
