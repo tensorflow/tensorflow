@@ -613,7 +613,6 @@ tf_cc_test(
     ]
      + if_cuda_is_configured([
         ":cusolver_context",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
