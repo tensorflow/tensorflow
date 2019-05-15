@@ -787,6 +787,78 @@ REGISTER_OP("CropAndResizeGradBoxes")
     });
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ROIAlign")
+    .Input("input: float")
+    .Input("rois: float")
+    .Output("output: float")
+    .Attr("spatial_scale: float = 1.0")
+    .Attr("pooled_height: int = 1")
+    .Attr("pooled_width: int = 1")
+    .Attr("sampling_ratio: int = -1")
+    .Attr("min_level: int = 2")
+    .Attr("max_level: int = 5")
+    .Attr("canonical_scale: float = 224.0")
+    .Attr("canonical_level: int = 4")
+    .Attr("debug: bool = false")
+    .SetShapeFn([](InferenceContext* c) -> Status {
+      // 5D feature inputs [N,L,C,H,W]
+      ShapeHandle features;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &features));
+      // 3D roi boxes [N,R,4] [ y1, x1, y2, x2]
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &boxes));
+
+      auto input_shape = c->input(0);
+      auto roi_shape = c->input(1);
+      int pooled_h;
+      TF_RETURN_IF_ERROR(c->GetAttr("pooled_height", &pooled_h));
+      int pooled_w;
+      TF_RETURN_IF_ERROR(c->GetAttr("pooled_width", &pooled_w));
+      auto Rdim = c->Dim(roi_shape, 1);    // Num boxes i.e K
+      auto Cdim = c->Dim(input_shape, 2);  // Num channels = C
+      auto output_shape = c->MakeShape({c->Dim(input_shape, 0), Rdim, Cdim,
+                                        pooled_h, pooled_w});  // N, K, C, H, W
+
+      c->set_output(0, output_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+      This op implements Region of Interest(RoI) align op as documented in arXiv:1703.06870.
+      In short, it creates and pooled_height x pooled_width image from RoI using bilinear interpolation. 
+      input: is a 5D tensor from feature layers of the layout [Batch, Level, Channel, Height, Width]
+      rois: is a 3D tensor for describing region of interest boxes and has layout [Batch, Roi Id, 4]. 
+        last 4 elements define the corners of the roi box and is of the form  [y1, x1, y2, x2]
+      output: is 5D tensor  of [Batch, Roi Id, Channel, Pooled Height, Pooled Width]
+      pooled_height and pooled_width are the height and width of pooled window
+      min_level and max_level defines minimum and maximum levels in FPN pyramid
+      canonical_scale and canonical_level are parameters for assingning roi boxes to corresponding 
+        FPN level
+      spatial_scale is the scaling factor for the roi boxes.
+    )doc");
+
+REGISTER_OP("ROIAlignGrad")
+    .Input("grads: float")
+    .Input("input: float")
+    .Input("rois: float")
+    .Output("output: float")
+    .Attr("spatial_scale: float = 1.0")
+    .Attr("pooled_height: int = 1")
+    .Attr("pooled_width: int = 1")
+    .Attr("sampling_ratio: int = -1")
+    .Attr("min_level: int = 2")
+    .Attr("max_level: int = 5")
+    .Attr("canonical_scale: float = 224.0")
+    .Attr("canonical_level: int = 4")
+    .Attr("debug: bool = false")
+    .SetShapeFn([](InferenceContext* c) -> Status {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+      Gradient for RoiAlign op.
+    )doc");
+
+// -----------------------------------------------------------------------------------------
 
 REGISTER_OP("NonMaxSuppression")
     .Input("boxes: float")

@@ -153,3 +153,40 @@ def _CropAndResizeGrad(op, grad):
       grad, op.inputs[0], op.inputs[1], op.inputs[2])
 
   return [grad0, grad1, None, None]
+
+@ops.RegisterGradient("ROIAlign")
+def _ROIAlignGrad(op, grad):
+  """The derivatives for ROIAlign.
+
+  Args:
+    op: The ROIAlign op.
+    grad: The tensor representing the gradient w.r.t. the output.
+
+  Returns:
+    The gradients w.r.t. the input features and always-None
+    gradients w.r.t. rois.
+  """
+  original_input = op.inputs[0]
+  rois = op.inputs[1]
+
+  #allowed_types = [dtypes.float16, dtypes.float32, dtypes.float64]
+  allowed_types = [dtypes.float32]
+  if op.inputs[0].dtype in allowed_types:
+    # pylint: disable=protected-access
+    grad0 = gen_roi_align_op.roi_align_v2_grad(
+        grad, original_input, rois,
+        spatial_scale=op.get_attr("spatial_scale"),
+        pooled_height=op.get_attr("pooled_height"),
+        pooled_width=op.get_attr("pooled_width"),
+        sampling_ratio=op.get_attr("sampling_ratio"),
+        min_level=op.get_attr("min_level"),
+        max_level=op.get_attr("max_level"),
+        canonical_scale=op.get_attr("canonical_scale"),
+        canonical_level=op.get_attr("canonical_level"),
+        debug=op.get_attr("debug"),
+        )
+    # pylint: enable=protected-access
+  else:
+    grad0 = None
+  # gradient wrt rois is 0
+  return [grad0, None]
