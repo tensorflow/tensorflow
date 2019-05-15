@@ -429,22 +429,5 @@ REGISTER_KERNEL_BUILDER(
     Name("NonMaxSuppressionV2").TypeConstraint<float>("T").Device(DEVICE_GPU),
     NonMaxSuppressionV2GPUOp);
 
-// REGISTER FakeGPU op for CombinedNonMaxSuppression so that Funcdef'ed versions
-// of it can run.
-REGISTER_KERNEL_BUILDER(Name("CombinedNonMaxSuppression")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("boxes")
-                            .HostMemory("scores")
-                            .HostMemory("max_output_size_per_class")
-                            .HostMemory("max_total_size")
-                            .HostMemory("iou_threshold")
-                            .HostMemory("score_threshold")
-                            .HostMemory("nmsed_boxes")
-                            .HostMemory("nmsed_scores")
-                            .HostMemory("nmsed_classes")
-                            .HostMemory("valid_detections"),
-
-                        CombinedNonMaxSuppressionOp<CPUDevice>);
-
 }  // namespace tensorflow
 #endif
