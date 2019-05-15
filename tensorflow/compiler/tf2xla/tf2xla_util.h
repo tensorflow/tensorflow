@@ -202,6 +202,16 @@ Status PropagateConstIntoFunctionalNodes(
 Status PruneUnreachableFunctionsFromGraph(const Graph& g,
                                           FunctionLibraryDefinition* fld);
 
+// Finds the following pattern in the graph:
+// 1) EmptyTensorList -> forward While op -> backward While op,
+// 2) in forward While op, a Const node is pushed,
+// 3) in backward While op, data is popped from the tensor list.
+// And rewrites backward While op to use Const node instead of TensorListPopBack
+// result.
+// TODO(b/128633174) remove the TensorList and related TensorList ops.
+Status RewriteTensorListWithConstElement(Graph* g,
+                                         FunctionLibraryDefinition* fld);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TF2XLA_UTIL_H_
