@@ -21,6 +21,7 @@ py_library(
       "python/ipu_optimizer.py",
       "python/loops.py",
       "python/ops.py",
+      "python/popnn_embedding.py",
       "python/popnn_normalization.py",
       "python/popnn_rnn.py",
       "python/poprand.py",
