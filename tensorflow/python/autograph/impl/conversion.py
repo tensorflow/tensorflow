@@ -610,7 +610,8 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
     node, = nodes
 
   # TODO(znado): Place inside standard_analysis.
-  origin_info.resolve(node, source, f)
+  origin_info.resolve_entity(node, source, f)
+
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)
   namer = naming.Namer(namespace)
