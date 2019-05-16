@@ -116,6 +116,37 @@ point control register.
 
 See the documentation in :ref:`api-section` for more details.
 
+TF_POPLAR_FLAGS environment variable
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The options passed through ``create_ipu_config`` and ``configure_ipu_system``
+can be directed at any machine in a TensorFlow cluster.  Some configuration
+options are provided by an environment variable called ``TF_POPLAR_FLAGS``.
+
+Setting ``TF_POPLAR_FLAGS=--help`` and executing a TF session will produce some
+help for each option.
+
+``--use_synthetic_data`` will prevent the system from downloading or uploading
+data to the card when executing code.  This is used for testing performance
+without the overhead of data transfer.
+
+``--force_replicated_mode`` allows graphs without ``AllReduce`` operations in
+them to be executed in replicated mode.  This might be required if replicated
+graphs are used in inference mode, or where there are no per-replica trainable
+parameters.
+
+``--max_compilation_threads`` sets the maximum number of threads which Poplar
+is allowed to use for compiling the executable.
+
+``--save_vertex_graph`` dumps the Poplar vertex graph (DOT file) to the given
+location.
+
+``--executable_cache_path`` enables the Poplar executable cache. See below.
+
+The options can be used at the same time by treating them as command line
+switches, eg. ``--executable_cache_path=/tmp/cache --force_replicated_mode``
+
+
 Caching of compiled executables
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
