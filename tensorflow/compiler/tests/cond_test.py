@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 class CondTest(xla_test.XLATestCase):
 
   def testCondAndTensorArrayInDefun(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
 
@@ -52,7 +52,7 @@ class CondTest(xla_test.XLATestCase):
       xla_context.Exit()
 
   def testCondConstPropagation(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
 

@@ -19,6 +19,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/op.h"
@@ -80,6 +82,18 @@ string AttrSlice::SummarizeNode() const {
   return ndef_ ? SummarizeNodeDef(*ndef_)
                : strings::StrCat(
                      "[", SummarizeAttrsHelper(*this, StringPiece()), "]");
+}
+
+string AttrSlice::DebugString() const {
+  std::vector<string> attr_key_vals;
+  attr_key_vals.reserve(attrs_->size());
+  for (const auto& it : *this) {
+    const string& name = it.first;
+    const AttrValue& attr_value = it.second;
+    attr_key_vals.push_back(
+        absl::StrCat(name, "=", SummarizeAttrValue(attr_value)));
+  }
+  return absl::StrJoin(attr_key_vals, ", ");
 }
 
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }

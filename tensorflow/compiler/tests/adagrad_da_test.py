@@ -33,7 +33,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
 
   def testAdagradDAWithoutRegularizationBasic1(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
@@ -69,7 +69,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
 
   def testAdagradDAwithoutRegularizationBasic2(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
@@ -100,7 +100,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
 
   def testAdagradDAWithL1(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
@@ -131,7 +131,7 @@ class AdagradDAOptimizerTest(xla_test.XLATestCase):
 
   def testAdagradDAWithL1_L2(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
