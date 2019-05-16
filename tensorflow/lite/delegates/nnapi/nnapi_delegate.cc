@@ -138,6 +138,28 @@ static size_t getNumPaddingBytes(size_t byte_size) {
   }
   return num_padding_bytes;
 }
+
+// Return NNAPI device handle with the provided null-terminated device name. If
+// no matching device could be found, nullptr will be returned.
+ANeuralNetworksDevice* GetDeviceHandle(const char* device_name_ptr) {
+  if (!device_name_ptr) return nullptr;
+  ANeuralNetworksDevice* device_handle = nullptr;
+  std::string device_name(device_name_ptr);
+  uint32_t numDevices = 0;
+  NnApiImplementation()->ANeuralNetworks_getDeviceCount(&numDevices);
+
+  for (uint32_t i = 0; i < numDevices; i++) {
+    ANeuralNetworksDevice* device = nullptr;
+    const char* buffer = nullptr;
+    NnApiImplementation()->ANeuralNetworks_getDevice(i, &device);
+    NnApiImplementation()->ANeuralNetworksDevice_getName(device, &buffer);
+    if (device_name == buffer) {
+      device_handle = device;
+      break;
+    }
+  }
+  return device_handle;
+}
 }  // namespace
 
 // RAII NN API Model Destructor for use with std::unique_ptr
@@ -1161,6 +1183,20 @@ class NNAPIDelegateKernel {
       nodes_.push_back(node_index);
     }
 
+    const char* device_name_ptr =
+        StatefulNnApiDelegate::GetOptions(params->delegate).accelerator_name;
+    // user specified an acclelerator to use.
+    if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+        device_name_ptr != nullptr) {
+      nnapi_device_ = GetDeviceHandle(device_name_ptr);
+      if (nnapi_device_ == nullptr) {
+        context->ReportError(context,
+                             "Could not find the specified accelerator: %s.",
+                             device_name_ptr);
+        return kTfLiteError;
+      }
+    }
+
     if (!nn_model_) {
       ANeuralNetworksModel* model = nullptr;
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
@@ -1173,9 +1209,16 @@ class NNAPIDelegateKernel {
 
     if (!nn_compilation_) {
       ANeuralNetworksCompilation* compilation = nullptr;
-      RETURN_TFLITE_ERROR_IF_NN_ERROR(
-          context, nnapi_->ANeuralNetworksCompilation_create(nn_model_.get(),
-                                                             &compilation));
+      if (nnapi_device_ != nullptr) {
+        // Compile for the selected accelerator.
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(
+            context, nnapi_->ANeuralNetworksCompilation_createForDevices(
+                         nn_model_.get(), &nnapi_device_, 1, &compilation));
+      } else {
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(
+            context, nnapi_->ANeuralNetworksCompilation_create(nn_model_.get(),
+                                                               &compilation));
+      }
 
       auto preference = StatefulNnApiDelegate::GetOptions(params->delegate)
                             .execution_preference;
@@ -1298,6 +1341,8 @@ class NNAPIDelegateKernel {
  private:
   // Access to NNApi.
   const NnApi* nnapi_;
+  // ANN device handle.
+  ANeuralNetworksDevice* nnapi_device_ = nullptr;
   // ANN API state.
   std::unique_ptr<ANeuralNetworksModel, NNFreeModel> nn_model_;
   std::unique_ptr<ANeuralNetworksCompilation, NNFreeCompilation>
@@ -1506,7 +1551,11 @@ class NNAPIDelegateKernel {
 
 StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
     : TfLiteDelegate(TfLiteDelegateCreate()),
-      delegate_data_(Data{.options = options}) {
+      delegate_data_(
+          Data{.execution_preference = options.execution_preference}) {
+  if (options.accelerator_name) {
+    delegate_data_.accelerator_name = options.accelerator_name;
+  }
   Prepare = DoPrepare;
   data_ = &delegate_data_;
 }
@@ -1514,10 +1563,15 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
 StatefulNnApiDelegate::StatefulNnApiDelegate()
     : StatefulNnApiDelegate(Options()) {}
 
-const StatefulNnApiDelegate::Options& StatefulNnApiDelegate::GetOptions(
+const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
     TfLiteDelegate* delegate) {
   auto delegate_data = reinterpret_cast<Data*>(delegate->data_);
-  return delegate_data->options;
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference = delegate_data->execution_preference;
+  options.accelerator_name = delegate_data->accelerator_name.empty()
+                                 ? nullptr
+                                 : delegate_data->accelerator_name.c_str();
+  return options;
 }
 
 TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
@@ -1537,6 +1591,15 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     // Any available accelerator will make the device_count larger than 1.
     // More sophisticated check and whitelisting can be added later.
     if (device_count <= 1) {
+      return kTfLiteOk;
+    }
+    // Check if user specified an acclelerator to use.
+    const char* device_name_ptr = GetOptions(delegate).accelerator_name;
+    if (device_name_ptr && !GetDeviceHandle(device_name_ptr)) {
+      // If the selected accelerator cannot be found, NNAPI will not be used.
+      context->ReportError(context,
+                           "Could not find the specified accelerator: %s.",
+                           device_name_ptr);
       return kTfLiteOk;
     }
   }
