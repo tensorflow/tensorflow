@@ -2576,8 +2576,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
   auto fusion = computation_->CreateFusionInstruction(
       {add, two, mul}, HloInstruction::FusionKind::kInput);
   RunAnalysis(/*fusion_can_share_buffer=*/[](const HloInstruction* fusion,
-                                             const HloInstruction*,
-                                             const ShapeIndex& output_index) {
+                                             const HloInstruction*) {
     return fusion->IsLoopFusion();
   });
 

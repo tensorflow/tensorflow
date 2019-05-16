@@ -462,8 +462,14 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
-    VLOG(2) << "Autotuning result:\n" << log.DebugString();
-    tensorflow::Logger::Singleton()->LogProto(log);
+    // If we crash on checking failure, we are in a testing/benchmark mode, thus
+    // print more information instead of logging to the logger.
+    if (crash_on_checking_failure) {
+      LOG(INFO) << "Autotuning result: " << log.ShortDebugString();
+    } else {
+      VLOG(2) << "Autotuning result:\n" << log.DebugString();
+      tensorflow::Logger::Singleton()->LogProto(log);
+    }
   }
 
   // Crash on miscompares and redzone violations if desired.  Do this after

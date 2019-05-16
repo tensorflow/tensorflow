@@ -481,8 +481,11 @@ class Model(network.Network):
             The model is not trained for a number of iterations
             given by `epochs`, but merely until the epoch
             of index `epochs` is reached.
-        verbose: Integer. 0, 1, or 2. Verbosity mode.
+        verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = progress bar, 2 = one line per epoch.
+            Note that the progress bar is not particularly useful when
+            logged to a file, so verbose=2 is recommended when not running
+            interactively (eg, in a production environment).
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during training.
             See `tf.keras.callbacks`.
@@ -2286,7 +2289,7 @@ class Model(network.Network):
                                           batch_size=None,
                                           validation_split=0,
                                           shuffle=False,
-                                          repeat=False,
+                                          epochs=1,
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
@@ -2306,8 +2309,8 @@ class Model(network.Network):
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
       shuffle: Boolean whether to shuffle the training data before each epoch.
-      repeat: Boolean whether to repeat the numpy training data when converting
-        to training dataset.
+      epochs: Integer epochs. If > 1, repeat the numpy training data epochs
+        times when converting to training dataset.
       allow_partial_batch: Boolean whether to enforce that all batches have the
         same size.
 
@@ -2382,8 +2385,8 @@ class Model(network.Network):
           # numbers introduce more memory usage based on the size of each
           # sample.
           ds = ds.shuffle(max(1024, batch_size * 8))
-        if repeat:
-          ds = ds.repeat()
+        if epochs > 1:
+          ds = ds.repeat(epochs)
 
         # We need to use the drop_remainder argument to get a known static
         # input shape which is required for TPUs.

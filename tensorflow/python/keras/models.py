@@ -109,7 +109,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
           name=layer.name)
       input_tensors.append(input_tensor)
       # Cache newly created input layer.
-      newly_created_input_layer = input_tensor._keras_history[0]
+      newly_created_input_layer = input_tensor._keras_history.layer
       layer_map[layer] = newly_created_input_layer
   else:
     # Make sure that all input tensors come from a Keras layer.
@@ -126,7 +126,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
         input_tensors_.append(input_tensor)
         # Cache newly created input layer.
-        newly_created_input_layer = input_tensor._keras_history[0]
+        newly_created_input_layer = input_tensor._keras_history.layer
         layer_map[original_input_layer] = newly_created_input_layer
       else:
         input_tensors_.append(input_tensor)
@@ -174,7 +174,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
         # Thread-safe way to keep track of what node was created.
         first_output_tensor = nest.flatten(output_tensors)[0]
         new_nodes.add(
-            layer._inbound_nodes[first_output_tensor._keras_history[1]])
+            layer._inbound_nodes[first_output_tensor._keras_history.node_index])
 
         for x, y in zip(
             nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
@@ -267,7 +267,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
       input_tensors = list(input_tensors)
     x = generic_utils.to_list(input_tensors)[0]
     if K.is_keras_tensor(x):
-      origin_layer = x._keras_history[0]
+      origin_layer = x._keras_history.layer
       if isinstance(origin_layer, InputLayer):
         return Sequential(layers=[origin_layer] + layers, name=model.name)
       else:
@@ -276,7 +276,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
                          'other than an `InputLayer`. '
                          'Use the functional API instead.')
     input_tensor = Input(tensor=x, name='input_wrapper_for_' + str(x.name))
-    input_layer = input_tensor._keras_history[0]
+    input_layer = input_tensor._keras_history.layer
     return Sequential(layers=[input_layer] + layers, name=model.name)
 
 

@@ -151,14 +151,12 @@ class CompilerImpl : public Compiler {
       object.data_type = value->tensor.type;
       // External references may not be upgraded to f16 nor be represented as
       // textures.
-      bool is_external =
-          graph.IsGraphOutput(value->id) || graph.IsGraphInput(value->id);
+      const bool is_external =
+          graph.IsGraphInput(value->id) || graph.IsGraphOutput(value->id);
       if (is_external) {
         object.object_type = ObjectType::BUFFER;
-      } else {
-        if (options_.allow_precision_loss) {
-          MaybeConvertToFloat16(&object);
-        }
+      } else if (options_.allow_precision_loss) {
+        MaybeConvertToFloat16(&object);
       }
       objects[value->id] = std::move(object);
     }

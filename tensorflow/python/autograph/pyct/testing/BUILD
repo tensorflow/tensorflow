@@ -15,10 +15,10 @@ filegroup(
 )
 
 py_library(
-    name = "test_modules",
+    name = "testing",
     srcs = [
+        "basic_definitions.py",
         "decorators.py",
-        "future_import_module.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],

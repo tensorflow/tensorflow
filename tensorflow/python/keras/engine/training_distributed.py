@@ -81,7 +81,7 @@ def fit_distributed(model,
       batch_size=batch_size,
       validation_split=validation_split,
       shuffle=shuffle,
-      repeat=True)
+      epochs=epochs)
   if not distributed_training_utils.is_distributing_by_cloning(model):
     with model._distribution_strategy.scope():
       (dataset, _, _) = model._standardize_user_data(

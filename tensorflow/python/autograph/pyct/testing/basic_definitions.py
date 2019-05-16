@@ -12,24 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module with print function."""
+"""Module with basic entity definitions for testing."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-# This import is useless, but serves to distinguish this module's future imports
-# from the standard set of future imports used in TensorFlow.
-from __future__ import with_statement
+from __future__ import with_statement  # An extra future import for testing.
 
 
-def f():
+def simple_function(x):
+  """Docstring."""
+  return x  # comment
+
+
+def nested_functions(x):
+  """Docstring."""
+
+  def inner_fn(y):
+    return y
+
+  return inner_fn(x)
+
+
+def function_with_print():
   print('foo')
 
 
-lambda_f = lambda: None
+simple_lambda = lambda: None
 
 
-class Foo(object):
+class SimpleClass(object):
 
-  def f(self):
+  def simple_method(self):
+    return self
+
+  def method_with_print(self):
     print('foo')
+
+
+def function_with_multiline_call(x):
+  """Docstring."""
+  return range(
+      x,
+      x + 1,
+  )

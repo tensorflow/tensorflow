@@ -291,16 +291,6 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
   }
   DCHECK(root_found);
 
-  if (parent() && parent()->has_entry_computation() &&
-      parent()->entry_computation() == this) {
-    if (!Shape::Equal()(new_root_instruction->shape(),
-                        root_instruction_->shape())) {
-      // Rebuild input output alias config now that we have a new output shape.
-      parent()->input_output_alias_config() =
-          HloInputOutputAliasConfig(new_root_instruction->shape());
-    }
-  }
-
   root_instruction_ = new_root_instruction;
 }
 

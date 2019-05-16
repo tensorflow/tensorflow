@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
+#include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -1097,6 +1098,11 @@ Status XlaCompiler::CompileGraph(
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
+  TF_RETURN_IF_ERROR(RearrangeFunctionArguments(
+      [this](const NameAttrList& function, const FunctionBody** fbody) {
+        return FindFunctionBody(function, fbody);
+      },
+      graph.get(), local_flib_def_.get()));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,

@@ -658,6 +658,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       BufferAssigner::Run(module.get(),
                           absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
+                          /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
@@ -850,6 +851,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         BufferAssigner::Run(module,
                             absl::make_unique<SequentialHloOrdering>(schedule),
                             BufferSizeBytesFunction(), memory_alignment,
+                            /*allow_input_output_aliasing=*/false,
                             /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.

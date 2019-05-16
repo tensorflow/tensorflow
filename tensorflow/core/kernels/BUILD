@@ -1599,6 +1599,9 @@ tf_cuda_cc_test(
     name = "conv_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_ops_benchmark_test.cc"],
+    tags = [
+        "nomac",  # b/132448918
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -7638,9 +7641,6 @@ tf_kernel_library(
         "@icu//:common",
     ],
 )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.

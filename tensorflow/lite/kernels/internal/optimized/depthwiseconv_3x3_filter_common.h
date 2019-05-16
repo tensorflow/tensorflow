@@ -526,7 +526,7 @@ inline void PreloadInputBlock(
     const T* ptr = row_ptr;
     for (int j = 0; j < total_width; ++j) {
       // Input data is loaded once.
-      asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+      optimized_ops_preload_l1_keep(ptr);
       ptr += input_depth;
     }
     row_ptr += input_height_stride;
