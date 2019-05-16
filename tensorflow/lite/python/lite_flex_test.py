@@ -31,7 +31,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import tracking
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFlexMode(self):

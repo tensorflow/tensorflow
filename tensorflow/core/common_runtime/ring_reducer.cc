@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_reducer.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -88,7 +90,7 @@ void RingReducer::Run(StatusCallback done) {
     // just wait here on the copy.
     Notification note;
     Status status;
-    tracing::ScopedActivity activity("MemCpyAsync");
+    profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
     CollectiveRemoteAccessLocal::MemCpyAsync(
         col_ctx_->op_ctx->input_device_context(0),
         col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
@@ -122,17 +124,29 @@ void RingReducer::ContinueAfterInputCopy() {
     // can be provided to the kernel in host memory?
     Tensor group_size_val = ca_->Scalar(group_size_);
     if (col_params_->group.device_type != "CPU") {
-      group_size_tensor_ = ca_->Scalar(col_ctx_->device->GetAllocator(
-          col_ctx_->op_ctx->input_alloc_attr(0)));
+      uint64 safe_alloc_frontier = col_ctx_->device->SafeAllocFrontier(0);
+      AllocationAttributes aa;
+      std::function<uint64()> freed_by_func = [this, &safe_alloc_frontier]() {
+        safe_alloc_frontier =
+            col_ctx_->device->SafeAllocFrontier(safe_alloc_frontier);
+        return safe_alloc_frontier;
+      };
+      if (safe_alloc_frontier > 0) {
+        aa.freed_by_func = &freed_by_func;
+      }
+      group_size_tensor_ = ca_->Scalar(
+          col_ctx_->device->GetAllocator(col_ctx_->op_ctx->input_alloc_attr(0)),
+          aa);
       DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
-      op_dev_ctx->CopyCPUTensorToDevice(&group_size_val, col_ctx_->device,
-                                        &group_size_tensor_,
-                                        [this](const Status& s) {
-                                          if (!s.ok()) {
-                                            StartAbort(s);
-                                          }
-                                          group_size_tensor_ready_.Notify();
-                                        });
+      op_dev_ctx->CopyCPUTensorToDevice(
+          &group_size_val, col_ctx_->device, &group_size_tensor_,
+          [this](const Status& s) {
+            if (!s.ok()) {
+              StartAbort(s);
+            }
+            group_size_tensor_ready_.Notify();
+          },
+          (safe_alloc_frontier == 0));
     } else {
       group_size_tensor_ = group_size_val;
       group_size_tensor_ready_.Notify();
@@ -177,7 +191,8 @@ bool RingReducer::RunAsyncParts() {
     // complete before proceeding.  The previous InitRingField calls allocated
     // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
     // write) unless we do.
-    tracing::ScopedActivity activity("WaitForQueuedEvents");
+    profiler::TraceMe activity("WaitForQueuedEvents",
+                               profiler::TraceMeLevel::kInfo);
     Notification note;
     Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
@@ -197,7 +212,7 @@ bool RingReducer::RunAsyncParts() {
   std::atomic<bool> aborted(false);
 
   {
-    tracing::ScopedActivity activity("Loop");
+    profiler::TraceMe activity("Loop", profiler::TraceMeLevel::kInfo);
     // Loop until all RingFields have advanced to completion.
     while (field_done_count < rfv_.size()) {
       VLOG(4) << FieldState();

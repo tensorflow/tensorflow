@@ -60,12 +60,14 @@ struct WorkerSession {
   WorkerSession(const string& session_name, const string& worker_name,
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
                 std::unique_ptr<DeviceMgr> device_mgr,
-                std::unique_ptr<GraphMgr> graph_mgr);
+                std::unique_ptr<GraphMgr> graph_mgr,
+                std::unique_ptr<DeviceMgr> remote_device_mgr);
 
   static std::shared_ptr<WorkerSession> CreateWithBorrowedDeviceMgr(
       const string& session_name, const string& worker_name,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
-      DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr);
+      DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+      std::unique_ptr<DeviceMgr> remote_device_mgr);
 
   ~WorkerSession();
 
@@ -73,10 +75,12 @@ struct WorkerSession {
   WorkerSession(const string& session_name, const string& worker_name,
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
                 DeviceMgr* borrowed_device_mgr,
-                std::unique_ptr<GraphMgr> graph_mgr);
+                std::unique_ptr<GraphMgr> graph_mgr,
+                std::unique_ptr<DeviceMgr> remote_device_mgr);
 
   const std::unique_ptr<DeviceMgr> device_mgr_;
   DeviceMgr* const borrowed_device_mgr_;  // Not owned.
+  const std::unique_ptr<DeviceMgr> remote_device_mgr_;
 };
 
 }  // namespace tensorflow

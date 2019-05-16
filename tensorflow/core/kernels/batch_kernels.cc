@@ -83,7 +83,8 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
       context->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
   if (output->NumElements() > 0) {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
     if (std::is_same<Device, GPUDevice>::value) {
       ConcatGPU<T>(context, inputs_flat, output, &output_flat);
       return Status::OK();
@@ -173,7 +174,8 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
   return Status::OK();
 }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 // Handles the general case, on GPU.
 template <typename T>
@@ -198,7 +200,8 @@ Status Split(OpKernelContext* context, const Tensor& input,
     return Status::OK();
   }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // TODO(olston, apassos): Handle non-CPU cases.
 // return SplitGPU<T>(context, input, sizes, outputs);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -517,7 +520,6 @@ class BatchResource : public ResourceBase {
       return;
     }
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = last_task_context->step_id();
     opts.step_container = last_task_context->step_container();
     opts.cancellation_manager = last_task_context->cancellation_manager();
     opts.stats_collector = last_task_context->stats_collector();

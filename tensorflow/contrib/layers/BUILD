@@ -162,6 +162,7 @@ py_test(
     name = "regularizers_test",
     size = "small",
     srcs = ["python/layers/regularizers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -178,6 +179,7 @@ py_test(
     name = "initializers_test",
     size = "small",
     srcs = ["python/layers/initializers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -194,6 +196,7 @@ py_test(
     name = "normalization_test",
     size = "medium",
     srcs = ["python/layers/normalization_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
@@ -211,6 +214,7 @@ py_test(
 py_test(
     name = "optimizers_test",
     srcs = ["python/layers/optimizers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -232,6 +236,7 @@ py_test(
     name = "summaries_test",
     size = "small",
     srcs = ["python/layers/summaries_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -247,6 +252,7 @@ py_test(
     name = "feature_column_test",
     size = "small",
     srcs = ["python/layers/feature_column_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -268,6 +274,7 @@ py_test(
     name = "feature_column_ops_test",
     size = "medium",
     srcs = ["python/layers/feature_column_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -292,6 +299,7 @@ py_test(
     name = "target_column_test",
     size = "small",
     srcs = ["python/layers/target_column_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -306,6 +314,7 @@ py_test(
     name = "sparse_feature_cross_op_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparse_feature_cross_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -323,6 +332,7 @@ py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["python/layers/embedding_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -345,6 +355,7 @@ py_test(
     name = "utils_test",
     size = "small",
     srcs = ["python/layers/utils_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -360,6 +371,7 @@ py_test(
     name = "sparse_ops_test",
     size = "small",
     srcs = ["python/ops/sparse_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
@@ -376,6 +388,7 @@ py_test(
     name = "encoders_test",
     size = "small",
     srcs = ["python/layers/encoders_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -390,6 +403,7 @@ py_test(
     name = "rev_block_lib_test",
     size = "medium",
     srcs = ["python/layers/rev_block_lib_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",

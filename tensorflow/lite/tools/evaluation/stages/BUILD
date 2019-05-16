@@ -108,6 +108,7 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
     ],

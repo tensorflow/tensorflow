@@ -1547,6 +1547,20 @@ tensorflow::Status ConvertCeilOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertRoundOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Round");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  const auto data_type = GetDataTypeAttr(node, "T");
+  CHECK(data_type == DT_FLOAT);
+  auto* op = new RoundOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertGatherOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -2007,6 +2021,9 @@ tensorflow::Status ConvertOperatorSpecialCasedAsRNNBackEdge(
   rnn_state->set_discardable(true);
   rnn_state->set_state_array(node.name());
   rnn_state->set_back_edge_source_array(node.input(0));
+  // TODO(tianjuny): Temporary set the size to 1 to avoid transient array
+  // allocation crash. The real value should depend on the hidden_size of RNN.
+  rnn_state->set_size(1);
   return tensorflow::Status::OK();
 }
 
@@ -2424,6 +2441,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
        ConvertSimpleOperator<TensorFlowAssertOperator, kAnyNumInputs, 1>},
       {"AvgPool", ConvertAvgPoolOperator},
       {"BatchMatMul", ConvertBatchMatMulOperator},
+      {"BatchMatMulV2", ConvertBatchMatMulOperator},
       {"BatchNormWithGlobalNormalization",
        ConvertBatchNormWithGlobalNormalizationOperator},
       {"BatchToSpaceND", ConvertBatchToSpaceNDOperator},
@@ -2507,6 +2525,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
       {"ReverseSequence", ConvertReverseSequenceOperator},
       {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
+      {"Round", ConvertRoundOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"Shape", ConvertShapeOperator},
@@ -2629,4 +2648,16 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
   return ImportTensorFlowGraphDef(model_flags, tf_import_flags, *tf_graph);
 }
+
+std::vector<std::string> GetPotentiallySupportedOps() {
+  std::vector<std::string> supported_ops;
+  const internal::ConverterMapType& converter_map =
+      internal::GetTensorFlowNodeConverterMap();
+
+  for (const auto& item : converter_map) {
+    supported_ops.push_back(item.first);
+  }
+  return supported_ops;
+}
+
 }  // namespace toco

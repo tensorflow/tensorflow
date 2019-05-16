@@ -96,8 +96,6 @@ class Feature(enum.Enum):
     ASSERT_STATEMENTS: Convert Tensor-dependent assert statements to tf.Assert.
     BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
       their TF counterparts.
-    ERROR_REWRITING: Rewrite errors that occur in the generated code to
-      indicate the source code to which the failing code corresponds.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
     LOGICAL_EXPRESSIONS: Convert data-dependent logical expressions applied to
       Tensors to their TF counterparts.
@@ -110,7 +108,6 @@ class Feature(enum.Enum):
   AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
   ASSERT_STATEMENTS = 'ASSERT_STATEMENTS'
   BUILTIN_FUNCTIONS = 'BUILTIN_FUNCTIONS'
-  ERROR_REWRITING = 'ERROR_REWRITING'
   LISTS = 'LISTS'
   LOGICAL_EXPRESSIONS = 'LOGICAL_EXPRESSIONS'
   NAME_SCOPES = 'NAME_SCOPES'

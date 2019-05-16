@@ -116,7 +116,7 @@ renames = {
     'tf.SessionLog':
         'tf.compat.v1.SessionLog',
     'tf.SparseConditionalAccumulator':
-        'tf.sparse.SparseConditionalAccumulator',
+        'tf.compat.v1.SparseConditionalAccumulator',
     'tf.SparseFeature':
         'tf.io.SparseFeature',
     'tf.SparseTensorValue':
@@ -383,6 +383,10 @@ renames = {
         'tf.signal.fft3d',
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
+    'tf.floor_div':
+        'tf.math.floordiv',
+    'tf.floormod':
+        'tf.math.floormod',
     'tf.floordiv':
         'tf.math.floordiv',
     'tf.get_collection':
@@ -441,12 +445,14 @@ renames = {
         'tf.compat.v1.image.resize_bicubic',
     'tf.image.resize_bilinear':
         'tf.compat.v1.image.resize_bilinear',
+    'tf.image.resize_image_with_crop_or_pad':
+        'tf.image.resize_with_crop_or_pad',
     'tf.image.resize_image_with_pad':
         'tf.compat.v1.image.resize_image_with_pad',
     'tf.image.resize_nearest_neighbor':
         'tf.compat.v1.image.resize_nearest_neighbor',
     'tf.image.transpose_image':
-        'tf.compat.v1.image.transpose_image',
+        'tf.image.transpose',
     'tf.initialize_all_tables':
         'tf.compat.v1.initialize_all_tables',
     'tf.initialize_all_variables':
@@ -603,6 +609,8 @@ renames = {
         'tf.compat.v1.lite.constants.TFLITE',
     'tf.lite.experimental.convert_op_hints_to_stubs':
         'tf.compat.v1.lite.experimental.convert_op_hints_to_stubs',
+    'tf.lite.experimental.get_potentially_supported_ops':
+        'tf.compat.v1.lite.experimental.get_potentially_supported_ops',
     'tf.lite.experimental.nn.TFLiteLSTMCell':
         'tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell',
     'tf.lite.experimental.nn.TfLiteRNNCell':
@@ -805,6 +813,8 @@ renames = {
         'tf.compat.v1.metrics.true_positives_at_thresholds',
     'tf.min_max_variable_partitioner':
         'tf.compat.v1.min_max_variable_partitioner',
+    'tf.mod':
+        'tf.math.mod',
     'tf.model_variables':
         'tf.compat.v1.model_variables',
     'tf.moving_average_variables':
@@ -877,6 +887,8 @@ renames = {
         'tf.random.uniform_candidate_sampler',
     'tf.nn.xw_plus_b':
         'tf.compat.v1.nn.xw_plus_b',
+    'tf.no_regularizer':
+        'tf.compat.v1.no_regularizer',
     'tf.op_scope':
         'tf.compat.v1.op_scope',
     'tf.parse_single_sequence_example':
@@ -1127,6 +1139,8 @@ renames = {
         'tf.sets.union',
     'tf.space_to_depth':
         'tf.compat.v1.space_to_depth',
+    'tf.sparse.SparseConditionalAccumulator':
+        'tf.compat.v1.sparse.SparseConditionalAccumulator',
     'tf.sparse.matmul':
         'tf.sparse.sparse_dense_matmul',
     'tf.sparse.merge':
@@ -1233,6 +1247,8 @@ renames = {
         'tf.compat.v1.summary.SummaryDescription',
     'tf.summary.TaggedRunMetadata':
         'tf.compat.v1.summary.TaggedRunMetadata',
+    'tf.summary.all_v2_summary_ops':
+        'tf.compat.v1.summary.all_v2_summary_ops',
     'tf.summary.audio':
         'tf.compat.v1.summary.audio',
     'tf.summary.get_summary_description':

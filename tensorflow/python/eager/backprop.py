@@ -568,8 +568,8 @@ def _aggregate_grads(gradients):
       if isinstance(grad, ops.Tensor):
         indexed_slices = ops.IndexedSlices(
             grad,
-            math_ops.range(grad.shape[0]),
-            constant_op.constant(grad.shape.as_list()))
+            math_ops.range(array_ops.shape(grad)[0]),
+            array_ops.shape(grad))
         indexed_slices_list.append(indexed_slices)
       else:
         indexed_slices_list.append(grad)
@@ -863,6 +863,7 @@ class GradientTape(object):
 
     Equivalent to exiting and reentering the tape context manager with a new
     tape. For example, the two following code blocks are equivalent:
+
     ```
     with tf.GradientTape() as t:
       loss = loss_fn()
@@ -1107,6 +1108,7 @@ class GradientTape(object):
     result in the jacobian computation given the independence assumption.
 
     Example usage:
+
     ```python
     with tf.GradientTape() as g:
       x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)

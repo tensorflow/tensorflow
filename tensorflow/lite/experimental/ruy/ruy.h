@@ -18,10 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_RUY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_RUY_H_
 
-#include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/experimental/ruy/dispatch.h"
-#include "tensorflow/lite/experimental/ruy/matrix.h"
-#include "tensorflow/lite/experimental/ruy/spec.h"
 
 namespace ruy {
 
@@ -34,8 +31,8 @@ template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
 void Mul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
          const Spec& spec, Context* context, Matrix<DstScalar>* dst) {
-  MulDispatch<CompiledPaths, LhsScalar, RhsScalar, DstScalar, Spec> dispatch;
-  dispatch.Mul(lhs, rhs, spec, context, dst);
+  DispatchMul<CompiledPaths, LhsScalar, RhsScalar, DstScalar, Spec>(
+      lhs, rhs, spec, context, dst);
 }
 
 }  // namespace ruy

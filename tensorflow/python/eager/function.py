@@ -295,6 +295,16 @@ def _inference_name(n):
   return "__inference_%s_%s" % (n, ops.uid())
 
 
+class _EagerDefinedFunctionDeleter(object):
+  """Unregister function from eager context."""
+
+  def __init__(self, name):
+    self.name = name
+
+  def __del__(self):
+    context.remove_function(self.name)
+
+
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
@@ -347,12 +357,14 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
+    self.name = compat.as_bytes(function_def.signature.name)
     with ops.init_scope():
       if context.executing_eagerly():
         context.ensure_initialized()
         context.add_function(fn)
+        self._function_deleter = _EagerDefinedFunctionDeleter(self.name)
+        self._registered_on_context = True
     self.definition = function_def
-    self.name = compat.as_bytes(function_def.signature.name)
     self.signature = function_def.signature
     self._num_outputs = len(self.signature.output_arg)
     self._output_types = [o.type for o in self.signature.output_arg]
@@ -588,8 +600,10 @@ class ConcreteFunction(object):
       raise AssertionError("Expected all args to be Tensors or Variables; "
                            "but got CompositeTensor: %r" % args)
 
-    for v in self._func_graph.variables:
-      resource_variable_ops.variable_accessed(v)
+    if (tape.could_possibly_record() or
+        hasattr(ops.get_default_graph(), "watch_variable")):
+      for v in self._func_graph.variables:
+        resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
     variables_used = set([])
@@ -966,6 +980,8 @@ class FunctionSpec(object):
     #   - remove the corresponding arguments,
     #   - remove the corresponding keywords.
     _, unwrapped = tf_decorator.unwrap(python_function)
+    # TODO(b/131153379): Consider Python3's fullargspec.kwonlyargs and
+    # fullargspec.kwonlydefaults.
     if isinstance(unwrapped, functools.partial):
       # Also consider the Python3 case with kwonlydefaults.
       if fullargspec.defaults or fullargspec.kwonlydefaults:
@@ -1037,7 +1053,7 @@ class FunctionSpec(object):
 
       self._input_signature = tuple(input_signature)
       self._flat_input_signature = tuple(nest.flatten(input_signature,
-                                                      expand_composites=False))
+                                                      expand_composites=True))
 
   @property
   def fullargspec(self):
@@ -1654,7 +1670,7 @@ def register(func, *args, **kwargs):
 
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
-         for arg in nest.flatten(signature, expand_composites=False)):
+         for arg in nest.flatten(signature, expand_composites=True)):
     raise TypeError("Invalid input_signature %s; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects.")
 

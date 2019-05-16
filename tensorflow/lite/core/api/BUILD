@@ -17,6 +17,7 @@ cc_library(
         "error_reporter.h",
         "flatbuffer_conversions.h",
         "op_resolver.h",
+        "profiler.h",
     ],
     copts = tflite_copts(),
     deps = [

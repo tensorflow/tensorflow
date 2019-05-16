@@ -2198,35 +2198,26 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   if (cluster == nullptr) {
-    return errors::InvalidArgument("cluster == nullptr");
+    LOG(WARNING) << "layout optimizer was called with cluster == nullptr";
+    return errors::Aborted("cluster == nullptr.");
+  }
+  if (GetNumGPUs(*cluster) < 1) {
+    return errors::Aborted(
+        "No GPUs found: LayoutOptimizer is currently only tuned for GPU.");
   }
 
-  if (GetNumGPUs(*cluster) < 1) {
-    // LayoutOptimizer is currently only tuned for GPU.
-    *output = item.graph;
-    return Status::OK();
-  }
+  GraphProperties graph_properties(item);
+  TF_RETURN_IF_ERROR(graph_properties.InferStatically(false));
+  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   virtual_placer_.reset(new VirtualPlacer(cluster->GetDevices()));
   nodes_to_preserve_ = item.NodesToPreserve();
-  GraphProperties graph_properties(item);
-  auto status = graph_properties.InferStatically(false);
-  if (!status.ok()) {
-    VLOG(1) << "Infer shape return status: " << status.ToString();
-    *output = item.graph;
-    return status;
-  }
-  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   TuningConfig config;
   config.no_gemm = true;
   // TODO(yaozhang): Enable tuning with various TuningConfig choices with
   // the measurement-based estimator.
-  status = Tune(item, graph_properties, config, output);
-  if (!status.ok()) {
-    *output = item.graph;
-  }
-  return status;
+  return Tune(item, graph_properties, config, output);
 }
 
 void LayoutOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,

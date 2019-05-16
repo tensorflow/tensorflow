@@ -29,13 +29,29 @@ TfLiteRegistration* Micro_Register_FULLY_CONNECTED() {
 TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Micro_Register_SOFTMAX() { return Register_SOFTMAX(); }
 
+TfLiteRegistration* Register_CONV_2D();
+TfLiteRegistration* Micro_Register_CONV_2D() { return Register_CONV_2D(); }
+
+TfLiteRegistration* Register_AVERAGE_POOL_2D();
+TfLiteRegistration* Micro_Register_AVERAGE_POOL_2D() {
+  return Register_AVERAGE_POOL_2D();
+}
+
+TfLiteRegistration* Register_MAX_POOL_2D();
+TfLiteRegistration* Micro_Register_MAX_POOL_2D() {
+  return Register_MAX_POOL_2D();
+}
+
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
              Micro_Register_DEPTHWISE_CONV_2D());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Micro_Register_FULLY_CONNECTED(),
              /* min_version */ 1,
              /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_MAX_POOL_2D, Micro_Register_MAX_POOL_2D());
   AddBuiltin(BuiltinOperator_SOFTMAX, Micro_Register_SOFTMAX());
+  AddBuiltin(BuiltinOperator_CONV_2D, Micro_Register_CONV_2D());
+  AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Micro_Register_AVERAGE_POOL_2D());
 }
 
 }  // namespace micro

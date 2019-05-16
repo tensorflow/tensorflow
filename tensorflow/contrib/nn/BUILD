@@ -44,6 +44,7 @@ py_test(
     name = "alpha_dropout_test",
     size = "small",
     srcs = ["python/ops/alpha_dropout_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",
@@ -61,6 +62,7 @@ py_test(
     name = "fwd_gradients_test",
     size = "small",
     srcs = ["python/ops/fwd_gradients_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",
@@ -74,6 +76,7 @@ py_test(
     name = "sampling_ops_test",
     size = "small",
     srcs = ["python/ops/sampling_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",
@@ -89,6 +92,7 @@ py_test(
     name = "scaled_softplus_test",
     size = "small",
     srcs = ["python/ops/scaled_softplus_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":nn_py",

@@ -711,14 +711,15 @@ TEST(TestDepthwiseConv, TestGenericKernel) {
 }
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
-TEST(TestDepthwiseConv, TestKernel3x3FilterAway) {
+TEST(TestDepthwiseConv, TestNeon3x3FilterAway) {
   const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,
                                   DepthwiseConvOutputRounding::kAwayFromZero);
   }
 }
-TEST(TestDepthwiseConv, TestKernel3x3FilterUpward) {
+
+TEST(TestDepthwiseConv, TestNeon3x3FilterUpward) {
   const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,

@@ -43,8 +43,8 @@ remote_config_workspace()
 # Apple and Swift rules.
 http_archive(
     name = "build_bazel_rules_apple",
-    sha256 = "8f32e2839fba28d549e1670dbed83606dd339a9f7489118e481814d61738270f",
-    urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.14.0/rules_apple.0.14.0.tar.gz"],
+    sha256 = "23792cd999f97fc97284d1c44cb1324bfdd0bc54aa68ad513fa3705aca3b1f9e",
+    urls = ["https://github.com/bazelbuild/rules_apple/releases/download/0.15.0/rules_apple.0.15.0.tar.gz"],
 )  # https://github.com/bazelbuild/rules_apple/releases
 http_archive(
     name = "build_bazel_apple_support",
@@ -58,14 +58,14 @@ http_archive(
 )  # https://github.com/bazelbuild/bazel-skylib/releases
 http_archive(
     name = "build_bazel_rules_swift",
-    sha256 = "31aad005a9c4e56b256125844ad05eb27c88303502d74138186f9083479f93a6",
-    urls = ["https://github.com/bazelbuild/rules_swift/releases/download/0.8.0/rules_swift.0.8.0.tar.gz"],
+    sha256 = "9efe9699e9765e6b4a5e063e4a08f6b163cccaf0443f775d935baf5c3cd6ed0e",
+    urls = ["https://github.com/bazelbuild/rules_swift/releases/download/0.9.0/rules_swift.0.9.0.tar.gz"],
 )  # https://github.com/bazelbuild/rules_swift/releases
 http_archive(
     name = "com_github_apple_swift_swift_protobuf",
     type = "zip",
-    strip_prefix = "swift-protobuf-1.4.0/",
-    urls = ["https://github.com/apple/swift-protobuf/archive/1.4.0.zip"],
+    strip_prefix = "swift-protobuf-1.5.0/",
+    urls = ["https://github.com/apple/swift-protobuf/archive/1.5.0.zip"],
 )  # https://github.com/apple/swift-protobuf/releases
 http_file(
     name = "xctestrunner",

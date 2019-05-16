@@ -91,10 +91,9 @@ def assert_input_compatibility(input_spec, inputs, layer_name):
   """
   if not input_spec:
     return
-  if not isinstance(input_spec, (list, tuple)):
-    input_spec = nest.flatten(input_spec)
 
   inputs = nest.flatten(inputs)
+  input_spec = nest.flatten(input_spec)
   if len(inputs) != len(input_spec):
     raise ValueError('Layer ' + layer_name + ' expects ' +
                      str(len(input_spec)) + ' inputs, '

@@ -63,13 +63,13 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  diag = tf.random_normal(shape=[2, 3, 4])
+  diag = tf.random.normal(shape=[2, 3, 4])
   operator = LinearOperatorDiag(diag)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
   # since the batch dimensions, [2, 1], are broadcast to
   # operator.batch_shape = [2, 3].
-  y = tf.random_normal(shape=[2, 1, 4, 2])
+  y = tf.random.normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)
   ==> operator.matmul(x) = y
   ```

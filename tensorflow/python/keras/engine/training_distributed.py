@@ -61,7 +61,7 @@ def fit_distributed(model,
   """Fit loop for Distribution Strategies."""
   distributed_training_utils.validate_callbacks(callbacks, model.optimizer)
   distributed_training_utils.validate_inputs(
-      x, y, model._distribution_strategy)
+      x, y)
 
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
@@ -81,26 +81,35 @@ def fit_distributed(model,
       batch_size=batch_size,
       validation_split=validation_split,
       shuffle=shuffle,
-      repeat=True)
+      epochs=epochs)
+  if not distributed_training_utils.is_distributing_by_cloning(model):
+    with model._distribution_strategy.scope():
+      (dataset, _, _) = model._standardize_user_data(
+          dataset,
+          sample_weight=sample_weight,
+          class_weight=class_weight,
+          batch_size=batch_size,
+          validation_split=validation_split,
+          shuffle=shuffle)
 
   val_dataset = None
   if validation_data:
     val_x, val_y, val_sample_weights = model._unpack_validation_data(
         validation_data)
-    distributed_training_utils.validate_inputs(
-        val_x, val_y, model._distribution_strategy)
+    distributed_training_utils.validate_inputs(val_x, val_y)
     first_valx_value = nest.flatten(val_x)[0]
     if isinstance(first_valx_value, np.ndarray):
       validation_steps, _ = distributed_training_utils.get_input_params(
           model._distribution_strategy, first_valx_value, validation_steps,
-          batch_size)
+          batch_size, mode=ModeKeys.TEST)
     val_dataset = model._distribution_standardize_user_data(
         val_x, val_y,
         sample_weight=val_sample_weights,
         class_weight=None,
         batch_size=batch_size,
         validation_split=validation_split,
-        shuffle=shuffle)
+        shuffle=shuffle,
+        allow_partial_batch=True)
   elif validation_split:
     raise ValueError('validation_split argument is not supported with '
                      'distribution strategies.')
@@ -143,16 +152,18 @@ def evaluate_distributed(model,
                          steps=None,
                          callbacks=None):
   """Evaluate loop for Distribution Strategies."""
-  distributed_training_utils.validate_inputs(x, y, model._distribution_strategy)
+  distributed_training_utils.validate_inputs(x, y)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
     steps, batch_size = distributed_training_utils.get_input_params(
-        model._distribution_strategy, first_x_value, steps, batch_size)
+        model._distribution_strategy, first_x_value, steps, batch_size,
+        mode=ModeKeys.TEST)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
   dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
-      batch_size=batch_size)
+      batch_size=batch_size,
+      allow_partial_batch=True)
 
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_test_loop(
@@ -174,8 +185,7 @@ def predict_distributed(model,
                         steps=None,
                         callbacks=None):
   """Predict loop for Distribution Strategies."""
-  distributed_training_utils.validate_inputs(
-      x, None, model._distribution_strategy, allow_partial_batch=True)
+  distributed_training_utils.validate_inputs(x, None)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
     steps, batch_size = distributed_training_utils.get_input_params(
@@ -199,7 +209,7 @@ def predict_distributed(model,
         callbacks=callbacks)
 
 
-def _per_device_execution_function(model, mode):
+def _per_replica_execution_function(model, mode):
   exec_func = model._make_execution_function(mode)
   return (exec_func.inputs, exec_func.outputs, exec_func.updates_op,
           exec_func.session_kwargs)
@@ -229,12 +239,24 @@ def _make_train_step_fn(model, mode, strategy, output_labels):
 
   def _step_fn(ctx, inputs):
     """A step fn that returns update ops."""
-    inputs, targets = inputs
+    if isinstance(inputs, (tuple, list)) and len(inputs) == 2:
+      inputs, targets = inputs
+    else:
+      targets = None
+
+    # When input feature is a dictionary of tensors, dictionary is flattended
+    # to an array and passed as a model input. This results in input mismatch
+    # when model input layer names are not sorted in alphabetical order as
+    # `nest.flatten()`sorts dictioary elements by keys. As so, transform input
+    # tensors into an array and order it along `model._feed_input_names`.
+    if isinstance(inputs, dict):
+      inputs = [inputs[input_name] for input_name in model._feed_input_names]
+
     _build_model(strategy, model, mode, inputs, targets)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = strategy.extended.call_for_each_replica(
-         _per_device_execution_function,
+         _per_replica_execution_function,
          args=(distributed_training_utils.get_distributed_model(model, mode),
                mode))
     (all_inputs, all_outputs, all_updates,
@@ -275,7 +297,7 @@ def experimental_tpu_fit_loop(model,
                               val_dataset=None,
                               validation_steps=None,
                               validation_freq=1):
-  """Fit loop for training with TPU DistributionStrategy.
+  """Fit loop for training with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -371,6 +393,9 @@ def experimental_tpu_fit_loop(model,
   target_steps = len(steps_to_run)
 
   callbacks._call_begin_hook(mode)
+
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     distributed_training_utils._reset_metrics(model)
     callbacks.on_epoch_begin(epoch)
@@ -443,7 +468,7 @@ def experimental_tpu_test_loop(model,
                                verbose=0,
                                steps=None,
                                callbacks=None):
-  """Test loop for evaluating with TPU DistributionStrategy.
+  """Test loop for evaluating with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -475,12 +500,16 @@ def experimental_tpu_test_loop(model,
 
   def _test_step_fn(inputs):
     """A fn that returns output of single test step."""
-    inputs, targets = inputs
+    if isinstance(inputs, (tuple, list)) and len(inputs) == 2:
+      inputs, targets = inputs
+    else:
+      targets = None
+
     (distribution_strategy_context.get_replica_context().merge_call(
         _build_model, args=(model, mode, inputs, targets)))
 
     (_, outputs, updates, _) = (
-        _per_device_execution_function(
+        _per_replica_execution_function(
             distributed_training_utils.get_distributed_model(model, mode),
             mode))
     with ops.control_dependencies([updates]):
@@ -574,7 +603,7 @@ def experimental_tpu_predict_loop(model,
                                   verbose=0,
                                   steps=None,
                                   callbacks=None):
-  """Predict loop for predicting with TPU DistributionStrategy.
+  """Predict loop for predicting with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -631,7 +660,7 @@ def experimental_tpu_predict_loop(model,
         _build_model, args=(model, mode, inputs)))
 
     (_, outputs, updates, _) = (
-        _per_device_execution_function(
+        _per_replica_execution_function(
             distributed_training_utils.get_distributed_model(model, mode),
             mode))
 
@@ -644,7 +673,7 @@ def experimental_tpu_predict_loop(model,
   predict_input_data = iterator.get_next()
   per_replica_outputs = current_strategy.experimental_run_v2(
       _predict_step_fn, args=(predict_input_data,))
-  output_tensors = distributed_training_utils.flatten_perdevice_values(
+  output_tensors = distributed_training_utils.flatten_per_replica_values(
       current_strategy, per_replica_outputs)
 
   if verbose >= 1:

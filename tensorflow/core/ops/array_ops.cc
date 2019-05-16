@@ -17,6 +17,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -3120,6 +3123,37 @@ REGISTER_OP("FakeQuantWithMinMaxVarsPerChannelGradient")
       c->set_output(0, inputs);
       c->set_output(1, min_max);
       c->set_output(2, min_max);
+      return Status::OK();
+    });
+
+REGISTER_OP("Fingerprint")
+    .Input("data: T")
+    .Input("method: string")
+    .Output("fingerprint: uint8")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      DimensionHandle fingerprint_size;
+      const Tensor* method = c->input_tensor(1);
+      if (method == nullptr) {
+        fingerprint_size = c->UnknownDim();
+      } else {
+        if (method->dims() != 0) {
+          return errors::InvalidArgument("`method` must be rank 0: ",
+                                         method->shape());
+        }
+        const string& method_string = method->scalar<string>()();
+        if (method_string != "farmhash64") {
+          return errors::InvalidArgument("Unsupported method: ", method_string);
+        }
+        fingerprint_size = c->MakeDim(sizeof(uint64));
+      }
+
+      DimensionHandle batch = c->Dim(c->input(0), 0);
+      c->set_output(0, c->MakeShape({batch, fingerprint_size}));
       return Status::OK();
     });
 

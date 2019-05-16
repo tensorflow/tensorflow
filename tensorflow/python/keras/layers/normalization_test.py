@@ -22,12 +22,16 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -153,6 +157,61 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(y.dtype, 'float16')
     self.assertEqual(norm.beta.dtype.base_dtype, 'float32')
     self.assertEqual(norm.gamma.dtype.base_dtype, 'float32')
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_batchnorm_non_trainable_with_fit(self):
+    inputs = keras.Input((3,))
+    bn = normalization_v2.BatchNormalization()
+    outputs = bn(inputs)
+    model = keras.Model(inputs, outputs)
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(np.random.random((100, 3)), np.random.random((100, 3)))
+
+    test_data = np.random.random((10, 3))
+    test_targets = np.random.random((10, 3))
+    test_loss = model.evaluate(test_data, test_targets)
+
+    bn.trainable = False
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    train_loss = model.train_on_batch(test_data, test_targets)
+    self.assertAlmostEqual(test_loss, train_loss)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_batchnorm_non_trainable_with_tf_function(self):
+    inputs = keras.Input((3,))
+    bn = normalization_v2.BatchNormalization()
+    outputs = bn(inputs)
+    model = keras.Model(inputs, outputs)
+    loss_fn = keras.losses.MeanSquaredError()
+    optimizer = rmsprop_v2.RMSprop()
+
+    @def_function.function()
+    def train_step(x, y):
+      with backprop.GradientTape() as tape:
+        y_pred = model(x, training=True)
+        loss = loss_fn(y, y_pred)
+      grads = tape.gradient(loss, model.trainable_weights)
+      optimizer.apply_gradients(zip(grads, model.trainable_weights))
+      return loss
+
+    @def_function.function()
+    def test_step(x, y):
+      y_pred = model(x, training=False)
+      loss = loss_fn(y, y_pred)
+      return loss
+
+    train_step(np.random.random((100, 3)), np.random.random((100, 3)))
+
+    test_data = np.random.random((10, 3))
+    test_targets = np.random.random((10, 3))
+    test_loss = test_step(test_data, test_targets)
+
+    bn.trainable = False
+    train_loss = train_step(test_data, test_targets)
+    if context.executing_eagerly():
+      self.assertAlmostEqual(test_loss.numpy(), train_loss.numpy())
 
 
 class BatchNormalizationV1Test(test.TestCase):
@@ -291,18 +350,18 @@ class NormalizationLayersGraphModeOnlyTest(
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       model.train_on_batch(x, x)
 
-      self.assertEqual(len(bn.updates), 4)
-      self.assertEqual(len(model.updates), 2)
-      self.assertEqual(len(model.get_updates_for(x2)), 2)
+      self.assertLen(bn.updates, 4)
+      self.assertLen(bn.get_updates_for(x1), 2)
+      self.assertLen(model.get_updates_for(x2), 2)
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
       y3 = model(x3)
       new_model = keras.models.Model(x3, y3, name='new_model')
 
-      self.assertEqual(len(new_model.updates), 2)
-      self.assertEqual(len(model.updates), 4)
-      self.assertEqual(len(new_model.get_updates_for(x3)), 2)
+      self.assertLen(new_model.updates, 6)
+      self.assertLen(model.updates, 6)
+      self.assertLen(new_model.get_updates_for(x3), 2)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 

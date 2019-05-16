@@ -74,7 +74,7 @@ class OneDeviceStrategyTest(
     iterator = distribution.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(
         iterator, distribution.extended.worker_devices, expected_values,
-        test_reinitialize=False)
+        test_reinitialize=False, ignore_order=True)
 
   def testNumpyDataset(self, distribution):
     self._test_numpy_dataset(distribution)

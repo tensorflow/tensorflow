@@ -154,47 +154,34 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 };
 
 GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
-    : DatasetOpKernel(ctx),
-      lib_def_(std::make_shared<FunctionLibraryDefinition>(
-          ctx->function_library()
-              ->GetFunctionLibraryDefinition()
-              ->default_registry(),
-          FunctionDefLibrary{})) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("init_func", &init_func_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("next_func", &next_func_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("finalize_func", &finalize_func_));
+    : DatasetOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "init_func", /*params=*/{},
+                                               &init_func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "next_func", /*params=*/{},
+                                               &next_func_metadata_));
+  OP_REQUIRES_OK(ctx,
+                 FunctionMetadata::Create(ctx, "finalize_func", /*params=*/{},
+                                          &finalize_func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-
-  for (const auto& func : {init_func_, next_func_, finalize_func_}) {
-    std::shared_ptr<FunctionLibraryDefinition> result;
-    OP_REQUIRES_OK(ctx,
-                   CreateFunctionLibraryDefinition(
-                       ctx->function_library()->GetFunctionLibraryDefinition(),
-                       func.name(), &result));
-    OP_REQUIRES_OK(ctx, lib_def_->AddLibrary(*result));
-  }
 }
 
 void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,
                                      DatasetBase** output) {
-  CapturedFunction::Params params;
-  params.lib_def = lib_def_;
-
   std::unique_ptr<CapturedFunction> init_func;
-  OP_REQUIRES_OK(
-      ctx, CapturedFunction::Create(init_func_, ctx, "init_func_other_args",
-                                    params, &init_func));
+  OP_REQUIRES_OK(ctx,
+                 CapturedFunction::Create(ctx, init_func_metadata_,
+                                          "init_func_other_args", &init_func));
 
   std::unique_ptr<CapturedFunction> next_func;
-  OP_REQUIRES_OK(
-      ctx, CapturedFunction::Create(next_func_, ctx, "next_func_other_args",
-                                    params, &next_func));
+  OP_REQUIRES_OK(ctx,
+                 CapturedFunction::Create(ctx, next_func_metadata_,
+                                          "next_func_other_args", &next_func));
 
   std::unique_ptr<CapturedFunction> finalize_func;
-  OP_REQUIRES_OK(ctx, CapturedFunction::Create(finalize_func_, ctx,
+  OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, finalize_func_metadata_,
                                                "finalize_func_other_args",
-                                               params, &finalize_func));
+                                               &finalize_func));
 
   *output =
       new Dataset(ctx, std::move(init_func), std::move(next_func),

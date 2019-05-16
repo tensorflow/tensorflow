@@ -179,6 +179,7 @@ py_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:batch_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
@@ -235,7 +236,10 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
 )
 
 tf_py_test(
@@ -269,30 +273,6 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
-)
-
-tf_py_test(
-    name = "tpu_config_test",
-    size = "small",
-    srcs = ["tpu_config_test.py"],
-    additional_deps = [
-        ":tpu_estimator",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-tf_py_test(
-    name = "tpu_estimator_signals_test",
-    size = "small",
-    srcs = ["tpu_estimator_signals_test.py"],
-    additional_deps = [
-        ":tpu_estimator",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-    # TODO(jhseu): Remove. Fails in OSS on Python 3.
-    tags = ["no_oss"],
 )
 
 tf_py_test(

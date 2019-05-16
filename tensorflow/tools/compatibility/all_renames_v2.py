@@ -38,7 +38,9 @@ manual_symbol_renames = {
     "tf.estimator.inputs":
         "tf.compat.v1.estimator.inputs",
     "tf.extract_image_patches":
-        "tf.image.extract_image_patches",
+        "tf.image.extract_patches",
+    "tf.image.extract_image_patches":
+        "tf.image.extract_patches",
     "tf.gfile.Copy":
         "tf.io.gfile.copy",
     "tf.gfile.DeleteRecursively":
@@ -157,6 +159,8 @@ manual_symbol_renames = {
         "tf.CriticalSection",
     "tf.contrib.framework.is_tensor":
         "tf.is_tensor",
+    "tf.contrib.framework.load_variable":
+        "tf.train.load_variable",
     "tf.contrib.framework.nest.assert_same_structure":
         "tf.nest.assert_same_structure",
     "tf.contrib.framework.nest.flatten":
@@ -199,14 +203,26 @@ manual_symbol_renames = {
         "tf.sort",
     "tf.contrib.framework.argsort":
         "tf.argsort",
+    "tf.contrib.summary.all_summary_ops":
+        "tf.compat.v1.summary.all_v2_summary_ops",
+    "tf.contrib.summary.always_record_summaries":
+        "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.audio":
         "tf.compat.v2.summary.audio",
+    "tf.contrib.summary.create_file_writer":
+        "tf.compat.v2.summary.create_file_writer",
+    "tf.contrib.summary.flush":
+        "tf.compat.v2.summary.flush",
+    "tf.contrib.summary.generic":
+        "tf.compat.v2.summary.write",
     "tf.contrib.summary.histogram":
         "tf.compat.v2.summary.histogram",
     "tf.contrib.summary.image":
         "tf.compat.v2.summary.image",
     "tf.contrib.summary.initialize":
         "tf.compat.v1.summary.initialize",
+    "tf.contrib.summary.never_record_summaries":
+        "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.scalar":
         "tf.compat.v2.summary.scalar",
     "tf.contrib.tpu.CrossShardOptimizer":
@@ -302,8 +318,6 @@ manual_symbol_renames = {
         "tf.compat.v1.nn.fused_batch_norm",
     "tf.nn.softmax_cross_entropy_with_logits_v2":
         "tf.nn.softmax_cross_entropy_with_logits",
-    "tf.nn.sigmoid_cross_entropy_with_logits":
-        "tf.nn.sigmoid_cross_entropy_with_logits",
     "tf.losses.Reduction.MEAN":
         "tf.compat.v1.losses.Reduction.MEAN",
     "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
@@ -496,10 +510,6 @@ manual_symbol_renames = {
         "tf.nn.conv2d_transpose",
     "tf.test.compute_gradient":
         "tf.compat.v1.test.compute_gradient",
-    "tf.xla.experimental.compile":
-        "tf.xla.experimental.compile",
-    "tf.xla.experimental.jit_scope":
-        "tf.xla.experimental.jit_scope",
 }
 # pylint: enable=line-too-long
 

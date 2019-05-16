@@ -131,23 +131,6 @@ TEST(CAPI, MultipleProfilerSession) {
   TFE_DeleteProfilerContext(profiler_context);
 }
 
-TEST(CAPI, MonitoringSetGauge) {
-  TFE_MonitoringSetGauge("test/gauge", "label", 1);
-  auto* collection_registry = monitoring::CollectionRegistry::Default();
-  monitoring::CollectionRegistry::CollectMetricsOptions options;
-  std::unique_ptr<monitoring::CollectedMetrics> metrics =
-      collection_registry->CollectMetrics(options);
-
-  EXPECT_EQ("test/gauge", metrics->point_set_map.at("test/gauge")->metric_name);
-  EXPECT_EQ(1,
-            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
-
-  TFE_MonitoringSetGauge("test/gauge", "label", 5);
-  metrics = collection_registry->CollectMetrics(options);
-  EXPECT_EQ(5,
-            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
-}
-
 TEST(CAPI, MonitoringCounter0) {
   TF_Status* status = TF_NewStatus();
   auto* counter =
@@ -200,8 +183,59 @@ TEST(CAPI, MonitoringCounterMultiple) {
   TFE_MonitoringDeleteCounter2(counter2);
 }
 
-TEST(CAPI, MonitoringAddSampler) {
-  TFE_MonitoringAddSampler("test/sampler", "label", 1.0);
+TEST(CAPI, MonitoringGauge0) {
+  TF_Status* status = TF_NewStatus();
+  auto* gauge = TFE_MonitoringNewIntGauge0("test/gauge", status, "test");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell = TFE_MonitoringGetCellIntGauge0(gauge);
+  TFE_MonitoringIntGaugeCellSet(cell, 1);
+  EXPECT_EQ(TFE_MonitoringIntGaugeCellValue(cell), 1);
+  auto* collection_registry = monitoring::CollectionRegistry::Default();
+  monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<monitoring::CollectedMetrics> metrics =
+      collection_registry->CollectMetrics(options);
+
+  EXPECT_EQ("test/gauge", metrics->point_set_map.at("test/gauge")->metric_name);
+  EXPECT_EQ(1,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+
+  TFE_MonitoringIntGaugeCellSet(cell, 5);
+  metrics = collection_registry->CollectMetrics(options);
+  EXPECT_EQ(5,
+            metrics->point_set_map.at("test/gauge")->points.at(0)->int64_value);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, MonitoringMultipleGauge) {
+  TF_Status* status = TF_NewStatus();
+  auto* gauge1 =
+      TFE_MonitoringNewBoolGauge1("test/gauge1", status, "test", "label1");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell1 = TFE_MonitoringGetCellBoolGauge1(gauge1, "foo");
+  TFE_MonitoringBoolGaugeCellSet(cell1, true);
+  EXPECT_TRUE(TFE_MonitoringBoolGaugeCellValue(cell1));
+
+  auto* gauge2 = TFE_MonitoringNewStringGauge2("test/gauge2", status, "test",
+                                               "label1", "label2");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell2 = TFE_MonitoringGetCellStringGauge2(gauge2, "foo", "bar");
+  TFE_MonitoringStringGaugeCellSet(cell2, "str");
+  auto* buf = new TF_Buffer;
+  TFE_MonitoringStringGaugeCellValue(cell2, buf);
+  string data(static_cast<const char*>(buf->data), buf->length);
+  delete buf;
+  EXPECT_EQ(data, "str");
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, MonitoringSampler0) {
+  TF_Status* status = TF_NewStatus();
+  auto* buckets = TFE_MonitoringNewExponentialBuckets(1.0, 2.0, 2);
+  auto* sampler =
+      TFE_MonitoringNewSampler0("test/sampler", buckets, status, "test");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell = TFE_MonitoringGetCellSampler0(sampler);
+  TFE_MonitoringSamplerCellAdd(cell, 1.0);
   auto* collection_registry = monitoring::CollectionRegistry::Default();
   monitoring::CollectionRegistry::CollectMetricsOptions options;
   std::unique_ptr<monitoring::CollectedMetrics> metrics =
@@ -213,11 +247,48 @@ TEST(CAPI, MonitoringAddSampler) {
                      ->points.at(0)
                      ->histogram_value.sum());
 
-  TFE_MonitoringAddSampler("test/sampler", "label", 5.0);
+  TFE_MonitoringSamplerCellAdd(cell, 5.0);
   metrics = collection_registry->CollectMetrics(options);
   EXPECT_EQ(6.0, metrics->point_set_map.at("test/sampler")
                      ->points.at(0)
                      ->histogram_value.sum());
+  TFE_MonitoringDeleteBuckets(buckets);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, MonitoringMultipleSampler) {
+  TF_Status* status = TF_NewStatus();
+  auto* buckets = TFE_MonitoringNewExponentialBuckets(1.0, 2.0, 2);
+  auto* sampler1 = TFE_MonitoringNewSampler1("test/sampler1", buckets, status,
+                                             "test", "label1");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell1 = TFE_MonitoringGetCellSampler1(sampler1, "foo");
+  TFE_MonitoringSamplerCellAdd(cell1, 1.0);
+  TFE_MonitoringSamplerCellAdd(cell1, 2.0);
+  TF_Buffer* result1 = TF_NewBuffer();
+  TFE_MonitoringSamplerCellValue(cell1, result1);
+  tensorflow::HistogramProto hitogram1;
+  EXPECT_TRUE(hitogram1.ParseFromString(
+      {reinterpret_cast<const char*>(result1->data), result1->length}));
+  EXPECT_EQ(hitogram1.sum(), 3.0);
+  delete result1;
+
+  auto* sampler2 = TFE_MonitoringNewSampler2("test/sampler2", buckets, status,
+                                             "test", "label1", "label2");
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* cell2 = TFE_MonitoringGetCellSampler2(sampler2, "foo", "bar");
+  TFE_MonitoringSamplerCellAdd(cell2, 2.0);
+  TFE_MonitoringSamplerCellAdd(cell2, 3.0);
+  TF_Buffer* result2 = TF_NewBuffer();
+  TFE_MonitoringSamplerCellValue(cell2, result2);
+  tensorflow::HistogramProto hitogram2;
+  EXPECT_TRUE(hitogram2.ParseFromString(
+      {reinterpret_cast<const char*>(result2->data), result2->length}));
+  EXPECT_EQ(hitogram2.sum(), 5.0);
+  delete result2;
+
+  TFE_MonitoringDeleteBuckets(buckets);
+  TF_DeleteStatus(status);
 }
 
 }  // namespace

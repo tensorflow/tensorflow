@@ -359,7 +359,7 @@ class LayoutAssignment : public HloModulePass {
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
   // Returns null if it can't decide the best layout.
   // Precondition: `instruction` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
+  virtual std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
       const Layout& output_layout, const HloInstruction* instruction,
       int64 operand_no);
   // Given the layout of `user`'s `operand_no`-th operand, chooses a layout of

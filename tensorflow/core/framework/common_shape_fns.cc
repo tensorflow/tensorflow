@@ -565,7 +565,7 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
                                          /*num_dims=*/4, data_format));
   } else {
-    DCHECK(padding != Padding::EXPLICIT);
+    CHECK(padding != Padding::EXPLICIT);  // Crash ok.
   }
 
   DimensionHandle output_rows, output_cols;

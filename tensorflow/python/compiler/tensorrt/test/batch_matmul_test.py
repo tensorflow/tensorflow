@@ -77,7 +77,7 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    return ["TRTEngineOp_0", "TRTEngineOp_1", "TRTEngineOp_2"]
 
 
 if __name__ == "__main__":

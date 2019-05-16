@@ -104,6 +104,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/strings",
             "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
@@ -145,6 +146,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_platform",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -243,6 +245,28 @@ tf_cuda_library(
     }),
 )
 
+tf_cuda_library(
+    name = "ops",
+    srcs = [
+        "ops.cc",
+    ],
+    hdrs = [
+        "ops.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tf_status_helper",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }) + [":c_api_internal"],
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -291,7 +315,6 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
-        "no_oss",  # http://b/119522529
         "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since
@@ -442,6 +465,27 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "ops_test",
+    size = "small",
+    srcs = ["ops_test.cc"],
+    linkopts = select({
+        "//conditions:default": [],
+    }),
+    tags = ["noasan"],
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":c_api",
+        ":ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

@@ -26,6 +26,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
@@ -98,8 +99,8 @@ class BatchNormalizationBase(Layer):
       normalized values (before gamma and beta), only during training. For
       example, if axis==-1,
         `adjustment = lambda shape: (
-          tf.random_uniform(shape[-1:], 0.93, 1.07),
-          tf.random_uniform(shape[-1:], -0.1, 0.1))`
+          tf.random.uniform(shape[-1:], 0.93, 1.07),
+          tf.random.uniform(shape[-1:], -0.1, 0.1))`
       will scale the normalized value by up to 7% up or down, then shift the
       result by up to 0.1 (with independent scaling and bias for each feature
       but shared across all examples), and finally apply gamma and/or beta. If
@@ -126,6 +127,8 @@ class BatchNormalizationBase(Layer):
   References:
     - [Batch Normalization: Accelerating Deep Network Training by Reducing
       Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+
+  {{TRAINABLE_ATTRIBUTE_NOTE}}
   """
 
   # By default, the base class uses V2 behavior. The BatchNormalization V1
@@ -156,14 +159,14 @@ class BatchNormalizationBase(Layer):
                name=None,
                **kwargs):
     super(BatchNormalizationBase, self).__init__(
-        name=name, trainable=trainable, **kwargs)
+        name=name, **kwargs)
     if isinstance(axis, list):
       self.axis = axis[:]
     elif isinstance(axis, int):
       self.axis = axis
     else:
       raise TypeError('axis must be int or list, type given: %s'
-                      % type(self.axis))
+                      % type(axis))
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -193,6 +196,8 @@ class BatchNormalizationBase(Layer):
 
     self.fused = fused
     self._bessels_correction_test_only = True
+    self._trainable_var = None
+    self.trainable = trainable
 
     if renorm:
       renorm_clipping = renorm_clipping or {}
@@ -234,6 +239,22 @@ class BatchNormalizationBase(Layer):
       return True
     except ValueError:
       return False
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    if self._trainable_var is not None:
+      self._trainable_var.update_value(value)
+
+  def _get_trainable_var(self):
+    if self._trainable_var is None:
+      self._trainable_var = K.freezable_variable(
+          self._trainable, name=self.name + '_trainable')
+    return self._trainable_var
 
   @property
   def _param_dtype(self):
@@ -424,8 +445,7 @@ class BatchNormalizationBase(Layer):
     self.built = True
 
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
-    with ops.name_scope(None, 'AssignMovingAvg',
-                        [variable, value, momentum]) as scope:
+    with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
@@ -444,8 +464,9 @@ class BatchNormalizationBase(Layer):
 
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
-    if distribution_strategy_context.has_strategy(
-    ) and not inputs.shape.is_fully_defined():
+    # TODO(b/130185866): Support zero batch input in graph mode.
+    if ops.executing_eagerly_outside_functions(
+    ) and distribution_strategy_context.has_strategy():
       inputs_size = array_ops.size(inputs)
     else:
       inputs_size = None
@@ -490,17 +511,25 @@ class BatchNormalizationBase(Layer):
     if training_value or training_value is None:
       if distribution_strategy_context.in_cross_replica_context():
         strategy = distribution_strategy_context.get_strategy()
-        mean_update = strategy.extended.update(
-            self.moving_mean, self._assign_moving_average,
-            (mean, self.momentum, inputs_size))
-        variance_update = strategy.extended.update(
-            self.moving_variance, self._assign_moving_average,
-            (variance, self.momentum, inputs_size))
+        def mean_update():
+          return strategy.extended.update(self.moving_mean,
+                                          self._assign_moving_average,
+                                          (mean, self.momentum, inputs_size))
+
+        def variance_update():
+          return strategy.extended.update(
+              self.moving_variance, self._assign_moving_average,
+              (variance, self.momentum, inputs_size))
       else:
-        mean_update = self._assign_moving_average(self.moving_mean, mean,
-                                                  momentum, inputs_size)
-        variance_update = self._assign_moving_average(
-            self.moving_variance, variance, momentum, inputs_size)
+
+        def mean_update():
+          return self._assign_moving_average(self.moving_mean, mean, momentum,
+                                             inputs_size)
+
+        def variance_update():
+          return self._assign_moving_average(self.moving_variance, variance,
+                                             momentum, inputs_size)
+
       self.add_update(mean_update, inputs=True)
       self.add_update(variance_update, inputs=True)
 
@@ -581,17 +610,29 @@ class BatchNormalizationBase(Layer):
     mean, variance = nn.moments(inputs, reduction_axes, keep_dims=keep_dims)
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
-    if distribution_strategy_context.has_strategy(
-    ) and not inputs.shape.is_fully_defined():
+    # TODO(b/130185866): Support zero batch input in graph mode.
+    if (ops.executing_eagerly_outside_functions() and
+        distribution_strategy_context.has_strategy()):
       inputs_size = array_ops.size(inputs)
       mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
       variance = array_ops.where(inputs_size > 0, variance,
                                  K.zeros_like(variance))
     return mean, variance
 
-  def call(self, inputs, training=None):
+  def _get_training_value(self, training=None):
     if training is None:
       training = K.learning_phase()
+    if self._USE_V2_BEHAVIOR:
+      if isinstance(training, int):
+        training = bool(training)
+      if base_layer_utils.is_in_keras_graph():
+        training = math_ops.logical_and(training, self._get_trainable_var())
+      else:
+        training = math_ops.logical_and(training, self.trainable)
+    return training
+
+  def call(self, inputs, training=None):
+    training = self._get_training_value(training)
 
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
@@ -668,10 +709,11 @@ class BatchNormalizationBase(Layer):
 
       mean = tf_utils.smart_cond(training,
                                  lambda: mean,
-                                 lambda: moving_mean)
-      variance = tf_utils.smart_cond(training,
-                                     lambda: variance,
-                                     lambda: moving_variance)
+                                 lambda: ops.convert_to_tensor(moving_mean))
+      variance = tf_utils.smart_cond(
+          training,
+          lambda: variance,
+          lambda: ops.convert_to_tensor(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
@@ -684,8 +726,8 @@ class BatchNormalizationBase(Layer):
       else:
         new_mean, new_variance = mean, variance
 
-      if distribution_strategy_context.has_strategy(
-      ) and not inputs.shape.is_fully_defined():
+      if ops.executing_eagerly_outside_functions(
+      ) and distribution_strategy_context.has_strategy():
         inputs_size = array_ops.size(inputs)
       else:
         inputs_size = None
@@ -803,27 +845,27 @@ class BatchNormalizationBase(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def _replace_in_base_docstring(old, new):
+def replace_in_base_docstring(replacements):
   string = BatchNormalizationBase.__doc__
-  if old not in string:
-    raise ValueError('Could not find following string in BatchNormalizationBase'
-                     ' docstring: "{}"'.format(old))
-  return string.replace(old, new)
+  for old, new in replacements:
+    assert old in string
+    string.replace(old, new)
+  return string
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
 class BatchNormalization(BatchNormalizationBase):
 
-  __doc__ = _replace_in_base_docstring(
-      '''
+  __doc__ = replace_in_base_docstring(
+      [('''
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
       implementation if possible. If False, do not used the fused
       implementation.''',
-
-      '''
+        '''
     fused: if `None` or `True`, use a faster, fused implementation if possible.
-      If `False`, use the system recommended implementation.''')
+      If `False`, use the system recommended implementation.'''),
+       ('{{TRAINABLE_ATTRIBUTE_NOTE}}', '')])
 
   _USE_V2_BEHAVIOR = False
 

@@ -373,11 +373,11 @@ struct ResizeBilinear<GPUDevice, T> {
       GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
       if (half_pixel_centers) {
-      TF_CHECK_OK(CudaLaunchKernel(
-          ResizeBilinearKernel<T>, config.block_count, config.thread_per_block,
-          0, d.stream(), config.virtual_thread_count, images.data(),
-          height_scale, width_scale, batch, in_height, in_width, channels,
-          out_height, out_width, output.data()));
+        TF_CHECK_OK(CudaLaunchKernel(
+            ResizeBilinearKernel<T>, config.block_count, config.thread_per_block,
+            0, d.stream(), config.virtual_thread_count, images.data(),
+            height_scale, width_scale, batch, in_height, in_width, channels,
+            out_height, out_width, output.data()));
 
       } else {
         TF_CHECK_OK(CudaLaunchKernel(

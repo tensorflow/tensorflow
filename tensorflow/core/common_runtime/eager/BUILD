@@ -167,6 +167,7 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/profiler/lib:traceme",
             "//tensorflow/core/grappler/optimizers:meta_optimizer",
         ],
     }),
@@ -276,4 +277,15 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = ["*_test.cc"],
+    ),
 )

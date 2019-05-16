@@ -8,6 +8,8 @@ package(
     default_visibility = ["//visibility:private"],
 )
 
+load(":ruy_visibility.bzl", "ruy_visibility")
+
 cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
@@ -27,6 +29,7 @@ cc_library(
 cc_library(
     name = "spec",
     hdrs = ["spec.h"],
+    visibility = ruy_visibility(),
 )
 
 cc_library(
@@ -127,6 +130,7 @@ cc_library(
     hdrs = [
         "thread_pool.h",
     ],
+    visibility = ruy_visibility(),
     deps = [
         ":blocking_counter",
         ":check_macros",
@@ -147,6 +151,7 @@ cc_library(
 cc_library(
     name = "path",
     hdrs = ["path.h"],
+    visibility = ruy_visibility(),
     deps = [":size_util"],
 )
 
@@ -174,6 +179,7 @@ cc_library(
     hdrs = [
         "context.h",
     ],
+    visibility = ruy_visibility(),
     deps = [
         ":allocator",
         ":check_macros",
@@ -188,21 +194,25 @@ cc_library(
 cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
+    visibility = ruy_visibility(),
     deps = [":check_macros"],
 )
 
 cc_library(
-    name = "common",
-    hdrs = [
-        "common.h",
-    ],
+    name = "internal_matrix",
+    hdrs = ["internal_matrix.h"],
     deps = [
         ":check_macros",
+        ":common",
         ":matrix",
-        ":opt_set",
-        ":path",
         ":size_util",
     ],
+)
+
+cc_library(
+    name = "common",
+    hdrs = ["common.h"],
+    deps = [":check_macros"],
 )
 
 cc_library(
@@ -215,7 +225,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":matrix",
+        ":internal_matrix",
         ":opt_set",
         ":path",
         ":size_util",
@@ -236,7 +246,7 @@ cc_library(
     ],
     deps = [
         ":common",
-        ":matrix",
+        ":internal_matrix",
         ":opt_set",
         ":path",
         ":spec",
@@ -245,29 +255,17 @@ cc_library(
     ],
 )
 
-load(":ruy_visibility.bzl", "ruy_visibility")
-
-# The main library.
 cc_library(
-    name = "ruy",
-    srcs = [
-        "dispatch.h",
-        "impl.h",
-    ],
-    hdrs = ["ruy.h"],
-    visibility = ruy_visibility(),
+    name = "trmul",
+    srcs = ["trmul.cc"],
+    hdrs = ["trmul.h"],
     deps = [
         ":allocator",
         ":block_map",
-        ":check_macros",
         ":common",
         ":context",
-        ":kernel",
-        ":matrix",
+        ":internal_matrix",
         ":opt_set",
-        ":pack",
-        ":path",
-        ":size_util",
         ":spec",
         ":thread_pool",
         ":trace",
@@ -276,12 +274,65 @@ cc_library(
     ],
 )
 
-# Just a usage example.
+cc_library(
+    name = "dispatch",
+    hdrs = ["dispatch.h"],
+    deps = [
+        ":kernel",
+        ":pack",
+        ":spec",
+        ":trmul",
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "prepack",
+    hdrs = ["prepack.h"],
+    deps = [
+        ":dispatch",
+    ],
+)
+
+# Ruy's advanced API.
+cc_library(
+    name = "ruy_advanced",
+    hdrs = [
+        "ruy_advanced.h",
+    ],
+    visibility = ruy_visibility(),
+    deps = [
+        ":prepack",
+    ],
+)
+
+# Ruy's main API.
+cc_library(
+    name = "ruy",
+    hdrs = [
+        "ruy.h",
+    ],
+    visibility = ruy_visibility(),
+    deps = [
+        ":dispatch",
+    ],
+)
+
+# Usage examples.
 cc_binary(
     name = "example",
     srcs = ["example.cc"],
     deps = [
         ":ruy",
+    ],
+)
+
+# Usage examples of the advanced API.
+cc_binary(
+    name = "example_advanced",
+    srcs = ["example_advanced.cc"],
+    deps = [
+        ":ruy_advanced",
     ],
 )
 
@@ -291,6 +342,7 @@ cc_library(
     testonly = True,
     srcs = ["pmu.cc"],
     hdrs = ["pmu.h"],
+    deps = [":check_macros"],
 )
 
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
@@ -309,6 +361,7 @@ cc_library(
     deps = [
         ":pmu",
         ":ruy",
+        ":ruy_advanced",
         ":time",
         "@com_google_googletest//:gtest",
     ] + ruy_test_ext_deps(),
@@ -325,6 +378,7 @@ ruy_benchmark(
         ("i8", "i8", "i32", "u8"),
         ("i8", "i8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
+        ("i8", "i8", "i32", "i32"),
     ],
 )
 
@@ -339,6 +393,7 @@ ruy_test(
         ("i8", "i8", "i32", "i8"),
         ("i8", "u8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
+        ("i8", "i8", "i32", "i32"),
     ],
 )
 
@@ -350,7 +405,9 @@ ruy_test(
         ("u8", "u8", "i32", "u8"),
         ("i8", "i8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
+        ("i8", "i8", "i32", "i32"),
     ],
+    tags = ["slow"],
 )
 
 ruy_test(
@@ -384,3 +441,7 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
+
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+tflite_portable_test_suite()

@@ -19,10 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -84,6 +87,37 @@ class CollectiveOpTest(test.TestCase):
         [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
         [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
         [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
+
+  @test_util.run_deprecated_v1
+  def testWhileWithScopedAllocator(self):
+    group_size = 2
+    group_key = 1
+    instance_key0 = 1
+    instance_key1 = 2
+
+    config = config_pb2.ConfigProto(device_count={'CPU': group_size})
+    rewrite_options = config.graph_options.rewrite_options
+    rewrite_options.scoped_allocator_optimization = (
+        rewriter_config_pb2.RewriterConfig.ON)
+    del rewrite_options.scoped_allocator_opts.enable_op[:]
+    rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
+
+    with self.session(config=config) as sess:
+      run_ops = []
+      for i in range(group_size):
+        with ops.device('CPU:%d' % i):
+          constant = constant_op.constant(0.)
+          cond = lambda i: math_ops.less(i, 10.)
+          body = lambda i: math_ops.add(i, 1.)
+          input0 = control_flow_ops.while_loop(cond, body, [constant])
+          input1 = math_ops.add(constant, 5)
+          colred0 = collective_ops.all_reduce(input0, group_size, group_key,
+                                              instance_key0, 'Add', 'Id')
+          colred1 = collective_ops.all_reduce(input1, group_size, group_key,
+                                              instance_key1, 'Add', 'Id')
+          run_ops.append(math_ops.add_n([colred0, colred1]))
+      results = sess.run(run_ops)
+      self.assertEqual(results, [30., 30.])
 
   @test_util.run_deprecated_v1
   def testCollectiveReduceScalar(self):

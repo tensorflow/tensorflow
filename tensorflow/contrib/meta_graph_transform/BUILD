@@ -36,6 +36,7 @@ py_test(
     name = "meta_graph_transform_test",
     size = "small",
     srcs = ["meta_graph_transform_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
