@@ -67,7 +67,9 @@ TfLiteStatus DelegateCopyToBufferHandle(
     TfLiteBufferHandle buffer_handle,  // ValueId
     TfLiteTensor* tensor);
 
-inline bool IsPHWC4(const BHWC& shape) { return shape.c == 4; }
+inline bool IsPHWC4(const BHWC& shape) {
+  return shape.c == 4 || (shape.h == 1 && shape.w == 1 && shape.c % 4 == 0);
+}
 
 class Delegate {
   struct ValueRef {
