@@ -113,6 +113,11 @@ Simple usage:
             "module. Note: safety mode is under development and not available "
             "yet." % (_DEFAULT_MODE, _SAFETY_MODE)),
       default=_DEFAULT_MODE)
+  parser.add_argument(
+      "--print_all",
+      dest="print_all",
+      help="Print full log to stdout instead of just printing errors",
+      action="store_true")
   args = parser.parse_args()
 
   if args.mode == _SAFETY_MODE:
@@ -168,14 +173,21 @@ Simple usage:
               "Converted %d files\n" % files_processed +
               "Detected %d issues that require attention" % num_errors + "\n" +
               "-" * 80 + "\n") + "".join(report)
+    detailed_report_header = "=" * 80 + "\n"
+    detailed_report_header += "Detailed log follows:\n\n"
+    detailed_report_header += "=" * 80 + "\n"
+
     with open(report_filename, "w") as report_file:
       report_file.write(report)
-      report_file.write("=" * 80 + "\n")
-      report_file.write("Detailed log follows:\n\n")
-      report_file.write("=" * 80 + "\n")
+      report_file.write(detailed_report_header)
       report_file.write(report_text)
 
-    print(report)
+    if args.print_all:
+      print(report)
+      print(detailed_report_header)
+      print(report_text)
+    else:
+      print(report)
     print("\nMake sure to read the detailed log %r\n" % report_filename)
 
 if __name__ == "__main__":
