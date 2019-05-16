@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+
 
 using tensorflow::FunctionDef;
 using tensorflow::Node;
@@ -575,6 +577,46 @@ void TFE_ExecuteOpNotificationWaitAndDelete(
 void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
 }
+
+struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
+  using tensorflow::checkpoint::CheckpointReader::CheckpointReader;
+  std::vector<std::string> variable_list;
+};
+
+TF_CheckpointReader* TF_NewCheckpointReader(const char* filename, TF_Status* status) {
+  TF_CheckpointReader* reader = new TF_CheckpointReader(filename, status);
+  auto m = reader->GetVariableToDataTypeMap();
+  for( auto it = m.begin(); it != m.end(); ++it)
+    reader->variable_list.push_back(it->first);
+  std::sort(reader->variable_list.begin(), reader->variable_list.end());
+  return reader;
+}
+
+void TF_DeleteCheckpointReader(TF_CheckpointReader* reader) { delete reader; }
+
+int TF_CheckpointReaderHasTensor(TF_CheckpointReader* reader, const char* name) {
+  return reader->HasTensor(name);
+}
+
+const char* TF_CheckpointReaderGetVariable(TF_CheckpointReader* reader, int index) {
+  return reader->variable_list[index].c_str();
+}
+
+int TF_CheckpointReaderSize(TF_CheckpointReader* reader) {
+  return reader->variable_list.size();
+}
+
+TF_DataType TF_CheckpointReaderGetVariableDataType(TF_CheckpointReader* reader, const char* name) {
+  auto m = reader->GetVariableToDataTypeMap();
+  return static_cast<TF_DataType>(m[name]);
+}
+
+TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader, const char* name, TF_Status* status) {
+  std::unique_ptr<tensorflow::Tensor> tensor;
+  reader->GetTensor(name, &tensor, status);
+  return tensorflow::TF_TensorFromTensor(*tensor.get(), status);
+}
+
 
 // This builder is used in the eager API to build a NodeDef.
 struct TF_AttrBuilder : public tensorflow::AttrBuilder {

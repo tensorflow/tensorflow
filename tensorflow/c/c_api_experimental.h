@@ -208,6 +208,17 @@ TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
 
+// TF_CheckpointReader
+typedef struct TF_CheckpointReader TF_CheckpointReader;
+TF_CAPI_EXPORT extern TF_CheckpointReader* TF_NewCheckpointReader(const char* filename, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_DeleteCheckpointReader(TF_CheckpointReader* reader);
+TF_CAPI_EXPORT extern int TF_CheckpointReaderHasTensor(TF_CheckpointReader* reader, const char* name);
+TF_CAPI_EXPORT extern const char* TF_CheckpointReaderGetVariable(TF_CheckpointReader* reader, int index);
+TF_CAPI_EXPORT extern int TF_CheckpointReaderSize(TF_CheckpointReader* reader);
+TF_CAPI_EXPORT extern TF_DataType TF_CheckpointReaderGetVariableDataType(TF_CheckpointReader* reader, const char* name);
+TF_CAPI_EXPORT extern TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader, const char* name, TF_Status* status);
+
+
 // TF_NewAttrBuilder() returns an object that you can set attributes on as
 // though it were an op. This allows querying properties of that op for
 // type-checking purposes like if the op will run on a particular device type.

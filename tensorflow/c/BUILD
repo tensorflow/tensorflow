@@ -139,6 +139,7 @@ tf_cuda_library(
         ":c_api_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
+        ":checkpoint_reader",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
