@@ -29,7 +29,6 @@ cc_library(
 cc_library(
     name = "spec",
     hdrs = ["spec.h"],
-    visibility = ruy_visibility(),
 )
 
 cc_library(
@@ -151,7 +150,6 @@ cc_library(
 cc_library(
     name = "path",
     hdrs = ["path.h"],
-    visibility = ruy_visibility(),
     deps = [":size_util"],
 )
 
@@ -194,7 +192,6 @@ cc_library(
 cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
-    visibility = ruy_visibility(),
     deps = [":check_macros"],
 )
 
@@ -211,8 +208,15 @@ cc_library(
 
 cc_library(
     name = "common",
-    hdrs = ["common.h"],
-    deps = [":check_macros"],
+    hdrs = [
+        "common.h",
+    ],
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":path",
+    ],
 )
 
 cc_library(
@@ -255,66 +259,38 @@ cc_library(
     ],
 )
 
+# The main library.
 cc_library(
-    name = "trmul",
-    srcs = ["trmul.cc"],
-    hdrs = ["trmul.h"],
+    name = "ruy",
+    srcs = [
+        "dispatch.h",
+        "prepack.h",
+        "trmul.cc",
+        "trmul.h",
+    ],
+    hdrs = [
+        "matrix.h",
+        "path.h",
+        "ruy.h",
+        "ruy_advanced.h",
+    ],
+    visibility = ruy_visibility(),
     deps = [
         ":allocator",
         ":block_map",
+        ":check_macros",
         ":common",
         ":context",
         ":internal_matrix",
+        ":kernel",
         ":opt_set",
+        ":pack",
+        ":size_util",
         ":spec",
         ":thread_pool",
         ":trace",
         ":tune",
         "@gemmlowp//:profiler",
-    ],
-)
-
-cc_library(
-    name = "dispatch",
-    hdrs = ["dispatch.h"],
-    deps = [
-        ":kernel",
-        ":pack",
-        ":spec",
-        ":trmul",
-        "@gemmlowp//:profiler",
-    ],
-)
-
-cc_library(
-    name = "prepack",
-    hdrs = ["prepack.h"],
-    deps = [
-        ":dispatch",
-    ],
-)
-
-# Ruy's advanced API.
-cc_library(
-    name = "ruy_advanced",
-    hdrs = [
-        "ruy_advanced.h",
-    ],
-    visibility = ruy_visibility(),
-    deps = [
-        ":prepack",
-    ],
-)
-
-# Ruy's main API.
-cc_library(
-    name = "ruy",
-    hdrs = [
-        "ruy.h",
-    ],
-    visibility = ruy_visibility(),
-    deps = [
-        ":dispatch",
     ],
 )
 
@@ -332,7 +308,7 @@ cc_binary(
     name = "example_advanced",
     srcs = ["example_advanced.cc"],
     deps = [
-        ":ruy_advanced",
+        ":ruy",
     ],
 )
 
@@ -361,7 +337,6 @@ cc_library(
     deps = [
         ":pmu",
         ":ruy",
-        ":ruy_advanced",
         ":time",
         "@com_google_googletest//:gtest",
     ] + ruy_test_ext_deps(),

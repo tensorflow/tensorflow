@@ -89,7 +89,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
-#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
@@ -399,6 +398,11 @@ void RunPack(Tuning tuning, const DMatrix& src_matrix, PMatrix* packed_matrix,
   PackImpl<ThePath, FixedKernelLayout, Scalar, PackedScalar, SumsType>::Run(
       tuning, src, &packed, start_col, end_col);
 }
+
+// The signature of RunPack is the same, regardless of its template parameters.
+using RunPackFn = decltype(
+    RunPack<Path::kStandardCpp, FixedKernelLayout<Order::kColMajor, 1, 1>,
+            std::int8_t, std::int8_t>);
 
 }  // namespace ruy
 
