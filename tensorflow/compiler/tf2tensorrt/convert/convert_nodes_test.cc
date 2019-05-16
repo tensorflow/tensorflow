@@ -2583,7 +2583,6 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
       // implementation that, the extra output classes that are outside of the
       // range specified by valid_detections[i] are not zeros but -1s.
       TestParams{{1, 1, 4}, {1, 3}, 3, 2, .5f, 0, {2, 4}, {2}, {2}}};
-  const int batch_size = 1;
 
   for (int i = 0; i < kCombinedNMSOKCases; ++i) {
     Reset();

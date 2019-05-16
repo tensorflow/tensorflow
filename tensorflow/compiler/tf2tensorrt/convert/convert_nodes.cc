@@ -473,14 +473,13 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   nvinfer1::Weights trt_weights = weights.GetTrtWeights();
   nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
   if (!layer) return nullptr;
-  const nvinfer1::DataType trt_dtype = trt_weights.type;
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 #if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   // TODO(laigd): there is a bug in TensorRT 5.0 library that, if we don't set
   // the data type below, it will always be kFLOAT regardless what the data type
   // of the weights is. Once NVIDIA fixes this bug, we should remove the data
   // type setting logic below and test should still pass.
-  trt_tensor->setType(trt_dtype);
+  trt_tensor->setType(trt_weights.type);
 #endif
   return trt_tensor;
 }
@@ -4692,8 +4691,8 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(creator, node_def.name());
 
   // Create plugin
-  nvinfer1::IPluginV2* plugin =
-      creator->createPlugin(node_def.name().c_str(), &fc);
+  TrtUniquePtrType<nvinfer1::IPluginV2> plugin(
+      creator->createPlugin(node_def.name().c_str(), &fc));
   TFTRT_RETURN_ERROR_IF_NULLPTR(plugin, node_def.name());
 
   // Set plugin inputs
