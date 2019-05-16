@@ -451,7 +451,7 @@ func @dominance_failure() {
 
 func @return_type_mismatch() -> i32 {
   %0 = "foo"() : ()->f32
-  return %0 : f32  // expected-error {{type of return operand 0 doesn't match function result type}}
+  return %0 : f32  // expected-error {{type of return operand 0 (f32) doesn't match function result type (i32)}}
 }
 
 // -----
