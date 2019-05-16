@@ -707,11 +707,13 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return Status::OK();
 }
 
+std::atomic<int64> cluster_sequence_num;
+
+int64 GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
+
 Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
   clusters_created_ = true;
-
-  static std::atomic<int64> cluster_sequence_num;
 
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
@@ -745,7 +747,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        name = absl::StrCat("cluster_", cluster_sequence_num++);
+        name = absl::StrCat("cluster_", GetNextClusterSequenceNumber());
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -1522,4 +1524,8 @@ Status MarkForCompilationPass::RunForTest(
 
   return MarkForCompilation(options, debug_options);
 }
+
+namespace testing {
+void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
+}  // namespace testing
 }  // namespace tensorflow
