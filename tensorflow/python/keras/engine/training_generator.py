@@ -68,7 +68,11 @@ def model_iteration(model,
         declaring one epoch finished and starting the next epoch. Ignored with
         the default value of `None`.
       epochs: Number of times to iterate over the data.
-      verbose: Verbosity mode, 0, 1 or 2.
+      verbose: 0, 1, or 2. Verbosity mode.
+        0 = silent, 1 = progress bar, 2 = one line per epoch.
+        Note that the progress bar is not particularly useful when
+        logged to a file, so verbose=2 is recommended when not running
+        interactively (eg, in a production environment).
       callbacks: List of callbacks to be called during training.
       validation_data: Either a tuple of NumPy/Tensor inputs (i.e. `(x,)` or
         `(x, y)` or `(x, y, sample_weights)`) or a generator or

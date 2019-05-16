@@ -172,7 +172,7 @@ class TFLiteConverterBase(object):
             "Provide an input generator for representative_dataset")
     elif self._int8_target_required():
       raise ValueError("representative_dataset is required when specifying "
-                       "TFLITE_BUILTINs_INT8 target.")
+                       "TFLITE_BUILTINS_INT8 target.")
 
   def _int8_target_required(self):
     return set([OpsSet.TFLITE_BUILTINS_INT8]) == set(self._target_ops)

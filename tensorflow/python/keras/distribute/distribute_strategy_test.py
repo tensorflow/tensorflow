@@ -38,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary.writer import writer_cache
@@ -508,11 +509,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertEqual(batch_size, 20 // replica_scale_factor)
       self.assertEqual(steps, 1)
 
-      #  Default global batch size 32 cannot be used with 63 samples.
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_63_samples, steps=None, batch_size=None)
-
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_with_steps_no_batch_size(self,
                                                              distribution):
@@ -582,16 +578,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           distribution, input_64_samples, steps=None, batch_size=32)
       self.assertEqual(batch_size, 32)
       self.assertEqual(steps, 2 // replica_scale_factor)
-
-      # Number of samples is not divisible by the global batch size
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=None, batch_size=20)
-
-      # Number of samples is not divisible by the global batch size
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=None, batch_size=3)
 
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_with_steps_with_batch_size(self,
@@ -1610,6 +1596,51 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       y = np.random.randint(3, size=64)
 
       model.fit(x, y, epochs=1, steps_per_epoch=2)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus
+          ],
+          mode=['graph', 'eager'],
+          cloning=[True, False],
+          reduction=[
+              loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE,
+              loss_reduction.ReductionV2.SUM
+          ]))
+  def test_distribution_strategy_with_loss_reduction_types(
+      self, distribution, cloning, reduction):
+    np.random.seed(_RANDOM_SEED)
+
+    def _get_model():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = keras.layers.Dense(10, kernel_initializer='zeros')(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      return model
+
+    x = np.random.random((64, 10))
+    y = np.random.random((64, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.batch(32)
+
+    model = _get_model()
+    model.compile(
+        'sgd', loss=keras.losses.MeanSquaredError(reduction=reduction))
+    history = model.fit(dataset, steps_per_epoch=2, epochs=1, shuffle=False)
+
+    with distribution.scope():
+      ds_model = _get_model()
+      ds_model.compile(
+          'sgd',
+          loss=keras.losses.MeanSquaredError(reduction=reduction),
+          cloning=cloning)
+      ds_history = ds_model.fit(
+          dataset, steps_per_epoch=2, epochs=1, shuffle=False)
+    self.assertArrayNear(history.history['loss'], ds_history.history['loss'],
+                         1e-5)
 
   @combinations.generate(
       combinations.times(all_strategy_minus_default_and_tpu_combinations(),

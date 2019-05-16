@@ -54,6 +54,23 @@ public class EagerOperationTest {
   }
 
   @Test
+  public void outputTensor() {
+    try (EagerSession session = EagerSession.create()) {
+      EagerOperation add =
+          opBuilder(session, "Add", "CompareResult")
+              .addInput(TestUtil.constant(session, "Const1", 2))
+              .addInput(TestUtil.constant(session, "Const2", 4))
+              .build();
+      assertEquals(6, add.tensor(0).intValue());
+
+      // Validate that we retrieve the right shape and datatype from the tensor
+      // that has been resolved
+      assertEquals(0, add.shape(0).length);
+      assertEquals(DataType.INT32, add.dtype(0));
+    }
+  }
+
+  @Test
   public void inputAndOutputListLengths() {
     try (EagerSession session = EagerSession.create()) {
       Output<Float> c1 = TestUtil.constant(session, "Const1", new float[] {1f, 2f});
@@ -108,7 +125,7 @@ public class EagerOperationTest {
   public void opNotAccessibleIfSessionIsClosed() {
     EagerSession session = EagerSession.create();
     EagerOperation add =
-        opBuilder(session, "Add", "SetDevice")
+        opBuilder(session, "Add", "SessionClosed")
             .addInput(TestUtil.constant(session, "Const1", 2))
             .addInput(TestUtil.constant(session, "Const2", 4))
             .build();
@@ -119,6 +136,41 @@ public class EagerOperationTest {
       fail();
     } catch (IllegalStateException e) {
       // expected
+    }
+  }
+
+  @Test
+  public void outputIndexOutOfBounds() {
+    try (EagerSession session = EagerSession.create()) {
+      EagerOperation add =
+          opBuilder(session, "Add", "OutOfRange")
+              .addInput(TestUtil.constant(session, "Const1", 2))
+              .addInput(TestUtil.constant(session, "Const2", 4))
+              .build();
+      try {
+        add.getUnsafeNativeHandle(1);
+        fail();
+      } catch (IndexOutOfBoundsException e) {
+        // expected
+      }
+      try {
+        add.shape(1);
+        fail();
+      } catch (IndexOutOfBoundsException e) {
+        // expected
+      }
+      try {
+        add.dtype(1);
+        fail();
+      } catch (IndexOutOfBoundsException e) {
+        // expected
+      }
+      try {
+        add.tensor(1);
+        fail();
+      } catch (IndexOutOfBoundsException e) {
+        // expected
+      }
     }
   }
 

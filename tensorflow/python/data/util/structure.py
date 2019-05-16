@@ -69,6 +69,9 @@ class Structure(object):
     """
     raise NotImplementedError("Structure.__eq__()")
 
+  def __ne__(self, other):
+    return not self == other
+
   @abc.abstractmethod
   def __hash__(self):
     """Returns the hash of this structure.
@@ -789,10 +792,12 @@ class RaggedTensorStructure(Structure):
   def __eq__(self, other):
     return (isinstance(other, RaggedTensorStructure) and tensor_spec.TensorSpec(
         self._shape, self._dtype) == tensor_spec.TensorSpec(
-            other._shape, other._dtype))
+            other._shape, other._dtype) and
+            self._ragged_rank == other._ragged_rank)
 
   def __hash__(self):
-    return hash(tensor_spec.TensorSpec(self._shape, self._dtype))
+    return hash((tensor_spec.TensorSpec(self._shape, self._dtype),
+                 self._ragged_rank))
 
   @property
   def _flat_shapes(self):

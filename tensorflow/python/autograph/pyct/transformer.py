@@ -491,6 +491,20 @@ class Base(gast.NodeTransformer):
                       (list, tuple, gast.Assign, gast.AugAssign)):
           result = result.value
 
+    # By default, all replacements receive the origin info of the replaced node.
+    if result is not node and result is not None:
+      nodes_to_adjust = result
+      if isinstance(result, (list, tuple)):
+        nodes_to_adjust = result
+      else:
+        nodes_to_adjust = (result,)
+      for n in nodes_to_adjust:
+        if not anno.hasanno(n, anno.Basic.ORIGIN):
+          inherited_origin = anno.getanno(
+              node, anno.Basic.ORIGIN, default=parent_origin)
+          if inherited_origin is not None:
+            anno.setanno(n, anno.Basic.ORIGIN, inherited_origin)
+
     # On exception, the local scope integrity is not guaranteed.
     if did_enter_function:
       self._enclosing_entities.pop()

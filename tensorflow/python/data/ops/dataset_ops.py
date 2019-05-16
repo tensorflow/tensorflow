@@ -724,8 +724,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         - /path/to/dir/a.txt
         - /path/to/dir/b.py
         - /path/to/dir/c.py
-      If we pass "/path/to/dir/*.py" as the directory, the dataset would
-      produce:
+      If we pass "/path/to/dir/*.py" as the directory, the dataset
+      would produce:
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 

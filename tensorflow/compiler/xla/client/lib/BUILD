@@ -296,6 +296,7 @@ cc_library(
     hdrs = ["slicing.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/types:span",
     ],

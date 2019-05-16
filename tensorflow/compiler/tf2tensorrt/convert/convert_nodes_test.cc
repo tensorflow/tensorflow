@@ -52,7 +52,7 @@ limitations under the License.
 #if GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -181,6 +181,29 @@ void ExpectArrayNear(const std::vector<Eigen::half>& lhs,
   for (int i = 0; i < lhs.size(); i++) {
     EXPECT_FLOAT_EQ(Eigen::half_impl::half_to_float(lhs[i]),
                     Eigen::half_impl::half_to_float(rhs[i]));
+  }
+}
+
+template <typename T>
+void ExpectArrayAlmostEqual(const std::vector<T>& lhs, absl::Span<const T> rhs,
+                            T tolerance) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_NEAR(lhs[i], rhs[i], tolerance);
+  }
+}
+
+// Eigen::half cannot implicitly convert to float which is required for
+// EXPECT_NEAR.
+template <>
+void ExpectArrayAlmostEqual(const std::vector<Eigen::half>& lhs,
+                            absl::Span<const Eigen::half> rhs,
+                            Eigen::half tolerance) {
+  ASSERT_EQ(lhs.size(), rhs.size());
+  for (int i = 0; i < lhs.size(); i++) {
+    EXPECT_NEAR(Eigen::half_impl::half_to_float(lhs[i]),
+                Eigen::half_impl::half_to_float(rhs[i]),
+                Eigen::half_impl::half_to_float(tolerance));
   }
 }
 
@@ -1328,6 +1351,10 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
+  void TestMatMulHelper(
+      const std::function<NodeDef(DataType, bool, bool)>& get_matmul,
+      const std::string& op_name);
+
   // Expose quantization_ranges_ for tests
   std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
     return converter_->quantization_ranges_;
@@ -1652,6 +1679,104 @@ TEST_F(OpConverterTest, ConvertReshape) {
   }
 }
 
+// Helper function for testing MatMul and BatchMatMul
+// get_matmul corresponds to the function used to generate the node. It should
+// accept (DataType, transpose_a, transpose_b) as parameters.
+void OpConverterTest::TestMatMulHelper(
+    const std::function<NodeDef(DataType, bool, bool)>& get_matmul,
+    const std::string& op_name) {
+  // HACK: This needs to be done in a better way.
+  const bool is_batch_matmul = op_name == "BatchMatMul";
+  {
+    // Unsupported data type.
+    Reset();
+    NodeDef node_def = get_matmul(DT_INT32, false, false);
+    AddTestTensor("input", {2}, /*batch_size=*/1, nvinfer1::DataType::kINT32);
+    AddTestWeights<int32>("weights", {2, 1}, {3, 5});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        ("Data type int32 is not supported for " + op_name +
+         ", "
+         "must be one of [float, half], at my_matmul")
+            .c_str());
+  }
+  // OK.
+  for (bool transpose_a : {false, true}) {
+    for (bool transpose_b : {false, true}) {
+      Reset();
+      NodeDef node_def = get_matmul(DT_FLOAT, transpose_a, transpose_b);
+      AddTestTensor("input", {2}, /*batch_size=*/1);
+      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+      if (is_batch_matmul) {
+        if (transpose_a || transpose_b) {
+          RunValidationAndConversion(
+              node_def, error::INVALID_ARGUMENT,
+              "Input weight attempts to broadcast across batch dimension for "
+              "BatchMatMul, at my_matmul");
+        } else {
+          RunValidationAndConversion(
+              node_def, error::INVALID_ARGUMENT,
+              "Input weight attempts to broadcast across batch dimension");
+        }
+        continue;
+      } else if (transpose_a) {
+        RunValidationAndConversion(
+            node_def, error::INVALID_ARGUMENT,
+            "Cannot transpose first input if it is a tensor with fewer than 2 "
+            "non-batch dimensions");
+        continue;
+      }
+      RunValidationAndConversion(node_def);
+      TRT_TensorOrWeights output;
+      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+      ASSERT_TRUE(output.is_tensor());
+      ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
+
+      const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
+      DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
+      BuildAndRun(input_data, &output_data);
+      if (transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
+      } else {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(2, 3));
+      }
+    }
+  }
+  // OK, 3D inputs
+  for (bool transpose_b : {false, true}) {
+    Reset();
+    NodeDef node_def = get_matmul(DT_FLOAT, /*transpose_a=*/false, transpose_b);
+    AddTestTensor("input", {2}, /*batch_size=*/1);
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    if (is_batch_matmul) {
+      if (transpose_b) {
+        RunValidationAndConversion(
+            node_def, error::INVALID_ARGUMENT,
+            "Input weight attempts to broadcast across batch dimension for "
+            "BatchMatMul, at my_matmul");
+      } else {
+        RunValidationAndConversion(
+            node_def, error::INVALID_ARGUMENT,
+            "Input weight attempts to broadcast across batch dimension");
+      }
+      continue;
+    }
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
+    const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
+    DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
+    BuildAndRun(input_data, &output_data);
+    if (transpose_b) {
+      EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
+    } else {
+      EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(2, 3));
+    }
+  }
+}
+
 TEST_F(OpConverterTest, ConvertMatMul) {
   {
     // Input list is empty, should fail.
@@ -1674,49 +1799,97 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     return matmul.operation.node()->def();
   };
 
+  // Additional test cases specific to MatMul
   {
-    // Unsupported data type.
+    // Can only transpose A if it is 2D in TRT
     Reset();
-    NodeDef node_def = get_matmul_nodedef(DT_INT32, false, false);
-    AddTestTensor("input", {2}, /*batch_size=*/1, nvinfer1::DataType::kINT32);
-    AddTestWeights<int32>("weights", {2, 1}, {3, 5});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Data type int32 is not supported for MatMul, "
-                               "must be one of [float, half], at my_matmul");
-  }
-  // transpose_a is set.
-  for (bool transpose_b : {false, true}) {
-    Reset();
-    NodeDef node_def =
-        get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/true, transpose_b);
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, true, false);
     AddTestTensor("input", {2}, /*batch_size=*/1);
     AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "transpose_a is not supported for TensorRT FullyConnected");
+        "Cannot transpose first input if it is a tensor with fewer than 2 "
+        "non-batch dimensions.");
   }
-  // OK.
-  for (bool transpose_b : {false, true}) {
+  {
+    // B must always have 2 non-batch dimensions
     Reset();
-    NodeDef node_def =
-        get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/false, transpose_b);
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, false, false);
     AddTestTensor("input", {2}, /*batch_size=*/1);
-    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
-    ASSERT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
+    AddTestTensor("weights", {2}, /*batch_size=*/1);
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Second input must either be a constant, or contain at least 2 "
+        "non-batch dimensions.");
+  }
+  {
+    // We can never transpose weights that are not 2D.
+    Reset();
+    NodeDef node_def = get_matmul_nodedef(DT_FLOAT, true, false);
+    AddTestWeights<float>("input", {1, 1, 2}, {0, 1});
+    AddTestTensor("weights", {2, 2}, /*batch_size=*/1);
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Cannot currently transpose constant input if it is not 2 dimensional");
+  }
+  TestMatMulHelper(get_matmul_nodedef, "MatMul");
+}
 
-    const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
-    DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
-    BuildAndRun(input_data, &output_data);
-    if (transpose_b) {
-      EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
-    } else {
-      EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(2, 3));
+TEST_F(OpConverterTest, ConvertBatchMatMul) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_matmul", "BatchMatMul", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "BatchMatMul got 0 inputs but expected 2, at my_matmul");
+  }
+
+  // Get the NodeDef for BatchMatMul.
+  auto get_batch_matmul_nodedef = [](DataType dtype, bool transpose_a,
+                                     bool transpose_b) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+    auto weights = ops::Placeholder(s.WithOpName("weights"), dtype);
+    const auto matmul_attrs =
+        ops::BatchMatMul::AdjX(transpose_a).AdjY(transpose_b);
+    auto matmul = ops::BatchMatMul(s.WithOpName("my_matmul"), input, weights,
+                                   matmul_attrs);
+    return matmul.operation.node()->def();
+  };
+
+  for (bool transpose_a : {false, true}) {
+    for (bool transpose_b : {false, true}) {
+      Reset();
+      NodeDef node_def =
+          get_batch_matmul_nodedef(DT_FLOAT, transpose_a, transpose_b);
+      AddTestTensor("input", {2, 2}, /*batch_size=*/1);
+      AddTestWeights<float>("weights", {1, 2, 2}, {1, 2, 3, 4});
+
+      RunValidationAndConversion(node_def);
+      TRT_TensorOrWeights output;
+      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+      ASSERT_TRUE(output.is_tensor());
+      ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
+      const DataVec input_data{{"input", test::AsTensor<float>({0, 1, 2, 3})}};
+      DataVec output_data{{"my_matmul", ConstructTensor<float>(4)}};
+      BuildAndRun(input_data, &output_data);
+      if (!transpose_a && !transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(3, 4, 11, 16));
+      } else if (transpose_a && transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(4, 8, 7, 15));
+      } else if (transpose_a) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(6, 8, 10, 14));
+      } else if (transpose_b) {
+        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                    ElementsAre(2, 4, 8, 18));
+      }
     }
   }
+
+  TestMatMulHelper(get_batch_matmul_nodedef, "BatchMatMul");
 }
 
 template <DataType dtype>
@@ -5462,6 +5635,135 @@ TEST_F(OpConverterTest, ConvertSquaredDifference) {
   TestConvertSquaredDifference<DT_FLOAT>(this);
   TestConvertSquaredDifference<DT_HALF>(this);
 }
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+template <typename OpType>
+NodeDef MakeResizeNodeDef(std::string name, DataType dtype,
+                          bool align_corners) {
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+  auto size = ops::Placeholder(s.WithOpName("size"), DT_INT32);
+  auto attrs = typename OpType::Attrs().AlignCorners(align_corners);
+  auto resize = OpType(s.WithOpName(name), input, size, attrs);
+  return resize.operation.node()->def();
+}
+
+template <typename CType>
+struct ResizeTestParams {
+  std::vector<int> input_dims;
+  std::vector<int> output_resize_dims;
+  std::vector<CType> input_values;
+  bool align_corners;
+  std::vector<int> expected_output_dims;
+  std::vector<CType> expected_nearest_output_values;
+  std::vector<CType> expected_bilinear_output_values;
+};
+
+template <typename OpType, DataType dtype>
+void TestConvertResize(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  std::vector<ResizeTestParams<CType>> params{
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
+          /*output_resize_dims=*/{2, 3},  // H_out, W_out
+          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
+          /*align_corners=*/false,
+          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
+          /*expected_nearest_output_values=*/
+          CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
+          /*expected_bilinear_output_values=*/
+          CastTestVector<float, CType>({2.0f, 0.f, -1.0f, 2.0f, 0.f, -1.0f}),
+      },
+      {
+          /*input_dims=*/{1, 2, 1},       // H, W, C
+          /*output_resize_dims=*/{2, 3},  // H_out, W_out
+          /*input_values=*/CastTestVector<float, CType>({2.0f, -1.0f}),
+          /*align_corners=*/true,
+          /*expected_output_dims=*/{2, 3, 1},  // H, W, C
+          /*expected_nearest_output_values=*/
+          CastTestVector<float, CType>({2.0f, 2.0f, -1.0f, 2.0f, 2.0f, -1.0f}),
+          /*expected_bilinear_output_values=*/
+          CastTestVector<float, CType>({2.0f, 0.5f, -1.0f, 2.0f, 0.5f, -1.0f}),
+      }};
+
+  for (int i = 0; i < params.size(); ++i) {
+    test->Reset();
+    // Create resize node.
+    NodeDef node_def =
+        MakeResizeNodeDef<OpType>("my_resize", dtype, params[i].align_corners);
+    // Create input tensor
+    test->AddTestTensor("input", params[i].input_dims, /*batch_size=*/1,
+                        /*trt_dtype=*/TfDataTypeToTrt(dtype));
+    // Create output size.
+    test->AddTestWeights<int32>("size", {2}, params[i].output_resize_dims);
+
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_resize", &output));
+
+    // Create input data for tensors.
+    const DataVec input_data{
+        {"input", test::AsTensor<CType>(params[i].input_values)}};
+    DataVec output_data{
+        {"my_resize", ConstructTensor<CType>(
+                          params[i].expected_nearest_output_values.size())}};
+
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+
+    if (node_def.op() == "ResizeBilinear") {
+      ExpectArrayAlmostEqual(params[i].expected_bilinear_output_values,
+                             GetSpanForData<CType>(output_data[0]),
+                             CType(1e-3));
+    } else if (node_def.op() == "ResizeNearestNeighbor") {
+      ExpectArrayAlmostEqual(params[i].expected_nearest_output_values,
+                             GetSpanForData<CType>(output_data[0]),
+                             CType(1e-3));
+    }
+  }
+}
+
+TEST_F(OpConverterTest, ConvertResize) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_resize", "ResizeBilinear", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "ResizeBilinear got 0 inputs but expected 2, at my_resize");
+  }
+  {
+    // First input is weight, should fail.
+    Reset();
+    NodeDef node_def =
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+    AddTestWeights<float>("input", {1, 2}, {1, 2});
+    AddTestWeights<int>("size", {1, 2}, {1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for ResizeBilinear must be a "
+        "tensor, at my_resize");
+  }
+  {
+    // output dimension is a tensor, should fail.
+    Reset();
+    NodeDef node_def =
+        MakeResizeNodeDef<ops::ResizeBilinear>("my_resize", DT_FLOAT, false);
+    AddTestTensor("input", {1, 2});
+    AddTestTensor("size", {1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"size\" for ResizeBilinear must be a "
+        "constant, at my_resize");
+  }
+  TestConvertResize<ops::ResizeBilinear, DT_FLOAT>(this);
+  TestConvertResize<ops::ResizeBilinear, DT_HALF>(this);
+  TestConvertResize<ops::ResizeNearestNeighbor, DT_FLOAT>(this);
+  TestConvertResize<ops::ResizeNearestNeighbor, DT_HALF>(this);
+}
+#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 }  // namespace convert
 }  // namespace tensorrt

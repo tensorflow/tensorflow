@@ -87,7 +87,6 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
 XlaArgMaxOp::XlaArgMaxOp(OpKernelConstruction* ctx)
     : XlaArgMinMaxOp(ctx, /*is_min=*/false) {}
 REGISTER_XLA_OP(Name("ArgMax")
-                    .Device(DEVICE_GPU_XLA_JIT)
                     .CompileTimeConstantInput("dimension"),
                 XlaArgMaxOp);
 

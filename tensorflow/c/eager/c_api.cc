@@ -929,6 +929,11 @@ void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
   status->status = ctx->context->AddFunctionDef(function->fdef);
 }
 
+void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,
+                               TF_Status* status) {
+  status->status = ctx->context->RemoveFunction(name);
+}
+
 unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
   return ctx->context->FindFunctionDef(name) != nullptr;
 }

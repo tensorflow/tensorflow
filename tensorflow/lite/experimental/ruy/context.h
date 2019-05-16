@@ -65,6 +65,13 @@ struct Context final {
     }
   }
 
+  Tuning GetMainThreadTuning() {
+    EnsureNPerThreadStates(1);
+    TuningResolver* tuning_resolver = &per_thread_states[0]->tuning_resolver;
+    tuning_resolver->SetTuning(explicit_tuning);
+    return tuning_resolver->Resolve();
+  }
+
   template <Path CompiledPaths>
   Path GetPathToTake() {
     last_taken_path =

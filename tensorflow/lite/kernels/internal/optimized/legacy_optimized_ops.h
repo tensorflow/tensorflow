@@ -20,8 +20,7 @@ limitations under the License.
 
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
-#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -160,9 +159,14 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
 
-  DepthwiseConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
-                bias_data, DimsToShape(output_dims), output_data);
+  const RuntimeShape output_shape = DimsToShape(output_dims);
+  const int output_height = output_shape.Dims(1);
+
+  DepthwiseConvImpl(op_params, DimsToShape(input_dims), input_data,
+                    DimsToShape(filter_dims), filter_data,
+                    DimsToShape(bias_dims), bias_data, output_shape,
+                    output_data, /*thread_start=*/0,
+                    /*thread_end=*/output_height, /*thread_dim=*/1);
 }
 
 inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,

@@ -139,6 +139,11 @@ public final class GraphOperation extends AbstractOperation {
     }
   }
 
+  @Override
+  Tensor<?> tensor(int outputIdx) {
+    throw new IllegalStateException("Graph tensors must be fetched by running a session");
+  }
+
   long getUnsafeNativeHandle() {
     return unsafeNativeHandle;
   }

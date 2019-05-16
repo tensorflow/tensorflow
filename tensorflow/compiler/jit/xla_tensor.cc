@@ -63,7 +63,7 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype,
                         client->backend().memory_allocator()->Allocate(
                             device_ordinal, size, /*retry_on_failure=*/false));
     // Move our buffer into shaped_buffer, which takes ownership of it.
-    index_to_buffer.second = buffer.Forget();
+    index_to_buffer.second = buffer.Release();
   }
 
   VLOG(4) << shaped_buffer.ToString();

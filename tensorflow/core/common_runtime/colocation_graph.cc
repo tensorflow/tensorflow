@@ -1110,6 +1110,8 @@ Status ColocationGraph::GetDevicesForNode(
               "Could not satisfy explicit device specification '",
               node->requested_device(), "' because no supported kernel for ",
               specified_device_name.type, " devices is available.", debug_info,
+              "\nOp: ", node->type_string(),
+              "\nNode attrs: ", node->attrs().DebugString(),
               "\nRegistered kernels:\n",
               KernelsRegisteredForOp(node->type_string()));
         } else {
@@ -1302,17 +1304,10 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       for (Device* d : device_set_.devices()) {
         registered_device_types.insert(d->device_type());
       }
-      std::vector<string> attr_key_vals;
-      for (const auto& it : node.attrs()) {
-        const string& name = it.first;
-        const AttrValue& attr_value = it.second;
-        attr_key_vals.push_back(
-            strings::StrCat(name, "=", SummarizeAttrValue(attr_value)));
-      }
       return errors::InvalidArgument(
           "No OpKernel was registered to support Op '", node.type_string(),
           "' used by ", errors::FormatNodeNameForError(node.name()),
-          "with these attrs: [", str_util::Join(attr_key_vals, ", "),
+          "with these attrs: [", node.attrs().DebugString(),
           "]\n"
           "Registered devices: [",
           str_util::Join(registered_device_types, ", "), "]\n",

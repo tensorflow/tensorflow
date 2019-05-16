@@ -994,6 +994,29 @@ TEST_F(OperatorTest, VersioningConv2DTest) {
   EXPECT_EQ(op->GetVersion(float_signature), 2);
 }
 
+TEST_F(OperatorTest, VersioningFloorDivOperatorTest) {
+  FloorDivOperator floordiv_op;
+  floordiv_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(floordiv_op.type).get();
+
+  Model int32_model;
+  Array& input_int32_array =
+      int32_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &floordiv_op,
+                                       .model = &int32_model};
+  EXPECT_EQ(op->GetVersion(int32_signature), 1);
+
+  Model float_model;
+  Array& input_float_array =
+      float_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &floordiv_op,
+                                       .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 2);
+}
+
 }  // namespace
 }  // namespace tflite
 

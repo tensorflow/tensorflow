@@ -1,5 +1,6 @@
 # Description:
 #   Contains the Keras API (internal TensorFlow version).
+
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
@@ -93,7 +94,6 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -121,6 +121,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 
@@ -188,7 +189,6 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python:composite_tensor_utils",
-        "//tensorflow/python:distribute",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
