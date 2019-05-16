@@ -367,7 +367,7 @@ class LSTMBlockCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
-        with `tf.nn.rnn_cell.LSTMCell`.
+        with `tf.compat.v1.nn.rnn_cell.LSTMCell`.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMBlockCell instead.
@@ -619,7 +619,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
-        with `tf.nn.rnn_cell.LSTMCell`.
+        with `tf.compat.v1.nn.rnn_cell.LSTMCell`.
     """
     super(LSTMBlockFusedCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype)

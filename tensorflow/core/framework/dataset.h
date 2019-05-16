@@ -154,7 +154,7 @@ class GraphDefBuilderWrapper {
   }
 
   // Adds a node corresponding to the `DatasetType` to the Graph.
-  // Return value of `DatasetType::op_name()` is used as the op type for the
+  // Return value of `DatasetType::type_string()` is used as the op type for the
   // node.
   // Values for the output_types and output_shapes node attributes are also
   // written if those attributes are defined in the OpDef.
@@ -186,7 +186,8 @@ class GraphDefBuilderWrapper {
   // returns an InvalidArgumentError. If the function with name `function_name`
   // or any of its dependent functions are stateful, and the context does not
   // explicitly permit stateful functions, returns an InvalidArgument error.
-  Status AddFunction(SerializationContext* ctx, const string& function_name);
+  Status AddFunction(SerializationContext* ctx, const string& function_name,
+                     const FunctionLibraryDefinition& lib_def);
 
   template <typename T>
   void BuildAttrValue(const T& value, AttrValue* attr) {
@@ -197,16 +198,17 @@ class GraphDefBuilderWrapper {
   void AddPlaceholderInternal(const Tensor& val, Node** output);
   void AddTensorInternal(const Tensor& val, Node** output);
 
-  Status EnsureFunctionIsStateless(const FunctionLibraryDefinition& flib_def,
-                                   const string& function_name) const {
-    const FunctionDef* function_def = flib_def.Find(function_name);
+  Status EnsureFunctionIsStateless(
+      const string& function_name,
+      const FunctionLibraryDefinition& lib_def) const {
+    const FunctionDef* function_def = lib_def.Find(function_name);
     if (!function_def) {
       return errors::InvalidArgument("Unable to find FunctionDef for ",
                                      function_name, " in registry.");
     }
     for (const NodeDef& node_def : function_def->node_def()) {
       const OpDef* op_def;
-      TF_RETURN_IF_ERROR(flib_def.LookUpOpDef(node_def.op(), &op_def));
+      TF_RETURN_IF_ERROR(lib_def.LookUpOpDef(node_def.op(), &op_def));
       // TODO(b/65524810): Hack to allow functions to capture Dataset op
       // nodes needed for FlatMap. Currently, source datasets nodes have been
       // marked stateful to avoid constant folding since we do not have a
@@ -230,7 +232,8 @@ class GraphDefBuilderWrapper {
   // Also looks up the `op_def->name` in the global
   // `WhitelistedStatefulOpRegistry`.
   bool IsOpWhitelisted(const OpDef* op_def) const {
-    return (str_util::EndsWith(op_def->name(), "Dataset") &&
+    return ((absl::EndsWith(op_def->name(), "Dataset") ||
+             absl::EndsWith(op_def->name(), "DatasetV2")) &&
             op_def->output_arg_size() == 1 &&
             op_def->output_arg(0).type() == DT_VARIANT) ||
            WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
@@ -248,12 +251,13 @@ class GraphDefBuilderWrapper {
   }
 
   Status AddAttrFunctions(SerializationContext* ctx,
-                          const AttrValue& attr_value) {
+                          const AttrValue& attr_value,
+                          const FunctionLibraryDefinition& lib_def) {
     if (attr_value.has_func()) {
-      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name()));
+      TF_RETURN_IF_ERROR(AddFunction(ctx, attr_value.func().name(), lib_def));
     } else if (attr_value.has_list()) {
       for (const NameAttrList& name_attr_list : attr_value.list().func()) {
-        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name()));
+        TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name(), lib_def));
       }
     }
     return Status::OK();
@@ -264,6 +268,19 @@ class GraphDefBuilderWrapper {
 
 class StatsAggregator;
 class FunctionHandleCache;
+
+// A utility class for running a function and ensuring that there is always a
+// `tensorflow::data` symbol on the stack.
+class Runner {
+ public:
+  virtual ~Runner() {}
+
+  // Runs the given function.
+  virtual void Run(const std::function<void()>& f) = 0;
+
+  // Returns a global singleton Runner.
+  static Runner* get();
+};
 
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
@@ -282,8 +299,7 @@ class IteratorContext {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
           env(ctx->env()),
-          function_library(ctx->function_library()),
-          lib(ctx->lib()),
+          flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
@@ -293,9 +309,7 @@ class IteratorContext {
           thread_factory(ctx->thread_factory()) {}
 
     explicit Params(OpKernelContext* ctx)
-        : env(ctx->env()),
-          lib(ctx->function_library()),
-          runner(*(ctx->runner())) {
+        : env(ctx->env()), flr(ctx->function_library()) {
       // NOTE: need reinterpret_cast because function.h forward-declares Device.
       DeviceBase* device =
           reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
@@ -309,6 +323,21 @@ class IteratorContext {
       } else {
         runner_threadpool_size = port::NumSchedulableCPUs();
       }
+
+      // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
+      // that a symbol in the tensorflow::data namespace is always on the stack
+      // when executing a function inside a Dataset.
+      runner = std::bind(
+          [](
+              // Note: `runner` is a const reference to avoid copying it.
+              const std::function<void(std::function<void()>)>& ctx_runner,
+              std::function<void()> fn) {
+            std::function<void()> wrapped_fn = std::bind(
+                [](const std::function<void()>& fn) { Runner::get()->Run(fn); },
+                std::move(fn));
+            ctx_runner(std::move(wrapped_fn));
+          },
+          *ctx->runner(), std::placeholders::_1);
     }
 
     // The Allocator to be used to allocate the output of an iterator.
@@ -317,11 +346,8 @@ class IteratorContext {
     // Interface to operating system functionality.
     Env* env = nullptr;
 
-    // The FunctionLibraryDefinition used to look up user-defined functions.
-    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
-
     // The FunctionLibraryRuntime object to be used to make function calls.
-    FunctionLibraryRuntime* lib = nullptr;
+    FunctionLibraryRuntime* flr = nullptr;
 
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
@@ -363,11 +389,7 @@ class IteratorContext {
 
   Env* env() const { return params_.env; }
 
-  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
-    return params_.function_library;
-  }
-
-  FunctionLibraryRuntime* lib() { return params_.lib; }
+  FunctionLibraryRuntime* flr() { return params_.flr; }
 
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
@@ -411,14 +433,11 @@ class IteratorContext {
 class SerializationContext {
  public:
   struct Params {
-    const FunctionLibraryDefinition* flib_def = nullptr;           // Not owned.
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
     bool optimization_only = false;
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
-
-  const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
 
   std::vector<std::pair<string, Tensor>>* input_list() {
     return params_.input_list;
@@ -523,8 +542,14 @@ class IteratorBase {
     return errors::Unimplemented("RestoreInternal");
   }
 
+  // Returns the number of elements produced by this itertaor.
+  int64 num_elements() const {
+    if (node_) return node_->num_elements();
+    return 0;
+  }
+
  private:
-  friend class DatasetBase;  // for access to `AddCleanupFunction`
+  friend class DatasetBase;          // for access to `AddCleanupFunction`
   friend class DatasetBaseIterator;  // for access to `node_`
 
   // Registers a cleanup function to be called upon object destruction.
@@ -657,8 +682,10 @@ class DatasetBase : public core::RefCounted {
 
  protected:
   friend Status AsGraphDef(
-      OpKernelContext* ctx, DatasetBase* dataset,
+      OpKernelContext* ctx, const DatasetBase* dataset,
+      SerializationContext&& serialization_ctx,
       GraphDef* graph_def);  // For access to graph related members.
+  friend class CapturedFunction;
 
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
@@ -704,9 +731,6 @@ class DatasetBaseIterator : public IteratorBase {
 
   ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
-  // The sequence of iterators leading up to this iterator.
-  const string& prefix() const override { return params_.prefix; }
-
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
   }
@@ -715,23 +739,17 @@ class DatasetBaseIterator : public IteratorBase {
     return params_.dataset->output_shapes();
   }
 
+  // The sequence of iterators leading up to this iterator.
+  const string& prefix() const override { return params_.prefix; }
+
+  // Returns a name to be used for the TraceMe event.
+  //
+  // NOTE: TraceMe support passing key value pairs of "arguments" using the
+  // following format "name#arg_1=value_,...,arg_n=value_n".
+  virtual string BuildTraceMeName() { return params_.prefix; }
+
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) final {
-    tracing::ScopedActivity activity(params_.prefix);
-    RecordStart(ctx, true /* stop_output */);
-    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-    if (s.ok() && !*end_of_sequence) RecordElement(ctx);
-    RecordStop(ctx, true /* start_output */);
-    if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
-      s = errors::Internal(
-          "Iterator \"", params_.prefix,
-          "\" returned OutOfRange without setting `*end_of_sequence`. This "
-          "indicates that an error may have occurred. Original message: ",
-          s.error_message());
-      LOG(ERROR) << s;
-    }
-    return s;
-  }
+                 bool* end_of_sequence) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
@@ -753,6 +771,22 @@ class DatasetBaseIterator : public IteratorBase {
   std::shared_ptr<model::Node> CreateNode(
       IteratorContext* ctx, model::Node::Args args) const override {
     return model::MakeUnknownNode(std::move(args));
+  }
+
+  // When modeling is enabled, this method disables autotuning for the given
+  // iterator (and the transitive closure of its inputs).
+  void DisableAutotune(IteratorContext* ctx, IteratorBase* iterator) {
+    if (iterator->node_) {
+      iterator->node_->set_autotune(false);
+    }
+  }
+
+  // When modeling is enabled, this method enables autotuning for the given
+  // iterator (and the transitive closure of its inputs).
+  void EnableAutotune(IteratorContext* ctx, IteratorBase* iterator) {
+    if (iterator->node_) {
+      iterator->node_->set_autotune(true);
+    }
   }
 
   // When modeling is enabled, this method records the fact that this iterator

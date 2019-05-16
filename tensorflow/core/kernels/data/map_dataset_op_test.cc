@@ -153,7 +153,7 @@ TEST_P(ParameterizedMapDatasetOpTest, GetNext) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -203,7 +203,7 @@ TEST_F(MapDatasetOpTest, DatasetNodeName) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -234,7 +234,7 @@ TEST_F(MapDatasetOpTest, DatasetTypeString) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -265,7 +265,7 @@ TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -297,7 +297,7 @@ TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -329,7 +329,7 @@ TEST_P(ParameterizedMapDatasetOpTest, Cardinality) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -360,7 +360,7 @@ TEST_P(ParameterizedMapDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -396,7 +396,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -435,7 +435,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -474,7 +474,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -512,7 +512,7 @@ TEST_P(ParameterizedMapDatasetOpTest, Roundtrip) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(
       test_case.start, test_case.end, test_case.step, "range", &range_dataset));
   Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transfered to DatasetVariantWrapper,
+  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
   // which will handle the release of memory.
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
@@ -550,7 +550,8 @@ TEST_P(ParameterizedMapDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(iterator->Restore(iterator_context.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_context.get(), &reader, "Iterator",
+                                 *map_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,

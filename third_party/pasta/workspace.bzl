@@ -6,7 +6,7 @@ def repo():
     third_party_http_archive(
         name = "pasta",
         urls = [
-            "https://mirror.bazel.build/github.com/google/pasta/archive/v0.1.2.tar.gz",
+            "http://mirror.tensorflow.org/github.com/google/pasta/archive/v0.1.2.tar.gz",
             "https://github.com/google/pasta/archive/v0.1.2.tar.gz",
         ],
         strip_prefix = "pasta-0.1.2",

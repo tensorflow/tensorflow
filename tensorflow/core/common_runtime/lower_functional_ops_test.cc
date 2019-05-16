@@ -124,9 +124,9 @@ TEST(LowerIfWhileTest, CondInWhile) {
   // program:
   //
   // Args:
-  // counter = Arg(type = int32)
-  // pred = Arg(type = bool)
-  // a = Arg(type = int32)
+  // counter = Placeholder(type = int32)
+  // pred = Placeholder(type = bool)
+  // a = Placeholder(type = int32)
   // N = 3
   // while (counter < N) {
   //   counter += 1;
@@ -149,9 +149,9 @@ TEST(LowerIfWhileTest, CondInWhile) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto counter = ops::_Arg(root.WithOpName("counter"), DT_INT32, 0);
-  auto pred = ops::_Arg(root.WithOpName("pred"), DT_BOOL, 0);
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
+  auto counter = ops::Placeholder(root.WithOpName("counter"), DT_INT32);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   std::vector<NodeBuilder::NodeOut> inputs(
       {NodeBuilder::NodeOut(counter.node()), NodeBuilder::NodeOut(pred.node()),
        NodeBuilder::NodeOut(a.node())});
@@ -239,8 +239,8 @@ TEST(LowerIfWhileTest, WhileInCond) {
   // program:
   //
   // Args:
-  // pred = Arg(type = bool)
-  // a = Arg(type = int32)
+  // pred = Placeholder(dtype = bool)
+  // a = Placeholder(dtype = int32)
   // N = 8
   // if (pred) {
   //   while (a <= N) {
@@ -257,8 +257,8 @@ TEST(LowerIfWhileTest, WhileInCond) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto pred = ops::_Arg(root.WithOpName("pred"), DT_BOOL, 0);
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 1);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   AttrValue then_func;
   then_func.mutable_func()->set_name("IfWithWhileThen");

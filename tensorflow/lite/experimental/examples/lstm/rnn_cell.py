@@ -36,7 +36,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("lite.experimental.nn.TfLiteRNNCell")
+@tf_export(v1=["lite.experimental.nn.TfLiteRNNCell"])
 class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
   """The most basic RNN cell.
 
@@ -156,7 +156,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     return dict(itertools.chain(base_config.items(), config.items()))
 
 
-@tf_export("lite.experimental.nn.TFLiteLSTMCell")
+@tf_export(v1=["lite.experimental.nn.TFLiteLSTMCell"])
 class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 

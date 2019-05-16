@@ -98,6 +98,11 @@ class FunctionTest : public ::testing::Test {
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
+    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+      *r = new IntraProcessRendezvous(device_mgr);
+      return Status::OK();
+    };
     Executor* exec;
     TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
     exec_.reset(exec);
@@ -145,8 +150,7 @@ TEST_F(FunctionTest, WXPlusB) {
 
 class FunctionLibraryRuntimeTest : public ::testing::Test {
  protected:
-  void Init(const std::vector<FunctionDef>& flib,
-            thread::ThreadPool* default_thread_pool = nullptr) {
+  void Init(const std::vector<FunctionDef>& flib) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
@@ -161,7 +165,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, default_thread_pool, nullptr /* cluster_flr */));
+        opts));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -404,17 +408,17 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
 }
 
-TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInLibDef) {
   Init({});
   FunctionDefLibrary proto;
   *proto.add_function() = test::function::XTimesTwo();
   *proto.add_function() = test::function::XTimesFour();
   *proto.add_function() = test::function::XTimes16();
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+  std::unique_ptr<FunctionLibraryDefinition> lib_def(
       new FunctionLibraryDefinition(OpRegistry::Global(), proto));
 
   FunctionLibraryRuntime::InstantiateOptions options;
-  options.overlay_lib = overlay_lib.get();
+  options.lib_def = lib_def.get();
 
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
@@ -434,19 +438,16 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
                                 {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
 
-  // Ensure that the use of the overlay has not leaked into the base library.
+  // Ensure that the function is still not installed in the base library.
   HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
                              {} /* options */, {x}, {&y}),
            "Not found: Function XTimesTwo is not defined.");
 }
 
-TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLibAndDelayedInstantiation) {
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInLibDefAndDelayedInstantiation) {
   using FDH = ::tensorflow::FunctionDefHelper;
 
   Init({});
-
-  FunctionDef xt4_override = test::function::XTimesTwo();
-  xt4_override.mutable_signature()->set_name("XTimesFour");
 
   // Call XTimesFour via PartitionedCall which delays functions instantiation
   // to the first call to Compute/ComputeAsync.
@@ -465,28 +466,30 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLibAndDelayedInstantiation) {
   *lib.add_function() = test::function::XTimesTwo();
   *lib.add_function() = test::function::XTimesFour();
   *lib.add_function() = my_xt4;
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+  std::unique_ptr<FunctionLibraryDefinition> lib_def(
       new FunctionLibraryDefinition(OpRegistry::Global(), lib));
 
   FunctionLibraryRuntime::InstantiateOptions options;
-  options.overlay_lib = overlay_lib.get();
+  options.lib_def = lib_def.get();
 
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
 
-  // When we instantiate with default library overlay we should get x*4.
+  // When we instantiate with `options` we should get x*4.
   TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
 
-  // Overlay library that overrides default XTimesFour with XTimesTwo body.
+  // Create options that override XTimesFour body with XTimesTwo body.
+  FunctionDef xt4_override = test::function::XTimesTwo();
+  xt4_override.mutable_signature()->set_name("XTimesFour");
   FunctionDefLibrary lib_override;
   *lib_override.add_function() = xt4_override;
   *lib_override.add_function() = my_xt4;
-  std::unique_ptr<FunctionLibraryDefinition> overlay_lib_override(
+  std::unique_ptr<FunctionLibraryDefinition> lib_def_override(
       new FunctionLibraryDefinition(OpRegistry::Global(), lib_override));
+  options.lib_def = lib_def_override.get();
 
-  // We should call the XTimesFour override which is actually x*2.
-  options.overlay_lib = overlay_lib_override.get();
+  // When we instantiate with `options` we should get x*2.
   TF_CHECK_OK(InstantiateAndRun(flr0_, "MyXTimesFour", {}, options, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }
@@ -976,8 +979,9 @@ TEST_F(FunctionLibraryRuntimeTest,
   }
 }
 
-TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepThemFetchable) {
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
   using test::function::NDef;
+  using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 
   const FunctionDef func =
       FDH::Create("AddAndMul", {"i: float"}, {"o: float"}, {},
@@ -990,34 +994,67 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepThemFetchable) {
   // Construct a graph:
   //   a = Arg[dtype=DT_FLOAT]
   //   b = FunctionWithControlOutputs(a)
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
-
-  Scope s = Scope::NewRootScope();
-  TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
-  auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
-  auto b = test::function::Call(&s, "b", "AddAndMul", {a});
-  TF_ASSERT_OK(s.ToGraph(g.get()));
-
-  ExpandInlineFunctionsOptions opts;
-  opts.native_options.keep_caller_fetchable = true;
-  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+  auto construct_graph = [this](std::unique_ptr<Graph>* g) -> Status {
+    Scope s = Scope::NewRootScope();
+    TF_RETURN_IF_ERROR(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto b = test::function::Call(&s, "b", "AddAndMul", {a});
+    TF_RETURN_IF_ERROR(s.ToGraph(g->get()));
+    return Status::OK();
+  };
 
   const string input_node = "Func/b/input/_0";
   const string output_node = "Func/b/output/_1";
   const string output_control_node = "Func/b/output_control_node/_2";
 
-  ExpandInlineFunctions(flr0_, g.get(), opts);
-  {
-    GraphDef expected = test::function::GDef(
-        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
-         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
-         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
-         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
-         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
-         NDef(output_control_node, "NoOp", {"^b/add"}, {}),
-         NDef("b", "IdentityN", {output_node, "^" + output_control_node},
-              {{"T", DataTypeSlice{DT_FLOAT}}})},
+  // Construct expected graph after function inlining.
+  auto expected_graph = [&](const NodeDef& caller) -> GraphDef {
+    return test::function::GDef(
+        {
+            NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+            NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+            NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+            NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+            NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+            NDef(output_control_node, "NoOp", {"^b/add"}, {}),
+            caller,  // Keep node in a graph with the same name as caller node.
+        },
         {func});
+  };
+
+  ExpandInlineFunctionsOptions opts;
+  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+
+  // Keep inlined function call node fetchable.
+  {
+    opts.native_options.keep_caller_node = KeepCallerNode::kFetchable;
+
+    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected =
+        expected_graph(/*caller=*/
+                       NDef("b", "IdentityN",
+                            {output_node, "^" + output_control_node},
+                            {{"T", DataTypeSlice{DT_FLOAT}}}));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Keep inlined function call node targetable.
+  {
+    opts.native_options.keep_caller_node = KeepCallerNode::kTargetable;
+
+    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected =
+        expected_graph(/*caller=*/
+                       NDef("b", "NoOp", {"^" + output_control_node}, {}));
 
     GraphDef actual;
     g->ToGraphDef(&actual);
@@ -1405,6 +1442,58 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     g->ToGraphDef(&actual);
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, Gradient_Select) {
+  FunctionDef my_select = FunctionDefHelper::Create(
+      "MySelect",
+      // Args
+      {"condition: bool", "t: float32", "e: float32"},
+      // Return values
+      {"z: float32"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          {{"select0"}, "Select", {"condition", "t", "e"}, {{"T", DT_FLOAT}}},
+          {{"select1"}, "Select", {"condition", "t", "e"}, {{"T", DT_FLOAT}}},
+          {{"add"},
+           "Add",
+           {"select0:output", "select1:output"},
+           {{"T", DT_FLOAT}}},
+      },
+      // Output mapping
+      {{"z", "add:z"}});
+  FunctionDef select_grad = FunctionDefHelper::Create(
+      "MySelectGrad",
+      // Args
+      {"condition: bool", "t:float32", "e: float32", "dz: float32"},
+      // Return values
+      {"dt: float32"},
+      // Attrs
+      {},
+      // Nodes
+      {{
+          {"grad"},
+          "SymbolicGradient",
+          {"condition", "t", "e", "dz"},
+          {
+              {"f", FunctionDefHelper::FunctionRef("MySelect")},
+              {"Tin", DataTypeSlice({DT_BOOL, DT_FLOAT, DT_FLOAT, DT_FLOAT})},
+              {"Tout", DataTypeSlice({DT_BOOL, DT_FLOAT, DT_FLOAT})},
+          },
+      }},
+      // Output mapping
+      {{"dt", "grad:output:1"}});
+  Init({my_select, select_grad});
+
+  auto condition = test::AsTensor<bool>({false});
+  auto t = test::AsTensor<float>({13.0});
+  auto e = test::AsTensor<float>({15.0});
+  auto dz = test::AsTensor<float>({1.0});
+  Tensor y;
+  TF_EXPECT_OK(InstantiateAndRun(flr0_, "MySelectGrad", {},
+                                 {condition, t, e, dz}, {&y}));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Gradient_Add) {

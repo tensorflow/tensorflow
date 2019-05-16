@@ -30,7 +30,7 @@ class FakeEnv : public EnvWrapper {
  public:
   FakeEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowSeconds() override { return now; }
+  uint64 NowSeconds() const override { return now; }
   uint64 now = 10000;
 };
 

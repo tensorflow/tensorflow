@@ -238,21 +238,20 @@ string FpValueToString<complex128>(complex128 value) {
   return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
 }
 
-// Returns the absolute value of the given floating point value. This function
-// is used instead of std::abs directly in order to allow type-dependent
-// implementations for NearComparator.
+// A wrapper of std::abs to include data types that are not supported by
+// std::abs, in particular, bfloat16 and half.
 template <typename NativeT>
-float FpAbsoluteValue(NativeT value) {
+double FpAbsoluteValue(NativeT value) {
   return std::abs(value);
 }
 
 template <>
-float FpAbsoluteValue(bfloat16 value) {
+double FpAbsoluteValue(bfloat16 value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
 template <>
-float FpAbsoluteValue(half value) {
+double FpAbsoluteValue(half value) {
   return FpAbsoluteValue<float>(static_cast<float>(value));
 }
 
@@ -278,8 +277,8 @@ class NearComparator {
   struct Mismatch {
     NativeT actual;
     NativeT expected;
-    float rel_error;
-    float abs_error;
+    double rel_error;
+    double abs_error;
 
     // The linear index of the failure within the shape. This linear index is
     // from the 'actual' literal.
@@ -340,7 +339,7 @@ class NearComparator {
   void UpdateAbsValueBucket(NativeT value, bool is_mismatch) {
     // Adjust the bucket containing the absolute values of the 'actual'
     // elements.
-    const float abs_value = FpAbsoluteValue(value);
+    const double abs_value = FpAbsoluteValue(value);
     for (int i = 0; i < abs_value_buckets_.size(); ++i) {
       if (i == abs_value_buckets_.size() - 1 ||
           (abs_value >= kAbsValueBucketBounds[i] &&
@@ -370,8 +369,8 @@ class NearComparator {
   // the given literal_index and keeps track of various mismatch statistics.
   template <typename T>
   void CompareValues(T expected, T actual, int64 linear_index) {
-    float abs_error;
-    float rel_error;
+    double abs_error;
+    double rel_error;
     if (CompareEqual<T>(expected, actual, {linear_index})) {
       abs_error = 0;
       rel_error = 0;
@@ -459,48 +458,30 @@ class NearComparator {
 
   // For complex types, we compare real and imaginary parts individually.
   void CompareValues(complex64 expected, complex64 actual, int64 linear_index) {
-    bool mismatch = false;
+    const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<float>(expected.real(), actual.real(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for real part, instead increase
-      // mismatch by 1 for the entire complex number.
-      num_mismatches_--;
-    }
     CompareValues<float>(expected.imag(), actual.imag(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for imag part, instead increase
-      // mismatch by 1 for the entire complex number.
+    if (num_mismatches_ == both_parts_mismatch) {
+      // The mismatch counter had been incremented by each CompareValues() call,
+      // which means that both real and imaginary parts of the passed-in complex
+      // values are different. However, the counter should reflect a single
+      // mismatch between these complex values.
       num_mismatches_--;
     }
-    if (mismatch == true) {
-      num_mismatches_++;
-    }
-    mismatches_.data<bool>()[linear_index] = mismatch;
   }
 
   void CompareValues(complex128 expected, complex128 actual,
                      int64 linear_index) {
-    bool mismatch = false;
+    const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<double>(expected.real(), actual.real(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for real part, instead increase
-      // mismatch by 1 for the entire complex number.
-      num_mismatches_--;
-    }
     CompareValues<double>(expected.imag(), actual.imag(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for imag part, instead increase
-      // mismatch by 1 for the entire complex number.
+    if (num_mismatches_ == both_parts_mismatch) {
+      // The mismatch counter had been incremented by each CompareValues() call,
+      // which means that both real and imaginary parts of the passed-in complex
+      // values are different. However, the counter should reflect a single
+      // mismatch between these complex values.
       num_mismatches_--;
     }
-    if (mismatch == true) {
-      num_mismatches_++;
-    }
-    mismatches_.data<bool>()[linear_index] = mismatch;
   }
 
   // Compares the two literals elementwise.

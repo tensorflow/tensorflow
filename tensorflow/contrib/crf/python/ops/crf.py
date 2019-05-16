@@ -24,7 +24,7 @@ log_likelihood, transition_params = tf.contrib.crf.crf_log_likelihood(
     unary_scores, gold_tags, sequence_lengths)
 
 loss = tf.reduce_mean(-log_likelihood)
-train_op = tf.train.GradientDescentOptimizer(0.01).minimize(loss)
+train_op = tf.compat.v1.train.GradientDescentOptimizer(0.01).minimize(loss)
 
 # Decoding in Tensorflow.
 viterbi_sequence, viterbi_score = tf.contrib.crf.crf_decode(

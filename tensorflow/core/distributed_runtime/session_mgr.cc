@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
+#include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
@@ -40,18 +41,27 @@ SessionMgr::SessionMgr(
               new WorkerCacheWrapper(default_worker_cache_.get())),
           worker_env->device_mgr,
           std::unique_ptr<GraphMgr>(
-              new GraphMgr(worker_env, worker_env->device_mgr)))),
+              new GraphMgr(worker_env, worker_env->device_mgr)),
+          nullptr)),
       worker_cache_factory_(std::move(worker_cache_factory)) {}
 
 /* static */
 string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
-  return strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:",
-                         server_def.task_index());
+  return strings::StrCat("/job:", server_def.job_name(),
+                         "/replica:0/task:", server_def.task_index());
 }
 
 Status SessionMgr::CreateSession(const string& session,
                                  const ServerDef& server_def,
                                  bool isolate_session_state) {
+  return CreateSession(session, server_def, {}, isolate_session_state);
+}
+
+Status SessionMgr::CreateSession(
+    const string& session, const ServerDef& server_def,
+    const protobuf::RepeatedPtrField<DeviceAttributes>&
+        cluster_device_attributes,
+    bool isolate_session_state) {
   mutex_lock l(mu_);
   if (session.empty()) {
     return errors::InvalidArgument("Session must be non-empty.");
@@ -76,7 +86,22 @@ Status SessionMgr::CreateSession(const string& session,
 
   std::shared_ptr<WorkerSession> worker_session;
 
-  if (isolate_session_state) {
+  std::unique_ptr<DeviceMgr> remote_devices;
+  if (!cluster_device_attributes.empty()) {
+    std::vector<std::unique_ptr<Device>> cluster_devices;
+    tensorflow::AsRemoteDevices(worker_env_->env, cluster_device_attributes,
+                                &cluster_devices);
+    remote_devices.reset(new DeviceMgr(std::move(cluster_devices)));
+  }
+
+  if (isolate_session_state || server_def.cluster().job_size()) {
+    if (server_def.cluster().job_size()) {
+      VLOG(1) << "ClusterSpec propagation is enabled.";
+    }
+    if (!isolate_session_state) {
+      VLOG(1) << "Session state isolation is disabled.";
+    }
+
     // Create a private copy of the DeviceMgr for the WorkerSession.
     std::vector<std::unique_ptr<Device>> renamed_devices;
     for (Device* d : worker_env_->local_devices) {
@@ -89,16 +114,18 @@ Status SessionMgr::CreateSession(const string& session,
     worker_session.reset(
         new WorkerSession(session, worker_name,
                           std::unique_ptr<WorkerCacheInterface>(worker_cache),
-                          std::move(device_mgr), std::move(graph_mgr)));
+                          std::move(device_mgr), std::move(graph_mgr),
+                          std::move(remote_devices)));
   } else {
-    // Borrown the WorkerEnv's DeviceMgr for the WorkerSession, so
+    // Borrow the WorkerEnv's DeviceMgr for the WorkerSession, so
     // that resources using it can use its devices after the
     // WorkerSession has been deleted.
     auto graph_mgr = MakeUnique<GraphMgr>(worker_env_, worker_env_->device_mgr);
     worker_session = WorkerSession::CreateWithBorrowedDeviceMgr(
         session, worker_name,
         std::unique_ptr<WorkerCacheInterface>(worker_cache),
-        worker_env_->device_mgr, std::move(graph_mgr));
+        worker_env_->device_mgr, std::move(graph_mgr),
+        std::move(remote_devices));
   }
 
   sessions_.insert(std::make_pair(session, std::move(worker_session)));

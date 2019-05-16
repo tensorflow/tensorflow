@@ -209,6 +209,9 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
     raise ValueError("`per_replica_value` must be non-empty")
   count = len(all_values)
 
+  if (count == 1 and all_values[0].device == reduce_to_device):
+    return all_values[0]
+
   with ops.device(reduce_to_device):
     with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
       reduced = cross_device_utils.aggregate_tensors_or_indexed_slices(
@@ -710,8 +713,8 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
   def _do_batch_all_reduce(self, reduce_op, dense_values):
     """Run batch all-reduces."""
     logging.log_first_n(
-        logging.INFO, "batch_all_reduce invoked for batches size = %d with "
-        "algorithm = %s, num_packs = %d, agg_small_grads_max_bytes = %d and "
+        logging.INFO, "batch_all_reduce: %d all-reduces with algorithm = %s,"
+        "num_packs = %d, agg_small_grads_max_bytes = %d and "
         "agg_small_grads_max_group = %d" %
         (len(dense_values), self._all_reduce_alg, self._num_packs,
          self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
@@ -879,8 +882,8 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
     """All-reduce algorithm in a batch."""
     logging.log_first_n(
         logging.INFO,
-        "distributed batch_all_reduce invoked for batches size = %d with "
-        "allreduce_spec = %r, num_packs = %d, agg_small_grads_max_bytes = %d "
+        "Distributed batch_all_reduce: %d all-reduces with "
+        "allreduce_spec = %r, num_packs = %d, agg_small_grads_max_bytes = %d, "
         "and agg_small_grads_max_group = %d" %
         (len(per_replica_values), self._all_reduce_spec, self._num_packs,
          self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
@@ -1025,7 +1028,7 @@ class CollectiveAllReduce(CrossDeviceOps):
   def _batch_all_reduce(self, reduce_op, per_replica_values):
     """All reduce algorithm in a batch."""
     logging.log_first_n(
-        logging.INFO, "Collective All-reduce invoked with batches size = %d, "
+        logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
         "num_workers = %d" % (len(per_replica_values), self._num_workers), 10)
 
     dense_values, dense_indices, sparse_values, sparse_indices = (
@@ -1046,7 +1049,7 @@ class CollectiveAllReduce(CrossDeviceOps):
     """All-reduce across all workers in a batch."""
 
     logging.log_first_n(
-        logging.INFO, "Collective All-reduce invoked with batches size = %d, "
+        logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
         "num_workers = %d" % (len(per_replica_values), self._num_workers), 10)
 
     chunked_gv = self._make_gradient_chunks(per_replica_values,
@@ -1077,8 +1080,8 @@ class CollectiveAllReduce(CrossDeviceOps):
     """All-reduce IndexedSlices across all workers in a batch."""
 
     logging.log_first_n(
-        logging.INFO, "Collective All-reduce for IndexedSlices invoked with "
-        "batches size = %d, num_workers = %d" %
+        logging.INFO, "Collective batch_all_reduce for IndexedSlices: "
+        "%d all-reduces, num_workers = %d" %
         (len(per_replica_values), self._num_workers), 10)
 
     chunked_gv = self._make_gradient_chunks(per_replica_values,
@@ -1154,8 +1157,8 @@ def choose_the_best(devices, session_config=None):
 
   Args:
     devices: a list of devices passed to `tf.distribute.Strategy`.
-    session_config: a `tf.ConfigProto` or `None`. If `None`, it will make
-      decision based on all local devices.
+    session_config: a `tf.compat.v1.ConfigProto` or `None`. If `None`, it will
+      make decision based on all local devices.
 
   Returns:
     A subclass of `CrossDeviceOps`.

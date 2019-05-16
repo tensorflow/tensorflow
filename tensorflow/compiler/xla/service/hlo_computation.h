@@ -198,6 +198,13 @@ class HloComputation {
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64, HloComputation*>& computation_map);
 
+  using InstructionSequence = tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
+
+  using ConstInstructionSequence =
+      tensorflow::gtl::iterator_range<UnwrappingIterator<
+          std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
+
   // Gets the instructions in this computation.
   //
   // The returned type is a range of HloInstruction*s, so you can iterate over
@@ -205,15 +212,11 @@ class HloComputation {
   //
   //   for (HloInstruction* instr : computation->instructions()) { ... }
   //
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
-  instructions() const {
+  ConstInstructionSequence instructions() const {
     return {MakeUnwrappingIterator(instructions_.begin()),
             MakeUnwrappingIterator(instructions_.end())};
   }
-  tensorflow::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
-  instructions() {
+  InstructionSequence instructions() {
     return {MakeUnwrappingIterator(instructions_.begin()),
             MakeUnwrappingIterator(instructions_.end())};
   }
@@ -270,7 +273,12 @@ class HloComputation {
   ProgramShape ComputeProgramShape() const;
 
   // Return whether `*this` and `other` are functionally equivalent.
-  bool operator==(const HloComputation& other) const;
+  bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
+
+  // Return whether `*this` and `other` are functionally equivalent.
+  bool operator==(const HloComputation& other) const {
+    return Equal(other, true);
+  }
 
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.

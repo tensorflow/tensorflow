@@ -71,10 +71,13 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/core:tflite_portable_logging",
@@ -156,15 +159,12 @@ cc_library(
         "stderr_reporter.cc",
     ] + select({
         "//tensorflow:android": [
-            "nnapi_delegate.cc",
             "mmap_allocation.cc",
         ],
         "//tensorflow:windows": [
-            "nnapi_delegate_disabled.cc",
             "mmap_allocation_disabled.cc",
         ],
         "//conditions:default": [
-            "nnapi_delegate_disabled.cc",
             "mmap_allocation.cc",
         ],
     }),
@@ -178,7 +178,6 @@ cc_library(
         "interpreter.h",
         "model.h",
         "mutable_op_resolver.h",
-        "nnapi_delegate.h",
         "op_resolver.h",
         "optional_debug_tools.h",
         "stderr_reporter.h",
@@ -195,8 +194,8 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         ":with_select_tf_ops": [
@@ -252,6 +251,7 @@ cc_test(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -399,7 +399,9 @@ cc_library(
         "//tensorflow:android": ["-llog"],
         "//conditions:default": [],
     }),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_test(

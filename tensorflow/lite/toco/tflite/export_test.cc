@@ -251,7 +251,7 @@ class OpSetsTest : public ExportTest {
     params_.enable_select_tf_ops = false;
     params_.quantize_weights = false;
 
-    for (OpSet i : sets) {
+    for (const OpSet& i : sets) {
       switch (i) {
         case kTfLiteBuiltins:
           import_all_ops_as_unsupported_ = false;

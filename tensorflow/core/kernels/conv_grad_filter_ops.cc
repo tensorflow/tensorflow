@@ -208,14 +208,9 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(
-        context, padding_ != Padding::EXPLICIT,
-        errors::Unimplemented("Current CPU implementation does not support "
-                              "EXPLICIT padding yet."));
-    std::vector<int64> explicit_paddings;
     OP_REQUIRES_OK(context,
-                   context->GetAttr("explicit_paddings", &explicit_paddings));
-    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings,
+                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
     OP_REQUIRES(context, dilations_.size() == 4,
@@ -247,11 +242,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                                 filter_sizes.vec<int32>(), &filter_shape));
 
     ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensions(
-                       "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2,
-                       input.shape(), filter_shape, out_backprop.shape(),
-                       strides_, padding_, data_format_, &dims));
+    OP_REQUIRES_OK(
+        context,
+        ConvBackpropComputeDimensionsV2(
+            "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2, input.shape(),
+            filter_shape, out_backprop.shape(), /*dilations=*/{1, 1, 1, 1},
+            strides_, padding_, explicit_paddings_, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,
@@ -264,6 +260,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
+    if (padding_ == Padding::EXPLICIT) {
+      pad_top = explicit_paddings_[2];
+      pad_bottom = explicit_paddings_[3];
+      pad_left = explicit_paddings_[4];
+      pad_right = explicit_paddings_[5];
+    }
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
@@ -402,6 +404,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropFilterOp);
@@ -740,26 +743,18 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       .set_group_count(dims.in_depth / filter_shape.dim_size(2));
 
   // NOTE(zhengxq):
-  // cuDNN only supports the following layouts :
-  // Input  : B x D x R x C
-  // Filter : OD x ID x R x C
-  // Whereas, we have
-  // Input  : B x R x C x D
-  // Filter : R x C x ID x OD
-  // TransformFilter performs (R x C x ID x OD) => (OD x ID x R x C)
-  // The first TransformDepth performs
-  // (B x R x C x D) => (B x D x R x C).
-  // Since the tensor returned from cuDNN is B x D x R x C also,
-  // the second TransformDepth performs
-  // (B x D x R x C) => (B x R x C x D).
+  // cuDNN only supports the filter layouts: OD x FD x R x C
+  // Whereas, we have: R x C x ID x OD
+  // TransformFilter performs (R x C x FD x OD) => (OD x FD x R x C)
 
   Tensor pre_transformed_filter_backprop;
   OP_REQUIRES_OK(
-      ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                              TensorShape({dims.out_depth, dims.in_depth,
-                                           dims.spatial_dims[0].filter_size,
-                                           dims.spatial_dims[1].filter_size}),
-                              &pre_transformed_filter_backprop));
+      ctx,
+      ctx->allocate_temp(
+          DataTypeToEnum<T>::value,
+          TensorShape({filter_shape.dim_size(3), filter_shape.dim_size(2),
+                       filter_shape.dim_size(0), filter_shape.dim_size(1)}),
+          &pre_transformed_filter_backprop));
 
   Tensor transformed_out_backprop;
   if (data_format == FORMAT_NHWC) {
@@ -858,24 +853,21 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                   &scratch_allocator, AlgorithmConfig(profile_algorithm),
                   &profile_result)
               .ok();
-      if (cudnn_launch_status) {
-        if (profile_result.is_valid()) {
-          results.emplace_back();
-          auto& result = results.back();
-          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-          result.mutable_conv()->set_tensor_ops_enabled(
-              profile_algorithm.tensor_ops_enabled());
-          result.mutable_success()->set_scratch_bytes(
-              scratch_allocator.TotalByteSize());
-          *result.mutable_success()->mutable_run_time() =
-              proto_utils::ToDurationProto(
-                  absl::Milliseconds(profile_result.elapsed_time_in_ms()));
-        }
+      if (cudnn_launch_status && profile_result.is_valid()) {
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_algorithm.tensor_ops_enabled());
+        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    LogConvAutotuneResults(ctx->op_kernel().def(), transformed_input,
-                           pre_transformed_filter_backprop,
-                           transformed_out_backprop, stream->parent(), results);
+    LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_FILTER,
+                           se::dnn::ToDataType<T>::value, input_desc,
+                           filter_desc, output_desc, conv_desc,
+                           stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);

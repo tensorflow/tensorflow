@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -101,8 +100,7 @@ std::unique_ptr<Array2D<float>> EigenMatrixMultiply(const Array2D<float>& a,
   } else {
     tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
                                         2);
-    tensorflow::EigenThreadPoolWrapper tp(&pool);
-    Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+    Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
     ExecutableRunOptions run_options;
     run_options.set_intra_op_thread_pool(&device);
 

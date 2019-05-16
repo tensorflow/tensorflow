@@ -114,20 +114,20 @@ void GPUDebugAllocator::DeallocateRaw(void* ptr) {
   base_allocator_->DeallocateRaw(ptr);
 }
 
-bool GPUDebugAllocator::TracksAllocationSizes() { return true; }
+bool GPUDebugAllocator::TracksAllocationSizes() const { return true; }
 
-size_t GPUDebugAllocator::RequestedSize(const void* ptr) {
+size_t GPUDebugAllocator::RequestedSize(const void* ptr) const {
   auto req_size = base_allocator_->RequestedSize(static_cast<const char*>(ptr) -
                                                  MASK_BYTES);
   return req_size - 2 * MASK_BYTES;
 }
 
-size_t GPUDebugAllocator::AllocatedSize(const void* ptr) {
+size_t GPUDebugAllocator::AllocatedSize(const void* ptr) const {
   return base_allocator_->AllocatedSize(static_cast<const char*>(ptr) -
                                         MASK_BYTES);
 }
 
-int64 GPUDebugAllocator::AllocationId(const void* ptr) {
+int64 GPUDebugAllocator::AllocationId(const void* ptr) const {
   return base_allocator_->AllocationId(static_cast<const char*>(ptr) -
                                        MASK_BYTES);
 }
@@ -200,11 +200,11 @@ void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
   base_allocator_->DeallocateRaw(ptr);
 }
 
-size_t GPUNanResetAllocator::RequestedSize(const void* ptr) {
+size_t GPUNanResetAllocator::RequestedSize(const void* ptr) const {
   return base_allocator_->RequestedSize(ptr);
 }
 
-size_t GPUNanResetAllocator::AllocatedSize(const void* ptr) {
+size_t GPUNanResetAllocator::AllocatedSize(const void* ptr) const {
   return base_allocator_->AllocatedSize(ptr);
 }
 

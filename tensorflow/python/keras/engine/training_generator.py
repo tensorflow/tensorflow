@@ -68,7 +68,11 @@ def model_iteration(model,
         declaring one epoch finished and starting the next epoch. Ignored with
         the default value of `None`.
       epochs: Number of times to iterate over the data.
-      verbose: Verbosity mode, 0, 1 or 2.
+      verbose: 0, 1, or 2. Verbosity mode.
+        0 = silent, 1 = progress bar, 2 = one line per epoch.
+        Note that the progress bar is not particularly useful when
+        logged to a file, so verbose=2 is recommended when not running
+        interactively (eg, in a production environment).
       callbacks: List of callbacks to be called during training.
       validation_data: Either a tuple of NumPy/Tensor inputs (i.e. `(x,)` or
         `(x, y)` or `(x, y, sample_weights)`) or a generator or
@@ -190,6 +194,9 @@ def model_iteration(model,
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
+
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break
@@ -418,7 +425,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
 
   val_gen = (
       data_utils.is_generator_or_sequence(validation_data) or
-      isinstance(validation_data, iterator_ops.EagerIterator))
+      isinstance(validation_data, iterator_ops.IteratorV2))
   if (val_gen and not isinstance(validation_data, data_utils.Sequence) and
       not validation_steps):
     raise ValueError('Please specify the `validation_steps` argument.')
@@ -437,9 +444,9 @@ def convert_to_generator_like(data,
 
   Arguments:
     data: Either a generator or `keras.utils.data_utils.Sequence` object or
-      `Dataset` or `EagerIterator` or a {1,2,3}-tuple of NumPy arrays or
-      EagerTensors. If a tuple, the elements represent `(x, y, sample_weights)`
-      and may be `None` or `[None]`.
+      `Dataset`, `Iterator`, or a {1,2,3}-tuple of NumPy arrays or EagerTensors.
+      If a tuple, the elements represent `(x, y, sample_weights)` and may be
+      `None` or `[None]`.
     batch_size: Used when creating a generator out of tuples of NumPy arrays or
       EagerTensors.
     steps_per_epoch: Steps of the generator to run each epoch. If `None` the
@@ -449,7 +456,7 @@ def convert_to_generator_like(data,
     shuffle: Whether the data should be shuffled.
 
   Returns:
-    - Generator or `keras.utils.data_utils.Sequence` or EagerIterator.
+    - Generator, `keras.utils.data_utils.Sequence`, or `Iterator`.
 
   Raises:
     - ValueError: If `batch_size` is not provided for NumPy or EagerTensor
@@ -459,11 +466,9 @@ def convert_to_generator_like(data,
     # Scrub `Nones` that might have been passed for `targets`, `sample_weights`.
     data = tuple(
         ele for ele in data if not all(e is None for e in nest.flatten(ele)))
-    if len(data) == 1:
-      data = data[0]
 
   if data_utils.is_generator_or_sequence(data) or isinstance(
-      data, iterator_ops.EagerIterator):
+      data, iterator_ops.IteratorV2):
     if isinstance(data, data_utils.Sequence):
       if steps_per_epoch is None:
         steps_per_epoch = len(data)

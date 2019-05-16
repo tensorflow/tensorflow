@@ -54,6 +54,12 @@ std::unique_ptr<FlatBufferModel> ReadGatherTestModel() {
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
+std::unique_ptr<FlatBufferModel> ReadCustomOpTestModel() {
+  auto model_path =
+      tensorflow::io::JoinPath(*g_test_model_dir, internal::kModelWithCustomOp);
+  return FlatBufferModel::BuildFromFile(model_path.c_str());
+}
+
 template <typename T>
 std::vector<T> GetAsVector(const flatbuffers::Vector<T>* vec) {
   return std::vector<T>(vec->begin(), vec->end());
@@ -75,6 +81,11 @@ class QuantizeWeightsTest : public testing::Test {
 
   void LoadGatherTestModel() {
     input_model_ = ReadGatherTestModel();
+    model_ = input_model_->GetModel();
+  }
+
+  void LoadCustomOpTestModel() {
+    input_model_ = ReadCustomOpTestModel();
     model_ = input_model_->GetModel();
   }
 
@@ -373,6 +384,94 @@ TEST_F(QuantizeWeightsTest, VerifyGatherQuantization) {
     }
   }
 }
+
+TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationDequantize) {
+  LoadCustomOpTestModel();
+
+  // The custom op is not hybrid, and the second input is a constant that can
+  // be quantized.
+  CustomOpMap custom_op_map;
+  custom_op_map["CustomTestOp"] = {
+      .quantizable_input_indices = {1},
+      .is_hybrid = false,
+  };
+
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map);
+  ASSERT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  const auto quantized_graph = output_model->subgraphs()->Get(0);
+  // A dequantize op should be added.
+  ASSERT_EQ(quantized_graph->operators()->size(),
+            model_->subgraphs()->Get(0)->operators()->size() + 1);
+  int num_custom_ops_found = 0;
+  for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
+    const auto op = quantized_graph->operators()->Get(i);
+    const uint32_t op_code_idx = op->opcode_index();
+    const auto op_code =
+        output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+    if (op_code == BuiltinOperator_CUSTOM) {
+      uint32_t weights_tensor_index = op->inputs()->Get(1);
+      const auto weights_tensor =
+          quantized_graph->tensors()->Get(weights_tensor_index);
+      EXPECT_EQ(weights_tensor->type(), TensorType_FLOAT32);
+
+      // Check that it comes from a dequantize operation.
+      BuiltinOperator producer_op_code;
+      ASSERT_TRUE(GetProducerOpCode(output_model, 0, weights_tensor_index,
+                                    &producer_op_code));
+      EXPECT_EQ(producer_op_code, BuiltinOperator_DEQUANTIZE);
+      num_custom_ops_found++;
+    }
+  }
+  EXPECT_EQ(num_custom_ops_found, 1);
+}
+
+TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationHybrid) {
+  LoadCustomOpTestModel();
+
+  // The custom op is hybrid, and the second input is a constant that can
+  // be quantized.
+  CustomOpMap custom_op_map;
+  custom_op_map["CustomTestOp"] = {
+      .quantizable_input_indices = {1},
+      .is_hybrid = true,
+  };
+
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map);
+  ASSERT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  const auto quantized_graph = output_model->subgraphs()->Get(0);
+  ASSERT_EQ(quantized_graph->operators()->size(),
+            model_->subgraphs()->Get(0)->operators()->size());
+  int num_custom_ops_found = 0;
+  for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
+    const auto op = quantized_graph->operators()->Get(i);
+    const uint32_t op_code_idx = op->opcode_index();
+    const auto op_code =
+        output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+    if (op_code == BuiltinOperator_CUSTOM) {
+      uint32_t weights_tensor_index = op->inputs()->Get(1);
+      const auto weights_tensor =
+          quantized_graph->tensors()->Get(weights_tensor_index);
+      EXPECT_EQ(weights_tensor->type(), TensorType_INT8);
+      num_custom_ops_found++;
+    }
+  }
+  EXPECT_EQ(num_custom_ops_found, 1);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

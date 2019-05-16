@@ -87,28 +87,24 @@ class OriginInfo(
 
 
 # TODO(mdan): This source map should be a class - easier to refer to.
-def create_source_map(nodes, code, filename, indices_in_code):
+# TODO(mdan): Drop indices_in_code.
+def create_source_map(nodes, code, filename):
   """Creates a source map between an annotated AST and the code it compiles to.
 
   Args:
     nodes: Iterable[ast.AST, ...]
     code: Text
     filename: Optional[Text]
-    indices_in_code: Union[int, Iterable[int, ...]], the positions at which
-        nodes appear in code. The parser always returns a module when parsing
-        code. This argument indicates the position in that module's body at
-        which the corresponding of node should appear.
 
   Returns:
     Dict[LineLocation, OriginInfo], mapping locations in code to locations
     indicated by origin annotations in node.
   """
-  reparsed_nodes = parser.parse_str(code)
-  reparsed_nodes = [reparsed_nodes.body[i] for i in indices_in_code]
+  reparsed_nodes = parser.parse_str(code, preamble_len=0, single_node=False)
   for node in reparsed_nodes:
     resolve(node, code)
 
-  result = {}
+  source_map = {}
 
   try:
     for before, after in ast_util.parallel_walk(nodes, reparsed_nodes):
@@ -121,7 +117,7 @@ def create_source_map(nodes, code, filename, indices_in_code):
 
       line_loc = LineLocation(filename, final_info.loc.lineno)
 
-      existing_origin = result.get(line_loc)
+      existing_origin = source_map.get(line_loc)
       if existing_origin is not None:
         # Overlaps may exist because of child nodes, but almost never to
         # different line locations. Exception make decorated functions, where
@@ -136,7 +132,7 @@ def create_source_map(nodes, code, filename, indices_in_code):
         if existing_origin.loc.col_offset <= origin_info.loc.col_offset:
           continue
 
-      result[line_loc] = origin_info
+      source_map[line_loc] = origin_info
   except ValueError:
     if logging.has_verbosity(3):
       for n, rn in zip(nodes, reparsed_nodes):
@@ -152,7 +148,7 @@ def create_source_map(nodes, code, filename, indices_in_code):
         logging.log(3, 'AST seems to lack integrity. Diff:\n%s', diff)
     raise
 
-  return result
+  return source_map
 
 
 # TODO(znado): Consider refactoring this into a Visitor.

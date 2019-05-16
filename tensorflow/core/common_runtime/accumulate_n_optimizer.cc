@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
 
 namespace tensorflow {
 namespace {
+
+static constexpr const char* const kParallelIterationsAttrName =
+    "parallel_iterations";
 
 Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
   Tensor tensor(dtype, TensorShape(shape));
@@ -66,13 +70,41 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
         matches.push_back(n);
       }
     }
+    if (matches.empty()) return Status::OK();
+
+    std::vector<ControlFlowInfo> control_flow_info;
+    TF_RETURN_IF_ERROR(BuildControlFlowInfo(g, &control_flow_info));
+
     for (Node* n : matches) {
-      TF_RETURN_IF_ERROR(rewriteNode(n, g));
+      // Temporary variables do not work inside while loops with parallel
+      // iterations. If the `AccumulateNV2` node is executed inside a loop, we
+      // rewrite it into 'AddN' node.
+      const Node* frame = control_flow_info[n->id()].frame;
+      bool is_in_while_loop = frame->id() != Graph::kSourceId;
+
+      // With `parallel_iterations == 1` it's safe to use TemporaryVariable.
+      if (is_in_while_loop) {
+        int parallel_iterations;
+        Status s = GetNodeAttr(frame->attrs(), kParallelIterationsAttrName,
+                               &parallel_iterations);
+        if (s.ok() && parallel_iterations == 1) {
+          is_in_while_loop = false;
+        }
+      }
+
+      if (is_in_while_loop) {
+        TF_RETURN_IF_ERROR(RewriteIntoAddN(n, g));
+      } else {
+        TF_RETURN_IF_ERROR(RewriteIntoTempVariable(n, g));
+      }
     }
     return Status::OK();
   }
 
-  Status rewriteNode(Node* n, Graph* g) {
+  Status RewriteIntoTempVariable(Node* n, Graph* g) {
+    VLOG(3) << "Rewrite AccumulateNV2 into TemporaryVariable and Assign: "
+            << SummarizeNode(*n);
+
     AttrSlice n_attrs = n->attrs();
     auto base_make_node = [n, &n_attrs](const string& op, const string& name) {
       NodeDebugInfo debug_info(*n);
@@ -186,6 +218,61 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
       } else {
         g->AddEdge(clean_up_accumulator, 0, out_edge->dst(),
                    out_edge->dst_input());
+      }
+    }
+
+    // Remove the original AccumulateNV2 placeholder op.
+    // This removal modifies the op and must happen after we have finished
+    // using its incoming/outgoing edge sets.
+    g->RemoveNode(n);
+
+    return Status::OK();
+  }
+
+  Status RewriteIntoAddN(Node* n, Graph* g) {
+    VLOG(3) << "Rewrite AccumulateNV2 into AddN: " << SummarizeNode(*n);
+
+    AttrSlice n_attrs = n->attrs();
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
+    int num_inputs;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "N", &num_inputs));
+
+    Node* add_n_node = nullptr;
+
+    std::vector<NodeBuilder::NodeOut> data_inputs;
+    std::vector<Node*> control_inputs;
+    data_inputs.reserve(n->num_inputs());
+    control_inputs.reserve(n->in_edges().size() - n->num_inputs());
+    for (const Edge* in_edge : n->in_edges()) {
+      if (in_edge->IsControlEdge()) {
+        control_inputs.push_back(in_edge->src());
+      } else {
+        data_inputs.emplace_back(in_edge->src(), in_edge->src_output());
+      }
+    }
+
+    // Rewrite `AccumulateNV2` node into `AddN` node.
+    NodeDebugInfo debug_info(*n);
+    NodeBuilder builder =
+        NodeBuilder(n->name(), "AddN", OpRegistry::Global(), &debug_info)
+            .Device(n->requested_device())
+            .Attr("N", num_inputs)
+            .Attr("T", dtype)
+            .Input(data_inputs)
+            .ControlInputs(control_inputs);
+    string colo;
+    if (GetNodeAttr(n_attrs, kColocationAttrName, &colo).ok()) {
+      builder.Attr(kColocationAttrName, colo);
+    }
+    TF_RETURN_IF_ERROR(builder.Finalize(g, &add_n_node));
+
+    // Forward all consumers to the new node.
+    for (const Edge* out_edge : n->out_edges()) {
+      if (out_edge->IsControlEdge()) {
+        g->AddControlEdge(add_n_node, out_edge->dst());
+      } else {
+        g->AddEdge(add_n_node, 0, out_edge->dst(), out_edge->dst_input());
       }
     }
 

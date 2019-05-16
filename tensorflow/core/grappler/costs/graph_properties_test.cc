@@ -39,6 +39,15 @@ namespace {
 
 const char kTestDataPath[] = "core/grappler/costs/graph_properties_testdata";
 
+REGISTER_OP("TestOpWithNoInferenceFn")
+    .Input("x: float")
+    .Output("y: float")
+    .Doc(R"doc(
+Test op with no Inference Function registered.
+x: input
+y: output
+)doc");
+
 class GraphPropertiesTest : public ::testing::Test {
  public:
   void SetUp() override {
@@ -225,7 +234,13 @@ TEST_F(GraphPropertiesTest, DynamicProperties) {
         EXPECT_EQ(10, prop.shape().dim(0).size());
         EXPECT_EQ(1, prop.shape().dim(1).size());
         const auto out_props = properties.GetOutputProperties(node.name());
+#ifdef INTEL_MKL
+        // Intel MKL AddN OP would have two output.
+        // One is the real output, another one for MKL metadata
+        EXPECT_EQ(2, out_props.size());
+#else
         EXPECT_EQ(1, out_props.size());
+#endif  // INTEL_MKL
         string prop_str;
         ::tensorflow::protobuf::TextFormat::PrintToString(prop, &prop_str);
         string out_prop_str;
@@ -1945,6 +1960,31 @@ TEST_F(GraphPropertiesTest, ShapeAnnotationWithIncompatibleShapes) {
   EXPECT_EQ("float: [-1,100]", PropToString(prop));
 }
 
+TEST_F(GraphPropertiesTest, ShapeAnnotationWithoutInferenceFn) {
+  GrapplerItem item;
+  TF_CHECK_OK(NodeDefBuilder("Input", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", PartialTensorShape({-1, -1}))
+                  .Finalize(item.graph.add_node()));
+  // Annotate shapes.
+  TF_CHECK_OK(
+      NodeDefBuilder("TestOpWithNoInferenceFn", "TestOpWithNoInferenceFn")
+          .Attr("_same_output_for_iterations", true)
+          .Attr("_output_shape_vector", {TensorShape({10, 100})})
+          .Input("Input", 0, DT_FLOAT)
+          .Finalize(item.graph.add_node()));
+  GraphProperties properties(item);
+  // Use annotated information.
+  TF_CHECK_OK(properties.InferStatically(
+      /*assume_valid_feeds=*/false,
+      /*aggressive_shape_inference=*/true));
+  const auto props = properties.GetOutputProperties("TestOpWithNoInferenceFn");
+  EXPECT_EQ(1, props.size());
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_EQ(2, prop.shape().dim_size());
+  EXPECT_EQ("float: [10,100]", PropToString(prop));
+}
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZE_WEIGHTS_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZE_WEIGHTS_H_
 
+#include <cstdint>
 #include <memory>
+
 #include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/model.h"
@@ -39,6 +41,21 @@ TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
                              const Model* input_model,
                              uint64_t weights_min_num_elements);
+
+// Stores information about how to quantize a user-specified custom operation.
+typedef struct {
+  std::vector<std::int32_t> quantizable_input_indices;
+  bool is_hybrid;
+} CustomOpInfo;
+
+// Map from custom op code to custom op quantization information.
+typedef std::unordered_map<string, CustomOpInfo> CustomOpMap;
+
+// Same as above, but with entry point of quantizing custom ops.
+TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
+                             const Model* input_model,
+                             uint64_t weights_min_num_elements,
+                             const CustomOpMap& custom_op_map);
 
 namespace internal {
 // If use_hybrid_evaluation is false, will disable using hybrid eval for

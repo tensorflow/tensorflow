@@ -71,6 +71,7 @@ def start():
   with _profiler_lock:
     if _profiler is not None:
       raise ProfilerAlreadyRunningError('Another profiler is running.')
+    context.ensure_initialized()
     profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
     if context.default_execution_mode == context.EAGER_MODE:
       pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(

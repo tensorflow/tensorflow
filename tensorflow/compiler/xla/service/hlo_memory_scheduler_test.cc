@@ -170,46 +170,22 @@ ENTRY entry {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
-  {
-    TF_ASSERT_OK_AND_ASSIGN(
-        HloSchedule schedule,
-        ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
-    // Verify that all instructions are in the sequence.
-    const std::vector<HloInstruction*>& sequence =
-        schedule.sequence(module->entry_computation()).instructions();
-    EXPECT_EQ(module->entry_computation()->instruction_count(),
-              sequence.size());
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
+  // Verify that all instructions are in the sequence.
+  const std::vector<HloInstruction*>& sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
-    std::unordered_map<string, const HloInstruction*> instructions_by_name;
-    for (const HloInstruction* instruction : sequence) {
-      instructions_by_name[instruction->name()] = instruction;
-    }
-
-    SequentialHloOrdering ordering(schedule);
-    EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("n1"),
-                                        instructions_by_name.at("send-done")));
+  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  for (const HloInstruction* instruction : sequence) {
+    instructions_by_name[instruction->name()] = instruction;
   }
 
-  {
-    TF_ASSERT_OK_AND_ASSIGN(
-        HloSchedule schedule,
-        ScheduleModule(module.get(), size_fn, ListMemoryScheduler,
-                       /*async_host_transfers=*/false));
-    // Verify that all instructions are in the sequence.
-    const std::vector<HloInstruction*>& sequence =
-        schedule.sequence(module->entry_computation()).instructions();
-    EXPECT_EQ(module->entry_computation()->instruction_count(),
-              sequence.size());
-
-    std::unordered_map<string, const HloInstruction*> instructions_by_name;
-    for (const HloInstruction* instruction : sequence) {
-      instructions_by_name[instruction->name()] = instruction;
-    }
-
-    SequentialHloOrdering ordering(schedule);
-    EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("send-done"),
-                                        instructions_by_name.at("n1")));
-  }
+  SequentialHloOrdering ordering(schedule);
+  EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("send-done"),
+                                      instructions_by_name.at("n1")));
 }
 
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {

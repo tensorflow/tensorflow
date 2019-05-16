@@ -47,6 +47,7 @@ tf_kernel_library(
         "identity_op.cc",
         "image_ops.cc",
         "image_resize_ops.cc",
+        "in_topk_op.cc",
         "index_ops.cc",
         "l2loss_op.cc",
         "listdiff_op.cc",
@@ -71,6 +72,7 @@ tf_kernel_library(
         "reduction_ops.h",
         "reduction_ops_common.cc",
         "relu_op.cc",
+        "replica_id_op.cc",
         "reshape_op.cc",
         "retval_op.cc",
         "reverse_op.cc",
@@ -143,6 +145,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
@@ -182,7 +185,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:list_kernels",
-        "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:random_op",
         "//tensorflow/core/kernels:resource_variable_ops",
@@ -252,10 +254,17 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
+)
+
+cc_library(
+    name = "if_while_utils",
+    srcs = ["if_while_utils.cc"],
+    hdrs = ["if_while_utils.h"],
 )
 
 tf_kernel_library(
@@ -263,6 +272,7 @@ tf_kernel_library(
     srcs = ["while_op.cc"],
     hdrs = ["while_op.h"],
     deps = [
+        ":if_while_utils",
         ":tensor_list_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
@@ -283,6 +293,7 @@ tf_kernel_library(
     srcs = ["if_op.cc"],
     hdrs = ["if_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -300,6 +311,7 @@ tf_kernel_library(
     srcs = ["case_op.cc"],
     hdrs = ["case_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -356,7 +368,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -369,7 +381,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],

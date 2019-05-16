@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
-
+class Thread;
 std::unique_ptr<Thread> StartProfilerServer(
     ProfilerContext* const profiler_context, int32 port);
 }  // namespace tensorflow

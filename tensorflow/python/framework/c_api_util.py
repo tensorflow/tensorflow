@@ -88,7 +88,9 @@ class ScopedTFFunction(object):
     # Note: when we're destructing the global context (i.e when the process is
     # terminating) we can have already deleted other modules.
     if c_api is not None and c_api.TF_DeleteFunction is not None:
-      c_api.TF_DeleteFunction(self.func)
+      if self.func is not None:
+        c_api.TF_DeleteFunction(self.func)
+        self.func = None
 
 
 class ApiDefMap(object):

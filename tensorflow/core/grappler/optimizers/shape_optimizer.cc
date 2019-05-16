@@ -28,13 +28,43 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+// This optimizer first rewrites Prod(Shape(x)) into Size(x). It then uses
+// symbolic shapes to simplify Div(Size(x), Size(y)) in the case that x and y
+// share symbolic shapes that are unknown but known to be identical, e.g. we can
+// deduce that Div(Size([2,?,2]) Size([1,?,2])) is 2 if the two unknown
+// dimensions are known to be identical. This can be inferred if they share the
+// same symbolic representation (negative integer dimension size).
 Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                 GraphDef* optimized_graph) {
-  *optimized_graph = item.graph;
+  // Do a quick check to determine if we can skip this optimizer.
+  bool can_optimize = false;
+  bool has_div = false;
+  bool has_size = false;
+  bool has_shape = false;
+  bool has_prod = false;
+  for (const NodeDef& node : item.graph.node()) {
+    if (IsShape(node)) {
+      has_shape = true;
+    } else if (IsProd(node)) {
+      has_prod = true;
+    } else if (IsDiv(node)) {
+      has_div = true;
+    } else if (IsSize(node)) {
+      has_size = true;
+    }
+    if ((has_shape && has_prod) || (has_div && has_size)) {
+      can_optimize = true;
+      break;
+    }
+  }
+  if (!can_optimize) {
+    return errors::Aborted("Nothing to do.");
+  }
 
+  *optimized_graph = item.graph;
+  MutableGraphView graph(optimized_graph);
   GraphProperties properties(item);
   bool inferred_properties = false;
-  MutableGraphView graph(optimized_graph);
 
   // The product of all the dimensions in a tensor shape can be expressed more
   // simply as the size of the tensor.
@@ -73,15 +103,29 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           continue;
         }
         // Rewrite the reduction of the shape dimensions as a Size operation.
+        NodeDef size_node(*fanout.node);
         const DataType type = input_props[0].dtype();
-        fanout.node->set_op("Size");
-        fanout.node->set_input(0, node.input(0));
-        fanout.node->set_input(1, AsControlDependency(node));
-        fanout.node->mutable_attr()->erase("Tidx");
-        fanout.node->mutable_attr()->erase("keep_dims");
-        (*fanout.node->mutable_attr())["out_type"] =
-            fanout.node->attr().at("T");
-        (*fanout.node->mutable_attr())["T"].set_type(type);
+        size_node.set_op("Size");
+        size_node.set_input(0, node.input(0));
+        size_node.set_input(1, AsControlDependency(node));
+        size_node.mutable_attr()->erase("Tidx");
+        size_node.mutable_attr()->erase("keep_dims");
+        (*size_node.mutable_attr())["out_type"] = fanout.node->attr().at("T");
+        (*size_node.mutable_attr())["T"].set_type(type);
+
+        // The corresponding Size kernel might not exist on the device where
+        // Prod was placed, so assign the Size kernel to the same device as the
+        // input.
+        size_node.set_device(node.device());
+
+        // In the unlikely even that "Size" is not registered on the input
+        // device, skip the optimization.
+        Status s = IsKernelRegisteredForNode(size_node);
+        if (!s.ok()) {
+          continue;
+        }
+
+        fanout.node->Swap(&size_node);
       }
     }
   }

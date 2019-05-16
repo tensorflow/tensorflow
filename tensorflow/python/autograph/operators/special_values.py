@@ -47,6 +47,7 @@ class Undefined(object):
   """
 
   def __init__(self, symbol_name):
+    # TODO(aqj) Possibly remove this after Symbols are fully integrated.
     self.symbol_name = symbol_name
 
 
@@ -63,3 +64,13 @@ def is_undefined(value):
     Boolean, whether the input value is undefined.
   """
   return isinstance(value, Undefined)
+
+
+class UndefinedReturnValue(object):
+  """Represents a default return value from a function (None in Python)."""
+  pass
+
+
+def is_undefined_return(value):
+  """Checks whether `value` is the default return value."""
+  return isinstance(value, UndefinedReturnValue)

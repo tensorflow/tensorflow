@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
+#include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -105,7 +107,6 @@ ComputeArgAndRetvalCores(const Graph& graph) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Retval index";
-      TF_ASSIGN_OR_RETURN(retval_cores[index], get_sharding_for_node(n));
       retval_cores[index] = core;
     }
   }
@@ -200,8 +201,13 @@ Status BuildComputation(
         output.shape = output.constant_value.shape();
         break;
 
-      case XlaExpression::Kind::kTensorList:
-        TF_FALLTHROUGH_INTENDED;
+      case XlaExpression::Kind::kTensorList: {
+        output.is_tensor_list = true;
+        xla::XlaOp value = retval.handle();
+        elems.push_back(value);
+        break;
+      }
+
       case XlaExpression::Kind::kXlaOp: {
         output.is_constant = false;
         TF_ASSIGN_OR_RETURN(output.shape, retval.GetShape());
@@ -228,6 +234,11 @@ Status BuildComputation(
       }
 
       case XlaExpression::Kind::kResource:
+        // Resources are pushed into elems later when processing resource
+        // arguments. This is correct as long as the input and output resources
+        // are in the same order. In the case of functionalized while body,
+        // this property is guaranteed since a corresponding output is always
+        // created for a DT_RESOURCE input in a corresponding location.
         output.is_constant = false;
         output.input_index = retval.resource()->arg_num();
         output.shape = retval.resource()->shape();
@@ -367,6 +378,9 @@ bool XlaCompiler::Argument::operator==(
   if (constant_value.shape() != other.constant_value.shape()) {
     return false;
   }
+  if (is_same_data_across_replicas != other.is_same_data_across_replicas) {
+    return false;
+  }
   return constant_value.tensor_data() == other.constant_value.tensor_data();
 }
 
@@ -377,6 +391,8 @@ string XlaCompiler::Argument::HumanString() const {
   }
   absl::StrAppend(&common, " type=", DataTypeString(type),
                   " shape=", ShapeHumanString());
+  absl::StrAppend(
+      &common, " is_same_data_across_replicas=", is_same_data_across_replicas);
   switch (kind) {
     case kInvalid:
       return "invalid";
@@ -398,6 +414,8 @@ string XlaCompiler::Argument::HumanString() const {
     }
     case kParameter:
       return absl::StrCat("kind=parameter", common);
+    case kTensorList:
+      return absl::StrCat("kind=tensorlist", common);
     case kToken:
       return absl::StrCat("token", common);
   }
@@ -436,11 +454,10 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
                                                       FunctionDefLibrary{}));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version,
-      local_flib_def_.get(), OptimizerOptions(),
-      nullptr /* custom_kernel_creator */));
+      local_flib_def_.get(), OptimizerOptions()));
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version, options.flib_def,
-      OptimizerOptions(), nullptr /* custom_kernel_creator */));
+      OptimizerOptions()));
 
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());
@@ -540,11 +557,12 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
 }
 
 Status XlaCompiler::CompileFunction(
-    const XlaCompiler::CompileOptions& options, const NameAttrList& function,
+    const XlaCompiler::CompileOptions& options,
+    const NameAttrList& fn_name_attrs,
     absl::Span<const XlaCompiler::Argument> args,
     XlaCompiler::CompilationResult* result) {
   const string function_id =
-      Canonicalize(function.name(), AttrSlice(&function.attr()));
+      Canonicalize(fn_name_attrs.name(), AttrSlice(&fn_name_attrs.attr()));
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
 
   const std::vector<XlaCompiler::Argument> arg_vector(args.begin(), args.end());
@@ -555,11 +573,11 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  TF_RETURN_IF_ERROR(FindFunctionBody(function, &fbody));
+  TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody));
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       CheckSignature(fbody->arg_types, args),
-      "Signature check failure while compiling: ", function.name());
+      "Signature check failure while compiling: ", fn_name_attrs.name());
 
   std::unique_ptr<Graph> graph = GetGraph(fbody);
 
@@ -634,6 +652,11 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
               arg.type, absl::get<TensorShape>(arg.shape), xla_shape));
         }
       }
+      return Status::OK();
+    }
+    case XlaCompiler::Argument::kTensorList: {
+      TF_RET_CHECK(absl::holds_alternative<xla::Shape>(arg.shape));
+      *xla_shape = absl::get<xla::Shape>(arg.shape);
       return Status::OK();
     }
     case XlaCompiler::Argument::kResource: {
@@ -739,6 +762,7 @@ Status XlaCompiler::BuildArguments(
         break;
       }
       case XlaCompiler::Argument::kParameter:
+      case XlaCompiler::Argument::kTensorList:
       case XlaCompiler::Argument::kToken: {
         input_to_args->push_back(i);
         break;
@@ -752,7 +776,7 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  if (input_to_args->empty()) {
+  if (input_to_args->empty() && !use_tuple_arg) {
     return Status::OK();
   }
 
@@ -797,9 +821,19 @@ Status XlaCompiler::BuildArguments(
         *tuple_sharding.add_tuple_shardings() =
             xla::sharding_builder::AssignDevice(core);
       }
-      xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
-                                                             tuple_sharding);
-      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
+      std::vector<bool> is_same_across_replicas;
+      for (int i = 0; i < input_to_args->size(); ++i) {
+        // Add an entry to is_same_across_replicas for every leaf buffer.
+        is_same_across_replicas.insert(
+            is_same_across_replicas.end(),
+            xla::ShapeUtil::GetLeafCount(arg_shapes[i]),
+            args[input_to_args->at(i)].is_same_data_across_replicas);
+      }
+      xla::XlaScopedShardingAssignment assign_tuple_sharding(
+          builder, input_to_args->empty() ? absl::optional<xla::OpSharding>()
+                                          : tuple_sharding);
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple",
+                             is_same_across_replicas);
     } else {
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
@@ -830,8 +864,18 @@ Status XlaCompiler::BuildArguments(
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? absl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
-                                      absl::StrCat("arg", i));
+      if (is_entry_computation) {
+        // Add an entry to is_same_across_replicas for every leaf buffer.
+        std::vector<bool> is_same_across_replicas(
+            xla::ShapeUtil::GetLeafCount((*input_shapes)[i]),
+            args[input_to_args->at(i)].is_same_data_across_replicas);
+        arg_handles[i] =
+            xla::Parameter(builder, i, (*input_shapes)[i],
+                           absl::StrCat("arg", i), is_same_across_replicas);
+      } else {
+        arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
+                                        absl::StrCat("arg", i));
+      }
     }
 
     for (int i = 0; i < input_to_args->size(); ++i) {
@@ -878,6 +922,10 @@ Status XlaCompiler::BuildArguments(
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
         }
         break;
+      case XlaCompiler::Argument::kTensorList: {
+        arg_expression = XlaExpression::TensorList(arg_handles[i]);
+        break;
+      }
       case XlaCompiler::Argument::kToken: {
         arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
         break;
@@ -1051,6 +1099,11 @@ Status XlaCompiler::CompileGraph(
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
+  TF_RETURN_IF_ERROR(RearrangeFunctionArguments(
+      [this](const NameAttrList& function, const FunctionBody** fbody) {
+        return FindFunctionBody(function, fbody);
+      },
+      graph.get(), local_flib_def_.get()));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,

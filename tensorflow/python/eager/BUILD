@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -58,6 +58,7 @@ py_library(
         ":execution_callbacks",
         ":function",
         ":graph_only_ops",
+        ":monitoring",
         ":profiler",
         ":profiler_client",
         ":tape",
@@ -86,12 +87,35 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:device",
+        "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
     ],
+)
+
+py_library(
+    name = "monitoring",
+    srcs = ["monitoring.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
+)
+
+cuda_py_test(
+    name = "monitoring_test",
+    srcs = ["monitoring_test.py"],
+    additional_deps = [
+        ":monitoring",
+        ":test",
+    ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -549,6 +573,8 @@ tf_py_test(
         "lift_to_graph",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
     ],
 )
 

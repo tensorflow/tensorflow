@@ -80,6 +80,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// A version of PyMapping_Keys that works in C++11
+//
+// Args:
+//   o: The input to extract keys from
+//
+// Returns:
+//   A new reference to a list of keys in the mapping.
+PyObject* MappingKeys(PyObject* o);
+
 // Returns a true if its input is an instance of an attr.s decorated class.
 //
 // Args:

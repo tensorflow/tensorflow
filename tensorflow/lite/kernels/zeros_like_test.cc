@@ -68,6 +68,22 @@ TEST(ZerosLikeOpModel, ZerosLikeInt64) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 2, 1}));
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
+TEST(ZerosLikeOpModel, InvalidTypeTest) {
+  ZerosLikeOpModel m_uint8({TensorType_UINT8, {1, 1}});
+  EXPECT_DEATH(m_uint8.Invoke(),
+               "ZerosLike only currently supports int64, int32, and float32");
+  ZerosLikeOpModel m_int16({TensorType_INT16, {1, 1}});
+  EXPECT_DEATH(m_int16.Invoke(),
+               "ZerosLike only currently supports int64, int32, and float32");
+  ZerosLikeOpModel m_complex({TensorType_COMPLEX64, {1, 1}});
+  EXPECT_DEATH(m_complex.Invoke(),
+               "ZerosLike only currently supports int64, int32, and float32");
+  ZerosLikeOpModel m_int8({TensorType_INT8, {1, 1}});
+  EXPECT_DEATH(m_int8.Invoke(),
+               "ZerosLike only currently supports int64, int32, and float32");
+}
+#endif
 }  // namespace
 }  // namespace tflite
 

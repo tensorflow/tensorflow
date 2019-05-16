@@ -422,9 +422,9 @@ class AdagradOptimizerTest(test.TestCase):
         ada_update2 = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         slot0 = ada_opt.get_slot(var0, "accumulator")
-        self.assertEqual(slot0.shape, var0.get_shape())
+        self.assertEqual(slot0.shape, var0.shape)
         slot1 = ada_opt.get_slot(var1, "accumulator")
-        self.assertEqual(slot1.shape, var1.get_shape())
+        self.assertEqual(slot1.shape, var1.shape)
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values.
@@ -457,19 +457,6 @@ class AdagradOptimizerTest(test.TestCase):
     self.assertAllClose(self.evaluate(opt.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
-
-  def testConstructAdagradWithEpsilonValues(self):
-    opt = adagrad.Adagrad(epsilon=None)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-7)
-
-    opt = adagrad.Adagrad(epsilon=1e-6)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-6)
-
-    with self.assertRaisesRegexp(ValueError,
-                                 "epsilon must be larger than 1e-7"):
-      opt = adagrad.Adagrad(epsilon=1e-8)
 
 
 if __name__ == "__main__":

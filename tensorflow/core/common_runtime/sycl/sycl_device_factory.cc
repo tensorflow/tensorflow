@@ -24,8 +24,12 @@ namespace tensorflow {
 
 class SYCLDeviceFactory : public DeviceFactory {
  public:
-  Status CreateDevices(const SessionOptions &options, const string &name_prefix,
-                       std::vector<Device *> *devices) override {
+  Status ListPhysicalDevices(std::vector<string>* devices) override {
+    return tensorflow::Status::OK();
+  }
+
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<std::unique_ptr<Device>>* devices) override {
     auto syclInterface = GSYCLInterface::instance();
 
     size_t n = 1;

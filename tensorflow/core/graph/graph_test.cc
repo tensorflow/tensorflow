@@ -782,5 +782,42 @@ BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 16);
 BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 16);
 BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 16);
 
+static void BM_RemoveNode(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  for (int i = 0; i < iters; ++i) {
+    Graph graph(registry);
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+    testing::StartTiming();
+    for (Node* n : graph.op_nodes()) {
+      graph.RemoveNode(n);
+    }
+    testing::StopTiming();
+  }
+}
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_RemoveNode)->ArgPair(10, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_RemoveNode)->ArgPair(1 << 15, 16);
+
 }  // namespace
 }  // namespace tensorflow

@@ -57,8 +57,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda_runtime_api.h"
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/tensorrt/NvInfer.h"
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -97,93 +97,6 @@ Status BuildNodeMap(const Graph& graph,
 }
 
 }  // namespace
-
-Status ConvertGraphDefToTensorRT(
-    const GraphDef& graph_def, const std::vector<string>& output_names,
-    size_t max_batch_size, size_t max_workspace_size_bytes,
-    GraphDef* new_graph_def, TrtPrecisionMode precision_mode,
-    int minimum_segment_size, bool is_dyn_op, int max_cached_engines,
-    std::vector<int> cached_engine_batches, bool use_calibration) {
-  // Create GrapplerItem.
-  grappler::GrapplerItem item;
-  item.fetch = output_names;
-  item.graph = graph_def;
-
-// TODO(aaroey): we should have used single machine cluster like the
-// following, but the problem is then wrap_conversion will depend on
-// direct_session and cause double linking problems. To fix this we need to
-// fix or get rid of the swig dependency. Here we use VirtualCluster
-// as a work around, and we need to create a session to initialize the
-// underlying device before calling this method.
-#if 0
-  // Create single machine cluster. Note that this will create a session and
-  // initialize the gpu devices.
-  const int num_cpu_cores =
-      grappler::GetNumAvailableLogicalCPUCores();
-  const int num_gpus = grappler::GetNumAvailableGPUs();
-  VLOG(2) << "cpu_cores: " << num_cpu_cores;
-  VLOG(2) << "gpus: " << num_gpus;
-  const int timeout_s = 60 * 10;
-  std::unique_ptr<grappler::Cluster> cluster(
-      new grappler::SingleMachine(
-          timeout_s, num_cpu_cores, num_gpus));
-  // These settings are the defaults in tensorflow/python/grappler/cluster.py.
-  cluster->DisableDetailedStats(true);
-  cluster->AllowSoftPlacement(true);
-  cluster->SetNumWarmupSteps(10);
-  TF_RETURN_IF_ERROR(cluster->Provision());
-#else
-  // Create virtual cluster. Grappler requires a virtual cluster with a proper
-  // GPU device in order to calculate flops>0 or fails with FATAL in dbg mode.
-  // We add numbers from a Pascal card here to have flops>0.
-  DeviceProperties device_properties;
-  device_properties.set_type("GPU");
-  device_properties.mutable_environment()->insert({"architecture", "6"});
-  device_properties.set_num_cores(3584);
-  device_properties.set_frequency(1531);
-  std::unique_ptr<grappler::Cluster> cluster(
-      new grappler::VirtualCluster({{"/GPU:0", device_properties}}));
-#endif
-
-  // Create RewriterConfig.
-  ConfigProto config_proto;
-  auto& rw_cfg =
-      *config_proto.mutable_graph_options()->mutable_rewrite_options();
-  // TODO(aaroey): use only const folding and layout for the time being since
-  // new optimizers break the graph for trt.
-  rw_cfg.add_optimizers("constfold");
-  rw_cfg.add_optimizers("layout");
-  auto optimizer = rw_cfg.add_custom_optimizers();
-  optimizer->set_name("TensorRTOptimizer");
-  auto& parameters = *(optimizer->mutable_parameter_map());
-  parameters["minimum_segment_size"].set_i(minimum_segment_size);
-  parameters["max_batch_size"].set_i(max_batch_size);
-  parameters["is_dynamic_op"].set_b(is_dyn_op);
-  parameters["max_workspace_size_bytes"].set_i(max_workspace_size_bytes);
-  TF_RETURN_IF_ERROR(TrtPrecisionModeToName(
-      precision_mode, parameters["precision_mode"].mutable_s()));
-  parameters["maximum_cached_engines"].set_i(max_cached_engines);
-  if (!cached_engine_batches.empty()) {
-    auto list = parameters["cached_engine_batches"].mutable_list();
-    for (const int batch : cached_engine_batches) {
-      list->add_i(batch);
-    }
-  }
-  parameters["use_calibration"].set_b(use_calibration);
-
-  // Run optimizer.
-  grappler::MetaOptimizer meta_opt(nullptr, config_proto);
-  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
-
-  if (VLOG_IS_ON(5)) {
-    std::fstream f;
-    f.open("TRTConversionInput.pb",
-           std::fstream::out | std::fstream::binary | std::fstream::trunc);
-    f << new_graph_def->SerializeAsString();
-    f.close();
-  }
-  return Status::OK();
-}
 
 struct EdgePtrCompare {
   bool operator()(const Edge* lhs, const Edge* rhs) const {
@@ -503,12 +416,8 @@ Status CreateTRTNode(const ConversionParams& params,
       (info.precision_mode == TrtPrecisionMode::INT8 && info.use_calibration);
   // Build the engine and get its serialized representation.
   string segment_string;
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic || calibrate_int8) {
-    // Create static engine for fp32/fp16 mode, and test validity of the engine
-    // for int8 calibration mode. We don't want engine to fail at the
-    // calibration time. So we are constructing a FP32 engine here to check its
-    // validity, and if it is a valid engine then we put the serialized graphdef
-    // to the op. Otherwise we skip node creation for this engine.
+  if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+    // Create static engine for fp32/fp16 mode.
     Logger trt_logger;
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
@@ -522,10 +431,6 @@ Status CreateTRTNode(const ConversionParams& params,
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
-    if (calibrate_int8) {
-      // See above comment about why not putting this inside the 'else' branch.
-      segment_string = info.segment_graph_def.SerializeAsString();
-    }
   } else {
     segment_string = info.segment_graph_def.SerializeAsString();
   }
@@ -611,17 +516,18 @@ Status CreateTRTNode(const ConversionParams& params,
       UpdateToEngineNode(infos, pos, *engine_nodes, /*is_input_edge=*/false,
                          conn.outside_node_name, &output_node, &port);
     }
-    VLOG(1) << "Updating " << engine_node->name() << ":" << conn.port_number
-            << " to " << output_node->name() << ":" << port;
     if (conn.is_control_edge()) {
+      VLOG(1) << "Updating control edge from " << engine_node->name() << " to "
+              << output_node->name();
       QCHECK_EQ(Graph::kControlSlot, port);
       graph->AddControlEdge(engine_node, output_node);
     } else {
-      auto new_edge =
-          graph->AddEdge(engine_node, conn.port_number, output_node, port);
-      QCHECK(new_edge) << "Adding a new edge failed " << engine_node->name()
-                       << ":" << conn.port_number << " -> "
-                       << output_node->name() << ":" << conn.outside_port;
+      VLOG(1) << "Updating data edge from " << engine_node->name() << ":"
+              << conn.port_number << " to " << output_node->name() << ":"
+              << port;
+      // Use UpdateEdge() to avoid adding the same edge multiple times.
+      TF_CHECK_OK(
+          graph->UpdateEdge(engine_node, conn.port_number, output_node, port));
     }
   }
   return Status::OK();
@@ -902,6 +808,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         (engine_bytes_size.at(i) / total_engine_bytes_size +
          converted_segments.at(i).first.size() / total_num_nodes_in_segments) /
         2.0;
+    VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
+            << engine.engine_name;
     // The allocator is used to build the engine. The build and the built engine
     // will be destroyed after we get the serialized engine string, so it's fine
     // to use unique_ptr here.

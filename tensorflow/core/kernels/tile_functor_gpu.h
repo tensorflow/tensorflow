@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/tile_functor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace internal {
@@ -73,7 +73,7 @@ void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in) {
   // Launch kernel to q[...] = p[...].
   const T* p = in.flat<T>().data();
   T* q = out->flat<T>().data();
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(out_nelem, d);
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(out_nelem, d);
   TF_CHECK_OK(
       CudaLaunchKernel(TileKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
                        d.stream(), cfg.virtual_thread_count, p,

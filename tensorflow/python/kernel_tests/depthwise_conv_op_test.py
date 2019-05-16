@@ -207,6 +207,7 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=True,
             grouped_conv=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DWithUnknownShape(self):
     # GitHub issue 22110.
     if not test.is_gpu_available():
@@ -220,6 +221,7 @@ class DepthwiseConv2DTest(test.TestCase):
           np.ones([1, 1, 1, 1], np.float32),
           v.eval(feed_dict={x: np.ones([1, 1, 1, 1], np.float32)}))
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DFormat(self):
     if not test.is_gpu_available():
       return
@@ -458,6 +460,7 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=True,
             grouped_conv=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DInputGradFormat(self):
     if not test.is_gpu_available():
       return
@@ -498,6 +501,7 @@ class DepthwiseConv2DTest(test.TestCase):
             test_input=False,
             use_gpu=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DFilterGradFormat(self):
     if not test.is_gpu_available():
       return

@@ -38,8 +38,7 @@ namespace xla {
 typedef std::function<StatusOr<HloInstructionSequence>(
     HloComputation*, const TuplePointsToAnalysis&,
     const LogicalBuffer::SizeFunction&,
-    const absl::flat_hash_map<const HloComputation*, int64>&,
-    bool async_host_transfers)>
+    const absl::flat_hash_map<const HloComputation*, int64>&)>
     MemorySchedulerAlgorithm;
 
 // List scheduler
@@ -48,8 +47,7 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation,
-    bool async_host_transfers);
+        memory_by_computation);
 
 // DFS-order scheduler
 StatusOr<HloInstructionSequence> DFSMemoryScheduler(
@@ -57,8 +55,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation,
-    bool async_host_transfers);
+        memory_by_computation);
 
 // Naive Post Order scheduler
 StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
@@ -66,8 +63,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation,
-    bool async_host_transfers);
+        memory_by_computation);
 
 // The default scheduling algorithm. Runs both the list scheduler
 // and the DFS scheduler, and chooses whichever returns a lower min-memory,
@@ -77,16 +73,14 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation,
-    bool async_host_transfers);
+        memory_by_computation);
 
 // Returns an HloSchedule which seeks to minimize the memory required for
 // the computation. size_function is the function returning the number of bytes
 // required for a LogicalBuffer.
 StatusOr<HloSchedule> ScheduleModule(
     HloModule* module, const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerAlgorithm& algorithm = {},
-    bool async_host_transfers = true);
+    const MemorySchedulerAlgorithm& algorithm = {});
 
 // Computes the schedule for a single computation.
 // Currently only used by the GPU backend.
@@ -103,8 +97,7 @@ class HloMemoryScheduler : public HloModulePass {
   // LogicalBuffer. algorithm is the memory scheduling algorithm to use. If not
   // specified, then DefaultMemoryScheduler is used.
   HloMemoryScheduler(const LogicalBuffer::SizeFunction& size_function,
-                     const MemorySchedulerAlgorithm& algorithm = {},
-                     bool async_host_transfers = true);
+                     const MemorySchedulerAlgorithm& algorithm = {});
 
   ~HloMemoryScheduler() override = default;
 
@@ -116,13 +109,6 @@ class HloMemoryScheduler : public HloModulePass {
   LogicalBuffer::SizeFunction size_function_;
 
   MemorySchedulerAlgorithm algorithm_;
-
-  // When true, the List scheduler schedules host send-dones and recv-dones as
-  // late as possible, to keep the device busy during the host transfer. This
-  // is a hack because packing of computation between channel instructions
-  // normally happens in the module group scheduler, and the memory scheduler
-  // only tries to minimize memory.
-  const bool async_host_transfers_ = true;
 };
 
 // A pass which produces a naive, but correct schedule. The schedule is produced

@@ -464,6 +464,12 @@ class DropoutTest(test_lib.TestCase):
     with self.assertRaises(ValueError):
       nn_ops.dropout_v2(t, [0.0, 1.0])
 
+  def testLargeRate(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    _ = nn_ops.dropout_v2(t, 0.9)
+
   @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
     # Runs shaped dropout and verifies an error is thrown on misshapen noise.
