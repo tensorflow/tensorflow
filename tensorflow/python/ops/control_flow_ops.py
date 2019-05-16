@@ -3931,6 +3931,101 @@ def _case_helper(cond_fn,
       return fn()
 
 
+def _indexed_case_verify_and_canonicalize_args(branch_fns, default,
+                                               branch_index):
+  """Verifies input arguments for the case function.
+
+  Args:
+    branch_fns: Dict or list of pairs of an `int` and a callable which
+      returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    branch_index: Optional int `Tensor`, which selects for the corresponding
+      pred_fn_pair.
+
+  Raises:
+    TypeError: If `branch_fns` is not a list/dictionary.
+    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
+               callables.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+
+  Returns:
+    branch_fns: validated list of callables for each branch (default last).
+  """
+  if not isinstance(branch_index, ops.Tensor):
+    raise TypeError("branch_index must a Tensor, got {}".format(
+        type(branch_index)))
+  if not branch_index.dtype.is_integer:
+    raise TypeError("branch_index must an integer Tensor, got {}".format(
+        branch_index.dtype))
+
+  if not branch_fns:
+    raise ValueError("Must provide at least one item in branch_fns")
+  if not isinstance(branch_fns, (list, _basetuple, dict)):
+    raise TypeError("branch_fns must be a list, tuple, or dict")
+
+  if isinstance(branch_fns, dict):
+    branch_fns = branch_fns.items()
+
+  if all(callable(fn) for fn in branch_fns):
+    branch_fns = list(enumerate(branch_fns))
+
+  for key_fn_pair in branch_fns:
+    if not isinstance(key_fn_pair, _basetuple) or len(key_fn_pair) != 2:
+      raise TypeError("Each entry in branch_fns must be a 2-tuple")
+    key, branch_fn = key_fn_pair
+
+    if not isinstance(key, int):
+      raise TypeError("key must be a Python `int`, got {}".format(type(key)))
+
+    if not callable(branch_fn):
+      raise TypeError("fn for key {} must be callable.".format(key))
+
+  keys = [p[0] for p in branch_fns]
+  if min(keys) < 0 or max(keys) >= len(keys) or len(set(keys)) != len(keys):
+    raise ValueError(
+        "branch indices (keys) must form contiguous range of [0 to {}) but "
+        "found {{{}}}".format(len(keys), ",".join(map(str, sorted(keys)))))
+  actions = [p[1] for p in sorted(branch_fns)]
+  if default is not None:
+    actions.append(default)
+  return actions
+
+
+def _indexed_case_helper(branch_fns, default, branch_index, name):
+  """Implementation of case that emits the n-way indexed Case op.
+
+  Args:
+    branch_fns: Dict or list of pairs of a boolean scalar tensor, and a
+      callable which returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    branch_index: Optional int `Tensor`, which selects for the corresponding
+      pred_fn_pair.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the pair whose key matched branch_index, or
+    those returned by `default` if none does.
+
+  Raises:
+    TypeError: If `branch_fns` is not a list/dictionary.
+    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
+               callables.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  branch_fns = _indexed_case_verify_and_canonicalize_args(
+      branch_fns, default, branch_index)
+  with ops.name_scope(name, "case", [branch_index]):
+    if context.executing_eagerly():
+      branch_index = array_ops.where(
+          math_ops.less(branch_index, 0)
+          | math_ops.greater_equal(branch_index, len(branch_fns)),
+          len(branch_fns) - 1, branch_index)
+      return branch_fns[int(branch_index)]()
+    return cond_v2.indexed_case(branch_index, branch_fns)
+
+
 @tf_export("case")
 def case(pred_fn_pairs,
          default=None,
@@ -3938,6 +4033,8 @@ def case(pred_fn_pairs,
          strict=False,
          name="case"):
   """Create a case operation.
+
+  See also `tf.switch_case`.
 
   The `pred_fn_pairs` parameter is a dict or list of pairs of size N.
   Each pair contains a boolean scalar tensor and a python callable that
@@ -4035,6 +4132,82 @@ def case(pred_fn_pairs,
       name,
       allow_python_preds=False,
       strict=strict)
+
+
+@tf_export("switch_case")
+def switch_case(branch_index,
+                branch_fns,
+                default=None,
+                name="switch_case"):
+  """Create a switch/case operation, i.e. an integer-indexed conditional.
+
+  See also `tf.case`.
+
+  This op can be substantially more efficient than `tf.case` when exactly one
+  branch will be selected. `tf.switch_case` is more like a C++ switch/case
+  statement than `tf.case`, which is more like an if/elif/elif/else chain.
+
+  The `branch_fns` parameter is either a dict from `int` to callables, or list
+  of (`int, callable) pairs, or simply a list of callables (in which case the
+  index is implicitly the key). The `branch_index` `Tensor` is used to select an
+  element in `branch_fns` with matching `int` key, falling back to `default`
+  if none match, or `max(keys)` if no `default` is provided. The keys must form
+  a contiguous set from `0` to `len(branch_fns) - 1`.
+
+  `tf.switch_case` supports nested structures as implemented in `tf.nest`. All
+  callables must return the same (possibly nested) value structure of lists,
+  tuples, and/or named tuples.
+
+  **Example:**
+
+  Pseudocode:
+
+  ```c++
+  switch (branch_index) {  // c-style switch
+    case 0: return 17;
+    case 1: return 31;
+    default: return -1;
+  }
+  ```
+  or
+  ```python
+  branches = {0: lambda: 17, 1: lambda: 31}
+  branches.get(branch_index, lambda: -1)()
+  ```
+
+  Expressions:
+
+  ```python
+  def f1(): return tf.constant(17)
+  def f2(): return tf.constant(31)
+  def f3(): return tf.constant(-1)
+  r = tf.switch_case(branch_index, branch_fns={0: f1, 1: f2}, default=f3)
+  # Equivalent: tf.switch_case(branch_index, branch_fns={0: f1, 1: f2, 2: f3})
+  ```
+
+  Args:
+    branch_index: An int Tensor specifying which of `branch_fns` should be
+      executed.
+    branch_fns: A `dict` mapping `int`s to callables, or a `list` of
+      (`int, callable) pairs, or simply a list of callables (in which case the
+      index serves as the key). Each callable must return a matching structure
+      of tensors.
+    default: Optional callable that returns a structure of tensors.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the callable identified by `branch_index`, or those
+    returned by `default` if no key matches and `default` was provided, or those
+    returned by the max-keyed `branch_fn` if no `default` is provided.
+
+  Raises:
+    TypeError: If `branch_fns` is not a list/dictionary.
+    TypeError: If `branch_fns` is a list but does not contain 2-tuples or
+               callables.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  return _indexed_case_helper(branch_fns, default, branch_index, name)
 
 
 class XLAControlFlowContext(ControlFlowContext):

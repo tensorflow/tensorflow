@@ -2257,6 +2257,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'full_matrices\', \'compute_uv\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
   }
   member_method {
+    name: "switch_case"
+    argspec: "args=[\'branch_index\', \'branch_fns\', \'default\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'switch_case\'], "
+  }
+  member_method {
     name: "tables_initializer"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
   }

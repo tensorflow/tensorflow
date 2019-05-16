@@ -776,7 +776,7 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  if (input_to_args->empty()) {
+  if (input_to_args->empty() && !use_tuple_arg) {
     return Status::OK();
   }
 
@@ -829,8 +829,9 @@ Status XlaCompiler::BuildArguments(
             xla::ShapeUtil::GetLeafCount(arg_shapes[i]),
             args[input_to_args->at(i)].is_same_data_across_replicas);
       }
-      xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
-                                                             tuple_sharding);
+      xla::XlaScopedShardingAssignment assign_tuple_sharding(
+          builder, input_to_args->empty() ? absl::optional<xla::OpSharding>()
+                                          : tuple_sharding);
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple",
                              is_same_across_replicas);
     } else {
