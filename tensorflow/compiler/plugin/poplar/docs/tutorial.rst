@@ -194,9 +194,10 @@ restriction can at times require some meticulous refactoring of placeholders or
 input tensors, (especially when dealing with mini-batch processing), but does
 not constitute a significant development overhead.
 
-The entry way into the *XLA* library is through *xla.compile()*, which will take
-a graph along with a feed dictionary for input tensors and return a tensor set.
-*xla-compile* sits between the graph definition and the session construct, as in
+The entry way into the *XLA* library is through *ipu.ipu_compiler.compile()*,
+which will take a graph along with a feed dictionary for input tensors and
+return a tensor set. *ipu.ipu_compiler.compile* sits between the graph
+definition and the session construct, as in
 
 .. figure:: figures/Session_Graph_XLA.png
     :width: 300px
@@ -206,15 +207,15 @@ a graph along with a feed dictionary for input tensors and return a tensor set.
     *xla.compile* in relation to a session and graph
 
 It is noted that in most IPU-specific implications, it is most likely that an
-entire graph will be parsed through *xla.compile*, but it is possible to compile
-only a portion of a graph and then assimilate the resulting tensor set from
-*xla* with non-*xla* graph sections. Further details of *xla-compile* are
-available here:
+entire graph will be parsed through *ipu.ipu_compiler.compile*, but it is
+possible to compile only a portion of a graph and then assimilate the resulting
+tensor set from *xla* with non-*xla* graph sections. Further details of
+XLA compilation are available here:
 
 https://www.tensorflow.org/xla/tutorials/xla_compile
 
-Let's now build on our previous TensorFlow script by adding *xla.compile* to the
-session definition.
+Let's now build on our previous TensorFlow script by adding
+*ipu.ipu_compiler.compile* to the session definition.
 
 .. code-block:: python
     :linenos:
@@ -222,7 +223,6 @@ session definition.
 
     import tensorflow as tf
     import numpy as np
-    from tensorflow.contrib.compiler import xla
     from tensorflow.contrib import ipu
     from tensorflow.contrib.ipu.python.ops import ipu_scope
 
@@ -247,7 +247,7 @@ session definition.
 
 
     with ipu_scope("/device:IPU:0"):
-        xla_result = xla.compile(basic_graph, [pa, pb, pc])
+        xla_result = ipu.ipu_compiler.compile(basic_graph, [pa, pb, pc])
 
 
     with tf.Session() as sess:
@@ -257,17 +257,18 @@ session definition.
         print(result)
 
 The script has now gone from calling *basic_graph* directly, to feeding it as
-the graph input to *xla.compile*, which takes the graph along with the
-corresponding placeholders as input. It is noted that at line *28*, placeholders
-are being fed to *xla.compile* whose dimensions have been defined on the CPU in
-lines *14* through *16*, but the actual values of these tensors are not defined
-until the *session.run* at line 33. i.e., the *dimensions* of the placeholders
-are the critical component to *xla.compile* so that the graph can be parsed
-correctly at compile time.
+the graph input to *ipu.ipu_compiler.compile*, which takes the graph along with
+the corresponding placeholders as input. It is noted that at line *28*,
+placeholders are being fed to *ipu.ipu_compiler.compile* whose dimensions have
+been defined on the CPU in lines *14* through *16*, but the actual values of
+these tensors are not defined until the *session.run* at line 33. i.e., the
+*dimensions* of the placeholders are the critical component to
+*ipu.ipu_compiler.compile* so that the graph can be parsed correctly at compile
+time.
 
 Given that this graph and the one given in the previous section are the same, it
-is apparent that *xla.compile* is not required to perform the desired sum. That
-said, if
+is apparent that *ipu.ipu_compiler.compile* is not required to perform the
+desired sum. That said, if
 
 ::
 
@@ -295,7 +296,7 @@ where to be replaced with
             square = pa * pa
             return loop, square, tf.no_op()
 
-then *xla.compile* would be strictly required given the use of the
+then *ipu.ipu_compiler.compile* would be strictly required given the use of the
 *tf.while_loop()* conditional statement.
 
 
@@ -322,7 +323,6 @@ Let's now return to our basic script and add the sharding component.
 
     import tensorflow as tf
     import numpy as np
-    from tensorflow.contrib.compiler import xla
     from tensorflow.contrib import ipu
     from tensorflow.contrib.ipu.python.ops import ipu_scope
     from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -358,7 +358,7 @@ Let's now return to our basic script and add the sharding component.
 
 
     with ipu_scope("/device:IPU:0"):
-        result = xla.compile(sharded_graph, [pa, pb, pc])
+        result = ipu.ipu_compiler.compile(sharded_graph, [pa, pb, pc])
 
     with tf.Session() as sess:
         # sharded run

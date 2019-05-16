@@ -13,8 +13,10 @@ while creating the graph:
   with ops.ipu_scope("/device:IPU:0"):
     ...
 
-To use TensorFlow constructs that contain ``while`` loops, or ``conditional``
-operations, the function ``ipu_compiler.compile()`` must be used.
+For very simple graphs, it is sufficient to use the IPU scope to define the
+parts of the graph which will be compiled.  For most graphs, the function
+``ipu_compiler.compile()`` must be used.  This must be placed inside an IPU
+device scope.
 
 ::
 
@@ -41,12 +43,22 @@ operations, the function ``ipu_compiler.compile()`` must be used.
   result = sess.run(out[0], ...)
 
 
+Supported types
+~~~~~~~~~~~~~~~
 
+Poplar and the poplibs libraries support the following data types:
+
+::
+
+  tf.float32
+  tf.float16
+  tf.int32
+  tf.bool
 
 Device selection
 ~~~~~~~~~~~~~~~~
 
-Session configuration options allow the number of IPU devices to be
+Hardware configuration options allow the number of IPU devices to be
 selected.  By default, TensorFlow will create one device.  This device
 will be for a single IPU. The first available single IPU will be used.
 
@@ -70,10 +82,39 @@ system is configured with multiple TensorFlow IPU devices (`/device:IPU:0`,
 `/device:IPU:1`, etc), configured as specified.  For examples look at the
 documentation in the :ref:`api-section`.
 
+Once the hardware configuration stucture has been configured, the API call
+``ipu.utils.configure_ipu_system`` must be used to attach and to configure the
+hardware.
+
+::
+
+    cfg = tf.contrib.ipu.utils.create_ipu_config(profiling=False)
+    cfg = tf.contrib.ipu.utils.auto_select_ipus(cfg, 2)
+    tf.contrib.ipu.utils.configure_ipu_system(cfg)
+
+
 Configuring compilation options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-TODO - stuff about the other configuration functions.
+The ``create_ipu_config`` function has many options for system configuration.
+They are divided into roughly three categories.
+
+1) Profiling and report generation.
+2) IO control.
+3) Graph creation.
+
+In addition to ``auto_select_ipus`` and ``select_ipus``, several other functions
+exist for configuring the hardware and compiler. ``set_compilation_options``
+sets general options to be passed to the Poplar compiler.
+``set_convolution_options`` and ``set_pooling_options`` configure specific
+types of operation. ``set_report_options`` allows options to be passed directly
+to the Poplar summery report generator. ``set_ipu_model_options`` allows control
+of the Poplar IPU_MODEL device type. ``set_recomputation_options`` turns on
+recomputation, to reduce the memory requirement at the expense of speed.
+``set_floating_point_behaviour_options`` allows control of the IPUs floating
+point control register.
+
+See the documentation in :ref:`api-section` for more details.
 
 Caching of compiled executables
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -89,7 +130,7 @@ in this directory.
 
 ::
 
-  TF_POPLAR_FLAGS='--executable_cache_path=.'
+  TF_POPLAR_FLAGS='--executable_cache_path=/tmp/cachedir'
 
 A pair of files will be saved for each compiled graph, the TensorFlow
 metadata and the Poplar executable.
@@ -97,3 +138,20 @@ metadata and the Poplar executable.
 The cache does not manage the files within the directory. It is the
 responsibility of the user to delete files.  No index is kept of the
 files, so they can be deleted without risk.
+
+Unsupported operations
+~~~~~~~~~~~~~~~~~~~~~~
+
+TensorFlow core operations which use variable buffers or strings are not
+supported. For instance, ``JpegDecode``.
+
+Unsupported operations will cause the compilation to fail. By including
+``config=tf.ConfigProto(log_device_placement=True)`` as an argument to the
+creation of the session, you can check whether the operations in your graph have
+been targeted at the Poplar device:
+
+::
+
+  # Creates a session with log_device_placement set to True.
+  sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+

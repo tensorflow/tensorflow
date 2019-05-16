@@ -6,10 +6,13 @@ import os
 import numpy as np
 import test_utils as tu
 
+from tensorflow.python.compiler.xla import xla
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import nn
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 
@@ -163,6 +166,47 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       ok = [
           '__seed*', 'Copy_XLA_Args/arg*_to_Slice*/slice*.clone',
           'add/add.*/AddTo', 'truediv/divide.*/Op/Divide', 'add_1/add.*/AddTo'
+      ]
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
+  def testInplaceTuple(self):
+    def my_net(x):
+      def cond(i, x, y):
+        return i < 1
+
+      def body(i, x, y):
+        i = i + 1
+        x = nn.tanh(x)
+        y = nn.tanh(y)
+        return (i, x, y)
+
+      i = 0
+      return control_flow_ops.while_loop(cond, body, (i, x, x))[1:]
+
+    with ops.device('cpu'):
+      x = array_ops.placeholder(np.float32, [4])
+      report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
+
+    with ops.device("/device:IPU:0"):
+      r = xla.compile(my_net, inputs=[x])
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+      x, y = sess.run(r, {x: np.full([4], 2)})
+      self.assertAllClose(x, np.full([4], np.tanh(2)))
+      self.assertAllClose(y, np.full([4], np.tanh(2)))
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = [
+          '__seed*', 'Copy_*_to_*', 'while/Tanh/tanh*/Op/Tanh',
+          'while/Tanh_1/tanh*/Op/Tanh'
       ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

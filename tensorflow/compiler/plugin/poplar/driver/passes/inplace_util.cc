@@ -73,23 +73,17 @@ bool IsUsedAsInplace(const HloInstruction* user, const HloInstruction* inst,
   return intersection.size();
 }
 
+bool IsUniqueOperand(HloInstruction* inplace, HloInstruction* inplace_parent) {
+  return inplace->OperandIndices(inplace_parent).size() == 1;
+}
+
 bool IsNotDependencyOfPeers(HloInstruction* inplace,
                             HloInstruction* inplace_parent,
                             HloReachabilityMap* reachability_map,
                             std::vector<HloInstruction*>& added_dependencies) {
   for (auto* peer : inplace_parent->users()) {
     if (peer == inplace) {
-      unsigned int num_uses = 0;
-      for (auto* operand : inplace->operands()) {
-        if (operand == inplace_parent) {
-          num_uses++;
-        }
-      }
-      if (num_uses > 1) {
-        return false;
-      } else {
-        continue;
-      }
+      continue;
     }
     if (reachability_map->IsReachable(inplace, peer)) {
       return false;
@@ -152,6 +146,12 @@ bool IsInplaceReadWrite(HloInstruction* inst,
   // Go trough all the inplace operands.
   for (auto op_idx : inplace_desc.GetInplaceOperandIndexes()) {
     HloInstruction* op = inst->mutable_operand(op_idx);
+    // Apart from tuples, we expect all the inplace operands to be only used
+    // once as an operand.
+    if (inst->opcode() != HloOpcode::kTuple && !IsUniqueOperand(inst, op)) {
+      is_inplace = false;
+      break;
+    }
     // Verify that inplace is not a dependency of any of the peers (cond 2).
     if (!IsNotDependencyOfPeers(inst, op, reachability_map,
                                 added_dependencies)) {

@@ -93,6 +93,8 @@ GetWhileAndRepeatAliasingCopies(poplar::Graph& graph,
     switch (alias_type[i]) {
       case AliasType::PARTIAL_ALIAS_OUTPUT_ONLY:
       case AliasType::PARTIAL_ALIAS: {
+        VLOG(1) << "Adding a partial copy in " << debug_name
+                << " for tuple index " << i;
         auto name = StrCat(debug_name, "_bodyout_temp_", i);
         unaliased_body_outputs[i] = graph.clone(body_outputs[i], name);
         body_seq.add(
@@ -108,6 +110,8 @@ GetWhileAndRepeatAliasingCopies(poplar::Graph& graph,
     switch (alias_type[i]) {
       case AliasType::PARTIAL_ALIAS:
       case AliasType::NO_ALIAS_USED: {
+        VLOG(1) << "Adding a output to input copy in " << debug_name
+                << " for tuple index " << i;
         // Get the input ready for the next iteration.
         body_seq.add(
             poplar::program::Copy(unaliased_body_outputs[i], body_inputs[i]));
