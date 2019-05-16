@@ -345,8 +345,6 @@ class Vector<Type t, list<int> dims> : ContainerType<t, AllOf<[
   list<int> dimensions = dims;
 }
 
-def VectorOrTensor : Type<IsShapedTypePred, "vector or tensor">;
-
 // Tensor type.
 
 // This represents a generic tensor without constraints on elemental type,
@@ -386,6 +384,9 @@ def F64Tensor  : TypedTensor<F64>;
 // `allowedTypes` list
 class AnyTensorOf<list<Type> allowedTypes, string elementDescription = ""> :
   TypedTensor<AnyTypeOf<allowedTypes, elementDescription>>;
+
+def VectorOrTensor :
+    AnyTypeOf<[TypedVector<AnyType>, Tensor], "vector or tensor">;
 
 // This represents a generic tuple without any constraints on elemental type,
 // ranks, or size. As Tuples can contain tensors, vectors, or scalar values

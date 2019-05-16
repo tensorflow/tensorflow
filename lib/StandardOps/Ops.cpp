@@ -1638,16 +1638,14 @@ static ParseResult parseExtractElementOp(OpAsmParser *parser,
 }
 
 static LogicalResult verify(ExtractElementOp op) {
-  if (op.getNumOperands() == 0)
-    return op.emitOpError("expected an aggregate to index into");
+  auto aggregateType = op.getAggregate()->getType().cast<ShapedType>();
 
-  auto aggregateType = op.getAggregate()->getType().dyn_cast<ShapedType>();
-  if (!aggregateType)
-    return op.emitOpError("first operand must be a vector or tensor");
-
+  // This should be possible with tablegen type constraints
   if (op.getType() != aggregateType.getElementType())
     return op.emitOpError("result type must match element type of aggregate");
 
+  // TODO(b/132908002) This should be covered by the op specification in
+  // tablegen, but for some reason it's not.
   for (auto *idx : op.getIndices())
     if (!idx->getType().isIndex())
       return op.emitOpError("index to extract_element must have 'index' type");
