@@ -556,6 +556,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
 
 class FFTShiftTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testDefinition(self):
     with self.session():
       x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
@@ -567,6 +568,7 @@ class FFTShiftTest(test.TestCase):
       self.assertAllEqual(fft_ops.fftshift(x).eval(), y)
       self.assertAllEqual(fft_ops.ifftshift(y).eval(), x)
 
+  @test_util.run_deprecated_v1
   def testAxesKeyword(self):
     with self.session():
       freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
@@ -581,6 +583,7 @@ class FFTShiftTest(test.TestCase):
       self.assertAllEqual(fft_ops.fftshift(freqs).eval(), shifted)
       self.assertAllEqual(fft_ops.ifftshift(shifted).eval(), freqs)
 
+  @test_util.run_deprecated_v1
   def testNumpyCompatibility(self):
     with self.session():
       x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
