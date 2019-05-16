@@ -2046,12 +2046,12 @@ class Layer(module.Module):
     return True
 
   @property
+  @tracking.cached_per_instance
   def _call_fn_args(self):
-    if getattr(self, '__call_fn_args', None) is None:
-      self.__call_fn_args = function_utils.fn_args(self.call)
-    return self.__call_fn_args
+    return function_utils.fn_args(self.call)
 
   @property
+  @tracking.cached_per_instance
   def _should_compute_mask(self):
     return ('mask' in self._call_fn_args or
             getattr(self, 'compute_mask', None) is not None)

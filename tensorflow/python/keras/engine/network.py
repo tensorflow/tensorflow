@@ -50,6 +50,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
@@ -513,6 +514,7 @@ class Network(base_layer.Layer):
     return weights
 
   @property
+  @tracking.cached_per_instance
   def _should_compute_mask(self):
     return self._is_graph_network and super(Network, self)._should_compute_mask
 
