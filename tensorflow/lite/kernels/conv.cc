@@ -162,7 +162,7 @@ bool IsIm2ColRequired(TfLiteTensor* input, TfLiteConvParams* params,
   const bool need_im2col = need_dilated_im2col || need_non_dilated_im2col;
 
   // Return early as basic requirement is not met
-  if (!need_im2col) return need_im2col;
+  if (!need_im2col) return false;
 
   // Special case for Hybrid, as it supports only non-dilated im2col currently
   const bool is_hybrid_non_dilated = is_hybrid && need_non_dilated_im2col;
