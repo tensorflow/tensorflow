@@ -44,15 +44,60 @@ namespace xla {
 
 // ExecutionOutput encapsulates the output buffers of a execution and the
 // leftover buffers to be released by the caller.
-struct ExecutionOutput {
+class ExecutionOutput {
+ public:
   ExecutionOutput(ScopedShapedBuffer result,
-                  std::vector<se::OwningDeviceMemory> to_be_released)
-      : result(std::move(result)), to_be_released(std::move(to_be_released)) {}
-  ScopedShapedBuffer result;
+                  std::vector<se::OwningDeviceMemory> to_be_released,
+                  std::vector<ShapeIndex> aliased_indices)
+      : result_(std::move(result)),
+        to_be_released_(std::move(to_be_released)),
+        aliased_indices_(std::move(aliased_indices)) {}
+  ExecutionOutput(ExecutionOutput&&) = default;
+  ExecutionOutput& operator=(ExecutionOutput&&) = default;
+
+  ~ExecutionOutput() {
+    // If the ExecutionOutput has not been committed, and if there are aliased
+    // indices, clear them off the ScopedShapedBuffer to prevent them to be
+    // released.
+    for (auto& index : aliased_indices_) {
+      result_.set_buffer(se::OwningDeviceMemory(), index);
+    }
+  }
+
+  // Should be called once it is known that the execute operation succeeded,
+  // before returning the ExecutionOutput to the caller.
+  ExecutionOutput& Commit() {
+    aliased_indices_.clear();
+    return *this;
+  }
+
+  const ScopedShapedBuffer& Result() const { return result_; }
+
+  ScopedShapedBuffer ConsumeResult() {
+    aliased_indices_.clear();
+    return std::move(result_);
+  }
+
+  const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {
+    return to_be_released_;
+  }
+
+  std::vector<se::OwningDeviceMemory> ConsumeToBeReleased() {
+    return std::move(to_be_released_);
+  }
+
+ private:
+  ScopedShapedBuffer result_;
 
   // Leftover buffers for the caller to release. Elements in this list are
   // donated input memory buffers that are not reused by XLA as outputs.
-  std::vector<se::OwningDeviceMemory> to_be_released;
+  std::vector<se::OwningDeviceMemory> to_be_released_;
+
+  // These are the indices in result_ which have been aliased from the caller.
+  // If the execution operation fails, the caller should maintain ownership of
+  // the buffer, so we track the indices here, and unless the ExecutionOutput is
+  // committed, we remove them from the result_ before destruction.
+  std::vector<ShapeIndex> aliased_indices_;
 };
 
 // A given platform's compiler will produce an Executable -- this is a uniform
