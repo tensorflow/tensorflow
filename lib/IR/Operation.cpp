@@ -776,7 +776,7 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
 
   // Check unranked tensor cases
   if (type1.isa<UnrankedTensorType>() || type2.isa<UnrankedTensorType>())
-    return failure();
+    return success();
 
   // Check normal vector/tensor cases
   if (auto sType1 = type1.dyn_cast<ShapedType>()) {
