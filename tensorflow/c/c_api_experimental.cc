@@ -617,6 +617,18 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader, const char*
   return tensorflow::TF_TensorFromTensor(*tensor.get(), status);
 }
 
+void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims) {
+  auto m = reader->GetVariableToShapeMap();
+  for (int i=0; i<num_dims; i++){
+    dims[i] = m[name].dim_size(i);
+  }
+}
+
+int TF_CheckpointReaderGetVariableNumDims(TF_CheckpointReader* reader, const char* name) {
+  auto m = reader->GetVariableToShapeMap();
+  return m[name].dims();
+}
+
 
 // This builder is used in the eager API to build a NodeDef.
 struct TF_AttrBuilder : public tensorflow::AttrBuilder {
