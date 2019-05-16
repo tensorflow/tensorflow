@@ -5775,7 +5775,7 @@ struct WorkspacePrefetchWrite<
     DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
   static void __attribute__((noinline))
   Run(int8 fill_data, int size, int8* workspace) {
-    const int8x8_t fill_data_vec = vdup_n_s8(fill_data);
+    const uint32x2_t fill_data_vec = vdup_n_u32(fill_data);
     int i = 0;
     for (; i < (size - 15); i += 64) {
       int8* ptr = workspace + i;
