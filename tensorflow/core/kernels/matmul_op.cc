@@ -28,6 +28,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

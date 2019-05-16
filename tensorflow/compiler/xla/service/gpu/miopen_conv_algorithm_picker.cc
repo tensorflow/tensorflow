@@ -37,7 +37,7 @@ using se::dnn::AlgorithmDesc;
 
 class ScratchAllocator : public se::ScratchAllocator {
  public:
-  ScratchAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator)
+  ScratchAllocator(int device_ordinal, se::DeviceMemoryAllocator* memory_allocator)
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
   int64 GetMemoryLimitInBytes(se::Stream* stream) override {
@@ -50,8 +50,8 @@ class ScratchAllocator : public se::ScratchAllocator {
 
  private:
   const int device_ordinal_;
-  DeviceMemoryAllocator* memory_allocator_;
-  std::vector<OwningDeviceMemory> allocated_buffers_;
+  se::DeviceMemoryAllocator* memory_allocator_;
+  std::vector<se::OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 
@@ -66,7 +66,7 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
             byte_size, GetMemoryLimitInBytes(stream)));
   }
 
-  TF_ASSIGN_OR_RETURN(OwningDeviceMemory allocated_buffer,
+  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
                       memory_allocator_->Allocate(device_ordinal_, byte_size,
                                                   /*retry_on_failure=*/false));
   total_allocated_bytes_ += byte_size;
@@ -163,8 +163,8 @@ MiopenConvAlgorithmPicker::PickBestAlgorithm(
 
   // allocator either points to this->allocator_ or, if that's null, to a
   // StreamExecutorMemoryAllocator for stream_exec_.
-  DeviceMemoryAllocator* allocator;
-  optional<StreamExecutorMemoryAllocator> se_allocator;
+  se::DeviceMemoryAllocator* allocator;
+  optional<se::StreamExecutorMemoryAllocator> se_allocator;
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {

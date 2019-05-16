@@ -63,7 +63,7 @@ struct DiagFunctor<GPUDevice, T> {
     GpuLaunchConfig diag_config =
         GetGpuLaunchConfig(virtual_thread_count, device);
     TF_CHECK_OK(
-        GpuLaunchKernel(DiagCudaKernel<T>, diag_config.block_count,
+        GpuLaunchKernel(DiagGpuKernel<T>, diag_config.block_count,
                          diag_config.thread_per_block, 0, device.stream(),
                          diag_config.virtual_thread_count, size, in, out));
 
@@ -112,7 +112,7 @@ struct DiagPartFunctor<GPUDevice, T> {
     // Extract the diagonal elements.
     GpuLaunchConfig diag_config = GetGpuLaunchConfig(size, device);
     TF_CHECK_OK(
-        GpuLaunchKernel(DiagPartCudaKernel<T>, diag_config.block_count,
+        GpuLaunchKernel(DiagPartGpuKernel<T>, diag_config.block_count,
                          diag_config.thread_per_block, 0, device.stream(),
                          diag_config.virtual_thread_count, size, in, out));
 

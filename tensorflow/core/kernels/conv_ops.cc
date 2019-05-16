@@ -693,7 +693,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   // in NHWC data layout. In all other configurations it's more efficient to
   // run computation in NCHW data format.
   const bool compute_in_nhwc =
+#if GOOGLE_CUDA
       DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+#else
+      false;
+#endif
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects preferred layout and

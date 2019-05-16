@@ -370,7 +370,7 @@ struct CropAndResize<GPUDevice, T> {
 
     if (total_count > 0) {
       GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(Gpu(
+      TF_CHECK_OK(GpuLaunchKernel(
           CropAndResizeKernel<T>, config.block_count, config.thread_per_block,
           0, d.stream(), config.virtual_thread_count, image.data(),
           boxes.data(), box_ind.data(), num_boxes, batch, image_height,

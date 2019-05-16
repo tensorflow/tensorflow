@@ -91,7 +91,7 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
 
 // Perfect forwarding to make GpuLaunchKernel available to both ROCm and Cuda builds
 template <typename... Args>
-auto GpuLaunchKernel(Args&&... args) -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
+auto CudaLaunchKernel(Args&&... args) -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
   return GpuLaunchKernel(std::forward<Args>(args)...);
 }
 
