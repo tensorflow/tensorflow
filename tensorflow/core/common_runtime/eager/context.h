@@ -35,11 +35,14 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/env.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -86,11 +89,12 @@ class EagerContext : public core::RefCounted {
                std::unique_ptr<const DeviceMgr> device_mgr,
                Rendezvous* rendezvous);
 
-  EagerContext(const SessionOptions& opts,
-               ContextDevicePlacementPolicy default_policy, bool async,
-               const DeviceMgr* device_mgr, bool device_mgr_owned,
-               Rendezvous* rendezvous,
-               const CustomKernelCreator* custom_kernel_creator);
+  EagerContext(
+      const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
+      bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
+      Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
+      DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
+      std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr);
 
   ~EagerContext();
 
@@ -166,6 +170,26 @@ class EagerContext : public core::RefCounted {
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
+  Rendezvous* CreateRendezvous(const int64 step_id) const {
+    if (rendezvous_creator_ != nullptr) {
+      return rendezvous_creator_(step_id);
+    }
+
+#if !defined(IS_MOBILE_PLATFORM)
+    if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+      auto* remote_r = worker_env_->rendezvous_mgr->Find(step_id);
+      remote_r->Initialize(worker_session_.get()).IgnoreError();
+      return remote_r;
+    }
+#endif
+
+    if (remote_device_mgr() == nullptr) {
+      return new IntraProcessRendezvous(local_device_mgr());
+    }
+
+    return nullptr;
+  }
+
   CollectiveExecutorMgrInterface* collective_executor_mgr() {
     return (collective_executor_mgr_ != nullptr)
                ? collective_executor_mgr_.get()
@@ -224,11 +248,13 @@ class EagerContext : public core::RefCounted {
   // (should contain no local devices).
   // - remote_contexts: A map containing task name to remote context ID.
   Status InitializeRemote(
-      std::unique_ptr<ServerInterface> server,
+      std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
+      std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,
       const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
-      DeviceMgr* local_device_mgr, int keep_alive_secs);
+      DeviceMgr* local_device_mgr, int keep_alive_secs,
+      DistributedFunctionLibraryRuntime* cluster_flr);
 
   bool HasActiveRemoteContext(uint64 context_id) {
     return active_remote_contexts_.find(context_id) !=
@@ -274,6 +300,7 @@ class EagerContext : public core::RefCounted {
   // All devices are not owned.
   gtl::FlatMap<string, Device*, StringPieceHasher> devices_map_;
   Rendezvous* rendezvous_;
+  std::function<Rendezvous*(const int64)> rendezvous_creator_;
 
   mutex functions_mu_;
   FunctionLibraryDefinition func_lib_def_ GUARDED_BY(functions_mu_){
@@ -330,6 +357,8 @@ class EagerContext : public core::RefCounted {
   // Therefore the server_ object is not marked as const (even though it should
   // be).
   std::unique_ptr<ServerInterface> server_;
+  WorkerEnv* worker_env_ = nullptr;
+  std::shared_ptr<WorkerSession> worker_session_;
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
 
   mutex remote_state_mu_;

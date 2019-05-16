@@ -64,7 +64,12 @@ std::vector<Device*> FilterSupportedDevices(
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) ==
           supported_device_type.first) {
-        if (device == default_device) {
+        if (default_device &&
+            (device == default_device ||
+             // TODO(nareshmodi, fishx): At times the device pointer in the
+             // device set is different to the one passed in as the default
+             // device. Figure out why this might be.
+             device->name() == default_device->name())) {
           filtered_default_device = device;
         } else {
           prioritized_filtered_devices.emplace_back(

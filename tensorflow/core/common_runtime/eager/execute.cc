@@ -338,7 +338,11 @@ Status AddInputDevicesToCacheKey(const EagerContext* ctx,
   Device* cpu_device = ctx->HostCPU();
   for (TensorHandle* tensor_handle : op->Inputs()) {
     string device_name;
-    if (tensor_handle->dtype == DT_RESOURCE) {
+    if (tensor_handle->IsRemote()) {
+      Device* device = tensor_handle->device();
+      device_name = device != nullptr ? device->name() : cpu_device->name();
+      input_dev_ptrs->push_back(device == nullptr ? cpu_device : device);
+    } else if (tensor_handle->dtype == DT_RESOURCE) {
       // Use the resource's actual device because it is the device that will
       // influence partitioning the multi-device function.
       const Tensor* tensor;
@@ -534,6 +538,22 @@ Status EagerLocalExecute(EagerOperation* op,
   std::unordered_map<int, std::pair<DataType, TensorShape>>
       input_resource_variable_dtypes_and_shapes;
   if (is_multi_device_function) {
+    // All inputs need to be on local devices.
+    // TODO(nareshmodi): This is a limitation of the current code base (but
+    // should be possible to get around).
+    // Code changes will need to be made to pass input objects to the
+    // function library runtime instead of just "Tensor"s.
+    // Once that is the case, we will be able to write a thin wrapper layer over
+    // the EagerService that behaves similar to the current
+    // ClusterFunctionLibraryRuntime/DistributedFunctionLibraryRuntime.
+    for (int i = 0; i < op->Inputs().size(); i++) {
+      TensorHandle* input = op->Inputs()[i];
+      if (input->IsRemote()) {
+        TF_RETURN_IF_ERROR(EagerCopyToDevice(
+            input, ctx, device == nullptr ? "" : device->name().c_str(),
+            &(*op->MutableInputs())[i]));
+      }
+    }
     TF_RETURN_IF_ERROR(
         AddInputDevicesToCacheKey(ctx, op, &input_dev_ptrs, &cache_key));
     TF_RETURN_IF_ERROR(AddInputTensorShapesToCacheKey(
@@ -604,7 +624,10 @@ Status EagerLocalExecute(EagerOperation* op,
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_tensor_shapes),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
-          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name());
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name(),
+          [ctx](const int64 step_id) {
+            return ctx->CreateRendezvous(step_id);
+          });
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
@@ -692,6 +715,7 @@ std::function<void()> GetRemoteTensorDestructor(
   ctx->Ref();
   return [ctx, eager_client, context_id, op_id, output_num]() {
     auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
+
     if (!ctx->HasActiveRemoteContext(context_id)) {
       // This means that this tensor was pointing to a remote device, which
       // has been changed out from under us. Simply return since there is
@@ -740,7 +764,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Eager's remote execution is not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -805,7 +829,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Eager's remote execution is not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   EagerContext* ctx = op->EagerContext();
 
   eager::EagerClient* eager_client;
