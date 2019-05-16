@@ -6,19 +6,26 @@ curl https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_s
 ```
 To prepare your own tflite models, read the object dection for TF Lite tutorial [1] and the descriptions in [2].
 
-Then prepare input file, e.g.,
+Then prepare the input file, e.g.,
 ```
-cp ${TF_MODELS}/research/object_detection/test_images/image2.jpg /tmp/
-```
-
-
-Run it
-
-```
-python3 tensorflow/lite/examples/python/object_detection.py --graph /tmp/detect.tflite --image /tmp/image2.jpg --labels /tmp/labelmap.txt --show_image True
+curl https://raw.githubusercontent.com/tensorflow/models/master/research/object_detection/test_images/image2.jpg > /tmp/image2.jpg
 ```
 
 
-[1] https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193 
+Run it with
+```
+python3 tensorflow/lite/examples/python/ssd_object_detection.py --graph /tmp/detect.tflite --image /tmp/image2.jpg --labels /tmp/labelmap.txt
+```
+Then, the output file is saved as '/tmp/output.pdf'
+
+
+Run it with
+```
+python3 tensorflow/lite/examples/python/ssd_object_detection.py --graph /tmp/detect.tflite --image /tmp/image2.jpg --labels /tmp/labelmap.txt --show_image True
+```
+Then we the output will be shown.
+
+
+[1] https://medium.com/tensorflow/training-and-serving-a-realtime-mobile-object-detector-in-30-minutes-with-cloud-tpus-b78971cf1193
 
 [2] https://github.com/tensorflow/models/blob/master/research/object_detection/export_tflite_ssd_graph.py

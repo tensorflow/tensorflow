@@ -36,39 +36,20 @@ def load_labels(filename):
   return my_labels
 
 if __name__ == "__main__":
-  file_name = "/tmp/image2.jpg"
-  model_file = "/tmp/detect.tflite"
-  label_file = "/tmp/labelmap.txt"
-  input_mean = 127.5
-  input_std = 127.5
   floating_model = False
-  show_image = False
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--image", help="image to be classified")
-  parser.add_argument("--graph", help=".tflite model to be executed")
-  parser.add_argument("--labels", help="name of file containing labels")
-  parser.add_argument("--input_mean", help="input_mean")
-  parser.add_argument("--input_std", help="input standard deviation")
-  parser.add_argument("--min_score", help="show only > min_score")
-  parser.add_argument("--show_image", help="show image")
-  parser.add_argument("--verbose", help="show some debug info")
+  parser.add_argument("-i", "--image", default="/tmp/image2.jpg", help="image to be classified")
+  parser.add_argument("-g", "--graph", default="/tmp/detect.tflite", help=".tflite model to be executed")
+  parser.add_argument("-l", "--labels", default="/tmp/labelmap.txt", help="name of file containing labels")
+  parser.add_argument("-o", "--output_file", default="/tmp/output.pdf", help="output image file")
+  parser.add_argument("-b", "--input_mean", default=127.5, help="input_mean")
+  parser.add_argument("-s", "--input_std", default=127.5, help="input standard deviation")
+  parser.add_argument("--show_image", default=False, help="show image")
+  parser.add_argument("-v", "--verbose", default=False, help="show some debug info")
   args = parser.parse_args()
 
-  if args.graph:
-    model_file = args.graph
-  if args.image:
-    file_name = args.image
-  if args.labels:
-    label_file = args.labels
-  if args.input_mean:
-    input_mean = float(args.input_mean)
-  if args.input_std:
-    input_std = float(args.input_std)
-  if args.show_image:
-    show_image = args.show_image
-
-  interpreter = interpreter_wrapper.Interpreter(model_path=model_file)
+  interpreter = interpreter_wrapper.Interpreter(model_path=args.graph)
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()
@@ -78,20 +59,20 @@ if __name__ == "__main__":
     print(output_details)
 
   # check the type of the input tensor
-  if input_details[0]['dtype'] == type(np.float32(1.0)):
+  if input_details[0]['dtype'] == np.float32:
     floating_model = True
 
   # NxHxWxC, H:1, W:2
   height = input_details[0]['shape'][1]
   width = input_details[0]['shape'][2]
-  img = Image.open(file_name)
+  img = Image.open(args.image)
   img = img.resize((width, height))
 
   # add N dim
   input_data = np.expand_dims(img, axis=0)
 
   if floating_model:
-    input_data = (np.float32(input_data) - input_mean) / input_std
+    input_data = (np.float32(input_data) - arags.input_mean) / args.input_std
 
   interpreter.set_tensor(input_details[0]['index'], input_data)
 
@@ -100,7 +81,7 @@ if __name__ == "__main__":
   finish_time = time.time()
   print("time spent:", ((finish_time - start_time) * 1000), "ms")
 
-  labels = load_labels(label_file)
+  labels = load_labels(args.labels)
 
   detected_boxes = interpreter.get_tensor(output_details[0]['index']) * height
   detected_classes = interpreter.get_tensor(output_details[1]['index'])
@@ -113,23 +94,25 @@ if __name__ == "__main__":
     print("detected classes:", detected_classes)
     print("detected scores:", detected_scores)
 
-  if show_image:
-    fig, ax = plt.subplots(1)
+  fig, ax = plt.subplots(1)
 
   for r in range(1, int(num_boxes)):
     top, left, bottom, right = detected_boxes[0][r]
     rect = patches.Rectangle((left, top), (right - left), (bottom - top), \
            linewidth=1, edgecolor='r', facecolor='none')
 
-    if show_image:
-      # Add the patch to the Axes
-      ax.add_patch(rect)
-      label_string = labels[int(detected_classes[0][r])+1]
-      score_string = '{0:2.0f}%'.format(detected_scores[0][r] * 100)
-      ax.text(left, top, label_string + ': ' + score_string, \
+    # Add the patch to the Axes
+    ax.add_patch(rect)
+    label_string = labels[int(detected_classes[0][r])+1]
+    score_string = '{0:2.0f}%'.format(detected_scores[0][r] * 100)
+    ax.text(left, top, label_string + ': ' + score_string, \
               fontsize=6, bbox=dict(facecolor='y', edgecolor='y', alpha=0.5))
 
-  if show_image:
-    ax.imshow(img)
-    plt.title(model_file)
+  plt.title(args.graph)
+  ax.imshow(img)
+
+  if args.show_image:
     plt.show()
+  else:
+    print("savin output to", args.output_file)
+    plt.savefig(args.output_file)
