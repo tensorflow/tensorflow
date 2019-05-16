@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -521,6 +522,7 @@ Status RearrangeFunctionArguments(
     // Inlining might fail because the function is marked with attribute
     // _noinline.
     s.IgnoreError();
+    FixupSourceAndSinkEdges(g);
   }
 
   // Rewrite If/While nodes.
