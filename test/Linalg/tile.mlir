@@ -32,10 +32,12 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-2-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       TILE-2: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg1) step 2 {
 //  TILE-2-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-2-NEXT:   %[[ra:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[ra0:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[ra:.*]] = linalg.range_intersect %{{.}}, %[[ra0]] : !linalg.range
 //  TILE-2-NEXT:   %[[sAi:.*]] = linalg.slice %[[A]][%[[ra]], %2] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-2-NEXT:   %[[c:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-2-NEXT:   %[[rc:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[rc0:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[rc:.*]] = linalg.range_intersect %{{.}}, %[[rc0]] : !linalg.range
 //  TILE-2-NEXT:   %[[sCi:.*]] = linalg.slice %[[C]][%[[rc]], %1] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-2-NEXT:   linalg.matmul(%[[sAi]], %[[B]], %[[sCi]]) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
 
@@ -45,10 +47,12 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-02-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       TILE-02: affine.for %i0 = #[[ID]](%c0_0) to #[[ID]](%arg2) step 2 {
 //  TILE-02-NEXT:   %[[b:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-02-NEXT:   %[[rb:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-02-NEXT:   %[[rb0:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-02-NEXT:   %[[rb:.*]] = linalg.range_intersect %{{.}}, %[[rb0]] : !linalg.range
 //  TILE-02-NEXT:   %[[sBj:.*]] = linalg.slice %[[B]][%{{.*}}, %[[rb]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-02-NEXT:   %[[c:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-02-NEXT:   %[[rc:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-02-NEXT:   %[[rc0:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-02-NEXT:   %[[rc:.*]] = linalg.range_intersect %{{.}}, %[[rc0]] : !linalg.range
 //  TILE-02-NEXT:   %[[sCj:.*]] = linalg.slice %[[C]][%{{.*}}, %[[rc]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-02-NEXT:   linalg.matmul(%[[A]], %[[sBj]], %[[sCj]]) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
 
@@ -58,10 +62,12 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-002-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       TILE-002: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg3) step 2 {
 //  TILE-002-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-002-NEXT:   %[[ra:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-002-NEXT:   %[[ra0:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-002-NEXT:   %[[ra:.*]] = linalg.range_intersect %{{.}}, %[[ra0]] : !linalg.range
 //  TILE-002-NEXT:   %[[sAj:.*]] = linalg.slice %[[A]][%{{.*}}, %[[ra]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-002-NEXT:   %[[b:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-002-NEXT:   %[[rb:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-002-NEXT:   %[[rb0:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-002-NEXT:   %[[rb:.*]] = linalg.range_intersect %{{.}}, %[[rb0]] : !linalg.range
 //  TILE-002-NEXT:   %[[sBj:.*]] = linalg.slice %[[B]][%[[rb]], %{{.*}}] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-002-NEXT:   linalg.matmul(%[[sAj]], %[[sBj]], %[[C]]) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
 
@@ -73,19 +79,25 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-234-NEXT:    affine.for %i1 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg2) step 3 {
 //  TILE-234-NEXT:      affine.for %i2 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg3) step 4 {
 //  TILE-234-NEXT:        %[[ai:.*]]  = affine.apply #[[UB0]](%i0)
-//  TILE-234-NEXT:        %[[rai:.*]] = linalg.range %i0:%[[ai]]:%c2{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rai0:.*]] = linalg.range %i0:%[[ai]]:%c2 : !linalg.range
+//  TILE-234-NEXT:        %[[rai:.*]] = linalg.range_intersect %{{.}}, %[[rai0]] : !linalg.range
 //  TILE-234-NEXT:        %[[ak:.*]] = affine.apply #[[UB2]](%i2)
-//  TILE-234-NEXT:        %[[rak:.*]] = linalg.range %i2:%[[ak]]:%c4{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rak0:.*]] = linalg.range %i2:%[[ak]]:%c4{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rak:.*]] = linalg.range_intersect %{{.}}, %[[rak0]] : !linalg.range
 //  TILE-234-NEXT:        %[[sAik:.*]] = linalg.slice %[[A]][%[[rai]], %[[rak]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-234-NEXT:        %[[bk:.*]] = affine.apply #[[UB2]](%i2)
-//  TILE-234-NEXT:        %[[rbk:.*]] = linalg.range %i2:%[[bk]]:%c4{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rbk0:.*]] = linalg.range %i2:%[[bk]]:%c4{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rbk:.*]] = linalg.range_intersect %{{.}}, %[[rbk0]] : !linalg.range
 //  TILE-234-NEXT:        %[[bj:.*]] = affine.apply #[[UB1]](%i1)
-//  TILE-234-NEXT:        %[[rbj:.*]] = linalg.range %i1:%[[bj]]:%c3{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rbj0:.*]] = linalg.range %i1:%[[bj]]:%c3{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rbj:.*]] = linalg.range_intersect %{{.}}, %[[rbj0]] : !linalg.range
 //  TILE-234-NEXT:        %[[sBkj:.*]] = linalg.slice %[[B]][%[[rbk]], %[[rbj]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-234-NEXT:        %[[ci:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-234-NEXT:        %[[rci:.*]] = linalg.range %i0:%[[ci]]:%c2{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rci0:.*]] = linalg.range %i0:%[[ci]]:%c2{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rci:.*]] = linalg.range_intersect %{{.}}, %[[rci0]] : !linalg.range
 //  TILE-234-NEXT:        %[[cj:.*]] = affine.apply #[[UB1]](%i1)
-//  TILE-234-NEXT:        %[[rcj:.*]] = linalg.range %i1:%[[cj]]:%c3{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rcj0:.*]] = linalg.range %i1:%[[cj]]:%c3{{.*}} : !linalg.range
+//  TILE-234-NEXT:        %[[rcj:.*]] = linalg.range_intersect %{{.}}, %[[rcj0]] : !linalg.range
 //  TILE-234-NEXT:        %[[sCij:.*]] = linalg.slice %[[C]][%[[rci]], %[[rcj]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-234-NEXT:        linalg.matmul(%[[sAik]], %[[sBkj]], %[[sCij]]) : !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
 
@@ -106,10 +118,12 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-2-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       TILE-2: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg1) step 2 {
 //  TILE-2-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-2-NEXT:   %[[ra:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[ra0:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[ra:.*]] = linalg.range_intersect %{{.}}, %[[ra0]] : !linalg.range
 //  TILE-2-NEXT:   %[[sAi:.*]] = linalg.slice %[[A]][%[[ra]], %{{.*}}] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-2-NEXT:   %[[c:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-2-NEXT:   %[[rc:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[rc0:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[rc:.*]] = linalg.range_intersect %{{.}}, %[[rc0]] : !linalg.range
 //  TILE-2-NEXT:   %[[sCi:.*]] = linalg.slice %[[C]][%[[rc]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-2-NEXT:   linalg.matvec(%[[sAi]], %[[B]], %[[sCi]]) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
 
@@ -119,10 +133,12 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-02-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       TILE-02: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg2) step 2 {
 //  TILE-02-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-02-NEXT:   %[[ra:.*]] = linalg.range %i0:%[[a]]:%c2{{.*}} : !linalg.range
+//  TILE-02-NEXT:   %[[ra0:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-02-NEXT:   %[[ra:.*]] = linalg.range_intersect %{{.}}, %[[ra0]] : !linalg.range
 //  TILE-02-NEXT:   %[[sAj:.*]] = linalg.slice %[[A]][%{{.*}}, %[[ra]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-02-NEXT:   %[[b:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-02-NEXT:   %[[rb:.*]] = linalg.range %i0:%[[b]]:%c2{{.*}} : !linalg.range
+//  TILE-02-NEXT:   %[[rb0:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-02-NEXT:   %[[rb:.*]] = linalg.range_intersect %{{.}}, %[[rb0]] : !linalg.range
 //  TILE-02-NEXT:   %[[sBj:.*]] = linalg.slice %[[B]][%[[rb]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-02-NEXT:   linalg.matvec(%[[sAj]], %[[sBj]], %[[C]]) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
 
@@ -136,15 +152,19 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //       TILE-234:  affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg1) step 2 {
 //  TILE-234-NEXT:    affine.for %i1 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg2) step 3 {
 //  TILE-234-NEXT:      %[[ai:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-234-NEXT:      %[[rai:.*]] = linalg.range %i0:%[[ai]]:%c2 : !linalg.range
+//  TILE-234-NEXT:      %[[rai0:.*]] = linalg.range %i0:%[[ai]]:%c2 : !linalg.range
+//  TILE-234-NEXT:      %[[rai:.*]] = linalg.range_intersect %{{.}}, %[[rai0]] : !linalg.range
 //  TILE-234-NEXT:      %[[aj:.*]] = affine.apply #[[UB1]](%i1)
-//  TILE-234-NEXT:      %[[raj:.*]] = linalg.range %i1:%[[aj]]:%c3 : !linalg.range
+//  TILE-234-NEXT:      %[[raj0:.*]] = linalg.range %i1:%[[aj]]:%c3 : !linalg.range
+//  TILE-234-NEXT:      %[[raj:.*]] = linalg.range_intersect %{{.}}, %[[raj0]] : !linalg.range
 //  TILE-234-NEXT:      %[[sAij:.*]] = linalg.slice %[[A]][%[[rai]], %[[raj]]] : !linalg.view<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
 //  TILE-234-NEXT:      %[[b:.*]] = affine.apply #[[UB1]](%i1)
-//  TILE-234-NEXT:      %[[rb:.*]] = linalg.range %i1:%[[b]]:%c3 : !linalg.range
+//  TILE-234-NEXT:      %[[rb0:.*]] = linalg.range %i1:%[[b]]:%c3 : !linalg.range
+//  TILE-234-NEXT:      %[[rb:.*]] = linalg.range_intersect %{{.}}, %[[rb0]] : !linalg.range
 //  TILE-234-NEXT:      %[[sB:.*]] = linalg.slice %[[B]][%[[rb]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-234-NEXT:      %[[c:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-234-NEXT:      %[[rc:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-234-NEXT:      %[[rc0:.*]] = linalg.range %i0:%[[c]]:%c2 : !linalg.range
+//  TILE-234-NEXT:      %[[rc:.*]] = linalg.range_intersect %{{.}}, %[[rc0]] : !linalg.range
 //  TILE-234-NEXT:      %[[sC:.*]] = linalg.slice %[[C]][%[[rc]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-234-NEXT:      linalg.matvec(%[[sAij]], %[[sB]], %[[sC]]) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
 
@@ -164,10 +184,12 @@ func @dot(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) 
 //  TILE-2-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<f32>
 //       TILE-2: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg1) step 2 {
 //  TILE-2-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-2-NEXT:   %[[ra:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[ra0:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[ra:.*]] = linalg.range_intersect %{{.}}, %[[ra0]] : !linalg.range
 //  TILE-2-NEXT:   %[[sAi:.*]] = linalg.slice %[[A]][%[[ra]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-2-NEXT:   %[[b:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-2-NEXT:   %[[rb:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[rb0:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-2-NEXT:   %[[rb:.*]] = linalg.range_intersect %{{.}}, %[[rb0]] : !linalg.range
 //  TILE-2-NEXT:   %[[sBi:.*]] = linalg.slice %[[B]][%[[rb]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-2-NEXT:   linalg.dot(%[[sAi]], %[[sBi]], %[[C]]) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
 
@@ -183,9 +205,11 @@ func @dot(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) 
 //  TILE-234-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<f32>
 //       TILE-234:  affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%arg1) step 2 {
 //  TILE-234-NEXT:    %[[a:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-234-NEXT:    %[[ra:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-234-NEXT:    %[[ra0:.*]] = linalg.range %i0:%[[a]]:%c2 : !linalg.range
+//  TILE-234-NEXT:    %[[ra:.*]] = linalg.range_intersect %{{.}}, %[[ra0]] : !linalg.range
 //  TILE-234-NEXT:    %[[sA:.*]] = linalg.slice %[[A]][%[[ra]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-234-NEXT:    %[[b:.*]] = affine.apply #[[UB0]](%i0)
-//  TILE-234-NEXT:    %[[rb:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-234-NEXT:    %[[rb0:.*]] = linalg.range %i0:%[[b]]:%c2 : !linalg.range
+//  TILE-234-NEXT:    %[[rb:.*]] = linalg.range_intersect %{{.}}, %[[rb0]] : !linalg.range
 //  TILE-234-NEXT:    %[[sB:.*]] = linalg.slice %[[B]][%[[rb]]] : !linalg.view<?xf32>, !linalg.range, !linalg.view<?xf32>
 //  TILE-234-NEXT:    linalg.dot(%[[sA]], %[[sB]], %[[C]]) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>

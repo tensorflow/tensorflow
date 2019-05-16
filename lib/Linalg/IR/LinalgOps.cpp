@@ -488,12 +488,12 @@ void mlir::linalg::ViewOp::print(OpAsmPrinter *p) {
   *p << "] : " << getType();
 }
 
-/// Buffer size prints as:
-///
-/// ``` {.mlir}
-///    %0 = linalg.buffer_size %arg0 : !linalg.buffer<f32>
-/// ```
-static void printBufferSizeOp(OpAsmPrinter *p, BufferSizeOp op) {
+///////////////////// Operations defined with Tablegen /////////////////////////
+// For such operations that do not correspond to library calls (i.e. defined in
+// LinalgOps.td), we define an overloaded `print` function and a
+// parse`className` function.
+
+static void print(OpAsmPrinter *p, BufferSizeOp op) {
   *p << op.getOperationName() << " " << *op.getOperand();
   p->printOptionalAttrDict(op.getAttrs());
   *p << " : " << op.getOperand()->getType();
@@ -511,7 +511,7 @@ static ParseResult parseBufferSizeOp(OpAsmParser *parser,
                                        result->types));
 }
 
-static void printDimOp(OpAsmPrinter *p, DimOp op) {
+static void print(OpAsmPrinter *p, linalg::DimOp op) {
   *p << op.getOperationName() << " " << *op.getOperand() << ", "
      << op.getIndex();
   p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"index"});
@@ -532,23 +532,28 @@ static ParseResult parseDimOp(OpAsmParser *parser, OperationState *result) {
                  parser->addTypeToList(indexType, result->types));
 }
 
-static LogicalResult verify(linalg::DimOp op) {
-  // Check that we have an integer index operand.
-  auto indexAttr = op.getAttrOfType<IntegerAttr>("index");
-  if (!indexAttr)
-    return op.emitOpError("requires an integer attribute named 'index'");
-
-  uint64_t index = indexAttr.getValue().getZExtValue();
-  auto type = op.getOperand()->getType();
-  if (auto viewType = type.dyn_cast<ViewType>()) {
-    if (index >= viewType.getRank())
-      return op.emitOpError("index is out of range");
-  } else {
-    return op.emitOpError("requires an operand with view type");
-  }
-
-  return success();
+static void print(OpAsmPrinter *p, RangeIntersectOp op) {
+  *p << op.getOperationName() << " " << *op.getOperand(0) << ", "
+     << *op.getOperand(1);
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getOperand(0)->getType();
 }
+
+static ParseResult parseRangeIntersectOp(OpAsmParser *parser,
+                                         OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type type;
+  return failure(parser->parseOperandList(ops) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonType(type) ||
+                 parser->resolveOperands(ops, type, result->operands) ||
+                 parser->addTypeToList(type, result->types));
+}
+
+/////// Operations corresponding to library calls defined with Tablegen ////////
+// For such operations correspond to library calls (i.e. defined in
+// LinalgLibraryOps.td), we define an overloaded `print` function and a
+// parse`className` function.
 
 // A LinalgLibraryOp prints as:
 //

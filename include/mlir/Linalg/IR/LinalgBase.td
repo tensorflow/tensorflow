@@ -19,13 +19,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LINALG_OPS
-#else
-
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+
+#ifdef LINALG_BASE
+#else
+#define LINALG_BASE
 
 def Linalg_Dialect : Dialect {
   let name = "linalg";
@@ -35,8 +33,12 @@ def Linalg_Dialect : Dialect {
 def LinalgIsBufferTypePred : CPred<"$_self.isa<BufferType>()">;
 def Buffer : Type<LinalgIsBufferTypePred, "buffer">;
 
+// Whether a type is a RangeType.
+def LinalgIsRangeTypePred : CPred<"$_self.isa<RangeType>()">;
+def Range : Type<LinalgIsRangeTypePred, "range">;
+
 // Whether a type is a ViewType.
 def LinalgIsViewTypePred : CPred<"$_self.isa<ViewType>()">;
 def View : Type<LinalgIsViewTypePred, "view">;
 
-#endif // LINALG_OPS
+#endif // LINALG_BASE

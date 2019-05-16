@@ -63,3 +63,10 @@ func @dim(%arg0: !linalg.view<?x?xf32>) {
 //  CHECK-NEXT:   %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
 //  CHECK-NEXT:   linalg.buffer_dealloc %1 : !linalg.buffer<f32>
 
+func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.range {
+  %0 = linalg.range_intersect %arg0, %arg1 : !linalg.range
+  return %0 : !linalg.range
+}
+// CHECK-LABEL: func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.range {
+//  CHECK-NEXT:   %0 = linalg.range_intersect %arg0, %arg1 : !linalg.range
+//  CHECK-NEXT:   return %0 : !linalg.range

@@ -234,13 +234,13 @@ static SmallVector<Value *, 4> makeTiledViews(FuncBuilder *b, Location loc,
       unsigned pos2 = it - nzMap.getResults().begin();
       using edsc::op::operator+;
       using range = ValueBuilder<RangeOp>;
+      using range_intersect = ValueBuilder<RangeIntersectOp>;
       ScopedContext scope(*b, loc);
       ValueHandle iv(ivs[pos2]), step(tileSizes[pos]);
       auto min = ValueHandle(extractRangePart(ranges[j], RangePart::Min));
       // zero case is important enough to fold away by special-casing.
       auto newMin = isZero(min) ? iv : min + iv;
-      // TODO(ntv): intersect with current range once the operation exists.
-      Value *r = range(newMin, newMin + step, step);
+      Value *r = range_intersect(ranges[j], range(newMin, newMin + step, step));
       newRanges.push_back(r);
     }
     res.push_back(createOrReturnView(b, loc, viewDefiningOp, newRanges));
