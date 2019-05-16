@@ -85,11 +85,6 @@ void RunKernel(Tuning tuning, const PMatrix& lhs, const PMatrix& rhs,
       &mdst);
 }
 
-// The signature of RunKernel is the same, regardless of template parameters.
-using RunKernelFn =
-    decltype(RunKernel<Path::kStandardCpp, std::int8_t, std::int8_t,
-                       std::int8_t, BasicSpec<std::int32_t, std::int8_t>>);
-
 // Copied from TF Lite code.
 inline std::int32_t MultiplyByQuantizedMultiplier(
     std::int32_t x, std::int32_t quantized_multiplier, int shift) {

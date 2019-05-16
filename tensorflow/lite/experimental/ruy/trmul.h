@@ -28,11 +28,18 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
-#include "tensorflow/lite/experimental/ruy/kernel.h"
-#include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
+
+// The signature of RunKernel is the same, regardless of template parameters.
+// See kernel.h for the templated declaration of the function.
+using RunKernelFn = void(Tuning, const PMatrix&, const PMatrix&, void*, int,
+                         int, int, int, DMatrix*);
+
+// The signature of RunPack is the same, regardless of its template parameters.
+// See pack.h for the templated declaration of the function.
+using RunPackFn = void(Tuning, const DMatrix&, PMatrix*, int, int);
 
 // Type-erased data needed for implementing TrMul.
 struct TrMulParams {

@@ -36,9 +36,8 @@ limitations under the License.
 #include <limits>
 
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/experimental/ruy/common.h"
-#include "tensorflow/lite/experimental/ruy/context.h"
-#include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/trmul.h"
 
