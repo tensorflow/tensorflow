@@ -401,6 +401,13 @@ class MarkForCompilationPassImpl {
     return true;
   }
 
+  string EdgeContractionFailureMsg(Cluster* from, Cluster* to,
+                                   absl::string_view reason) {
+    return absl::StrCat("Could not contract ", from->DebugString(*graph_),
+                        " -> ", to->DebugString(*graph_), " because ", reason,
+                        ".");
+  }
+
   DebugOptions debug_options_;
   Graph* graph_;
   FunctionLibraryDefinition* flib_def_;
@@ -1067,8 +1074,7 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
 
 bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
     Cluster* from, Cluster* to, absl::string_view reason) {
-  VLOG(3) << "Could not contract " << from->DebugString(*graph_) << " -> "
-          << to->DebugString(*graph_) << " because " << reason << ".";
+  VLOG(3) << EdgeContractionFailureMsg(from, to, reason);
   return false;
 }
 
@@ -1077,8 +1083,14 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   DCHECK(from->deadness_predicate().has_value() ==
          to->deadness_predicate().has_value());
   if (from->deadness_predicate() != to->deadness_predicate()) {
-    return LogNotContractableAndReturnFalse(
-        from, to, "the two nodes have mismatching deadness");
+    VLOG(3) << EdgeContractionFailureMsg(
+        from, to,
+        absl::StrCat(
+            "the two nodes have mismatching deadness: ",
+            deadness_analysis_->DebugString(*from->deadness_predicate()),
+            " and ",
+            deadness_analysis_->DebugString(*to->deadness_predicate())));
+    return false;
   }
 
   TF_ASSIGN_OR_RETURN(bool devices_compatible,
