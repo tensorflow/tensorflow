@@ -178,17 +178,19 @@ TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
 
 void SingleOpModel::BuildInterpreter(
     std::vector<std::vector<int>> input_shapes) {
-  BuildInterpreter(input_shapes, -1, false);
+  BuildInterpreter(input_shapes, /*num_threads=*/-1,
+                   /*allow_fp32_relax_to_fp16=*/false);
 }
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads) {
-  BuildInterpreter(input_shapes, num_threads, false);
+  BuildInterpreter(input_shapes, num_threads,
+                   /*allow_fp32_relax_to_fp16=*/false);
 }
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      bool allow_fp32_relax_to_fp16) {
-  BuildInterpreter(input_shapes, -1, allow_fp32_relax_to_fp16);
+  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16);
 }
 
 // static
