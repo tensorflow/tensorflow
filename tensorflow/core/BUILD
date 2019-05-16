@@ -3171,9 +3171,7 @@ tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
         "common_runtime/accumulate_n_optimizer.cc",
-        "common_runtime/allocator_retry.cc",
         "common_runtime/base_collective_executor.cc",
-        "common_runtime/bfc_allocator.cc",
         "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
         "common_runtime/collective_executor_mgr.cc",
@@ -3244,6 +3242,7 @@ tf_cuda_library(
     hdrs = CORE_CPU_LIB_HEADERS,
     copts = tf_copts(),
     deps = [
+        ":bfc_allocator",
         ":graph",
         ":framework",
         ":framework_internal",
