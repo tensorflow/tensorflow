@@ -891,6 +891,13 @@ def import_scoped_meta_graph_with_return_elements(
                       key)
         continue
       from_proto = ops.get_from_proto_function(key)
+
+      # Temporary change to allow the TFMA evaluator to read metric variables
+      # saved as a bytes list.
+      # TODO(kathywu): Remove this hack once cl/248406059 has been submitted.
+      if key == ops.GraphKeys.METRIC_VARIABLES:
+        # Metric variables will use the same proto functions as GLOBAL_VARIABLES
+        from_proto = ops.get_from_proto_function(ops.GraphKeys.GLOBAL_VARIABLES)
       if from_proto and kind == "bytes_list":
         proto_type = ops.get_collection_proto_type(key)
         if key in ops.GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
