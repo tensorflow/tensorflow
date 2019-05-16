@@ -35,7 +35,7 @@ class MLIRContext;
 namespace detail {
 
 struct IntegerTypeStorage;
-struct VectorOrTensorTypeStorage;
+struct ShapedTypeStorage;
 struct VectorTypeStorage;
 struct RankedTensorTypeStorage;
 struct UnrankedTensorTypeStorage;
@@ -180,11 +180,13 @@ public:
   const llvm::fltSemantics &getFloatSemantics();
 };
 
+// TODO(b/132735995) Add support for MemRef
 /// This is a common base class between Vector, UnrankedTensor, and RankedTensor
-/// types, because many operations work on values of these aggregate types.
-class VectorOrTensorType : public Type {
+/// types because they share behavior and semantics around shape, rank, and
+/// fixed element type.
+class ShapedType : public Type {
 public:
-  using ImplType = detail::VectorOrTensorTypeStorage;
+  using ImplType = detail::ShapedTypeStorage;
   using Type::Type;
 
   /// Return the element type.
@@ -234,8 +236,8 @@ public:
 
 /// Vector types represent multi-dimensional SIMD vectors, and have a fixed
 /// known constant shape with one or more dimension.
-class VectorType : public Type::TypeBase<VectorType, VectorOrTensorType,
-                                         detail::VectorTypeStorage> {
+class VectorType
+    : public Type::TypeBase<VectorType, ShapedType, detail::VectorTypeStorage> {
 public:
   using Base::Base;
 
@@ -268,9 +270,9 @@ public:
 
 /// Tensor types represent multi-dimensional arrays, and have two variants:
 /// RankedTensorType and UnrankedTensorType.
-class TensorType : public VectorOrTensorType {
+class TensorType : public ShapedType {
 public:
-  using VectorOrTensorType::VectorOrTensorType;
+  using ShapedType::ShapedType;
 
   /// Return true if the specified element type is ok in a tensor.
   static bool isValidElementType(Type type) {

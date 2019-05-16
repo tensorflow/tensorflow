@@ -1163,9 +1163,9 @@ static LogicalResult verify(ConstantOp &op) {
     return success();
   }
 
-  if (type.isa<VectorOrTensorType>()) {
+  if (type.isa<ShapedType>()) {
     if (!value.isa<ElementsAttr>())
-      return op.emitOpError("requires 'value' to be a vector/tensor constant");
+      return op.emitOpError("requires 'value' to be a shaped constant");
     return success();
   }
 
@@ -1639,7 +1639,7 @@ static ParseResult parseExtractElementOp(OpAsmParser *parser,
                                          OperationState *result) {
   OpAsmParser::OperandType aggregateInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
-  VectorOrTensorType type;
+  ShapedType type;
 
   auto affineIntTy = parser->getBuilder().getIndexType();
   return failure(
@@ -1656,8 +1656,7 @@ static LogicalResult verify(ExtractElementOp op) {
   if (op.getNumOperands() == 0)
     return op.emitOpError("expected an aggregate to index into");
 
-  auto aggregateType =
-      op.getAggregate()->getType().dyn_cast<VectorOrTensorType>();
+  auto aggregateType = op.getAggregate()->getType().dyn_cast<ShapedType>();
   if (!aggregateType)
     return op.emitOpError("first operand must be a vector or tensor");
 

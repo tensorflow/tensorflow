@@ -201,7 +201,7 @@ void ModuleState::visitType(Type type) {
     // Visit affine maps in memref type.
     for (auto map : memref.getAffineMaps())
       recordAttributeReference(AffineMapAttr::get(map));
-  } else if (auto vecOrTensor = type.dyn_cast<VectorOrTensorType>()) {
+  } else if (auto vecOrTensor = type.dyn_cast<ShapedType>()) {
     visitType(vecOrTensor.getElementType());
   }
 }

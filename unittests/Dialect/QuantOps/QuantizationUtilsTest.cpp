@@ -49,7 +49,7 @@ template <typename ConcreteAttrClass, typename... Arg>
 ConcreteAttrClass getTestElementsAttr(MLIRContext *ctx, ArrayRef<int64_t> shape,
                                       Arg... value) {
   auto eleType = FloatType::getF32(ctx);
-  VectorOrTensorType tensorType;
+  ShapedType tensorType;
   if (shape.size() == 1 && shape[0] == -1) {
     tensorType = UnrankedTensorType::get(eleType);
   } else {
@@ -61,7 +61,7 @@ ConcreteAttrClass getTestElementsAttr(MLIRContext *ctx, ArrayRef<int64_t> shape,
 ElementsAttr getTestSparseElementsAttr(MLIRContext *ctx,
                                        ArrayRef<int64_t> shape) {
   auto eleType = FloatType::getF32(ctx);
-  VectorOrTensorType tensorType;
+  ShapedType tensorType;
   if (shape.size() == 1 && shape[0] == -1) {
     tensorType = UnrankedTensorType::get(eleType);
   } else {

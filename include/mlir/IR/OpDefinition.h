@@ -591,7 +591,6 @@ public:
 /// This class provides verification for ops that are known to have the same
 /// operand and result element type.
 ///
-/// TODO: This only works for VectorOrTensorType at the moment.
 template <typename ConcreteType>
 class SameOperandsAndResultElementType
     : public TraitBase<ConcreteType, SameOperandsAndResultElementType> {

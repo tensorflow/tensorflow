@@ -200,9 +200,9 @@ public:
   // Polyhedral structures.
   ParseResult parseAffineMapOrIntegerSetReference(AffineMap &map,
                                                   IntegerSet &set);
-  DenseElementsAttr parseDenseElementsAttr(VectorOrTensorType type);
+  DenseElementsAttr parseDenseElementsAttr(ShapedType type);
   DenseElementsAttr parseDenseElementsAttrAsTensor(Type eltType);
-  VectorOrTensorType parseVectorOrTensorType();
+  ShapedType parseShapedType();
 
   // Location Parsing.
 
@@ -1255,7 +1255,7 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::comma, "expected ','"))
       return nullptr;
 
-    auto type = parseVectorOrTensorType();
+    auto type = parseShapedType();
     if (!type)
       return nullptr;
 
@@ -1279,7 +1279,7 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::less, "expected '<' after 'splat'"))
       return nullptr;
 
-    auto type = parseVectorOrTensorType();
+    auto type = parseShapedType();
     if (!type)
       return nullptr;
     switch (getToken().getKind()) {
@@ -1305,7 +1305,7 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::less, "expected '<' after 'dense'"))
       return nullptr;
 
-    auto type = parseVectorOrTensorType();
+    auto type = parseShapedType();
     if (!type)
       return nullptr;
 
@@ -1323,7 +1323,7 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::less, "Expected '<' after 'sparse'"))
       return nullptr;
 
-    auto type = parseVectorOrTensorType();
+    auto type = parseShapedType();
     if (!type)
       return nullptr;
 
@@ -1414,7 +1414,7 @@ DenseElementsAttr Parser::parseDenseElementsAttrAsTensor(Type eltType) {
 /// This method compares the shapes from the parsing result and that from the
 /// input argument. It returns a constructed dense elements attribute if both
 /// match.
-DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType type) {
+DenseElementsAttr Parser::parseDenseElementsAttr(ShapedType type) {
   auto eltTy = type.getElementType();
   TensorLiteralParser literalParser(*this, eltTy);
   if (literalParser.parse())
@@ -1431,27 +1431,26 @@ DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType type) {
       .cast<DenseElementsAttr>();
 }
 
-/// Vector or tensor type for elements attribute.
+/// Shaped type for elements attribute.
 ///
-///   vector-or-tensor-type ::= vector-type | tensor-type
+///   shaped-type ::= vector-type | tensor-type
 ///
 /// This method also checks the type has static shape and ranked.
-VectorOrTensorType Parser::parseVectorOrTensorType() {
+ShapedType Parser::parseShapedType() {
   auto elementType = parseType();
   if (!elementType)
     return nullptr;
 
-  auto type = elementType.dyn_cast<VectorOrTensorType>();
+  auto type = elementType.dyn_cast<ShapedType>();
   if (!type) {
-    return (emitError("expected elements literal has a tensor or vector type"),
-            nullptr);
+    return (emitError("elements literal must be a shaped type"), nullptr);
   }
 
   if (parseToken(Token::comma, "expected ','"))
     return nullptr;
 
   if (!type.hasStaticShape() || type.getRank() == -1) {
-    return (emitError("tensor literals must be ranked and have static shape"),
+    return (emitError("shaped literal must be ranked and have static shape"),
             nullptr);
   }
   return type;

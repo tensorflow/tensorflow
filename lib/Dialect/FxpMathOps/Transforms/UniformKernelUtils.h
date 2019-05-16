@@ -168,12 +168,12 @@ struct QuantizedMultiplierSmallerThanOneExp {
 
 /// Casts an integer or floating point based type to a new element type.
 inline Type castElementType(Type t, Type newElementType) {
-  if (auto vt = t.dyn_cast<VectorOrTensorType>()) {
-    switch (vt.getKind()) {
+  if (auto st = t.dyn_cast<ShapedType>()) {
+    switch (st.getKind()) {
     case StandardTypes::Kind::Vector:
-      return VectorType::get(vt.getShape(), newElementType);
+      return VectorType::get(st.getShape(), newElementType);
     case StandardTypes::Kind::RankedTensor:
-      return RankedTensorType::get(vt.getShape(), newElementType);
+      return RankedTensorType::get(st.getShape(), newElementType);
     case StandardTypes::Kind::UnrankedTensor:
       return UnrankedTensorType::get(newElementType);
     }
@@ -185,10 +185,10 @@ inline Type castElementType(Type t, Type newElementType) {
 /// Creates an IntegerAttr with a type that matches the shape of 't' (which can
 /// be a primitive/vector/tensor).
 inline Attribute broadcastScalarConstIntValue(Type t, int64_t value) {
-  if (auto vt = t.dyn_cast<VectorOrTensorType>()) {
-    assert(vt.getElementType().isa<IntegerType>());
-    return SplatElementsAttr::get(vt,
-                                  IntegerAttr::get(vt.getElementType(), value));
+  if (auto st = t.dyn_cast<ShapedType>()) {
+    assert(st.getElementType().isa<IntegerType>());
+    return SplatElementsAttr::get(st,
+                                  IntegerAttr::get(st.getElementType(), value));
   }
 
   auto integerType = t.cast<IntegerType>();
@@ -211,13 +211,13 @@ inline APFloat convertFloatToType(FloatType ft, APFloat value) {
 /// Creates an IntegerAttr with a type that matches the shape of 't' (which can
 /// be a primitive/vector/tensor).
 inline Attribute broadcastScalarConstFloatValue(Type t, APFloat value) {
-  if (auto vt = t.dyn_cast<VectorOrTensorType>()) {
-    FloatType floatElementType = vt.getElementType().dyn_cast<FloatType>();
+  if (auto st = t.dyn_cast<ShapedType>()) {
+    FloatType floatElementType = st.getElementType().dyn_cast<FloatType>();
     assert(floatElementType &&
            "float broadcast element type must be float like");
     APFloat apValue = convertFloatToType(floatElementType, value);
-    return SplatElementsAttr::get(vt,
-                                  FloatAttr::get(vt.getElementType(), apValue));
+    return SplatElementsAttr::get(st,
+                                  FloatAttr::get(st.getElementType(), apValue));
   } else {
     auto floatType = t.dyn_cast<FloatType>();
     assert(floatType && "float broadcast must be of float type");

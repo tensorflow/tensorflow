@@ -66,18 +66,18 @@ static bool getElementsStatistics(ElementsAttr attr,
   statistics.minValue = std::numeric_limits<double>::infinity();
   statistics.maxValue = -std::numeric_limits<double>::infinity();
 
-  VectorOrTensorType vtType = attr.getType();
-  if (!vtType.hasStaticShape())
+  ShapedType sType = attr.getType();
+  if (!sType.hasStaticShape())
     return false;
-  Type elementTy = vtType.getElementType();
+  Type elementTy = sType.getElementType();
   if (!elementTy.isa<FloatType>())
     return false;
 
   llvm::SmallVector<uint64_t, 4> indices;
-  indices.resize(vtType.getRank());
-  ArrayRef<int64_t> shape = vtType.getShape();
+  indices.resize(sType.getRank());
+  ArrayRef<int64_t> shape = sType.getShape();
 
-  auto numElements = vtType.getNumElements();
+  auto numElements = sType.getNumElements();
   collectElementsStatisticsDim(attr, numElements, shape, indices, 0,
                                statistics);
   statistics.sampleSize = numElements;

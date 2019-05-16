@@ -33,7 +33,7 @@ def OpC : NS_Op<"op_for_TCopVTEtIs", [
 }
 
 // CHECK-LABEL: OpC::verify
-// CHECK: if (!((((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType().isInteger(32)))))
+// CHECK: if (!((((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType().isInteger(32)))))
 
 
 def OpD : NS_Op<"op_for_TCOpVTEtIsSameAs", [
@@ -44,7 +44,7 @@ def OpD : NS_Op<"op_for_TCOpVTEtIsSameAs", [
 }
 
 // CHECK-LABEL: OpD::verify
-// CHECK: if (!((((*this->getOperation()).getNumOperands() > std::max(0,0))) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType()))))
+// CHECK: if (!((((*this->getOperation()).getNumOperands() > std::max(0,0))) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType()))))
 // CHECK-NEXT: return emitOpError("failed to verify that first operand is a vector or tensor with the same elemental type as itself");
 
 
@@ -57,7 +57,7 @@ def OpE : NS_Op<"op_for_TCresVTEtIsSameAsOp", [
 }
 
 // CHECK-LABEL: OpE::verify
-// CHECK: if (!((((*this->getOperation()).getNumResults() > 0)) && (((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getResult(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<VectorOrTensorType>())) && (((*this->getOperation()).getResult(0)->getType().cast<VectorOrTensorType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<VectorOrTensorType>().getElementType()))))
+// CHECK: if (!((((*this->getOperation()).getNumResults() > 0)) && (((*this->getOperation()).getNumOperands() > 0)) && (((*this->getOperation()).getResult(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getOperand(0)->getType().isa<ShapedType>())) && (((*this->getOperation()).getResult(0)->getType().cast<ShapedType>().getElementType() == (*this->getOperation()).getOperand(0)->getType().cast<ShapedType>().getElementType()))))
 // CHECK-NEXT: return emitOpError("failed to verify that first operand is a vector or tensor with the same elemental type as first result");
 
 
@@ -107,7 +107,7 @@ def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt", [
 
 // CHECK-LABEL: OpJ::verify()
 // CHECK:      llvm::is_splat(mlir::functional::map(
-// CHECK-SAME:   [this](unsigned i) { return this->getOperand(i)->getType().cast<VectorOrTensorType>().getElementType(); },
+// CHECK-SAME:   [this](unsigned i) { return this->getOperand(i)->getType().cast<ShapedType>().getElementType(); },
 // CHECK-SAME:   llvm::ArrayRef<unsigned>({0, 2, 3})))
 // CHECK:   return emitOpError("failed to verify that operands indexed at 0, 2, 3 should all have the same type");
 

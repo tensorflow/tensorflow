@@ -104,18 +104,18 @@ unsigned Type::getIntOrFloatBitWidth() {
 }
 
 //===----------------------------------------------------------------------===//
-// VectorOrTensorType
+// ShapedType
 //===----------------------------------------------------------------------===//
 
-Type VectorOrTensorType::getElementType() const {
+Type ShapedType::getElementType() const {
   return static_cast<ImplType *>(impl)->elementType;
 }
 
-unsigned VectorOrTensorType::getElementTypeBitWidth() const {
+unsigned ShapedType::getElementTypeBitWidth() const {
   return getElementType().getIntOrFloatBitWidth();
 }
 
-unsigned VectorOrTensorType::getNumElements() const {
+unsigned ShapedType::getNumElements() const {
   switch (getKind()) {
   case StandardTypes::Vector:
   case StandardTypes::RankedTensor: {
@@ -127,13 +127,13 @@ unsigned VectorOrTensorType::getNumElements() const {
     return num;
   }
   default:
-    llvm_unreachable("not a VectorOrTensorType or not ranked");
+    llvm_unreachable("not a ShapedType or not ranked");
   }
 }
 
 /// If this is ranked tensor or vector type, return the rank. If it is an
 /// unranked tensor, return -1.
-int64_t VectorOrTensorType::getRank() const {
+int64_t ShapedType::getRank() const {
   switch (getKind()) {
   case StandardTypes::Vector:
   case StandardTypes::RankedTensor:
@@ -141,24 +141,24 @@ int64_t VectorOrTensorType::getRank() const {
   case StandardTypes::UnrankedTensor:
     return -1;
   default:
-    llvm_unreachable("not a VectorOrTensorType");
+    llvm_unreachable("not a ShapedType");
   }
 }
 
-int64_t VectorOrTensorType::getDimSize(unsigned i) const {
+int64_t ShapedType::getDimSize(unsigned i) const {
   switch (getKind()) {
   case StandardTypes::Vector:
   case StandardTypes::RankedTensor:
     return getShape()[i];
   default:
-    llvm_unreachable("not a VectorOrTensorType or not ranked");
+    llvm_unreachable("not a ShapedType or not ranked");
   }
 }
 
 // Get the number of number of bits require to store a value of the given vector
 // or tensor types.  Compute the value recursively since tensors are allowed to
 // have vectors as elements.
-int64_t VectorOrTensorType::getSizeInBits() const {
+int64_t ShapedType::getSizeInBits() const {
   assert(hasStaticShape() &&
          "cannot get the bit size of an aggregate with a dynamic shape");
 
@@ -168,23 +168,23 @@ int64_t VectorOrTensorType::getSizeInBits() const {
 
   // Tensors can have vectors and other tensors as elements, vectors cannot.
   assert(!isa<VectorType>() && "unsupported vector element type");
-  auto elementVectorOrTensorType = elementType.dyn_cast<VectorOrTensorType>();
-  assert(elementVectorOrTensorType && "unsupported tensor element type");
-  return getNumElements() * elementVectorOrTensorType.getSizeInBits();
+  auto elementShapedType = elementType.dyn_cast<ShapedType>();
+  assert(elementShapedType && "unsupported tensor element type");
+  return getNumElements() * elementShapedType.getSizeInBits();
 }
 
-ArrayRef<int64_t> VectorOrTensorType::getShape() const {
+ArrayRef<int64_t> ShapedType::getShape() const {
   switch (getKind()) {
   case StandardTypes::Vector:
     return cast<VectorType>().getShape();
   case StandardTypes::RankedTensor:
     return cast<RankedTensorType>().getShape();
   default:
-    llvm_unreachable("not a VectorOrTensorType or not ranked");
+    llvm_unreachable("not a ShapedType or not ranked");
   }
 }
 
-bool VectorOrTensorType::hasStaticShape() const {
+bool ShapedType::hasStaticShape() const {
   if (isa<UnrankedTensorType>())
     return false;
   return llvm::none_of(getShape(), [](int64_t i) { return i < 0; });

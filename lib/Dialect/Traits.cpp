@@ -80,8 +80,8 @@ bool OpTrait::util::getBroadcastedShape(ArrayRef<int64_t> shape1,
 /// Returns the shape of the given type. Scalars will be considered as having a
 /// shape with zero dimensions.
 static ArrayRef<int64_t> getShape(Type type) {
-  if (auto vtType = type.dyn_cast<VectorOrTensorType>())
-    return vtType.getShape();
+  if (auto sType = type.dyn_cast<ShapedType>())
+    return sType.getShape();
   return {};
 }
 
@@ -92,8 +92,8 @@ static ArrayRef<int64_t> getShape(Type type) {
 Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   // Returns the scalar type out of the given type.
   auto getScalarType = [](Type type) -> Type {
-    if (auto vtType = type.dyn_cast<VectorOrTensorType>())
-      return vtType.getElementType();
+    if (auto shapedType = type.dyn_cast<ShapedType>())
+      return shapedType.getElementType();
     return type;
   };
 

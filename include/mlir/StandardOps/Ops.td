@@ -375,7 +375,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, Value *aggregate,"
     "ArrayRef<Value *> indices = {}", [{
-      auto resType = aggregate->getType().cast<VectorOrTensorType>()
+      auto resType = aggregate->getType().cast<ShapedType>()
                                          .getElementType();
       build(builder, result, resType, aggregate, indices);
     }]>];

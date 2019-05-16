@@ -173,34 +173,32 @@ FunctionAttr Builder::getFunctionAttr(Function *value) {
   return FunctionAttr::get(value);
 }
 
-ElementsAttr Builder::getSplatElementsAttr(VectorOrTensorType type,
-                                           Attribute elt) {
+ElementsAttr Builder::getSplatElementsAttr(ShapedType type, Attribute elt) {
   return SplatElementsAttr::get(type, elt);
 }
 
-ElementsAttr Builder::getDenseElementsAttr(VectorOrTensorType type,
+ElementsAttr Builder::getDenseElementsAttr(ShapedType type,
                                            ArrayRef<char> data) {
   return DenseElementsAttr::get(type, data);
 }
 
-ElementsAttr Builder::getDenseElementsAttr(VectorOrTensorType type,
+ElementsAttr Builder::getDenseElementsAttr(ShapedType type,
                                            ArrayRef<Attribute> values) {
   return DenseElementsAttr::get(type, values);
 }
 
-ElementsAttr Builder::getDenseIntElementsAttr(VectorOrTensorType type,
+ElementsAttr Builder::getDenseIntElementsAttr(ShapedType type,
                                               ArrayRef<int64_t> values) {
   return DenseIntElementsAttr::get(type, values);
 }
 
-ElementsAttr Builder::getSparseElementsAttr(VectorOrTensorType type,
+ElementsAttr Builder::getSparseElementsAttr(ShapedType type,
                                             DenseIntElementsAttr indices,
                                             DenseElementsAttr values) {
   return SparseElementsAttr::get(type, indices, values);
 }
 
-ElementsAttr Builder::getOpaqueElementsAttr(Dialect *dialect,
-                                            VectorOrTensorType type,
+ElementsAttr Builder::getOpaqueElementsAttr(Dialect *dialect, ShapedType type,
                                             StringRef bytes) {
   return OpaqueElementsAttr::get(dialect, type, bytes);
 }
@@ -249,7 +247,7 @@ Attribute Builder::getZeroAttr(Type type) {
   }
   case StandardTypes::Vector:
   case StandardTypes::RankedTensor: {
-    auto vtType = type.cast<VectorOrTensorType>();
+    auto vtType = type.cast<ShapedType>();
     auto element = getZeroAttr(vtType.getElementType());
     if (!element)
       return {};

@@ -32,7 +32,7 @@ class IntegerSet;
 class Location;
 class MLIRContext;
 class Type;
-class VectorOrTensorType;
+class ShapedType;
 
 namespace detail {
 
@@ -417,7 +417,7 @@ class ElementsAttr : public Attribute {
 public:
   using Attribute::Attribute;
 
-  VectorOrTensorType getType() const;
+  ShapedType getType() const;
 
   /// Return the value at the given index. If index does not refer to a valid
   /// element, then a null attribute is returned.
@@ -439,7 +439,7 @@ public:
   using Base::Base;
   using ValueType = Attribute;
 
-  static SplatElementsAttr get(VectorOrTensorType type, Attribute elt);
+  static SplatElementsAttr get(ShapedType type, Attribute elt);
   Attribute getValue() const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
@@ -457,12 +457,11 @@ public:
 
   /// It assumes the elements in the input array have been truncated to the bits
   /// width specified by the element type.
-  static DenseElementsAttr get(VectorOrTensorType type, ArrayRef<char> data);
+  static DenseElementsAttr get(ShapedType type, ArrayRef<char> data);
 
   // Constructs a dense elements attribute from an array of element values. Each
   // element attribute value is expected to be an element of 'type'.
-  static DenseElementsAttr get(VectorOrTensorType type,
-                               ArrayRef<Attribute> values);
+  static DenseElementsAttr get(ShapedType type, ArrayRef<Attribute> values);
 
   /// Returns the number of elements held by this attribute.
   size_t size() const;
@@ -542,7 +541,7 @@ protected:
   // Constructs a dense elements attribute from an array of raw APInt values.
   // Each APInt value is expected to have the same bitwidth as the element type
   // of 'type'.
-  static DenseElementsAttr get(VectorOrTensorType type, ArrayRef<APInt> values);
+  static DenseElementsAttr get(ShapedType type, ArrayRef<APInt> values);
 };
 
 /// An attribute that represents a reference to a dense integer vector or tensor
@@ -562,14 +561,12 @@ public:
   /// Constructs a dense integer elements attribute from an array of APInt
   /// values. Each APInt value is expected to have the same bitwidth as the
   /// element type of 'type'.
-  static DenseIntElementsAttr get(VectorOrTensorType type,
-                                  ArrayRef<APInt> values);
+  static DenseIntElementsAttr get(ShapedType type, ArrayRef<APInt> values);
 
   /// Constructs a dense integer elements attribute from an array of integer
   /// values. Each value is expected to be within the bitwidth of the element
   /// type of 'type'.
-  static DenseIntElementsAttr get(VectorOrTensorType type,
-                                  ArrayRef<int64_t> values);
+  static DenseIntElementsAttr get(ShapedType type, ArrayRef<int64_t> values);
 
   /// Gets the integer value of each of the dense elements.
   void getValues(SmallVectorImpl<APInt> &values) const;
@@ -609,8 +606,7 @@ public:
   // Constructs a dense float elements attribute from an array of APFloat
   // values. Each APFloat value is expected to have the same bitwidth as the
   // element type of 'type'.
-  static DenseFPElementsAttr get(VectorOrTensorType type,
-                                 ArrayRef<APFloat> values);
+  static DenseFPElementsAttr get(ShapedType type, ArrayRef<APFloat> values);
 
   /// Gets the float value of each of the dense elements.
   void getValues(SmallVectorImpl<APFloat> &values) const;
@@ -637,7 +633,7 @@ public:
   using Base::Base;
   using ValueType = StringRef;
 
-  static OpaqueElementsAttr get(Dialect *dialect, VectorOrTensorType type,
+  static OpaqueElementsAttr get(Dialect *dialect, ShapedType type,
                                 StringRef bytes);
 
   StringRef getValue() const;
@@ -684,8 +680,7 @@ class SparseElementsAttr
 public:
   using Base::Base;
 
-  static SparseElementsAttr get(VectorOrTensorType type,
-                                DenseIntElementsAttr indices,
+  static SparseElementsAttr get(ShapedType type, DenseIntElementsAttr indices,
                                 DenseElementsAttr values);
 
   DenseIntElementsAttr getIndices() const;

@@ -315,7 +315,7 @@ static ValueHandle createBinaryHandle(
     return createBinaryHandle<IOp>(lhs, rhs);
   } else if (thisType.isa<FloatType>()) {
     return createBinaryHandle<FOp>(lhs, rhs);
-  } else if (auto aggregateType = thisType.dyn_cast<VectorOrTensorType>()) {
+  } else if (auto aggregateType = thisType.dyn_cast<ShapedType>()) {
     if (aggregateType.getElementType().isa<IntegerType>())
       return createBinaryHandle<IOp>(lhs, rhs);
     else if (aggregateType.getElementType().isa<FloatType>())

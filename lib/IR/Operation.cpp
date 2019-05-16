@@ -775,8 +775,8 @@ LogicalResult OpTrait::impl::verifyAtLeastNResults(Operation *op,
 }
 
 /// Returns success if the given two types have the same shape. That is,
-/// they are both scalars, or they are both vectors / ranked tensors with
-/// the same dimension specifications. The element type does not matter.
+/// they are both scalars, or they are both static shaped types with the same
+/// dimension specifications. The element type does not matter.
 static LogicalResult verifyShapeMatch(Type type1, Type type2) {
   // Check scalar cases
   if (type1.isIntOrIndexOrFloat())
@@ -787,9 +787,9 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
     return failure();
 
   // Check normal vector/tensor cases
-  if (auto vtType1 = type1.dyn_cast<VectorOrTensorType>()) {
-    auto vtType2 = type2.dyn_cast<VectorOrTensorType>();
-    return success(vtType2 && vtType1.getShape() == vtType2.getShape());
+  if (auto sType1 = type1.dyn_cast<ShapedType>()) {
+    auto sType2 = type2.dyn_cast<ShapedType>();
+    return success(sType2 && sType1.getShape() == sType2.getShape());
   }
 
   return success();
@@ -818,14 +818,14 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return failure();
 
-  auto type = op->getResult(0)->getType().dyn_cast<VectorOrTensorType>();
+  auto type = op->getResult(0)->getType().dyn_cast<ShapedType>();
   if (!type)
     return op->emitOpError("requires vector or tensor type results");
   auto elementType = type.getElementType();
 
   // Verify result element type matches first result's element type.
   for (auto result : drop_begin(op->getResults(), 1)) {
-    auto resultType = result->getType().dyn_cast<VectorOrTensorType>();
+    auto resultType = result->getType().dyn_cast<ShapedType>();
     if (!resultType)
       return op->emitOpError("requires vector or tensor type results");
     if (resultType.getElementType() != elementType)
@@ -835,7 +835,7 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
 
   // Verify operand's element type matches first result's element type.
   for (auto operand : op->getOperands()) {
-    auto operandType = operand->getType().dyn_cast<VectorOrTensorType>();
+    auto operandType = operand->getType().dyn_cast<ShapedType>();
     if (!operandType)
       return op->emitOpError("requires vector or tensor type operands");
     if (operandType.getElementType() != elementType)

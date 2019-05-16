@@ -23,8 +23,8 @@ using namespace mlir;
 using namespace mlir::quantizer;
 
 Type mlir::quantizer::getElementOrPrimitiveType(Type t) {
-  if (auto vtType = t.dyn_cast<VectorOrTensorType>()) {
-    return vtType.getElementType();
+  if (auto sType = t.dyn_cast<ShapedType>()) {
+    return sType.getElementType();
   } else {
     return t;
   }

@@ -189,14 +189,14 @@ def IsVectorTypePred : CPred<"$_self.isa<VectorType>()">;
 // Whether a type is a TensorType.
 def IsTensorTypePred : CPred<"$_self.isa<TensorType>()">;
 
-// Whether a type is a VectorOrTensorType.
-def IsVectorOrTensorTypePred : CPred<"$_self.isa<VectorOrTensorType>()">;
+// Whether a type is a MemRefType.
+def IsMemRefTypePred : CPred<"$_self.isa<MemRefType>()">;
+
+// Whether a type is a ShapedType.
+def IsShapedTypePred : CPred<"$_self.isa<ShapedType>()">;
 
 // Whether a type is a TupleType.
 def IsTupleTypePred : CPred<"$_self.isa<TupleType>()">;
-
-// Whether a type is a MemRefType.
-def IsMemRefTypePred : CPred<"$_self.isa<MemRefType>()">;
 
 // For a TensorType, verify that it is a statically shaped tensor.
 def IsStaticShapeTensorTypePred :
@@ -345,7 +345,7 @@ class Vector<Type t, list<int> dims> : ContainerType<t, AllOf<[
   list<int> dimensions = dims;
 }
 
-def VectorOrTensor : Type<IsVectorOrTensorTypePred, "vector or tensor">;
+def VectorOrTensor : Type<IsShapedTypePred, "vector or tensor">;
 
 // Tensor type.
 
@@ -953,50 +953,49 @@ class Results<dag rets> {
 // Common op type constraints
 //===----------------------------------------------------------------------===//
 
-// Type Constraint operand `idx`'s Vector or Tensor Element type is `type`.
+// Type Constraint operand `idx`'s Element type is `type`.
 class TCopVTEtIs<int idx, Type type> : AllOf<[
    CPred<"$_op.getNumOperands() > " # idx>,
    SubstLeaves<"$_self",  "$_op.getOperand(" # idx # ")->getType()",
-     IsVectorOrTensorTypePred>,
+     IsShapedTypePred>,
    SubstLeaves<"$_self",  "$_op.getOperand(" # idx #
-     ")->getType().cast<VectorOrTensorType>().getElementType()",
+     ")->getType().cast<ShapedType>().getElementType()",
      type.predicate>]>;
 
 // Predicate to verify that the i'th operand and the j'th operand have the same
 // elemental type.
-// Type Constraint operand `i`'s Vector or Tensor Element type is Same As
-// operand `j`'s element type.
+// Type Constraint operand `i`'s Element type is Same As operand `j`'s Element
+// type.
 class TCopVTEtIsSameAs<int i, int j> : AllOf<[
     CPred<"$_op.getNumOperands() > std::max(" # i # "," # j # ")">,
     SubstLeaves<"$_self",  "$_op.getOperand(" # i # ")->getType()",
-      IsVectorOrTensorTypePred>,
+      IsShapedTypePred>,
     SubstLeaves<"$_self",  "$_op.getOperand(" # j # ")->getType()",
-      IsVectorOrTensorTypePred>,
+      IsShapedTypePred>,
     // TODO: This could be made into C++ function instead.
-    CPred<"$_op.getOperand(" # i # ")->getType().cast<VectorOrTensorType>()."
+    CPred<"$_op.getOperand(" # i # ")->getType().cast<ShapedType>()."
           "getElementType() == $_op.getOperand(" # j # ")->getType()."
-          "cast<VectorOrTensorType>().getElementType()">]>;
+          "cast<ShapedType>().getElementType()">]>;
 
 // Predicate to verify that the i'th result and the j'th operand have the same
 // elemental type.
-// Type Constraint result`i`'s Vector or Tensor Element type is Same As
-// Type Constraint Operand `j`'s Vector or Tensor Element type.
+// Type Constraint result`i`'s Element type is Same As Operand `j`'s Element
+// type.
 class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
     CPred<"$_op.getNumResults() > " # i>,
     CPred<"$_op.getNumOperands() > " # j>,
     SubstLeaves<"$_self",  "$_op.getResult(" # i # ")->getType()",
-      IsVectorOrTensorTypePred>,
+      IsShapedTypePred>,
     SubstLeaves<"$_self",  "$_op.getOperand(" # j # ")->getType()",
-      IsVectorOrTensorTypePred>,
+      IsShapedTypePred>,
     // TODO: This could be made into C++ function instead.
-    CPred<"$_op.getResult(" # i # ")->getType().cast<VectorOrTensorType>()."
+    CPred<"$_op.getResult(" # i # ")->getType().cast<ShapedType>()."
           "getElementType() == $_op.getOperand(" # j # ")->getType()."
-          "cast<VectorOrTensorType>().getElementType()">]>;
+          "cast<ShapedType>().getElementType()">]>;
 
 // Predicate to verify that all the operands at the given `indices`
 // have the same element type.
-// Type Constraint operands' Vector or Tensor Element type are all Same At
-// the given `indices`.
+// Type Constraint operands' Element type are all Same At the given `indices`.
 // We query the operands' types into a list and check they are all the same.
 // Precondition:
 // 1) all operands involved are of vector or tensor type and
@@ -1004,7 +1003,7 @@ class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
 class TCopVTEtAreSameAt<list<int> indices> :
     CPred<"llvm::is_splat(mlir::functional::map("
             "[this](unsigned i) { return this->getOperand(i)->getType()"
-              ".cast<VectorOrTensorType>().getElementType(); }, "
+              ".cast<ShapedType>().getElementType(); }, "
             "llvm::ArrayRef<unsigned>({" # Stringify<indices>.result # "})))">;
 
 //===----------------------------------------------------------------------===//

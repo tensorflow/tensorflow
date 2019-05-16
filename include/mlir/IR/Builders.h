@@ -113,17 +113,16 @@ public:
   IntegerSetAttr getIntegerSetAttr(IntegerSet set);
   TypeAttr getTypeAttr(Type type);
   FunctionAttr getFunctionAttr(Function *value);
-  ElementsAttr getSplatElementsAttr(VectorOrTensorType type, Attribute elt);
-  ElementsAttr getDenseElementsAttr(VectorOrTensorType type,
-                                    ArrayRef<char> data);
-  ElementsAttr getDenseElementsAttr(VectorOrTensorType type,
+  ElementsAttr getSplatElementsAttr(ShapedType type, Attribute elt);
+  ElementsAttr getDenseElementsAttr(ShapedType type, ArrayRef<char> data);
+  ElementsAttr getDenseElementsAttr(ShapedType type,
                                     ArrayRef<Attribute> values);
-  ElementsAttr getDenseIntElementsAttr(VectorOrTensorType type,
+  ElementsAttr getDenseIntElementsAttr(ShapedType type,
                                        ArrayRef<int64_t> values);
-  ElementsAttr getSparseElementsAttr(VectorOrTensorType type,
+  ElementsAttr getSparseElementsAttr(ShapedType type,
                                      DenseIntElementsAttr indices,
                                      DenseElementsAttr values);
-  ElementsAttr getOpaqueElementsAttr(Dialect *dialect, VectorOrTensorType type,
+  ElementsAttr getOpaqueElementsAttr(Dialect *dialect, ShapedType type,
                                      StringRef bytes);
   // Returns a 0-valued attribute of the given `type`. This function only
   // supports boolean, integer, and 32-/64-bit float types, and vector or ranked

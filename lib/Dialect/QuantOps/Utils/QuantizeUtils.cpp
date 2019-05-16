@@ -56,10 +56,10 @@ convertDenseFPElementsAttr(DenseFPElementsAttr realFPElementsAttr,
 
   // Cast from an expressed-type-based type to storage-type-based type,
   // preserving the dense shape (i.e. tensor<4xf32> -> tensor<4xi8>).
-  VectorOrTensorType newDenseType =
+  ShapedType newDenseType =
       quantizedElementType
           .castExpressedToStorageType(realFPElementsAttr.getType())
-          .dyn_cast_or_null<VectorOrTensorType>();
+          .dyn_cast_or_null<ShapedType>();
   if (!newDenseType) {
     return nullptr;
   }
@@ -87,9 +87,9 @@ convertSplatElementsAttr(SplatElementsAttr realSplatAttr,
 
   // Cast from an expressed-type-based type to storage-type-based type,
   // preserving the splat shape (i.e. tensor<4xf32> -> tensor<4xi8>).
-  VectorOrTensorType newSplatType =
+  ShapedType newSplatType =
       quantizedElementType.castExpressedToStorageType(realSplatAttr.getType())
-          .dyn_cast_or_null<VectorOrTensorType>();
+          .dyn_cast_or_null<ShapedType>();
   if (!newSplatType) {
     return nullptr;
   }
@@ -116,9 +116,9 @@ convertSparseElementsAttr(SparseElementsAttr realSparseAttr,
 
   // Cast from an expressed-type-based type to storage-type-based type,
   // preserving the sparse shape (i.e. tensor<4xf32> -> tensor<4xi8>).
-  VectorOrTensorType newSparseType =
+  ShapedType newSparseType =
       quantizedElementType.castExpressedToStorageType(realSparseAttr.getType())
-          .dyn_cast_or_null<VectorOrTensorType>();
+          .dyn_cast_or_null<ShapedType>();
   if (!newSparseType) {
     return nullptr;
   }

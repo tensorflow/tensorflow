@@ -313,8 +313,8 @@ FunctionType FunctionAttr::getType() const {
 // ElementsAttr
 //===----------------------------------------------------------------------===//
 
-VectorOrTensorType ElementsAttr::getType() const {
-  return Attribute::getType().cast<VectorOrTensorType>();
+ShapedType ElementsAttr::getType() const {
+  return Attribute::getType().cast<ShapedType>();
 }
 
 /// Return the value at the given index. If index does not refer to a valid
@@ -339,8 +339,7 @@ Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 // SplatElementsAttr
 //===----------------------------------------------------------------------===//
 
-SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
-                                         Attribute elt) {
+SplatElementsAttr SplatElementsAttr::get(ShapedType type, Attribute elt) {
   assert(elt.getType() == type.getElementType() &&
          "value should be of the given element type");
   return Base::get(type.getContext(), StandardAttributes::SplatElements, type,
@@ -374,8 +373,7 @@ APInt DenseElementsAttr::RawElementIterator::operator*() const {
 // DenseElementsAttr
 //===----------------------------------------------------------------------===//
 
-DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
-                                         ArrayRef<char> data) {
+DenseElementsAttr DenseElementsAttr::get(ShapedType type, ArrayRef<char> data) {
   assert((static_cast<uint64_t>(type.getSizeInBits()) <=
           data.size() * APInt::APINT_WORD_SIZE) &&
          "Input data bit size should be larger than that type requires");
@@ -394,7 +392,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   }
 }
 
-DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
+DenseElementsAttr DenseElementsAttr::get(ShapedType type,
                                          ArrayRef<Attribute> values) {
   assert(type.getElementType().isIntOrFloat() &&
          "expected int or float element type");
@@ -516,7 +514,7 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
 // Constructs a dense elements attribute from an array of raw APInt values.
 // Each APInt value is expected to have the same bitwidth as the element type
 // of 'type'.
-DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
+DenseElementsAttr DenseElementsAttr::get(ShapedType type,
                                          ArrayRef<APInt> values) {
   assert(values.size() == type.getNumElements() &&
          "expected 'values' to contain the same number of elements as 'type'");
@@ -586,7 +584,7 @@ APInt DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
 /// Constructs a dense integer elements attribute from an array of APInt
 /// values. Each APInt value is expected to have the same bitwidth as the
 /// element type of 'type'.
-DenseIntElementsAttr DenseIntElementsAttr::get(VectorOrTensorType type,
+DenseIntElementsAttr DenseIntElementsAttr::get(ShapedType type,
                                                ArrayRef<APInt> values) {
   return DenseElementsAttr::get(type, values).cast<DenseIntElementsAttr>();
 }
@@ -594,7 +592,7 @@ DenseIntElementsAttr DenseIntElementsAttr::get(VectorOrTensorType type,
 /// Constructs a dense integer elements attribute from an array of integer
 /// values. Each value is expected to be within the bitwidth of the element
 /// type of 'type'.
-DenseIntElementsAttr DenseIntElementsAttr::get(VectorOrTensorType type,
+DenseIntElementsAttr DenseIntElementsAttr::get(ShapedType type,
                                                ArrayRef<int64_t> values) {
   auto eltType = type.getElementType();
   size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
@@ -625,7 +623,7 @@ DenseFPElementsAttr::ElementIterator::ElementIterator(
 // Constructs a dense float elements attribute from an array of APFloat
 // values. Each APFloat value is expected to have the same bitwidth as the
 // element type of 'type'.
-DenseFPElementsAttr DenseFPElementsAttr::get(VectorOrTensorType type,
+DenseFPElementsAttr DenseFPElementsAttr::get(ShapedType type,
                                              ArrayRef<APFloat> values) {
   // Convert the APFloat values to APInt and create a dense elements attribute.
   std::vector<APInt> intValues(values.size());
@@ -655,8 +653,7 @@ DenseFPElementsAttr::iterator DenseFPElementsAttr::end() const {
 // OpaqueElementsAttr
 //===----------------------------------------------------------------------===//
 
-OpaqueElementsAttr OpaqueElementsAttr::get(Dialect *dialect,
-                                           VectorOrTensorType type,
+OpaqueElementsAttr OpaqueElementsAttr::get(Dialect *dialect, ShapedType type,
                                            StringRef bytes) {
   assert(TensorType::isValidElementType(type.getElementType()) &&
          "Input element type should be a valid tensor element type");
@@ -686,7 +683,7 @@ bool OpaqueElementsAttr::decode(ElementsAttr &result) {
 // SparseElementsAttr
 //===----------------------------------------------------------------------===//
 
-SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType type,
+SparseElementsAttr SparseElementsAttr::get(ShapedType type,
                                            DenseIntElementsAttr indices,
                                            DenseElementsAttr values) {
   assert(indices.getType().getElementType().isInteger(64) &&

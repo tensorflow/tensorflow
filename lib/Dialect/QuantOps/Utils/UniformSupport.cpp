@@ -38,13 +38,13 @@ ExpressedToUniformQuantizedConverter::forInputType(Type inputType) {
   case StandardTypes::RankedTensor:
   case StandardTypes::UnrankedTensor:
   case StandardTypes::Vector: {
-    Type elementType = inputType.cast<VectorOrTensorType>().getElementType();
+    Type elementType = inputType.cast<ShapedType>().getElementType();
     if (!isQuantizablePrimitiveType(elementType)) {
       // Unsupported.
       return ExpressedToUniformQuantizedConverter{inputType, nullptr};
     }
     return ExpressedToUniformQuantizedConverter{
-        inputType, inputType.cast<VectorOrTensorType>().getElementType()};
+        inputType, inputType.cast<ShapedType>().getElementType()};
   }
   }
 }
