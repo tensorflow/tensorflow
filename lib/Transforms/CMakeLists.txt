@@ -17,7 +17,7 @@ add_llvm_library(MLIRTransforms
   SimplifyAffineStructures.cpp
   StripDebugInfo.cpp
   TestConstantFold.cpp
-  Utils/ConstantFoldUtils.cpp
+  Utils/FoldUtils.cpp
   Utils/GreedyPatternRewriteDriver.cpp
   Utils/LoopUtils.cpp
   Utils/Utils.cpp

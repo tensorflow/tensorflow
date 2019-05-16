@@ -1,4 +1,4 @@
-//===- ConstantFoldUtils.h - Constant Fold Utilities ------------*- C++ -*-===//
+//===- FoldUtils.h - Operation Fold Utilities -------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,13 +15,13 @@
 // limitations under the License.
 // =============================================================================
 //
-// This header file declares various constant fold utilities. These utilities
-// are intended to be used by passes to unify and simply their logic.
+// This header file declares various operation folding utilities. These
+// utilities are intended to be used by passes to unify and simply their logic.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TRANSFORMS_CONSTANT_UTILS_H
-#define MLIR_TRANSFORMS_CONSTANT_UTILS_H
+#ifndef MLIR_TRANSFORMS_FOLDUTILS_H
+#define MLIR_TRANSFORMS_FOLDUTILS_H
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Types.h"
@@ -32,13 +32,13 @@ namespace mlir {
 class Function;
 class Operation;
 
-/// A helper class for constant folding operations, and unifying duplicated
-/// constants along the way.
+/// A helper class for folding operations, and unifying duplicated constants
+/// generated along the way.
 ///
-/// To make sure constants' proper dominance of all their uses, constants are
+/// To make sure constants properly dominate all their uses, constants are
 /// moved to the beginning of the entry block of the function when tracked by
 /// this class.
-class ConstantFoldHelper {
+class FoldHelper {
 public:
   /// Constructs an instance for managing constants in the given function `f`.
   /// Constants tracked by this instance will be moved to the entry block of
@@ -47,32 +47,30 @@ public:
   /// This instance does not proactively walk the operations inside `f`;
   /// instead, users must invoke the following methods to manually handle each
   /// operation of interest.
-  ConstantFoldHelper(Function *f);
+  FoldHelper(Function *f);
 
-  /// Tries to perform constant folding on the given `op`, including unifying
-  /// deplicated constants. If successful, calls `preReplaceAction` (if
+  /// Tries to perform folding on the given `op`, including unifying
+  /// deduplicated constants. If successful, calls `preReplaceAction` (if
   /// provided) by passing in `op`, then replaces `op`'s uses with folded
-  /// constants, and returns true.
-  ///
-  /// Note: `op` will *not* be erased to avoid invalidating potential walkers in
-  /// the caller.
-  bool
-  tryToConstantFold(Operation *op,
-                    std::function<void(Operation *)> preReplaceAction = {});
+  /// results, and returns success. If the op was completely folded it is
+  /// erased.
+  LogicalResult
+  tryToFold(Operation *op,
+            std::function<void(Operation *)> preReplaceAction = {});
 
   /// Notifies that the given constant `op` should be remove from this
-  /// ConstantFoldHelper's internal bookkeeping.
+  /// FoldHelper's internal bookkeeping.
   ///
   /// Note: this method must be called if a constant op is to be deleted
-  /// externally to this ConstantFoldHelper. `op` must be a constant op.
+  /// externally to this FoldHelper. `op` must be a constant op.
   void notifyRemoval(Operation *op);
 
 private:
-  /// Tries to deduplicate the given constant and returns true if that can be
+  /// Tries to deduplicate the given constant and returns success if that can be
   /// done. This moves the given constant to the top of the entry block if it
   /// is first seen. If there is already an existing constant that is the same,
   /// this does *not* erases the given constant.
-  bool tryToUnify(Operation *op);
+  LogicalResult tryToUnify(Operation *op);
 
   /// Moves the given constant `op` to entry block to guarantee dominance.
   void moveConstantToEntryBlock(Operation *op);
@@ -86,4 +84,4 @@ private:
 
 } // end namespace mlir
 
-#endif // MLIR_TRANSFORMS_CONSTANT_UTILS_H
+#endif // MLIR_TRANSFORMS_FOLDUTILS_H

@@ -196,8 +196,7 @@ Attribute constFoldBinaryOp(ArrayRef<Attribute> operands,
 // AddFOp
 //===----------------------------------------------------------------------===//
 
-Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult AddFOp::fold(ArrayRef<Attribute> operands) {
   return constFoldBinaryOp<FloatAttr>(
       operands, [](APFloat a, APFloat b) { return a + b; });
 }
@@ -206,18 +205,13 @@ Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
 // AddIOp
 //===----------------------------------------------------------------------===//
 
-Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult AddIOp::fold(ArrayRef<Attribute> operands) {
+  /// addi(x, 0) -> x
+  if (matchPattern(rhs(), m_Zero()))
+    return lhs();
+
   return constFoldBinaryOp<IntegerAttr>(operands,
                                         [](APInt a, APInt b) { return a + b; });
-}
-
-Value *AddIOp::fold() {
-  /// addi(x, 0) -> x
-  if (matchPattern(getOperand(1), m_Zero()))
-    return getOperand(0);
-
-  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -770,8 +764,7 @@ static bool applyCmpPredicate(CmpIPredicate predicate, const APInt &lhs,
 }
 
 // Constant folding hook for comparisons.
-Attribute CmpIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult CmpIOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "cmpi takes two arguments");
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
@@ -780,7 +773,7 @@ Attribute CmpIOp::constantFold(ArrayRef<Attribute> operands,
     return {};
 
   auto val = applyCmpPredicate(getPredicate(), lhs.getValue(), rhs.getValue());
-  return IntegerAttr::get(IntegerType::get(1, context), APInt(1, val));
+  return IntegerAttr::get(IntegerType::get(1, getContext()), APInt(1, val));
 }
 
 //===----------------------------------------------------------------------===//
@@ -967,8 +960,7 @@ static bool applyCmpPredicate(CmpFPredicate predicate, const APFloat &lhs,
 }
 
 // Constant folding hook for comparisons.
-Attribute CmpFOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult CmpFOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "cmpf takes two arguments");
 
   auto lhs = operands.front().dyn_cast_or_null<FloatAttr>();
@@ -980,7 +972,7 @@ Attribute CmpFOp::constantFold(ArrayRef<Attribute> operands,
     return {};
 
   auto val = applyCmpPredicate(getPredicate(), lhs.getValue(), rhs.getValue());
-  return IntegerAttr::get(IntegerType::get(1, context), APInt(1, val));
+  return IntegerAttr::get(IntegerType::get(1, getContext()), APInt(1, val));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1179,8 +1171,7 @@ static LogicalResult verify(ConstantOp &op) {
       "requires a result type that aligns with the 'value' attribute");
 }
 
-Attribute ConstantOp::constantFold(ArrayRef<Attribute> operands,
-                                   MLIRContext *context) {
+OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
   return getValue();
 }
@@ -1337,8 +1328,7 @@ static LogicalResult verify(DimOp op) {
   return success();
 }
 
-Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
-                              MLIRContext *context) {
+OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
   // Constant fold dim when the size along the index referred to is a constant.
   auto opType = getOperand()->getType();
   int64_t indexSize = -1;
@@ -1348,19 +1338,17 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
     indexSize = memrefType.getShape()[getIndex()];
 
   if (indexSize >= 0)
-    return IntegerAttr::get(IndexType::get(context), indexSize);
+    return IntegerAttr::get(IndexType::get(getContext()), indexSize);
 
-  return nullptr;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
 // DivISOp
 //===----------------------------------------------------------------------===//
 
-Attribute DivISOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) {
+OpFoldResult DivISOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "binary operation takes two operands");
-  (void)context;
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
@@ -1368,9 +1356,8 @@ Attribute DivISOp::constantFold(ArrayRef<Attribute> operands,
     return {};
 
   // Don't fold if it requires division by zero.
-  if (rhs.getValue().isNullValue()) {
+  if (rhs.getValue().isNullValue())
     return {};
-  }
 
   // Don't fold if it would overflow.
   bool overflow;
@@ -1382,10 +1369,8 @@ Attribute DivISOp::constantFold(ArrayRef<Attribute> operands,
 // DivIUOp
 //===----------------------------------------------------------------------===//
 
-Attribute DivIUOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) {
+OpFoldResult DivIUOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "binary operation takes two operands");
-  (void)context;
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
@@ -1675,14 +1660,13 @@ static LogicalResult verify(ExtractElementOp op) {
   return success();
 }
 
-Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
-                                         MLIRContext *context) {
+OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
   assert(!operands.empty() && "extract_element takes atleast one operand");
 
   // The aggregate operand must be a known constant.
   Attribute aggregate = operands.front();
   if (!aggregate)
-    return Attribute();
+    return {};
 
   // If this is a splat elements attribute, simply return the value. All of the
   // elements of a splat attribute are the same.
@@ -1693,14 +1677,14 @@ Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
   SmallVector<uint64_t, 8> indices;
   for (Attribute indice : llvm::drop_begin(operands, 1)) {
     if (!indice || !indice.isa<IntegerAttr>())
-      return Attribute();
+      return {};
     indices.push_back(indice.cast<IntegerAttr>().getInt());
   }
 
   // If this is an elements attribute, query the value at the given indices.
   if (auto elementsAttr = aggregate.dyn_cast<ElementsAttr>())
     return elementsAttr.getValue(indices);
-  return Attribute();
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1801,14 +1785,15 @@ bool MemRefCastOp::areCastCompatible(Type a, Type b) {
   return true;
 }
 
-Value *MemRefCastOp::fold() { return impl::foldCastOp(*this); }
+OpFoldResult MemRefCastOp::fold(ArrayRef<Attribute> operands) {
+  return impl::foldCastOp(*this);
+}
 
 //===----------------------------------------------------------------------===//
 // MulFOp
 //===----------------------------------------------------------------------===//
 
-Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult MulFOp::fold(ArrayRef<Attribute> operands) {
   return constFoldBinaryOp<FloatAttr>(
       operands, [](APFloat a, APFloat b) { return a * b; });
 }
@@ -1817,29 +1802,24 @@ Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
 // MulIOp
 //===----------------------------------------------------------------------===//
 
-Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult MulIOp::fold(ArrayRef<Attribute> operands) {
+  /// muli(x, 0) -> 0
+  if (matchPattern(rhs(), m_Zero()))
+    return rhs();
+  /// muli(x, 1) -> x
+  if (matchPattern(rhs(), m_One()))
+    return getOperand(0);
+
   // TODO: Handle the overflow case.
   return constFoldBinaryOp<IntegerAttr>(operands,
                                         [](APInt a, APInt b) { return a * b; });
-}
-
-Value *MulIOp::fold() {
-  /// muli(x, 0) -> 0
-  if (matchPattern(getOperand(1), m_Zero()))
-    return getOperand(1);
-  /// muli(x, 1) -> x
-  if (matchPattern(getOperand(1), m_One()))
-    return getOperand(0);
-  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
 // RemISOp
 //===----------------------------------------------------------------------===//
 
-Attribute RemISOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) {
+OpFoldResult RemISOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "remis takes two operands");
 
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
@@ -1852,9 +1832,8 @@ Attribute RemISOp::constantFold(ArrayRef<Attribute> operands,
                             APInt(rhs.getValue().getBitWidth(), 0));
 
   // Don't fold if it requires division by zero.
-  if (rhs.getValue().isNullValue()) {
+  if (rhs.getValue().isNullValue())
     return {};
-  }
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
   if (!lhs)
@@ -1867,8 +1846,7 @@ Attribute RemISOp::constantFold(ArrayRef<Attribute> operands,
 // RemIUOp
 //===----------------------------------------------------------------------===//
 
-Attribute RemIUOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) {
+OpFoldResult RemIUOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "remiu takes two operands");
 
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
@@ -1881,9 +1859,8 @@ Attribute RemIUOp::constantFold(ArrayRef<Attribute> operands,
                             APInt(rhs.getValue().getBitWidth(), 0));
 
   // Don't fold if it requires division by zero.
-  if (rhs.getValue().isNullValue()) {
+  if (rhs.getValue().isNullValue())
     return {};
-  }
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
   if (!lhs)
@@ -1990,7 +1967,7 @@ LogicalResult SelectOp::verify() {
   return success();
 }
 
-Value *SelectOp::fold() {
+OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
   auto *condition = getCondition();
 
   // select true, %0, %1 => %0
@@ -2081,8 +2058,7 @@ void StoreOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // SubFOp
 //===----------------------------------------------------------------------===//
 
-Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult SubFOp::fold(ArrayRef<Attribute> operands) {
   return constFoldBinaryOp<FloatAttr>(
       operands, [](APFloat a, APFloat b) { return a - b; });
 }
@@ -2091,48 +2067,20 @@ Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
 // SubIOp
 //===----------------------------------------------------------------------===//
 
-Attribute SubIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) {
+OpFoldResult SubIOp::fold(ArrayRef<Attribute> operands) {
+  // subi(x,x) -> 0
+  if (getOperand(0) == getOperand(1))
+    return Builder(getContext()).getZeroAttr(getType());
+
   return constFoldBinaryOp<IntegerAttr>(operands,
                                         [](APInt a, APInt b) { return a - b; });
-}
-
-namespace {
-/// subi(x,x) -> 0
-///
-struct SimplifyXMinusX : public RewritePattern {
-  SimplifyXMinusX(MLIRContext *context)
-      : RewritePattern(SubIOp::getOperationName(), 1, context) {}
-
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
-    auto subi = cast<SubIOp>(op);
-    if (subi.getOperand(0) != subi.getOperand(1))
-      return matchFailure();
-
-    rewriter.replaceOpWithNewOp<ConstantOp>(
-        op, subi.getType(), rewriter.getZeroAttr(subi.getType()));
-    return matchSuccess();
-  }
-};
-} // end anonymous namespace.
-
-void SubIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyXMinusX>(context));
 }
 
 //===----------------------------------------------------------------------===//
 // AndOp
 //===----------------------------------------------------------------------===//
 
-Attribute AndOp::constantFold(ArrayRef<Attribute> operands,
-                              MLIRContext *context) {
-  return constFoldBinaryOp<IntegerAttr>(operands,
-                                        [](APInt a, APInt b) { return a & b; });
-}
-
-Value *AndOp::fold() {
+OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
   /// and(x, 0) -> 0
   if (matchPattern(rhs(), m_Zero()))
     return rhs();
@@ -2140,20 +2088,15 @@ Value *AndOp::fold() {
   if (lhs() == rhs())
     return rhs();
 
-  return nullptr;
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a & b; });
 }
 
 //===----------------------------------------------------------------------===//
 // OrOp
 //===----------------------------------------------------------------------===//
 
-Attribute OrOp::constantFold(ArrayRef<Attribute> operands,
-                             MLIRContext *context) {
-  return constFoldBinaryOp<IntegerAttr>(operands,
-                                        [](APInt a, APInt b) { return a | b; });
-}
-
-Value *OrOp::fold() {
+OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
   /// or(x, 0) -> x
   if (matchPattern(rhs(), m_Zero()))
     return lhs();
@@ -2161,51 +2104,26 @@ Value *OrOp::fold() {
   if (lhs() == rhs())
     return rhs();
 
-  return nullptr;
+  return constFoldBinaryOp<IntegerAttr>(operands,
+                                        [](APInt a, APInt b) { return a | b; });
 }
 
 //===----------------------------------------------------------------------===//
 // XOrOp
 //===----------------------------------------------------------------------===//
 
-Attribute XOrOp::constantFold(ArrayRef<Attribute> operands,
-                              MLIRContext *context) {
+OpFoldResult XOrOp::fold(ArrayRef<Attribute> operands) {
+  /// xor(x, 0) -> x
+  if (matchPattern(rhs(), m_Zero()))
+    return lhs();
+  /// xor(x,x) -> 0
+  if (lhs() == rhs())
+    return Builder(getContext()).getZeroAttr(getType());
+
   return constFoldBinaryOp<IntegerAttr>(operands,
                                         [](APInt a, APInt b) { return a ^ b; });
 }
 
-Value *XOrOp::fold() {
-  /// xor(x, 0) -> x
-  if (matchPattern(rhs(), m_Zero()))
-    return lhs();
-
-  return nullptr;
-}
-
-namespace {
-/// xor(x,x) -> 0
-///
-struct SimplifyXXOrX : public RewritePattern {
-  SimplifyXXOrX(MLIRContext *context)
-      : RewritePattern(XOrOp::getOperationName(), 1, context) {}
-
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
-    auto xorOp = cast<XOrOp>(op);
-    if (xorOp.lhs() != xorOp.rhs())
-      return matchFailure();
-
-    rewriter.replaceOpWithNewOp<ConstantOp>(
-        op, xorOp.getType(), rewriter.getZeroAttr(xorOp.getType()));
-    return matchSuccess();
-  }
-};
-} // end anonymous namespace.
-
-void XOrOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                        MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyXXOrX>(context));
-}
 //===----------------------------------------------------------------------===//
 // TensorCastOp
 //===----------------------------------------------------------------------===//
@@ -2239,7 +2157,9 @@ bool TensorCastOp::areCastCompatible(Type a, Type b) {
   return true;
 }
 
-Value *TensorCastOp::fold() { return impl::foldCastOp(*this); }
+OpFoldResult TensorCastOp::fold(ArrayRef<Attribute> operands) {
+  return impl::foldCastOp(*this);
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

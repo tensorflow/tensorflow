@@ -22,7 +22,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/Transforms/ConstantFoldUtils.h"
+#include "mlir/Transforms/FoldUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -148,7 +148,7 @@ private:
 /// Perform the rewrites.
 bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
   Function *fn = builder.getFunction();
-  ConstantFoldHelper helper(fn);
+  FoldHelper helper(fn);
 
   bool changed = false;
   int i = 0;
@@ -171,67 +171,31 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       // If the operation has no side effects, and no users, then it is
       // trivially dead - remove it.
       if (op->hasNoSideEffect() && op->use_empty()) {
-        // Be careful to update bookkeeping in ConstantHelper to keep
-        // consistency if this is a constant op.
-        if (isa<ConstantOp>(op))
-          helper.notifyRemoval(op);
+        // Be careful to update bookkeeping in FoldHelper to keep consistency if
+        // this is a constant op.
+        helper.notifyRemoval(op);
         op->erase();
         continue;
       }
 
       // Collects all the operands and result uses of the given `op` into work
       // list.
-      auto collectOperandsAndUses = [this](Operation *op) {
+      originalOperands.assign(op->operand_begin(), op->operand_end());
+      auto collectOperandsAndUses = [&](Operation *op) {
         // Add the operands to the worklist for visitation.
-        addToWorklist(op->getOperands());
+        addToWorklist(originalOperands);
+
         // Add all the users of the result to the worklist so we make sure
         // to revisit them.
         //
         // TODO: Add a result->getUsers() iterator.
-        for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
+        for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
           for (auto &operand : op->getResult(i)->getUses())
             addToWorklist(operand.getOwner());
-        }
       };
 
-      // Try to constant fold this op.
-      if (helper.tryToConstantFold(op, collectOperandsAndUses)) {
-        assert(op->hasNoSideEffect() &&
-               "Constant folded op with side effects?");
-        op->erase();
-        changed |= true;
-        continue;
-      }
-
-      // Otherwise see if we can use the generic folder API to simplify the
-      // operation.
-      originalOperands.assign(op->operand_begin(), op->operand_end());
-      resultValues.clear();
-      if (succeeded(op->fold(resultValues))) {
-        // If the result was an in-place simplification (e.g. max(x,x,y) ->
-        // max(x,y)) then add the original operands to the worklist so we can
-        // make sure to revisit them.
-        if (resultValues.empty()) {
-          // Add the operands back to the worklist as there may be more
-          // canonicalization opportunities now.
-          addToWorklist(originalOperands);
-        } else {
-          // Otherwise, the operation is simplified away completely.
-          assert(resultValues.size() == op->getNumResults());
-
-          // Notify that we are replacing this operation.
-          notifyRootReplaced(op);
-
-          // Replace the result values and erase the operation.
-          for (unsigned i = 0, e = resultValues.size(); i != e; ++i) {
-            auto *res = op->getResult(i);
-            if (!res->use_empty())
-              res->replaceAllUsesWith(resultValues[i]);
-          }
-
-          notifyOperationRemoved(op);
-          op->erase();
-        }
+      // Try to fold this op.
+      if (succeeded(helper.tryToFold(op, collectOperandsAndUses))) {
         changed |= true;
         continue;
       }

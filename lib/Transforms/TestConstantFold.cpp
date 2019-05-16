@@ -20,7 +20,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
-#include "mlir/Transforms/ConstantFoldUtils.h"
+#include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 
@@ -31,26 +31,22 @@ namespace {
 struct TestConstantFold : public FunctionPass<TestConstantFold> {
   // All constants in the function post folding.
   SmallVector<Operation *, 8> existingConstants;
-  // Operations that were folded and that need to be erased.
-  std::vector<Operation *> opsToErase;
 
-  void foldOperation(Operation *op, ConstantFoldHelper &helper);
+  void foldOperation(Operation *op, FoldHelper &helper);
   void runOnFunction() override;
 };
 } // end anonymous namespace
 
-void TestConstantFold::foldOperation(Operation *op,
-                                     ConstantFoldHelper &helper) {
+void TestConstantFold::foldOperation(Operation *op, FoldHelper &helper) {
   // Attempt to fold the specified operation, including handling unused or
   // duplicated constants.
-  if (helper.tryToConstantFold(op)) {
-    opsToErase.push_back(op);
-  }
+  if (succeeded(helper.tryToFold(op)))
+    return;
+
   // If this op is a constant that are used and cannot be de-duplicated,
   // remember it for cleanup later.
-  else if (auto constant = dyn_cast<ConstantOp>(op)) {
+  if (auto constant = dyn_cast<ConstantOp>(op))
     existingConstants.push_back(op);
-  }
 }
 
 // For now, we do a simple top-down pass over a function folding constants.  We
@@ -58,10 +54,9 @@ void TestConstantFold::foldOperation(Operation *op,
 // branches, or anything else fancy.
 void TestConstantFold::runOnFunction() {
   existingConstants.clear();
-  opsToErase.clear();
 
   auto &f = getFunction();
-  ConstantFoldHelper helper(&f);
+  FoldHelper helper(&f);
 
   // Collect and fold the operations within the function.
   SmallVector<Operation *, 8> ops;
@@ -73,12 +68,6 @@ void TestConstantFold::runOnFunction() {
   // the readability of test cases.
   for (Operation *op : llvm::reverse(ops))
     foldOperation(op, helper);
-
-  // At this point, these operations are dead, remove them.
-  for (auto *op : opsToErase) {
-    assert(op->hasNoSideEffect() && "Constant folded op with side effects?");
-    op->erase();
-  }
 
   // By the time we are done, we may have simplified a bunch of code, leaving
   // around dead constants.  Check for them now and remove them.

@@ -509,40 +509,32 @@ auto Operation::getSuccessorOperands(unsigned index) -> operand_range {
                            succOperandIndex + getNumSuccessorOperands(index))};
 }
 
-/// Attempt to constant fold this operation with the specified constant
-/// operand values.  If successful, this fills in the results vector.  If not,
-/// results is unspecified.
-LogicalResult Operation::constantFold(ArrayRef<Attribute> operands,
-                                      SmallVectorImpl<Attribute> &results) {
-  if (auto *abstractOp = getAbstractOperation()) {
-    // If we have a registered operation definition matching this one, use it to
-    // try to constant fold the operation.
-    if (succeeded(abstractOp->constantFoldHook(this, operands, results)))
-      return success();
-
-    // Otherwise, fall back on the dialect hook to handle it.
-    return abstractOp->dialect.constantFoldHook(this, operands, results);
-  }
-
-  // If this operation hasn't been registered or doesn't have abstract
-  // operation, fall back to a dialect which matches the prefix.
-  auto opName = getName().getStringRef();
-  auto dialectPrefix = opName.split('.').first;
-  if (auto *dialect = getContext()->getRegisteredDialect(dialectPrefix))
-    return dialect->constantFoldHook(this, operands, results);
-
-  return failure();
-}
-
 /// Attempt to fold this operation using the Op's registered foldHook.
-LogicalResult Operation::fold(SmallVectorImpl<Value *> &results) {
-  if (auto *abstractOp = getAbstractOperation()) {
-    // If we have a registered operation definition matching this one, use it to
-    // try to constant fold the operation.
-    if (succeeded(abstractOp->foldHook(this, results)))
-      return success();
+LogicalResult Operation::fold(ArrayRef<Attribute> operands,
+                              SmallVectorImpl<OpFoldResult> &results) {
+  // If we have a registered operation definition matching this one, use it to
+  // try to constant fold the operation.
+  auto *abstractOp = getAbstractOperation();
+  if (abstractOp && succeeded(abstractOp->foldHook(this, operands, results)))
+    return success();
+
+  // Otherwise, fall back on the dialect hook to handle it.
+  Dialect *dialect;
+  if (abstractOp) {
+    dialect = &abstractOp->dialect;
+  } else {
+    // If this operation hasn't been registered, lookup the parent dialect.
+    auto opName = getName().getStringRef();
+    auto dialectPrefix = opName.split('.').first;
+    if (!(dialect = getContext()->getRegisteredDialect(dialectPrefix)))
+      return failure();
   }
-  return failure();
+
+  SmallVector<Attribute, 8> constants;
+  if (failed(dialect->constantFoldHook(this, operands, constants)))
+    return failure();
+  results.assign(constants.begin(), constants.end());
+  return success();
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is

@@ -371,11 +371,6 @@ This boolean field indicate whether canonicalization patterns have been defined
 for this operation. If it is `1`, then `::getCanonicalizationPatterns()` should
 be defined.
 
-### `hasConstantFolder`
-
-This boolean field indicate whether constant folding rules have been defined
-for this operation. If it is `1`, then `::constantFold()` should be defined.
-
 ### `hasFolder`
 
 This boolean field indicate whether general folding rules have been defined

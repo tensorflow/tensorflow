@@ -101,7 +101,7 @@ public:
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
-  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
+  OpFoldResult fold(ArrayRef<Attribute> operands);
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -176,7 +176,7 @@ public:
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
-  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
+  OpFoldResult fold(ArrayRef<Attribute> operands);
 };
 
 /// The "cond_br" operation represents a conditional branch operation in a
@@ -600,7 +600,7 @@ public:
   Value *getTrueValue() { return getOperand(1); }
   Value *getFalseValue() { return getOperand(2); }
 
-  Value *fold();
+  OpFoldResult fold(ArrayRef<Attribute> operands);
 };
 
 /// The "store" op writes an element to a memref specified by an index list.

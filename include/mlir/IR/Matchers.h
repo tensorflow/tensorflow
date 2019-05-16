@@ -24,7 +24,7 @@
 #ifndef MLIR_MATCHERS_H
 #define MLIR_MATCHERS_H
 
-#include "mlir/IR/Operation.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
 #include <type_traits>
 
@@ -73,9 +73,9 @@ struct constant_op_binder {
     if (!op->hasNoSideEffect())
       return false;
 
-    SmallVector<Attribute, 1> foldedAttr;
-    if (succeeded(op->constantFold(/*operands=*/llvm::None, foldedAttr))) {
-      *bind_value = foldedAttr.front();
+    SmallVector<OpFoldResult, 1> foldedOp;
+    if (succeeded(op->fold(/*operands=*/llvm::None, foldedOp))) {
+      *bind_value = foldedOp.front().dyn_cast<Attribute>();
       return true;
     }
     return false;

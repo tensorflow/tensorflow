@@ -374,16 +374,12 @@ public:
     return getTerminatorStatus() == TerminatorStatus::NonTerminator;
   }
 
-  /// Attempt to constant fold this operation with the specified constant
-  /// operand values - the elements in "operands" will correspond directly to
-  /// the operands of the operation, but may be null if non-constant.  If
-  /// constant folding is successful, this fills in the `results` vector.  If
-  /// not, `results` is unspecified.
-  LogicalResult constantFold(ArrayRef<Attribute> operands,
-                             SmallVectorImpl<Attribute> &results);
-
-  /// Attempt to fold this operation using the Op's registered foldHook.
-  LogicalResult fold(SmallVectorImpl<Value *> &results);
+  /// Attempt to fold this operation with the specified constant operand values
+  /// - the elements in "operands" will correspond directly to the operands of
+  /// the operation, but may be null if non-constant. If folding is successful,
+  /// this fills in the `results` vector. If not, `results` is unspecified.
+  LogicalResult fold(ArrayRef<Attribute> operands,
+                     SmallVectorImpl<OpFoldResult> &results);
 
   //===--------------------------------------------------------------------===//
   // Operation Walkers

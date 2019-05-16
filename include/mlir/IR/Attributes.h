@@ -761,7 +761,7 @@ private:
 
 namespace llvm {
 
-// Attribute hash just like pointers
+// Attribute hash just like pointers.
 template <> struct DenseMapInfo<mlir::Attribute> {
   static mlir::Attribute getEmptyKey() {
     auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
@@ -777,6 +777,18 @@ template <> struct DenseMapInfo<mlir::Attribute> {
   static bool isEqual(mlir::Attribute LHS, mlir::Attribute RHS) {
     return LHS == RHS;
   }
+};
+
+/// Allow LLVM to steal the low bits of Attributes.
+template <> struct PointerLikeTypeTraits<mlir::Attribute> {
+public:
+  static inline void *getAsVoidPointer(mlir::Attribute attr) {
+    return const_cast<void *>(attr.getAsOpaquePointer());
+  }
+  static inline mlir::Attribute getFromVoidPointer(void *ptr) {
+    return mlir::Attribute::getFromOpaquePointer(ptr);
+  }
+  enum { NumLowBitsAvailable = 3 };
 };
 
 } // namespace llvm

@@ -28,7 +28,6 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
   let verifier = [{ baz }];
 
   let hasCanonicalizer = 1;
-  let hasConstantFolder = 1;
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
@@ -55,8 +54,7 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
 // CHECK:   void print(OpAsmPrinter *p);
 // CHECK:   LogicalResult verify();
 // CHECK:   static void getCanonicalizationPatterns(OwningRewritePatternList &results, MLIRContext *context);
-// CHECK:   LogicalResult constantFold(ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, MLIRContext *context);
-// CHECK:   bool fold(SmallVectorImpl<Value *> &results);
+// CHECK:   LogicalResult fold(ArrayRef<Attribute> operands, SmallVectorImpl<OpFoldResult> &results);
 // CHECK:   // Display a graph for debugging purposes.
 // CHECK:   void displayGraph();
 // CHECK: };

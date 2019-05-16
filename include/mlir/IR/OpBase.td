@@ -925,9 +925,6 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // and C++ implementations.
   bit hasCanonicalizer = 0;
 
-  // Whether this op has a constant folder.
-  bit hasConstantFolder = 0;
-
   // Whether this op has a folder.
   bit hasFolder = 0;
 

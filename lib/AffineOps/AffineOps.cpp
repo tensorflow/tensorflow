@@ -201,12 +201,11 @@ bool AffineApplyOp::isValidSymbol() {
                       [](Value *op) { return mlir::isValidSymbol(op); });
 }
 
-Attribute AffineApplyOp::constantFold(ArrayRef<Attribute> operands,
-                                      MLIRContext *context) {
+OpFoldResult AffineApplyOp::fold(ArrayRef<Attribute> operands) {
   auto map = getAffineMap();
   SmallVector<Attribute, 1> result;
   if (failed(map.constantFold(operands, result)))
-    return Attribute();
+    return {};
   return result[0];
 }
 

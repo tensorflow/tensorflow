@@ -834,28 +834,15 @@ void OpEmitter::genCanonicalizerDecls() {
 void OpEmitter::genFolderDecls() {
   bool hasSingleResult = op.getNumResults() == 1;
 
-  if (def.getValueAsBit("hasConstantFolder")) {
-    if (hasSingleResult) {
-      const char *const params =
-          "ArrayRef<Attribute> operands, MLIRContext *context";
-      opClass.newMethod("Attribute", "constantFold", params, OpMethod::MP_None,
-                        /*declOnly=*/true);
-    } else {
-      const char *const params =
-          "ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, "
-          "MLIRContext *context";
-      opClass.newMethod("LogicalResult", "constantFold", params,
-                        OpMethod::MP_None, /*declOnly=*/true);
-    }
-  }
-
   if (def.getValueAsBit("hasFolder")) {
     if (hasSingleResult) {
-      opClass.newMethod("Value *", "fold", /*params=*/"", OpMethod::MP_None,
+      const char *const params = "ArrayRef<Attribute> operands";
+      opClass.newMethod("OpFoldResult", "fold", params, OpMethod::MP_None,
                         /*declOnly=*/true);
     } else {
-      opClass.newMethod("bool", "fold", "SmallVectorImpl<Value *> &results",
-                        OpMethod::MP_None,
+      const char *const params = "ArrayRef<Attribute> operands, "
+                                 "SmallVectorImpl<OpFoldResult> &results";
+      opClass.newMethod("LogicalResult", "fold", params, OpMethod::MP_None,
                         /*declOnly=*/true);
     }
   }

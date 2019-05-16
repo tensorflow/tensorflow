@@ -41,6 +41,7 @@ struct OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
 class OpAsmPrinter;
+class OpFoldResult;
 class ParseResult;
 class Pattern;
 class Region;
@@ -95,14 +96,9 @@ public:
   /// success if everything is ok.
   LogicalResult (&verifyInvariants)(Operation *op);
 
-  /// This hook implements a constant folder for this operation.  It fills in
-  /// `results` on success.
-  LogicalResult (&constantFoldHook)(Operation *op, ArrayRef<Attribute> operands,
-                                    SmallVectorImpl<Attribute> &results);
-
   /// This hook implements a generalized folder for this operation.  Operations
   /// can implement this to provide simplifications rules that are applied by
-  /// the FuncBuilder::foldOrCreate API and the canonicalization pass.
+  /// the Builder::foldOrCreate API and the canonicalization pass.
   ///
   /// This is an intentionally limited interface - implementations of this hook
   /// can only perform the following changes to the operation:
@@ -117,10 +113,10 @@ public:
   ///     instead.
   ///
   /// This allows expression of some simple in-place canonicalizations (e.g.
-  /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), but does
-  /// not allow for canonicalizations that need to introduce new operations, not
-  /// even constants (e.g. "x-x -> 0" cannot be expressed).
-  LogicalResult (&foldHook)(Operation *op, SmallVectorImpl<Value *> &results);
+  /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), as well as
+  /// generalized constant folding.
+  LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,
+                            SmallVectorImpl<OpFoldResult> &results);
 
   /// This hook returns any canonicalization pattern rewrites that the operation
   /// supports, for use by the canonicalization pass.
@@ -142,8 +138,8 @@ public:
   template <typename T> static AbstractOperation get(Dialect &dialect) {
     return AbstractOperation(
         T::getOperationName(), dialect, T::getOperationProperties(), T::classof,
-        T::parseAssembly, T::printAssembly, T::verifyInvariants,
-        T::constantFoldHook, T::foldHook, T::getCanonicalizationPatterns);
+        T::parseAssembly, T::printAssembly, T::verifyInvariants, T::foldHook,
+        T::getCanonicalizationPatterns);
   }
 
 private:
@@ -153,17 +149,13 @@ private:
       ParseResult (&parseAssembly)(OpAsmParser *parser, OperationState *result),
       void (&printAssembly)(Operation *op, OpAsmPrinter *p),
       LogicalResult (&verifyInvariants)(Operation *op),
-      LogicalResult (&constantFoldHook)(Operation *op,
-                                        ArrayRef<Attribute> operands,
-                                        SmallVectorImpl<Attribute> &results),
-      LogicalResult (&foldHook)(Operation *op,
-                                SmallVectorImpl<Value *> &results),
+      LogicalResult (&foldHook)(Operation *op, ArrayRef<Attribute> operands,
+                                SmallVectorImpl<OpFoldResult> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context))
       : name(name), dialect(dialect), classof(classof),
         parseAssembly(parseAssembly), printAssembly(printAssembly),
-        verifyInvariants(verifyInvariants), constantFoldHook(constantFoldHook),
-        foldHook(foldHook),
+        verifyInvariants(verifyInvariants), foldHook(foldHook),
         getCanonicalizationPatterns(getCanonicalizationPatterns),
         opProperties(opProperties) {}
 

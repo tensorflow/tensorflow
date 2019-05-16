@@ -112,13 +112,12 @@ class FloatArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
 
 def AddFOp : FloatArithmeticOp<"addf"> {
   let summary = "floating point addition operation";
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
   let summary = "integer addition operation";
   let hasFolder = 1;
-  let hasConstantFolder = 1;
 }
 
 def AllocOp : Std_Op<"alloc"> {
@@ -163,7 +162,6 @@ def AllocOp : Std_Op<"alloc"> {
 
 def AndOp : IntArithmeticOp<"and", [Commutative]> {
   let summary = "integer binary and";
-  let hasConstantFolder = 1;
   let hasFolder = 1;
 }
 
@@ -288,7 +286,7 @@ def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
     Attribute getValue() { return getAttr("value"); }
   }];
 
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def DeallocOp : Std_Op<"dealloc"> {
@@ -338,7 +336,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
     }
   }];
 
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def DivFOp : FloatArithmeticOp<"divf"> {
@@ -347,12 +345,12 @@ def DivFOp : FloatArithmeticOp<"divf"> {
 
 def DivISOp : IntArithmeticOp<"divis"> {
   let summary = "signed integer division operation";
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def DivIUOp : IntArithmeticOp<"diviu"> {
   let summary = "unsigned integer division operation";
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
@@ -389,7 +387,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
     }
   }];
 
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def MemRefCastOp : CastOp<"memref_cast"> {
@@ -426,18 +424,16 @@ def MemRefCastOp : CastOp<"memref_cast"> {
 
 def MulFOp : FloatArithmeticOp<"mulf"> {
   let summary = "foating point multiplication operation";
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def MulIOp : IntArithmeticOp<"muli", [Commutative]> {
   let summary = "integer multiplication operation";
-  let hasConstantFolder = 1;
   let hasFolder = 1;
 }
 
 def OrOp : IntArithmeticOp<"or", [Commutative]> {
   let summary = "integer binary or";
-  let hasConstantFolder = 1;
   let hasFolder = 1;
 }
 
@@ -447,12 +443,12 @@ def RemFOp : FloatArithmeticOp<"remf"> {
 
 def RemISOp : IntArithmeticOp<"remis"> {
   let summary = "signed integer division remainder operation";
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def RemIUOp : IntArithmeticOp<"remiu"> {
   let summary = "unsigned integer division remainder operation";
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def ReturnOp : Std_Op<"return", [Terminator]> {
@@ -481,13 +477,12 @@ def ShlISOp : IntArithmeticOp<"shlis"> {
 
 def SubFOp : FloatArithmeticOp<"subf"> {
   let summary = "floating point subtraction operation";
-  let hasConstantFolder = 1;
+  let hasFolder = 1;
 }
 
 def SubIOp : IntArithmeticOp<"subi"> {
   let summary = "integer subtraction operation";
-  let hasConstantFolder = 1;
-  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def TensorCastOp : CastOp<"tensor_cast"> {
@@ -518,8 +513,6 @@ def TensorCastOp : CastOp<"tensor_cast"> {
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
   let summary = "integer binary xor";
-  let hasConstantFolder = 1;
-  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 

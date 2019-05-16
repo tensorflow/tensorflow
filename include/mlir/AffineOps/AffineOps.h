@@ -83,7 +83,7 @@ public:
   static ParseResult parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   LogicalResult verify();
-  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
+  OpFoldResult fold(ArrayRef<Attribute> operands);
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);

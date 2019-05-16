@@ -74,11 +74,10 @@ in either way.
 Operations can also have custom parser, printer, builder, verifier, constant
 folder, or canonicalizer. These require specifying additional C++ methods to
 invoke for additional functionality. For example, if an operation is marked to
-have a constant folder, the constant folder also needs to be added, e.g.,:
+have a folder, the constant folder also needs to be added, e.g.,:
 
 ```c++
-Attribute SpecificOp::constantFold(ArrayRef<Attribute> operands,
-                                   MLIRContext *context) {
+OpFoldResult SpecificOp::fold(ArrayRef<Attribute> constOperands) {
   if (unable_to_fold)
     return {};
   ....

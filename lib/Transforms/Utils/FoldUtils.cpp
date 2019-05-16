@@ -1,4 +1,4 @@
-//===- ConstantFoldUtils.cpp ---- Constant Fold Utilities -----------------===//
+//===- FoldUtils.cpp ---- Fold Utilities ----------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,12 +15,12 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines various constant fold utilities. These utilities are
+// This file defines various operation fold utilities. These utilities are
 // intended to be used by passes to unify and simply their logic.
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Transforms/ConstantFoldUtils.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Matchers.h"
@@ -29,10 +29,11 @@
 
 using namespace mlir;
 
-ConstantFoldHelper::ConstantFoldHelper(Function *f) : function(f) {}
+FoldHelper::FoldHelper(Function *f) : function(f) {}
 
-bool ConstantFoldHelper::tryToConstantFold(
-    Operation *op, std::function<void(Operation *)> preReplaceAction) {
+LogicalResult
+FoldHelper::tryToFold(Operation *op,
+                      std::function<void(Operation *)> preReplaceAction) {
   assert(op->getFunction() == function &&
          "cannot constant fold op from another function");
 
@@ -44,13 +45,15 @@ bool ConstantFoldHelper::tryToConstantFold(
     // If this constant is dead, update bookkeeping and signal the caller.
     if (constant.use_empty()) {
       notifyRemoval(op);
-      return true;
+      op->erase();
+      return success();
     }
     // Otherwise, try to see if we can de-duplicate it.
     return tryToUnify(op);
   }
 
-  SmallVector<Attribute, 8> operandConstants, resultConstants;
+  SmallVector<Attribute, 8> operandConstants;
+  SmallVector<OpFoldResult, 8> results;
 
   // Check to see if any operands to the operation is constant and whether
   // the operation knows how to constant fold itself.
@@ -67,8 +70,8 @@ bool ConstantFoldHelper::tryToConstantFold(
   }
 
   // Attempt to constant fold the operation.
-  if (failed(op->constantFold(operandConstants, resultConstants)))
-    return false;
+  if (failed(op->fold(operandConstants, results)))
+    return failure();
 
   // Constant folding succeeded. We will start replacing this op's uses and
   // eventually erase this op. Invoke the callback provided by the caller to
@@ -76,21 +79,35 @@ bool ConstantFoldHelper::tryToConstantFold(
   if (preReplaceAction)
     preReplaceAction(op);
 
+  // Check to see if the operation was just updated in place.
+  if (results.empty())
+    return success();
+  assert(results.size() == op->getNumResults());
+
   // Create the result constants and replace the results.
   FuncBuilder builder(op);
   for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
     auto *res = op->getResult(i);
     if (res->use_empty()) // Ignore dead uses.
       continue;
+    assert(!results[i].isNull() && "expected valid OpFoldResult");
+
+    // Check if the result was an SSA value.
+    if (auto *repl = results[i].dyn_cast<Value *>()) {
+      if (repl != res)
+        res->replaceAllUsesWith(repl);
+      continue;
+    }
 
     // If we already have a canonicalized version of this constant, just reuse
     // it.  Otherwise create a new one.
+    Attribute attrRepl = results[i].get<Attribute>();
     auto &constInst =
-        uniquedConstants[std::make_pair(resultConstants[i], res->getType())];
+        uniquedConstants[std::make_pair(attrRepl, res->getType())];
     if (!constInst) {
       // TODO: Extend to support dialect-specific constant ops.
-      auto newOp = builder.create<ConstantOp>(op->getLoc(), res->getType(),
-                                              resultConstants[i]);
+      auto newOp =
+          builder.create<ConstantOp>(op->getLoc(), res->getType(), attrRepl);
       // Register to the constant map and also move up to entry block to
       // guarantee dominance.
       constInst = newOp.getOperation();
@@ -98,17 +115,18 @@ bool ConstantFoldHelper::tryToConstantFold(
     }
     res->replaceAllUsesWith(constInst->getResult(0));
   }
+  op->erase();
 
-  return true;
+  return success();
 }
 
-void ConstantFoldHelper::notifyRemoval(Operation *op) {
+void FoldHelper::notifyRemoval(Operation *op) {
   assert(op->getFunction() == function &&
          "cannot remove constant from another function");
 
   Attribute constValue;
-  matchPattern(op, m_Constant(&constValue));
-  assert(constValue);
+  if (!matchPattern(op, m_Constant(&constValue)))
+    return;
 
   // This constant is dead. keep uniquedConstants up to date.
   auto it = uniquedConstants.find({constValue, op->getResult(0)->getType()});
@@ -116,7 +134,7 @@ void ConstantFoldHelper::notifyRemoval(Operation *op) {
     uniquedConstants.erase(it);
 }
 
-bool ConstantFoldHelper::tryToUnify(Operation *op) {
+LogicalResult FoldHelper::tryToUnify(Operation *op) {
   Attribute constValue;
   matchPattern(op, m_Constant(&constValue));
   assert(constValue);
@@ -127,13 +145,14 @@ bool ConstantFoldHelper::tryToUnify(Operation *op) {
   if (constInst) {
     // If this constant is already our uniqued one, then leave it alone.
     if (constInst == op)
-      return false;
+      return failure();
 
     // Otherwise replace this redundant constant with the uniqued one.  We know
     // this is safe because we move constants to the top of the function when
     // they are uniqued, so we know they dominate all uses.
     op->getResult(0)->replaceAllUsesWith(constInst->getResult(0));
-    return true;
+    op->erase();
+    return success();
   }
 
   // If we have no entry, then we should unique this constant as the
@@ -141,10 +160,10 @@ bool ConstantFoldHelper::tryToUnify(Operation *op) {
   // entry block of the function.
   constInst = op;
   moveConstantToEntryBlock(op);
-  return false;
+  return failure();
 }
 
-void ConstantFoldHelper::moveConstantToEntryBlock(Operation *op) {
+void FoldHelper::moveConstantToEntryBlock(Operation *op) {
   // Insert at the very top of the entry block.
   auto &entryBB = function->front();
   op->moveBefore(&entryBB, entryBB.begin());
