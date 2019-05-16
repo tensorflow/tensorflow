@@ -105,7 +105,6 @@ Status XlaGpuDeviceFactory::CreateDevices(
       RegisterXlaDeviceKernels(DEVICE_XLA_GPU, DEVICE_GPU_XLA_JIT);
   (void)registrations;
 
-  // XXX FIXME devise a way to cope with multiple platforms
   auto platform =
       se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
   if (!platform.ok()) {
