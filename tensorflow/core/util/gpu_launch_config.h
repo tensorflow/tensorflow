@@ -287,11 +287,11 @@ using Gpu3DLaunchConfig = Gpu2DLaunchConfig;
 CREATE_CUDA_TYPE_ALIAS(Gpu3DLaunchConfig, Cuda3DLaunchConfig);
 
 template <typename DeviceFunc>
-Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
-                                        const Eigen::GpuDevice& d,
-                                        DeviceFunc func,
-                                        size_t dynamic_shared_memory_size,
-                                        int block_size_limit) {
+Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
+                                       const Eigen::GpuDevice& d,
+                                       DeviceFunc func,
+                                       size_t dynamic_shared_memory_size,
+                                       int block_size_limit) {
   Gpu3DLaunchConfig config;
 
   if (xdim <= 0 || ydim <= 0 || zdim <= 0) {
