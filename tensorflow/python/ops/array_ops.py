@@ -1857,7 +1857,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   
   If dtype of input `tensor` is `float32`, then the output is also of `float32`
   tensor = tf.constant([[1.0, 2.0, 3.0], [4, 5, 6]])
-  tf.zeros_like(tensor)  # [[0., 0., 0.], [0., 0., 0.]] with dtype=floa32
+  tf.zeros_like(tensor)  # [[0., 0., 0.], [0., 0., 0.]] with dtype=float32
   
   If you want to specify desired dtype of output `tensor`, then specify it in the op 
   tensor = tf.constant([[1.0, 2.0, 3.0], [4, 5, 6]])
