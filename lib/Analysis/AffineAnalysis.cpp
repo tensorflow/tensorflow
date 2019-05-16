@@ -637,11 +637,14 @@ static void computeDirectionVector(
   // variable at column 'j' to the 'dst' IV minus the 'src IV.
   SmallVector<int64_t, 4> eq;
   eq.resize(dependenceDomain->getNumCols());
+  unsigned numSrcDims = srcDomain.getNumDimIds();
+  // Constraint variables format:
+  // [num-common-loops][num-src-dim-ids][num-dst-dim-ids][num-symbols][constant]
   for (unsigned j = 0; j < numCommonLoops; ++j) {
     std::fill(eq.begin(), eq.end(), 0);
     eq[j] = 1;
     eq[j + numCommonLoops] = 1;
-    eq[j + 2 * numCommonLoops] = -1;
+    eq[j + numCommonLoops + numSrcDims] = -1;
     dependenceDomain->addEquality(eq);
   }
 

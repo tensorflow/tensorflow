@@ -850,3 +850,57 @@ func @strided_loop_with_loop_carried_dependence_at_depth1() {
   }
   return
 }
+
+// -----
+
+// Test that the loop carried dependence from load to store on '%i0' is
+// properly computed when the load and store are at different loop depths.
+// CHECK-LABEL: func @test_dep_store_depth1_load_depth2
+func @test_dep_store_depth1_load_depth2() {
+  %0 = alloc() : memref<100xf32>
+  %cst = constant 7.000000e+00 : f32
+  affine.for %i0 = 0 to 10 {
+    %a0 = affine.apply (d0) -> (d0 - 1)(%i0)
+    store %cst, %0[%a0] : memref<100xf32>
+    // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-remark@-3 {{dependence from 0 to 1 at depth 1 = false}}
+    // expected-remark@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    affine.for %i1 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 1)(%i0) {
+      %1 = load %0[%i1] : memref<100xf32>
+      // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = [1, 1]}}
+      // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
+      // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
+      // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+      // expected-remark@-5 {{dependence from 1 to 1 at depth 3 = false}}
+    }
+  }
+  return
+}
+
+// -----
+
+// Test that the loop carried dependence from store to load on '%i0' is
+// properly computed when the load and store are at different loop depths.
+// CHECK-LABEL: func @test_dep_store_depth2_load_depth1
+func @test_dep_store_depth2_load_depth1() {
+  %0 = alloc() : memref<100xf32>
+  %cst = constant 7.000000e+00 : f32
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 1)(%i0) {
+      store %cst, %0[%i1] : memref<100xf32>
+      // expected-remark@-1 {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-remark@-2 {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-remark@-3 {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-remark@-4 {{dependence from 0 to 1 at depth 1 = [2, 2]}}
+      // expected-remark@-5 {{dependence from 0 to 1 at depth 2 = false}}
+    }
+    %a0 = affine.apply (d0) -> (d0 - 2)(%i0)
+    %1 = load %0[%a0] : memref<100xf32>
+    // expected-remark@-1 {{dependence from 1 to 0 at depth 1 = false}}
+    // expected-remark@-2 {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-remark@-3 {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-remark@-4 {{dependence from 1 to 1 at depth 2 = false}}
+  }
+  return
+}
