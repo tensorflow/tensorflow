@@ -434,7 +434,7 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
                       FindInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
-  poplar::Tensor w = inputs[0][0];
+  poplar::Tensor weights = inputs[0][0];
 
   // Find the input tensor
   TF_ASSIGN_OR_RETURN(poplar::Tensor in,
@@ -447,11 +447,20 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   TF_ASSIGN_OR_RETURN(poplin::ConvParams params,
                       GetConvolutionParameters(inst, 1, 2));
 
-  TF_CHECK_OK(conv_graph_caching::DoCachedConvolutionScaledInplace(
-      graph, res, w, in, deltas, params, GetSingleShardingDeviceId(inst), prog,
-      inst, tensor_map));
+  in = ShuffleConvolutionInputToPoplar(inst, in);
 
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, w));
+  deltas = ShuffleConvolutionWeightsToPoplar(inst, deltas, false);
+  deltas = AddGroupsDimensionToWeights(params, deltas, false);
+
+  weights = ShuffleConvolutionOutputToPoplar(inst, weights);
+
+  TF_CHECK_OK(conv_graph_caching::DoCachedConvolutionScaledInplace(
+      graph, res, weights, in, deltas, params, GetSingleShardingDeviceId(inst),
+      prog, inst, tensor_map));
+
+  weights = ShuffleConvolutionOutputToTensorflow(inst, weights);
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, weights));
 
   return prog;
 }
