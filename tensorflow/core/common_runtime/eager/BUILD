@@ -246,7 +246,7 @@ tf_cuda_library(
         "@farmhash_archive//:farmhash",
         # Only the TF_AttrType enum is required, so pull in just the C headers.
         # TODO(b/113535673): Break this dependency and avoid the C header completely.
-        "//tensorflow/c:c_api_headers",
+        "//tensorflow/c:tf_attrtype",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -268,6 +268,7 @@ tf_cc_test(
     srcs = ["attr_builder_test.cc"],
     deps = [
         ":attr_builder",
+        "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:ops",
