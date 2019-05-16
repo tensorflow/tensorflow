@@ -19,7 +19,7 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=16.04
+ARG UBUNTU_VERSION=18.04
 
 ARG ARCH=
 ARG CUDA=10.0
@@ -61,12 +61,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     find /usr/local/cuda-${CUDA}/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v7.a
 
-RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda${CUDA} \
-        && apt-get update \
+RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update \
         && apt-get install -y --no-install-recommends \
-            libnvinfer5=5.0.2-1+cuda${CUDA} \
-            libnvinfer-dev=5.0.2-1+cuda${CUDA} \
+            libnvinfer5=5.1.5-1+cuda${CUDA} \
+            libnvinfer-dev=5.1.5-1+cuda${CUDA} \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*; }
 
