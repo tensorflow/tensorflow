@@ -51,6 +51,7 @@ tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py3/BUILD
 tensorflow/third_party/toolchains/preconfig/centos6/py/BUILD
