@@ -80,3 +80,25 @@ func @dim(%arg0: !linalg.view<?x?xf32>) {
 }
 // CHECK-LABEL: func @dim(%arg0: !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">) {
 //       CHECK:   %0 = llvm.extractvalue %arg0[2, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+
+func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.range {
+  %0 = linalg.range_intersect %arg0, %arg1 : !linalg.range
+  return %0 : !linalg.range
+}
+// CHECK-LABEL: func @range_intersect(%arg0: !llvm<"{ i64, i64, i64 }">, %arg1: !llvm<"{ i64, i64, i64 }">) -> !llvm<"{ i64, i64, i64 }"> {
+//       CHECK:   %0 = llvm.extractvalue %arg0[0] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %1 = llvm.extractvalue %arg1[0] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %2 = llvm.extractvalue %arg0[1] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %3 = llvm.extractvalue %arg1[1] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %4 = llvm.extractvalue %arg0[2] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %5 = llvm.extractvalue %arg1[2] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %6 = llvm.undef : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %7 = llvm.icmp "sge" %0, %1 : !llvm.i64
+//       CHECK:   %8 = llvm.select %7, %0, %1 : !llvm.i1, !llvm.i64
+//       CHECK:   %9 = llvm.insertvalue %8, %6[0] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %10 = llvm.icmp "sle" %2, %3 : !llvm.i64
+//       CHECK:   %11 = llvm.select %10, %2, %3 : !llvm.i1, !llvm.i64
+//       CHECK:   %12 = llvm.insertvalue %11, %9[1] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   %13 = llvm.mul %4, %5 : !llvm.i64
+//       CHECK:   %14 = llvm.insertvalue %13, %12[2] : !llvm<"{ i64, i64, i64 }">
+//       CHECK:   llvm.return %14 : !llvm<"{ i64, i64, i64 }">
