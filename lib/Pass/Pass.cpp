@@ -468,11 +468,15 @@ PassInstrumentor *FunctionAnalysisManager::getPassInstrumentor() const {
 }
 
 /// Create an analysis slice for the given child function.
-FunctionAnalysisManager ModuleAnalysisManager::slice(Function *function) {
-  assert(function->getModule() == moduleAnalyses.getIRUnit() &&
+FunctionAnalysisManager ModuleAnalysisManager::slice(Function *func) {
+  assert(func->getModule() == moduleAnalyses.getIRUnit() &&
          "function has a different parent module");
-  auto it = functionAnalyses.try_emplace(function, function);
-  return {this, &it.first->second};
+  auto it = functionAnalyses.find(func);
+  if (it == functionAnalyses.end()) {
+    it = functionAnalyses.try_emplace(func, new AnalysisMap<Function>(func))
+             .first;
+  }
+  return {this, it->second.get()};
 }
 
 /// Invalidate any non preserved analyses.
@@ -493,7 +497,7 @@ void ModuleAnalysisManager::invalidate(const detail::PreservedAnalyses &pa) {
 
   // Otherwise, invalidate each function analyses.
   for (auto &analysisPair : functionAnalyses)
-    analysisPair.second.invalidate(pa);
+    analysisPair.second->invalidate(pa);
 }
 
 //===----------------------------------------------------------------------===//

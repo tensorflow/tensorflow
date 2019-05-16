@@ -242,7 +242,7 @@ public:
     auto it = functionAnalyses.find(function);
     if (it == functionAnalyses.end())
       return llvm::None;
-    return it->second.getCachedAnalysis<AnalysisT>();
+    return it->second->getCachedAnalysis<AnalysisT>();
   }
 
   /// Query for the analysis for the module. The analysis is computed if it does
@@ -269,7 +269,8 @@ public:
 
 private:
   /// The cached analyses for functions within the current module.
-  llvm::DenseMap<Function *, detail::AnalysisMap<Function>> functionAnalyses;
+  llvm::DenseMap<Function *, std::unique_ptr<detail::AnalysisMap<Function>>>
+      functionAnalyses;
 
   /// The analyses for the owning module.
   detail::AnalysisMap<Module> moduleAnalyses;
