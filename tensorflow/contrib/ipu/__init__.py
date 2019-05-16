@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Ops related to the Graphcore IPU
 
 """
@@ -30,6 +29,7 @@ from tensorflow.contrib.ipu.python import ipu_optimizer
 from tensorflow.contrib.ipu.python import ipu_outfeed_queue
 from tensorflow.contrib.ipu.python import loops
 from tensorflow.contrib.ipu.python import ops
+from tensorflow.contrib.ipu.python import popnn_embedding
 from tensorflow.contrib.ipu.python import popnn_normalization
 from tensorflow.contrib.ipu.python import popnn_rnn
 from tensorflow.contrib.ipu.python import popops_cross_replica_sum

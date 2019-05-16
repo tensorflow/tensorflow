@@ -16,6 +16,7 @@
 
 from functools import reduce
 from operator import mul
+import tensorflow as tf
 
 
 def embedding_lookup(params, ids, name=None):
@@ -32,10 +33,10 @@ def embedding_lookup(params, ids, name=None):
         A `Tensor` with the same type as the tensors in `params`.
     """
   name = name or "embedding_lookup"
-  M = reduce(operator.mul, indices.shape, 1)
-  K = data.shape[0]
-  N = data.shape[1]
-  ids_one_hot = tf.one_hot(ids, K, name=name + "_one_hot", dtype=data.dtype)
+  M = reduce(mul, ids.shape, 1)
+  K = params.shape[0]
+  N = params.shape[1]
+  ids_one_hot = tf.one_hot(ids, K, name=name + "_one_hot", dtype=params.dtype)
   ids_one_hot = tf.reshape(ids_one_hot, [M, K])
   result = tf.matmul(ids_one_hot, params, name=name + "_lookup")
-  return tf.reshape(result, list(indices.shape) + [N])
+  return tf.reshape(result, list(ids.shape) + [N])
