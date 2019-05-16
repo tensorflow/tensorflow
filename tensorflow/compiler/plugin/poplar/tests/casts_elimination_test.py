@@ -10,6 +10,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
@@ -70,6 +71,34 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
       self.assertTrue(len(cs_list) == 0)
+
+  def testNoCastsF16ReduceWithReshape(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float16, [3, 4])
+      a = gen_array_ops.reshape(pa, [4, 3])
+      a = math_ops.reduce_sum(a, axis=(1))
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
+
+    with tu.ipu_session() as sess:
+      fd = {pa: np.ones([3, 4])}
+      result = sess.run(a, fd)
+      self.assertAllClose(result, [3.0, 3.0, 3.0, 3.0])
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = [
+          '__seed*',
+          'Sum/reduce*/Reduce',
+      ]
+
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testMultipleReduces(self):
     with ops.device("/device:IPU:0"):
@@ -161,6 +190,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
-  os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=2 ' +
-                                os.environ.get('TF_XLA_FLAGS', ''))
+  os.environ['TF_XLA_FLAGS'] = (
+      '--tf_xla_min_cluster_size=2 ' + os.environ.get('TF_XLA_FLAGS', ''))
   googletest.main()
