@@ -384,20 +384,21 @@ def _find_tensorrt_config(base_paths, required_version):
         _get_header_version(path, name)
         for name in ("NV_TENSORRT_MAJOR", "NV_TENSORRT_MINOR",
                      "NV_TENSORRT_PATCH"))
+    if not all(version):
+      return None  # Versions not found, make _matches_version returns False.
     return ".".join(version)
 
-  header_path, header_version = _find_header(base_paths, "NvInfer.h",
-                                             required_version,
-                                             get_header_version)
-
-  if ".." in header_version:
-    # From TRT 6.0 onwards, version information has been moved to NvInferVersion.h.
+  try:
+    header_path, header_version = _find_header(base_paths, "NvInfer.h",
+                                               required_version,
+                                               get_header_version)
+  except ConfigError:
+    # TensorRT 6 moved the version information to NvInferVersion.h.
     header_path, header_version = _find_header(base_paths, "NvInferVersion.h",
                                                required_version,
                                                get_header_version)
 
   tensorrt_version = header_version.split(".")[0]
-
   library_path = _find_library(base_paths, "nvinfer", tensorrt_version)
 
   return {
