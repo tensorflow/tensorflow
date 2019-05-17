@@ -197,12 +197,17 @@ void ModuleState::visitType(Type type) {
       visitType(input);
     for (auto result : funcType.getResults())
       visitType(result);
-  } else if (auto memref = type.dyn_cast<MemRefType>()) {
+    return;
+  }
+  if (auto memref = type.dyn_cast<MemRefType>()) {
     // Visit affine maps in memref type.
     for (auto map : memref.getAffineMaps())
       recordAttributeReference(AffineMapAttr::get(map));
-  } else if (auto vecOrTensor = type.dyn_cast<ShapedType>()) {
-    visitType(vecOrTensor.getElementType());
+    // TODO(b/132735995) Remove this when MemRef is a subclass of ShapedType.
+    visitType(memref.getElementType());
+  }
+  if (auto shapedType = type.dyn_cast<ShapedType>()) {
+    visitType(shapedType.getElementType());
   }
 }
 
