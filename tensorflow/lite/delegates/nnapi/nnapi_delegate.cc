@@ -299,6 +299,10 @@ class NNAPIOpBuilder {
         dequantize_mapping_(dequantize_mapping),
         nn_model_(nn_model) {}
 
+  TfLiteStatus AddScalarBoolOperand(bool value) {
+    return AddScalarOperand<bool>(value, ANEURALNETWORKS_BOOL);
+  }
+
   TfLiteStatus AddScalarInt32Operand(int32_t value) {
     return AddScalarOperand<int32_t>(value, ANEURALNETWORKS_INT32);
   }
@@ -664,10 +668,34 @@ class NNAPIDelegateKernel {
           }
           auto builtin =
               reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
-          if (builtin->dilation_width_factor != 1 ||
-              builtin->dilation_height_factor != 1 || node->inputs->size != 3) {
-            // NNAPI does not support dilated Conv2D.
+          if (node->inputs->size != 3) {
+            // TODO(b/132950584): Add support for Conv2D with omitted bias
             return nullptr;
+          }
+          // NNAPI supports dilated Conv2D since NNAPI 1.2.
+          if (builtin->dilation_width_factor != 1 ||
+              builtin->dilation_height_factor != 1) {
+            if (android_sdk_version < kMinSdkVersionForNNAPI12) {
+              return nullptr;
+            }
+            return [](const NNAPIOpMappingArgs& mapping_args)
+                       -> ANeuralNetworksOperationType {
+              auto builtin = reinterpret_cast<TfLiteConvParams*>(
+                  mapping_args.node->builtin_data);
+              mapping_args.builder->AddScalarInt32Operand(builtin->padding);
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->stride_width);
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->stride_height);
+              mapping_args.builder->AddScalarInt32Operand(builtin->activation);
+              mapping_args.builder->AddScalarBoolOperand(
+                  false);  // Use NHWC format
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->dilation_width_factor);
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->dilation_height_factor);
+              return ANEURALNETWORKS_CONV_2D;
+            };
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
