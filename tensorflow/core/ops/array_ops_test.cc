@@ -293,7 +293,6 @@ TEST(ArrayOpsTest, Gather_ShapeFn) {
 
 TEST(ArrayOpsTest, GatherV2_ShapeFn) {
   ShapeInferenceTestOp op("GatherV2");
-  AddNodeAttr("batch_dims", 0, &op.node_def);
 
   // Tests when axis is unknown.
   INFER_OK(op, "?;?;?", "?");
