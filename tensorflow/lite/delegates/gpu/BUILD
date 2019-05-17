@@ -90,11 +90,11 @@ cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
     linkopts = [
             "-Wl,-soname=libtensorflowlite_gpu_gl.so"
-        ] + select({
+    ] + select({
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
-        ],
+    ],
         "//conditions:default": [],
     }),
     linkshared = 1,

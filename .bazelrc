@@ -18,7 +18,6 @@ build:android_x86_64 --config=android
 build:android_x86_64 --cpu=x86_64
 build:android_x86_64 --fat_apk_cpu=x86_64
 
-
 # Sets the default Apple platform to macOS.
 build --apple_platform_type=macos
 
