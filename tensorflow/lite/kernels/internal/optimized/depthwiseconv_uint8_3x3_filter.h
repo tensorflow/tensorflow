@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_3X3_FILTER_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_3X3_FILTER_H_
 
-#include <cstddef>
 #include <memory>
 
 #include "profiling/instrumentation.h"
@@ -5775,9 +5774,9 @@ struct WorkspacePrefetchWrite<
     DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
   static void __attribute__((noinline))
   Run(int8 fill_data, int size, int8* workspace) {
-    const int8x8_t fill_data_vec = vdup_n_s8(fill_data);
-    int i = 0;
-    for (; i < (size - 15); i += 64) {
+    const int8x8_t fill_data_vec_int8 = vdup_n_s8(fill_data);
+    const uint32x2_t fill_data_vec = vreinterpret_u32_s8(fill_data_vec_int8);
+    for (int i = 0; i < (size - 15); i += 64) {
       int8* ptr = workspace + i;
       asm volatile("prfm pstl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
       vst1_lane_u32(reinterpret_cast<uint32_t*>(ptr), fill_data_vec, 0);
