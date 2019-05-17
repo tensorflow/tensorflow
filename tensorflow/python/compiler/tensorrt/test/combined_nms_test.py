@@ -50,25 +50,24 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
 
     g = ops.Graph()
     with g.as_default():
-      with g.device("/CPU:0"):
-        boxes = array_ops.placeholder(
-            dtype=dtypes.float32, shape=boxes_shape, name='boxes')
-        scores = array_ops.placeholder(
-            dtype=dtypes.float32, shape=scores_shape, name='scores')
-        max_output_size_per_class_tensor = constant_op.constant(
-            max_output_size_per_class, dtype=dtypes.int32,
-            name='max_output_size_per_class')
-        max_total_size_tensor = constant_op.constant(
-            max_total_size, dtype=dtypes.int32, name='max_total_size')
-        iou_threshold_tensor = constant_op.constant(
-            iou_threshold, dtype=dtypes.float32, name='iou_threshold')
-        score_threshold_tensor = constant_op.constant(
-            score_threshold, dtype=dtypes.float32, name='score_threshold')
-        nms_output = image_ops_impl.combined_non_max_suppression(
-            boxes, scores, max_output_size_per_class_tensor,
-            max_total_size_tensor, iou_threshold_tensor, score_threshold_tensor,
-            name='combined_nms')
-        nmsed_boxes, nmsed_scores, nmsed_classes, valid_detections = nms_output
+      boxes = array_ops.placeholder(
+          dtype=dtypes.float32, shape=boxes_shape, name='boxes')
+      scores = array_ops.placeholder(
+          dtype=dtypes.float32, shape=scores_shape, name='scores')
+      max_output_size_per_class_tensor = constant_op.constant(
+          max_output_size_per_class, dtype=dtypes.int32,
+          name='max_output_size_per_class')
+      max_total_size_tensor = constant_op.constant(
+          max_total_size, dtype=dtypes.int32, name='max_total_size')
+      iou_threshold_tensor = constant_op.constant(
+          iou_threshold, dtype=dtypes.float32, name='iou_threshold')
+      score_threshold_tensor = constant_op.constant(
+          score_threshold, dtype=dtypes.float32, name='score_threshold')
+      nms_output = image_ops_impl.combined_non_max_suppression(
+          boxes, scores, max_output_size_per_class_tensor,
+          max_total_size_tensor, iou_threshold_tensor, score_threshold_tensor,
+          name='combined_nms')
+      nmsed_boxes, nmsed_scores, nmsed_classes, valid_detections = nms_output
       array_ops.identity(nmsed_boxes, name='nmsed_boxes')
       array_ops.identity(nmsed_scores, name='nmsed_scores')
       array_ops.identity(nmsed_classes, name='nmsed_classes')
