@@ -353,16 +353,16 @@ void SDBM::convertDBMElement(MLIRContext *context, unsigned row, unsigned col,
                              SDBMPositiveExpr rowExpr, SDBMPositiveExpr colExpr,
                              SmallVectorImpl<SDBMExpr> &inequalities,
                              SmallVectorImpl<SDBMExpr> &equalities) {
+  using ops_assertions::operator+;
+  using ops_assertions::operator-;
+
   auto diffIJValue = at(col, row);
   auto diffJIValue = at(row, col);
-  auto diffIJValueExpr =
-      SDBMConstantExpr::get(context, -diffIJValue.getValue());
-  auto diffIJExpr = SDBMDiffExpr::get(rowExpr, colExpr);
 
   // If symmetric entries are equal, so are the corresponding expressions.
   if (diffIJValue.isFinite() &&
       diffIJValue.getValue() == -diffJIValue.getValue()) {
-    equalities.push_back(SDBMSumExpr::get(diffIJExpr, diffIJValueExpr));
+    equalities.push_back(rowExpr - colExpr - diffIJValue.getValue());
     return;
   }
 
@@ -399,15 +399,12 @@ void SDBM::convertDBMElement(MLIRContext *context, unsigned row, unsigned col,
   // Check row - col.
   if (diffIJValue.isFinite() &&
       !canElide(row, col, rowExpr, colExpr, diffIJValue.getValue())) {
-    inequalities.push_back(SDBMSumExpr::get(diffIJExpr, diffIJValueExpr));
+    inequalities.push_back(rowExpr - colExpr - diffIJValue.getValue());
   }
   // Check col - row.
   if (diffJIValue.isFinite() &&
       !canElide(col, row, colExpr, rowExpr, diffJIValue.getValue())) {
-    auto diffJIExpr = SDBMDiffExpr::get(colExpr, rowExpr);
-    auto diffJIValueExpr =
-        SDBMConstantExpr::get(context, -diffJIValue.getValue());
-    inequalities.push_back(SDBMSumExpr::get(diffJIExpr, diffJIValueExpr));
+    inequalities.push_back(colExpr - rowExpr - diffJIValue.getValue());
   }
 }
 
@@ -421,17 +418,18 @@ void SDBM::convertDBMDiagonalElement(MLIRContext *context, unsigned pos,
                                      SmallVectorImpl<SDBMExpr> &inequalities) {
   auto selfDifference = at(pos, pos);
   if (selfDifference.isFinite() && selfDifference < 0) {
-    auto selfDifferenceExpr = SDBMDiffExpr::get(expr, expr);
     auto selfDifferenceValueExpr =
         SDBMConstantExpr::get(context, -selfDifference.getValue());
-    inequalities.push_back(
-        SDBMSumExpr::get(selfDifferenceExpr, selfDifferenceValueExpr));
+    inequalities.push_back(selfDifferenceValueExpr);
   }
 }
 
 void SDBM::getSDBMExpressions(MLIRContext *context,
                               SmallVectorImpl<SDBMExpr> &inequalities,
                               SmallVectorImpl<SDBMExpr> &equalities) {
+  using ops_assertions::operator-;
+  using ops_assertions::operator+;
+
   // Helper function that creates an SDBMInputExpr given the linearized position
   // of variable in the DBM.
   auto getInput = [context, this](unsigned matrixPos) -> SDBMInputExpr {
@@ -457,19 +455,14 @@ void SDBM::getSDBMExpressions(MLIRContext *context,
     // each variable.  Transform them into inequalities if they are finite.
     auto upperBound = at(0, 1 + i);
     auto lowerBound = at(1 + i, 0);
-    auto upperBoundExpr =
-        SDBMConstantExpr::get(context, -upperBound.getValue());
     auto inputExpr = getInput(i);
     if (upperBound.isFinite() &&
         upperBound.getValue() == -lowerBound.getValue()) {
-      equalities.push_back(SDBMSumExpr::get(inputExpr, upperBoundExpr));
+      equalities.push_back(inputExpr - upperBound.getValue());
     } else if (upperBound.isFinite()) {
-      inequalities.push_back(SDBMSumExpr::get(inputExpr, upperBoundExpr));
+      inequalities.push_back(inputExpr - upperBound.getValue());
     } else if (lowerBound.isFinite()) {
-      auto lowerBoundExpr =
-          SDBMConstantExpr::get(context, -lowerBound.getValue());
-      inequalities.push_back(
-          SDBMSumExpr::get(SDBMNegExpr::get(inputExpr), lowerBoundExpr));
+      inequalities.push_back(-inputExpr - lowerBound.getValue());
     }
 
     // Introduce trivially false inequalities if required by diagonal elements.
@@ -488,8 +481,7 @@ void SDBM::getSDBMExpressions(MLIRContext *context,
   for (const auto &stripePair : stripeToPoint) {
     unsigned position = stripePair.first;
     if (position < 1 + numTrueVariables) {
-      equalities.push_back(SDBMDiffExpr::get(
-          getInput(position - 1), stripePair.second.cast<SDBMStripeExpr>()));
+      equalities.push_back(getInput(position - 1) - stripePair.second);
     }
   }
 

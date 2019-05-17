@@ -441,3 +441,109 @@ int64_t SDBMConstantExpr::getValue() const {
 SDBMPositiveExpr SDBMNegExpr::getVar() const {
   return static_cast<ImplType *>(impl)->dim;
 }
+
+namespace mlir {
+namespace ops_assertions {
+
+SDBMExpr operator+(SDBMExpr lhs, SDBMExpr rhs) {
+  // If one of the operands is a negation, take a difference rather than a sum.
+  auto lhsNeg = lhs.dyn_cast<SDBMNegExpr>();
+  auto rhsNeg = rhs.dyn_cast<SDBMNegExpr>();
+  assert(!(lhsNeg && rhsNeg) && "a sum of negated expressions is a negation of "
+                                "a sum of variables and not a correct SDBM");
+  if (lhsNeg)
+    return rhs - lhsNeg.getVar();
+  if (rhsNeg)
+    return lhs - rhsNeg.getVar();
+
+  // If LHS is a constant and RHS is not, swap the order to get into a supported
+  // sum case.  From now on, RHS must be a constant.
+  auto lhsConstant = lhs.dyn_cast<SDBMConstantExpr>();
+  auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>();
+  if (!rhsConstant && lhsConstant) {
+    std::swap(lhs, rhs);
+    std::swap(lhsConstant, rhsConstant);
+  }
+  assert(rhsConstant && "at least one operand must be a constant");
+
+  // If LHS is another sum, first compute the sum of its variable
+  // part with the other argument and then add the constant part to enable
+  // constant folding (the variable part may, e.g., be a negation that requires
+  // to enter this function again).
+  auto lhsSum = lhs.dyn_cast<SDBMSumExpr>();
+  if (lhsSum)
+    return lhsSum.getLHS() +
+           (lhsSum.getRHS().getValue() + rhsConstant.getValue());
+
+  // Constant-fold if LHS is a constant.
+  if (lhsConstant)
+    return SDBMConstantExpr::get(lhs.getContext(), lhsConstant.getValue() +
+                                                       rhsConstant.getValue());
+
+  // Fold x + 0 == x.
+  if (rhsConstant.getValue() == 0)
+    return lhs;
+
+  return SDBMSumExpr::get(lhs.cast<SDBMVaryingExpr>(),
+                          rhs.cast<SDBMConstantExpr>());
+}
+
+SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs) {
+  // Fold x - x == 0.
+  if (lhs == rhs)
+    return SDBMConstantExpr::get(lhs.getContext(), 0);
+
+  // LHS and RHS may be constants.
+  auto lhsConstant = lhs.dyn_cast<SDBMConstantExpr>();
+  auto rhsConstant = rhs.dyn_cast<SDBMConstantExpr>();
+
+  // Constant fold if both LHS and RHS are constants.
+  if (lhsConstant && rhsConstant)
+    return SDBMConstantExpr::get(lhs.getContext(), lhsConstant.getValue() -
+                                                       rhsConstant.getValue());
+
+  // Replace a difference with a sum with a negated value if one of LHS and RHS
+  // is a constant:
+  //   x - C == x + (-C);
+  //   C - x == -x + C.
+  // This calls into operator+ for further simplification.
+  if (rhsConstant)
+    return lhs + (-rhsConstant);
+  if (lhsConstant)
+    return -rhs + lhsConstant;
+
+  // Hoist constant factors outside the difference if any of sides is a sum:
+  //   (x + A) - (y - B) == x - y + (A - B).
+  // If either LHS or RHS is a sum, collect the constant values separately and
+  // update LHS and RHS to point to the variable part of the sum.
+  auto lhsSum = lhs.dyn_cast<SDBMSumExpr>();
+  auto rhsSum = rhs.dyn_cast<SDBMSumExpr>();
+  int64_t value = 0;
+  if (lhsSum) {
+    value += lhsSum.getRHS().getValue();
+    lhs = lhsSum.getLHS();
+  }
+  if (rhsSum) {
+    value -= rhsSum.getRHS().getValue();
+    rhs = rhsSum.getLHS();
+  }
+
+  // This calls into operator+ for futher simplification in case value == 0.
+  return SDBMDiffExpr::get(lhs.cast<SDBMPositiveExpr>(),
+                           rhs.cast<SDBMPositiveExpr>()) +
+         value;
+}
+
+SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor) {
+  auto constantFactor = factor.cast<SDBMConstantExpr>();
+  assert(constantFactor.getValue() > 0 && "non-positive stripe");
+
+  // Fold x # 1 = x.
+  if (constantFactor.getValue() == 1)
+    return expr;
+
+  return SDBMStripeExpr::get(expr.cast<SDBMPositiveExpr>(), constantFactor);
+}
+
+} // namespace ops_assertions
+} // namespace mlir

@@ -30,7 +30,75 @@ static MLIRContext *ctx() {
   return &context;
 }
 
+static SDBMExpr dim(unsigned pos) { return SDBMDimExpr::get(ctx(), pos); }
+
+static SDBMExpr symb(unsigned pos) { return SDBMSymbolExpr::get(ctx(), pos); }
+
 namespace {
+
+using namespace mlir::ops_assertions;
+
+TEST(SDBMOperators, Add) {
+  auto expr = dim(0) + 42;
+  auto sumExpr = expr.dyn_cast<SDBMSumExpr>();
+  ASSERT_TRUE(sumExpr);
+  EXPECT_EQ(sumExpr.getLHS(), dim(0));
+  EXPECT_EQ(sumExpr.getRHS().getValue(), 42);
+}
+
+TEST(SDBMOperators, AddFolding) {
+  auto constant = SDBMConstantExpr::get(ctx(), 2) + 42;
+  auto constantExpr = constant.dyn_cast<SDBMConstantExpr>();
+  ASSERT_TRUE(constantExpr);
+  EXPECT_EQ(constantExpr.getValue(), 44);
+
+  auto expr = (dim(0) + 10) + 32;
+  auto sumExpr = expr.dyn_cast<SDBMSumExpr>();
+  ASSERT_TRUE(sumExpr);
+  EXPECT_EQ(sumExpr.getRHS().getValue(), 42);
+
+  expr = dim(0) + SDBMNegExpr::get(SDBMDimExpr::get(ctx(), 1));
+  auto diffExpr = expr.dyn_cast<SDBMDiffExpr>();
+  ASSERT_TRUE(diffExpr);
+  EXPECT_EQ(diffExpr.getLHS(), dim(0));
+  EXPECT_EQ(diffExpr.getRHS(), dim(1));
+
+  auto inverted = SDBMNegExpr::get(SDBMDimExpr::get(ctx(), 1)) + dim(0);
+  EXPECT_EQ(inverted, expr);
+}
+
+TEST(SDBMOperators, Diff) {
+  auto expr = dim(0) - dim(1);
+  auto diffExpr = expr.dyn_cast<SDBMDiffExpr>();
+  ASSERT_TRUE(diffExpr);
+  EXPECT_EQ(diffExpr.getLHS(), dim(0));
+  EXPECT_EQ(diffExpr.getRHS(), dim(1));
+}
+
+TEST(SDBMOperators, DiffFolding) {
+  auto constant = SDBMConstantExpr::get(ctx(), 10) - 3;
+  auto constantExpr = constant.dyn_cast<SDBMConstantExpr>();
+  ASSERT_TRUE(constantExpr);
+  EXPECT_EQ(constantExpr.getValue(), 7);
+
+  auto expr = dim(0) - 3;
+  auto sumExpr = expr.dyn_cast<SDBMSumExpr>();
+  ASSERT_TRUE(sumExpr);
+  EXPECT_EQ(sumExpr.getRHS().getValue(), -3);
+
+  auto zero = dim(0) - dim(0);
+  constantExpr = zero.dyn_cast<SDBMConstantExpr>();
+  ASSERT_TRUE(constantExpr);
+  EXPECT_EQ(constantExpr.getValue(), 0);
+}
+
+TEST(SDBMOperators, Stripe) {
+  auto expr = stripe(dim(0), 3);
+  auto stripeExpr = expr.dyn_cast<SDBMStripeExpr>();
+  ASSERT_TRUE(stripeExpr);
+  EXPECT_EQ(stripeExpr.getVar(), dim(0));
+  EXPECT_EQ(stripeExpr.getStripeFactor().getValue(), 3);
+}
 
 TEST(SDBM, SingleConstraint) {
   // Build an SDBM defined by
@@ -40,11 +108,7 @@ TEST(SDBM, SingleConstraint) {
   //         cst   d0
   //   cst   inf    3
   //   d0    inf  inf
-  auto cst3 = SDBMConstantExpr::get(ctx(), -3);
-  auto dim0 = SDBMDimExpr::get(ctx(), 0);
-  auto expr = SDBMSumExpr::get(dim0, cst3);
-
-  auto sdbm = SDBM::get(expr, llvm::None);
+  auto sdbm = SDBM::get(dim(0) - 3, llvm::None);
   EXPECT_EQ(sdbm(0, 1), 3);
 }
 
@@ -58,12 +122,7 @@ TEST(SDBM, Equality) {
   //   cst   inf  inf  inf
   //   d0    inf  inf   -3
   //   d1    inf    3  inf
-  auto cst3 = SDBMConstantExpr::get(ctx(), -3);
-  auto dim0 = SDBMDimExpr::get(ctx(), 0);
-  auto dim1 = SDBMDimExpr::get(ctx(), 1);
-  auto expr = SDBMSumExpr::get(SDBMDiffExpr::get(dim0, dim1), cst3);
-
-  auto sdbm = SDBM::get(llvm::None, expr);
+  auto sdbm = SDBM::get(llvm::None, dim(0) - dim(1) - 3);
   EXPECT_EQ(sdbm(1, 2), -3);
   EXPECT_EQ(sdbm(2, 1), 3);
 }
@@ -78,14 +137,8 @@ TEST(SDBM, TrivialSimplification) {
   //
   //         cst   d0
   //   cst   inf    3
-  //   d0    inf  inf
-  auto cst5 = SDBMConstantExpr::get(ctx(), -5);
-  auto cst3 = SDBMConstantExpr::get(ctx(), -3);
-  auto dim0 = SDBMDimExpr::get(ctx(), 0);
-  auto expr5 = SDBMSumExpr::get(dim0, cst5);
-  auto expr3 = SDBMSumExpr::get(dim0, cst3);
-
-  auto sdbm = SDBM::get({expr3, expr5}, llvm::None);
+  //   d0    inf  inf;
+  auto sdbm = SDBM::get({dim(0) - 3, dim(0) - 5}, llvm::None);
   EXPECT_EQ(sdbm(0, 1), 3);
 }
 
@@ -99,14 +152,7 @@ TEST(SDBM, StripeInducedIneqs) {
   // cst   inf  inf  inf
   // d0    inf  inf    2
   // d1    inf    0    0
-
-  auto dim0 = SDBMDimExpr::get(ctx(), 0);
-  auto dim1 = SDBMDimExpr::get(ctx(), 1);
-  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
-  auto stripe = SDBMStripeExpr::get(dim0, cst3);
-  auto expr = SDBMDiffExpr::get(dim1, stripe);
-
-  auto sdbm = SDBM::get(llvm::None, expr);
+  auto sdbm = SDBM::get(llvm::None, dim(1) - stripe(dim(0), 3));
   EXPECT_EQ(sdbm(1, 2), 2);
   EXPECT_EQ(sdbm(2, 1), 0);
 }
@@ -123,11 +169,7 @@ TEST(SDBM, StripeTemporaries) {
   // cst   inf  inf    0
   // d0    inf  inf    2
   // t0    inf    0  inf
-  auto dim0 = SDBMDimExpr::get(ctx(), 0);
-  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
-  auto stripe = SDBMStripeExpr::get(dim0, cst3);
-
-  auto sdbm = SDBM::get(stripe, llvm::None);
+  auto sdbm = SDBM::get(stripe(dim(0), 3), llvm::None);
   EXPECT_EQ(sdbm(0, 2), 0);
   EXPECT_EQ(sdbm(1, 2), 2);
   EXPECT_EQ(sdbm(2, 1), 0);
@@ -144,19 +186,12 @@ TEST(SDBM, RoundTripEqs) {
   // different due to simplification or equivalent substitutions (e.g., the
   // second equality may become d0 - d1 + 42 = 0).  However, there should not
   // be any further simplification after the second round-trip,
-  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
-  auto cst5 = SDBMConstantExpr::get(ctx(), 5);
-  auto dim0 = SDBMSymbolExpr::get(ctx(), 0);
-  auto stripe = SDBMStripeExpr::get(SDBMStripeExpr::get(dim0, cst3), cst5);
-  auto foo = SDBMDiffExpr::get(stripe, SDBMDimExpr::get(ctx(), 0));
-  auto bar =
-      SDBMSumExpr::get(SDBMDiffExpr::get(stripe, SDBMDimExpr::get(ctx(), 1)),
-                       SDBMConstantExpr::get(ctx(), 42));
 
   // Build the SDBM from a pair of equalities and extract back the lists of
   // inequalities and equalities.  Check that all equalities are properly
   // detected and none of them decayed into inequalities.
-  auto sdbm = SDBM::get(llvm::None, {foo, bar});
+  auto s = stripe(stripe(symb(0), 3), 5);
+  auto sdbm = SDBM::get(llvm::None, {s - dim(0), s - dim(1) + 42});
   SmallVector<SDBMExpr, 4> eqs, ineqs;
   sdbm.getSDBMExpressions(ctx(), ineqs, eqs);
   ASSERT_TRUE(ineqs.empty());
@@ -185,20 +220,9 @@ TEST(SDBM, StripeTightening) {
   // equality (d0 - s0 # 3 <= 5 - 1 = 4).  Check that the conversion from SDBM
   // back to the lists of constraints conserves both the stripe equality and the
   // tighter inequality.
-  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
-  auto cst5 = SDBMConstantExpr::get(ctx(), 5);
-  auto dim0 = SDBMSymbolExpr::get(ctx(), 0);
-  auto stripe = SDBMStripeExpr::get(SDBMStripeExpr::get(dim0, cst3), cst5);
-  auto foo = SDBMDiffExpr::get(stripe, SDBMDimExpr::get(ctx(), 0));
-  auto bar = SDBMSumExpr::get(
-      SDBMDiffExpr::get(SDBMDimExpr::get(ctx(), 0), SDBMDimExpr::get(ctx(), 1)),
-      SDBMConstantExpr::get(ctx(), 42));
-  auto tight =
-      SDBMSumExpr::get(SDBMDiffExpr::get(SDBMDimExpr::get(ctx(), 0),
-                                         SDBMStripeExpr::get(dim0, cst3)),
-                       SDBMConstantExpr::get(ctx(), -2));
-
-  auto sdbm = SDBM::get({tight}, {foo, bar});
+  auto s = stripe(stripe(symb(0), 3), 5);
+  auto tight = dim(0) - stripe(symb(0), 3) - 2;
+  auto sdbm = SDBM::get({tight}, {s - dim(0), s - dim(1) + 42});
 
   SmallVector<SDBMExpr, 4> eqs, ineqs;
   sdbm.getSDBMExpressions(ctx(), ineqs, eqs);
@@ -224,17 +248,8 @@ TEST(SDBM, StripeTransitive) {
   // d1    inf    2  inf  inf  inf
   // d2    inf  inf  inf  inf    6
   // t0    inf    0  inf    0  inf
-  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
-  auto cst7 = SDBMConstantExpr::get(ctx(), 7);
-  auto dim0 = SDBMDimExpr::get(ctx(), 0);
-  auto dim1 = SDBMDimExpr::get(ctx(), 1);
-  auto dim2 = SDBMDimExpr::get(ctx(), 2);
-  auto stripe1 = SDBMStripeExpr::get(dim1, cst3);
-  auto stripe2 = SDBMStripeExpr::get(dim2, cst7);
-  auto diff1 = SDBMDiffExpr::get(stripe1, dim0);
-  auto diff2 = SDBMDiffExpr::get(stripe2, dim0);
-
-  auto sdbm = SDBM::get(llvm::None, {diff1, diff2});
+  auto sdbm = SDBM::get(
+      llvm::None, {stripe(dim(1), 3) - dim(0), stripe(dim(2), 7) - dim(0)});
   // Induced by d0 = d1 # 3.
   EXPECT_EQ(sdbm(1, 2), 0);
   EXPECT_EQ(sdbm(2, 1), 2);

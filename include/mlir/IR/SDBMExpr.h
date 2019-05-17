@@ -43,6 +43,10 @@ struct SDBMConstantExprStorage;
 struct SDBMNegExprStorage;
 } // namespace detail
 
+class SDBMConstantExpr;
+class SDBMDimExpr;
+class SDBMSymbolExpr;
+
 /// Striped Difference-Bounded Matrix (SDBM) expression is a base left-hand side
 /// expression for the SDBM framework.  SDBM expressions are a subset of affine
 /// expressions supporting low-complexity algorithms for the operations used in
@@ -399,6 +403,40 @@ protected:
       visit(expr);
   }
 };
+
+/// Overloaded arithmetic operators for SDBM expressions asserting that their
+/// arguments have the proper SDBM expression subtype.  Perform canonicalization
+/// and constant folding on these expressions.
+namespace ops_assertions {
+
+/// Add two SDBM expressions.  At least one of the expressions must be a
+/// constant or a negation, but both expressions cannot be negations
+/// simultaneously.
+SDBMExpr operator+(SDBMExpr lhs, SDBMExpr rhs);
+inline SDBMExpr operator+(SDBMExpr lhs, int64_t rhs) {
+  return lhs + SDBMConstantExpr::get(lhs.getContext(), rhs);
+}
+inline SDBMExpr operator+(int64_t lhs, SDBMExpr rhs) {
+  return SDBMConstantExpr::get(rhs.getContext(), lhs) + rhs;
+}
+
+/// Subtract an SDBM expression from another SDBM expression.  Both expressions
+/// must not be difference expressions.
+SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs);
+inline SDBMExpr operator-(SDBMExpr lhs, int64_t rhs) {
+  return lhs - SDBMConstantExpr::get(lhs.getContext(), rhs);
+}
+inline SDBMExpr operator-(int64_t lhs, SDBMExpr rhs) {
+  return SDBMConstantExpr::get(rhs.getContext(), lhs) - rhs;
+}
+
+/// Construct a stripe expression from a positive expression and a positive
+/// constant stripe factor.
+SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor);
+inline SDBMExpr stripe(SDBMExpr expr, int64_t factor) {
+  return stripe(expr, SDBMConstantExpr::get(expr.getContext(), factor));
+}
+} // namespace ops_assertions
 
 } // end namespace mlir
 
