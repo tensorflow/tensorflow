@@ -409,7 +409,6 @@ TEST(ConcatenationOpTest, NegativeAxisTest) {
   auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
 
-  // Feeding the negative axes
   ConcatenationOpModel m0(
       {TensorType_FLOAT32, {2, 3}}, /*axis=*/-1,
       /*num_inputs=*/2,
@@ -420,29 +419,9 @@ TEST(ConcatenationOpTest, NegativeAxisTest) {
   EXPECT_THAT(m0.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 
-  // We feed the wrong value of axis and expect it to fail.
-  EXPECT_DEATH(ConcatenationOpModel(
-                   {TensorType_FLOAT32, {2, 3}}, /*axis=*/-3,
-                   /*num_inputs=*/2,
-                   /*ActivationFunctionType*/ ActivationFunctionType_NONE),
-               "Cannot allocate tensors");
 }
 
-TEST(ConcatenationOpTest, InvalidAxisTest) {
-  // We will concatenate two tensors along different dimensions.
-  auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
-
-  // Feeding the negative axes
-  ConcatenationOpModel m0(
-      {TensorType_FLOAT32, {2, 3}}, /*axis=*/-1,
-      /*num_inputs=*/2,
-      /*ActivationFunctionType*/ ActivationFunctionType_NONE);
-  m0.SetInput(0, tensor0);
-  m0.SetInput(1, tensor1);
-  m0.Invoke();
-
-  // We feed the wrong value of axis and expect it to fail.
+TEST(ConcatenationOpTest, OutofBoundAxisTest) {
   EXPECT_DEATH(ConcatenationOpModel(
                    {TensorType_FLOAT32, {2, 3}}, /*axis=*/-3,
                    /*num_inputs=*/2,
