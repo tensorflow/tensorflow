@@ -15,10 +15,13 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/SDBM.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SDBMExpr.h"
 #include "gtest/gtest.h"
+
+#include "llvm/ADT/DenseSet.h"
 
 using namespace mlir;
 
@@ -28,6 +31,220 @@ static MLIRContext *ctx() {
 }
 
 namespace {
+
+TEST(SDBM, SingleConstraint) {
+  // Build an SDBM defined by
+  //
+  //   d0 - 3 <= 0  <=>  d0 <= 3.
+  //
+  //         cst   d0
+  //   cst   inf    3
+  //   d0    inf  inf
+  auto cst3 = SDBMConstantExpr::get(ctx(), -3);
+  auto dim0 = SDBMDimExpr::get(ctx(), 0);
+  auto expr = SDBMSumExpr::get(dim0, cst3);
+
+  auto sdbm = SDBM::get(expr, llvm::None);
+  EXPECT_EQ(sdbm(0, 1), 3);
+}
+
+TEST(SDBM, Equality) {
+  // Build an SDBM defined by
+  //
+  //   d0 - d1 - 3 = 0  <=> {d0 - d1 - 3 <= 0 and d0 - d1 - 3 >= 0} <=>
+  //   <=> {d0 - d1 <= 3 and d1 - d0 <= -3}.
+  //
+  //         cst   d0   d1
+  //   cst   inf  inf  inf
+  //   d0    inf  inf   -3
+  //   d1    inf    3  inf
+  auto cst3 = SDBMConstantExpr::get(ctx(), -3);
+  auto dim0 = SDBMDimExpr::get(ctx(), 0);
+  auto dim1 = SDBMDimExpr::get(ctx(), 1);
+  auto expr = SDBMSumExpr::get(SDBMDiffExpr::get(dim0, dim1), cst3);
+
+  auto sdbm = SDBM::get(llvm::None, expr);
+  EXPECT_EQ(sdbm(1, 2), -3);
+  EXPECT_EQ(sdbm(2, 1), 3);
+}
+
+TEST(SDBM, TrivialSimplification) {
+  // Build an SDBM defined by
+  //
+  //   d0 - 3 <= 0  <=>  d0 <= 3
+  //   d0 - 5 <= 0  <=>  d0 <= 5
+  //
+  // which should get simplifed on construction to only the former.
+  //
+  //         cst   d0
+  //   cst   inf    3
+  //   d0    inf  inf
+  auto cst5 = SDBMConstantExpr::get(ctx(), -5);
+  auto cst3 = SDBMConstantExpr::get(ctx(), -3);
+  auto dim0 = SDBMDimExpr::get(ctx(), 0);
+  auto expr5 = SDBMSumExpr::get(dim0, cst5);
+  auto expr3 = SDBMSumExpr::get(dim0, cst3);
+
+  auto sdbm = SDBM::get({expr3, expr5}, llvm::None);
+  EXPECT_EQ(sdbm(0, 1), 3);
+}
+
+TEST(SDBM, StripeInducedIneqs) {
+  // Build an SDBM defined by d1 = d0 # 3, which induces the constraints
+  //
+  //   d1 - d0 <= 0
+  //   d0 - d1 <= 3 - 1 = 2
+  //
+  //       cst   d0   d1
+  // cst   inf  inf  inf
+  // d0    inf  inf    2
+  // d1    inf    0    0
+
+  auto dim0 = SDBMDimExpr::get(ctx(), 0);
+  auto dim1 = SDBMDimExpr::get(ctx(), 1);
+  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
+  auto stripe = SDBMStripeExpr::get(dim0, cst3);
+  auto expr = SDBMDiffExpr::get(dim1, stripe);
+
+  auto sdbm = SDBM::get(llvm::None, expr);
+  EXPECT_EQ(sdbm(1, 2), 2);
+  EXPECT_EQ(sdbm(2, 1), 0);
+}
+
+TEST(SDBM, StripeTemporaries) {
+  // Build an SDBM defined by d0 # 3 <= 0, which creates a temporary
+  // t0 = d0 # 3 leading to a constraint t0 <= 0 and the stripe-induced
+  // constraints
+  //
+  //   t0 - d0 <= 0
+  //   d0 - t0 <= 3 - 1 = 2
+  //
+  //       cst   d0   t0
+  // cst   inf  inf    0
+  // d0    inf  inf    2
+  // t0    inf    0  inf
+  auto dim0 = SDBMDimExpr::get(ctx(), 0);
+  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
+  auto stripe = SDBMStripeExpr::get(dim0, cst3);
+
+  auto sdbm = SDBM::get(stripe, llvm::None);
+  EXPECT_EQ(sdbm(0, 2), 0);
+  EXPECT_EQ(sdbm(1, 2), 2);
+  EXPECT_EQ(sdbm(2, 1), 0);
+}
+
+TEST(SDBM, RoundTripEqs) {
+  // Build and SDBM defined by
+  //
+  //   d0 = s0 # 3 # 5
+  //   s0 # 3 # 5 - d1 + 42 = 0
+  //
+  // and perform a double round-trip between the "list of equalities" and SDBM
+  // representation.  After the first round-trip, the equalities may be
+  // different due to simplification or equivalent substitutions (e.g., the
+  // second equality may become d0 - d1 + 42 = 0).  However, there should not
+  // be any further simplification after the second round-trip,
+  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
+  auto cst5 = SDBMConstantExpr::get(ctx(), 5);
+  auto dim0 = SDBMSymbolExpr::get(ctx(), 0);
+  auto stripe = SDBMStripeExpr::get(SDBMStripeExpr::get(dim0, cst3), cst5);
+  auto foo = SDBMDiffExpr::get(stripe, SDBMDimExpr::get(ctx(), 0));
+  auto bar =
+      SDBMSumExpr::get(SDBMDiffExpr::get(stripe, SDBMDimExpr::get(ctx(), 1)),
+                       SDBMConstantExpr::get(ctx(), 42));
+
+  // Build the SDBM from a pair of equalities and extract back the lists of
+  // inequalities and equalities.  Check that all equalities are properly
+  // detected and none of them decayed into inequalities.
+  auto sdbm = SDBM::get(llvm::None, {foo, bar});
+  SmallVector<SDBMExpr, 4> eqs, ineqs;
+  sdbm.getSDBMExpressions(ctx(), ineqs, eqs);
+  ASSERT_TRUE(ineqs.empty());
+
+  // Do the second round-trip.
+  auto sdbm2 = SDBM::get(llvm::None, eqs);
+  SmallVector<SDBMExpr, 4> eqs2, ineqs2;
+  sdbm2.getSDBMExpressions(ctx(), ineqs2, eqs2);
+  ASSERT_EQ(eqs.size(), eqs2.size());
+
+  // Convert that the sets of equalities are equal, their order is not relevant.
+  llvm::DenseSet<SDBMExpr> eqSet, eq2Set;
+  eqSet.insert(eqs.begin(), eqs.end());
+  eq2Set.insert(eqs2.begin(), eqs2.end());
+  EXPECT_EQ(eqSet, eq2Set);
+}
+
+TEST(SDBM, StripeTightening) {
+  // Build an SDBM defined by
+  //
+  //   d0 = s0 # 3 # 5
+  //   s0 # 3 # 5 - d1 + 42 = 0
+  //   d0 - s0 # 3 <= 2
+  //
+  // where the last inequality is tighter than that induced by the first stripe
+  // equality (d0 - s0 # 3 <= 5 - 1 = 4).  Check that the conversion from SDBM
+  // back to the lists of constraints conserves both the stripe equality and the
+  // tighter inequality.
+  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
+  auto cst5 = SDBMConstantExpr::get(ctx(), 5);
+  auto dim0 = SDBMSymbolExpr::get(ctx(), 0);
+  auto stripe = SDBMStripeExpr::get(SDBMStripeExpr::get(dim0, cst3), cst5);
+  auto foo = SDBMDiffExpr::get(stripe, SDBMDimExpr::get(ctx(), 0));
+  auto bar = SDBMSumExpr::get(
+      SDBMDiffExpr::get(SDBMDimExpr::get(ctx(), 0), SDBMDimExpr::get(ctx(), 1)),
+      SDBMConstantExpr::get(ctx(), 42));
+  auto tight =
+      SDBMSumExpr::get(SDBMDiffExpr::get(SDBMDimExpr::get(ctx(), 0),
+                                         SDBMStripeExpr::get(dim0, cst3)),
+                       SDBMConstantExpr::get(ctx(), -2));
+
+  auto sdbm = SDBM::get({tight}, {foo, bar});
+
+  SmallVector<SDBMExpr, 4> eqs, ineqs;
+  sdbm.getSDBMExpressions(ctx(), ineqs, eqs);
+  ASSERT_EQ(ineqs.size(), 1u);
+  EXPECT_EQ(ineqs[0], tight);
+  EXPECT_EQ(eqs.size(), 2u);
+}
+
+TEST(SDBM, StripeTransitive) {
+  // Build an SDBM defined by
+  //
+  //   d0 = d1 # 3
+  //   d0 = d2 # 7
+  //
+  // where the same dimension is declared equal to two stripe expressions over
+  // different variables.  This is practically handled by introducing a
+  // temporary variable for the second stripe expression and adding an equality
+  // constraint between this variable and the original dimension variable.
+  //
+  //       cst   d0   d1   d2   t0
+  // cst   inf  inf  inf  inf  inf
+  // d0    inf    0    0  inf    0
+  // d1    inf    2  inf  inf  inf
+  // d2    inf  inf  inf  inf    6
+  // t0    inf    0  inf    0  inf
+  auto cst3 = SDBMConstantExpr::get(ctx(), 3);
+  auto cst7 = SDBMConstantExpr::get(ctx(), 7);
+  auto dim0 = SDBMDimExpr::get(ctx(), 0);
+  auto dim1 = SDBMDimExpr::get(ctx(), 1);
+  auto dim2 = SDBMDimExpr::get(ctx(), 2);
+  auto stripe1 = SDBMStripeExpr::get(dim1, cst3);
+  auto stripe2 = SDBMStripeExpr::get(dim2, cst7);
+  auto diff1 = SDBMDiffExpr::get(stripe1, dim0);
+  auto diff2 = SDBMDiffExpr::get(stripe2, dim0);
+
+  auto sdbm = SDBM::get(llvm::None, {diff1, diff2});
+  // Induced by d0 = d1 # 3.
+  EXPECT_EQ(sdbm(1, 2), 0);
+  EXPECT_EQ(sdbm(2, 1), 2);
+  // Equality d0 = t0.
+  EXPECT_EQ(sdbm(1, 4), 0);
+  EXPECT_EQ(sdbm(4, 1), 0);
+  // Induced by t0 = d2 # 7.
+  EXPECT_EQ(sdbm(3, 4), 6);
+  EXPECT_EQ(sdbm(4, 3), 0);
+}
 
 TEST(SDBMExpr, Constant) {
   // We can create consants and query them.

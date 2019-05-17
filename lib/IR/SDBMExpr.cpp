@@ -1,4 +1,4 @@
-//===- SDBMExpr.h - MLIR SDBM Expression implementation -------------------===//
+//===- SDBMExpr.cpp - MLIR SDBM Expression implementation -----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -151,75 +151,6 @@ SDBMExprKind SDBMExpr::getKind() const { return impl->getKind(); }
 
 MLIRContext *SDBMExpr::getContext() const { return impl->getContext(); }
 
-template <typename Derived, typename Result = void> class SDBMVisitor {
-public:
-  /// Visit the given SDBM expression, dispatching to kind-specific functions.
-  Result visit(SDBMExpr expr) {
-    auto *derived = static_cast<Derived *>(this);
-    switch (expr.getKind()) {
-    case SDBMExprKind::Add:
-    case SDBMExprKind::Diff:
-    case SDBMExprKind::DimId:
-    case SDBMExprKind::SymbolId:
-    case SDBMExprKind::Neg:
-    case SDBMExprKind::Stripe:
-      return derived->visitVarying(expr.cast<SDBMVaryingExpr>());
-    case SDBMExprKind::Constant:
-      return derived->visitConstant(expr.cast<SDBMConstantExpr>());
-    }
-    llvm_unreachable("Unknown SDBMExpr Kind");
-  }
-
-protected:
-  /// Default visitors do nothing.
-  void visitSum(SDBMSumExpr) {}
-  void visitDiff(SDBMDiffExpr) {}
-  void visitStripe(SDBMStripeExpr) {}
-  void visitDim(SDBMDimExpr) {}
-  void visitSymbol(SDBMSymbolExpr) {}
-  void visitNeg(SDBMNegExpr) {}
-  void visitConstant(SDBMConstantExpr) {}
-
-  /// Default implementation of visitPositive dispatches to the special
-  /// functions for stripes and other variables.  Concrete visitors can override
-  /// it.
-  Result visitPositive(SDBMPositiveExpr expr) {
-    auto *derived = static_cast<Derived *>(this);
-    if (expr.getKind() == SDBMExprKind::Stripe)
-      return derived->visitStripe(expr.cast<SDBMStripeExpr>());
-    else
-      return derived->visitInput(expr.cast<SDBMInputExpr>());
-  }
-
-  /// Default implementation of visitInput dispatches to the special
-  /// functions for dimensions or symbols.  Concrete visitors can override it to
-  /// visit all variables instead.
-  Result visitInput(SDBMInputExpr expr) {
-    auto *derived = static_cast<Derived *>(this);
-    if (expr.getKind() == SDBMExprKind::DimId)
-      return derived->visitDim(expr.cast<SDBMDimExpr>());
-    else
-      return derived->visitSymbol(expr.cast<SDBMSymbolExpr>());
-  }
-
-  /// Default implementation of visitVarying dispatches to the special
-  /// functions for variables and negations thereof.  Concerete visitors can
-  /// override it to visit all variables and negations isntead.
-  Result visitVarying(SDBMVaryingExpr expr) {
-    auto *derived = static_cast<Derived *>(this);
-    if (auto var = expr.dyn_cast<SDBMPositiveExpr>())
-      return derived->visitPositive(var);
-    else if (auto neg = expr.dyn_cast<SDBMNegExpr>())
-      return derived->visitNeg(neg);
-    else if (auto sum = expr.dyn_cast<SDBMSumExpr>())
-      return derived->visitSum(sum);
-    else if (auto diff = expr.dyn_cast<SDBMDiffExpr>())
-      return derived->visitDiff(diff);
-
-    llvm_unreachable("unhandled subtype of varying SDBM expression");
-  }
-};
-
 void SDBMExpr::print(raw_ostream &os) const {
   struct Printer : public SDBMVisitor<Printer> {
     Printer(raw_ostream &ostream) : prn(ostream) {}
@@ -257,6 +188,36 @@ void SDBMExpr::dump() const {
   print(llvm::errs());
   llvm::errs() << '\n';
 }
+
+namespace {
+// Helper class to perform negation of an SDBM expression.
+struct SDBMNegator : public SDBMVisitor<SDBMNegator, SDBMExpr> {
+  // Any positive expression is wrapped into a negation expression.
+  //  -(x) = -x
+  SDBMExpr visitPositive(SDBMPositiveExpr expr) {
+    return SDBMNegExpr::get(expr);
+  }
+  // A negation expression is unwrapped.
+  //  -(-x) = x
+  SDBMExpr visitNeg(SDBMNegExpr expr) { return expr.getVar(); }
+  // The value of the constant is negated.
+  SDBMExpr visitConstant(SDBMConstantExpr expr) {
+    return SDBMConstantExpr::get(expr.getContext(), -expr.getValue());
+  }
+  // Both terms of the sum are negated recursively.
+  SDBMExpr visitSum(SDBMSumExpr expr) {
+    return SDBMSumExpr::get(visit(expr.getLHS()).cast<SDBMVaryingExpr>(),
+                            visit(expr.getRHS()).cast<SDBMConstantExpr>());
+  }
+  // Terms of a difference are interchanged.
+  //  -(x - y) = y - x
+  SDBMExpr visitDiff(SDBMDiffExpr expr) {
+    return SDBMDiffExpr::get(expr.getRHS(), expr.getLHS());
+  }
+};
+} // namespace
+
+SDBMExpr SDBMExpr::operator-() { return SDBMNegator().visit(*this); }
 
 //===----------------------------------------------------------------------===//
 // SDBMSumExpr

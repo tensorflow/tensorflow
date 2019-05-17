@@ -86,6 +86,9 @@ public:
   explicit operator bool() const { return impl != nullptr; }
   bool operator!() const { return !static_cast<bool>(*this); }
 
+  /// Negate the given SDBM expression.
+  SDBMExpr operator-();
+
   /// Prints the SDBM expression.
   void print(raw_ostream &os) const;
   void dump() const;
@@ -298,9 +301,126 @@ public:
   SDBMPositiveExpr getVar() const;
 };
 
+/// A visitor class for SDBM expressions.  Calls the kind-specific function
+/// depending on the kind of expression it visits.
+template <typename Derived, typename Result = void> class SDBMVisitor {
+public:
+  /// Visit the given SDBM expression, dispatching to kind-specific functions.
+  Result visit(SDBMExpr expr) {
+    auto *derived = static_cast<Derived *>(this);
+    switch (expr.getKind()) {
+    case SDBMExprKind::Add:
+    case SDBMExprKind::Diff:
+    case SDBMExprKind::DimId:
+    case SDBMExprKind::SymbolId:
+    case SDBMExprKind::Neg:
+    case SDBMExprKind::Stripe:
+      return derived->visitVarying(expr.cast<SDBMVaryingExpr>());
+    case SDBMExprKind::Constant:
+      return derived->visitConstant(expr.cast<SDBMConstantExpr>());
+    }
+
+    llvm_unreachable("unsupported SDBM expression kind");
+  }
+
+  /// Traverse the SDBM expression tree calling `visit` on each node
+  /// in depth-first preorder.
+  void walkPreorder(SDBMExpr expr) { return walk</*isPreorder=*/true>(expr); }
+
+  /// Traverse the SDBM expression tree calling `visit` on each node in
+  /// depth-first postorder.
+  void walkPostorder(SDBMExpr expr) { return walk</*isPreorder=*/false>(expr); }
+
+protected:
+  /// Default visitors do nothing.
+  void visitSum(SDBMSumExpr) {}
+  void visitDiff(SDBMDiffExpr) {}
+  void visitStripe(SDBMStripeExpr) {}
+  void visitDim(SDBMDimExpr) {}
+  void visitSymbol(SDBMSymbolExpr) {}
+  void visitNeg(SDBMNegExpr) {}
+  void visitConstant(SDBMConstantExpr) {}
+
+  /// Default implementation of visitPositive dispatches to the special
+  /// functions for stripes and other variables.  Concrete visitors can override
+  /// it.
+  Result visitPositive(SDBMPositiveExpr expr) {
+    auto *derived = static_cast<Derived *>(this);
+    if (expr.getKind() == SDBMExprKind::Stripe)
+      return derived->visitStripe(expr.cast<SDBMStripeExpr>());
+    else
+      return derived->visitInput(expr.cast<SDBMInputExpr>());
+  }
+
+  /// Default implementation of visitInput dispatches to the special
+  /// functions for dimensions or symbols.  Concrete visitors can override it to
+  /// visit all variables instead.
+  Result visitInput(SDBMInputExpr expr) {
+    auto *derived = static_cast<Derived *>(this);
+    if (expr.getKind() == SDBMExprKind::DimId)
+      return derived->visitDim(expr.cast<SDBMDimExpr>());
+    else
+      return derived->visitSymbol(expr.cast<SDBMSymbolExpr>());
+  }
+
+  /// Default implementation of visitVarying dispatches to the special
+  /// functions for variables and negations thereof.  Concerete visitors can
+  /// override it to visit all variables and negations instead.
+  Result visitVarying(SDBMVaryingExpr expr) {
+    auto *derived = static_cast<Derived *>(this);
+    if (auto var = expr.dyn_cast<SDBMPositiveExpr>())
+      return derived->visitPositive(var);
+    else if (auto neg = expr.dyn_cast<SDBMNegExpr>())
+      return derived->visitNeg(neg);
+    else if (auto sum = expr.dyn_cast<SDBMSumExpr>())
+      return derived->visitSum(sum);
+    else if (auto diff = expr.dyn_cast<SDBMDiffExpr>())
+      return derived->visitDiff(diff);
+
+    llvm_unreachable("unhandled subtype of varying SDBM expression");
+  }
+
+  template <bool isPreorder> void walk(SDBMExpr expr) {
+    if (isPreorder)
+      visit(expr);
+    if (auto sumExpr = expr.dyn_cast<SDBMSumExpr>()) {
+      walk<isPreorder>(sumExpr.getLHS());
+      walk<isPreorder>(sumExpr.getRHS());
+    } else if (auto diffExpr = expr.dyn_cast<SDBMDiffExpr>()) {
+      walk<isPreorder>(diffExpr.getLHS());
+      walk<isPreorder>(diffExpr.getRHS());
+    } else if (auto stripeExpr = expr.dyn_cast<SDBMStripeExpr>()) {
+      walk<isPreorder>(stripeExpr.getVar());
+      walk<isPreorder>(stripeExpr.getStripeFactor());
+    } else if (auto negExpr = expr.dyn_cast<SDBMNegExpr>()) {
+      walk<isPreorder>(negExpr.getVar());
+    }
+    if (!isPreorder)
+      visit(expr);
+  }
+};
+
 } // end namespace mlir
 
 namespace llvm {
+// SDBMExpr hash just like pointers.
+template <> struct DenseMapInfo<mlir::SDBMExpr> {
+  static mlir::SDBMExpr getEmptyKey() {
+    auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::SDBMExpr(static_cast<mlir::SDBMExpr::ImplType *>(pointer));
+  }
+  static mlir::SDBMExpr getTombstoneKey() {
+    auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::SDBMExpr(static_cast<mlir::SDBMExpr::ImplType *>(pointer));
+  }
+  static unsigned getHashValue(mlir::SDBMExpr expr) {
+    return expr.hash_value();
+  }
+  static bool isEqual(mlir::SDBMExpr lhs, mlir::SDBMExpr rhs) {
+    return lhs == rhs;
+  }
+};
+
 // SDBMVaryingExpr hash just like pointers.
 template <> struct DenseMapInfo<mlir::SDBMVaryingExpr> {
   static mlir::SDBMVaryingExpr getEmptyKey() {
