@@ -94,7 +94,7 @@ cc_binary(
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
-    ],
+        ],
         "//conditions:default": [],
     }),
     linkshared = 1,
