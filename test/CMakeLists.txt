@@ -1,4 +1,5 @@
 add_subdirectory(mlir-cpu-runner)
+add_subdirectory(EDSC)
 
 llvm_canonicalize_cmake_booleans(
   LLVM_BUILD_EXAMPLES

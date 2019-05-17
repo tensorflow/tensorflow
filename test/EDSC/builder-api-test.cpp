@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-// RUN: %p/builder-api-test | FileCheck %s
+// RUN: mlir-edsc-builder-api-test | FileCheck %s
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/EDSC/Builders.h"

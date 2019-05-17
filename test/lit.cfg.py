@@ -52,7 +52,10 @@ llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 
 tool_dirs = [config.mlir_tools_dir, config.llvm_tools_dir]
 tools = [
-    'mlir-opt', 'mlir-tblgen', 'mlir-translate',
+    'mlir-opt',
+    'mlir-tblgen',
+    'mlir-translate',
+    'mlir-edsc-builder-api-test',
 ]
 
 # The following tools are optional
