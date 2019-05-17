@@ -336,9 +336,10 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
         CalculateStrides<TIndex, T, NDIM>(input);
     const TIndex output_rows = output.dimension(0);
     GpuLaunchConfig config = GetGpuLaunchConfig(output_rows, d);
-    TF_CHECK_OK(GpuLaunchKernel((PropagateWhereIndicesKernel<NDIM, TIndex>),
-        config.block_count, config.thread_per_block, 0, d.stream(),
-            output_rows, strides, output.data()));
+    TF_CHECK_OK(GpuLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), output_rows, strides,
+                                 output.data()));
 
     return Status::OK();
   }

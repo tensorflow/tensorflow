@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/profiling/buffered_profiler.h"
+#include "tensorflow/lite/profiling/profile_summarizer.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -40,12 +42,44 @@ void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
 namespace tflite {
 namespace benchmark {
+namespace {
 
-void ProfilingListener::SetInterpreter(tflite::Interpreter* interpreter) {
-  TFLITE_BENCHMARK_CHECK(interpreter);
-  interpreter_ = interpreter;
-  interpreter_->SetProfiler(&profiler_);
-}
+// Backward compat with previous approach to enabling op profiling.
+#if defined(TFLITE_PROFILING_ENABLED)
+constexpr int kOpProfilingEnabledDefault = true;
+#else
+constexpr int kOpProfilingEnabledDefault = false;
+#endif
+
+// Dumps profiling events if profiling is enabled.
+class ProfilingListener : public BenchmarkListener {
+ public:
+  explicit ProfilingListener(Interpreter* interpreter)
+      : interpreter_(interpreter), has_profiles_(false) {
+    TFLITE_BENCHMARK_CHECK(interpreter);
+    interpreter_->SetProfiler(&profiler_);
+  }
+
+  void OnSingleRunStart(RunType run_type) override;
+
+  void OnSingleRunEnd() override;
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) override;
+
+ private:
+  Interpreter* interpreter_;
+  profiling::BufferedProfiler profiler_;
+  profiling::ProfileSummarizer summarizer_;
+  bool has_profiles_;
+};
+
+// Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
+class GemmlowpProfilingListener : public BenchmarkListener {
+ public:
+  void OnBenchmarkStart(const BenchmarkParams& params) override;
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) override;
+};
 
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
   if (run_type == REGULAR) {
@@ -81,8 +115,6 @@ void GemmlowpProfilingListener::OnBenchmarkEnd(
   gemmlowp::FinishProfiling();
 #endif
 }
-
-namespace {
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
   std::istringstream input(str);
@@ -201,6 +233,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam(
+      "enable_op_profiling",
+      BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   return default_params;
 }
 
@@ -209,8 +244,6 @@ BenchmarkTfLiteModel::BenchmarkTfLiteModel()
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)) {
-  AddListener(&profiling_listener_);
-  AddListener(&gemmlowp_profiling_listener_);
 }
 
 void BenchmarkTfLiteModel::CleanUp() {
@@ -236,7 +269,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
       CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
       CreateFlag<bool>("use_gpu", &params_, "use gpu"),
-      CreateFlag<bool>("allow_fp16", &params_, "allow fp16")};
+      CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
+      CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
   return flags;
@@ -255,6 +289,8 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
+  TFLITE_LOG(INFO) << "Enable op profiling: ["
+                   << params_.Get<bool>("enable_op_profiling") << "]";
 }
 
 bool BenchmarkTfLiteModel::ValidateParams() {
@@ -306,6 +342,12 @@ void BenchmarkTfLiteModel::PrepareInputData() {
       FillRandomValue<int32_t>(t_data.data.i32, num_elements, []() {
         return static_cast<int32_t>(rand()) % 100;
       });
+    } else if (t->type == kTfLiteInt16) {
+      t_data.bytes = sizeof(int16_t) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<int16_t>(t_data.data.i16, num_elements, []() {
+        return static_cast<int16_t>(rand()) % 100;
+      });
     } else if (t->type == kTfLiteUInt8) {
       t_data.bytes = sizeof(uint8_t) * num_elements;
       t_data.data.raw = new char[t_data.bytes];
@@ -340,6 +382,9 @@ void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
     } else if (t->type == kTfLiteInt32) {
       std::memcpy(interpreter->typed_tensor<int32_t>(i),
                   inputs_data_[j].data.i32, inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt16) {
+      std::memcpy(interpreter->typed_tensor<int16_t>(i),
+                  inputs_data_[j].data.i16, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteUInt8) {
       std::memcpy(interpreter->typed_tensor<uint8_t>(i),
                   inputs_data_[j].data.uint8, inputs_data_[j].bytes);
@@ -382,7 +427,6 @@ void BenchmarkTfLiteModel::Init() {
   if (!interpreter) {
     TFLITE_LOG(FATAL) << "Failed to construct interpreter";
   }
-  profiling_listener_.SetInterpreter(interpreter.get());
 
   interpreter->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
 
@@ -433,6 +477,16 @@ void BenchmarkTfLiteModel::Init() {
   if (delegates_.empty() && interpreter->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
   }
+
+  // Install profilers if necessary.
+  if (params_.Get<bool>("enable_op_profiling")) {
+    profiling_listener_.reset(new ProfilingListener(interpreter.get()));
+    AddListener(profiling_listener_.get());
+  }
+#ifdef GEMMLOWP_PROFILING
+  gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
+  AddListener(gemmlowp_profiling_listener_.get());
+#endif
 }
 
 BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()

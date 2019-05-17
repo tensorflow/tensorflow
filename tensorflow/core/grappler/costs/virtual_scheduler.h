@@ -180,21 +180,22 @@ class LIFOManager : public ReadyNodeManager {
   std::list<const NodeDef*>::iterator curr_pos_ = nodes_.end();
 };
 
-// FirstReadyManager picks a node with the minimum time_ready value.
-// Behavior is deterministic when there are more than one nodes with the minimum
-// time_ready value with unique node names as the tie-breaker.
-class FirstReadyManager : public ReadyNodeManager {
+// Abstract class that maintains a heap/priority queue for scheduling ready
+// nodes. Derived class needs to implement the Greater() function which returns
+// the comparator for the heap.
+class HeapReadyManager : public ReadyNodeManager {
  public:
-  FirstReadyManager();
+  HeapReadyManager();
   Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
-  ~FirstReadyManager() override {}
+  ~HeapReadyManager() override {}
   void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
   bool Empty() const override;
 
- private:
+ protected:
+  virtual std::function<bool(const NodeDef*, const NodeDef*)> Greater() = 0;
   // Move all the nodes in the waiting_queue_ to nodes_.
   void DrainWaitingQueue();
 
@@ -212,6 +213,37 @@ class FirstReadyManager : public ReadyNodeManager {
   // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
   const std::unordered_map<const NodeDef*, NodeState>* node_map_;
+};
+
+// FirstReadyManager picks a node with the minimum time_ready value.
+// Behavior is deterministic when there are more than one nodes with the minimum
+// time_ready value with unique node names as the tie-breaker.
+class FirstReadyManager : public HeapReadyManager {
+ public:
+  FirstReadyManager() : HeapReadyManager() {}
+  ~FirstReadyManager() override {}
+
+ protected:
+  std::function<bool(const NodeDef*, const NodeDef*)> Greater() override;
+};
+
+// PriorityReadyManager uses the given node priorities when picking up next node
+// from all the ready nodes.
+class PriorityReadyManager : public HeapReadyManager {
+ public:
+  PriorityReadyManager() : HeapReadyManager() {}
+  ~PriorityReadyManager() override {}
+
+  // Note this should be called after Init().
+  Status SetPriority(const std::unordered_map<string, int>& node_priority);
+
+ protected:
+  std::function<bool(const NodeDef*, const NodeDef*)> Greater() override;
+
+ private:
+  // A map from unique node name to unique priority. Lower number means higher
+  // priority.
+  std::unordered_map<string, int> node_priority_;
 };
 
 // CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal

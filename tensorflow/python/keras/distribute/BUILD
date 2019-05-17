@@ -1,6 +1,7 @@
 # Description:
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
+
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -328,15 +329,17 @@ cuda_py_test(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/keras",
     ],
-    shard_count = 4,
+    shard_count = 14,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/132384649): Flakily times out.
     ],
 )
 
 py_binary(
     name = "mnist_multi_worker",
     srcs = ["mnist_multi_worker.py"],
+    python_version = "PY2",
     deps = [":mnist_multi_worker_lib"],
 )
 

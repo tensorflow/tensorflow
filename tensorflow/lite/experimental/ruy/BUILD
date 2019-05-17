@@ -265,11 +265,13 @@ cc_library(
     srcs = [
         "dispatch.h",
         "impl.h",
+        "prepack.h",
     ],
     hdrs = [
         "matrix.h",
         "path.h",
         "ruy.h",
+        "ruy_advanced.h",
     ],
     visibility = ruy_visibility(),
     deps = [
@@ -290,10 +292,19 @@ cc_library(
     ],
 )
 
-# Just a usage example.
+# Usage examples.
 cc_binary(
     name = "example",
     srcs = ["example.cc"],
+    deps = [
+        ":ruy",
+    ],
+)
+
+# Usage examples of the advanced API.
+cc_binary(
+    name = "example_advanced",
+    srcs = ["example_advanced.cc"],
     deps = [
         ":ruy",
     ],
@@ -305,6 +316,7 @@ cc_library(
     testonly = True,
     srcs = ["pmu.cc"],
     hdrs = ["pmu.h"],
+    deps = [":check_macros"],
 )
 
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
@@ -339,6 +351,7 @@ ruy_benchmark(
         ("i8", "i8", "i32", "u8"),
         ("i8", "i8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
+        ("i8", "i8", "i32", "i32"),
     ],
 )
 
@@ -353,6 +366,7 @@ ruy_test(
         ("i8", "i8", "i32", "i8"),
         ("i8", "u8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
+        ("i8", "i8", "i32", "i32"),
     ],
 )
 
@@ -364,7 +378,9 @@ ruy_test(
         ("u8", "u8", "i32", "u8"),
         ("i8", "i8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
+        ("i8", "i8", "i32", "i32"),
     ],
+    tags = ["slow"],
 )
 
 ruy_test(

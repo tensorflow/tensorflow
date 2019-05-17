@@ -277,6 +277,7 @@ struct ResizeBilinear<GPUDevice, T> {
 
     const int total_count = batch * out_height * out_width * channels;
     if (total_count == 0) return;
+
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     if (half_pixel_centers) {
       TF_CHECK_OK(GpuLaunchKernel(ResizeBilinearKernel<T>,
@@ -317,8 +318,8 @@ struct ResizeBilinearGrad<GPUDevice, T> {
     total_count = batch * original_height * original_width * channels;
     if (total_count == 0) return;
     config = GetGpuLaunchConfig(total_count, d);
-    TF_CHECK_OK(GpuLaunchKernel(SetZero<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+    TF_CHECK_OK(GpuLaunchKernel(
+        SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, output_grad.data()));
 
     // Accumulate.

@@ -61,7 +61,6 @@ COMMON_PIP_DEPS = [
     ":included_headers",
     "//tensorflow:tensorflow_py",
     "//tensorflow/examples/saved_model/integration_tests:mnist_util",
-    "//tensorflow/examples/saved_model/integration_tests:util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",

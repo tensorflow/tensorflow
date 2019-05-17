@@ -84,9 +84,9 @@ void AddXrtSubmodule(py::module* module) {
       .def_property_readonly("tf_device_ids", &XrtContext::tf_device_ids);
 
   py::class_<XrtBuffer, std::shared_ptr<XrtBuffer>>(m, "XrtBuffer")
-      .def_static("FromLiteral", &XrtBuffer::FromLiteral)
-      .def_static("MakeTuple", &XrtBuffer::MakeTuple)
-      .def("ToPython",
+      .def_static("from_literal", &XrtBuffer::FromLiteral)
+      .def_static("make_tuple", &XrtBuffer::MakeTuple)
+      .def("to_py",
            [](std::shared_ptr<XrtBuffer> buffer) -> xla::StatusOr<py::object> {
              auto literal = absl::make_unique<xla::Literal>();
              {
@@ -95,8 +95,10 @@ void AddXrtSubmodule(py::module* module) {
              }
              return xla::LiteralToPython(std::move(literal));
            })
-      .def("Delete", &XrtBuffer::Delete)
-      .def("DestructureTuple", &XrtBuffer::DestructureTuple);
+      .def("delete", &XrtBuffer::Delete)
+      .def("destructure", &XrtBuffer::DestructureTuple)
+      .def("is_deleted",
+           [](const XrtBuffer& buffer) { return !buffer.handle().valid(); });
 
   py::class_<XrtExecutable, std::shared_ptr<XrtExecutable>>(m, "XrtExecutable")
       .def_static("Compile",

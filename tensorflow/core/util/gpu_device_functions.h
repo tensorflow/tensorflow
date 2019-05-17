@@ -30,8 +30,8 @@ limitations under the License.
 #include <complex>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
-#include "cuda/include/cuComplex.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_cuda_alias.h"

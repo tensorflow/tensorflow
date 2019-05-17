@@ -416,6 +416,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateReplicaId();
       break;
     }
+    case HloOpcode::kPartitionId: {
+      instruction = CreatePartitionId();
+      break;
+    }
     case HloOpcode::kConvolution: {
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
@@ -867,6 +871,12 @@ HloInstruction::CreateCollectivePermute(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId() {
   return absl::WrapUnique(
       new HloInstruction(HloOpcode::kReplicaId, ShapeUtil::MakeShape(U32, {})));
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreatePartitionId() {
+  return absl::WrapUnique(new HloInstruction(HloOpcode::kPartitionId,
+                                             ShapeUtil::MakeShape(U32, {})));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateInfeed(
@@ -1506,6 +1516,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 0);
       clone = CreateReplicaId();
       break;
+    case HloOpcode::kPartitionId:
+      CHECK_EQ(new_operands.size(), 0);
+      clone = CreatePartitionId();
+      break;
   }
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
@@ -1765,6 +1779,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
+    case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
@@ -2594,6 +2609,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCollectivePermute(this);
     case HloOpcode::kReplicaId:
       return visitor->HandleReplicaId(this);
+    case HloOpcode::kPartitionId:
+      return visitor->HandlePartitionId(this);
     case HloOpcode::kTuple:
       return visitor->HandleTuple(this);
     case HloOpcode::kMap:

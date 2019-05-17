@@ -235,6 +235,8 @@ def model_iteration(model,
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
 
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break

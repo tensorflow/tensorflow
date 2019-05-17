@@ -204,8 +204,8 @@ class SvdOpGpu : public AsyncOpKernel {
       // 2. clamp V to -1 or +1
       GpuLaunchConfig cfg1D = GetGpuLaunchConfig(batch_size, d);
       TF_CHECK_OK(GpuLaunchKernel(ExtractSignOfVKernel<Scalar>,
-                        dim3(cfg1D.block_count), dim3(cfg1D.thread_per_block), 0,
-                        d.stream(), cfg1D, outputV_ptr));
+                                   cfg1D.block_count, cfg1D.thread_per_block, 0,
+                                   d.stream(), cfg1D, outputV_ptr));
     }
 
     if (compute_uv_) {

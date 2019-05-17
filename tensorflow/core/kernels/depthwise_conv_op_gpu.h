@@ -978,9 +978,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
-  TF_CHECK_OK(GpuLaunchKernel(kernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, device.stream(), args,
-                    out_backprop, filter, in_backprop, num_in_backprop));
+  TF_CHECK_OK(GpuLaunchKernel(
+      kernel, config.block_count, config.thread_per_block, 0, device.stream(),
+      args, out_backprop, filter, in_backprop, num_in_backprop));
   return Status::OK();
 }
 
@@ -1739,8 +1739,8 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
-  TF_CHECK_OK(GpuLaunchKernel(kernel,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, device.stream(),
+  TF_CHECK_OK(GpuLaunchKernel(
+      kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, input, filter_backprop, num_out_backprop));
   return Status::OK();
 }

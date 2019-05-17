@@ -136,12 +136,12 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
     }
 
     GpuLaunchConfig config = GetGpuLaunchConfig(Toutput.size(), d);
-    // clang-format off
-    TF_CHECK_OK(GpuLaunchKernel((ScatterNdOpKernel<T, Index, op, IXDIM>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        Tindices.data(), Tupdates.data(), Toutput.data(), output_shape_prefix,
-        batch_strides, batch_size, slice_size));
-    // clang-format on
+
+    TF_CHECK_OK(GpuLaunchKernel(ScatterNdOpKernel<T, Index, op, IXDIM>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), Tindices.data(), Tupdates.data(),
+                                 Toutput.data(), output_shape_prefix,
+                                 batch_strides, batch_size, slice_size));
 
     return -1;
   }

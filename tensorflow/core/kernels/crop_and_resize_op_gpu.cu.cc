@@ -370,13 +370,12 @@ struct CropAndResize<GPUDevice, T> {
 
     if (total_count > 0) {
       GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(GpuLaunchKernel(CropAndResizeKernel<T>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          d.stream(),
-          config.virtual_thread_count, image.data(), boxes.data(),
-          box_ind.data(), num_boxes, batch, image_height, image_width,
-          crop_height, crop_width, depth, method, extrapolation_value,
-          crops.data()));
+      TF_CHECK_OK(GpuLaunchKernel(
+          CropAndResizeKernel<T>, config.block_count, config.thread_per_block,
+          0, d.stream(), config.virtual_thread_count, image.data(),
+          boxes.data(), box_ind.data(), num_boxes, batch, image_height,
+          image_width, crop_height, crop_width, depth, method,
+          extrapolation_value, crops.data()));
     }
     return d.ok();
   }
@@ -407,10 +406,9 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = batch * image_height * image_width * depth;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(GpuLaunchKernel(SetZero<T>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          d.stream(),
-          config.virtual_thread_count, grads_image.data()));
+      TF_CHECK_OK(GpuLaunchKernel(
+          SetZero<T>, config.block_count, config.thread_per_block, 0,
+          d.stream(), config.virtual_thread_count, grads_image.data()));
     }
 
     // Configure interpolation method.
@@ -423,12 +421,12 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(GpuLaunchKernel(CropAndResizeBackpropImageKernel<T>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          d.stream(),
-          config.virtual_thread_count, grads.data(), boxes.data(),
-          box_ind.data(), num_boxes, batch, image_height, image_width,
-          crop_height, crop_width, depth, grads_image.data(), method));
+      TF_CHECK_OK(GpuLaunchKernel(
+          CropAndResizeBackpropImageKernel<T>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          grads.data(), boxes.data(), box_ind.data(), num_boxes, batch,
+          image_height, image_width, crop_height, crop_width, depth,
+          grads_image.data(), method));
     }
     return d.ok();
   }
@@ -458,21 +456,21 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     total_count = num_boxes * 4;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(GpuLaunchKernel(SetZero<float>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          d.stream(),
-          config.virtual_thread_count, grads_boxes.data()));
+      TF_CHECK_OK(GpuLaunchKernel(
+          SetZero<float>, config.block_count, config.thread_per_block, 0,
+          d.stream(), config.virtual_thread_count, grads_boxes.data()));
     }
 
     // Accumulate.
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(GpuLaunchKernel(CropAndResizeBackpropBoxesKernel<T>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-          config.virtual_thread_count, grads.data(), image.data(), boxes.data(),
-          box_ind.data(), num_boxes, batch, image_height, image_width,
-          crop_height, crop_width, depth, grads_boxes.data()));
+      TF_CHECK_OK(GpuLaunchKernel(
+          CropAndResizeBackpropBoxesKernel<T>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          grads.data(), image.data(), boxes.data(), box_ind.data(), num_boxes,
+          batch, image_height, image_width, crop_height, crop_width, depth,
+          grads_boxes.data()));
     }
     return d.ok();
   }

@@ -172,9 +172,7 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -916,6 +914,7 @@ tf_cuda_library(
         "framework/kernel_def_builder.h",
         "framework/kernel_def_util.h",
         "framework/log_memory.h",
+        "framework/logging.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
         "framework/node_def_builder.h",
@@ -948,6 +947,7 @@ tf_cuda_library(
         "framework/tracking_allocator.h",
         "framework/type_index.h",
         "framework/type_traits.h",
+        "framework/typed_allocator.h",
         "framework/types.h",
         "public/version.h",
         "util/activation_mode.h",
@@ -995,6 +995,32 @@ tf_cuda_library(
     deps = [
         ":framework_internal",
         "@com_google_absl//absl/base",
+    ],
+)
+
+# This is redundant with the "framework" target above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+cc_library(
+    name = "allocator",
+    srcs = [
+        "framework/allocator.cc",
+        "framework/allocator_registry.cc",
+        "framework/allocator_registry.h",
+        "framework/numeric_types.h",
+        "framework/tracking_allocator.cc",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+    ],
+    hdrs = [
+        "framework/allocator.h",
+    ],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -1181,7 +1207,10 @@ tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
     ],
-    deps = [":protos_all_cc"],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 tf_gen_op_libs(
@@ -1749,6 +1778,10 @@ filegroup(
             "platform/**/cuda_libdevice_path.*",
             "platform/**/rocm_rocdl_path.*",
             "platform/**/logger.cc",
+            # Exclude env_time and logging to avoid collisions with
+            # :platform_base, a common dependency for downstream targets.
+            "platform/**/env_time.cc",
+            "platform/**/logging.cc",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/rocm.h",
@@ -1880,6 +1913,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        ":platform_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -1891,7 +1925,6 @@ cc_library(
     srcs = if_emscripten([":mobile_srcs_no_runtime"]),
     copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
     defines = ["TENSORFLOW_LITE_PROTOS"],
-    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -1903,6 +1936,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@zlib_archive//:zlib",
     ],
@@ -1945,6 +1979,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -2845,6 +2880,9 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "framework/allocator.cc",
+            "framework/allocator_registry.cc",
+            "framework/tracking_allocator.cc",
             "example/example_parser_configuration.*",
             "example/feature_util.cc",
             "util/reporter.cc",
@@ -2876,6 +2914,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":allocator",
         ":feature_util",
         ":lib",
         ":lib_internal",
@@ -3276,6 +3315,36 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+# This is redundant with the "core_cpu_*" targets above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+cc_library(
+    name = "bfc_allocator",
+    srcs = [
+        "common_runtime/allocator_retry.cc",
+        "common_runtime/allocator_retry.h",
+        "common_runtime/bfc_allocator.cc",
+    ],
+    hdrs = ["common_runtime/bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":lib",
+        ":lib_internal",
+        ":shared_counter",
+    ],
+)
+
+cc_library(
+    name = "shared_counter",
+    hdrs = ["common_runtime/shared_counter.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+    ],
+)
+
 cc_library(
     name = "regexp_internal",
     hdrs = [
@@ -3338,7 +3407,7 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_copts(),
-    cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
     visibility = [
         "//tensorflow:internal",
     ],
@@ -3454,6 +3523,26 @@ tf_cuda_library(
         ":stream_executor",
         "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
+)
+
+# This is redundant with the "gpu_runtime_*" targets above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+tf_cuda_library(
+    name = "gpu_bfc_allocator",
+    srcs = [
+        "common_runtime/gpu/gpu_bfc_allocator.cc",
+        "common_runtime/gpu/gpu_id.h",
+    ],
+    hdrs = ["common_runtime/gpu/gpu_bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":bfc_allocator",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":stream_executor",
+    ],
 )
 
 tf_cuda_library(

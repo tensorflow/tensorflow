@@ -19,6 +19,9 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/util/gpu_cuda_alias.h"
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
+#endif
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
@@ -59,7 +62,7 @@ using gpuError_t = hipError_t;
 #endif
 
 namespace tensorflow {
-// Launches a GPU kernel through cudaLaunchKernel in Cuda environment, or
+// Launches a GPU kernel through GpuLaunchKernel in Cuda environment, or
 // hipLaunchKernel in ROCm environment with the given arguments.
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
@@ -86,7 +89,7 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   return Status::OK();
 }
 
-// Perfect forwarding to make CudaLaunchKernel available to both ROCm and Cuda builds
+// Perfect forwarding to make GpuLaunchKernel available to both ROCm and Cuda builds
 template <typename... Args>
 auto CudaLaunchKernel(Args&&... args) -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
   return GpuLaunchKernel(std::forward<Args>(args)...);

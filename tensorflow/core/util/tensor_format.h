@@ -80,6 +80,9 @@ enum FilterTensorFormat {
   // FORMAT_OIHW often improves performance on GPUs.
   FORMAT_OIHW = 1,
 
+  // FORMAT_OHWI used by cuDNN for NHWC convolutions.
+  FORMAT_OHWI = 2,
+
   // OIHW_VECT_I is the most performant tensor format for cudnn6's quantized
   // int8 convolution and fused convolution. It is analogous to the NCHW_VECT_C
   // data format. It is laid out in the same order as OIHW, except that the size
@@ -88,7 +91,7 @@ enum FilterTensorFormat {
   // int32. Thus an OIHW format filter with dimensions [O, I, H, W] would have
   // dimensions [O, I/4, H, W, 4] in OIHW_VECT_I format.
   // A pre-condition of this format is that I must be a multiple of 4.
-  FORMAT_OIHW_VECT_I = 2,
+  FORMAT_OIHW_VECT_I = 3,
 };
 
 // Parse tensor format from the given string.

@@ -135,6 +135,10 @@ class Model(network.Network):
 
     self._run_eagerly = None
 
+    # The epoch at which the checkpoint is saved. Used for fault-tolerance.
+    # See `_maybe_load_initial_epoch_from_ckpt()` for more information.
+    self._ckpt_saved_epoch = None
+
   def get_weights(self):
     """Retrieves the weights of the model.
 
@@ -220,10 +224,7 @@ class Model(network.Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     _keras_api_gauge.get_cell('compile').set(True)
-    run_eagerly = kwargs.pop('run_eagerly', None)
-
-    self._run_eagerly = run_eagerly
-    optimizer = optimizers.get(optimizer)
+    self._run_eagerly = kwargs.pop('run_eagerly', None)
 
     if distribute is not None:
       if tf2.enabled():
@@ -248,13 +249,13 @@ class Model(network.Network):
     # cloning is requested.
     # TODO(b/124517980, b/124377929): Remove this temporary undocumented way
     # of enabling the feature and graduate it to the main distributed code path.
-    self._cloning = kwargs.pop('cloning', True)
+    self._cloning = kwargs.pop('cloning', False)
 
-    self._validate_compile_param_for_distribution_strategy(run_eagerly,
+    self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                            sample_weight_mode,
                                                            target_tensors,
                                                            weighted_metrics)
-    self.optimizer = optimizer
+    self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):
@@ -269,8 +270,10 @@ class Model(network.Network):
       raise ValueError(
           'target_tensors argument is not supported when '
           'running a model eagerly.')
-    self.target_tensors = target_tensors
-    self.targets = []
+
+    # _training_endpoints contains a list of _TrainingEndpoint object, which has
+    # all the model output/target/loss and related metadata.
+    self._training_endpoints = []
 
     # Set tf.distribute.Strategy specific parameters.
     self._distributed_model_cache = {}
@@ -294,75 +297,39 @@ class Model(network.Network):
     self.loss_functions = training_utils.prepare_loss_functions(
         self.loss, self.output_names)
 
-    self._feed_output_names = []
-    self._feed_output_shapes = []
-    self._feed_loss_fns = []
-    self._feed_targets = []
+    target_tensors = self._process_target_tensor_for_compile(target_tensors)
 
-    skip_target_indices = self._prepare_skip_target_indices()
-    self._skip_target_weighing_indices = skip_target_indices[:]
+    for o, n, l, t in zip(self.outputs, self.output_names,
+                          self.loss_functions, target_tensors):
+      endpoint = _TrainingEndpoint(o, n, l)
+      endpoint.create_training_target(t, run_eagerly=self.run_eagerly)
+      self._training_endpoints.append(endpoint)
 
     # Prepare list loss weights, same size of model outputs.
-    self.loss_weights_list = training_utils.prepare_loss_weights(
-        self.output_names, loss_weights)
+    training_utils.prepare_loss_weights(self._training_endpoints, loss_weights)
 
     # Initialization for Eager mode execution.
     if self.run_eagerly:
-      self._compile_eagerly(metrics, optimizer, sample_weight_mode,
-                            skip_target_indices, target_tensors,
-                            weighted_metrics)
+      self._compile_eagerly(metrics, weighted_metrics, sample_weight_mode)
       return
 
     with K.get_graph().as_default():
-      # Prepare targets of model.
-      target_tensors = self._process_target_tensor_for_compile(target_tensors)
-
-      for i in range(len(self.outputs)):
-        if i in skip_target_indices:
-          self.targets.append(None)
-        else:
-          shape = K.int_shape(self.outputs[i])
-          name = self.output_names[i]
-          if target_tensors not in (None, []):
-            target = target_tensors[i]
-          else:
-            target = None
-          if target is None or K.is_placeholder(target):
-            if target is None:
-              target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
-                  self.loss_functions[i],
-                  K.dtype(self.outputs[i]))
-
-              target = K.placeholder(
-                  ndim=len(shape),
-                  name=name + '_target',
-                  sparse=K.is_sparse(self.outputs[i]),
-                  dtype=target_dtype)
-            self._feed_targets.append(target)
-            self._feed_output_names.append(name)
-            self._feed_output_shapes.append(shape)
-            self._feed_loss_fns.append(self.loss_functions[i])
-          else:
-            self._skip_target_weighing_indices.append(i)
-          self.targets.append(target)
-
       # Save all metric attributes per output of the model.
       self._cache_output_metric_attributes(metrics, weighted_metrics)
 
       # Set metric attributes on model.
-      self._set_metric_attributes(skip_target_indices=skip_target_indices)
+      self._set_metric_attributes()
 
       # Invoke metric functions (unweighted) for all the outputs.
       self._handle_metrics(
           self.outputs,
-          masks=self._prepare_output_masks(),
-          targets=self.targets,
-          skip_target_indices=skip_target_indices)
+          targets=self._targets,
+          skip_target_masks=self._prepare_skip_target_masks(),
+          masks=self._prepare_output_masks())
 
       # Prepare sample weight modes. List with the same length as model outputs.
       self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
-          self.output_names, sample_weight_mode,
-          self._skip_target_weighing_indices)
+          self._training_endpoints, sample_weight_mode)
 
       # Creates the model loss and weighted metrics sub-graphs.
       self._compile_weights_loss_and_weighted_metrics()
@@ -377,8 +344,7 @@ class Model(network.Network):
       self.predict_function = None
 
       # Collected trainable weights, sorted in topological order.
-      trainable_weights = self.trainable_weights
-      self._collected_trainable_weights = trainable_weights
+      self._collected_trainable_weights = self.trainable_weights
 
       # Validate all variables were correctly created in distribution scope.
       if self._distribution_strategy and not self._compile_distribution:
@@ -1606,6 +1572,11 @@ class Model(network.Network):
             '`input_dim` set in its first layer or a subclassed model.')
 
   def _process_target_tensor_for_compile(self, target_tensors):
+    if self.run_eagerly:
+      # target tensor is not supported with run_eagerly. Create a list with None
+      # as placeholder for each output.
+      return [None for _ in self.output_names]
+
     if target_tensors not in (None, []):
       if isinstance(target_tensors, list):
         if len(target_tensors) != len(self.outputs):
@@ -1615,12 +1586,14 @@ class Model(network.Network):
               'The model has %s outputs, but you passed target_tensors=%s' %
               (len(self.outputs), target_tensors))
       elif isinstance(target_tensors, dict):
-        for name in target_tensors:
-          if name not in self.output_names:
-            raise ValueError(
-                'Unknown entry in `target_tensors` dictionary: "{name}". '
-                'Only expected the following keys: {keys}'.format(
-                    name=name, keys=str(self.output_names)))
+        unexpected_target_tensor_names = set(target_tensors.keys()).difference(
+            self.output_names)
+        if unexpected_target_tensor_names:
+          raise ValueError(
+              'Unknown entry in `target_tensors` dictionary: "{name}". '
+              'Only expected the following keys: {keys}'.format(
+                  name=unexpected_target_tensor_names,
+                  keys=str(self.output_names)))
         tmp_target_tensors = []
         for name in self.output_names:
           tmp_target_tensors.append(target_tensors.get(name, None))
@@ -1630,30 +1603,30 @@ class Model(network.Network):
       else:
         raise TypeError('Expected `target_tensors` to be a list or tuple or '
                         'dict or a single tensor, but got:', target_tensors)
+    else:
+      # In case target tensor is empty or None, create a list with Nones
+      # that has same length as self.output_names. With that, the None check of
+      # target tensor can be skipped downstream.
+      target_tensors = [None for _ in self.output_names]
     return target_tensors
 
-  def _compile_eagerly(self, metrics, optimizer, sample_weight_mode,
-                       skip_target_indices, target_tensors, weighted_metrics):
-    if isinstance(optimizer, loss_scale_optimizer.LossScaleOptimizer):
+  def _compile_eagerly(self, metrics, weighted_metrics, sample_weight_mode):
+    if isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer):
       # TODO(reedwm): Support this.
       raise ValueError('We currently do not support enabling `run_eagerly` '
                        'with a LossScaleOptimizer.')
+
     # Prepare sample weight modes. List with the same length as model outputs.
     self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
-        self.output_names, sample_weight_mode,
-        self._skip_target_weighing_indices)
+        self._training_endpoints, sample_weight_mode)
     # Prepare sample weights.
     self._prepare_sample_weights()
     # Save all metric attributes per output of the model.
     self._cache_output_metric_attributes(metrics, weighted_metrics)
-    if target_tensors is not None:
-      raise ValueError('target_tensors are not currently supported in Eager '
-                       'mode.')
     self.total_loss = None
     # Set metric attributes on model.
-    self._set_metric_attributes(skip_target_indices=skip_target_indices)
-    for i in range(len(self.outputs)):
-      self._feed_output_names.append(self.output_names[i])
+    self._set_metric_attributes()
+
     self._collected_trainable_weights = self.trainable_weights
 
   def _update_sample_weight_modes(self, sample_weights=None):
@@ -1708,20 +1681,17 @@ class Model(network.Network):
     """Compiles the model loss and weighted metric sub-graphs."""
 
     with K.get_graph().as_default():
-
-      # Prepare sample weights.
       self._prepare_sample_weights()
 
       masks = self._prepare_output_masks()
-      skip_target_indices = self._prepare_skip_target_indices()
 
       # Compute weighted metrics.
       self._handle_metrics(
           self.outputs,
-          masks=masks,
-          targets=self.targets,
-          skip_target_indices=skip_target_indices,
+          targets=self._targets,
+          skip_target_masks=self._prepare_skip_target_masks(),
           sample_weights=self.sample_weights,
+          masks=masks,
           return_weighted_metrics=True)
 
       # Compute total loss.
@@ -1729,31 +1699,29 @@ class Model(network.Network):
       # eg., total_loss = loss_weight_1 * output_1_loss_fn(...) +
       #                   loss_weight_2 * output_2_loss_fn(...) +
       #                   layer losses.
-      self.total_loss = self._prepare_total_loss(skip_target_indices, masks)
+      self.total_loss = self._prepare_total_loss(masks)
 
-  def _prepare_skip_target_indices(self):
-    """Returns indices of outputs for which no targets are expected.
+  def _prepare_skip_target_masks(self):
+    """Boolean mask for whether the target in the output list should be skipped.
 
     If the loss function corresponding to a model output is None, then this
     output will be skipped during total loss calculation and feed targets
     preparation.
+
+    Returns:
+      A boolean list for whether the corresponding target in the output list
+      should be skipped during loss calculation.
     """
-    skip_target_indices = []
-    for i, loss_function in enumerate(self.loss_functions):
-      if loss_function is None:
-        skip_target_indices.append(i)
-    return skip_target_indices
+    return [l is None for l in self.loss_functions]
 
   def _prepare_output_masks(self):
     """Returns masks corresponding to model outputs."""
     return [getattr(x, '_keras_mask', None) for x in self.outputs]
 
-  def _prepare_total_loss(self, skip_target_indices, masks):
+  def _prepare_total_loss(self, masks):
     """Computes total loss from loss functions.
 
     Arguments:
-        skip_target_indices: A list of indices of model outputs where loss
-          function is None.
         masks: List of mask values corresponding to each model output.
 
     Returns:
@@ -1765,16 +1733,18 @@ class Model(network.Network):
     if self.run_eagerly:
       raise TypeError('total loss can not be computed when compiled with '
                       'run_eagerly = True.')
-    skip_target_indices = skip_target_indices or []
     total_loss = None
     with K.name_scope('loss'):
-      zipped_inputs = zip(self.targets, self.outputs, self.loss_functions,
-                          self.sample_weights, masks, self.loss_weights_list)
-      for i, (y_true, y_pred, loss_fn, sample_weight, mask,
-              loss_weight) in enumerate(zipped_inputs):
-        if i in skip_target_indices:
+      for endpoint, sample_weight, mask in zip(self._training_endpoints,
+                                               self.sample_weights, masks):
+        if endpoint.should_skip_target():
           continue
-        loss_name = self.output_names[i] + '_loss'
+        y_true = endpoint.training_target.target
+        y_pred = endpoint.output
+        loss_fn = endpoint.loss_fn
+        loss_weight = endpoint.loss_weight
+        loss_name = endpoint.loss_name()
+
         with K.name_scope(loss_name):
           if mask is not None:
             mask = math_ops.cast(mask, y_pred.dtype)
@@ -1788,7 +1758,6 @@ class Model(network.Network):
                       mask, None, sample_weight))
               sample_weight *= mask
 
-          weighted_losses = None
           if hasattr(loss_fn, 'reduction'):
             per_sample_losses = loss_fn.call(y_true, y_pred)
             weighted_losses = losses_utils.compute_weighted_loss(
@@ -1819,19 +1788,13 @@ class Model(network.Network):
             output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
-          # Keep track of stateful result tensor and function for the loss.
-          # Compute the stateful loss value.
-          if weighted_losses is not None:
-            # TODO(b/120571621): Directly call metric when the bug is fixed.
-            aggregated_output_loss = (
-                distributed_training_utils.call_replica_local_fn(
-                    self._output_loss_metrics[i],
-                    weighted_losses,
-                    strategy=self._distribution_strategy))
-          else:
-            # Custom loss class.
-            aggregated_output_loss = self._call_metric_fn(
-                self._output_loss_metrics[i], y_true, y_pred, sample_weight)
+          # Keep track of stateful result tensor for the loss.
+          # TODO(b/120571621): Directly call metric when the bug is fixed.
+          aggregated_output_loss = (
+              distributed_training_utils.call_replica_local_fn(
+                  endpoint.output_loss_metric,
+                  output_loss,
+                  strategy=self._distribution_strategy))
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
 
         if total_loss is None:
@@ -1981,11 +1944,10 @@ class Model(network.Network):
     """Sets sample weight attribute on the model."""
     # List with the same length as model outputs.
     self.sample_weights = []
-    for i, name in enumerate(self.output_names):
+    for endpoint, sample_weight_mode in zip(self._training_endpoints,
+                                            self._sample_weight_modes):
       self.sample_weights.append(
-          training_utils.get_output_sample_weight(
-              self._skip_target_weighing_indices, self._sample_weight_modes[i],
-              name, i))
+          training_utils.get_output_sample_weight(endpoint, sample_weight_mode))
 
     # Filtering just the placeholders from the above list.
     self._feed_sample_weights = [
@@ -2058,8 +2020,6 @@ class Model(network.Network):
     # Dict of all aggregated metric result tensors. This includes aggregated
     # loss result tensors.
     self._compile_metrics_tensors = {}
-    # List of metric wrappers on output losses.
-    self._output_loss_metrics = None
 
   def _set_per_output_metric_attributes(self, metrics_dict, output_index):
     """Sets the metric attributes on the model for the given output.
@@ -2084,22 +2044,20 @@ class Model(network.Network):
       self._compile_metric_functions.append(metric_fn)
     return updated_metrics_dict
 
-  def _set_metric_attributes(self, skip_target_indices=None):
+  def _set_metric_attributes(self):
     """Sets the metric attributes on the model for all the model outputs."""
     # Add loss metric names to the model metric names list.
-    if len(self.outputs) > 1:
-      output_names = [
-          self.output_names[i] + '_loss'
-          for i in range(len(self.outputs))
-          if i not in skip_target_indices
+    if len(self._training_endpoints) > 1:
+      metric_names = [
+          e.loss_name() for e in self._training_endpoints
+          if not e.should_skip_target()
       ]
-      self._compile_metrics_names.extend(output_names)
+      self._compile_metrics_names.extend(metric_names)
 
-    skip_target_indices = skip_target_indices or []
     updated_per_output_metrics = []
     updated_per_output_weighted_metrics = []
-    for i in range(len(self.outputs)):
-      if i in skip_target_indices:
+    for i, endpoint in enumerate(self._training_endpoints):
+      if endpoint.should_skip_target():
         updated_per_output_metrics.append(self._per_output_metrics[i])
         updated_per_output_weighted_metrics.append(
             self._per_output_weighted_metrics[i])
@@ -2111,13 +2069,12 @@ class Model(network.Network):
           self._set_per_output_metric_attributes(
               self._per_output_weighted_metrics[i], i))
 
-    # Create a metric wrapper for each output loss.
-    if len(self.outputs) > 1:
-      self._output_loss_metrics = [
-          metrics_module.SumOverBatchSize() if hasattr(loss_fn, 'reduction')
-          else metrics_module.SumOverBatchSizeMetricWrapper(loss_fn)
-          for loss_fn in self.loss_functions
-      ]
+    # Create a metric wrapper for each output loss. This computes mean of an
+    # output loss across mini-batches (irrespective of how we reduce within a
+    # batch).
+    if len(self._training_endpoints) > 1:
+      for endpoint in self._training_endpoints:
+        endpoint.output_loss_metric = metrics_module.Mean()
 
     self._per_output_metrics = updated_per_output_metrics
     self._per_output_weighted_metrics = updated_per_output_weighted_metrics
@@ -2165,8 +2122,8 @@ class Model(network.Network):
 
   def _handle_metrics(self,
                       outputs,
-                      skip_target_indices=None,
                       targets=None,
+                      skip_target_masks=None,
                       sample_weights=None,
                       masks=None,
                       return_weighted_metrics=False,
@@ -2175,8 +2132,9 @@ class Model(network.Network):
 
     Arguments:
       outputs: List of outputs (predictions).
-      skip_target_indices: Optional. List of target ids to skip.
       targets: List of targets.
+      skip_target_masks: Optional. List of boolean for whether the corresponding
+        target should be ignored or not.
       sample_weights: Optional list of sample weight arrays.
       masks: List of computed output mask values.
       return_weighted_metrics: Flag that indicates whether weighted metrics
@@ -2184,18 +2142,20 @@ class Model(network.Network):
         when `return_weighted_and_unweighted_metrics` is enabled.
       return_weighted_and_unweighted_metrics: Flag that is used to indicate
         whether both weighted and unweighted metrics should be computed. When
-        this is not enabled, we use `return_weighted_metrics` param to
-        indicate whether weighted or unweighted metrics should be returned.
+        this is not enabled, we use `return_weighted_metrics` param to indicate
+        whether weighted or unweighted metrics should be returned.
 
     Returns:
       A list of metric result tensors.
     """
-    skip_target_indices = skip_target_indices or []
+    # TODO(scottzhu): Update this to use the new training_endpoints. Currently
+    # the eager and graph logic is bit different.
+    skip_target_masks = skip_target_masks or [False] * len(outputs)
     metric_results = []
     with K.name_scope('metrics'):
       # Invoke all metrics added using `compile`.
       for i in range(len(outputs)):
-        if i in skip_target_indices:
+        if skip_target_masks[i]:
           continue
         output = outputs[i] if outputs else None
         target = targets[i] if targets else None
@@ -2703,28 +2663,8 @@ class Model(network.Network):
         feed_sample_weight_modes = [None for _ in self.outputs]
       else:
         feed_output_names = self._feed_output_names
+        feed_output_shapes = self._feed_output_shapes
         feed_sample_weight_modes = self._sample_weight_modes
-        feed_output_shapes = []
-        for output_shape, loss_fn in zip(self._feed_output_shapes,
-                                         self._feed_loss_fns):
-          if ((isinstance(loss_fn, losses.LossFunctionWrapper) and
-               loss_fn.fn == losses.sparse_categorical_crossentropy)) or (
-                   isinstance(loss_fn, losses.SparseCategoricalCrossentropy)):
-            if K.image_data_format() == 'channels_first':
-              feed_output_shapes.append(
-                  (output_shape[0], 1) + output_shape[2:])
-            else:
-              feed_output_shapes.append(output_shape[:-1] + (1,))
-          elif (not isinstance(loss_fn, losses.Loss) or
-                (isinstance(loss_fn, losses.LossFunctionWrapper) and
-                 (getattr(losses, loss_fn.fn.__name__, None) is None))):
-            # If the given loss is not an instance of the `Loss` class (custom
-            # class) or if the loss function that is wrapped is not in the
-            # `losses` module, then it is a user-defined loss and we make no
-            # assumptions about it.
-            feed_output_shapes.append(None)
-          else:
-            feed_output_shapes.append(output_shape)
 
       # Standardize the outputs.
       y = training_utils.standardize_input_data(
@@ -2892,7 +2832,89 @@ class Model(network.Network):
     outputs = nest.flatten(outputs)
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)
+    # TODO(scottzhu): Should we cleanup the self._training_endpoints here?
     self.built = True
+
+  @property
+  def _targets(self):
+    """The output target tensors for the model."""
+    return [
+        e.training_target.target
+        for e in self._training_endpoints
+        if e.has_training_target()
+    ]
+
+  @property
+  def _feed_targets(self):
+    return [
+        e.training_target.target
+        for e in self._training_endpoints
+        if e.has_feedable_training_target()
+    ]
+
+  @property
+  def _feed_output_names(self):
+    return [
+        e.output_name
+        for e in self._training_endpoints
+        if e.has_feedable_training_target()
+    ]
+
+  @property
+  def _feed_output_shapes(self):
+    return [
+        e.feed_output_shape
+        for e in self._training_endpoints
+        if e.has_feedable_training_target()
+    ]
+
+  @property
+  def _feed_loss_fns(self):
+    return [
+        e.loss_fn
+        for e in self._training_endpoints
+        if e.has_feedable_training_target()
+    ]
+
+  @property
+  def _loss_weights_list(self):
+    return [e.loss_weight for e in self._training_endpoints]
+
+  @property
+  def _output_loss_metrics(self):
+    if hasattr(self, '_training_endpoints'):
+      return [
+          e.output_loss_metric
+          for e in self._training_endpoints
+          if e.output_loss_metric is not None
+      ]
+    return None
+
+  def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
+    """Maybe load initial epoch from ckpt considering possible worker recovery.
+
+    When `_ckpt_saved_epoch` attribute is not None in a `Model` object at the
+    time the training starts, this is under multi-worker training setting and
+    indicates the worker is recovering from previous failure. In this case,
+    infer `initial_epoch` from `self._ckpt_saved_epoch` to continue previous
+    unfinished training from certain epoch.
+
+    Arguments:
+      initial_epoch: The original initial_epoch user passes in in `fit()`.
+      mode: The training mode.
+
+    Returns:
+      If the training is recovering from previous failure under multi-worker
+      training setting, return the epoch the training is supposed to continue
+      at. Otherwise, return the `initial_epoch` the user passes in.
+    """
+    # TODO(rchao): Add recovery for validation case
+    # (when mode == ModeKeys.TEST).
+    if mode == ModeKeys.TRAIN and self._ckpt_saved_epoch is not None:
+      # The most recently saved epoch is one epoch prior to the epoch it failed
+      # at, so return '_ckpt_saved_epoch' plus one.
+      return int(self._ckpt_saved_epoch) + 1
+    return initial_epoch
 
 
 class DistributedCallbackModel(Model):
@@ -2933,6 +2955,211 @@ class DistributedCallbackModel(Model):
                       'DistributedCallbackModel that may not have been set '
                       'correctly.')
     return super(DistributedCallbackModel, self).__getattr__(item)
+
+
+class _TrainingEndpoint(object):
+  """A container for the training output/target and related entities.
+
+  In the case of model with multiple outputs, there is a one-to-one mapping
+  between model output (y_pred), model target (y_true), loss, metrics etc.
+  By unifying these entities into one class, different entity can access
+  information between each other, rather than currently access different list of
+  attributes of the model.
+  """
+
+  def __init__(self,
+               output,
+               output_name,
+               loss_fn,
+               loss_weight=None,
+               training_target=None,
+               output_loss_metric=None):
+    """Initialize the _TrainingEndpoint.
+
+    Note that the output and output_name should be stable as long as the model
+    structure doesn't change. The training_target suppose to be mutable since
+    the information is provided via `compile()`
+
+    Args:
+      output: the output tensor of the model.
+      output_name: the unique name of the output tensor.
+      loss_fn: the loss function for the output tensor.
+      loss_weight: float, the weights for the loss.
+      training_target: the _TrainingTarget for the model.
+      output_loss_metric: the metric object for the loss function.
+    """
+    self._output = output
+    self._output_name = output_name
+    self._loss_fn = loss_fn
+    self._loss_weight = loss_weight
+    self._training_target = training_target
+    self._output_loss_metric = output_loss_metric
+
+  @property
+  def output(self):
+    return self._output
+
+  @property
+  def output_name(self):
+    return self._output_name
+
+  @property
+  def shape(self):
+    return K.int_shape(self.output)
+
+  @property
+  def loss_fn(self):
+    return self._loss_fn
+
+  @property
+  def loss_weight(self):
+    return self._loss_weight
+
+  @loss_weight.setter
+  def loss_weight(self, value):
+    self._loss_weight = value
+
+  @property
+  def training_target(self):
+    return self._training_target
+
+  @training_target.setter
+  def training_target(self, value):
+    self._training_target = value
+
+  def create_training_target(self, target, run_eagerly=False):
+    """Create training_target instance and update the self.training_target.
+
+    Note that the input target should just be a tensor or None, and
+    corresponding training target will be created based on the output and
+    loss_fn.
+
+    Args:
+      target: the target tensor for the current output. Could be None.
+      run_eagerly: boolean, whether the model is in run_eagerly mode.
+
+    Raises:
+      ValueError if the training_target field for the current instance has
+      already been populated.
+    """
+    if self.has_training_target():
+      raise ValueError('The training_target field for the _TrainingEndpoint '
+                       'instance has already been populated')
+    if run_eagerly:
+      # When run_eagerly, the target tensor is ignored, and the None placeholder
+      # is created instead.
+      self.training_target = _TrainingTarget(
+          None, feedable=True, skip_target_weights=False)
+      return
+
+    if self.should_skip_target():
+      self.training_target = _TrainingTarget(None)
+    else:
+      if target is not None and not K.is_placeholder(target):
+        feedable = False
+        skip_target_weights = True
+      else:
+        feedable = True
+        skip_target_weights = False
+
+      if target is None:
+        target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
+            self.loss_fn, K.dtype(self.output))
+
+        target = K.placeholder(
+            ndim=len(self.shape),
+            name=self.output_name + '_target',
+            sparse=K.is_sparse(self.output),
+            dtype=target_dtype)
+
+      self.training_target = _TrainingTarget(
+          target,
+          feedable=feedable,
+          skip_target_weights=skip_target_weights)
+
+  @property
+  def output_loss_metric(self):
+    return self._output_loss_metric
+
+  @output_loss_metric.setter
+  def output_loss_metric(self, value):
+    self._output_loss_metric = value
+
+  def should_skip_target(self):
+    return self._loss_fn is None
+
+  def should_skip_target_weights(self):
+    return (self.should_skip_target() or self.training_target is None or
+            self.training_target.skip_target_weights)
+
+  def has_training_target(self):
+    return self.training_target is not None
+
+  def has_feedable_training_target(self):
+    return (not self.should_skip_target() and
+            self.training_target is not None and self.training_target.feedable)
+
+  def loss_name(self):
+    if self._loss_fn is not None:
+      return self._output_name + '_loss'
+    return None
+
+  @property
+  def feed_output_shape(self):
+    """The output shape for the feedable target."""
+    if not self.has_feedable_training_target():
+      return None
+
+    if ((isinstance(self.loss_fn, losses.LossFunctionWrapper) and
+         self.loss_fn.fn == losses.sparse_categorical_crossentropy)) or (
+             isinstance(self.loss_fn, losses.SparseCategoricalCrossentropy)):
+      if K.image_data_format() == 'channels_first':
+        return (self.shape[0], 1) + self.shape[2:]
+      else:
+        return self.shape[:-1] + (1,)
+    elif (not isinstance(self.loss_fn, losses.Loss) or
+          (isinstance(self.loss_fn, losses.LossFunctionWrapper) and
+           (getattr(losses, self.loss_fn.fn.__name__, None) is None))):
+      # If the given loss is not an instance of the `Loss` class (custom
+      # class) or if the loss function that is wrapped is not in the
+      # `losses` module, then it is a user-defined loss and we make no
+      # assumptions about it.
+      return None
+    else:
+      return self.shape
+
+
+class _TrainingTarget(object):
+  """Container for a target tensor (y_true) and its metadata (shape, loss...).
+
+  Arguments:
+    target: A target tensor for the model. It may be `None` if the
+      output is excluded from loss computation. It is still kept as None
+      since each output of the model should have a corresponding target. If
+      the target is None, the rest of the attributes will be None as well.
+    feedable: Boolean, whether the target is feedable (requires data to be
+      passed in `fit` or `train_on_batch`), or not (model compiled with
+      `target_tensors` argument).
+    skip_target_weights: Boolean, whether the target should be skipped during
+      weights calculation.
+  """
+
+  def __init__(self, target, feedable=False, skip_target_weights=True):
+    self._target = target
+    self._feedable = feedable
+    self._skip_target_weights = skip_target_weights
+
+  @property
+  def target(self):
+    return self._target
+
+  @property
+  def feedable(self):
+    return self._feedable
+
+  @property
+  def skip_target_weights(self):
+    return self._skip_target_weights
 
 
 def _is_symbolic_tensor(x):

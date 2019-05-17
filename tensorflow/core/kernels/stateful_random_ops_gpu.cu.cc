@@ -76,7 +76,7 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
   GpuLaunchConfig cfg = GetGpuLaunchConfig(work_element_count, d,
-                                             FillKernel<Distribution>, 0, 0);
+                                            FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
 #if GOOGLE_CUDA

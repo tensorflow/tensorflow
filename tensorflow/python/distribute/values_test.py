@@ -945,5 +945,64 @@ class PerReplicaTest(test.TestCase):
     self.assertEqual(x._component_metadata(), y._component_metadata())
 
 
+class WorkerDeviceMapTest(test.TestCase):
+
+  class ReplicaContext(object):
+
+    def __init__(self, replica_id_in_sync_group):
+      self.replica_id_in_sync_group = replica_id_in_sync_group
+
+  def testBasic(self):
+    devices = [
+        "/job:worker/replica:0/task:0/device:CPU:0",
+        "/job:worker/replica:0/task:2/device:CPU:0"
+    ]
+    device_map = values.WorkerDeviceMap(devices, 1)
+    self.assertAllEqual(devices, device_map.all_devices)
+
+    # pylint:disable=pointless-statement
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "`WorkerDeviceMap` is not indexed by replicas"):
+      device_map.devices_by_replica
+
+    self.assertEqual(1, device_map.num_logical_devices)
+
+    self.assertEqual(2, device_map.num_replicas_in_graph)
+
+    self.assertEqual(0, device_map.logical_device_from_values(["a", "b"]))
+
+    self.assertAllEqual(devices, device_map.logical_to_actual_devices(0))
+
+    replica_context = WorkerDeviceMapTest.ReplicaContext(1)
+    self.assertEqual(
+        "b", device_map.select_for_current_replica(["a", "b"], replica_context))
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "`WorkerDeviceMap` not indexed by replicas"):
+      device_map.replica_for_device(devices[1])
+
+    self.assertEqual("b", device_map.select_for_device(["a", "b"], devices[1]))
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "WorkerDeviceMap not indexed by replicas"):
+      device_map.is_device_in_replica(devices[1], 1)
+
+    self.assertEqual(
+        "WorkerDeviceMap(('/job:worker/replica:0/task:0/device:CPU:0', "
+        "'/job:worker/replica:0/task:2/device:CPU:0'), "
+        "num_replicas_per_worker=1)", repr(device_map))
+
+  def testMultipleReplicasPerWorker(self):
+    devices = [
+        "/job:worker/replica:0/task:0/device:CPU:0",
+        "/job:worker/replica:0/task:2/device:CPU:0"
+    ]
+    device_map = values.WorkerDeviceMap(devices, 2)
+
+    replica_context = WorkerDeviceMapTest.ReplicaContext(3)
+    self.assertEqual(
+        "b", device_map.select_for_current_replica(["a", "b"], replica_context))
+
+
 if __name__ == "__main__":
   test.main()

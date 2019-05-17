@@ -308,7 +308,7 @@ Status TransferManager::TransferBufferToDevice(
 }
 
 StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
-    const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
+    const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
     int device_ordinal) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
     return InvalidArgument("Shape must have a layout: %s",

@@ -295,7 +295,10 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Raises:
       Invalid signature keys.
     """
-    saved_model = _load(saved_model_dir, tags)
+    # Ensures any graphs created in Eager mode are able to run. This is required
+    # in order to create a tf.estimator.Exporter that exports a TFLite model.
+    with context.eager_mode():
+      saved_model = _load(saved_model_dir, tags)
     if not signature_keys:
       signature_keys = saved_model.signatures
 

@@ -518,10 +518,10 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const bool include_batch_in_index) {
   if (input_size == 0) return true;
   GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-  TF_CHECK_OK(GpuLaunchKernel(MaxPoolGradBackward<T>, dim3(config.block_count),
-        dim3(config.thread_per_block), 0, d.stream(), output_size, top_diff,
-        mask, top_offset, bottom_offset, bottom_diff,
-        include_batch_in_index));
+  TF_CHECK_OK(GpuLaunchKernel(
+      MaxPoolGradBackward<T>, config.block_count, config.thread_per_block, 0,
+      d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
+      bottom_diff, include_batch_in_index));
   return d.ok();
 }
 

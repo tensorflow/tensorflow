@@ -35,7 +35,7 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

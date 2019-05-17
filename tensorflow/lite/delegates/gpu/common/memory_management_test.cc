@@ -22,8 +22,6 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-// using ::testing::Eq;  // Optional ::testing aliases. Remove if unused.
-// using ::testing::Test;
 using ::testing::ElementsAre;
 
 TEST(Model, EmptyRecords) {

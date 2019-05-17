@@ -101,7 +101,7 @@ __global__ void elemwise_accum(T* out, const T* in, const size_t N) {
   void AccumulateTensorData<GPUDevice, type>(type * dst, type * src,       \
                                              size_t size) {                \
     auto stream = CudaStreamForMPI();                                      \
-    TF_CHECK_OK(CudaLaunchKernel(elemwise_accum<type>, 32, 256, 0, stream, \
+    TF_CHECK_OK(GpuLaunchKernel(elemwise_accum<type>, 32, 256, 0, stream, \
                                  dst, src, size));                         \
     cudaStreamSynchronize(stream);                                         \
   };

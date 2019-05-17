@@ -31,12 +31,15 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
@@ -47,6 +50,7 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -116,6 +120,25 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       imported = self.cycle(root, cycles)
       self.assertTrue(imported.v1.name.startswith("foo/"))
       self.assertTrue(imported.v2.name.startswith("foo/"))
+
+  def test_partially_defined_variable_shape(self, cycles):
+
+    class MakeVariable(module.Module):
+
+      def __init__(self):
+        self.v = None
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([None], dtypes.int64)])
+      def make_variable(self, initial_value):
+        if self.v is None:
+          self.v = variables.Variable(initial_value)
+
+    m = MakeVariable()
+    m.make_variable([1, 2, 3])
+    m = self.cycle(m, cycles)
+    m.v.assign([1, 2, 3, 4])
+    self.assertEqual([None], tensor_shape.as_shape(m.v.shape).as_list())
 
   @test_util.run_in_graph_and_eager_modes
   def test_capture_variables(self, cycles):
@@ -190,6 +213,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       self.assertEqual("contents 1", f.read())
     with open(self.evaluate(imported.asset2.asset_path), "r") as f:
       self.assertEqual("contents 2", f.read())
+
+  def test_cond_prune(self, cycles):
+    x_in = []
+    x_out = []
+
+    def f(x, y):
+      x_in.append(x)
+      xx = cond_v2.cond_v2(
+          math_ops.less(1, 2),
+          lambda: x + 1,
+          lambda: x + 2,
+      )
+      x_out.append(xx)
+      return xx, 2 * y
+
+    f_wrapped = wrap_function.wrap_function(
+        f, [tensor_spec.TensorSpec((), dtypes.float32)] * 2)
+    f_pruned = f_wrapped.prune(x_in[0], [x_out[0]])
+
+    class Adder(module.Module):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)])
+      def add(self, x):
+        return f_pruned(x)
+
+    root = Adder()
+    root.add(constant_op.constant(1.))
+    root = self.cycle(root, cycles)
+    root.add(constant_op.constant(1.))
 
   def test_capture_assets(self, cycles):
     root = tracking.AutoTrackable()
@@ -793,6 +846,33 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                         imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
+
+  def test_concrete_function_captures(self, cycles):
+
+    class Root(module.Module):
+
+      def __init__(self):
+        self.v = variables.Variable(1.)
+        self.v1 = variables.Variable(1.)
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+      def use_v(self, x):
+        return self.v + self.v1 + 1.
+
+    root = Root()
+    self.assertIn(root.v.handle,
+                  root.use_v.get_concrete_function().graph.captures)
+    for _ in range(cycles):
+      root = self.cycle(root, 1, signatures=root.use_v.get_concrete_function())
+    func_captures = root.use_v.get_concrete_function().graph.captures
+    self.assertLen(func_captures, 2)
+    self.assertIn(root.v.handle, func_captures)
+    self.assertIn(root.v1.handle, func_captures)
+    signature_captures = root.signatures["serving_default"].graph.captures
+    self.assertLen(signature_captures, 2)
+    self.assertIn(root.v.handle, signature_captures)
+    self.assertIn(root.v1.handle, signature_captures)
 
   def test_concrete_function_arg_names(self, cycles):
 
@@ -1489,6 +1569,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         3 * (1 + 4 + 9 + 16),
         root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]
@@ -1496,7 +1577,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     model = sequential.Sequential([layer])
     model_input = {"x": constant_op.constant([[1.]]),
                    "y": constant_op.constant([[2.]])}
-    self.assertAllClose([[1., 2.]], model.predict(model_input))
+    self.assertAllClose([[1., 2.]], model.predict(model_input, steps=1))
     loaded = self.cycle(model, cycles)
     output, = loaded._default_save_signature(model_input).values()
     self.assertAllClose([[1., 2.]], output)
@@ -1532,6 +1613,16 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         dict(out=2., out_1=3.),
         loaded.signatures["serving_default"](constant_op.constant(1.)))
 
+  def test_tuple_signature(self, cycles):
+    root = util.Checkpoint()
+    root.f = def_function.function(
+        lambda: (array_ops.ones([]), array_ops.zeros([])),
+        input_signature=())
+    for _ in range(cycles):
+      root = self.cycle(root, 1, signatures=root.f)
+    self.assertEqual(({"output_0": 1., "output_1": 0.}),
+                     self.evaluate(root.signatures["serving_default"]()))
+
   def test_model_with_custom_function_attached(self, cycles):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
 
@@ -1546,6 +1637,12 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         original,
         root.model.traced_call(array_ops.zeros([1, 1])).numpy())
+
+  def test_version_info(self, cycles):
+    root = util.Checkpoint()
+    root = self.cycle(root, cycles)
+    self.assertEqual(versions.__version__, root.tensorflow_version)
+    self.assertEqual(versions.__git_version__, root.tensorflow_git_version)
 
   def test_functional_model_with_conv(self, cycles):
     x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)

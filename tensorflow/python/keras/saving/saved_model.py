@@ -298,7 +298,11 @@ def _export_mode(
       builder.add_meta_graph(
           model_utils.EXPORT_TAG_MAP[mode],
           signature_def_map=_create_signature_def_map(clone, mode),
-          saver=saver_lib.Saver(clone_var_list),
+          saver=saver_lib.Saver(
+              clone_var_list,
+              # Allow saving Models with no variables. This is somewhat odd, but
+              # it's not necessarily a bug.
+              allow_empty=True),
           init_op=variables.local_variables_initializer(),
           train_op=train_op)
     return None
@@ -309,7 +313,7 @@ def _create_signature_def_map(model, mode):
   inputs_dict = {name: x for name, x in zip(model.input_names, model.inputs)}
   if model.optimizer:
     targets_dict = {x.name.split(':')[0]: x
-                    for x in model.targets if x is not None}
+                    for x in model._targets if x is not None}
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}

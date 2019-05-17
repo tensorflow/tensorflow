@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
 
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -45,7 +45,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
           .ValueOrDie();
   se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   HloModuleConfig config;
-  StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
                              kRedzoneSize, kRedzonePattern);
 
@@ -122,7 +122,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
           .ValueOrDie();
   se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   HloModuleConfig config;
-  StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
   RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
                              kRedzoneSize, /*redzone_pattern=*/-1);
   se::Stream stream(stream_exec);

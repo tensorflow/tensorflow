@@ -78,22 +78,27 @@ constexpr std::array<const char*, 17> kPassThroughOps = {
     "WindowDataset"
 };
 
-constexpr std::array<const char*, 3> kFuncDatasetOps = {
+constexpr std::array<const char*, 4> kFuncDatasetOps = {
+    "ExperimentalGroupByWindowDataset",
     "FlatMapDataset",
     "InterleaveDataset",
-    "ParallelInterleaveDatasetV2"
+    "ParallelInterleaveDatasetV2",
 };
 
+const std::map<string, const char*>* kFuncDatasetOpFuncs =
+    new std::map<string, const char*>({
+        {"ExperimentalGroupByWindowDataset", "reduce_func"},
+        {"FlatMapDataset", "f"},
+        {"InterleaveDataset", "f"},
+        {"ParallelInterleaveDatasetV2", "f"},
+    });
+
 constexpr std::array<const char*, 9> kSourceDatasetOps = {
-    "FixedLengthRecordDataset",
-    "FixedLengthRecordDatasetV2",
-    "GeneratorDataset",
-    "RangeDataset",
-    "SparseTensorsSliceDataset",
-    "TensorDataset",
-    "TensorSliceDataset",
-    "TextLineDataset",
-    "TFRecordDataset"
+    "FixedLengthRecordDataset",  "FixedLengthRecordDatasetV2",
+    "GeneratorDataset",          "RangeDataset",
+    "SparseTensorsSliceDataset", "TensorDataset",
+    "TensorSliceDataset",        "TextLineDataset",
+    "TFRecordDataset",
 };
 
 NodeDef* AddCastNode(const string& input, DataType src_t, DataType dst_t,
@@ -225,7 +230,8 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
         RecursivelyHandleOp(*input_node, num_workers, flib, graph));
     TF_RETURN_IF_ERROR(UpdateOutputShapes(node.name(), num_workers, graph));
   } else if (IsDatasetNodeOfType(node, kFuncDatasetOps)) {
-    const string func_name = node.attr().at("f").func().name();
+    const string func_name =
+        node.attr().at(kFuncDatasetOpFuncs->at(node.op())).func().name();
     const FunctionDef* fdef = flib->Find(func_name);
     GrapplerFunctionItem f_item;
     TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
@@ -280,10 +286,10 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers,
 
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
 
-  NodeDef sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::FindSinkNode(item.graph, &sink_node));
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
   TF_RETURN_IF_ERROR(
-      RecursivelyHandleOp(sink_node, num_workers, &flib, &graph));
+      RecursivelyHandleOp(*sink_node, num_workers, &flib, &graph));
   *output->mutable_library() = flib.ToProto();
   return Status::OK();
 }
