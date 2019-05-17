@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#import "tensorflow/lite/experimental/objc/apis/TFLInterpreter.h"
+#import "tensorflow/lite/experimental/objc/apis/TFLTensorFlowLite.h"
 
 #import <XCTest/XCTest.h>
 
-#import "tensorflow/lite/experimental/objc/apis/TFLInterpreterOptions.h"
-#import "tensorflow/lite/experimental/objc/apis/TFLQuantizationParameters.h"
-#import "tensorflow/lite/experimental/objc/apis/TFLTensor.h"
-
 NS_ASSUME_NONNULL_BEGIN
+
+/**
+ * Regular expression for TensorFlow Lite runtime version string, e.g. "1.14.0", "0.1.2-alpha.1",
+ * "0.3.4-beta2", "1.14.0-rc.3".
+ */
+static NSString *const kTFLVersionRegex = @"^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$";
 
 /** Float model resource name. */
 static NSString *const kAddFloatModelResourceName = @"add";
@@ -90,6 +92,11 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 #pragma mark - Tests
+
+- (void)testTFLVersion {
+  NSRange range = [TFLVersion rangeOfString:kTFLVersionRegex options:NSRegularExpressionSearch];
+  XCTAssertNotEqual(range.location, NSNotFound);
+}
 
 - (void)testSuccessfulFullRunAddFloatModel {
   // Shape for both input and output tensor.
