@@ -251,7 +251,7 @@ PyLocalClient::PyLocalClient(
   }
   devices_.reserve(client->device_count());
   // TODO(phawkins): enable multistream mode on GPU too.
-  bool use_multiple_streams = (platform_name == "tpu");
+  bool use_multiple_streams = (platform_name_ == "tpu");
   bool synchronous_deallocation = !use_multiple_streams;
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
@@ -621,8 +621,8 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
     buffers.push_back(out_buffer);
     device.ThenReleaseOnWorkerThread(device.compute_stream(),
                                      std::move(buffers));
-    device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
   }
+  device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
   return PyLocalBuffer(on_host_shape, std::move(out_buffer), client_);
 }
 
