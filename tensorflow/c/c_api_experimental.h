@@ -224,7 +224,8 @@ TF_CAPI_EXPORT extern TF_DataType TF_CheckpointReaderGetVariableDataType(TF_Chec
 TF_CAPI_EXPORT extern void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,
                                                                const char* name,
                                                                int64_t* dims,
-                                                               int num_dims);
+                                                               int num_dims,
+                                                               TF_Status* status);
 // Get the number of dimension of a variable
 TF_CAPI_EXPORT extern int TF_CheckpointReaderGetVariableNumDims(TF_CheckpointReader* reader,
                                                                 const char* name);

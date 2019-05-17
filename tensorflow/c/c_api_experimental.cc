@@ -39,6 +39,7 @@ using tensorflow::FunctionDef;
 using tensorflow::Node;
 using tensorflow::NodeBuilder;
 using tensorflow::Status;
+using tensorflow::errors::InvalidArgument;
 
 namespace {
 typedef std::unique_ptr<TF_Function, decltype(&TF_DeleteFunction)>
@@ -619,8 +620,14 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader, const char*
   return tensorflow::TF_TensorFromTensor(*tensor.get(), status);
 }
 
-void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims) {
+void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims, TF_Status* status) {
   const auto& m = reader->GetVariableToShapeMap();
+  int rank = m.at(name).dims();
+  if (num_dims != rank){
+    status->status = InvalidArgument("Expected rank is ", num_dims,
+                                     " but actual rank is ", rank);
+    return;
+  }
   for (int i=0; i<num_dims; i++){
     dims[i] = m.at(name).dim_size(i);
   }
