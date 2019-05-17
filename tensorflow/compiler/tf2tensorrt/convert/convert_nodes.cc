@@ -3144,15 +3144,6 @@ Status ConvertBinary(OpConverterParams* params) {
       operand_r, broadcasted_dims_r, params->validation_only, &tensor_r));
   if (params->validation_only) return Status::OK();
 
-  // Check type consistency.
-  // TODO(tmorris): Check if this is still necessary.
-  TFAttrs attrs(node_def);
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
-  TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
-      << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
-  TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
-      << DebugString(tensor_r->getType()) << " vs " << DebugString(dtype);
-
   // Add ElementWise layer.
   nvinfer1::IElementWiseLayer* layer =
       params->converter->network()->addElementWise(
