@@ -171,10 +171,14 @@ public:
   SDBMBuilderResult visitSum(SDBMSumExpr expr) {
     auto lhs = visit(expr.getLHS());
     auto rhs = visit(expr.getRHS());
-    for (auto pos : rhs.negativePos)
+    for (auto pos : rhs.negativePos) {
+      (void)pos;
       assert(pos == 0 && "unexpected variable on the RHS of SDBM sum");
-    for (auto pos : rhs.positivePos)
+    }
+    for (auto pos : rhs.positivePos) {
+      (void)pos;
       assert(pos == 0 && "unexpected variable on the RHS of SDBM sum");
+    }
 
     lhs.value += rhs.value;
     return lhs;
