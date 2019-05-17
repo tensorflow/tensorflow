@@ -125,15 +125,15 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
       // ensure we don't accidentally miss any subsets of the requested range by
       // including `begin_key()` and `end_key()` as appropriate.
       Status Initialize(IteratorContext* ctx) override {
-        grpc::Status status;
-        std::vector<google::cloud::bigtable::RowKeySample> row_keys =
-            dataset()->table().table().SampleRows(status);
-        if (!status.ok()) {
-          return GrpcStatusToTfStatus(status);
+        ::google::cloud::StatusOr<
+            std::vector<::google::cloud::bigtable::RowKeySample>>
+            row_key_samples = dataset()->table().table().SampleRows();
+        if (!row_key_samples.ok()) {
+          return GcpStatusToTfStatus(row_key_samples.status());
         }
 
-        for (size_t i = 0; i < row_keys.size(); ++i) {
-          string row_key(row_keys[i].row_key);
+        for (const auto& row_key_sample : *row_key_samples) {
+          string row_key(row_key_sample.row_key);
           if (dataset()->key_range_.contains_key(row_key)) {
             // First key: check to see if we need to add the begin_key.
             if (keys_.empty() && dataset()->key_range_.begin_key() != row_key) {

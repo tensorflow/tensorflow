@@ -366,7 +366,7 @@ class SequenceQueueingStateSaverTest(test.TestCase):
       update_2 = next_batch.save_state("state2",
                                        -1 + next_batch.state("state2"))
 
-      original_values = dict()
+      original_values = {}
 
       def insert(which):
         for i in range(20):

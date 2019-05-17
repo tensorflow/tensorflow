@@ -22,8 +22,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -39,14 +37,13 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
-#include "tensorflow/stream_executor/logging.pb.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 // clang-format off
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "absl/strings/string_view.h"
 // clang-format on
 
@@ -136,8 +133,8 @@ class CudnnHandle {
  public:
   // Takes ownership of the executor context and the lock to access cuDNN
   // using handle.
-  CudnnHandle(gpu::ScopedActivateExecutorContext context, mutex_lock lock,
-              cudnnHandle_t handle)
+  CudnnHandle(gpu::ScopedActivateExecutorContext context,
+              std::unique_ptr<absl::MutexLock> lock, cudnnHandle_t handle)
       : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
 
   // Returns cuDNN handle. To be passed directly to cuDNN APIs, don't keep
@@ -146,7 +143,7 @@ class CudnnHandle {
 
  private:
   gpu::ScopedActivateExecutorContext context_;
-  mutex_lock lock_;
+  std::unique_ptr<absl::MutexLock> lock_;
   cudnnHandle_t handle_;  // Not owned.
 };
 
@@ -163,7 +160,7 @@ class CudnnAccess {
   explicit CudnnAccess(cudnnHandle_t handle) : handle_(handle) {}
 
   ~CudnnAccess() {
-    mutex_lock lock(*mutex_);
+    absl::MutexLock lock(&mutex_);
     cudnnDestroy(handle_);
   }
 
@@ -184,7 +181,8 @@ class CudnnAccess {
   // therefore a bad idea (performance wise) to call any cuDNN APIs that
   // enqueue work in the stream.
   CudnnHandle GetHandle(GpuExecutor* executor, Stream* stream) {
-    mutex_lock lock(*mutex_);
+    auto lock = absl::make_unique<absl::MutexLock>(&mutex_);
+    mutex_.AssertHeld();
     gpu::ScopedActivateExecutorContext context(executor);
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
     const auto status = cudnnSetStream(handle_, cu_stream);
@@ -194,18 +192,11 @@ class CudnnAccess {
 
  private:
   // Guards the enqueueing of cuDNN operations via the handle_ below.
-  //
-  // The mutex is static to work around b/124313574: calling cuDNN concurrently
-  // with different handles is not thread safe, even though the documentation
-  // suggests it is:
-  // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#thread-safety.
-  static mutex* mutex_;
+  absl::Mutex mutex_;
 
   // cuDNN library handle.
-  cudnnHandle_t handle_ GUARDED_BY(*mutex_);  // Owned.
+  cudnnHandle_t handle_ GUARDED_BY(mutex_);  // Owned.
 };
-
-mutex* CudnnAccess::mutex_ = new mutex;
 
 namespace {
 
@@ -316,7 +307,7 @@ port::Status CudnnSupport::Init() {
     CudnnVersion loaded_version;
     TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&loaded_version));
     if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
-      const tensorflow::string error = absl::StrCat(
+      const string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
           " but source was compiled with: ", source_version.ToString(),
           ".  CuDNN library major and minor version needs to match or have "
@@ -1302,7 +1293,8 @@ class CudnnRnnSequenceTensorDescriptor
 
   static port::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
-      const absl::Span<const int>& seq_lengths, cudnnDataType_t data_type) {
+      const absl::Span<const int>& seq_lengths, bool time_major,
+      cudnnDataType_t data_type) {
 #if CUDNN_VERSION >= 7201
     CHECK_GT(max_seq_length, 0);
     int dims[] = {batch_size, data_size, 1};
@@ -1315,9 +1307,15 @@ class CudnnRnnSequenceTensorDescriptor
     const int* seq_lengths_array = seq_lengths.data();
     RNNDataDescriptor data_desc = CreateRNNDataDescriptor();
     float padding_fill = 0.0f;
+    cudnnRNNDataLayout_t layout;
+    if (time_major) {
+      layout = CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED;
+    } else {
+      layout = CUDNN_RNN_DATA_LAYOUT_BATCH_MAJOR_UNPACKED;
+    }
     RETURN_IF_CUDNN_ERROR(cudnnSetRNNDataDescriptor(
         /*RNNDataDesc=*/data_desc.get(), /*dataType*/ data_type,
-        /*layout=*/CUDNN_RNN_DATA_LAYOUT_SEQ_MAJOR_UNPACKED,
+        /*layout=*/layout,
         /*maxSeqLength=*/max_seq_length,
         /*batchSize=*/batch_size, /*vectorSize=*/data_size,
         /*seqLengthArray=*/seq_lengths_array,
@@ -1851,11 +1849,12 @@ CudnnSupport::createRnnSequenceTensorDescriptor(int max_seq_length,
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 CudnnSupport::createRnnSequenceTensorDescriptor(
     int max_seq_length, int batch_size, int data_size,
-    const absl::Span<const int>& seq_lengths, dnn::DataType data_type) {
+    const absl::Span<const int>& seq_lengths, bool time_major,
+    dnn::DataType data_type) {
   SE_ASSIGN_OR_RETURN(CudnnRnnSequenceTensorDescriptor descriptor,
                       CudnnRnnSequenceTensorDescriptor::Create(
                           parent_, max_seq_length, batch_size, data_size,
-                          seq_lengths, ToCudnnDataType(data_type)));
+                          seq_lengths, time_major, ToCudnnDataType(data_type)));
   return std::unique_ptr<dnn::RnnSequenceTensorDescriptor>(
       new CudnnRnnSequenceTensorDescriptor(std::move(descriptor)));
 }
@@ -2557,7 +2556,9 @@ struct RnnDoFP32ComputationFP16Input {
   // precision is set.
   // Set it temporary to false s.t. no error is raised when using fp16 inputs,
   // fp32 math precision.
-  static constexpr bool kDefaultFlag = false;
+  //
+  // cuDNN == 7.5.0 is verified to have this fixed.
+  static constexpr bool kDefaultFlag = CUDNN_VERSION >= 7500;
 };
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type) {
@@ -2620,63 +2621,6 @@ bool ShouldIncludeWinogradNonfusedAlgo(
   return total_size < threshold;
 }
 #endif
-
-dnn::ConvolutionProto GenerateConvProto(
-    dnn::ConvolutionKind kind, dnn::DataType element_type,
-    const dnn::BatchDescriptor& input_descriptor,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const dnn::BatchDescriptor& output_descriptor, dnn::AlgorithmDesc algorithm,
-    const dnn::ConvolutionDescriptor& convolution_descriptor, double conv_scale,
-    double side_value_scale, dnn::DataType acc_type,
-    dnn::ActivationMode activation) {
-  dnn::ConvolutionProto conv_config;
-  conv_config.set_kind(kind);
-  *conv_config.mutable_input() = input_descriptor.ToProto(element_type);
-  *conv_config.mutable_filter() = filter_descriptor.ToProto(element_type);
-  *conv_config.mutable_output() = output_descriptor.ToProto(element_type);
-  *conv_config.mutable_algorithm() = algorithm.ToProto();
-  *conv_config.mutable_conv_desc() = convolution_descriptor.ToProto();
-  conv_config.mutable_conv_desc()->set_compute_mode(acc_type);
-  conv_config.set_conv_scale(conv_scale);
-  conv_config.set_side_value_scale(side_value_scale);
-  conv_config.set_activation(activation);
-  return conv_config;
-}
-
-void LogCudaProto(const dnn::ConvolutionProto& conv, float profile_time_ms,
-                  StreamExecutor* stream_executor) {
-  {
-    // For rolling-out, temporarily cap the number of logs per process.
-    // TODO(timshen): remove it.
-    static int count_down = 200;
-    if (count_down == 0) {
-      return;
-    }
-    count_down--;
-  }
-
-  ConvLogEntry conv_log;
-  *conv_log.mutable_convolution() = conv;
-  conv_log.set_profile_time_ms(profile_time_ms);
-
-  auto info = conv_log.mutable_cuda_info();
-  int cc_major, cc_minor;
-  stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                  &cc_minor);
-  info->mutable_compute_capability()->set_major(cc_major);
-  info->mutable_compute_capability()->set_minor(cc_minor);
-
-  if (auto* dnn = stream_executor->AsDnn()) {
-    port::StatusOr<dnn::VersionInfo> version_or = dnn->GetVersion();
-    if (version_or.ok()) {
-      const auto& version = version_or.ValueOrDie();
-      info->mutable_cudnn_version()->set_major(version.major_version());
-      info->mutable_cudnn_version()->set_minor(version.minor_version());
-      info->mutable_cudnn_version()->set_patch(version.patch());
-    }
-  }
-  tensorflow::Logger::Singleton()->LogProto(conv_log);
-}
 
 }  // namespace
 
@@ -2971,13 +2915,6 @@ port::Status CudnnSupport::DoConvolve(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch_memory.size());
-
-    LogCudaProto(
-        GenerateConvProto(kind, element_type, input_descriptor,
-                          filter_descriptor, output_descriptor, algorithm_desc,
-                          convolution_descriptor, dalpha, dbeta,
-                          accumulator_type, dnn::ActivationMode::kNone),
-        output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -3095,14 +3032,6 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
-
-    LogCudaProto(
-        GenerateConvProto(
-            dnn::ConvolutionKind::FORWARD, dnn::ToDataType<ElementType>::value,
-            conv_input_descriptor, filter_descriptor, output_descriptor,
-            algo_desc, convolution_descriptor, conv_input_scale,
-            side_input_scale, accumulator_type, activation_mode),
-        output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();

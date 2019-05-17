@@ -33,7 +33,6 @@ namespace ops {
 namespace builtin {
 
 TfLiteRegistration* Register_FULLY_CONNECTED_REF();
-TfLiteRegistration* Register_FULLY_CONNECTED_NEON_OPT();
 TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT();
 TfLiteRegistration* Register_FULLY_CONNECTED_PIE();
 
@@ -143,7 +142,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           FullyConnectedOptionsWeightsFormat_DEFAULT)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
-    for (int i = 0; i < input.shape.size(); ++i) {
+    for (size_t i = 0; i < input.shape.size(); ++i) {
       total_input_size *= input.shape[i];
     }
     input_size_ = total_input_size / batches_;
@@ -279,7 +278,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
                               const TensorData& output = {TensorType_FLOAT32})
       : batches_(batches), units_(units) {
     int total_input_size = 1;
-    for (int i = 0; i < input.shape.size(); ++i) {
+    for (size_t i = 0; i < input.shape.size(); ++i) {
       total_input_size *= input.shape[i];
     }
     input_size_ = total_input_size / batches_;
@@ -330,7 +329,6 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
-    {"NeonOptimized", ops::builtin::Register_FULLY_CONNECTED_NEON_OPT()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
     {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
 });
@@ -344,7 +342,6 @@ class FloatFullyConnectedOpTest : public SingleOpTest {
 
 const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
-    {"NeonOptimized", ops::builtin::Register_FULLY_CONNECTED_NEON_OPT()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
@@ -355,15 +352,18 @@ class QuantizedFullyConnectedOpTest : public SingleOpTest {
   }
 };
 
-const auto kKernelMapPie = new std::map<string, TfLiteRegistration*>({
+const auto kKernelMapHybrid = new std::map<string, TfLiteRegistration*>({
     {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
+    // Only Pie supports the hybrid path, so the optimized kernel should fall
+    // back to the Pie path in such cases.
+    {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
 // Hybrid mode is used by the Pie quantized kernel.
 class HybridFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapPie;
+    return *kKernelMapHybrid;
   }
 };
 
@@ -375,7 +375,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest) {
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -460,7 +460,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedUint8) {
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   QuantizedFullyConnectedOpModel m(
-      ops::builtin::Register_FULLY_CONNECTED_REF(), /*units=*/3, /*batches*/ 2,
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_INT8, {2, 10}, -63.5, 64},
       /*output=*/{TensorType_INT8, {}, -127, 128});
 
@@ -482,6 +482,33 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(23, 24, 25, 57, 58, 59));
+}
+
+// Test the GEMV path.
+TEST_P(QuantizedFullyConnectedOpTest, SimpleTestSingleBatchQuantizedInt8) {
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/4, /*batches*/ 1,
+      /*input=*/{TensorType_INT8, {1, 10}, -63.5, 64},
+      /*output=*/{TensorType_INT8, {}, -127, 128});
+
+  // input_product_scale < output_scale was not true.
+  m.SetWeights<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 3
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.SetInput<int8_t>({
+      1, 2, 3, 4, 5, 6, 7, -8, 9, -10  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({58, 59, 60, 61})));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAre(57, 58, 59, 60));
 }
 
 TEST_P(QuantizedFullyConnectedOpTest,
@@ -519,7 +546,7 @@ TEST_P(QuantizedFullyConnectedOpTest,
        SimpleTestQuantizedOutputMultiplierGreaterThan1Int8) {
   // real_multiplier = 2.
   QuantizedFullyConnectedOpModel m(
-      ops::builtin::Register_FULLY_CONNECTED_REF(), /*units=*/3, /*batches*/ 2,
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
       /*input=*/{TensorType_INT8, {2, 10}, -127, 128},
       /*output=*/{TensorType_INT8, {}, -63.5, 64});
 
@@ -678,7 +705,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedUint8) {
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -706,7 +733,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
   m.SetSignedWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -735,7 +762,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -762,7 +789,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantizedUint8) {
   m.SetWeights<uint8_t>({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
   m.SetBias({1, 2, 3});
 
@@ -793,7 +820,7 @@ TEST_P(QuantizedFullyConnectedOpTest,
   m.SetWeights<uint8_t>({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
   });
   m.SetBias({1, 2, 3});
 

@@ -48,7 +48,7 @@ class GraphOptimizer {
     NodePredicate cf_consider_fn = nullptr;
   };
 
-  GraphOptimizer(const OptimizerOptions& opts);
+  explicit GraphOptimizer(const OptimizerOptions& opts);
   ~GraphOptimizer();
 
   // Applies optimization passes specified in 'opts' to 'graph'.
@@ -56,12 +56,12 @@ class GraphOptimizer {
   // on which the 'graph' will execute. It's passed to the optimizers
   // so that they can respect constraints if any, that should be
   // respected.
-  void Optimize(FunctionLibraryRuntime* runtime, Env* env, Device* device,
+  void Optimize(FunctionLibraryRuntime* runtime, Env* env, const Device* device,
                 std::unique_ptr<Graph>* graph,
                 const Options& graph_optimizer_options);
   // DEPRECATED: Consider passing a GraphOptimizer::Options object instead.
   void Optimize(
-      FunctionLibraryRuntime* runtime, Env* env, Device* device,
+      FunctionLibraryRuntime* runtime, Env* env, const Device* device,
       std::unique_ptr<Graph>* graph,
       const std::unordered_map<string, std::vector<PartialTensorShape>>*
           shape_map,

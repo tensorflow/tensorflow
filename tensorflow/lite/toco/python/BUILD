@@ -61,6 +61,7 @@ tf_py_wrap_cc(
 py_binary(
     name = "toco_from_protos",
     srcs = ["toco_from_protos.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":tensorflow_wrap_toco",
@@ -77,7 +78,7 @@ tf_py_test(
         "//tensorflow/lite/toco:toco_flags_proto_py",
     ],
     data = [
-        ":toco_from_protos",
+        ":toco_from_protos.par",
     ],
     tags = [
         "no_oss",

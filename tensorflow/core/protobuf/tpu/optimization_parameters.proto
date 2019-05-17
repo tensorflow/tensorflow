@@ -60,10 +60,23 @@ message AdagradParameters {
   float initial_accumulator = 1;
 }
 
+// Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
+message BoundedAdagradParameters {
+  // Whether to use the updated or the old value of the accumulator when
+  // computing the effective learning rate. When update_accumulator_first is set
+  // to True, the updated value of the accumulator is used.
+  bool update_accumulator_first = 1;
+  // The max_var_update value to use. Set value to 0 (default) to disable using
+  // max_var_update to clip the gradient.
+  float max_var_update = 2;
+  // The maximum value of the accumulator. Set max_accumulator to 0 (default)
+  // to disable using max_accumulator to clip the accumulator.
+  float max_accumulator = 3;
+}
+
 // https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L423
-message StochasticGradientDescentParameters {
-}
+message StochasticGradientDescentParameters {}
 
 // https://www.tensorflow.org/api_docs/python/tf/train/FtrlOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L192
@@ -181,7 +194,7 @@ message GradientAccumulationStatus {
     ENABLED = 1;
     DISABLED = 2;
   }
-};
+}
 
 // Configuration proto for hot ID optimization. This is an experimental feature
 // that is currently disabled (by default).
@@ -252,6 +265,7 @@ message OptimizationParameters {
   // algorithm to use.
   oneof parameters {
     AdagradParameters adagrad = 3;
+    BoundedAdagradParameters bounded_adagrad = 19;
     StochasticGradientDescentParameters stochastic_gradient_descent = 4;
     FtrlParameters ftrl = 5;
     AdamParameters adam = 6;

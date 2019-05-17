@@ -290,7 +290,7 @@ port::Status Stream::RefreshStatus() {
 Stream &Stream::Init() {
   VLOG_CALL();
 
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   CHECK_EQ(false, allocated_)
       << "stream appears to already have been initialized";
   CHECK(!ok_) << "stream should be in !ok() state pre-initialization";
@@ -1736,7 +1736,7 @@ Stream &Stream::ThenMemcpyH2DQuantized(
 }
 
 Stream *Stream::GetOrCreateSubStream() {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
 
   // Look for the first reusable sub_stream that is ok, dropping !ok sub_streams
   // we encounter along the way.
@@ -1783,7 +1783,7 @@ Stream *Stream::GetOrCreateSubStream() {
 }
 
 void Stream::ReturnSubStream(Stream *sub_stream) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
 
   // Look for the sub-stream.
   for (int64 index = 0; index < sub_streams_.size(); ++index) {
@@ -5285,7 +5285,7 @@ void Stream::CheckStatus(port::Status status) {
     return;
   }
   LOG(ERROR) << status;
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   ok_ = false;
 }
 

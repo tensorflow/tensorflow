@@ -44,15 +44,14 @@ namespace tensorflow {
 namespace swig {
 
 static std::vector<string> ListDevicesWithSessionConfig(
-    const tensorflow::ConfigProto& config, TF_Status* out_status) {
+    const tensorflow::ConfigProto& config, TF_Status* status) {
   std::vector<string> output;
   SessionOptions options;
   options.config = config;
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::AddDevices(
-      options, "" /* name_prefix */, &devices);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  Status s = DeviceFactory::AddDevices(options, "" /* name_prefix */, &devices);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 
   for (const std::unique_ptr<Device>& device : devices) {
@@ -60,7 +59,7 @@ static std::vector<string> ListDevicesWithSessionConfig(
     string attr_serialized;
     if (!attr.SerializeToString(&attr_serialized)) {
       Set_TF_Status_from_Status(
-          out_status,
+          status,
           errors::Internal("Could not serialize device string"));
       output.clear();
       return output;
@@ -71,9 +70,9 @@ static std::vector<string> ListDevicesWithSessionConfig(
   return output;
 }
 
-std::vector<string> ListDevices(TF_Status* out_status) {
+std::vector<string> ListDevices(TF_Status* status) {
   tensorflow::ConfigProto session_config;
-  return ListDevicesWithSessionConfig(session_config, out_status);
+  return ListDevicesWithSessionConfig(session_config, status);
 }
 
 }  // namespace swig
@@ -91,9 +90,9 @@ std::vector<string> ListDevices(TF_Status* out_status) {
 // Wrap this function
 namespace tensorflow {
 namespace swig {
-std::vector<string> ListDevices(TF_Status* out_status);
+std::vector<string> ListDevices(TF_Status* status);
 static std::vector<string> ListDevicesWithSessionConfig(
-    const tensorflow::ConfigProto& config, TF_Status* out_status);
+    const tensorflow::ConfigProto& config, TF_Status* status);
 }  // namespace swig
 }  // namespace tensorflow
 
@@ -101,12 +100,10 @@ static std::vector<string> ListDevicesWithSessionConfig(
 def list_devices(session_config=None):
   from tensorflow.python.framework import errors
 
-  with errors.raise_exception_on_not_ok_status() as status:
-    if session_config:
-      return ListDevicesWithSessionConfig(session_config.SerializeToString(),
-                                          status)
-    else:
-      return ListDevices(status)
+  if session_config:
+    return ListDevicesWithSessionConfig(session_config.SerializeToString())
+  else:
+    return ListDevices()
 %}
 
 %unignoreall

@@ -951,7 +951,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef) {
   EXPECT_TRUE(HasControlEdge("D", sink));
   EXPECT_EQ(9, graph_.num_edges());
 
-  // Importing again should fail because of node name collissions.
+  // Importing again should fail because of node name collisions.
   s = ImportGraphDef(opts, def, &graph_, nullptr);
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
 

@@ -177,11 +177,11 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
 
   ```python
     # Create variables.
-    with tf.variable_scope('test'):
-      m = tf.get_variable('my_var')
-    with tf.variable_scope('test2'):
-      var2 = tf.get_variable('my_var')
-    var3 = tf.get_variable(name="my1", shape=[100, 100],
+    with tf.compat.v1.variable_scope('test'):
+      m = tf.compat.v1.get_variable('my_var')
+    with tf.compat.v1.variable_scope('test2'):
+      var2 = tf.compat.v1.get_variable('my_var')
+    var3 = tf.compat.v1.get_variable(name="my1", shape=[100, 100],
                            partitioner=lambda shape, dtype: [5, 1])
     ...
     # Specify which variables to initialize from checkpoint.

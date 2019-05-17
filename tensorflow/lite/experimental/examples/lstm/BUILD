@@ -36,6 +36,7 @@ py_test(
     name = "unidirectional_sequence_lstm_test",
     size = "large",
     srcs = ["unidirectional_sequence_lstm_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -49,7 +50,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference_lib",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -59,6 +59,7 @@ py_test(
     name = "unidirectional_sequence_rnn_test",
     size = "large",
     srcs = ["unidirectional_sequence_rnn_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -72,7 +73,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -82,6 +82,7 @@ py_test(
     name = "bidirectional_sequence_lstm_test",
     size = "large",
     srcs = ["bidirectional_sequence_lstm_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -95,7 +96,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -105,6 +105,7 @@ py_test(
     name = "bidirectional_sequence_rnn_test",
     size = "large",
     srcs = ["bidirectional_sequence_rnn_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -118,7 +119,6 @@ py_test(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python/tools:optimize_for_inference",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

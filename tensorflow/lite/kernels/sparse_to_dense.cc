@@ -171,6 +171,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, indices->type == kTfLiteInt32 || indices->type == kTfLiteInt64);
   TF_LITE_ENSURE(context, output_shape->type == kTfLiteInt32 ||
                               output_shape->type == kTfLiteInt64);
+  TF_LITE_ENSURE(context, values->type == kTfLiteInt32 ||
+                              values->type == kTfLiteInt64 ||
+                              values->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, values->type, default_value->type);
 
   // Ensure dimensions match.
@@ -178,6 +181,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       context, CheckDimensionsMatch(context, indices, output_shape, values));
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  output->type = values->type;
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
 
   if (!IsConstantTensor(output_shape)) {
@@ -216,44 +220,36 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+template <typename T>
+TfLiteStatus EvalForIndexType(TfLiteContext* context, TfLiteNode* node,
+                              const TfLiteTensor* indices) {
+  switch (indices->type) {
+    case kTfLiteInt32: {
+      return SparseToDenseImpl<T, int32_t>(context, node);
+    }
+    case kTfLiteInt64: {
+      return SparseToDenseImpl<T, int64_t>(context, node);
+    }
+    default:
+      context->ReportError(
+          context, "Type %d is currently not supported by sparse to dense.",
+          indices->type);
+      return kTfLiteError;
+  }
+}
+
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* indices = GetInput(context, node, kIndicesTensor);
   const TfLiteTensor* values = GetInput(context, node, kValueInputTensor);
 
-  // Currently only supports float32 and int32.
+  // Currently only supports float32, int32 and int64.
   switch (values->type) {
-    case kTfLiteFloat32: {
-      switch (indices->type) {
-        case kTfLiteInt32: {
-          return SparseToDenseImpl<float, int32_t>(context, node);
-        }
-        case kTfLiteInt64: {
-          return SparseToDenseImpl<float, int64_t>(context, node);
-        }
-        default:
-          context->ReportError(
-              context, "Type %d is currently not supported by sparse to dense.",
-              indices->type);
-          return kTfLiteError;
-      }
-      break;
-    }
-    case kTfLiteInt32: {
-      switch (indices->type) {
-        case kTfLiteInt32: {
-          return SparseToDenseImpl<int32_t, int32_t>(context, node);
-        }
-        case kTfLiteInt64: {
-          return SparseToDenseImpl<int32_t, int64_t>(context, node);
-        }
-        default:
-          context->ReportError(
-              context, "Type %d is currently not supported by sparse to dense.",
-              indices->type);
-          return kTfLiteError;
-      }
-      break;
-    }
+    case kTfLiteFloat32:
+      return EvalForIndexType<float>(context, node, indices);
+    case kTfLiteInt32:
+      return EvalForIndexType<int32_t>(context, node, indices);
+    case kTfLiteInt64:
+      return EvalForIndexType<int64_t>(context, node, indices);
     default:
       context->ReportError(
           context, "Type %d is currently not supported by sparse to dense.",

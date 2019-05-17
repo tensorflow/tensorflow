@@ -62,6 +62,7 @@ py_library(
 py_test(
     name = "graph_compute_order_test",
     srcs = ["python/util/graph_compute_order_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":graph_compute_order_py",
@@ -78,6 +79,7 @@ py_test(
 py_test(
     name = "parse_layer_parameters_test",
     srcs = ["python/util/parse_layer_parameters_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":graph_compute_order_py",
@@ -94,6 +96,7 @@ py_test(
 py_test(
     name = "receptive_field_test",
     srcs = ["python/util/receptive_field_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":receptive_field_py",

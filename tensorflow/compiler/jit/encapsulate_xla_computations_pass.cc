@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -372,8 +372,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 Status EncapsulateXlaComputationsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateXlaComputations(): "
-          << dump_graph::DumpGraphToFile("encapsulate_xla_computations_before",
-                                         **options.graph, options.flib_def);
+          << DumpGraphToFile("encapsulate_xla_computations_before",
+                             **options.graph, options.flib_def);
 
   const char* additional_help =
       IsCpuGpuCompile(options.graph->get())
@@ -383,14 +383,14 @@ Status EncapsulateXlaComputationsPass::Run(
   TF_RETURN_WITH_CONTEXT_IF_ERROR(Encapsulate(options.graph, options.flib_def),
                                   additional_help);
   VLOG(1) << "EncapsulateXlaComputations() half-way: "
-          << dump_graph::DumpGraphToFile("encapsulate_xla_computations_halfway",
-                                         **options.graph, options.flib_def);
+          << DumpGraphToFile("encapsulate_xla_computations_halfway",
+                             **options.graph, options.flib_def);
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(BuildXlaLaunchOps(options.graph->get()),
                                   additional_help);
   VLOG(1) << "EncapsulateXlaComputations() finished: "
-          << dump_graph::DumpGraphToFile("encapsulate_xla_computations_after",
-                                         **options.graph, options.flib_def);
+          << DumpGraphToFile("encapsulate_xla_computations_after",
+                             **options.graph, options.flib_def);
   return Status::OK();
 }
 

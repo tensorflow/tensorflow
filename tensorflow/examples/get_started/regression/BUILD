@@ -9,10 +9,10 @@ py_test(
         "custom_regression.py",
         "dnn_regression.py",
         "imports85.py",
-        "linear_regression.py",
         "linear_regression_categorical.py",
         "test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",

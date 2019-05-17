@@ -65,7 +65,7 @@ class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
         maximum_cached_engines=1,
         # Disable layout optimizer, since it will convert BiasAdd with NHWC
         # format to NCHW format under four dimentional input.
-        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
+        rewriter_config_template=trt_test.OptimizerDisabledRewriterConfig())
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

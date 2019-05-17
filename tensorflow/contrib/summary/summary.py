@@ -64,7 +64,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.python.ops.summary_ops_v2 import all_summary_ops
+from tensorflow.python.ops.summary_ops_v2 import all_v2_summary_ops as all_summary_ops
 from tensorflow.python.ops.summary_ops_v2 import always_record_summaries
 from tensorflow.python.ops.summary_ops_v2 import audio
 from tensorflow.python.ops.summary_ops_v2 import create_db_writer

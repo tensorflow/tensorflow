@@ -149,21 +149,6 @@ TEST_F(ShapeRefinerTest, MatMul) {
   EXPECT_SHAPE("[2,2]", m, mm, 0);
 }
 
-TEST_F(ShapeRefinerTest, InvalidOrder) {
-  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
-  Scope root = Scope::NewRootScope();
-  auto a = ops::Const(root, {{1.0f}, {2.0f}});
-  auto b = ops::Const(root, {{1.0f, 2.0f}});
-  auto mm = ops::MatMul(root, a, b);
-
-  Status s = m.AddNode(mm.node());
-  ASSERT_FALSE(s.ok());
-  ASSERT_EQ(
-      "Input 0 ('Const') for 'MatMul' was not previously added to "
-      "ShapeRefiner.",
-      s.error_message());
-}
-
 TEST_F(ShapeRefinerTest, BadShapes) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Scope root = Scope::NewRootScope();

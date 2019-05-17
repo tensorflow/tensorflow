@@ -28,15 +28,15 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.optimizer_v2 import adagrad
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import estimator_training as dc_training
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import exporter as exporter_lib
@@ -249,9 +249,25 @@ class DistributeCoordinatorIntegrationTest(
     ])
     self.assertAllEqual((BATCH_SIZE, LABEL_DIMENSION), predicted_proba.shape)
 
-  def _get_strategy_object(self, strategy_cls):
+  def _make_cross_device_ops(self, num_gpus_per_worker):
+    return cross_device_ops_lib.MultiWorkerAllReduce(
+        ["/job:worker/task:0", "/job:worker/task:1", "/job:worker/task:2"],
+        num_gpus_per_worker)
+
+  def _get_strategy_object(self, strategy_cls, eval_strategy=False):
     if strategy_cls == mirrored_strategy.CoreMirroredStrategy:
-      return strategy_cls()
+      if eval_strategy:
+        return strategy_cls()
+      else:
+        return strategy_cls(
+            cross_device_ops=self._make_cross_device_ops(
+                num_gpus_per_worker=context.num_gpus()))
+    elif (strategy_cls == mirrored_strategy.MirroredStrategy and
+          not eval_strategy):
+      return strategy_cls(
+          num_gpus_per_worker=context.num_gpus(),
+          cross_device_ops=self._make_cross_device_ops(
+              num_gpus_per_worker=context.num_gpus()))
     else:
       return strategy_cls(num_gpus_per_worker=context.num_gpus())
 
@@ -277,7 +293,8 @@ class DistributeCoordinatorIntegrationTest(
     train_distribute = self._get_strategy_object(train_distribute_cls)
 
     if eval_distribute_cls:
-      eval_distribute = self._get_strategy_object(eval_distribute_cls)
+      eval_distribute = self._get_strategy_object(
+          eval_distribute_cls, eval_strategy=True)
     else:
       eval_distribute = None
 
@@ -307,7 +324,8 @@ class DistributeCoordinatorIntegrationTest(
             communication=cross_device_ops_lib.CollectiveCommunication.NCCL))
 
     if eval_distribute_class:
-      eval_distribute = self._get_strategy_object(eval_distribute_class)
+      eval_distribute = self._get_strategy_object(
+          eval_distribute_class, eval_strategy=True)
     else:
       eval_distribute = None
 
@@ -388,7 +406,8 @@ class DistributeCoordinatorIntegrationTest(
     train_distribute = self._get_strategy_object(train_distribute_cls)
 
     if eval_distribute_cls:
-      eval_distribute = self._get_strategy_object(eval_distribute_cls)
+      eval_distribute = self._get_strategy_object(
+          eval_distribute_cls, eval_strategy=True)
     else:
       eval_distribute = None
 
@@ -436,7 +455,8 @@ class DistributeCoordinatorIntegrationTest(
     train_distribute = self._get_strategy_object(train_distribute_cls)
 
     if eval_distribute_cls:
-      eval_distribute = self._get_strategy_object(eval_distribute_cls)
+      eval_distribute = self._get_strategy_object(
+          eval_distribute_cls, eval_strategy=True)
     else:
       eval_distribute = None
 

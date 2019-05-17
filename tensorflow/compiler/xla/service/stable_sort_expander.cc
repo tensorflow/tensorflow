@@ -180,13 +180,13 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
   CHECK_NE(cloned_root, nullptr);
   Shape scalar_pred = ShapeUtil::MakeShape(PRED, {});
   HloInstruction* same =
-      comparator->AddInstruction(HloInstruction::CreateBinary(
-          scalar_pred, HloOpcode::kEq, old_root, cloned_root));
+      comparator->AddInstruction(HloInstruction::CreateCompare(
+          scalar_pred, old_root, cloned_root, ComparisonDirection::kEq));
   HloInstruction* tie_breaker =
-      comparator->AddInstruction(HloInstruction::CreateBinary(
-          scalar_pred, HloOpcode::kLt,
-          comparator->parameter_instruction(2 * iota_index),
-          comparator->parameter_instruction(2 * iota_index + 1)));
+      comparator->AddInstruction(HloInstruction::CreateCompare(
+          scalar_pred, comparator->parameter_instruction(2 * iota_index),
+          comparator->parameter_instruction(2 * iota_index + 1),
+          ComparisonDirection::kLt));
   HloInstruction* new_root =
       comparator->AddInstruction(HloInstruction::CreateTernary(
           ShapeUtil::MakeShape(PRED, {}), HloOpcode::kSelect, same, tie_breaker,

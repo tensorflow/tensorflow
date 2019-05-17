@@ -13,11 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for pfor and for_loop."""
+# pylint: disable=g-direct-tensorflow-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import time
 
 from absl import flags
@@ -98,6 +100,96 @@ class PForTest(PForTestCase):
   def test_parallel_iterations_one(self):
     with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
+
+  def test_vectorized_map(self):
+    def compute(x):
+      return math_ops.reduce_mean(x, axis=0, keepdims=True)
+    result = pfor_control_flow_ops.vectorized_map(
+        compute, array_ops.ones((10, 5, 3)))
+    self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
+
+@test_util.run_all_in_graph_and_eager_modes
+class ReductionTest(PForTestCase):
+
+  def test_reduce_concat(self):
+    x = random_ops.random_uniform([8, 3])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      vectorized_value = pfor_config.reduce_concat(x_i)
+      mean_value = math_ops.reduce_mean(vectorized_value, axis=0)
+      return x_i - mean_value
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 8)
+    ans = x - math_ops.reduce_mean(x, axis=0)
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
+
+  def test_reduce_mean(self):
+    x = random_ops.random_uniform([8, 3])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      return x_i - pfor_config.reduce_mean(x_i)
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 8)
+    ans = x - math_ops.reduce_mean(x, axis=0)
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
+
+  def test_reduce_sum(self):
+    x = random_ops.random_uniform([8, 3])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      return x_i - pfor_config.reduce_sum(x_i)
+
+    output = pfor_control_flow_ops.pfor(loop_fn, 8)
+    ans = x - math_ops.reduce_sum(x, axis=0)
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
+
+  def test_reduce_class(self):
+    x = random_ops.random_uniform([8, 3])
+
+    class LoopFn(object):
+
+      def __init__(self):
+        pass
+
+      def __call__(self, i, pfor_config):
+        x_i = array_ops.gather(x, i)
+        return x_i - pfor_config.reduce_mean(x_i)
+
+    output = pfor_control_flow_ops.pfor(LoopFn(), 8)
+    ans = x - math_ops.reduce_mean(x, axis=0)
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
+
+  def test_reduce_functools_partial(self):
+    x = random_ops.random_uniform([8, 3])
+
+    def fn(i, pfor_config, dummy=None):
+      del dummy
+      x_i = array_ops.gather(x, i)
+      return x_i - pfor_config.reduce_mean(x_i)
+
+    loop_fn = functools.partial(fn, dummy=1)
+    output = pfor_control_flow_ops.pfor(loop_fn, 8)
+    ans = x - math_ops.reduce_mean(x, axis=0)
+    output_val, ans_val = self.evaluate([output, ans])
+    self.assertAllClose(ans_val, output_val)
+
+  def test_parallel_iterations(self):
+    x = random_ops.random_uniform([8, 3])
+
+    def loop_fn(i, pfor_config):
+      x_i = array_ops.gather(x, i)
+      return pfor_config.reduce_sum(x_i)
+
+    with self.assertRaisesRegexp(
+        ValueError, "parallel_iterations currently unsupported"):
+      pfor_control_flow_ops.pfor(loop_fn, 8, parallel_iterations=2)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -251,7 +343,6 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
-  @test_util.disable_xla("This test never passed for XLA")
   def test_fused_batch_norm(self):
     data_formats = ["NHWC"]
     if test.is_gpu_available():
@@ -301,6 +392,28 @@ class NNTest(PForTestCase):
         # pylint: enable=cell-var-from-loop
 
         self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 6)
+
+  def test_log_softmax(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      return (nn.log_softmax(logits_i),
+              nn.log_softmax(logits_i, axis=0),
+              nn.log_softmax(logits_i, axis=-1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
+  def test_softmax(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      return (nn.softmax(logits_i),
+              nn.softmax(logits_i, axis=0),
+              nn.softmax(logits_i, axis=-1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_softmax_cross_entropy_with_logits(self):
     with backprop.GradientTape(persistent=True) as g:
@@ -359,19 +472,61 @@ class RandomTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 5)
 
-  def test_random_gamma(self):
+  def test_random_gamma_invariant_alpha(self):
 
     def loop_fn(_):
       return random_ops.random_gamma([3], alpha=[0.5])
 
     self._test_loop_fn(loop_fn, 5)
 
-  def test_random_poisson_v2(self):
+  def test_random_gamma_varying_alpha(self):
+    alphas = math_ops.exp(random_ops.random_normal([5, 3, 2]))
+
+    def loop_fn(i):
+      alphas_i = array_ops.gather(alphas, i)
+      # Test both scalar and non-scalar params and shapes.
+      return (random_ops.random_gamma(alpha=alphas_i[0, 0], shape=[]),
+              random_ops.random_gamma(alpha=alphas_i, shape=[]),
+              random_ops.random_gamma(alpha=alphas_i[0, 0], shape=[3]),
+              random_ops.random_gamma(alpha=alphas_i, shape=[3]))
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.float32] * 4)
+
+  def test_random_poisson_v2_invariant_rate(self):
 
     def loop_fn(_):
       return random_ops.random_poisson(lam=[1.3], shape=[3])
 
     self._test_loop_fn(loop_fn, 5)
+
+  def test_random_poisson_v2_varying_rate(self):
+    rates = math_ops.exp(random_ops.random_normal([5, 3, 2]))
+
+    def loop_fn(i):
+      rates_i = array_ops.gather(rates, i)
+      # Test both scalar and non-scalar params and shapes.
+      return (random_ops.random_poisson(lam=rates_i[0, 0], shape=[]),
+              random_ops.random_poisson(lam=rates_i, shape=[]),
+              random_ops.random_poisson(lam=rates_i[0, 0], shape=[3]),
+              random_ops.random_poisson(lam=rates_i, shape=[3]))
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.float32] * 4)
+
+  def test_random_multinomial_invariant_logits(self):
+
+    def loop_fn(_):
+      return random_ops.categorical(logits=[[1., -1.]], num_samples=3)
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.int64])
+
+  def test_random_multinomial_varying_logits(self):
+    logits = random_ops.random_normal([5, 3, 2])
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      return random_ops.categorical(logits_i, num_samples=3)
+
+    self._test_loop_fn(loop_fn, 5, loop_fn_dtypes=[dtypes.int64])
 
 
 class LoggingTest(PForTestCase):
@@ -964,6 +1119,26 @@ class Benchmarks(test.Benchmark):
                                                      128, 512, 16)
       self._run(pfor_outputs, 100, name="pfor_rnn")
       self._run(tf_outputs, 100, name="tf_rnn")
+
+  def benchmark_reduction(self):
+    n = 1024
+    with ops.Graph().as_default():
+      x = random_ops.random_uniform([n, n])
+      w = random_ops.random_uniform([n, n])
+
+      def loop_fn(i, pfor_config):
+        x_i = array_ops.gather(x, i)
+        return math_ops.reduce_sum(
+            math_ops.matmul(pfor_config.reduce_concat(x_i), w))
+
+      # Note that output_reduction will be tiled, so there may be some minor
+      # overheads compared to output_no_reduction.
+      output_reduction = pfor_control_flow_ops.pfor(loop_fn, n)
+      output_no_reduction = math_ops.reduce_sum(math_ops.matmul(x, w))
+      # Benchmark to test that reduction does not add overhead and its output is
+      # treated as loop invariant.
+      self._run(output_reduction, 30, name="matmul_reduction")
+      self._run(output_no_reduction, 30, name="matmul_no_reduction")
 
 
 class SparseTest(PForTestCase):

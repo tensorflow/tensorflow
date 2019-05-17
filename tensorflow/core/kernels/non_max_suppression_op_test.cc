@@ -863,7 +863,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestEmptyInput) {
 
 class CombinedNonMaxSuppressionOpTest : public OpsTestBase {
  protected:
-  void MakeOp(bool pad_per_class = false) {
+  void MakeOp(bool pad_per_class = false, bool clip_boxes = true) {
     TF_EXPECT_OK(NodeDefBuilder("combined_non_max_suppression_op",
                                 "CombinedNonMaxSuppression")
                      .Input(FakeInput(DT_FLOAT))
@@ -873,6 +873,7 @@ class CombinedNonMaxSuppressionOpTest : public OpsTestBase {
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
                      .Attr("pad_per_class", pad_per_class)
+                     .Attr("clip_boxes", clip_boxes)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -927,6 +928,39 @@ TEST_F(CombinedNonMaxSuppressionOpTest, TestSelectFromThreeClusters) {
   Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 3, 4}));
   test::FillValues<float>(&expected_boxes,
                           {0, 0.11, 0.1, 0.2, 0, 0, 0.1, 0.1, 0, 0.3, 1, 0.4});
+  test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
+  // scores
+  Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_scores, {0.95, 0.9, 0.3});
+  test::ExpectTensorEqual<float>(expected_scores, *GetOutput(1));
+  // classes
+  Tensor expected_classes(allocator(), DT_FLOAT, TensorShape({1, 3}));
+  test::FillValues<float>(&expected_classes, {0, 0, 0});
+  test::ExpectTensorEqual<float>(expected_classes, *GetOutput(2));
+  // valid
+  Tensor expected_valid_d(allocator(), DT_INT32, TensorShape({1}));
+  test::FillValues<int>(&expected_valid_d, {3});
+  test::ExpectTensorEqual<int>(expected_valid_d, *GetOutput(3));
+}
+
+TEST_F(CombinedNonMaxSuppressionOpTest,
+       TestSelectFromThreeClustersNoBoxClipping) {
+  MakeOp(false, false);
+  AddInputFromArray<float>(TensorShape({1, 6, 1, 4}),
+                           {0, 0,  10, 10, 0, 1,  10, 11, 0, 1,  10,  9,
+                            0, 11, 10, 20, 0, 12, 10, 21, 0, 30, 100, 40});
+  AddInputFromArray<float>(TensorShape({1, 6, 1}),
+                           {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // boxes
+  Tensor expected_boxes(allocator(), DT_FLOAT, TensorShape({1, 3, 4}));
+  test::FillValues<float>(&expected_boxes,
+                          {0, 11, 10, 20, 0, 0, 10, 10, 0, 30, 100, 40});
   test::ExpectTensorEqual<float>(expected_boxes, *GetOutput(0));
   // scores
   Tensor expected_scores(allocator(), DT_FLOAT, TensorShape({1, 3}));

@@ -47,29 +47,30 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
   // Read start indices from start_indices_generator.
   const int64 rank = output_shape.rank();
-  IrArray::Index start_index(b->getInt64Ty(), rank);
+  std::vector<llvm::Value*> start_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(i));
+    TF_ASSIGN_OR_RETURN(start_multi_index[i], start_indices_generator(i));
     llvm::Value* output_dim_size = llvm::ConstantInt::get(
-        start_index[i]->getType(), output_shape.dimensions(i));
+        start_multi_index[i]->getType(), output_shape.dimensions(i));
     llvm::Value* update_dim_size = llvm::ConstantInt::get(
-        start_index[i]->getType(), update_shape.dimensions(i));
+        start_multi_index[i]->getType(), update_shape.dimensions(i));
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, output_dim_size - update_dim_size)
     llvm::Value* max_bound = b->CreateSub(output_dim_size, update_dim_size);
-    llvm::Value* zero = llvm::ConstantInt::get(start_index[i]->getType(), 0);
-    start_index[i] =
+    llvm::Value* zero =
+        llvm::ConstantInt::get(start_multi_index[i]->getType(), 0);
+    start_multi_index[i] =
         b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
                                                 : llvm::ICmpInst::ICMP_UGE,
-                                      zero, start_index[i]),
-                        zero, start_index[i]);
+                                      zero, start_multi_index[i]),
+                        zero, start_multi_index[i]);
 
-    start_index[i] =
+    start_multi_index[i] =
         b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
                                                 : llvm::ICmpInst::ICMP_ULE,
-                                      max_bound, start_index[i]),
-                        max_bound, start_index[i]);
+                                      max_bound, start_multi_index[i]),
+                        max_bound, start_multi_index[i]);
   }
 
   auto loop_body_emitter = [&](const IrArray::Index& update_index) -> Status {
@@ -78,14 +79,16 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     //
     //   output_index[dim] = start_index[dim] + update_index[dim]
     //
-    IrArray::Index output_index(start_index.GetType(), rank);
+    std::vector<llvm::Value*> output_multi_index(rank);
     for (int64 i = 0; i < rank; ++i) {
-      llvm::Value* start_index0 =
-          b->CreateSExtOrBitCast(start_index[i], update_index[i]->getType());
-      output_index[i] = b->CreateAdd(start_index0, update_index[i]);
+      llvm::Value* start_index0 = b->CreateSExtOrBitCast(
+          start_multi_index[i], update_index[i]->getType());
+      output_multi_index[i] = b->CreateAdd(start_index0, update_index[i]);
     }
 
     // Do output[output_index] = update[update_index].
+    IrArray::Index output_index(output_multi_index, output_shape,
+                                b->getInt64Ty());
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);

@@ -4,8 +4,8 @@ tf_module {
     name: "Feature"
     mtype: "<class \'enum.EnumMeta\'>"
   }
-  member {
-    name: "Verbosity"
-    mtype: "<class \'enum.EnumMeta\'>"
+  member_method {
+    name: "set_loop_options"
+    argspec: "args=[\'parallel_iterations\', \'back_prop\', \'swap_memory\', \'maximum_iterations\'], varargs=None, keywords=None, defaults=[\'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\'], "
   }
 }

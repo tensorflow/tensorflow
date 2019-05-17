@@ -44,7 +44,7 @@ layers = tf.keras.layers
 class RNN(tf.keras.Model):
   """A static RNN.
 
-  Similar to tf.nn.static_rnn, implemented as a class.
+  Similar to tf.compat.v1.nn.static_rnn, implemented as a class.
   """
 
   def __init__(self, hidden_dim, num_layers, keep_ratio):

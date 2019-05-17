@@ -31,24 +31,28 @@ namespace tensor {
 
 Tensor DeepCopy(const Tensor& other) {
   Tensor tmp = Tensor(other.dtype(), other.shape());
-  if (DataTypeCanUseMemcpy(other.dtype())) {
-    if (other.NumElements() > 0) {
-      StringPiece other_data = other.tensor_data();
+  DeepCopy(other, &tmp);
+  return tmp;
+}
+
+void DeepCopy(const Tensor& input, Tensor* output) {
+  if (DataTypeCanUseMemcpy(input.dtype())) {
+    if (input.NumElements() > 0) {
+      StringPiece input_data = input.tensor_data();
 
       // We use StringPiece as a convenient map over the tensor buffer,
       // but we cast the type to get to the underlying buffer to do the
       // copy.
-      StringPiece tmp_data = tmp.tensor_data();
-      memcpy(const_cast<char*>(tmp_data.data()), other_data.data(),
-             other_data.size());
+      StringPiece output_data = output->tensor_data();
+      memcpy(const_cast<char*>(output_data.data()), input_data.data(),
+             input_data.size());
     }
-  } else if (other.dtype() == DT_STRING) {
-    tmp.unaligned_flat<string>() = other.unaligned_flat<string>();
+  } else if (input.dtype() == DT_STRING) {
+    output->unaligned_flat<string>() = input.unaligned_flat<string>();
   } else {
-    CHECK_EQ(DT_VARIANT, other.dtype());
-    tmp.unaligned_flat<Variant>() = other.unaligned_flat<Variant>();
+    CHECK_EQ(DT_VARIANT, input.dtype());
+    output->unaligned_flat<Variant>() = input.unaligned_flat<Variant>();
   }
-  return tmp;
 }
 
 Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {

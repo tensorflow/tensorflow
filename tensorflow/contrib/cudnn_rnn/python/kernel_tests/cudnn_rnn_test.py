@@ -1155,7 +1155,7 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
     The gradient check verifies the expected delta_y calculated by the above
     equation is close to the actual delta_y.
     Args:
-      sess: tf.Session object.
+      sess: tf.compat.v1.Session object.
       y: output tensor.
       xs: a tensor or a list of input tensors.
       num_samples: number of test samples to run.

@@ -115,12 +115,27 @@ TEST(SparseToDenseOpModelTest, DefaultValueTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
 }
 
-TEST(SparseToDenseOpModelTest, IntegerValueTest) {
+TEST(SparseToDenseOpModelTest, Int32ValueTest) {
   SparseToDenseOpModel<int32_t> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
                                   TensorType_INT32);
   m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
   m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
   m.PopulateTensor<int32_t>(m.values(), {2, 4, 6});
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({2,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                        -1, -1, 4,  -1, -1, 6,  -1, -1, -1, -1, -1, -1, -1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
+}
+
+TEST(SparseToDenseOpModelTest, Int64ValueTest) {
+  SparseToDenseOpModel<int64_t> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
+                                  TensorType_INT64);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
+  m.PopulateTensor<int64_t>(m.values(), {2, 4, 6});
   m.Invoke();
 
   EXPECT_THAT(

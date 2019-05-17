@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 
+#include <atomic>
+
 #include "tensorflow/core/framework/allocator_registry.h"
-#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -40,22 +41,6 @@ string AllocatorStats::DebugString() const {
 constexpr size_t Allocator::kAllocatorAlignment;
 
 Allocator::~Allocator() {}
-
-void RunResourceCtor(ResourceHandle* p, size_t n) {
-  for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
-}
-
-void RunResourceDtor(ResourceHandle* p, size_t n) {
-  for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
-}
-
-void Allocator::RunVariantCtor(Variant* p, size_t n) {
-  for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
-}
-
-void Allocator::RunVariantDtor(Variant* p, size_t n) {
-  for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
-}
 
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
@@ -93,6 +78,12 @@ void EnableCPUAllocatorFullStats(bool enable) {
   cpu_allocator_collect_full_stats = enable;
 }
 bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
+
+string AllocatorAttributes::DebugString() const {
+  return strings::StrCat("AllocatorAttributes(on_host=", on_host(),
+                         " nic_compatible=", nic_compatible(),
+                         " gpu_compatible=", gpu_compatible(), ")");
+}
 
 namespace {
 // A default Allocator for CPU devices.  ProcessState::GetCPUAllocator() will
@@ -162,7 +153,7 @@ class CPUAllocator : public Allocator {
     stats_.largest_alloc_size = 0;
   }
 
-  size_t AllocatedSizeSlow(const void* ptr) override {
+  size_t AllocatedSizeSlow(const void* ptr) const override {
     return port::MallocExtension_GetAllocatedSize(ptr);
   }
 

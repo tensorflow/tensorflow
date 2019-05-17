@@ -83,6 +83,9 @@ class Policy(object):
       tf.keras.layers.Activation('Softmax')
   )
   ```
+
+  Note that a LossScaleOptimizer should also be used for mixed precision models
+  to avoid numerical underflow. See `LossScaleOptimizer`.
   """
 
   def __init__(self, name):

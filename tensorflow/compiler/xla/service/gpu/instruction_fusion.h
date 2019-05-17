@@ -49,6 +49,12 @@ class GpuInstructionFusion : public InstructionFusion {
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
+
+ private:
+  // This method is called by ShouldFuse() to do all the computationally
+  // inexpensive checks whether we should fuse the operand into 'consumer'.
+  bool ShouldFuseInexpensiveChecks(HloInstruction* consumer,
+                                   int64 operand_index);
 };
 
 }  // namespace gpu

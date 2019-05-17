@@ -315,7 +315,8 @@ Status CTCLossCalculator::PopulateLPrimes(
                 "Saw a non-null label (index >= num_classes - 1) "
                 "following a ",
                 "null label, batch: ", b, " num_classes: ", num_classes,
-                " labels: ", str_util::Join(l, ","));
+                " labels: ", str_util::Join(label, ","),
+                " labels seen so far: ", str_util::Join(l, ","));
           }
           l.push_back(label[i]);
         }

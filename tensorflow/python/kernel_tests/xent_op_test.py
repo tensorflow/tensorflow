@@ -24,6 +24,7 @@ import sys
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,7 +42,7 @@ from tensorflow.python.platform import test
 class XentTest(test.TestCase):
 
   def _npXent(self, features, labels, dim=-1):
-    if dim is -1:
+    if dim == -1:
       dim = len(features.shape) - 1
     one_only_on_dim = list(features.shape)
     one_only_on_dim[dim] = 1
@@ -259,7 +260,10 @@ class XentTest(test.TestCase):
       op_names = [
           op.op_def.name for op in sess.graph.get_operations() if op.op_def
       ]
-      self.assertIn("BatchMatMul", op_names)
+      if compat.forward_compatible(2019, 4, 25):
+        self.assertIn("BatchMatMulV2", op_names)
+      else:
+        self.assertIn("BatchMatMul", op_names)
 
     print("cross entropy hessian err = ", err)
     self.assertLess(err, 5e-8)

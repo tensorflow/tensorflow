@@ -146,8 +146,7 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
       (opcode == HloOpcode::kConvolution &&
        PotentiallyImplementedAsEigenConvolution(*instruction,
                                                 target_machine_features_)) ||
-      (opcode == HloOpcode::kFusion &&
-       instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
+      (opcode == HloOpcode::kFusion && !instruction->IsLoopFusion()) ||
       instruction->shape().IsTuple()) {
     return 1;
   }
@@ -239,10 +238,7 @@ void ParallelTaskAssigner::ComputeTargetParallelTasks(
                                                   &target_machine_features_);
 
   // Compute parallel task counts for all instructions in 'module'.
-  for (auto* computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  for (auto* computation : module->MakeNonfusionComputations()) {
     for (auto* instruction : computation->instructions()) {
       // Query ParallelTaskAssignment for target parallel task count.
       const int64 target_parallel_task_count =

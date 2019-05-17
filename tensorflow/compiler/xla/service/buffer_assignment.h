@@ -540,6 +540,11 @@ class BufferAssigner {
       const BufferAssignment& assignment, const BufferAllocation& alloc,
       const LogicalBuffer& buffer)>;
 
+  // Returns whether a logical buffer can be considered reusing memory for
+  // colocated buffers.
+  using ReuseColocatedAllocationForTempChecker =
+      std::function<bool(const LogicalBuffer& buffer, int64 byte_size)>;
+
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size and
   // color_alignment are functions which returns the size and alignment of a
@@ -552,15 +557,18 @@ class BufferAssigner {
       bool allow_input_output_aliasing = false,
       bool allocate_buffers_for_constants = false,
       BufferLiveness::Colorer colorer = BufferLiveness::DefaultColorer(),
-      ReuseAllocationFunction reuse_checker = nullptr);
+      ReuseAllocationFunction reuse_checker = nullptr,
+      ReuseColocatedAllocationForTempChecker reuse_colocated_checker = nullptr);
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants,
                  BufferLiveness::Colorer colorer,
-                 ReuseAllocationFunction reuse_checker)
+                 ReuseAllocationFunction reuse_checker,
+                 ReuseColocatedAllocationForTempChecker reuse_colocated_checker)
       : allocate_buffers_for_constants_(allocate_buffers_for_constants),
-        colorer_(colorer),
-        reuse_checker_(reuse_checker) {}
+        colorer_(std::move(colorer)),
+        reuse_checker_(std::move(reuse_checker)),
+        reuse_colocated_checker_(std::move(reuse_colocated_checker)) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
@@ -656,6 +664,9 @@ class BufferAssigner {
 
   // Functor to check if a buffer can reuse an allocation.
   ReuseAllocationFunction reuse_checker_;
+
+  // Functor to check if a temp buffer can reuse a colocated allocation.
+  ReuseColocatedAllocationForTempChecker reuse_colocated_checker_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

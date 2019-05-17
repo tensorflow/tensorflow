@@ -68,6 +68,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
       field1 = attr.ib()
       field2 = attr.ib()
 
+    @attr.s
+    class UnsortedSampleAttr(object):
+      field3 = attr.ib()
+      field1 = attr.ib()
+      field2 = attr.ib()
+
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testAttrsFlattenAndPack(self):
     if attr is None:
@@ -86,6 +92,21 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Check that flatten fails if attributes are not iterable
     with self.assertRaisesRegexp(TypeError, "object is not iterable"):
       flat = nest.flatten(NestTest.BadAttr())
+
+  @parameterized.parameters(
+      {"values": [1, 2, 3]},
+      {"values": [{"B": 10, "A": 20}, [1, 2], 3]},
+      {"values": [(1, 2), [3, 4], 5]},
+      {"values": [PointXY(1, 2), 3, 4]},
+  )
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testAttrsMapStructure(self, values):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    structure = NestTest.UnsortedSampleAttr(*values)
+    new_structure = nest.map_structure(lambda x: x, structure)
+    self.assertEqual(structure, new_structure)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFlattenAndPack(self):

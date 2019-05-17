@@ -20,13 +20,17 @@ from __future__ import print_function
 
 import abc
 import collections
+import itertools
 
 from absl.testing import parameterized
 import six
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import layers
+from tensorflow.python.keras import models
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -209,6 +213,25 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.trainable_variables), 0)
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
+
+  def test_supports_distributed_variables(self):
+    device_map = distributed_values.SingleDeviceMap("/CPU:0")
+    mirrored = distributed_values.MirroredVariable(
+        None, device_map, [variables.Variable(1.)],
+        variables.VariableAggregation.SUM)
+    tpu = distributed_values.TPUMirroredVariable(
+        strategy=None,
+        device_map=device_map,
+        values=[variables.Variable(42.)],
+        aggregation=None)
+    aggregating = distributed_values.AggregatingVariable(
+        strategy=None, v=variables.Variable(1.), aggregation=None)
+
+    m = module.Module()
+    m.a = mirrored
+    m.b = tpu
+    m.c = aggregating
+    self.assertEqual(m.variables, (mirrored, tpu, aggregating))
 
 
 class ModuleTrackingTest(test.TestCase):
@@ -407,11 +430,11 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     child = parent.c
 
     self.assertEqual(
-        list(parent._flatten(recursive=False, predicate=IS_MEMBER)),
+        list(parent._flatten(recursive=False, predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z])
 
     self.assertEqual(
-        list(parent._flatten(predicate=IS_MEMBER)),
+        list(parent._flatten(predicate=is_member)),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
 
   def test_attribute_traversal_key(self):
@@ -419,6 +442,22 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         mod.variables,
         mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
+
+  def test_attributes_to_ignore(self):
+    class DangerousModule(module.Module):
+      _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
+          ("dangerous_submodule", "dangerous_variable"),
+          module.Module._TF_MODULE_IGNORED_PROPERTIES
+      ))
+
+    mod = DangerousModule()
+    mod.dangerous_submodule = module.Module()
+    mod.dangerous_variable = variables.Variable(1.)
+    mod.normal_variable = variables.Variable(2.)
+
+    self.assertEmpty(mod.submodules)
+    self.assertLen(mod.variables, 1)
+    self.assertEqual(mod.variables[0], mod.normal_variable)
 
   def test_with_path(self):
     mod = module.Module()
@@ -428,7 +467,7 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
     mod.decoder = mod.encoder
 
     state_dict = dict(
-        mod._flatten(with_path=True, predicate=module._IS_VARIABLE))
+        mod._flatten(with_path=True, predicate=module._is_variable))
 
     self.assertEqual(state_dict,
                      {("w",): mod.w,
@@ -436,6 +475,34 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
                       ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
                       ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
                       ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
+
+  def test_module_discover_layer_variable(self):
+    m = module.Module()
+    m.a = layers.Dense(1)
+    m.b = layers.Dense(2)
+
+    # The weights of the layer has not been created yet.
+    self.assertEmpty(m.variables)
+    self.assertLen(m.submodules, 2)
+
+    inputs = layers.Input((1,))
+    m.a(inputs)
+    m.b(inputs)
+
+    variable_list = m.variables
+    self.assertLen(variable_list, 4)
+    self.assertEqual(variable_list[0], m.a.kernel)
+    self.assertEqual(variable_list[1], m.a.bias)
+    self.assertEqual(variable_list[2], m.b.kernel)
+    self.assertEqual(variable_list[3], m.b.bias)
+
+  def test_model_discover_submodule(self):
+    m = models.Sequential(layers=[layers.Dense(1),
+                                  layers.Dense(2)])
+
+    self.assertEqual(m.submodules, (m.layers[0], m.layers[1]))
+    m(layers.Input((1,)))
+    self.assertLen(m.variables, 4)
 
 
 class LayerModule(module.Module):
@@ -458,8 +525,10 @@ class LayerModule(module.Module):
       indexes = {"_trainable_variables": 0, "_non_trainable_variables": 1}
       return indexes.get(name, 2), name
 
-    return list(self._flatten(predicate=module._IS_VARIABLE,
-                              attribute_traversal_key=key_function))
+    return list(
+        self._flatten(
+            predicate=module._is_variable,
+            attribute_traversal_key=key_function))
 
 
 class MemberType(object):
@@ -476,9 +545,7 @@ class SimpleModule(module.Module):
     if create_child:
       self.c = SimpleModule(create_child=False)
 
-
-IS_MEMBER = lambda v: isinstance(v, MemberType)
-IS_MODULE = lambda v: isinstance(v, module.Module)
+is_member = lambda v: isinstance(v, MemberType)
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

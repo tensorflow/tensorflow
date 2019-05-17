@@ -27,16 +27,20 @@ py_library(
     deps = [
         ":learning_rate_schedule",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
+        "//tensorflow/python/keras:base_layer_utils",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:tf_utils",
     ],
 )
 
@@ -72,6 +76,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -91,6 +96,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -110,6 +116,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -129,6 +136,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -148,6 +156,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -167,6 +176,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -186,15 +196,20 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
+    python_version = "PY2",
     shard_count = 8,
     tags = [
+        "no_gpu",  # b/127001953
         "no_windows",
+        # TODO(b/127092862): Re-enable this test in Kokoro.
+        "no_oss",
     ],
     deps = [
         ":optimizer_v2",
@@ -213,18 +228,18 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "learning_rate_schedule_test",
     size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
-    shard_count = 4,
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -233,6 +248,7 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -245,4 +261,5 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 2,
+    xla_enable_strict_auto_jit = True,
 )

@@ -19,6 +19,10 @@ limitations under the License.
 #include <functional>
 #include <string>
 #include <vector>
+#include "absl/base/macros.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
@@ -29,6 +33,7 @@ namespace str_util {
 
 // Returns a version of 'src' where unprintable characters have been
 // escaped using C-style escape sequences.
+ABSL_DEPRECATED("Use absl::CEscape instead.")
 string CEscape(StringPiece src);
 
 // Copies "source" to "dest", rewriting C-style escape sequences --
@@ -38,21 +43,26 @@ string CEscape(StringPiece src);
 // 'error'. To disable error reporting, set 'error' to NULL.
 //
 // NOTE: Does not support \u or \U!
+ABSL_DEPRECATED("Use absl::CUnescape instead.")
 bool CUnescape(StringPiece source, string* dest, string* error);
 
 // Removes any trailing whitespace from "*s".
+ABSL_DEPRECATED("Use absl::StripTrailingAsciiWhitespace instead.")
 void StripTrailingWhitespace(string* s);
 
 // Removes leading ascii_isspace() characters.
 // Returns number of characters removed.
+ABSL_DEPRECATED("Use absl::StripLeadingAsciiWhitespace instead.")
 size_t RemoveLeadingWhitespace(StringPiece* text);
 
 // Removes trailing ascii_isspace() characters.
 // Returns number of characters removed.
+ABSL_DEPRECATED("Use absl::StripTrailingAsciiWhitespace instead.")
 size_t RemoveTrailingWhitespace(StringPiece* text);
 
 // Removes leading and trailing ascii_isspace() chars.
 // Returns number of chars removed.
+ABSL_DEPRECATED("Use absl::StripAsciiWhitespace instead.")
 size_t RemoveWhitespaceContext(StringPiece* text);
 
 // Consume a leading positive integer value.  If any digits were
@@ -68,16 +78,20 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
 
 // If "*s" starts with "expected", consume it and return true.
 // Otherwise, return false.
+ABSL_DEPRECATED("Use absl::ConsumeSuffix instead.")
 bool ConsumePrefix(StringPiece* s, StringPiece expected);
 
 // If "*s" ends with "expected", remove it and return true.
 // Otherwise, return false.
+ABSL_DEPRECATED("Use absl::ConsumePrefix instead.")
 bool ConsumeSuffix(StringPiece* s, StringPiece expected);
 
 // Return lower-cased version of s.
+ABSL_DEPRECATED("Use absl::AsciiStrToLower instead.")
 string Lowercase(StringPiece s);
 
 // Return upper-cased version of s.
+ABSL_DEPRECATED("Use absl::AsciiStrToUpper instead.")
 string Uppercase(StringPiece s);
 
 // Converts "^2ILoveYou!" to "i_love_you_". More specifically:
@@ -102,12 +116,14 @@ string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
 
 // Join functionality
 template <typename T>
+ABSL_DEPRECATED("Use absl::StrJoin instead.")
 string Join(const T& s, const char* sep);
 
 // A variant of Join where for each element of "s", f(&dest_string, elem)
 // is invoked (f is often constructed with a lambda of the form:
 //   [](string* result, ElemType elem)
 template <typename T, typename Formatter>
+ABSL_DEPRECATED("Use absl::StrJoin instead.")
 string Join(const T& s, const char* sep, Formatter f);
 
 struct AllowEmpty {
@@ -118,16 +134,17 @@ struct SkipEmpty {
 };
 struct SkipWhitespace {
   bool operator()(StringPiece sp) const {
-    RemoveTrailingWhitespace(&sp);
-    return !sp.empty();
+    return !absl::StripTrailingAsciiWhitespace(sp).empty();
   }
 };
 
 // Split strings using any of the supplied delimiters. For example:
 // Split("a,b.c,d", ".,") would return {"a", "b", "c", "d"}.
+ABSL_DEPRECATED("Use absl::StrSplit instead.")
 std::vector<string> Split(StringPiece text, StringPiece delims);
 
 template <typename Predicate>
+ABSL_DEPRECATED("Use absl::StrSplit instead.")
 std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 
 // Split "text" at "delim" characters, and parse each component as
@@ -143,29 +160,26 @@ bool SplitAndParseAsFloats(StringPiece text, char delim,
 // StartsWith()
 //
 // Returns whether a given string `text` begins with `prefix`.
+ABSL_DEPRECATED("Use absl::StartsWith instead.")
 bool StartsWith(StringPiece text, StringPiece prefix);
 
 // EndsWith()
 //
 // Returns whether a given string `text` ends with `suffix`.
+ABSL_DEPRECATED("Use absl::EndsWith instead.")
 bool EndsWith(StringPiece text, StringPiece suffix);
 
 // StrContains()
 //
 // Returns whether a given string `haystack` contains the substring `needle`.
+ABSL_DEPRECATED("Use absl::StrContains instead.")
 bool StrContains(StringPiece haystack, StringPiece needle);
 
 // ------------------------------------------------------------------
 // Implementation details below
 template <typename T>
 string Join(const T& s, const char* sep) {
-  string result;
-  bool first = true;
-  for (const auto& x : s) {
-    tensorflow::strings::StrAppend(&result, (first ? "" : sep), x);
-    first = false;
-  }
-  return result;
+  return absl::StrJoin(s, sep);
 }
 
 template <typename T>
@@ -180,47 +194,29 @@ class Formatter {
 
 template <typename T, typename Formatter>
 string Join(const T& s, const char* sep, Formatter f) {
-  string result;
-  bool first = true;
-  for (const auto& x : s) {
-    if (!first) {
-      result.append(sep);
-    }
-    f(&result, x);
-    first = false;
-  }
-  return result;
+  return absl::StrJoin(s, sep, f);
 }
 
 inline std::vector<string> Split(StringPiece text, StringPiece delims) {
-  return Split(text, delims, AllowEmpty());
+  return text.empty() ? std::vector<string>()
+                      : absl::StrSplit(text, absl::ByAnyChar(delims));
 }
 
 template <typename Predicate>
 std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
-  std::vector<string> result;
-  size_t token_start = 0;
-  if (!text.empty()) {
-    for (size_t i = 0; i < text.size() + 1; i++) {
-      if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
-        StringPiece token(text.data() + token_start, i - token_start);
-        if (p(token)) {
-          result.emplace_back(token);
-        }
-        token_start = i + 1;
-      }
-    }
-  }
-  return result;
+  return text.empty() ? std::vector<string>()
+                      : absl::StrSplit(text, absl::ByAnyChar(delims), p);
 }
 
+ABSL_DEPRECATED("Use absl::StrSplit instead.")
 inline std::vector<string> Split(StringPiece text, char delim) {
-  return Split(text, StringPiece(&delim, 1));
+  return text.empty() ? std::vector<string>() : absl::StrSplit(text, delim);
 }
 
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delims, Predicate p) {
-  return Split(text, StringPiece(&delims, 1), p);
+ABSL_DEPRECATED("Use absl::StrSplit instead.")
+std::vector<string> Split(StringPiece text, char delim, Predicate p) {
+  return text.empty() ? std::vector<string>() : absl::StrSplit(text, delim, p);
 }
 
 // Returns the length of the given null-terminated byte string 'str'.

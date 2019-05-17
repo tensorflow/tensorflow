@@ -62,18 +62,11 @@ class SelectOp : public XlaOpKernel {
                                           then_shape.dim_size(0), " vs. ",
                                           cond_shape.num_elements()));
 
-      // TODO(phawkins): broadcasting on the right seems pretty awkward in
-      // XLA. It seems we have to broadcast on the left and then Reshape
-      // to get the dimensions in the right order.
-      const auto dim_sizes = then_shape.dim_sizes();
-      absl::Span<const int64> bdims = dim_sizes;
-      bdims.remove_prefix(1);
-      cond_handle = xla::Broadcast(cond_handle, bdims);
-
-      std::vector<int64> dim_order(then_shape.dims());
-      dim_order[0] = then_shape.dims() - 1;
-      std::iota(dim_order.begin() + 1, dim_order.end(), 0);
-      cond_handle = xla::Transpose(cond_handle, dim_order);
+      // Broadcast into the dimensions on the right.
+      std::vector<int64> broadcast_dimensions(cond_shape.dims());
+      absl::c_iota(broadcast_dimensions, 0);
+      cond_handle = xla::BroadcastInDim(cond_handle, then_shape.dim_sizes(),
+                                        broadcast_dimensions);
     }
     ctx->SetOutput(0, xla::Select(cond_handle, then_handle, else_handle));
   }

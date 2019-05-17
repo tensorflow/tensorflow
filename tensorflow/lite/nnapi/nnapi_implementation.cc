@@ -170,6 +170,7 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getVersion);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksDevice_getFeatureLevel);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getType);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksModel_getSupportedOperationsForDevices);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,

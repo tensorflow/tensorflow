@@ -624,7 +624,7 @@ class SdcaModel(object):
           # Note that we need double precision to get accurate results.
           with ops.control_dependencies(shard_sums):
             shard_sums.append(
-                math_ops.reduce_sum(math_ops.to_double(values), 0))
+                math_ops.reduce_sum(math_ops.cast(values, dtypes.float64), 0))
       summed_values = math_ops.add_n(shard_sums)
 
       primal_loss = summed_values[1]

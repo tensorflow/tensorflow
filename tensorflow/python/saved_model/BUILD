@@ -11,6 +11,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
@@ -378,7 +379,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "load_test",
     srcs = ["load_test.py"],
     additional_deps = [
@@ -391,8 +392,10 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/module",
         "//tensorflow/python/training/tracking:tracking",
     ],
+    shard_count = 10,
     tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
 )
 

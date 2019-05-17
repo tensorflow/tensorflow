@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 namespace tflite {
@@ -103,6 +104,22 @@ TEST_F(SubgraphBuilderTest, TestBuildPadSubgraph) {
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {5}, {0, 5, 7, 0, 0});
+}
+
+TEST_F(SubgraphBuilderTest, TestBuildDynamicPadSubgraph) {
+  builder_->BuildPadSubgraph(&interpreter_->primary_subgraph());
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {2});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1, 2});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {5, 7});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1, 2});
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  EXPECT_TRUE(IsDynamicTensor(output));
   CheckIntTensor(output, {5}, {0, 5, 7, 0, 0});
 }
 

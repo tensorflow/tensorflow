@@ -67,7 +67,18 @@ class FusedBatchNormOp : public XlaOpKernel {
       ctx->SetOutput(0, xla::ConvertElementType(xla::GetTupleElement(output, 0),
                                                 input_type));
       ctx->SetOutput(1, xla::GetTupleElement(output, 1));
-      ctx->SetOutput(2, xla::GetTupleElement(output, 2));
+      xla::XlaOp variance = xla::GetTupleElement(output, 2);
+      // Apply Bessel's correction.
+      int total_input_size = ctx->InputShape(0).num_elements();
+      int total_scale_size = ctx->InputShape(1).num_elements();
+      int sample_size = total_input_size / total_scale_size;
+      int sample_size_minus_one = std::max(1, sample_size - 1);
+
+      xla::XlaOp factor =
+          xla::Div(xla::ScalarLike(variance, sample_size),
+                   xla::ScalarLike(variance, sample_size_minus_one));
+      xla::XlaOp corrected = xla::Mul(variance, factor);
+      ctx->SetOutput(2, corrected);
 
       // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
       // space 1 & 2". They are used to pass the per-batch mean and
@@ -80,11 +91,10 @@ class FusedBatchNormOp : public XlaOpKernel {
         // behavior of the op:
         //   output 3 is the mean
         //   output 4 is rsqrt(variance + epsilon)
-        xla::XlaOp variance = xla::GetTupleElement(output, 2);
         ctx->SetOutput(4, xla::Rsqrt(xla::Add(
                               variance, xla::ScalarLike(variance, epsilon_))));
       } else {
-        ctx->SetOutput(4, xla::GetTupleElement(output, 2));
+        ctx->SetOutput(4, variance);
       }
     } else {
       xla::XlaOp output = xla::BatchNormInference(

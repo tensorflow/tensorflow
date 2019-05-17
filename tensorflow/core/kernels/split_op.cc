@@ -29,7 +29,8 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
+#include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -267,13 +268,6 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
 
 #if GOOGLE_CUDA
 
-template <typename T>
-struct SplitOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
-           int32 split_dim_size, int32 suffix_dim_size,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
-};
-
 // Partial specialization for GPU
 template <typename T>
 class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
@@ -308,7 +302,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     TensorShape output_shape(input_shape);
     output_shape.set_dim(split_dim, split_dim_output_size);
 
-    CudaDeviceArrayOnHost<T*> ptrs(context, num_split);
+    GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
     OP_REQUIRES_OK(context, ptrs.Init());
 
     for (int i = 0; i < num_split; ++i) {

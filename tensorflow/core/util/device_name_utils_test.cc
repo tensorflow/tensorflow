@@ -412,6 +412,19 @@ static void MergeDevNamesError(const string& name_a, const string& name_b,
       << s;
 }
 
+static void MergeOverrideHelper(const string& target, const string& name,
+                                const string& expected_merge_name) {
+  DeviceNameUtils::ParsedName parsed_target = Name(target);
+  TF_EXPECT_OK(
+      DeviceNameUtils::MergeOverrideDevNames(&parsed_target, Name(name)));
+  DeviceNameUtils::ParsedName parsed_expected = Name(expected_merge_name);
+
+  EXPECT_EQ(parsed_target, parsed_expected)
+      << "parsed_target: " << DeviceNameUtils::ParsedNameToString(parsed_target)
+      << " expected_name: "
+      << DeviceNameUtils::ParsedNameToString(parsed_expected);
+}
+
 TEST(DeviceNameUtilsTest, MergeDevNames) {
   DeviceNameUtils::ParsedName target;
 
@@ -425,7 +438,7 @@ TEST(DeviceNameUtilsTest, MergeDevNames) {
   MergeDevNamesHelper("", "/job:foo", "/job:foo");
   MergeDevNamesHelper("", "/replica:2", "/replica:2");
   MergeDevNamesHelper("", "/task:7", "/task:7");
-  // MergeDevNamesHelper("", "/device:GPU:1", "/device:GPU:1");
+  MergeDevNamesHelper("", "/device:GPU:1", "/device:GPU:1");
 
   // Combining disjoint names.
   MergeDevNamesHelper("/job:foo", "/task:7", "/job:foo/task:7");
@@ -455,6 +468,46 @@ TEST(DeviceNameUtilsTest, MergeDevNamesAllowSoftPlacement) {
   MergeDevNamesHelperAllowSoftPlacement("/device:GPU:1", "/device:GPU:2",
                                         "/device:GPU:*");
 }
+
+TEST(DeviceNameUtilsTest, MergeOverrideDevNames) {
+  // Idempotence tests.
+  MergeOverrideHelper("", "", "");
+  MergeOverrideHelper("/job:foo/replica:1/task:2/cpu:1",
+                      "/job:foo/replica:1/task:2/cpu:1",
+                      "/job:foo/replica:1/task:2/cpu:1");
+
+  // Merging with empty device has no effect.
+  MergeOverrideHelper("", "/job:foo", "/job:foo");
+  MergeOverrideHelper("", "/replica:2", "/replica:2");
+  MergeOverrideHelper("", "/task:7", "/task:7");
+  MergeOverrideHelper("", "/device:GPU:1", "/device:GPU:1");
+
+  // Combining disjoint names.
+  MergeOverrideHelper("/job:foo", "/task:7", "/job:foo/task:7");
+  MergeOverrideHelper("/job:foo", "/device:GPU:1", "/job:foo/device:GPU:1");
+
+  // Combining overlapping names.
+  MergeOverrideHelper("/job:foo/replica:0", "/replica:0/task:1",
+                      "/job:foo/replica:0/task:1");
+
+  // Wildcard tests.
+  MergeOverrideHelper("", "/gpu:*", "/gpu:*");
+  MergeOverrideHelper("/gpu:*", "/gpu:*", "/gpu:*");
+  MergeOverrideHelper("/device:GPU:1", "/gpu:*", "/device:GPU:1");
+
+  // Testing actual override functionality
+  MergeOverrideHelper("/gpu:0", "/cpu:1", "/cpu:1");
+  MergeOverrideHelper("/gpu:*", "/cpu:1", "/cpu:1");
+  MergeOverrideHelper("/cpu:*", "/device:GPU:1", "/gpu:1");
+  MergeOverrideHelper("/device:GPU:1", "/device:GPU:2", "/device:GPU:2");
+
+  // Override with regular merging
+  MergeOverrideHelper("/job:foo/CPU:*", "/device:GPU:1", "/job:foo/GPU:1");
+  MergeOverrideHelper("/cpu:*", "/job:foo/device:GPU:1", "/job:foo/GPU:1");
+  MergeOverrideHelper("/task:0/cpu:*", "/device:GPU:1", "/task:0/GPU:1");
+  MergeOverrideHelper("/cpu:*", "/task:0/device:GPU:1", "/task:0/GPU:1");
+}
+
 TEST(DeviceNameUtilsTest, GetNamesForDeviceMappings) {
   DeviceNameUtils::ParsedName p =
       Name("/job:foo/replica:10/task:0/device:GPU:1");

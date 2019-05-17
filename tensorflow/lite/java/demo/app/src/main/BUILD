@@ -26,6 +26,7 @@ android_binary(
     tags = ["manual"],
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
+        "//tensorflow/lite/java:tensorflowlite_gpu",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
         "@androidsdk//com.android.support:support-v13-25.2.0",
         "@androidsdk//com.android.support:support-v4-25.2.0",

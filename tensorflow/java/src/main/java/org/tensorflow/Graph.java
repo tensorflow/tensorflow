@@ -25,7 +25,7 @@ import java.util.Iterator;
  * <p><b>WARNING:</b> Resources consumed by the Graph object must be explicitly freed by invoking
  * the {@link #close()} method then the Graph object is no longer needed.
  */
-public final class Graph implements AutoCloseable {
+public final class Graph implements ExecutionEnvironment, AutoCloseable {
 
   /** Create an empty Graph. */
   public Graph() {
@@ -68,13 +68,13 @@ public final class Graph implements AutoCloseable {
    *
    * <p>Or {@code null} if no such operation exists in the Graph.
    */
-  public Operation operation(String name) {
+  public GraphOperation operation(String name) {
     synchronized (nativeHandleLock) {
       long oph = operation(nativeHandle, name);
       if (oph == 0) {
         return null;
       }
-      return new Operation(this, oph);
+      return new GraphOperation(this, oph);
     }
   }
 
@@ -97,8 +97,9 @@ public final class Graph implements AutoCloseable {
    *     OperationBuilder#build()} is invoked. If {@link OperationBuilder#build()} is not invoked,
    *     then some resources may leak.
    */
-  public OperationBuilder opBuilder(String type, String name) {
-    return new OperationBuilder(this, type, name);
+  @Override
+  public GraphOperationBuilder opBuilder(String type, String name) {
+    return new GraphOperationBuilder(this, type, name);
   }
 
   /**
@@ -177,11 +178,11 @@ public final class Graph implements AutoCloseable {
 
     try (Reference ref = ref()) {
       for (int i = 0; i < y.length; ++i) {
-        yHandles[i] = y[i].op().getUnsafeNativeHandle();
+        yHandles[i] = y[i].getUnsafeNativeHandle();
         yIndices[i] = y[i].index();
       }
       for (int i = 0; i < x.length; ++i) {
-        xHandles[i] = x[i].op().getUnsafeNativeHandle();
+        xHandles[i] = x[i].getUnsafeNativeHandle();
         xIndices[i] = x[i].index();
       }
       if (dx != null && dx.length > 0) {
@@ -189,7 +190,7 @@ public final class Graph implements AutoCloseable {
         dxIndices = new int[dx.length];
 
         for (int i = 0; i < dx.length; ++i) {
-          dxHandles[i] = dx[i].op().getUnsafeNativeHandle();
+          dxHandles[i] = dx[i].getUnsafeNativeHandle();
           dxIndices[i] = dx[i].index();
         }
       }
@@ -214,7 +215,7 @@ public final class Graph implements AutoCloseable {
             + " were expected");
       }
       for (int i = 0, j = ndy; i < ndy; ++i, ++j) {
-        Operation op = new Operation(this, dyHandlesAndIndices[i]);
+        GraphOperation op = new GraphOperation(this, dyHandlesAndIndices[i]);
         dy[i] = new Output<>(op, (int) dyHandlesAndIndices[j]);
       }
     }
@@ -286,19 +287,19 @@ public final class Graph implements AutoCloseable {
       try (Reference ref = subgraph.ref()) {
 
         for (int i = 0; i < ninputs; i++) {
-          Operation op = new Operation(subgraph, inputHandles[i]);
-          inputs[i] = new Output<>(op, inputIndices[i]);
+          Operation op = new GraphOperation(subgraph, inputHandles[i]);
+          inputs[i] = op.output(inputIndices[i]);
         }
 
         for (int i = 0; i < noutputs; i++) {
-          Operation op = new Operation(subgraph, outputHandles[i]);
-          outputs[i] = new Output<>(op, outputIndices[i]);
+          Operation op = new GraphOperation(subgraph, outputHandles[i]);
+          outputs[i] = op.output(outputIndices[i]);
         }
 
         subgraphBuilder.buildSubgraph(subgraph, inputs, outputs);
 
         for (int i = 0, j = noutputs; i < noutputs; i++, j++) {
-          outputHandlesAndIndices[i] = outputs[i].op().getUnsafeNativeHandle();
+          outputHandlesAndIndices[i] = outputs[i].getUnsafeNativeHandle();
           outputHandlesAndIndices[j] = (long) outputs[i].index();
         }
       }
@@ -329,7 +330,7 @@ public final class Graph implements AutoCloseable {
       try (Reference ref = ref()) {
 
         for (int i = 0; i < ninputs; i++) {
-          inputHandles[i] = inputs[i].op().getUnsafeNativeHandle();
+          inputHandles[i] = inputs[i].getUnsafeNativeHandle();
           inputIndices[i] = inputs[i].index();
         }
 
@@ -337,8 +338,8 @@ public final class Graph implements AutoCloseable {
             whileLoop(nativeHandle, inputHandles, inputIndices, name, cgBuilder, bgBuilder);
 
         for (int i = 0, j = ninputs; i < ninputs; ++i, ++j) {
-          Operation op = new Operation(this, outputHandlesAndIndices[i]);
-          outputs[i] = new Output<>(op, (int) outputHandlesAndIndices[j]);
+          Operation op = new GraphOperation(this, outputHandlesAndIndices[i]);
+          outputs[i] = op.output((int) outputHandlesAndIndices[j]);
         }
       }
       return outputs;
@@ -411,7 +412,7 @@ public final class Graph implements AutoCloseable {
         long[] nativeReturn = nextOperation(reference.nativeHandle(), this.position);
 
         if ((nativeReturn != null) && (nativeReturn[0] != 0)) {
-          this.operation = new Operation(this.graph, nativeReturn[0]);
+          this.operation = new GraphOperation(this.graph, nativeReturn[0]);
           this.position = (int) nativeReturn[1];
         }
       } finally {

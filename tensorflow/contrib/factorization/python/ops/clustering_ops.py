@@ -613,7 +613,8 @@ class _InitializeClustersOpFactory(object):
       inp = nn_impl.l2_normalize(inp, dim=1)
     return gen_clustering_ops.kmeans_plus_plus_initialization(
         inp,
-        math_ops.to_int64(self._num_remaining), self._random_seed,
+        math_ops.cast(self._num_remaining, dtypes.int64),
+        self._random_seed,
         self._kmeans_plus_plus_num_retries)
 
   def _kmc2_multiple_centers(self):

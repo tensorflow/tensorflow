@@ -35,18 +35,18 @@ class Ftrl(optimizer_v2.OptimizerV2):
   loss function).
 
   Initialization:
-  $t = 0$
-  $n_{0} = 0$
-  $\sigma_{0} = 0$
-  $z_{0} = 0$
+  $$t = 0$$
+  $$n_{0} = 0$$
+  $$\sigma_{0} = 0$$
+  $$z_{0} = 0$$
 
-  Update ($i$ is variable index):
-  $t = t + 1$
-  $n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$
-  $\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$
-  $z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$
-  $w_{t,i} = - ((\beta+\sqrt{n+{t}}) / \alpha + \lambda_{2})^{-1} * (z_{i} -
-               sgn(z_{i}) * \lambda_{1}) if \abs{z_{i}} > \lambda_{i} else 0$
+  Update ($$i$$ is variable index):
+  $$t = t + 1$$
+  $$n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$$
+  $$\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$$
+  $$z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$$
+  $$w_{t,i} = - ((\beta+\sqrt{n+{t}}) / \alpha + \lambda_{2})^{-1} * (z_{i} -
+               sgn(z_{i}) * \lambda_{1}) if \abs{z_{i}} > \lambda_{i} else 0$$
 
   Check the documentation for the l2_shrinkage_regularization_strength
   parameter for more details when shrinkage is enabled, where gradient is

@@ -62,4 +62,8 @@ TensorId ParseTensorName(StringPiece name) {
   return id;
 }
 
+bool IsTensorIdControl(const TensorId& tensor_id) {
+  return tensor_id.index() == Graph::kControlSlot;
+}
+
 }  // namespace tensorflow

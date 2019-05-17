@@ -35,7 +35,8 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
+#include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -329,14 +330,6 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
 
 #if GOOGLE_CUDA
 
-template <typename T, typename IntType>
-struct SplitVOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, bool fixed, const T* input,
-           int total_cols, int total_rows,
-           const CudaDeviceArrayStruct<IntType>& output_scan,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
-};
-
 // Partial specialization for GPU
 template <typename T, typename Tlen>
 class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
@@ -373,10 +366,10 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     // reshape to 2D
 
     if (num_split > 16) {
-      CudaDeviceArrayOnHost<T*> ptrs(context, num_split);
+      GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
       OP_REQUIRES_OK(context, ptrs.Init());
 
-      CudaDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
+      GpuDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
       OP_REQUIRES_OK(context, offsets.Init());
 
       Tlen offset = 0;

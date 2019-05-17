@@ -94,3 +94,13 @@ class RaggedTensorTestCase(test_util.TensorFlowTestCase):
           self._eval_tensor(tensor.row_splits))
     else:
       return test_util.TensorFlowTestCase._eval_tensor(self, tensor)
+
+  @staticmethod
+  def _normalize_pylist(item):
+    """Convert all (possibly nested) np.arrays contained in item to list."""
+    # convert np.arrays in current level to list
+    if np.ndim(item) == 0:
+      return item
+    level = (x.tolist() if isinstance(x, np.ndarray) else x for x in item)
+    _normalize = RaggedTensorTestCase._normalize_pylist
+    return [_normalize(el) if np.ndim(el) != 0 else el for el in level]

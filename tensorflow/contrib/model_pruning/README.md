@@ -65,7 +65,7 @@ The pruning library allows for specification of the following hyper parameters:
 
 The sparsity $$s_t$$ at global step $$t$$ is given by:
 
-$$ s_{t}=s_{f}+\left(s_{i}-s_{f}\right)\left(1-\frac{t-t_{0}}{n\Delta t}\right)^{3} $$
+$$s_{t}=s_{f}+\left(s_{i}-s_{f}\right)\left(1-\frac{t-t_{0}}{n\Delta t}\right)^{3}$$
 
 The interval between sparsity_function_begin_step and sparsity_function_end_step
 is divided into $$n$$ intervals of size equal to the pruning_frequency ($$\Delta
@@ -133,9 +133,10 @@ For now, it is assumed that the underlying hardware platform will provide mechan
 
 ## Example: Pruning and training deep CNNs on the cifar10 dataset <a name="example"></a>
 
-Please see https://www.tensorflow.org/tutorials/deep_cnn for details on neural
-network architecture, setting up inputs etc. The additional changes needed to
-incorporate pruning are captured in the following:
+Please see
+[Advanced Convolutional Neural Networks](https://www.tensorflow.org/tutorials/images/deep_cnn)
+for details on neural network architecture, setting up inputs etc. The
+additional changes needed to incorporate pruning are captured in the following:
 
 *   [cifar10_pruning.py](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/model_pruning/examples/cifar10/cifar10_pruning.py)
     creates a deep CNN with the same architecture, but adds mask and threshold

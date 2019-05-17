@@ -21,10 +21,10 @@ The following needs to be set for profiler to work:
   * run_metadata object should be passed in to session.run call
 
 Sample usage:
-  options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-  run_metadata = tf.RunMetadata()
+  options = tf.compat.v1.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+  run_metadata = tf.compat.v1.RunMetadata()
 
-  with tf.Session as sess:
+  with tf.compat.v1.Session as sess:
     ...
     sess.run(computation, run_metadata=run_metadata, options=options)
   pprof_profiler.profile(sess.graph, run_metadata, output_dir)

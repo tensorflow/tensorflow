@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 #include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/function_ops.h"
+#include "tensorflow/core/kernels/host_constant_op.h"
 #include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/no_op.h"
@@ -94,10 +95,21 @@ class XlaAssignVariableOp : public OpKernel {
       Name("Const").Device(DEVICE).TypeConstraint("dtype", TYPES),             \
       ConstantOp);                                                             \
   REGISTER_KERNEL_BUILDER(                                                     \
+      Name("HostConst").Device(DEVICE).HostMemory("output"), _HostConstantOp); \
+  REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", DT_STRING),          \
       IdentityOp);                                                             \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("Identity").Device(DEVICE).TypeConstraint<Variant>("T"),            \
+      IdentityOp);                                                             \
+  REGISTER_KERNEL_BUILDER(Name("Identity")                                     \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<ResourceHandle>("T")             \
+                              .HostMemory("input")                             \
+                              .HostMemory("output"),                           \
+                          IdentityOp);                                         \
   REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE), IdentityNOp);      \
   REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE), PlaceholderOp);  \
   REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE),                \
@@ -196,9 +208,7 @@ class XlaAssignVariableOp : public OpKernel {
       Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);   \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name(kArgOp).Device(DEVICE).HostMemory("output").TypeConstraint("T",     \
-                                                                      TYPES),  \
-      ArgOp);                                                                  \
+      Name(kArgOp).Device(DEVICE).TypeConstraint("T", TYPES), ArgOp);          \
   REGISTER_KERNEL_BUILDER(Name(kArgOp)                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -207,11 +217,8 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name(kArgOp).Device(DEVICE).TypeConstraint<Variant>("T"), ArgOp);        \
                                                                                \
-  REGISTER_KERNEL_BUILDER(Name(kRetOp)                                         \
-                              .Device(DEVICE)                                  \
-                              .TypeConstraint("T", TYPES)                      \
-                              .HostMemory("input"),                            \
-                          RetvalOp);                                           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(kRetOp).Device(DEVICE).TypeConstraint("T", TYPES), RetvalOp);       \
   REGISTER_KERNEL_BUILDER(Name(kRetOp)                                         \
                               .Device(DEVICE)                                  \
                               .TypeConstraint<ResourceHandle>("T")             \
@@ -240,6 +247,9 @@ class XlaAssignVariableOp : public OpKernel {
       data::MakeIteratorOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE),            \
                           data::AnonymousIteratorHandleOp);                    \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AnonymousIteratorV2").Device(DEVICE).HostMemory("deleter"),        \
+      data::AnonymousIteratorHandleOp);                                        \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE),              \
                           data::IteratorGetNextOp);                            \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE),    \

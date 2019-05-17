@@ -92,7 +92,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
         return l, inner_fn(l)
 
     ns = {'TestClass': TestClass}
-    node, ctx = self.prepare(TestClass, ns, owner_type=TestClass)
+    node, ctx = self.prepare(TestClass, ns)
     node = function_scopes.transform(node, ctx)
 
     with self.compiled(node, {}, ops.name_scope) as result:

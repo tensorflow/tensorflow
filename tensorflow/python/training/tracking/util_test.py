@@ -17,21 +17,20 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import json
 import os
+import weakref
 
 from absl.testing import parameterized
 import six
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
@@ -43,6 +42,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
@@ -86,6 +87,17 @@ class InterfaceTests(test.TestCase):
     model.l2 = layer_two
     model.l1 = layer_one
     self.assertEqual([layer_one, layer_two], model.layers)
+
+  def testSaveWithOnlyKerasSession(self):
+
+    with ops.Graph().as_default():
+      inp = input_layer.Input([1])
+      dense = core.Dense(1)(inp)
+      model = training.Model(inp, dense)
+      model.compile(optimizer="sgd", loss="mse")
+      model.fit([1.], [2.])
+      checkpoint = trackable_utils.Checkpoint(model=model)
+      checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testAddVariable(self):
@@ -305,19 +317,12 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         "optimizer/learning_rate",
         "optimizer/beta_1",
         "optimizer/beta_2",
-        "optimizer/epsilon",
         "optimizer/iter",
         "optimizer/decay",
     ) + expected_slot_keys
     suffix = "/.ATTRIBUTES/VARIABLE_VALUE"
     expected_checkpoint_names = [
         name + suffix for name in expected_checkpoint_names]
-    expected_checkpoint_names.append(
-        "optimizer/.ATTRIBUTES/OBJECT_CONFIG_JSON")
-    # The Dense layers also save get_config() JSON
-    expected_checkpoint_names.extend(
-        ["model/_second/.ATTRIBUTES/OBJECT_CONFIG_JSON",
-         "model/_named_dense/.ATTRIBUTES/OBJECT_CONFIG_JSON"])
     named_variables = {v.name: v for v in named_variables}
     six.assertCountEqual(self, expected_checkpoint_names,
                          named_variables.keys())
@@ -346,7 +351,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     six.assertCountEqual(
         self,
         # Non-slot dependencies
-        ["beta_1", "beta_2", "iter", "decay", "epsilon", "learning_rate"],
+        ["beta_1", "beta_2", "iter", "decay", "learning_rate"],
         children)
     serialized_slot_keys = []
     for slot in optimizer_node.slot_variables:
@@ -406,7 +411,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     variables = model.trainable_variables
     gradients = tape.gradient(loss, variables)
     train_op = optimizer.apply_gradients(zip(gradients, variables))
-    root_trackable.save_counter  # pylint: disable=pointless-statement
+    self.assertFalse(root_trackable.save_counter.trainable)
     self.evaluate(trackable_utils.gather_initializers(
         root_trackable))
     self.evaluate(train_op)
@@ -497,7 +502,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.Adam(0.001)
-          root = trackable_utils.Checkpoint(
+          root = trackable_utils.CheckpointV1(
               optimizer=optimizer, model=model)
           input_value = constant_op.constant([[3.]])
           with backprop.GradientTape() as tape:
@@ -577,7 +582,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       saver = trackable_utils.frozen_saver(checkpoint)
       with ops.device("cpu:0"):
         prefix_tensor = constant_op.constant(prefix)
-      save_path = self.evaluate(saver.save(prefix_tensor))
+      self.evaluate(saver.save(prefix_tensor))
       self.evaluate(v.assign(10))
       # Use the frozen saver to restore the same object graph
       self.evaluate(saver.restore(prefix_tensor))
@@ -594,7 +599,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       # Restore as an object-based checkpoint
       del v, checkpoint, saver
       checkpoint = trackable_utils.Checkpoint()
-      status = checkpoint.restore(save_path)
+      status = checkpoint.restore(prefix)
       v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
       if context.executing_eagerly():
         self.assertEqual(12, self.evaluate(checkpoint.save_counter))
@@ -617,6 +622,84 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       if not path.endswith(expected_suffix):
         self.fail("%s should have suffix %s" % (path, expected_suffix))
       self.evaluate(step.assign_add(2))
+
+  def testPartialRestoreWarningObject(self):
+    with context.eager_mode():
+      optimizer = adam.Adam(0.0)
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.),
+                                                 optimizer=optimizer)
+      # Create a slot variable to save
+      optimizer.minimize(original_root.v1.read_value, [original_root.v1])
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
+      weak_partial_root = weakref.ref(partial_root)
+      weak_v1 = weakref.ref(partial_root.v1)
+      partial_root.restore(save_path)
+      self.assertEqual(2., partial_root.v1.numpy())
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        del partial_root
+        self.assertIsNone(weak_partial_root())
+        self.assertIsNone(weak_v1())
+        messages = str(mock_log.call_args_list)
+      self.assertIn("(root).v2'", messages)
+      self.assertIn("(root).optimizer's state 'm' for (root).v1", messages)
+      self.assertNotIn("(root).v1'", messages)
+      self.assertIn("expect_partial()", messages)
+
+  def testPartialRestoreWarningAttribute(self):
+    with context.eager_mode():
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.))
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=base.Trackable(),
+                                                v2=variables_lib.Variable(0.))
+      weak_partial_root = weakref.ref(partial_root)
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        # Note: Unlike in testPartialRestoreWarningObject, the warning actually
+        # prints immediately here, since all of the objects have been created
+        # and there's no deferred restoration sitting around.
+        partial_root.restore(save_path)
+        self.assertEqual(3., partial_root.v2.numpy())
+        del partial_root
+        self.assertIsNone(weak_partial_root())
+        messages = str(mock_log.call_args_list)
+      self.assertIn("(root).v1", messages)
+      self.assertNotIn("(root).v2", messages)
+      self.assertIn("expect_partial()", messages)
+
+  def testAttributeException(self):
+    with context.eager_mode():
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.))
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=base.Trackable(),
+                                                v2=variables_lib.Variable(0.))
+      status = partial_root.restore(save_path)
+      with self.assertRaisesRegexp(
+          AssertionError,
+          r"Unused attributes(.|\n)*\(root\).v1"):
+        status.assert_consumed()
+
+  def testSilencePartialWarning(self):
+    with context.eager_mode():
+      original_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(2.),
+                                                 v2=variables_lib.Variable(3.))
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      save_path = original_root.save(prefix)
+      partial_root = trackable_utils.Checkpoint(v1=variables_lib.Variable(0.))
+      weak_partial_root = weakref.ref(partial_root)
+      weak_v1 = weakref.ref(partial_root.v1)
+      partial_root.restore(save_path).expect_partial()
+      self.assertEqual(2., partial_root.v1.numpy())
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        del partial_root
+        self.assertIsNone(weak_partial_root())
+        self.assertIsNone(weak_v1())
+        self.assertEmpty(mock_log.call_args_list)
 
   # pylint: disable=cell-var-from-loop
   @test_util.run_in_graph_and_eager_modes
@@ -1055,12 +1138,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     expected_filenames = ["checkpoint"]
     for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
-      expected_filenames.append(
-          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
-    six.assertCountEqual(
-        self,
-        expected_filenames,
-        os.listdir(checkpoint_directory))
+    self.assertEmpty(
+        set(expected_filenames)
+        - set(os.listdir(checkpoint_directory)))
 
   @test_util.run_in_graph_and_eager_modes
   def testCheckpointStateChangingVarList(self):
@@ -1082,12 +1162,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # be consistent. Nothing gets deleted.
     for checkpoint_number in range(1, 11):
       expected_filenames.append("ckpt-%d.index" % (checkpoint_number,))
-      expected_filenames.append(
-          "ckpt-%d.data-00000-of-00001" % (checkpoint_number,))
-    six.assertCountEqual(
-        self,
-        expected_filenames,
-        os.listdir(checkpoint_directory))
+    self.assertEmpty(
+        set(expected_filenames)
+        - set(os.listdir(checkpoint_directory)))
     self.assertEqual(
         checkpoint_prefix + "-10",
         checkpoint_management.latest_checkpoint(checkpoint_directory))
@@ -1509,9 +1586,9 @@ class CheckpointCompatibilityTests(test.TestCase):
     with context.graph_mode():
       save_graph = ops.Graph()
       with save_graph.as_default(), self.session(
-          graph=save_graph) as session:
+          graph=save_graph):
         root = self._initialized_model()
-        save_path = root.save(session=session, file_prefix=checkpoint_prefix)
+        save_path = root.save(file_prefix=checkpoint_prefix)
     with context.eager_mode():
       root = self._initialized_model()
       self._set_sentinels(root)
@@ -1534,47 +1611,6 @@ class CheckpointCompatibilityTests(test.TestCase):
         self._check_sentinels(root)
 
 
-class PythonMetadataTests(test.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes
-  def testSaveLoad(self):
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    dense = core.Dense(1)
-    checkpoint = trackable_utils.Checkpoint(dense=dense)
-    dense(constant_op.constant([[1.]]))
-    checkpoint.restore(None).initialize_or_restore()
-    save_path = checkpoint.save(checkpoint_prefix)
-
-    def _get_dense_node_from_object_graph(object_graph_proto):
-      root_node = object_graph_proto.nodes[0]
-      for child in root_node.children:
-        if child.local_name == "dense":
-          break
-      else:
-        raise AssertionError(
-            "Expected a 'dense' dependency of root, didn't find one.")
-      dense_node = object_graph_proto.nodes[child.node_id]  # pylint: disable=undefined-loop-variable
-      self.assertEqual(1, len(dense_node.attributes))
-      reader = pywrap_tensorflow.NewCheckpointReader(save_path)
-      layer_json = reader.get_tensor(dense_node.attributes[0].checkpoint_key)
-      return json.loads(layer_json.decode("utf-8"))
-
-    layer_data = _get_dense_node_from_object_graph(
-        trackable_utils.object_metadata(save_path))
-    self.assertEqual("Dense", layer_data["class_name"])
-    self.assertEqual(1, layer_data["config"]["units"])
-
-    # Check that no new ops are added to the graph the second time we save.
-    ops.get_default_graph().finalize()
-
-    dense.units = 42
-    save_path = checkpoint.save(checkpoint_prefix)
-    layer_data = _get_dense_node_from_object_graph(
-        trackable_utils.object_metadata(save_path))
-    self.assertEqual("Dense", layer_data["class_name"])
-    self.assertEqual(42, layer_data["config"]["units"])
-
-
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

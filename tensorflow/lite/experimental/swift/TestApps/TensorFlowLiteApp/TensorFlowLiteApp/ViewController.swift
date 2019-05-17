@@ -103,9 +103,7 @@ class ViewController: UIViewController {
   private func setUpInterpreter(withModelPath modelPath: String) {
     interpreterQueue.async {
       do {
-        var options = InterpreterOptions()
-        options.isErrorLoggingEnabled = true
-        self.interpreter = try Interpreter(modelPath: modelPath, options: options)
+        self.interpreter = try Interpreter(modelPath: modelPath)
       } catch let error {
         self.updateResultsText(
           "Failed to create the interpreter with error: \(error.localizedDescription)"

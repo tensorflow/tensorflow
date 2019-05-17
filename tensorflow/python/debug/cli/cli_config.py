@@ -47,7 +47,7 @@ class CLIConfig(object):
         self._config[key] = value
     self._save_to_file()
 
-    self._set_callbacks = dict()
+    self._set_callbacks = {}
 
   def get(self, property_name):
     if property_name not in self._config:

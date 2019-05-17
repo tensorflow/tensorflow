@@ -163,9 +163,8 @@ StatusOr<HouseHolderResult> HouseRow(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   HouseHolderResult result;
   result.v = v;
   result.beta = beta;
-  result.a =
-      Sub(a, Mul(beta, BatchDot(BatchDot(a, TransposeInMinorDims(v), precision),
-                                v, precision)));
+  result.a = Sub(a, Mul(beta, BatchDot(BatchDot(a, false, v, true, precision),
+                                       v, precision)));
 
   return result;
 }
@@ -231,8 +230,8 @@ StatusOr<HouseHolderResult> HouseCol(XlaOp a, XlaOp i, XlaOp j, XlaOp eps,
   result.v = v;
   result.beta = beta;
   result.a = Sub(
-      a, Mul(beta, BatchDot(v, BatchDot(TransposeInMinorDims(v), a, precision),
-                            precision)));
+      a, Mul(beta, BatchDot(v, false, BatchDot(v, true, a, false, precision),
+                            false, precision)));
 
   return result;
 }
@@ -290,18 +289,16 @@ StatusOr<SVDResult> HouseHolderBidiagonalization(
 
     TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                         HouseCol(a, i, i, eps, precision));
-    u = Sub(u, Mul(house_col.beta,
-                   BatchDot(BatchDot(u, house_col.v, precision),
-                            TransposeInMinorDims(house_col.v), precision)));
+    u = Sub(u,
+            Mul(house_col.beta, BatchDot(BatchDot(u, house_col.v, precision),
+                                         false, house_col.v, true, precision)));
     a = house_col.a;
 
     TF_ASSIGN_OR_RETURN(HouseHolderResult house_row,
                         HouseRow(a, i, i + one, eps, precision));
-    v = Sub(
-        v,
-        Mul(house_row.beta,
-            BatchDot(BatchDot(v, TransposeInMinorDims(house_row.v), precision),
-                     house_row.v, precision)));
+    v = Sub(v, Mul(house_row.beta,
+                   BatchDot(BatchDot(v, false, house_row.v, true, precision),
+                            house_row.v, precision)));
     a = house_row.a;
 
     std::vector<XlaOp> updated_values;
@@ -331,11 +328,10 @@ StatusOr<SVDResult> HouseHolderBidiagonalization(
       XlaOp index = ScalarLike(values[0], n - k);
       TF_ASSIGN_OR_RETURN(HouseHolderResult house_col,
                           HouseCol(values[3], index, index, eps, precision));
-      values[1] =
-          Sub(values[1],
-              Mul(house_col.beta,
-                  BatchDot(BatchDot(values[1], house_col.v, precision),
-                           TransposeInMinorDims(house_col.v), precision)));
+      values[1] = Sub(values[1],
+                      Mul(house_col.beta,
+                          BatchDot(BatchDot(values[1], house_col.v, precision),
+                                   false, house_col.v, true, precision)));
       values[3] = house_col.a;
     }
   }
@@ -750,25 +746,21 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
   result.v = Mul(result.v, sign, broadcast_dims);
 
   d = BroadcastInDim(d, dimensions, broadcast_dims);
-  auto zero = Zero(builder, S32);
 
-  // As m >= n, only first m columns vectors are needed to be permuted, and the
-  // rest of m - n vectors are appended after the sorting is done.
+  // As m >= n, only first n column vectors need to be permuted, and the rest of
+  // m - n vectors are appended after the sorting is done.
   XlaOp sort_u_result =
-      Sort({-d, DynamicSliceInMinorDims(result.u, {zero, zero}, {m, n})},
-           CreateScalarLtComputation(
+      Sort({d, SliceInMinorDims(result.u, {0, 0}, {m, n})},
+           CreateScalarGtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
 
-  // TODO(kuny): using CreateScalarGtComputation after b/124862300 is fixed.
   XlaOp sort_v_result =
-      Sort({DynamicSliceInMinorDims(-d, {zero, zero}, {n, n}), result.v},
-           CreateScalarLtComputation(
+      Sort({SliceInMinorDims(d, {0, 0}, {n, n}), result.v},
+           CreateScalarGtComputation(
                {shape.element_type(), shape.element_type()}, builder),
            num_dims - 1);
-  // Make sure all the signular values are non-negative.
-  result.d = Max(-GetMatrixDiagonal(GetTupleElement(sort_v_result, 0)),
-                 ScalarLike(d, 0.0));
+  result.d = GetMatrixDiagonal(GetTupleElement(sort_v_result, 0));
 
   result.v = GetTupleElement(sort_v_result, 1);
   result.v = Mul(
@@ -779,12 +771,10 @@ StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(SVDResult result) {
       broadcast_dims);
 
   // Append the rest of m - n vectors.
-  result.u =
-      ConcatInDim(builder,
-                  {GetTupleElement(sort_u_result, 1),
-                   DynamicSliceInMinorDims(
-                       result.u, {zero, ScalarLike(zero, n)}, {m, m - n})},
-                  num_dims - 1);
+  result.u = ConcatInDim(builder,
+                         {GetTupleElement(sort_u_result, 1),
+                          SliceInMinorDims(result.u, {0, n}, {m, m})},
+                         num_dims - 1);
   result.u = Mul(
       result.u,
       Rsqrt(Reduce(Square(result.u), ScalarLike(d, 0.0),

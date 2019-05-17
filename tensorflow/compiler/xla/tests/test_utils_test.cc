@@ -143,7 +143,7 @@ compare {
   p.0.rhs = f32[] parameter(1)
   p.1.lhs = s32[] parameter(2)
   p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (f32[1048576], s32[1048576]) {
@@ -174,7 +174,7 @@ compare {
   p.0.rhs = s32[] parameter(1)
   p.1.lhs = s32[] parameter(2)
   p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (s32[1048576], s32[1048576]) {
@@ -205,7 +205,7 @@ compare {
   p.0.rhs = bf16[] parameter(1)
   p.1.lhs = s32[] parameter(2)
   p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,1452], s32[2,1452]) {

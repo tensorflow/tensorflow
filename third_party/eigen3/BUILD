@@ -11,11 +11,7 @@ licenses([
 
 exports_files(["LICENSE"])
 
-# INTEL_MKL start
-load("//tensorflow:tensorflow.bzl", "if_mkl")
-
-# INTEL_MKL end
-load("//tensorflow:tensorflow.bzl", "if_mkl")
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 EIGEN3_THIRD_PARTY_HEADERS = [
     "Eigen/Core",

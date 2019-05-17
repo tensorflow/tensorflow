@@ -6,31 +6,18 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
-    "tf_custom_op_library",
-    "tf_gen_op_libs",
-    "tf_gen_op_wrapper_py",
-    "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 py_library(
     name = "batch_py",
     srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python:batch_ops",
         "//tensorflow/python:batch_ops_gen",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:util",
     ],
 )
 

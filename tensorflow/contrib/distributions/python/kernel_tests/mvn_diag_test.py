@@ -32,7 +32,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-
 ds = distributions
 
 
@@ -66,9 +65,7 @@ class MultivariateNormalDiagTest(test.TestCase):
     with self.cached_session():
       base_dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
       dist = ds.TransformedDistribution(
-          base_dist,
-          validate_args=True,
-          bijector=bijectors.Softplus())
+          base_dist, validate_args=True, bijector=bijectors.Softplus())
       samps = dist.sample(5)  # Shape [5, 1, 3].
       self.assertAllEqual([5, 1], dist.log_prob(samps).get_shape())
 
@@ -103,10 +100,8 @@ class MultivariateNormalDiagTest(test.TestCase):
       samps = dist.sample(int(1e3), seed=0).eval()
       cov_mat = array_ops.matrix_diag(diag).eval()**2
 
-      self.assertAllClose(mu, samps.mean(axis=0),
-                          atol=0., rtol=0.05)
-      self.assertAllClose(cov_mat, np.cov(samps.T),
-                          atol=0.05, rtol=0.05)
+      self.assertAllClose(mu, samps.mean(axis=0), atol=0., rtol=0.05)
+      self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.05, rtol=0.05)
 
   def testSingularScaleRaises(self):
     mu = [-1., 1]
@@ -133,13 +128,11 @@ class MultivariateNormalDiagTest(test.TestCase):
       n = int(1e3)
       samps = dist.sample(n, seed=0).eval()
       cov_mat = array_ops.matrix_diag(diag).eval()**2
-      sample_cov = np.matmul(samps.transpose([1, 2, 0]),
-                             samps.transpose([1, 0, 2])) / n
+      sample_cov = np.matmul(
+          samps.transpose([1, 2, 0]), samps.transpose([1, 0, 2])) / n
 
-      self.assertAllClose(mu, samps.mean(axis=0),
-                          atol=0.10, rtol=0.05)
-      self.assertAllClose([cov_mat, cov_mat], sample_cov,
-                          atol=0.10, rtol=0.05)
+      self.assertAllClose(mu, samps.mean(axis=0), atol=0.10, rtol=0.05)
+      self.assertAllClose([cov_mat, cov_mat], sample_cov, atol=0.10, rtol=0.05)
 
   def testCovariance(self):
     with self.cached_session():
@@ -155,12 +148,8 @@ class MultivariateNormalDiagTest(test.TestCase):
       self.assertAllEqual([2], mvn.batch_shape)
       self.assertAllEqual([3], mvn.event_shape)
       self.assertAllClose(
-          np.array([[[3., 0, 0],
-                     [0, 3, 0],
-                     [0, 0, 3]],
-                    [[2, 0, 0],
-                     [0, 2, 0],
-                     [0, 0, 2]]])**2.,
+          np.array([[[3., 0, 0], [0, 3, 0], [0, 0, 3]],
+                    [[2, 0, 0], [0, 2, 0], [0, 0, 2]]])**2.,
           mvn.covariance().eval())
 
       mvn = ds.MultivariateNormalDiag(
@@ -169,61 +158,48 @@ class MultivariateNormalDiagTest(test.TestCase):
       self.assertAllEqual([2], mvn.batch_shape)
       self.assertAllEqual([3], mvn.event_shape)
       self.assertAllClose(
-          np.array([[[3., 0, 0],
-                     [0, 2, 0],
-                     [0, 0, 1]],
-                    [[4, 0, 0],
-                     [0, 5, 0],
-                     [0, 0, 6]]])**2.,
+          np.array([[[3., 0, 0], [0, 2, 0], [0, 0, 1]],
+                    [[4, 0, 0], [0, 5, 0], [0, 0, 6]]])**2.,
           mvn.covariance().eval())
 
   def testVariance(self):
     with self.cached_session():
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([2, 3], dtype=dtypes.float32))
-      self.assertAllClose(
-          np.ones([3], dtype=np.float32),
-          mvn.variance().eval())
+      self.assertAllClose(np.ones([3], dtype=np.float32), mvn.variance().eval())
 
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([3], dtype=dtypes.float32),
           scale_identity_multiplier=[3., 2.])
       self.assertAllClose(
-          np.array([[3., 3, 3],
-                    [2, 2, 2]])**2.,
+          np.array([[3., 3, 3], [2, 2, 2]])**2.,
           mvn.variance().eval())
 
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([3], dtype=dtypes.float32),
-          scale_diag=[[3., 2, 1],
-                      [4, 5, 6]])
+          scale_diag=[[3., 2, 1], [4, 5, 6]])
       self.assertAllClose(
-          np.array([[3., 2, 1],
-                    [4, 5, 6]])**2.,
+          np.array([[3., 2, 1], [4, 5, 6]])**2.,
           mvn.variance().eval())
 
   def testStddev(self):
     with self.cached_session():
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([2, 3], dtype=dtypes.float32))
-      self.assertAllClose(
-          np.ones([3], dtype=np.float32),
-          mvn.stddev().eval())
+      self.assertAllClose(np.ones([3], dtype=np.float32), mvn.stddev().eval())
 
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([3], dtype=dtypes.float32),
           scale_identity_multiplier=[3., 2.])
       self.assertAllClose(
-          np.array([[3., 3, 3],
-                    [2, 2, 2]]),
+          np.array([[3., 3, 3], [2, 2, 2]]),
           mvn.stddev().eval())
 
       mvn = ds.MultivariateNormalDiag(
           loc=array_ops.zeros([3], dtype=dtypes.float32),
           scale_diag=[[3., 2, 1], [4, 5, 6]])
       self.assertAllClose(
-          np.array([[3., 2, 1],
-                    [4, 5, 6]]),
+          np.array([[3., 2, 1], [4, 5, 6]]),
           mvn.stddev().eval())
 
   def testMultivariateNormalDiagWithSoftplusScale(self):
@@ -242,9 +218,8 @@ class MultivariateNormalDiagTest(test.TestCase):
     num_draws = 50
     dims = 3
     with self.cached_session() as sess:
-      x_pl = array_ops.placeholder(dtype=dtypes.float32,
-                                   shape=[None, dims],
-                                   name="x")
+      x_pl = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[None, dims], name="x")
       mu_var = variable_scope.get_variable(
           name="mu",
           shape=[dims],
@@ -257,8 +232,8 @@ class MultivariateNormalDiagTest(test.TestCase):
           scale_diag=array_ops.ones(shape=[dims], dtype=dtypes.float32))
 
       # Typically you'd use `mvn.log_prob(x_pl)` which is always at least as
-      # numerically stable as `tf.log(mvn.prob(x_pl))`. However in this test
-      # we're testing a bug specific to `prob` and not `log_prob`;
+      # numerically stable as `tf.math.log(mvn.prob(x_pl))`. However in this
+      # test we're testing a bug specific to `prob` and not `log_prob`;
       # http://stackoverflow.com/q/45109305. (The underlying issue was not
       # related to `Distributions` but that `reduce_prod` didn't correctly
       # handle negative indexes.)
@@ -268,12 +243,13 @@ class MultivariateNormalDiagTest(test.TestCase):
 
       x = np.zeros([num_draws, dims], dtype=np.float32)
       grad_neg_log_likelihood_ = sess.run(
-          grad_neg_log_likelihood,
-          feed_dict={x_pl: x})
+          grad_neg_log_likelihood, feed_dict={x_pl: x})
       self.assertEqual(1, len(grad_neg_log_likelihood_))
-      self.assertAllClose(grad_neg_log_likelihood_[0],
-                          np.tile(num_draws, dims),
-                          rtol=1e-6, atol=0.)
+      self.assertAllClose(
+          grad_neg_log_likelihood_[0],
+          np.tile(num_draws, dims),
+          rtol=1e-6,
+          atol=0.)
 
   def testDynamicBatchShape(self):
     mvn = ds.MultivariateNormalDiag(
@@ -294,12 +270,10 @@ class MultivariateNormalDiagTest(test.TestCase):
     with self.cached_session() as sess:
       loc = array_ops.zeros([dims], dtype=dtypes.float32)
       mvn = ds.MultivariateNormalDiag(
-          loc=loc,
-          scale_diag=np.ones([dims], dtype=np.float32))
+          loc=loc, scale_diag=np.ones([dims], dtype=np.float32))
       g = gradients_impl.gradients(ds.kl_divergence(mvn, mvn), loc)
       g_ = sess.run(g)
-      self.assertAllEqual(np.ones_like(g_, dtype=np.bool),
-                          np.isfinite(g_))
+      self.assertAllEqual(np.ones_like(g_, dtype=np.bool), np.isfinite(g_))
 
 
 if __name__ == "__main__":

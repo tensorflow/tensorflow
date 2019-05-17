@@ -23,6 +23,17 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+py_library(
+    name = "mixed_precision_experimental",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loss_scale_optimizer",
+        ":policy",
+    ],
+)
 
 py_library(
     name = "policy",
@@ -41,6 +52,7 @@ py_test(
     srcs = [
         "policy_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":policy",
@@ -67,6 +79,7 @@ py_test(
     name = "autocast_variable_test",
     size = "medium",
     srcs = ["autocast_variable_test.py"],
+    python_version = "PY2",
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -78,15 +91,50 @@ py_test(
     ],
 )
 
-py_test(
-    name = "keras_test",
-    size = "medium",
-    srcs = ["keras_test.py"],
+py_library(
+    name = "loss_scale_optimizer",
+    srcs = ["loss_scale_optimizer.py"],
+    srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:loss_scale",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "loss_scale_optimizer_test",
+    size = "small",
+    srcs = ["loss_scale_optimizer_test.py"],
+    additional_deps = [
+        ":loss_scale_optimizer",
+        ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "test_util",
+    srcs = ["test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_test",
+    size = "medium",
+    srcs = ["keras_test.py"],
+    additional_deps = [
+        ":test_util",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
     ],
 )

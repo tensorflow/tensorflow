@@ -46,9 +46,12 @@ typedef enum {
   kTfLiteMirrorPaddingSymmetric,
 } TfLiteMirrorPaddingMode;
 
+// TODO(b/130259536): We should move this out of builtin_op_data.
 typedef struct {
   int width;
   int height;
+  int width_offset;
+  int height_offset;
 } TfLitePaddingValues;
 
 typedef struct {
@@ -334,6 +337,7 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+  EmptyStructPlaceholder placeholder;
 } TfLiteRankParams;
 
 typedef struct {
@@ -372,6 +376,14 @@ typedef struct {
   int seq_dim;
   int batch_dim;
 } TfLiteReverseSequenceParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixDiagParams;
+
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixSetDiagParams;
 
 #ifdef __cplusplus
 }  // extern "C"

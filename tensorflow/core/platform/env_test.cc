@@ -51,6 +51,11 @@ GraphDef CreateTestProto() {
   return g;
 }
 
+static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+  EXPECT_TRUE(str_util::StrContains(s, expected))
+      << "'" << s << "' does not contain '" << expected << "'";
+}
+
 }  // namespace
 
 string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
@@ -406,6 +411,21 @@ TEST_F(DefaultEnvTest, GetThreadInformation) {
   EXPECT_TRUE(res);
   EXPECT_GT(thread_name.size(), 0);
 #endif
+}
+
+TEST_F(DefaultEnvTest, GetChildThreadInformation) {
+  Env* env = Env::Default();
+  Thread* child_thread = env->StartThread({}, "tf_child_thread", [env]() {
+  // TODO(fishx): Turn on this test for Apple.
+#if !defined(__APPLE__)
+    EXPECT_NE(env->GetCurrentThreadId(), 0);
+#endif
+    string thread_name;
+    bool res = env->GetCurrentThreadName(&thread_name);
+    EXPECT_TRUE(res);
+    ExpectHasSubstr(thread_name, "tf_child_thread");
+  });
+  delete child_thread;
 }
 
 }  // namespace tensorflow

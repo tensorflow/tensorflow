@@ -135,6 +135,17 @@ def isum(s, maximum_iterations=None):
   return r_s
 
 
+def enqueue_print_op(s):
+  """Enqueues an op that prints a message to be captured in the test."""
+  return logging_ops.print_v2("ControlFlowOpsTest: " + s)
+
+
+def filter_test_messages(s):
+  """Returns a list of messages printed by enqueue_print_op."""
+  prefix = "ControlFlowOpsTest: "
+  return [l[len(prefix):] for l in s.split("\n") if l.startswith(prefix)]
+
+
 @test_util.with_control_flow_v2
 class ControlFlowTest(test.TestCase):
 
@@ -437,12 +448,8 @@ class ControlFlowTest(test.TestCase):
       values = constant_op.constant(10)
       indices = constant_op.constant(0)
       x = ops.IndexedSlices(values, indices)
-      v1_msg = "The two structures don't have the same nested structure"
-      v2_msg = ("true_fn and false_fn arguments to tf.cond must have the same "
-                "number, type, and overall structure of return values.")
       with self.assertRaisesRegexp(
-          TypeError,
-          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
+          TypeError, "Cannot reconcile tf.cond 0-th outputs"):
         control_flow_ops.cond(
             constant_op.constant(True),
             lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices),
@@ -505,7 +512,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(sess.run(g, {pred: True}), [2.0, 2.0, 2.0])
       self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
 
-  @test_util.disable_control_flow_v2("b/113293074")
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
@@ -580,6 +586,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(r)
     self.assertAllEqual(12, result)
 
+  @test_util.disable_xla("b/128638446")
   @test_util.run_in_graph_and_eager_modes
   def testCondPruning(self):
     v1 = variables.Variable(7)
@@ -657,7 +664,7 @@ class ControlFlowTest(test.TestCase):
   @test_util.run_gpu_only
   @test_util.run_deprecated_v1
   def testCond_Device(self):
-    x = constant_op.constant(-10)
+    x = constant_op.constant(-10.)
 
     # True branch function defined outside of device scope
     def true_fn():
@@ -674,6 +681,127 @@ class ControlFlowTest(test.TestCase):
       sess.run(r, options=options, run_metadata=run_metadata)
       # We expect that everything runs on CPU, even if GPU is available.
       self.assertEqual(len(run_metadata.partition_graphs), 1)
+
+  def _count_matching_switch_nodes_on_device(self, run_metadata, device_str):
+    # Returns the number of Switch nodes with type float32 placed on
+    # `device_str`.
+    device_graphs = [
+        g for g in run_metadata.partition_graphs
+        if device_str in g.node[0].device
+    ]
+    self.assertLen(device_graphs, 1)
+    switch_nodes = [
+        n for n in device_graphs[0].node if n.op == "Switch" and
+        n.attr["T"].type == dtypes.float32.as_datatype_enum
+    ]
+    return len(switch_nodes)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCondSwitchColocatedWithInputWhenInputOnCPU(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    # `arg` is used in the cond then branch so a Switch node is created for it.
+    # We test that the Switch node gets placed on the same device as `arg`.
+    # We force `arg` to be on CPU here.
+    with ops.device("CPU:0"):
+      arg = x + 10.
+
+    def true_fn():
+      with ops.device("CPU:0"):
+        return arg + 1
+
+    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+
+    with session.Session() as sess:
+      run_metadata = config_pb2.RunMetadata()
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      sess.run(
+          r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
+      self.assertEqual(len(run_metadata.partition_graphs), 2)
+      # Check that the Switch for `arg` gets placed on CPU.
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 1)
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 0)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCondSwitchColocatedWithInputWhenInputOnGPU(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    # `arg` is used in the cond then branch so a Switch node is created for it.
+    # We test that the Switch node gets placed on the same device as `arg`.
+    # Note: `arg` gets placed on GPU by default by the placer.
+    arg = x + 10.
+
+    def true_fn():
+      with ops.device("CPU:0"):
+        return arg + 1
+
+    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+
+    with session.Session() as sess:
+      run_metadata = config_pb2.RunMetadata()
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      sess.run(
+          r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
+      self.assertEqual(len(run_metadata.partition_graphs), 2)
+      # Check that the Switch for `arg` gets placed on GPU.
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 0)
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 1)
+
+  def testCondAccessTrueBranchTensorInFalseBranchRaises(self):
+
+    @def_function.function
+    def f():
+      c = constant_op.constant(1.)
+      inputs = {"c": c}
+
+      def true_fn(inputs):
+        inputs["c"] = array_ops.identity(inputs["c"], name="true_branch")
+        return inputs["c"]
+
+      def false_fn(inputs):
+        return array_ops.identity(inputs["c"])
+
+      pred = constant_op.constant(True)
+      return control_flow_ops.cond(
+          pred, lambda: true_fn(inputs), lambda: false_fn(inputs))
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+      f()
+
+  def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
+
+    @def_function.function
+    def f():
+      c = constant_op.constant(1.)
+      inputs = {"c": c}
+
+      def br1_fn(inputs):
+        inputs["c"] = array_ops.identity(inputs["c"], name="br1_identity")
+        return inputs["c"]
+
+      def br4_fn(inputs):
+        return array_ops.identity(inputs["c"])
+
+      def other_fn():
+        return array_ops.identity(c)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(2),
+          [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
+           lambda: br4_fn(inputs)])
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
+      f()
 
   def testCondListOutput(self):
     with self.cached_session() as sess:
@@ -708,19 +836,17 @@ class ControlFlowTest(test.TestCase):
       test_result = self.evaluate(r)
       self.assertDictEqual({"a": 210, "b": 210}, test_result)
 
-  @test_util.run_deprecated_v1
   def testEmbeddedListOutput(self):
-    with self.cached_session() as sess:
-      x = constant_op.constant(10)
-      y = constant_op.constant(200)
-      pred = math_ops.less(1, 2)
-      fn1 = lambda: [[math_ops.add(x, y), math_ops.add(x, y)]]
-      fn2 = lambda: [[y, y]]
-      # Pass strict=True flag as cond_v2 allows for tensors to be
-      # in nested output structures as singletons
-      r = control_flow_ops.cond(pred, fn1, fn2, strict=True)
-      test_result = self.evaluate(r)
-      self.assertListEqual([[210, 210]], test_result)
+    x = constant_op.constant(10)
+    y = constant_op.constant(200)
+    pred = math_ops.less(1, 2)
+    fn1 = lambda: [[math_ops.add(x, y), math_ops.add(x, y)]]
+    fn2 = lambda: [[y, y]]
+    # Pass strict=True flag as cond_v2 allows for tensors to be
+    # in nested output structures as singletons
+    r = control_flow_ops.cond(pred, fn1, fn2, strict=True)
+    test_result = self.evaluate(r)
+    self.assertListEqual([[210, 210]], test_result)
 
   def testEmbeddedTupleOutput(self):
     with self.cached_session() as sess:
@@ -940,7 +1066,6 @@ class ControlFlowTest(test.TestCase):
       result = gradients_impl.gradients(z, x)[0]
       self.assertEqual(1.0, self.evaluate(result))
 
-  @test_util.disable_control_flow_v2("b/113327884")
   @test_util.run_v1_only("b/120545219")
   def testCondGrad_Gather(self):
     with self.cached_session() as sess:
@@ -987,6 +1112,7 @@ class ControlFlowTest(test.TestCase):
                                                                   [1., 1.],
                                                                   [0., 0.]])
 
+  @test_util.disable_xla("b/128643464")
   def testCondGrad_MultiGather(self):
     # NOTE(skyewm): this test is interesting because the array_ops.gather and
     # ResourceVariable.sparse_read gradient functions returns IndexedSlices.
@@ -1063,13 +1189,18 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
       self.assertAllEqual(0.0, sess.run(result))
 
+  @test_util.disable_xla("b/128644469 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128676188 causes OOM on opensource gpu tests")
+
+    print_prefix = "testCondAutoControlDeps: "
 
     def branch_fn():
-      logging_ops.print_v2("A")
-      logging_ops.print_v2("B")
-      with ops.control_dependencies([logging_ops.print_v2("C")]):
+      enqueue_print_op("A")
+      enqueue_print_op("B")
+      with ops.control_dependencies([enqueue_print_op("C")]):
         return constant_op.constant(10)
 
     def build_cond():
@@ -1085,11 +1216,11 @@ class ControlFlowTest(test.TestCase):
       with self.cached_session():
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_cond()), 10)
-        self.assertEqual(printed.contents(), "C\n")
+        self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_nested_cond()), 10)
-        self.assertEqual(printed.contents(), "C\n")
+        self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
     # In defuns, all prints should execute in program order.
     # This doesn't work with legacy control flow.
@@ -1101,8 +1232,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(cond()), 10)
-      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
-                      printed.contents())
+      self.assertEqual(["A", "B", "C"],
+                       filter_test_messages(printed.contents()))
 
       @eager_function.defun
       def nested_cond():
@@ -1110,8 +1241,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_cond()), 10)
-      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
-                      printed.contents())
+      self.assertEqual(["A", "B", "C"],
+                       filter_test_messages(printed.contents()))
 
     # wrap_function should prune.
     def pruned_cond():
@@ -1120,7 +1251,7 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_cond()), 10)
-    self.assertEqual(printed.contents(), "C\n")
+    self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
     def pruned_nested_cond():
       return build_nested_cond()
@@ -1128,8 +1259,10 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_nested_cond()), 10)
-    self.assertEqual(printed.contents(), "C\n")
+    self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
+
+  @test_util.disable_xla("b/128643646 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testWhileAutoControlDeps(self):
     # Legacy while_loop fails this test because it produces deprecation notices
@@ -1137,14 +1270,14 @@ class ControlFlowTest(test.TestCase):
     if not control_flow_util.ENABLE_CONTROL_FLOW_V2: return
 
     def cond(i, unused_x):
-      logging_ops.print_v2("A")
+      enqueue_print_op("A")
       return i < 2
 
     def body(i, x):
-      logging_ops.print_v2("B")
-      with ops.control_dependencies([logging_ops.print_v2("C")]):
+      enqueue_print_op("B")
+      with ops.control_dependencies([enqueue_print_op("C")]):
         x = array_ops.identity(x)
-      with ops.control_dependencies([logging_ops.print_v2("D")]):
+      with ops.control_dependencies([enqueue_print_op("D")]):
         return i + 1, x
 
     def build_while():
@@ -1160,13 +1293,11 @@ class ControlFlowTest(test.TestCase):
       with self.cached_session():
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_while()[0]), 2)
-        self.assertTrue(printed.contents().endswith("D\nD\n"),
-                        printed.contents())
+        self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_nested_while()[0]), 2)
-        self.assertTrue(printed.contents().endswith("D\nD\n"),
-                        printed.contents())
+        self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
     # In defuns, all prints should execute in program order.
     @eager_function.defun
@@ -1175,20 +1306,17 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(while_loop()), 2)
-    self.assertTrue(printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
-                    printed.contents())
+    self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
+                     filter_test_messages(printed.contents()))
 
     @eager_function.defun
     def nested_while_loop():
       return build_nested_while()[0]
 
-    # TODO(b/117840611): calling nested_while_loop fails in eager
-    if not context.executing_eagerly():
-      with self.captureWritesToStream(sys.stderr) as printed:
-        self.assertEqual(self.evaluate(nested_while_loop()), 2)
-      self.assertTrue(
-          printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
-          printed.contents())
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.assertEqual(self.evaluate(nested_while_loop()), 2)
+    self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
+                     filter_test_messages(printed.contents()))
 
     # wrap_function should prune.
     def pruned_while():
@@ -1197,17 +1325,15 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_while()), 2)
-    self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
+    self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
     def pruned_nested_while():
       return build_nested_while()[0]
     pruned_nested_while = wrap_function.wrap_function(pruned_nested_while, [])
 
-    # TODO(b/117840611): calling nested_while_loop fails in eager
-    if not context.executing_eagerly():
-      with self.captureWritesToStream(sys.stderr) as printed:
-        self.assertEqual(self.evaluate(pruned_nested_while()), 2)
-      self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
+    with self.captureWritesToStream(sys.stderr) as printed:
+      self.assertEqual(self.evaluate(pruned_nested_while()), 2)
+    self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
   # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
@@ -1295,6 +1421,37 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(
           lambda i: i < 3, lambda i: i + 1, [0], maximum_iterations=1)
       self.assertEqual(1, self.evaluate(r))
+
+  @test_util.run_v1_only("b/120545219")
+  def testXLAGradInLoop(self):
+    # We have an optimization that moves certain reduction ops, this test makes
+    # sure we don't do that for XLA ops.
+
+    # Use dynamic inputs, which triggers the creation of "BroadcastGradientArgs"
+    # and "Shape" op.
+    input1 = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+    input2 = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+    def cond(i1, i2):
+      return False
+
+    def body(i1, i2):
+      return math_ops.add(i1, i2), math_ops.add(i1, i2)
+
+    xla_context = control_flow_ops.XLAControlFlowContext()
+    xla_context.Enter()
+
+    out1, _ = control_flow_ops.while_loop(
+        cond, body, (input1, input2), maximum_iterations=2)
+    g = gradients_impl.gradients(out1, [input1])
+
+    for op in out1.graph.get_operations():
+      # Test that the "Shape" is directly passed to BroadcastGradientArgs
+      # instead of being pushed to the stack.
+      if op.type == "BroadcastGradientArgs":
+        self.assertEqual(op.inputs[0].op.type, "Shape")
+        self.assertEqual(op.inputs[1].op.type, "Shape")
+    xla_context.Exit()
+
 
   @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   @test_util.run_v1_only("b/120545219")
@@ -1411,6 +1568,9 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128646372, b/128645947 fails in opensource build")
+
     v = constant_op.constant(1.0)
 
     p = array_ops.placeholder(dtype=dtypes.int32)
@@ -1472,17 +1632,20 @@ class ControlFlowTest(test.TestCase):
         # With while_v2 on xla, run_metadata only contains the unlowered While
         # op so node_stats does not have statistics for the pushes. So as a
         # loose check we check the pushes in the lowered version.
-        node_stats = run_metadata_without_xla_context.step_stats.dev_stats[
-            0].node_stats
+        for dev in run_metadata_without_xla_context.step_stats.dev_stats:
+          if "/device:CPU" in dev.device:
+            node_stats = dev.node_stats
         stack_push_op = "TensorListPushBack"
       else:
-        node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+        for dev in run_metadata.step_stats.dev_stats:
+          if "/device:CPU" in dev.device:
+            node_stats = dev.node_stats
         stack_push_op = "StackPushV2"
       stack_push_count = len(
           [x for x in node_stats if x.node_name.endswith(stack_push_op)])
       # Pushes to the stack = product of maximum_iterations values;
       # the last two "3"s comes from size(p), when p == [0, 0, 0].
-      self.assertEqual(stack_push_count, 5 * 3 * 3)
+      self.assertEqual(stack_push_count, 5 * 3 * 3, str(node_stats))
 
       self.assertAllClose(final_value_with_xla_context,
                           final_value_without_xla_context)
@@ -1646,6 +1809,18 @@ class ControlFlowTest(test.TestCase):
       r = r[1] * array_ops.ones([8, 8])
       self.assertAllEqual(np.ones((8, 8)), self.evaluate(r))
 
+  @test_util.disable_control_flow_v2("b/131265085")
+  @test_util.run_v1_only("b/131265085")
+  def testWhileBadShape(self):
+    x = constant_op.constant([2.0, 4.0], name="values")
+    i = constant_op.constant(0)
+    c = lambda i, _: math_ops.less(i, 10)
+    b = lambda i, x: [i + 1, x + 1]
+    with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+      # Shape of x is [2], but we specify a shape of [5].
+      control_flow_ops.while_loop(
+          c, b, [i, x], [i.shape, tensor_shape.TensorShape([5])])
+
   @test_util.run_deprecated_v1
   def testWhileWithNonTensorInput_Scalar(self):
     with self.cached_session():
@@ -1663,7 +1838,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual([10000], self.evaluate(r))
 
-  @test_util.run_v1_only("b/120545219")
   def testWhileShapeInference(self):
     with self.cached_session():
       i = constant_op.constant(0)
@@ -1678,19 +1852,23 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(
           c, b, [i, m],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
-      self.assertIsNone(r[1].shape.dims[0].value)
-      self.assertEqual(r[1].shape.dims[1], tensor_shape.Dimension(2))
+      self.assertTrue(r[1].shape.is_compatible_with([8, 2]))
 
+  @test_util.run_v1_only("b/120545219")
+  def testWhileShapeInferenceBadShape(self):
+    with self.cached_session():
+      i = constant_op.constant(0)
+      m = array_ops.ones([2, 2])
+      c = lambda i, j: math_ops.less(i, 2)
+      b = lambda i, j: [i + 1, array_ops.concat([j, j], 0)]
       with self.assertRaisesRegexp(
           ValueError,
           r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
           r"shape \(4, 2\) after one iteration. To allow the shape to vary "
           r"across iterations, use the `shape_invariants` argument of "
           r"tf.while_loop to specify a less-specific shape."):
-        r = control_flow_ops.while_loop(c, b, [i, m])
+        control_flow_ops.while_loop(c, b, [i, m])
 
-  @test_util.disable_control_flow_v2("b/116328420 (SparseTensor)")
-  @test_util.run_v1_only("b/120545219")
   def testWhileShapeInferenceSparseTensor(self):
     values = constant_op.constant([2.0, 4.0], name="values")
     indices = constant_op.constant([[0], [3]],
@@ -1729,61 +1907,72 @@ class ControlFlowTest(test.TestCase):
               array_ops.concat([x.dense_shape, [10]], axis=0))
       ]
 
+    def check_shapes(r, indices, values, dense_shape):
+      self.assertTrue(r.indices.shape.is_compatible_with(indices))
+      self.assertTrue(r.values.shape.is_compatible_with(values))
+      self.assertTrue(r.dense_shape.shape.is_compatible_with(dense_shape))
+
     # Default shape invariant; b1 only modifies values.
     _, r = control_flow_ops.while_loop(c, b1, [i, x])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, 1])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [1])
+    check_shapes(r, indices=[None, 1], values=[None], dense_shape=[1])
 
     # Default shape invariant; b2 adds new values
     _, r = control_flow_ops.while_loop(c, b2, [i, x])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, 1])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [1])
-
-    # Default shape invariant; b3 modifies rank (which is not allowed).
-    with self.assertRaises(ValueError):
-      _, r = control_flow_ops.while_loop(c, b3, [i, x])
+    check_shapes(r, indices=[None, 1], values=[None], dense_shape=[1])
 
     # Explicit shape invariant, allowing any rank; b1 only modifies values.
     _, r = control_flow_ops.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None])])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
 
     # Explicit shape invariant, allowing any rank; b3 modifies rank.
     _, r = control_flow_ops.while_loop(
         c, b3, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None])])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
 
     # Shape invariant with ndims=None.  Technically, this isn't supported
     # according to the docs, but we support it for backwards compatibility.
     _, r = control_flow_ops.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape(None)])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
     _, r = control_flow_ops.while_loop(
         c, b3, [i, x],
         [i.get_shape(), tensor_shape.TensorShape(None)])
-    self.assertEqual(r.indices.get_shape().as_list(), [None, None])
-    self.assertEqual(r.values.get_shape().as_list(), [None])
-    self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
+    check_shapes(r, indices=[None, None], values=[None], dense_shape=[None])
+
+  @test_util.disable_control_flow_v2("b/131265085")
+  @test_util.run_v1_only("b/131265085")
+  def testWhileBadShapeSparseTensor(self):
+    values = constant_op.constant([2.0, 4.0], name="values")
+    indices = constant_op.constant([[0], [3]],
+                                   dtype=dtypes.int64,
+                                   name="indices")
+    shape = constant_op.constant([10], dtype=dtypes.int64, name="dense_shape")
+    i = constant_op.constant(0)
+    x = sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
+    c = lambda i, _: i < 10
+    b1 = lambda i, x: [i+1, x]
+    def b2(i, x):  # modifies rank.  (shape of all components is changed.)
+      return [
+          i + 1,
+          sparse_tensor.SparseTensor(
+              array_ops.concat([x.indices, [[i], [i]]], axis=1), x.values * 2.0,
+              array_ops.concat([x.dense_shape, [10]], axis=0))
+      ]
 
     # Explicit shape invariant, with a specific (incompatible) rank.
     with self.assertRaisesRegexp(ValueError, "is not compatible with"):
-      _, r = control_flow_ops.while_loop(
+      control_flow_ops.while_loop(
           c, b1, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([5])])
 
-  @test_util.disable_control_flow_v2("b/116282023 (IndexedSlices)")
-  @test_util.run_v1_only("b/120545219")
+    # Default shape invariant, but b2 modifies rank (which is not allowed).
+    with self.assertRaises(ValueError):
+      control_flow_ops.while_loop(c, b2, [i, x])
+
   def testWhileShapeInferenceIndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant([[2.0, 4.0], [3.0, 5.0]], name="values")
@@ -1809,17 +1998,28 @@ class ControlFlowTest(test.TestCase):
           c, b, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
       self.assertEqual(r.dense_shape.get_shape()[0], 2)
-      self.assertEqual(r.values.get_shape().as_list(), [None, 2])
+      self.assertTrue(r.values.get_shape().is_compatible_with([None, 2]))
 
-      with self.assertRaisesRegexp(ValueError, "is not compatible with"):
-        _, r = control_flow_ops.while_loop(
-            c, b, [i, x],
-            [i.get_shape(), tensor_shape.TensorShape([None, 5])])
+  @test_util.disable_control_flow_v2("b/131265085")
+  @test_util.run_v1_only("b/131265085")
+  def testWhileBadShapeIndexedSlices(self):
+    values = constant_op.constant([2.0, 4.0], name="values")
+    indices = constant_op.constant([[0], [3]],
+                                   dtype=dtypes.int64,
+                                   name="indices")
+    shape = constant_op.constant([10], dtype=dtypes.int64, name="dense_shape")
+    i = constant_op.constant(0)
+    x = sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
+    c = lambda i, _: 10
+    b = lambda i, x: [i+1, x]
 
-  @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
+    # Explicit shape invariant, with a specific (incompatible) rank.
+    with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+      control_flow_ops.while_loop(
+          c, b, [i, x],
+          [i.get_shape(), tensor_shape.TensorShape([5])])
+
   def testWhileShapeInferenceRaggedTensor(self):
-    if context.executing_eagerly():
-      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
     c = lambda i, _: i < 10
@@ -1836,11 +2036,13 @@ class ControlFlowTest(test.TestCase):
           array_ops.concat([x, x], axis=0)
       ]
 
+    def check_shapes(r, values, splits):
+      self.assertTrue(r.values.shape.is_compatible_with(values))
+      self.assertTrue(r.row_splits.shape.is_compatible_with(splits))
+
     # Default shape invariant; b1 adds new values to rows.
     _, r = control_flow_ops.while_loop(c, b1, [i, x])
-    self.assertEqual(r.row_splits.shape.as_list(), [4])
-
-    self.assertTrue(r.values.shape.as_list() in ([6 * 2**10], [None]))
+    check_shapes(r, values=[None], splits=[4])
 
     # Default shape invariant; b2 adds new rows (not allowed).
     if not context.executing_eagerly():
@@ -1851,20 +2053,15 @@ class ControlFlowTest(test.TestCase):
     _, r = control_flow_ops.while_loop(
         c, b1, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None, None])])
-    self.assertTrue(r.row_splits.shape.as_list() in ([4], [None]))
-    self.assertTrue(r.values.shape.as_list() in ([6 * 2**10], [None]))
+    check_shapes(r, values=[None], splits=[None])
 
     # Explicit shape invariant; b2 adds new rows.
     _, r = control_flow_ops.while_loop(
         c, b2, [i, x],
         [i.get_shape(), tensor_shape.TensorShape([None, None])])
-    self.assertTrue(r.row_splits.shape.as_list() in ([3 * 2**10 + 1], [None]))
-    self.assertTrue(r.values.shape.as_list() in ([6 * 2**10], [None]))
+    check_shapes(r, values=[None], splits=[None])
 
-  @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensorRaggedRank2(self):
-    if context.executing_eagerly():
-      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[[1, 2], [3], [4, 5, 6]],
                                      [[], [8, 9, 10]]])
@@ -2545,6 +2742,20 @@ class ControlFlowTest(test.TestCase):
     self._testWhileGrad_Mul(use_gpu=True, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=True, p_iters=10)
 
+  def testWhileGradInControlDeps(self):
+
+    @def_function.function
+    def f():
+      x_init = constant_op.constant(2.)
+      loop_cond = lambda i, x: math_ops.less(i, 2)
+      loop_body = lambda i, x: [i + 1, x**2]
+      _, x = control_flow_ops.while_loop(loop_cond, loop_body, [0, x_init])
+      with ops.control_dependencies([x]):
+        (grad,) = gradients_impl.gradients(x, x_init)
+        return grad
+
+    self.assertAllEqual(f(), 4. * 2.**3)  # 4 * x_init ^ 3
+
   def _testNestedWhileCondWhileGrad(self, use_gpu):
 
     with self.cached_session(use_gpu=use_gpu):
@@ -2663,6 +2874,8 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
   def testWhileGrad_ResourceVarInLoopInFunctionCall(self):
+    if test.is_gpu_available():
+      self.skipTest("b/128635252")
 
     @def_function.function
     def foo(x, var):
@@ -3313,8 +3526,7 @@ class ControlFlowTest(test.TestCase):
     self.assertEqual(0, value_x)
     self.assertEqual(73, value_x_grad)
 
-  @test_util.disable_control_flow_v2("b/116282023 (IndexedSlices)")
-  @test_util.run_v1_only("b/120545219")
+  @test_util.deprecated_graph_mode_only
   def testWhileGrad_IndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -3336,8 +3548,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/116328420 (SparseTensor)")
-  @test_util.run_v1_only("b/120545219")
+  @test_util.deprecated_graph_mode_only
   def testWhileGrad_SparseTensor(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -3360,7 +3571,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r.values, values)[0]
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.deprecated_graph_mode_only
   def testCallGradInLoop(self):
     with self.cached_session() as sess:
       i0 = constant_op.constant(0)
@@ -4343,6 +4554,9 @@ class AssertTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGuardedAssertDoesNotCopyWhenTrue(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128646478 fails in opensource")
+
     with self.session(use_gpu=True) as sess:
       with ops.device(test.gpu_device_name()):
         value = constant_op.constant(1.0)
@@ -4374,7 +4588,8 @@ class AssertTest(test.TestCase):
       ]
       if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
         # A copy was performed for the unguarded assert
-        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
+        self.assertLess(0, len(unguarded_memcpy_nodestat_names),
+                        str(unguarded_nodestat_names))
       # No copy was performed for the guarded assert
       self.assertEqual([], guarded_memcpy_nodestat_names)
 

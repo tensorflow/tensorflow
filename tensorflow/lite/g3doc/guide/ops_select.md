@@ -15,7 +15,7 @@ please send feedback about models that work and issues you are facing to
 tflite@tensorflow.org.
 
 TensorFlow Lite will continue to have
-[TensorFlow Lite builtin ops](tf_ops_compatibility.md) optimized for mobile and
+[TensorFlow Lite builtin ops](ops_compatibility.md) optimized for mobile and
 embedded devices. However, TensorFlow Lite models can now use a subset of
 TensorFlow ops when TFLite builtin ops are not sufficient.
 
@@ -34,7 +34,7 @@ choice. It also discusses some [known limitations](#known-limitations), the
 
 To convert a TensorFlow model to a TensorFlow Lite model with TensorFlow ops,
 use the `target_ops` argument in the
-[TensorFlow Lite converter](https://www.tensorflow.org/lite/convert/). The
+[TensorFlow Lite converter](../convert/). The
 following values are valid options for `target_ops`:
 
 *   `TFLITE_BUILTINS` - Converts models using TensorFlow Lite builtin ops.
@@ -64,7 +64,7 @@ open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
 The following example shows how to use `target_ops` in the
-[`tflite_convert`](https://www.tensorflow.org/lite/convert/cmdline_examples)
+[`tflite_convert`](../convert/cmdline_examples.md)
 command line tool.
 
 ```
@@ -97,7 +97,7 @@ includes the necessary library of TensorFlow ops.
 ### Android AAR
 
 A new Android AAR target with select TensorFlow ops has been added for
-convenience. Assuming a <a href="./demo_android.md">working TensorFlow Lite
+convenience. Assuming a <a href="android.md">working TensorFlow Lite
 build environment</a>, build the Android AAR with select TensorFlow ops as
 follows:
 

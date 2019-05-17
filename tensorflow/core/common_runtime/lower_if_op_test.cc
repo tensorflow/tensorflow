@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/lower_if_while.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -43,12 +43,22 @@ AttrValue FuncAttr(const string& name) {
   return attr;
 }
 
+SessionOptions SessionOptionsWithInlining() {
+  SessionOptions session_options;
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+  return session_options;
+}
+
 Status Rewrite(std::unique_ptr<Graph>* graph) {
   FunctionLibraryDefinition flib_def((*graph)->flib_def());
   GraphOptimizationPassOptions opt_options;
+  SessionOptions session_options = SessionOptionsWithInlining();
+  opt_options.session_options = &session_options;
   opt_options.graph = graph;
   opt_options.flib_def = &flib_def;
-  LowerIfWhilePass pass;
+  LowerFunctionalOpsPass pass;
   return pass.Run(opt_options);
 }
 
@@ -64,18 +74,19 @@ TEST(LowerIfOpTest, Simple) {
   // single input `A`.
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
-  auto pred = ops::_Arg(root.WithOpName("pred"), DT_BOOL, 1);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
   Node* written_if;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
-  TF_ASSERT_OK(NodeBuilder("if", "If", &root.graph()->flib_def())
-                   .Input(pred.node())
-                   .Input(inputs)
-                   .Attr("then_branch", FuncAttr("XTimesTwo"))
-                   .Attr("else_branch", FuncAttr("XTimesFour"))
-                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
-                   .Attr("Tout", {DT_INT32})
-                   .Finalize(root.graph(), &written_if));
+  TF_ASSERT_OK(
+      NodeBuilder("if", "If", &root.graph()->flib_def())
+          .Input(pred.node())
+          .Input(inputs)
+          .Attr("then_branch", FuncAttr("XTimesTwo"))
+          .Attr("else_branch", FuncAttr("XTimesFour"))
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Attr("Tout", {DT_INT32})
+          .Finalize(root.graph(), &written_if));
   TF_ASSERT_OK(root.DoShapeInference(written_if));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
@@ -117,7 +128,7 @@ TEST(LowerIfOpTest, Simple) {
   ASSERT_EQ(node_called_if_count, 1);
 
   // Verify execution.
-  ClientSession session(root);
+  ClientSession session(root, SessionOptionsWithInlining());
   {
     ClientSession::FeedType feeds;
     feeds.emplace(Output(pred.node()), Input::Initializer(false));
@@ -178,23 +189,24 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
 
-  auto pred = ops::_Arg(root.WithOpName("pred"), DT_BOOL, 0);
-  auto initial_val = ops::_Arg(root.WithOpName("initial_val"), DT_INT32, 1);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
+  auto initial_val = ops::Placeholder(root.WithOpName("initial_val"), DT_INT32);
 
   auto var = ops::VarHandleOp(root.WithOpName("var"), DT_INT32, {});
   auto init = ops::AssignVariableOp(root.WithOpName("init"), var, initial_val);
 
   Node* if_node;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(var.node())});
-  TF_ASSERT_OK(NodeBuilder("if", "If", &root.graph()->flib_def())
-                   .Input(pred.node())
-                   .Input(inputs)
-                   .ControlInput(init.operation.node())
-                   .Attr("then_branch", FuncAttr("AddOne"))
-                   .Attr("else_branch", FuncAttr("AddTwo"))
-                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
-                   .Attr("Tout", DataTypeSlice{})
-                   .Finalize(root.graph(), &if_node));
+  TF_ASSERT_OK(
+      NodeBuilder("if", "If", &root.graph()->flib_def())
+          .Input(pred.node())
+          .Input(inputs)
+          .ControlInput(init.operation.node())
+          .Attr("then_branch", FuncAttr("AddOne"))
+          .Attr("else_branch", FuncAttr("AddTwo"))
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Attr("Tout", DataTypeSlice{})
+          .Finalize(root.graph(), &if_node));
 
   auto read = ops::ReadVariableOp(
       root.WithOpName("read").WithControlDependencies(Output(if_node)), var,
@@ -206,8 +218,6 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   TF_ASSERT_OK(Rewrite(&graph));
 
   // Verify the resultant graph has switch, merge and function call nodes.
-  // TODO(ezhulenev): Inlining functions with empty outputs leads to undefined
-  // graph execution.
   int switch_count = 0;
   int merge_count = 0;
   int node_called_if_count = 0;
@@ -221,10 +231,11 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
   ASSERT_EQ(switch_count, 2);
   // One merge for the else/then branch (`branch_executed` node).
   ASSERT_EQ(merge_count, 1);
+  // We keep a NoOp with the same name as original If node.
   ASSERT_EQ(node_called_if_count, 1);
 
   // Verify execution.
-  ClientSession session(root);
+  ClientSession session(root, SessionOptionsWithInlining());
   {
     ClientSession::FeedType feeds;
     feeds.emplace(Output(pred.node()), Input::Initializer(true));
@@ -244,6 +255,87 @@ TEST(LowerIfOpTest, BranchFunctionsWithoutOutputs) {
     TF_ASSERT_OK(session.Run(feeds, {Output(read)}, &out_tensors));
     EXPECT_EQ(out_tensors.size(), 1);
     EXPECT_EQ(out_tensors[0].scalar<int>()(), 12);
+  }
+}
+
+TEST(LowerIfOpTest, DoNotInlineLoweredFunction) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  FunctionDef x_times_two = test::function::XTimesTwo();
+  FunctionDef x_times_four = test::function::XTimesFour();
+
+  // If `then` and `else` nodes can't be inlined.
+  (*x_times_two.mutable_attr())["_noinline"].set_b(true);
+  (*x_times_four.mutable_attr())["_noinline"].set_b(true);
+
+  // Add test functions for then and else branch.
+  FunctionDefLibrary f_lib_proto;
+  *(f_lib_proto.add_function()) = x_times_two;
+  *(f_lib_proto.add_function()) = x_times_four;
+
+  // Construct simple conditional that switches on `pred` and operates only on
+  // single input `A`.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  auto pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
+  Node* written_if;
+  std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
+  AttrValue tb;
+  tb.mutable_func()->set_name("XTimesTwo");
+  AttrValue eb;
+  eb.mutable_func()->set_name("XTimesFour");
+  TF_ASSERT_OK(
+      NodeBuilder("if", "If", &root.graph()->flib_def())
+          .Input(pred.node())
+          .Input(inputs)
+          .Attr("then_branch", tb)
+          .Attr("else_branch", eb)
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Attr("Tout", {DT_INT32})
+          .Finalize(root.graph(), &written_if));
+  TF_ASSERT_OK(root.DoShapeInference(written_if));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  // Verify that If node was lowered but branch functions were not inlined.
+  int x_times_two_count = 0;
+  int x_times_four_count = 0;
+
+  for (const auto* op : graph->op_nodes()) {
+    if (op->type_string() == x_times_two.signature().name()) {
+      x_times_two_count++;
+    }
+    if (op->type_string() == x_times_four.signature().name()) {
+      x_times_four_count++;
+    }
+    ASSERT_NE(op->type_string(), "If");
+  }
+
+  // One function for 'then' branch and one for 'else' branch.
+  ASSERT_EQ(x_times_two_count, 1);
+  ASSERT_EQ(x_times_four_count, 1);
+
+  // Verify execution.
+  ClientSession session(root, SessionOptionsWithInlining());
+  {
+    ClientSession::FeedType feeds;
+    feeds.emplace(Output(pred.node()), Input::Initializer(false));
+    feeds.emplace(Output(a.node()), Input::Initializer(10));
+    std::vector<Tensor> out_tensors;
+    TF_ASSERT_OK(session.Run(feeds, {Output(written_if)}, &out_tensors));
+    EXPECT_EQ(out_tensors.size(), 1);
+    EXPECT_EQ(out_tensors[0].scalar<int>()(), 40);
+  }
+  {
+    ClientSession::FeedType feeds;
+    feeds.emplace(Output(pred.node()), Input::Initializer(true));
+    feeds.emplace(Output(a.node()), Input::Initializer(10));
+    std::vector<Tensor> out_tensors;
+    TF_ASSERT_OK(session.Run(feeds, {Output(written_if)}, &out_tensors));
+    EXPECT_EQ(out_tensors.size(), 1);
+    EXPECT_EQ(out_tensors[0].scalar<int>()(), 20);
   }
 }
 

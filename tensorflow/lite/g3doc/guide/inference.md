@@ -1,16 +1,15 @@
 # TensorFlow Lite inference
 
-[TOC]
+The term *inference* refers to the process of executing a TensorFlow Lite model
+on-device in order to make predictions based on input data. Inference is the
+final step in using the model on-device.
 
-## Overview
+Inference for TensorFlow Lite models is run through an interpreter. The
+TensorFlow Lite interpreter is designed to be lean and fast. The interpreter
+uses a static graph ordering and a custom (less-dynamic) memory allocator to
+ensure minimal load, initialization, and execution latency.
 
-TensorFlow Lite inference is the process of executing a TensorFlow Lite
-model on-device and extracting meaningful results from it. Inference is the
-final step in using the model on-device in the
-[architecture](./index.md#tensorflow_lite_architecture).
-
-Inference for TensorFlow Lite models is run through an interpreter. This
-document outlines the various APIs for the interpreter along with the
+This document outlines the various APIs for the interpreter, along with the
 [supported platforms](#supported-platforms).
 
 ### Important Concepts
@@ -43,22 +42,30 @@ TensorFlow Lite inference on device typically follows the following steps.
    present it to their user.
 
 ### Supported Platforms
+
 TensorFlow inference APIs are provided for most common mobile/embedded platforms
 such as Android, iOS and Linux.
 
 #### Android
+
 On Android, TensorFlow Lite inference can be performed using either Java or C++
 APIs. The Java APIs provide convenience and can be used directly within your
-Android Activity classes. The C++ APIs on the other hand may offer more
-flexibility and speed, but may require writing JNI wrappers to move data between
-Java and C++ layers. You can find an example [here](./android.md).
+Android Activity classes. The C++ APIs offer more flexibility and speed, but may
+require writing JNI wrappers to move data between Java and C++ layers.
+
+Visit the [Android quickstart](android.md) for a tutorial and example code.
 
 #### iOS
-TensorFlow Lite provides Swift/Objective C++ APIs for inference on iOS. An
-example can be found [here](./ios.md).
+
+TensorFlow Lite provides native iOS libraries written in
+[Swift](https://www.tensorflow.org/code/tensorflow/lite/experimental/swift)
+and
+[Objective-C](https://www.tensorflow.org/code/tensorflow/lite/experimental/objc).
+
+Visit the [iOS quickstart](ios.md) for a tutorial and example code.
 
 #### Linux
-On Linux platforms such as [Raspberry Pi](./build_rpi.md), TensorFlow Lite C++
+On Linux platforms such as [Raspberry Pi](build_rpi.md), TensorFlow Lite C++
 and Python APIs can be used to run inference.
 
 
@@ -72,7 +79,7 @@ should be no surprise that the APIs try to avoid unnecessary copies at the
 expense of convenience. Similarly, consistency with TensorFlow APIs was not an
 explicit goal and some variance is to be expected.
 
-There is also a [Python API for TensorFlow Lite](./../convert/python_api.md).
+There is also a [Python API for TensorFlow Lite](../convert/python_api.md).
 
 ### Loading a Model
 
@@ -205,7 +212,7 @@ where each entry in `inputs` corresponds to an input tensor and
 `map_of_indices_to_outputs` maps indices of output tensors to the corresponding
 output data. In both cases the tensor indices should correspond to the values
 given to the
-[TensorFlow Lite Optimized Converter](./../convert/cmdline_examples.md) when the
+[TensorFlow Lite Optimized Converter](../convert/cmdline_examples.md) when the
 model was created. Be aware that the order of tensors in `input` must match the
 order given to the `TensorFlow Lite Optimized Converter`.
 

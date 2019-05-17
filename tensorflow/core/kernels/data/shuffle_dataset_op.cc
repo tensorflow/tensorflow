@@ -63,7 +63,15 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64 Cardinality() const override {
+      if (count_ == -1 || input_->Cardinality() == kInfiniteCardinality) {
+        return kInfiniteCardinality;
+      } else if (input_->Cardinality() == kUnknownCardinality) {
+        return kUnknownCardinality;
+      } else {
+        return input_->Cardinality() * count_;
+      }
+    }
 
    protected:
     template <class T>
@@ -129,6 +137,10 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
                 ctx, this->prefix(), &input_impl_));
           }
           if (!end_of_input_sequence) {
+            if (num_elements_ == 0) {
+              VLOG(1) << "Starting to fill up shuffle buffer of size: "
+                      << this->dataset()->buffer_size_;
+            }
             this->RecordBufferEnqueue(ctx, input_element);
             buffer_[slices_.back()->end % this->dataset()->buffer_size_] =
                 std::move(input_element);
@@ -352,7 +364,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 buffer_size;
+    int64 buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(
@@ -625,7 +637,7 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 buffer_size;
+    int64 buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(
@@ -640,6 +652,10 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
 
     int64 count;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "count", &count));
+
+    OP_REQUIRES(ctx, count > 0 || count == -1,
+                errors::InvalidArgument(
+                    "count must be greater than zero or equal to -1."));
 
     // By TensorFlow convention, if both seeds are 0, then shuffling should be
     // seeded non-deterministically.

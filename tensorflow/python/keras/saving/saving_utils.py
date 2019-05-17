@@ -18,13 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import nest
 
 
 def extract_model_metrics(model):
-  """Convert metrics from a Keras model to (value, update) ops.
+  """Convert metrics from a Keras model `compile` API to dictionary.
 
   This is used for converting Keras models to Estimators and SavedModels.
 
@@ -32,20 +34,16 @@ def extract_model_metrics(model):
     model: A `tf.keras.Model` object.
 
   Returns:
-    Dictionary mapping metric names to tuples of (value, update) ops. May return
-    `None` if the model does not contain any metrics.
+    Dictionary mapping metric names to metric instances. May return `None` if
+    the model does not contain any metrics.
   """
-  from tensorflow.python.keras import metrics  # pylint: disable=g-import-not-at-top
   if not getattr(model, '_compile_metrics', None):
     return None
 
   # TODO(psv/kathywu): use this implementation in model to estimator flow.
-  eval_metric_ops = {}
-  for metric_name in model.metrics_names[1:]:  # Index 0 is `loss`.
-    m = metrics.Mean()
-    m(model._compile_metrics_tensors[metric_name])
-    eval_metric_ops[metric_name] = m
-  return eval_metric_ops
+  # We are not using model.metrics here because we want to exclude the metrics
+  # added using `add_metric` API.
+  return {m.name: m for m in model._compile_metric_functions}
 
 
 def trace_model_call(model, input_signature=None):
@@ -76,14 +74,23 @@ def trace_model_call(model, input_signature=None):
           'set. Usually, input shapes are automatically determined from calling'
           ' .fit() or .predict(). To manually set the shapes, call '
           'model._set_inputs(inputs).'.format(model))
-    input_specs = []
-    for input_tensor, input_name in zip(inputs, input_names):
-      input_specs.append(tensor_spec.TensorSpec(
+    flat_inputs = nest.flatten(inputs)
+    flat_input_names = nest.flatten(input_names)
+    flat_input_specs = []
+    for input_tensor, input_name in zip(flat_inputs, flat_input_names):
+      flat_input_specs.append(tensor_spec.TensorSpec(
           shape=input_tensor.shape, dtype=input_tensor.dtype,
           name=input_name))
+    input_specs = nest.pack_sequence_as(structure=inputs,
+                                        flat_sequence=flat_input_specs)
     # The input signature of the call function is a list with one element, since
-    # all tensor inputs must be passed in as the first argument.
-    input_signature = [input_specs] if len(input_specs) > 1 else input_specs
+    # all tensor inputs must be passed in as the first argument. Single-element
+    # dictionaries and other non-sequence types must also be wrapped.
+    if (len(input_specs) > 1
+        or not isinstance(input_specs, collections.Sequence)):
+      input_signature = [input_specs]
+    else:
+      input_signature = input_specs
 
   # TODO(mdan): Should the model's call be autographed by default?
   @def_function.function(input_signature=input_signature, autograph=False)

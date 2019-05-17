@@ -11,7 +11,7 @@ ifeq ($(TARGET),aarch64)
     -ftree-vectorize \
     -fPIC
 
-  CCFLAGS += \
+  CFLAGS += \
     -march=armv8-a \
     -funsafe-math-optimizations \
     -ftree-vectorize \

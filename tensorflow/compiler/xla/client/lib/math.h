@@ -101,6 +101,9 @@ XlaOp Sinh(XlaOp x);
 // is true, otherwise returns its argument.
 xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);
 
+// Computes the logistic function: logistic(x) = 0.5 + 0.5 * tanh(0.5 * x).
+XlaOp Logistic(XlaOp x);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_

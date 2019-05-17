@@ -94,7 +94,7 @@ Status EstimateEarliestExecutionTimes(
   GraphProperties properties(item);
   TF_RETURN_IF_ERROR(properties.InferStatically(true));
   OpLevelCostEstimator estimator;
-  VirtualPlacer placer(cluster);
+  VirtualPlacer placer(cluster->GetDevices());
 
   while (!ready_nodes.empty()) {
     const NodeDef* node = ready_nodes.front();
@@ -162,7 +162,7 @@ Status EstimateRequiredTimes(
   GraphProperties properties(item);
   TF_RETURN_IF_ERROR(properties.InferStatically(true));
   OpLevelCostEstimator estimator;
-  VirtualPlacer placer(cluster);
+  VirtualPlacer placer(cluster->GetDevices());
 
   while (!ready_nodes.empty()) {
     const NodeDef* node = ready_nodes.front();

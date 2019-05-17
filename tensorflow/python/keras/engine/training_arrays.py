@@ -29,7 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
@@ -72,7 +72,11 @@ def model_iteration(model,
       sample_weights: Optional list of sample weight arrays.
       batch_size: Integer batch size or None if unknown.
       epochs: Number of times to iterate over the data
-      verbose: Verbosity mode, 0, 1 or 2
+      verbose: 0, 1, or 2. Verbosity mode.
+        0 = silent, 1 = progress bar, 2 = one line per epoch.
+        Note that the progress bar is not particularly useful when
+        logged to a file, so verbose=2 is recommended when not running
+        interactively (eg, in a production environment).
       callbacks: List of callbacks to be called during training
       val_inputs: Either a list or dictionary of arrays, or a dataset instance.
       val_targets: List/dictionary of target arrays.
@@ -140,12 +144,14 @@ def model_iteration(model,
   if mode == ModeKeys.TRAIN:
     _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
 
-  # Enter DistributionStrategy scope.
+  # Enter tf.distribute.Strategy scope.
   if model._distribution_strategy:
     scope = distributed_training_utils.distributed_scope(
         strategy=model._distribution_strategy,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
+
+  model._update_sample_weight_modes(sample_weights=sample_weights)
 
   # Get step function and loop type.
   f = _make_execution_function(model, mode)
@@ -166,6 +172,9 @@ def model_iteration(model,
     ins = inputs
   else:
     ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
+    # `ins` is a function when a distribute strategy is used in Eager mode.  In
+    # that case `is_dataset` is True.  The code branches that have requirements
+    # about the type of `ins` do not trigger in the distributed case.
   if not is_dataset:
     num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                      steps_per_epoch)
@@ -230,6 +239,8 @@ def model_iteration(model,
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
 
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break
@@ -258,7 +269,7 @@ def model_iteration(model,
 
         # Get outputs.
         try:
-          # `ins` can be callable in DistributionStrategy + eager case.
+          # `ins` can be callable in tf.distribute.Strategy + eager case.
           actual_inputs = ins() if callable(ins) else ins
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
@@ -298,7 +309,7 @@ def model_iteration(model,
           batch_outs = [batch_outs]
 
         if model._distribution_strategy:
-          batch_outs = distributed_training_utils._per_device_aggregate_batch(
+          batch_outs = distributed_training_utils._per_replica_aggregate_batch(
               batch_outs, model, mode)
 
         # Aggregate results.
@@ -476,7 +487,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     # in Distribution Strategy case as it follows the same code path for both
     # eager and graph modes.
     # TODO(priyag,omalleyt): Either we should move the training DS with
-    # EagerIterator to use training_generator code path, or figure out how to
+    # IteratorV2 to use training_generator code path, or figure out how to
     # set a symbolic Iterator out of a Dataset when in eager mode.
     if context.executing_eagerly():
       return get_distributed_inputs

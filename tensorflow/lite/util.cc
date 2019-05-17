@@ -24,7 +24,8 @@ bool IsFlexOp(const char* custom_name) {
 }
 
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
-  return ConvertArrayToTfLiteIntArray(input.size(), input.data());
+  return ConvertArrayToTfLiteIntArray(static_cast<int>(input.size()),
+                                      input.data());
 }
 
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims) {

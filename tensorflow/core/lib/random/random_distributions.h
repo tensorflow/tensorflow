@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 #define TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
+#include <string.h>
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <cmath>
 #undef _USE_MATH_DEFINES
 
-#include <string.h>
 #include <algorithm>
 #include <type_traits>
 
@@ -235,6 +236,73 @@ class UniformDistribution<Generator, int64> {
   int64 lo_;
   uint64 range_;
 };
+
+// Similar to `UniformDistribution`, except that instead of generating numbers
+// in the range [low, high), it generates numbers covering the whole range of
+// the integer type.
+template <typename Generator, typename IntType>
+class UniformFullIntDistribution;
+
+template <typename Generator, typename IntType>
+class UniformFullIntDistribution32 {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<IntType, kResultElementCount> ResultType;
+  typedef IntType ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      result[i] = sample[i];
+    }
+    return result;
+  }
+};
+
+template <typename Generator, typename IntType>
+class UniformFullIntDistribution64 {
+ public:
+  // The number of elements that will be returned.
+  static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
+  // Indicate that this distribution may take variable number of samples
+  // during the runtime.
+  static const bool kVariableSamplesPerOutput = false;
+  typedef Array<IntType, kResultElementCount> ResultType;
+  typedef IntType ResultElementType;
+
+  PHILOX_DEVICE_INLINE
+  ResultType operator()(Generator* gen) {
+    typename Generator::ResultType sample = (*gen)();
+    ResultType result;
+    for (int i = 0; i < kResultElementCount; ++i) {
+      result[i] = sample[2 * i] | static_cast<uint64>(sample[2 * i + 1]) << 32;
+    }
+    return result;
+  }
+};
+
+template <typename Generator>
+class UniformFullIntDistribution<Generator, int32>
+    : public UniformFullIntDistribution32<Generator, int32> {};
+template <typename Generator>
+class UniformFullIntDistribution<Generator, uint32>
+    : public UniformFullIntDistribution32<Generator, uint32> {};
+template <typename Generator>
+class UniformFullIntDistribution<Generator, int64>
+    : public UniformFullIntDistribution64<Generator, int64> {};
+template <typename Generator>
+class UniformFullIntDistribution<Generator, uint64>
+    : public UniformFullIntDistribution64<Generator, uint64> {};
 
 // A class that adapts the underlying native multiple samples to return a single
 // sample at a time.

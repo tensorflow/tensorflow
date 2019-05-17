@@ -78,6 +78,102 @@ struct ReduceAndReshape {
       const Eigen::DSizes<Eigen::DenseIndex, REDUCEDNDIM>& reduce_dim,
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& reshape_dim) const;
 };
+
+// Explicit instantiations are defined in tile_ops_{cpu,gpu}_impl.*,
+// below are their declarations.
+
+#ifdef GOOGLE_CUDA
+extern template struct Tile<GPUDevice, bool, int32>;
+extern template struct Tile<GPUDevice, bool, int64>;
+extern template struct Tile<GPUDevice, float, int32>;
+extern template struct Tile<GPUDevice, float, int64>;
+extern template struct Tile<GPUDevice, double, int32>;
+extern template struct Tile<GPUDevice, double, int64>;
+extern template struct Tile<GPUDevice, complex64, int32>;
+extern template struct Tile<GPUDevice, complex64, int64>;
+extern template struct Tile<GPUDevice, complex128, int32>;
+extern template struct Tile<GPUDevice, complex128, int64>;
+extern template struct Tile<GPUDevice, Eigen::half, int32>;
+extern template struct Tile<GPUDevice, Eigen::half, int64>;
+extern template struct Tile<GPUDevice, int16, int32>;
+extern template struct Tile<GPUDevice, int16, int64>;
+extern template struct Tile<GPUDevice, int32, int32>;
+extern template struct Tile<GPUDevice, int32, int64>;
+extern template struct Tile<GPUDevice, int64, int32>;
+extern template struct Tile<GPUDevice, int64, int64>;
+#define DECLARE_CUDA_DIM(T, NDIM)                      \
+  extern template struct TileGrad<GPUDevice, T, NDIM>; \
+  extern template struct ReduceAndReshape<GPUDevice, T, NDIM, 1>
+#else  // GOOGLE_CUDA
+#define DECLARE_CUDA_DIM(T, NDIM)
+#endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define DECLARE_TYPE(T)                              \
+  extern template struct Tile<SYCLDevice, T, int32>; \
+  extern template struct Tile<SYCLDevice, T, int64>;
+TF_CALL_bool(DECLARE_TYPE);
+TF_CALL_float(DECLARE_TYPE);
+TF_CALL_bfloat16(DECLARE_TYPE);
+TF_CALL_double(DECLARE_TYPE);
+TF_CALL_uint8(DECLARE_TYPE);
+TF_CALL_int32(DECLARE_TYPE);
+TF_CALL_int16(DECLARE_TYPE);
+TF_CALL_int64(DECLARE_TYPE);
+#undef DECLARE_TYPE
+#define DECLARE_SYCL_DIM(T, NDIM)                       \
+  extern template struct TileGrad<SYCLDevice, T, NDIM>; \
+  extern template struct ReduceAndReshape<SYCLDevice, T, NDIM, 1>
+#else  // TENSORFLOW_USE_SYCL
+#define DECLARE_SYCL_DIM(T, NDIM)
+#endif  // TENSORFLOW_USE_SYCL
+
+#define DECLARE_TYPE(T)                             \
+  extern template struct Tile<CPUDevice, T, int32>; \
+  extern template struct Tile<CPUDevice, T, int64>;
+TF_CALL_bool(DECLARE_TYPE);
+TF_CALL_float(DECLARE_TYPE);
+TF_CALL_bfloat16(DECLARE_TYPE);
+TF_CALL_double(DECLARE_TYPE);
+TF_CALL_uint8(DECLARE_TYPE);
+TF_CALL_int32(DECLARE_TYPE);
+TF_CALL_int16(DECLARE_TYPE);
+TF_CALL_int64(DECLARE_TYPE);
+TF_CALL_half(DECLARE_TYPE);
+TF_CALL_complex64(DECLARE_TYPE);
+TF_CALL_complex128(DECLARE_TYPE);
+TF_CALL_string(DECLARE_TYPE);
+#undef DECLARE_TYPE
+
+#define DECLARE_DIM(T, NDIM)                           \
+  DECLARE_CUDA_DIM(T, NDIM);                           \
+  DECLARE_SYCL_DIM(T, NDIM);                           \
+  extern template struct TileGrad<CPUDevice, T, NDIM>; \
+  extern template struct ReduceAndReshape<CPUDevice, T, NDIM, 1>;
+
+#define DECLARE_TYPE(T) \
+  DECLARE_DIM(T, 1)     \
+  DECLARE_DIM(T, 2)     \
+  DECLARE_DIM(T, 3)     \
+  DECLARE_DIM(T, 4)     \
+  DECLARE_DIM(T, 5)     \
+  DECLARE_DIM(T, 6)     \
+  DECLARE_DIM(T, 7)
+TF_CALL_float(DECLARE_TYPE);
+TF_CALL_bfloat16(DECLARE_TYPE);
+TF_CALL_double(DECLARE_TYPE);
+TF_CALL_int16(DECLARE_TYPE);
+TF_CALL_int32(DECLARE_TYPE);
+TF_CALL_int64(DECLARE_TYPE);
+TF_CALL_half(DECLARE_TYPE);
+TF_CALL_complex64(DECLARE_TYPE);
+TF_CALL_complex128(DECLARE_TYPE);
+#undef DECLARE_TYPE
+
+#undef DECLARE_DIM
+#undef DECLARE_SYCL_DIM
+#undef DECLARE_CUDA_DIM
+
 }  // namespace functor
 
 // --------------------------------------------------------------------------
@@ -140,6 +236,7 @@ class TileOp : public OpKernel {
     TF_CALL_float(HANDLE_TYPE_NAME);
     TF_CALL_double(HANDLE_TYPE_NAME);
     TF_CALL_uint8(HANDLE_TYPE_NAME);
+    TF_CALL_int8(HANDLE_TYPE_NAME);
     TF_CALL_int32(HANDLE_TYPE_NAME);
     TF_CALL_int16(HANDLE_TYPE_NAME);
     TF_CALL_int64(HANDLE_TYPE_NAME);
@@ -218,6 +315,7 @@ TF_CALL_float(HANDLE_TYPE_NAME_CPU);
 TF_CALL_bfloat16(HANDLE_TYPE_NAME_CPU);
 TF_CALL_double(HANDLE_TYPE_NAME_CPU);
 TF_CALL_uint8(HANDLE_TYPE_NAME_CPU);
+TF_CALL_int8(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int32(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int16(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int64(HANDLE_TYPE_NAME_CPU);

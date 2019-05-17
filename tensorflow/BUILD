@@ -15,6 +15,7 @@ exports_files([
     "leakr_file_type_recipe.ftrcp",
 ])
 
+load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
@@ -163,7 +164,7 @@ config_setting(
     name = "macos",
     values = {
         "apple_platform_type": "macos",
-        "cpu": "darwin_x86_64",
+        "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
 )
@@ -180,6 +181,12 @@ config_setting(
         "crosstool_top": "//tools/osx/crosstool:crosstool",
         "cpu": "ios_x86_64",
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    values = {"cpu": "aarch64"},
     visibility = ["//visibility:public"],
 )
 
@@ -326,6 +333,18 @@ config_setting(
 )
 
 config_setting(
+    name = "macos_with_framework_shared_object",
+    define_values = {
+        "framework_shared_object": "true",
+    },
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "using_cuda_clang",
     define_values = {
         "using_cuda_clang": "true",
@@ -407,9 +426,15 @@ config_setting(
     values = {"cpu": "x64_windows"},
 )
 
+# DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
+# Instead, please use public APIs or public build rules TF provides.
+# If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//tensorflow/...",
+        "//tensorflow_estimator/python/estimator/...",
+    ],
 )
 
 load(
@@ -467,7 +492,7 @@ cc_library(
 # projects building with Bazel and importing TensorFlow as a dependency will not
 # depend on libtensorflow_framework.so unless they opt in.
 tf_cc_shared_object(
-    name = "libtensorflow_framework.so",
+    name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [],
@@ -477,8 +502,11 @@ tf_cc_shared_object(
         ],
     }),
     linkstatic = 1,
+    per_os_targets = True,
+    soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:gpu_runtime_impl",
@@ -508,7 +536,6 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
-            "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [
         ],
@@ -518,6 +545,7 @@ tf_cc_shared_object(
         ],
     }),
     per_os_targets = True,
+    soversion = VERSION,
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow
     win_def_file = select({
@@ -548,6 +576,7 @@ tf_cc_shared_object(
         ],
     }),
     per_os_targets = True,
+    soversion = VERSION,
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow_cc
     win_def_file = select({

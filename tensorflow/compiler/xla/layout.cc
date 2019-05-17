@@ -96,8 +96,13 @@ string Layout::ToString() const {
 }
 
 bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
-  if (lhs.format() != rhs.format() ||
-      lhs.minor_to_major() != rhs.minor_to_major() ||
+  if (lhs.format() != rhs.format()) {
+    return false;
+  }
+  if (lhs.format() == DENSE && lhs.minor_to_major() != rhs.minor_to_major()) {
+    return false;
+  }
+  if (lhs.format() == SPARSE &&
       lhs.max_sparse_elements() != rhs.max_sparse_elements()) {
     return false;
   }
