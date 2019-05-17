@@ -1131,7 +1131,7 @@ def _create_local_cuda_repository(repository_ctx):
         # switch it off for now.
         "-Wno-invalid-partial-specialization"
     """
-        cuda_defines["%{cxx_builtin_include_directories}"] = host_compiler_includes
+        cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes)
         cuda_defines["%{linker_files}"] = ":empty"
         cuda_defines["%{win_linker_files}"] = ":empty"
         repository_ctx.file(
