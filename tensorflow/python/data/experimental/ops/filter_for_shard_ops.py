@@ -35,7 +35,7 @@ def filter_for_shard(num_shards, shard_index):
 
   ```python
   d = tf.data.TFRecordDataset(FLAGS.input_file)
-  d = d.apply(tf.data.experimental.naive_shard(FLAGS.num_workers,
+  d = d.apply(tf.data.experimental.filter_for_shard(FLAGS.num_workers,
                                                FLAGS.worker_index))
   d = d.repeat(FLAGS.num_epochs)
   d = d.shuffle(FLAGS.shuffle_buffer_size)
@@ -54,7 +54,7 @@ def filter_for_shard(num_shards, shard_index):
 
   ```python
   d = Dataset.list_files(FLAGS.pattern)
-  d = d.apply(tf.data.experimental.naive_shard(FLAGS.num_workers,
+  d = d.apply(tf.data.experimental.filter_for_shard(FLAGS.num_workers,
                                                FLAGS.worker_index))
   d = d.repeat(FLAGS.num_epochs)
   d = d.shuffle(FLAGS.shuffle_buffer_size)
