@@ -988,17 +988,17 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
         operand_2_shape, operand_2_is_tensor, operand_2_batch_size);
 
     // operand_1 broadcast operand_2
-    ExpectStatus(GetTrtBroadcastShape(
-            operand_1, operand_2, &operand_1_new_dims, &operand_2_new_dims),
-        expected_code, expected_error_msg_substr);
+    ExpectStatus(GetTrtBroadcastShape(operand_1, operand_2, &operand_1_new_dims,
+                                      &operand_2_new_dims),
+                 expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
     }
     // operand_2 broadcast operand_1
-    ExpectStatus(GetTrtBroadcastShape(
-            operand_2, operand_1, &operand_2_new_dims, &operand_1_new_dims),
-        expected_code, expected_error_msg_substr);
+    ExpectStatus(GetTrtBroadcastShape(operand_2, operand_1, &operand_2_new_dims,
+                                      &operand_1_new_dims),
+                 expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);

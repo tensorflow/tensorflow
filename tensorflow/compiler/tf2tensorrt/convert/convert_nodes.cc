@@ -385,10 +385,10 @@ string DebugString(const nvinfer1::ITensor& tensor) {
                 ", dims=", DebugString(tensor.getDimensions()), ")");
 }
 
-Status GetTrtBroadcastShape(
-    const TRT_TensorOrWeights& operand_l, const TRT_TensorOrWeights& operand_r,
-    nvinfer1::Dims* operand_l_new_dims,
-    nvinfer1::Dims* operand_r_new_dims) {
+Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                            const TRT_TensorOrWeights& operand_r,
+                            nvinfer1::Dims* operand_l_new_dims,
+                            nvinfer1::Dims* operand_r_new_dims) {
   // TensorRT Elementwise op supports broadcast but requires both tensor to be
   // of Identical rank.
   // This function broadcasts the lower rank dimension across the higher rank
@@ -459,11 +459,10 @@ Status GetTrtBroadcastShape(
     if ((operand_l_new_dims->d[i] != operand_r_new_dims->d[i]) &&
         (operand_l_new_dims->d[i] != 1) && (operand_r_new_dims->d[i] != 1)) {
       return errors::InvalidArgument(
-          "Infeasible broadcast scheme (",
-          "batch_dim: ", operand_l_new_dims->d[0], ", ",
-          DebugString(*operand_l_new_dims), " vs ",
-          "batch_dim: ", operand_r_new_dims->d[0], ", ",
-          DebugString(*operand_r_new_dims), ")");
+          "Infeasible broadcast scheme (batch_dim: ", operand_l_new_dims->d[0],
+          ", ", DebugString(*operand_l_new_dims), " vs batch_dim: ",
+          operand_r_new_dims->d[0], ", ", DebugString(*operand_r_new_dims),
+          ")");
     }
   }
   return Status::OK();
@@ -3146,8 +3145,8 @@ Status ConvertBinary(OpConverterParams* params) {
 
   // Add ElementWise layer.
   nvinfer1::IElementWiseLayer* layer =
-      params->converter->network()->addElementWise(
-          *tensor_l, *tensor_r, op_pair->second);
+      params->converter->network()->addElementWise(*tensor_l, *tensor_r,
+                                                   op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   // Pass the output
@@ -3968,8 +3967,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
         params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
 
-  constexpr auto get_matrix_op =
-      [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
+  constexpr auto get_matrix_op = [](
+      nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
     return (in->getDimensions().nbDims < 2)
                ? nvinfer1::MatrixOperation::kVECTOR
                : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
@@ -3979,9 +3978,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   // If the MatMul operand is a constant, applies transposes at conversion-time
   // as necessary. If the operand is a tensor, does nothing. If required
   // transposes were applied, sets transpose to false.
-  const auto prepare_matmul_operand =
-      [&params](TRT_TensorOrWeights operand,
-                bool* transpose) -> nvinfer1::ITensor* {
+  const auto prepare_matmul_operand = [&params](
+      TRT_TensorOrWeights operand, bool* transpose) -> nvinfer1::ITensor* {
     if (operand.is_tensor()) {
       return operand.tensor();
     } else {
@@ -4055,29 +4053,29 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   const bool transpose_b = attrs.get<bool>("adj_y");
 
   // Removes the batch dimension from weights.
-  const auto remove_weights_batch_dim =
-      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
-        auto dims = input.GetTrtDims();
-        if (input.is_weights()) {
-          // The other operand must be a tensor, this is ensured by earlier
-          // checks. Checks that the batch dimension is not changed by
-          // broadcasting.
-          if (dims.d[0] != 1) {
-            return errors::InvalidArgument(
-                "Input weight attempts to broadcast across batch dimension for "
-                "BatchMatMul, at ",
-                params->node_def.name());
-          }
-          // Remove the batch dimension from the weights.
-          TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
-        }
-        // Create tensor and reshape if necessary.
-        nvinfer1::ITensor* t{nullptr};
-        TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-            input, dims, params->validation_only, &t));
-        *tensor = TRT_TensorOrWeights{t};
-        return Status::OK();
-      };
+  const auto remove_weights_batch_dim = [&params](
+      const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
+    auto dims = input.GetTrtDims();
+    if (input.is_weights()) {
+      // The other operand must be a tensor, this is ensured by earlier
+      // checks. Checks that the batch dimension is not changed by
+      // broadcasting.
+      if (dims.d[0] != 1) {
+        return errors::InvalidArgument(
+            "Input weight attempts to broadcast across batch dimension for "
+            "BatchMatMul, at ",
+            params->node_def.name());
+      }
+      // Remove the batch dimension from the weights.
+      TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
+    }
+    // Create tensor and reshape if necessary.
+    nvinfer1::ITensor* t{nullptr};
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        input, dims, params->validation_only, &t));
+    *tensor = TRT_TensorOrWeights{t};
+    return Status::OK();
+  };
 
   TRT_TensorOrWeights tensor_l{nullptr};
   TRT_TensorOrWeights tensor_r{nullptr};
