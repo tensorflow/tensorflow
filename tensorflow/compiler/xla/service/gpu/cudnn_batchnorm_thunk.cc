@@ -114,17 +114,19 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(variance_)),
-      operand_desc,                //
-      scale_offset_desc,           //
-      epsilon_,                    //
-      &output,                     //
-      /*batch_mean=*/nullptr,      //
-      /*batch_var=*/nullptr,       //
-      /*saved_mean=*/nullptr,      //
-      /*saved_inv_var=*/nullptr,   //
-      /*is_training=*/false,       //
-      /*var_to_inv_var=*/nullptr,  //
-      /*inv_var_to_var=*/nullptr);
+      operand_desc,                         //
+      scale_offset_desc,                    //
+      epsilon_,                             //
+      &output,                              //
+      /*batch_mean=*/nullptr,               //
+      /*batch_var=*/nullptr,                //
+      /*saved_mean=*/nullptr,               //
+      /*saved_inv_var=*/nullptr,            //
+      /*is_training=*/false,                //
+      /*var_to_inv_var=*/nullptr,           //
+      /*inv_var_to_var=*/nullptr,           //
+      /*reserve_space_allocator=*/nullptr,  //
+      /*workspace_allocator=*/nullptr);
 
   if (!stream->ok()) {
     return InternalError("BatchNormalizationForward call failed.");
@@ -196,7 +198,9 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       /*saved_inv_var=*/&output_inv_stddev,  //
       /*is_training=*/true,                  //
       /*var_to_inv_var=*/nullptr,            //
-      /*inv_var_to_var=*/nullptr);
+      /*inv_var_to_var=*/nullptr,            //
+      /*reserve_space_allocator=*/nullptr,   //
+      /*workspace_allocator=*/nullptr);
 
   // Write the tuple.
   void* ptrs[] = {output_data.opaque(), output_mean.opaque(),
@@ -272,7 +276,7 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(inv_stddev_)),
       operand_desc, scale_offset_desc, epsilon_, &output_grad_data,
-      &output_grad_scale, &output_grad_offset);
+      &output_grad_scale, &output_grad_offset, nullptr, nullptr);
 
   // Write the output tuple.
   void* ptrs[] = {output_grad_data.opaque(), output_grad_scale.opaque(),
