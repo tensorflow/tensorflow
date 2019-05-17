@@ -135,6 +135,11 @@ ENTRY c1 {
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], ip2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 2);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 // Check it goes through call sites
@@ -216,6 +221,13 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op0_sub, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1_sub, 0)));
 }
 
 // Check it works for multiple valid destinations (perferred one first)
@@ -337,6 +349,15 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op0_sub1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1_sub1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op0_sub2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1_sub2, 0)));
 }
 
 // Check it works for multiple valid destinations (perferred one second)
@@ -459,6 +480,15 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op0_sub1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1_sub1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op0_sub2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1_sub2, 0)));
 }
 
 // Check it works for constants
@@ -512,6 +542,11 @@ ENTRY c1 {
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 2);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 // Check it goes through Tuple/Detuple pairs
@@ -563,6 +598,15 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 3);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(in, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(w, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(tuple, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(tuple, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(in1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(w1, 0)));
 }
 
 // Check it can start from tuple subshapes
@@ -610,6 +654,13 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(in, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(in, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(in1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(w1, 0)));
 }
 
 // Check it goes through while instructions
@@ -621,9 +672,6 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
   Shape weight_shape = ShapeUtil::MakeShape(F32, {2, 2});
   Shape tuple_shape =
       ShapeUtil::MakeTupleShape({counter_shape, input_shape, weight_shape});
-
-  const HloInstruction* dot_inst;
-  const HloInstruction* body_param;
 
   /* Create while condition */
   HloComputation* comp_cond;
@@ -643,35 +691,30 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
 
   /* Create while body */
   HloComputation* comp_body;
-  {
-    auto builder_body = HloComputation::Builder(TestName());
-    auto tuple = builder_body.AddInstruction(
-        HloInstruction::CreateParameter(0, tuple_shape, "body_tuple"));
-    auto c = builder_body.AddInstruction(
-        HloInstruction::CreateGetTupleElement(counter_shape, tuple, 0));
-    auto in = builder_body.AddInstruction(
-        HloInstruction::CreateGetTupleElement(input_shape, tuple, 1));
-    auto w = builder_body.AddInstruction(
-        HloInstruction::CreateGetTupleElement(weight_shape, tuple, 2));
-    auto one = builder_body.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
-    auto new_c = builder_body.AddInstruction(
-        HloInstruction::CreateBinary(c->shape(), HloOpcode::kAdd, c, one));
+  auto builder_body = HloComputation::Builder(TestName());
+  auto tuple_body = builder_body.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_tuple"));
+  auto c_body = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(counter_shape, tuple_body, 0));
+  auto in_body = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(input_shape, tuple_body, 1));
+  auto w_body = builder_body.AddInstruction(
+      HloInstruction::CreateGetTupleElement(weight_shape, tuple_body, 2));
+  auto one = builder_body.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+  auto new_c_body = builder_body.AddInstruction(HloInstruction::CreateBinary(
+      c_body->shape(), HloOpcode::kAdd, c_body, one));
 
-    DotDimensionNumbers dot_dnums;
-    dot_dnums.add_lhs_contracting_dimensions(0);
-    dot_dnums.add_rhs_contracting_dimensions(0);
-    auto new_in = builder_body.AddInstruction(HloInstruction::CreateDot(
-        input_shape, in, w, dot_dnums, DefaultPrecisionConfig(2)));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(0);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot_inst = builder_body.AddInstruction(HloInstruction::CreateDot(
+      input_shape, in_body, w_body, dot_dnums, DefaultPrecisionConfig(2)));
 
-    dot_inst = new_in;
-    body_param = tuple;
+  builder_body.AddInstruction(
+      HloInstruction::CreateTuple({new_c_body, dot_inst, w_body}));
 
-    builder_body.AddInstruction(
-        HloInstruction::CreateTuple({new_c, new_in, w}));
-
-    comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
-  }
+  comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
 
   /* Create main computation */
   auto builder_main = HloComputation::Builder(TestName());
@@ -711,17 +754,28 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 4);
 
-  t = annotations.tensor_allocation_map.at(std::make_pair(body_param, 1));
+  t = annotations.tensor_allocation_map.at(std::make_pair(tuple_body, 1));
   EXPECT_EQ(t.tgt, dot_inst);
   EXPECT_EQ(t.input_index, 0ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 2);
 
-  t = annotations.tensor_allocation_map.at(std::make_pair(body_param, 2));
+  t = annotations.tensor_allocation_map.at(std::make_pair(tuple_body, 2));
   EXPECT_EQ(t.tgt, dot_inst);
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 8);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(in, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(w, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(init, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(init, 2)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(tuple_body, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(tuple_body, 2)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(in_body, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(w_body, 0)));
 }
 
 // Check it goes through repeat instructions
@@ -838,6 +892,9 @@ TEST_F(AllocationFinderTest, FindRepeatTensorAllocations) {
   EXPECT_EQ(t.input_index, 1ll);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 8);
 }
 
 // Check basic parameter matching
@@ -892,6 +949,12 @@ ENTRY c1 {
   EXPECT_EQ(t.backward_path.size(), 2);
   EXPECT_EQ(t.backward_path[0], ip1);
   EXPECT_EQ(t.backward_path[1], trans);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 3);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(trans, 0)));
 }
 
 // Check it goes through call sites
@@ -948,6 +1011,10 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
   EXPECT_EQ(t1.tgt, conv);
   EXPECT_EQ(t1.input_index, 1ll);
   EXPECT_EQ(t1.backward_path.size(), 1);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 1);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(op1, 0)));
 }
 
 TEST_F(AllocationFinderTest, BiasAdd1) {
@@ -1017,6 +1084,12 @@ ENTRY c1 {
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
   EXPECT_EQ(t.layout_output_idx, 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 3);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, BiasAddAndMultiply) {
@@ -1108,6 +1181,13 @@ ENTRY c1 {
   EXPECT_EQ(t.forward_path.size(), 1);
   EXPECT_EQ(t.forward_path[0], call);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest, BiasAddWithPath) {
@@ -1183,6 +1263,13 @@ ENTRY c1 {
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, MatMulBiasAdd) {
@@ -1251,6 +1338,12 @@ HloModule top
   EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 3);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest,
@@ -1311,6 +1404,11 @@ HloModule top
   ForwardAllocation fwd_finder(annotations);
   EXPECT_FALSE(fwd_finder.Run(module0).ValueOrDie());
   EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 2);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
 }
 
 TEST_F(AllocationFinderTest, MatMulBiasAddWithPath) {
@@ -1382,6 +1480,13 @@ HloModule top
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, BatchNormInfParams) {
@@ -1437,6 +1542,11 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg2.36.24: f32[2], arg3.36.25: f32[2], ar
   EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 2);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, ConstantInput) {
@@ -1510,6 +1620,13 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest, BatchNormInfParamsWithPath) {
@@ -1589,6 +1706,15 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest, BatchNormTrainingParams) {
@@ -1664,13 +1790,6 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
                          : arg0->users()[1];
   const auto* conv_ip0 = conv->operand(0);
   const auto* conv_ip1 = conv->operand(1);
-  const auto* conv_grad_call =
-      arg0->users()[0]->opcode() == HloOpcode::kConvolution ? arg0->users()[1]
-                                                            : arg0->users()[0];
-  const auto* conv_grad_comp = conv_grad_call->fused_instructions_computation();
-  const auto* conv_grad_ip0 = conv_grad_comp->parameter_instruction(1);
-  const auto* conv_grad_ip1 = conv_grad_comp->parameter_instruction(2);
-  const auto* conv_grad = conv_grad_ip1->users()[0];
   const auto* bn_tr =
       conv->users()[0]->opcode() == HloOpcode::kBatchNormTraining
           ? conv->users()[0]
@@ -1684,7 +1803,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(conv_ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1694,19 +1813,11 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_EQ(t.tgt, conv);
   EXPECT_EQ(t.input_index, 1);
 
-  t = annotations.tensor_allocation_map.at(std::make_pair(conv_grad_ip0, 0));
-  EXPECT_EQ(t.tgt, conv_grad);
-  EXPECT_EQ(t.input_index, 0);
-
-  t = annotations.tensor_allocation_map.at(std::make_pair(conv_grad_ip1, 0));
-  EXPECT_EQ(t.tgt, conv_grad);
-  EXPECT_EQ(t.input_index, 1);
-
   ForwardAllocation fwd_finder(annotations);
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 6);
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(bn_ip1, 0));
   EXPECT_EQ(t.tgt, bn_tr);
@@ -1723,6 +1834,13 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(conv_ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(conv_ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(bn_ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(bn_ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationMultipleUsesOneTarget) {
@@ -1818,6 +1936,15 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest,
@@ -1919,6 +2046,15 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest,
@@ -2019,6 +2155,15 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape2);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayout) {
@@ -2111,6 +2256,14 @@ ENTRY c1 {
   EXPECT_EQ(t.forward_path.size(), 1);
   EXPECT_EQ(t.forward_path[0], call);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 5);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2_r, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationDontLookThroughCasts) {
@@ -2194,6 +2347,13 @@ ENTRY c1 {
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], ip2_r);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2_r, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayoutWithGTE) {
@@ -2286,6 +2446,14 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   EXPECT_EQ(t.forward_path.size(), 1);
   EXPECT_EQ(t.forward_path[0], gte);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 5);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip4, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationCustomPoplibsOp) {
@@ -2361,6 +2529,13 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 4);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip3, 0)));
 }
 
 TEST_F(AllocationFinderTest, FindInfeedAllocation) {
@@ -2406,6 +2581,7 @@ ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
 
   const auto* root = module0->entry_computation()->root_instruction();
   const auto* repeat_loop = root->operand(0);
+  const auto* input_tuple = repeat_loop->operand(0);
   const auto* ip_weights = repeat_loop->operand(0)->operand(2);
   const auto* repeat_body = repeat_loop->to_apply();
   const auto* repeat_root = repeat_body->root_instruction();
@@ -2413,7 +2589,8 @@ ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
   const auto* convolution = reduce->operand(0);
   const auto* conv_input = convolution->operand(0);
   const auto* conv_weights = convolution->operand(1);
-  const auto* infeed = conv_input->operand(0)->operand(0);
+  const auto* infeed_gte = conv_input->operand(0);
+  const auto* infeed_tuple = infeed_gte->operand(0);
   const auto* repeat_tuple = conv_weights->operand(0);
 
   CompilerAnnotations annotations(module0);
@@ -2424,7 +2601,8 @@ ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
   // Will have both of the convolution parameters
   EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
 
-  auto t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 0));
+  auto t =
+      annotations.tensor_allocation_map.at(std::make_pair(infeed_tuple, 0));
   EXPECT_EQ(t.tgt, convolution);
   EXPECT_EQ(t.input_index, 0);
 
@@ -2435,6 +2613,16 @@ ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
   t = annotations.tensor_allocation_map.at(std::make_pair(repeat_tuple, 2));
   EXPECT_EQ(t.tgt, convolution);
   EXPECT_EQ(t.input_index, 1);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 7);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip_weights, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(input_tuple, 2)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(repeat_tuple, 2)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed_tuple, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed_gte, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(conv_input, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(conv_weights, 0)));
 }
 
 TEST_F(AllocationFinderTest, FindInfeedAllocationTuple) {
@@ -2484,7 +2672,9 @@ ENTRY %top () -> f32[] {
   const auto* reduce = repeat_root->operand(1);
   const auto* convolution = reduce->operand(0);
   const auto* conv_input = convolution->operand(0);
-  const auto* infeed = conv_input->operand(0)->operand(0);
+  const auto* conv_weights = convolution->operand(1);
+  const auto* infeed_gte = conv_input->operand(0);
+  const auto* infeed_tuple = infeed_gte->operand(0);
 
   CompilerAnnotations annotations(module0);
 
@@ -2494,13 +2684,23 @@ ENTRY %top () -> f32[] {
   // Will have both of the convolution parameters
   EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
-  auto t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 0));
+  auto t =
+      annotations.tensor_allocation_map.at(std::make_pair(infeed_tuple, 0));
   EXPECT_EQ(t.tgt, convolution);
   EXPECT_EQ(t.input_index, 0);
 
-  t = annotations.tensor_allocation_map.at(std::make_pair(infeed, 1));
+  t = annotations.tensor_allocation_map.at(std::make_pair(infeed_tuple, 1));
   EXPECT_EQ(t.tgt, convolution);
   EXPECT_EQ(t.input_index, 1);
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 6);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed_tuple, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed_tuple, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed_gte, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed_gte, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(conv_input, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(conv_weights, 0)));
 }
 
 TEST_F(AllocationFinderTest, InputTupleBiasAdd) {
@@ -2576,10 +2776,21 @@ HloModule top
   DeferredAllocationsPath expected_deferred_allocations_path = {
       std::make_pair(ip_tuple, 2)};
   EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path);
-  DeferredAllocations expected_deferred_allocations(
-      expected_deferred_allocations_path.begin(),
-      expected_deferred_allocations_path.end());
-  EXPECT_EQ(annotations.deferred_allocations, expected_deferred_allocations);
+
+  EXPECT_TRUE(annotations.deferred_allocations.contains(root->parent()));
+  EXPECT_TRUE(annotations.deferred_allocations[root->parent()].contains(
+      std::make_pair(ip_tuple, 2)));
+  EXPECT_EQ(annotations.deferred_allocations[root->parent()]
+                                            [std::make_pair(ip_tuple, 2)],
+            std::make_pair(gte2, 0ll));
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 5);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip_tuple, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip_tuple, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(gte0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(gte1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(gte2, 0)));
 }
 
 TEST_F(AllocationFinderTest, InputTupleInfeedBiasAdd) {
@@ -2657,10 +2868,23 @@ HloModule top
   DeferredAllocationsPath expected_deferred_allocations_path = {
       std::make_pair(ip_tuple, 2), std::make_pair(infeed, 2)};
   EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path);
-  DeferredAllocations expected_deferred_allocations(
-      expected_deferred_allocations_path.begin(),
-      expected_deferred_allocations_path.end());
-  EXPECT_EQ(annotations.deferred_allocations, expected_deferred_allocations);
+
+  EXPECT_TRUE(annotations.deferred_allocations.contains(root->parent()));
+  EXPECT_TRUE(annotations.deferred_allocations[root->parent()].contains(
+      std::make_pair(infeed, 2)));
+  EXPECT_EQ(annotations.deferred_allocations[root->parent()]
+                                            [std::make_pair(infeed, 2)],
+            std::make_pair(gte2, 0ll));
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 7);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(infeed, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip_tuple, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip_tuple, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(gte0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(gte1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(gte2, 0)));
 }
 
 TEST_F(AllocationFinderTest, NestedInputTupleBatchNormInfParamsWithPath) {
@@ -2755,13 +2979,28 @@ ENTRY %top (arg0: (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32
       std::make_pair(nested_tuple, 1), std::make_pair(arg_tuple, 3)};
   EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path1);
 
-  DeferredAllocations expected_deferred_allocations(
-      expected_deferred_allocations_path0.begin(),
-      expected_deferred_allocations_path0.end());
-  expected_deferred_allocations.insert(
-      expected_deferred_allocations_path1.begin(),
-      expected_deferred_allocations_path1.end());
-  EXPECT_EQ(annotations.deferred_allocations, expected_deferred_allocations);
+  EXPECT_TRUE(annotations.deferred_allocations.contains(root->parent()));
+  EXPECT_TRUE(annotations.deferred_allocations[root->parent()].contains(
+      std::make_pair(arg_tuple, 2)));
+  EXPECT_EQ(annotations.deferred_allocations[root->parent()]
+                                            [std::make_pair(arg_tuple, 2)],
+            std::make_pair(ip2_0, 0ll));
+  EXPECT_TRUE(annotations.deferred_allocations[root->parent()].contains(
+      std::make_pair(arg_tuple, 3)));
+  EXPECT_EQ(annotations.deferred_allocations[root->parent()]
+                                            [std::make_pair(arg_tuple, 3)],
+            std::make_pair(ip2_1, 0ll));
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 8);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(arg_tuple, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(arg_tuple, 1)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2_0, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2_1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(reshape2, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationTupleHasTupleSharding) {
@@ -2833,6 +3072,23 @@ ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[
   DeferredAllocationsPath expected_deferred_allocations_path1 = {
       std::make_pair(arg0, 2)};
   EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path1);
+
+  EXPECT_TRUE(annotations.deferred_allocations.contains(custom_op->parent()));
+  EXPECT_TRUE(annotations.deferred_allocations[custom_op->parent()].contains(
+      std::make_pair(arg0, 1)));
+  EXPECT_EQ(annotations.deferred_allocations[custom_op->parent()]
+                                            [std::make_pair(arg0, 1)],
+            std::make_pair(ip1, 0ll));
+  EXPECT_TRUE(annotations.deferred_allocations[custom_op->parent()].contains(
+      std::make_pair(arg0, 2)));
+  EXPECT_EQ(annotations.deferred_allocations[custom_op->parent()]
+                                            [std::make_pair(arg0, 2)],
+            std::make_pair(ip2, 0ll));
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 2);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationTupleHasNonTupleSharding) {
@@ -2904,6 +3160,23 @@ ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[
   DeferredAllocationsPath expected_deferred_allocations_path1 = {
       std::make_pair(arg0, 2)};
   EXPECT_EQ(t.deferred_allocations_path, expected_deferred_allocations_path1);
+
+  EXPECT_TRUE(annotations.deferred_allocations.contains(custom_op->parent()));
+  EXPECT_TRUE(annotations.deferred_allocations[custom_op->parent()].contains(
+      std::make_pair(arg0, 1)));
+  EXPECT_EQ(annotations.deferred_allocations[custom_op->parent()]
+                                            [std::make_pair(arg0, 1)],
+            std::make_pair(ip1, 0ll));
+  EXPECT_TRUE(annotations.deferred_allocations[custom_op->parent()].contains(
+      std::make_pair(arg0, 2)));
+  EXPECT_EQ(annotations.deferred_allocations[custom_op->parent()]
+                                            [std::make_pair(arg0, 2)],
+            std::make_pair(ip2, 0ll));
+
+  auto tensors_with_layout = annotations.tensors_with_layout;
+  EXPECT_EQ(tensors_with_layout.size(), 2);
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip1, 0)));
+  EXPECT_TRUE(tensors_with_layout.contains(std::make_pair(ip2, 0)));
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationTupleHasTupleShardingDoesnMatch) {
@@ -2946,9 +3219,9 @@ ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[
   EXPECT_EQ(annotations.tensor_allocation_map.size(), 0);
 }
 
-// TODO:
-// - can forward path traverse in-place ops
-// - is forward path rejected when going through non-layout preserving inputs
+// // TODO:
+// // - can forward path traverse in-place ops
+// // - is forward path rejected when going through non-layout preserving inputs
 
 }  // namespace
 }  // namespace poplarplugin

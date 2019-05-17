@@ -104,6 +104,43 @@ class FindAllocatingInstructions : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
+// This function traverses the tensor flow (!) from the source to the tensor
+// target, and marks all those tensors as having a layout.
+TensorsWithLayouts GetAllLayoutsInPath(const TensorSource& source,
+                                       const TensorTarget& tensor_target) {
+  TensorsWithLayouts ops_with_layout;
+  ops_with_layout.insert(source);
+
+  const HloInstruction* parent = source.first;
+  int64 tuple_index = source.second;
+  for (auto& user : tensor_target.backward_path) {
+    switch (user->opcode()) {
+      case HloOpcode::kTuple: {
+        tuple_index = InsertIntoTuple(user->shape(),
+                                      user->operand_index(parent), tuple_index);
+        break;
+      }
+      case HloOpcode::kGetTupleElement: {
+        tuple_index =
+            ExtractFromTuple(parent->shape(), user->tuple_index(), tuple_index);
+        break;
+      }
+      default: { break; }
+    }
+    ops_with_layout.insert(std::make_pair(user, tuple_index));
+    parent = user;
+  }
+  return ops_with_layout;
+}
+
+void AllocationFinder::AddTensorTarget(const TensorSource& source,
+                                       const TensorTarget& tensor_target) {
+  tensor_allocation_map.insert(std::make_pair(source, tensor_target));
+  auto ops_with_layout = GetAllLayoutsInPath(source, tensor_target);
+  absl::c_copy(ops_with_layout,
+               std::inserter(tensors_with_layout, tensors_with_layout.end()));
+}
+
 bool AllocationFinder::CompareTargets(const TensorTarget& a,
                                       const TensorTarget& b) {
   return IsForward(a.tgt, annotations) && !IsForward(b.tgt, annotations);
@@ -124,7 +161,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               CompareTargets(t, i->second)) {
             tensor_allocation_map.erase(src);
           }
-          tensor_allocation_map.insert(std::make_pair(src, t));
+          AddTensorTarget(src, t);
           break;
         }
         case HloOpcode::kDot: {
@@ -134,7 +171,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               CompareTargets(t, i->second)) {
             tensor_allocation_map.erase(src);
           }
-          tensor_allocation_map.insert(std::make_pair(src, t));
+          AddTensorTarget(src, t);
           break;
         }
         case HloOpcode::kDynamicSlice: {
@@ -144,7 +181,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
             if (i != tensor_allocation_map.end()) {
               tensor_allocation_map.erase(src);
             }
-            tensor_allocation_map.insert(std::make_pair(src, t));
+            AddTensorTarget(src, t);
           }
           break;
         }
@@ -155,7 +192,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
             if (i != tensor_allocation_map.end()) {
               tensor_allocation_map.erase(src);
             }
-            tensor_allocation_map.insert(std::make_pair(src, t));
+            AddTensorTarget(src, t);
           }
           break;
         }
@@ -166,7 +203,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
             if (i != tensor_allocation_map.end()) {
               tensor_allocation_map.erase(src);
             }
-            tensor_allocation_map.insert(std::make_pair(src, t));
+            AddTensorTarget(src, t);
           }
           break;
         }
@@ -189,7 +226,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               if (i != tensor_allocation_map.end()) {
                 tensor_allocation_map.erase(src);
               }
-              tensor_allocation_map.insert(std::make_pair(src, t));
+              AddTensorTarget(src, t);
             }
           }
           break;
@@ -206,7 +243,7 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
                   CompareTargets(t, i->second)) {
                 tensor_allocation_map.erase(src);
               }
-              tensor_allocation_map.insert(std::make_pair(src, t));
+              AddTensorTarget(src, t);
             }
           } else {
             auto shapes = FlattenedXlaShape(src.first->shape());
@@ -261,7 +298,9 @@ StatusOr<bool> AllocationFinder::Run(HloModule* module) {
   FindAllocatingInstructions finder;
 
   for (const auto& comp : module->computations()) {
-    TF_RETURN_IF_ERROR(comp->Accept(&finder));
+    if (!IsPopOpsFusion(comp)) {
+      TF_RETURN_IF_ERROR(comp->Accept(&finder));
+    }
   }
 
   for (auto inst : finder.allocating_instructions) {
@@ -274,7 +313,8 @@ StatusOr<bool> AllocationFinder::Run(HloModule* module) {
 
 AllocationFinder::AllocationFinder(CompilerAnnotations& annotations)
     : annotations(annotations),
-      tensor_allocation_map(annotations.tensor_allocation_map) {}
+      tensor_allocation_map(annotations.tensor_allocation_map),
+      tensors_with_layout(annotations.tensors_with_layout) {}
 
 }  // namespace poplarplugin
 }  // namespace xla

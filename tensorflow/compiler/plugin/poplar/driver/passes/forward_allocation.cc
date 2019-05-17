@@ -362,7 +362,7 @@ ForwardAllocation::FindInputs(HloComputation* comp) {
   return input_to_deferred_allocation_path;
 }
 
-absl::optional<TensorTarget> ForwardAllocation::CreateForwardAllocationTarget(
+bool ForwardAllocation::CreateForwardAllocationTarget(
     HloReachabilityMap* reachability_map, HloInstruction* source,
     HloInstruction* target, const int64 input_index,
     HloInstruction* layout_producer, const int64 layout_output_index,
@@ -373,7 +373,7 @@ absl::optional<TensorTarget> ForwardAllocation::CreateForwardAllocationTarget(
   // Make sure that the layout producer can be executed before the
   // source - i.e. source is not reachable form the layout producer.
   if (reachability_map->IsReachable(source, layout_producer)) {
-    return absl::nullopt;
+    return false;
   }
   layout_producer->AddControlDependencyTo(source);
   reachability_map->UpdateReachabilityThroughInstruction(source);
@@ -405,18 +405,29 @@ absl::optional<TensorTarget> ForwardAllocation::CreateForwardAllocationTarget(
       target->RemoveControlDependencyTo(inst);
       reachability_map->UpdateReachabilityThroughInstruction(inst);
     }
-    return absl::nullopt;
+    return false;
   }
 
   std::vector<const HloInstruction*> c_forward_path(forward_path.begin(),
                                                     forward_path.end());
   std::vector<const HloInstruction*> c_backward_path(backward_path.begin(),
                                                      backward_path.end());
-  deferred_allocations.insert(deferred_allocations_path.begin(),
-                              deferred_allocations_path.end());
-  return TensorTarget(target, input_index, layout_producer, layout_output_index,
-                      c_forward_path, c_backward_path,
-                      deferred_allocations_path);
+  auto src = std::make_pair(source, 0);
+  auto tensor_target =
+      TensorTarget(target, input_index, layout_producer, layout_output_index,
+                   c_forward_path, c_backward_path, deferred_allocations_path);
+  tensor_allocation_map[src] = tensor_target;
+  // Add all the new layouts
+  auto ops_with_layout = GetAllLayoutsInPath(src, tensor_target);
+  absl::c_copy(ops_with_layout,
+               std::inserter(tensors_with_layout, tensors_with_layout.end()));
+
+  // Add the deferred allocation.
+  if (deferred_allocations_path.size()) {
+    deferred_allocations[source->parent()][deferred_allocations_path.back()] =
+        src;
+  }
+  return true;
 }
 
 StatusOr<bool> ForwardAllocation::FindLayoutSensativeTargets(
@@ -536,14 +547,12 @@ StatusOr<bool> ForwardAllocation::FindLayoutSensativeTargets(
           if (prefix_path_ok && suffix_path_ok) {
             if (!source_consumers[source].contains(layout_producer)) {
               auto layout_output_idx = *suffix_path_ok;
-              auto optional_allocation_target = CreateForwardAllocationTarget(
+              const bool created_target = CreateForwardAllocationTarget(
                   reachability_map.get(), source, target, op_idx,
                   layout_producer, layout_output_idx, targets, suffix, prefix,
                   input_to_deferred_allocations[source]);
-              if (optional_allocation_target) {
-                auto src = std::make_pair(source, 0);
-                tensor_allocation_map[src] = *optional_allocation_target;
-                found_target = true;
+              found_target |= created_target;
+              if (created_target) {
                 break;
               }
             }
@@ -629,13 +638,11 @@ StatusOr<bool> ForwardAllocation::FindLayoutDependentTargets(
           continue;
         }
 
-        auto optional_allocation_target = CreateForwardAllocationTarget(
+        const bool created_target = CreateForwardAllocationTarget(
             reachability_map.get(), source, target, op_idx, layout_producer, 0,
             targets, {}, prefix, input_to_deferred_allocations[source]);
-        if (optional_allocation_target) {
-          auto src = std::make_pair(source, 0);
-          tensor_allocation_map[src] = *optional_allocation_target;
-          found_target = true;
+        found_target |= created_target;
+        if (created_target) {
           break;
         }
       }
@@ -646,27 +653,26 @@ StatusOr<bool> ForwardAllocation::FindLayoutDependentTargets(
 
 ForwardAllocation::ForwardAllocation(CompilerAnnotations& annotations)
     : tensor_allocation_map(annotations.tensor_allocation_map),
+      tensors_with_layout(annotations.tensors_with_layout),
       deferred_allocations(annotations.deferred_allocations),
       inplace_instructions(annotations.inplace_instructions) {}
 
 StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   bool found_target = false;
 
-  // An op with a layout is a non-tuple op that has been identified by the
-  // Allocation Finder to have a layout, a Tensor allocation target or any op
-  // that is in the path between the two.
+  // Stores all the ops which we have identified to have layouts.
   std::set<const HloInstruction*> ops_with_layout;
+  // Add all the non tuple ops with layouts.
+  for (auto& tensor_with_layout : tensors_with_layout) {
+    auto inst = tensor_with_layout.first;
+    auto tuple_index = tensor_with_layout.second;
+    if (!inst->shape().IsTuple()) {
+      ops_with_layout.insert(inst);
+    }
+  }
+  // Add all the tensor allocation targets.
   for (auto& ta : tensor_allocation_map) {
-    auto source = ta.first.first;
-    if (!source->shape().IsTuple()) {
-      ops_with_layout.insert(source);
-    }
     ops_with_layout.insert(ta.second.tgt);
-    for (auto& inst : ta.second.forward_path) {
-      if (!inst->shape().IsTuple()) {
-        ops_with_layout.insert(inst);
-      }
-    }
   }
 
   for (const auto& computation : module->computations()) {

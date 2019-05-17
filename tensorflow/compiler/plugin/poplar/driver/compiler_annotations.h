@@ -58,7 +58,10 @@ struct CompilerAnnotations {
   InplaceInstructions inplace_instructions;
 
   InfeedInfos infeed_infos;
+
   OutfeedInfos outfeed_infos;
+
+  TensorsWithLayouts tensors_with_layout;
 };
 
 }  // namespace poplarplugin

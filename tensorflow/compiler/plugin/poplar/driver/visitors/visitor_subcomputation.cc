@@ -159,9 +159,10 @@ StatusOr<bool> SubComputationVisitor::HandleTensor(
   // 4. This input does not have a target.
   // For cases 2 and 3 we allocate a new tensor. For case 3 we clone the
   // layout of the input.
-  if (DeferAllocation(inst, tuple_index)) {
+  if (CanDeferAllocation(inst, tuple_index)) {
     VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
             << tuple_index << ".";
+    DeferAllocation(inst, tuple_index);
     add_output_tensor = false;
   } else if (HasTensorAllocationTarget(src, resources_) ||
              tensor.containsConstant()) {
@@ -188,21 +189,24 @@ StatusOr<bool> InplaceSubComputationVisitor::HandleTensor(
   bool add_output_tensor = true;
   poplar::Graph& graph = GetGraphWithOutputIndex(resources_, inst, tuple_index);
 
-  // For inplace inputs - if there is a deferred allocation then we use
-  // that
-  if (DeferAllocation(inst, tuple_index)) {
-    VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
-            << tuple_index << ".";
-    add_output_tensor = false;
-  } else if (HasTensorAllocationTarget(src, resources_)) {
-    // If the input has an allocation target, then we use that layout
-    // rather than the input layout.
-    TF_ASSIGN_OR_RETURN(inputs[tuple_index],
-                        AddTensor(graph, src, shape, resources_, tensor_map));
-    allocated_targets[tuple_index] = true;
-  } else {
-    // Otherwise we just use the tensor as is.
-    inputs[tuple_index] = tensor;
+  // For inplace inputs, we can still allocated the input (and then add a copy)
+  // iff there is a (deferred) allocation target and the input doesn't have a
+  // layout.
+  const bool input_has_layout = input_has_layout_[param_num][tuple_index];
+  inputs[tuple_index] = tensor;
+  if (!input_has_layout) {
+    if (CanDeferAllocation(inst, tuple_index)) {
+      VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
+              << tuple_index << ".";
+      DeferAllocation(inst, tuple_index);
+      add_output_tensor = false;
+    } else if (HasTensorAllocationTarget(src, resources_)) {
+      // If the input has an allocation target, then we use that layout
+      // rather than the input layout.
+      TF_ASSIGN_OR_RETURN(inputs[tuple_index],
+                          AddTensor(graph, src, shape, resources_, tensor_map));
+      allocated_targets[tuple_index] = true;
+    }
   }
   return add_output_tensor;
 }

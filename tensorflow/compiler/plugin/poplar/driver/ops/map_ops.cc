@@ -133,6 +133,25 @@ GetWhileAndRepeatAliasingCopies(poplar::Graph& graph,
   return std::make_pair(body_seq, while_loop_state);
 }
 
+StatusOr<TensorInputDescription> GetWhileAndRepeatLayoutInfo(
+    CompilerResources& res, const HloInstruction* inst) {
+  TensorInputDescription input_has_layout(inst->operand_count());
+  // For each operand to the loop, check if the tensor coming in has a layout.
+  // If the tensor does not have a layout then the while/repeat loop might
+  // create one for this tensor.
+  for (int64 i = 0; i < inst->operand_count(); i++) {
+    auto* operand = inst->operand(i);
+    std::vector<xla::Shape> shapes = FlattenedXlaShape(operand->shape());
+    input_has_layout[i].reserve(shapes.size());
+    for (int64 tuple_index = 0; tuple_index < shapes.size(); tuple_index++) {
+      auto tensor_source = std::make_pair(operand, tuple_index);
+      input_has_layout[i].push_back(
+          res.annotations.tensors_with_layout.contains(tensor_source));
+    }
+  }
+  return input_has_layout;
+}
+
 ArgVectors GetCallInputs(CompilerResources& res, const HloInstruction* inst,
                          TensorMap& tensor_map, poplar::program::Sequence& seq,
                          const bool expand_constants = true) {
@@ -373,10 +392,14 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
   TF_ASSIGN_OR_RETURN(auto cond, GetOrCompileSubComputation(
                                      res, inputs, inst->while_condition()));
 
+  // Get the input layout info.
+  TF_ASSIGN_OR_RETURN(auto input_has_layout,
+                      GetWhileAndRepeatLayoutInfo(res, inst));
+
   // Body of the while loop is inplace.
   TF_ASSIGN_OR_RETURN(
       auto body, CompileInplaceSubComputation(res, inputs, inst->while_body(),
-                                              {}, {cond.get()}));
+                                              input_has_layout, {cond.get()}));
 
   unsigned int param_count = inputs[0].size();
   const ArgVector& inplace_inputs = inputs[0];
@@ -403,6 +426,8 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
   // sure to copy the values of the tensors.
   for (unsigned int i = 0; i < param_count; i++) {
     if (body->InputHasAllocationTarget(0, i)) {
+      VLOG(1) << "Adding a copy for while loop " << inst->name()
+              << " input tensor " << i << ".";
       main_seq.add(poplar::program::Copy(inplace_inputs[i], body_inputs[i]));
     }
   }
@@ -453,8 +478,13 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
                                              tensor_map, res, inst, main_seq));
   CHECK_EQ(inputs.size(), 1);
 
-  TF_ASSIGN_OR_RETURN(auto body, CompileInplaceSubComputation(
-                                     res, inputs, inst->to_apply(), {}));
+  // Get the input layout info.
+  TF_ASSIGN_OR_RETURN(auto input_has_layout,
+                      GetWhileAndRepeatLayoutInfo(res, inst));
+
+  TF_ASSIGN_OR_RETURN(
+      auto body, CompileInplaceSubComputation(res, inputs, inst->to_apply(),
+                                              input_has_layout));
 
   unsigned int param_count = inputs[0].size();
 
@@ -474,6 +504,8 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
   // sure to copy the values of the tensors.
   for (unsigned int i = 0; i < param_count; i++) {
     if (body->InputHasAllocationTarget(0, i)) {
+      VLOG(1) << "Adding a copy for repeat loop " << inst->name()
+              << " input tensor " << i << ".";
       main_seq.add(poplar::program::Copy(inplace_inputs[i], body_inputs[i]));
     }
   }
