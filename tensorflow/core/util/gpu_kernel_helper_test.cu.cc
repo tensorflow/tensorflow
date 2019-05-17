@@ -54,7 +54,7 @@ __global__ void Count1D(GpuLaunchConfig config, int bufsize, int* outbuf) {
     atomicAdd(&outbuf[x % bufsize], 1);
   }
 }
-__global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int* outbuf) {
+__global__ void Count2D(Gpu2DLaunchConfig config, int bufsize, int* outbuf) {
   CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
     if (x < 0) {  // x might overflow when testing extreme case
       break;
@@ -68,7 +68,7 @@ __global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int* outbuf) {
     }
   }
 }
-__global__ void Count3D(Cuda3DLaunchConfig config, int bufsize, int* outbuf) {
+__global__ void Count3D(Gpu3DLaunchConfig config, int bufsize, int* outbuf) {
   CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {
     if (x < 0) {  // x might overflow when testing extreme case
       break;
@@ -189,7 +189,7 @@ TEST_F(GpuLaunchConfigTest, GetGpuLaunchConfig) {
 #undef TEST_LAUNCH_PARAMETER
 }
 
-bool operator==(const Cuda2DLaunchConfig& a, const Cuda2DLaunchConfig& b) {
+bool operator==(const Gpu2DLaunchConfig& a, const Cuda2DLaunchConfig& b) {
   return a.thread_per_block.x == b.thread_per_block.x &&
          a.thread_per_block.y == b.thread_per_block.y &&
          a.thread_per_block.z == b.thread_per_block.z &&
@@ -201,8 +201,8 @@ bool operator==(const Cuda2DLaunchConfig& a, const Cuda2DLaunchConfig& b) {
          a.thread_per_block.z == b.thread_per_block.z;
 }
 
-TEST_F(GpuLaunchConfigTest, GetCuda2DLaunchConfig) {
-  Cuda2DLaunchConfig cfg;
+TEST_F(GpuLaunchConfigTest, GetGpu2DLaunchConfig) {
+  Gpu2DLaunchConfig cfg;
   GpuLaunchConfig cfg1d;
 
 // test valid inputs
@@ -212,7 +212,7 @@ TEST_F(GpuLaunchConfigTest, GetCuda2DLaunchConfig) {
                                 cfg1d.thread_per_block, 0, d.stream(), cfg1d, \
                                 outbuf));                                     \
   CUDA_ASSERT_SUCCESS                                                         \
-  cfg = GetCuda2DLaunchConfig(dimx, dimy, d);                                 \
+  cfg = GetGpu2DLaunchConfig(dimx, dimy, d);                                  \
   TF_EXPECT_OK(CudaLaunchKernel(Count2D, cfg.block_count,                     \
                                 cfg.thread_per_block, 0, d.stream(), cfg,     \
                                 bufsize, outbuf));                            \
@@ -224,7 +224,7 @@ TEST_F(GpuLaunchConfigTest, GetCuda2DLaunchConfig) {
                                 cfg1d.thread_per_block, 0, d.stream(), cfg1d, \
                                 outbuf));                                     \
   CUDA_ASSERT_SUCCESS                                                         \
-  cfg = GetCuda2DLaunchConfig(dimx, dimy, d, Count2D, 0, 0);                  \
+  cfg = GetGpu2DLaunchConfig(dimx, dimy, d, Count2D, 0, 0);                   \
   TF_EXPECT_OK(CudaLaunchKernel(Count2D, cfg.block_count,                     \
                                 cfg.thread_per_block, 0, d.stream(), cfg,     \
                                 bufsize, outbuf));                            \
@@ -245,8 +245,8 @@ TEST_F(GpuLaunchConfigTest, GetCuda2DLaunchConfig) {
 #undef TEST_LAUNCH_PARAMETER
 }
 
-TEST_F(GpuLaunchConfigTest, GetCuda3DLaunchConfig) {
-  Cuda3DLaunchConfig cfg;
+TEST_F(GpuLaunchConfigTest, GetGpu3DLaunchConfig) {
+  Gpu3DLaunchConfig cfg;
   GpuLaunchConfig cfg1d;
 
 // test valid inputs
@@ -256,7 +256,7 @@ TEST_F(GpuLaunchConfigTest, GetCuda3DLaunchConfig) {
                                 cfg1d.thread_per_block, 0, d.stream(), cfg1d, \
                                 outbuf));                                     \
   CUDA_ASSERT_SUCCESS                                                         \
-  cfg = GetCuda3DLaunchConfig(dimx, dimy, dimz, d, Count3D, 0, 0);            \
+  cfg = GetGpu3DLaunchConfig(dimx, dimy, dimz, d, Count3D, 0, 0);             \
   TF_EXPECT_OK(CudaLaunchKernel(Count3D, cfg.block_count,                     \
                                 cfg.thread_per_block, 0, d.stream(), cfg,     \
                                 bufsize, outbuf));                            \

@@ -222,7 +222,7 @@ void SplitVOpGPULaunch<T, IntType>::Run(
                                  gpu_device.stream(), input_ptr, total_rows,
                                  total_cols, output_ptr_data));
   } else {
-    auto config = GetCuda2DLaunchConfig(total_cols, total_rows, gpu_device);
+    auto config = GetGpu2DLaunchConfig(total_cols, total_rows, gpu_device);
     IntType smem_max = gpu_device.sharedMemPerBlock();
     IntType smem_usage = output_scan.size * sizeof(IntType);
     // performance crossover is less than using maximum available shared
