@@ -14,12 +14,13 @@
 # limitations under the License.
 # ==============================================================================
 
-yum install epel-release
-curl "https://setup.ius.io/" -o setup-ius.sh
-sh setup-ius.sh
-rm setup-ius.sh
-yum --enablerepo=ius install -y python35u
+cd /usr/src
+wget https://www.python.org/ftp/python/3.6.8/Python-3.6.8.tgz
+tar xzf Python-3.6.8.tgz
+cd Python-3.6.8
+./configure --enable-optimizations
+make altinstall
+rm /usr/src/Python-3.6.8.tgz
 
-curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
-python3.5 get-pip.py
-rm get-pip.py
+# Link the pip3.6 executable to pip3.
+ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
