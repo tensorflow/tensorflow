@@ -172,13 +172,7 @@ inline void DispatchDepthwiseConv(
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
 
-      ASSERT_TRUE(
-          kernel_type == DotProduct3x3KernelType::kPlain ||
-          kernel_type == DotProduct3x3KernelType::kStride2 ||
-          kernel_type ==
-              DotProduct3x3KernelType::kWithDepthMultiplicationStride1 ||
-          kernel_type ==
-              DotProduct3x3KernelType::kWithDepthMultiplicationStride2)
+      ASSERT_NE(kernel_type, DotProduct3x3KernelType::kNone)
           << "Kernel type = " << static_cast<int>(kernel_type);
 
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
@@ -288,19 +282,22 @@ inline void DispatchDepthwiseConv(
       << " depth = " << input_shape.Dims(3)
       << " buffer need = " << input_shape.Dims(3) * input_shape.Dims(2) * 6
       << " input_offset = " << params.input_offset;
+  CpuBackendContext backend_context;
   switch (test_param.output_rounding) {
     case DepthwiseConvOutputRounding::kAwayFromZero:
       optimized_ops::DepthwiseConvWithRounding<
           DepthwiseConvOutputRounding::kAwayFromZero>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          bias_shape, bias_data, output_shape, output_data, &backend_context,
+          /*thread_start=*/0,
           /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     case DepthwiseConvOutputRounding::kUpward:
       optimized_ops::DepthwiseConvWithRounding<
           DepthwiseConvOutputRounding::kUpward>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          bias_shape, bias_data, output_shape, output_data, &backend_context,
+          /*thread_start=*/0,
           /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     default:
@@ -865,6 +862,20 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         Values(DepthwiseConvImplementation::
                    kUseNeon3x3DotProduct),             // forced_invocation
+        Values(1000),                                  // tests_to_run
+        Bool(),                                        // test_stride
+        Bool(),                                        // test_pad
+        Bool(),                                        // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(false)                                  // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+
+// Apply the 3x3 tests through the dispatch.
+INSTANTIATE_TEST_SUITE_P(
+    Dispatch3x3, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::kNone),    // forced_invocation
         Values(1000),                                  // tests_to_run
         Bool(),                                        // test_stride
         Bool(),                                        // test_pad

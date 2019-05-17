@@ -1986,7 +1986,8 @@ inline void DepthwiseConvWithRounding(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+    uint8* output_data, CpuBackendContext* cpu_backend_context,
+    int thread_start, int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -2007,6 +2008,30 @@ inline void DepthwiseConvWithRounding(
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  // Dispatch to dot-product 3x3 kernels when supported.
+
+  ruy::Context* ruy_context = cpu_backend_context->ruy_context();
+  const bool has_dot_product_instructions =
+      ruy_context != nullptr && (ruy_context->GetRuntimeEnabledPaths() &
+                                 ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+  if (has_dot_product_instructions) {
+    using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+    DotProduct3x3KernelType kernel_type =
+        optimized_ops::depthwise_conv::CategorizeDotProductKernel(
+            input_shape, filter_shape, params);
+    if (kernel_type != DotProduct3x3KernelType::kNone) {
+      gemmlowp::ScopedProfilingLabel specialized_label(
+          "DepthwiseConv/8bit/3x3XDotProduct");
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data);
+      return;
+    }
+  }
+
+  // Dispatch to non-dot-product 3x3 kernels when supported.
+
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -2041,11 +2066,12 @@ inline void DepthwiseConvImpl(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
+    uint8* output_data, CpuBackendContext* cpu_backend_context,
+    int thread_start, int thread_end, int thread_dim) {
   return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
-      bias_data, output_shape, output_data, thread_start, thread_end,
-      thread_dim);
+      bias_data, output_shape, output_data, cpu_backend_context, thread_start,
+      thread_end, thread_dim);
 }
 
 void DepthwiseConv(const DepthwiseParams& params,
