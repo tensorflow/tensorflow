@@ -586,7 +586,7 @@ struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
 TF_CheckpointReader* TF_NewCheckpointReader(const char* filename, TF_Status* status) {
   TF_CheckpointReader* reader = new TF_CheckpointReader(filename, status);
   if (!status->status.ok()) return nullptr;
-  auto m = reader->GetVariableToDataTypeMap();
+  const auto& m = reader->GetVariableToDataTypeMap();
   for( auto it = m.begin(); it != m.end(); ++it)
     reader->variable_list.push_back(it->first);
   std::sort(reader->variable_list.begin(), reader->variable_list.end());
@@ -608,8 +608,8 @@ int TF_CheckpointReaderSize(TF_CheckpointReader* reader) {
 }
 
 TF_DataType TF_CheckpointReaderGetVariableDataType(TF_CheckpointReader* reader, const char* name) {
-  auto m = reader->GetVariableToDataTypeMap();
-  return static_cast<TF_DataType>(m[name]);
+  const auto& m = reader->GetVariableToDataTypeMap();
+  return static_cast<TF_DataType>(m.at(name));
 }
 
 TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader, const char* name, TF_Status* status) {
@@ -620,15 +620,15 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader, const char*
 }
 
 void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims) {
-  auto m = reader->GetVariableToShapeMap();
+  const auto& m = reader->GetVariableToShapeMap();
   for (int i=0; i<num_dims; i++){
-    dims[i] = m[name].dim_size(i);
+    dims[i] = m.at(name).dim_size(i);
   }
 }
 
 int TF_CheckpointReaderGetVariableNumDims(TF_CheckpointReader* reader, const char* name) {
-  auto m = reader->GetVariableToShapeMap();
-  return m[name].dims();
+  const auto& m = reader->GetVariableToShapeMap();
+  return m.at(name).dims();
 }
 
 
