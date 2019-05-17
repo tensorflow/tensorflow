@@ -279,7 +279,7 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
     const LiteralSlice& literal, int device_ordinal,
-    DeviceMemoryAllocator* allocator) {
+    se::DeviceMemoryAllocator* allocator) {
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }

@@ -1224,8 +1224,9 @@ REGISTER_KERNEL_BUILDER(
     MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_CPU).Priority(2),
                         DeleteIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_GPU).Priority(1),
-                        DeleteIteratorOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DeleteIterator").Device(DEVICE_GPU).HostMemory("deleter").Priority(1),
+    DeleteIteratorOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
     AnonymousIteratorHandleOp);

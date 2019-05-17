@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/memory_planner.h"
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
@@ -74,6 +74,10 @@ constexpr TfLiteType typeToTfLiteType<string>() {
   return kTfLiteString;
 }
 
+template <>
+constexpr TfLiteType typeToTfLiteType<TfLiteFloat16>() {
+  return kTfLiteFloat16;
+}
 // An interpreter for a graph of nodes that input and output from tensors.
 // Each node of the graph processes a set of input tensors and produces a
 // set of output Tensors. All inputs/output tensors are referenced by index.

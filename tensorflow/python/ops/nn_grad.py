@@ -910,9 +910,11 @@ def _FusedBatchNormGrad(op, *grad):
 def _FusedBatchNormV2Grad(op, *grad):
   return _BaseFusedBatchNormGrad(op, 1, *grad)
 
+
 @ops.RegisterGradient("FusedBatchNormV3")
 def _FusedBatchNormV3Grad(op, *grad):
   return _BaseFusedBatchNormGrad(op, 2, *grad)
+
 
 def _BatchNormGrad(grad_y,
                    x,
@@ -1034,6 +1036,7 @@ def _FusedBatchNormGradGrad(op, *grad):
 @ops.RegisterGradient("FusedBatchNormGradV2")
 def _FusedBatchNormGradGradV2(op, *grad):
   return _FusedBatchNormGradGrad(op, *grad)
+
 
 @ops.RegisterGradient("FusedBatchNormGradV3")
 def _FusedBatchNormGradGradV3(op, *grad):

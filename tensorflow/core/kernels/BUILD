@@ -47,7 +47,10 @@ load(
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -941,6 +944,7 @@ cc_library(
         ":edit_distance_op",
         ":extract_image_patches_op",
         ":extract_volume_patches_op",
+        ":fingerprint_op",
         ":gather_nd_op",
         ":gather_op",
         ":guarantee_const_op",
@@ -1028,6 +1032,28 @@ tf_kernel_library(
     name = "edit_distance_op",
     prefix = "edit_distance_op",
     deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "fingerprint_op",
+    prefix = "fingerprint_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_cc_test(
+    name = "fingerprint_op_test",
+    size = "small",
+    srcs = ["fingerprint_op_test.cc"],
+    kernels = [":fingerprint_op"],
+    deps = [
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(
@@ -1573,6 +1599,9 @@ tf_cuda_cc_test(
     name = "conv_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_ops_benchmark_test.cc"],
+    tags = [
+        "nomac",  # b/132448918
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -1583,10 +1612,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -1711,6 +1740,26 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cc_test(
+    name = "in_topk_op_test",
+    size = "small",
+    srcs = ["in_topk_op_test.cc"],
+    deps = [
+        ":in_topk_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -2550,6 +2599,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ],
 )
@@ -2561,11 +2611,13 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream",
         "@com_google_absl//absl/strings",
     ],
@@ -3217,7 +3269,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tridiagonal_matmul_op",
     srcs = ["tridiagonal_matmul_op.cc"],
-    deps = LINALG_DEPS,
+    gpu_srcs = ["tridiagonal_matmul_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
+    ]),
 )
 
 tf_kernel_library(
@@ -4119,7 +4174,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "in_topk_op",
     prefix = "in_topk_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":reduction_ops"],
 )
 
 tf_kernel_library(
@@ -6032,6 +6087,7 @@ filegroup(
         "dynamic_stitch_op.cc",
         "fft_ops.cc",
         "in_topk_op.cc",
+        "in_topk_op.h",
         "initializable_lookup_table.cc",
         "logging_ops.cc",
         "lookup_table_init_op.cc",
@@ -7589,9 +7645,6 @@ tf_kernel_library(
         "@icu//:common",
     ],
 )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.

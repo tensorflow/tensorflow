@@ -46,6 +46,61 @@ template <bool BIG>
 using Float = Wrapper<float, BIG>;
 
 template <bool BIG>
+class MaybeAlive {
+ public:
+  MaybeAlive() : alive_(false) {}
+
+  explicit MaybeAlive(bool alive) : alive_(alive) {
+    if (alive) ++live_counter_;
+  }
+
+  ~MaybeAlive() {
+    if (alive_) --live_counter_;
+  }
+
+  MaybeAlive(const MaybeAlive& rhs) : alive_(rhs.alive_) {
+    if (alive_) ++live_counter_;
+  }
+
+  MaybeAlive& operator=(const MaybeAlive& rhs) {
+    if (this == &rhs) return *this;
+    if (alive_) --live_counter_;
+    alive_ = rhs.alive_;
+    if (alive_) ++live_counter_;
+    return *this;
+  }
+
+  MaybeAlive(MaybeAlive&& rhs) : alive_(false) {
+    alive_ = std::move(rhs.alive_);
+    if (alive_) ++live_counter_;
+  }
+
+  MaybeAlive& operator=(MaybeAlive&& rhs) {
+    if (this == &rhs) return *this;
+    if (alive_) --live_counter_;
+    alive_ = std::move(rhs.alive_);
+    if (alive_) ++live_counter_;
+    return *this;
+  }
+
+  static int LiveCounter() { return live_counter_; }
+
+  string TypeName() const { return "MaybeAlive"; }
+  void Encode(VariantTensorData* data) const {}
+  bool Decode(VariantTensorData data) { return false; }
+
+ private:
+  bool alive_;
+  char big_[BIG ? 256 : 0];
+  static int live_counter_;
+};
+
+template <>
+int MaybeAlive<false>::live_counter_ = 0;
+template <>
+int MaybeAlive<true>::live_counter_ = 0;
+
+template <bool BIG>
 class DeleteCounter {
  public:
   DeleteCounter() : big_{}, counter_(nullptr) {}
@@ -157,6 +212,24 @@ TEST(VariantTest, MoveAndCopyBetweenBigAndSmallVariants) {
   }
   EXPECT_EQ(deleted_big, 2);
   EXPECT_EQ(deleted_small, 1);
+}
+
+template <bool BIG>
+void TestDestructOnVariantMove() {
+  CHECK_EQ(MaybeAlive<BIG>::LiveCounter(), 0);
+  {
+    Variant a = MaybeAlive<BIG>(true);
+    Variant b = std::move(a);
+  }
+  EXPECT_EQ(MaybeAlive<BIG>::LiveCounter(), 0);
+}
+
+TEST(VariantTest, RHSDestructOnVariantMoveBig) {
+  TestDestructOnVariantMove</*BIG=*/true>();
+}
+
+TEST(VariantTest, RHSDestructOnVariantMoveSmall) {
+  TestDestructOnVariantMove</*BIG=*/false>();
 }
 
 TEST(VariantTest, Int) {

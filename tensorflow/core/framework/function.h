@@ -792,6 +792,9 @@ class DistributedFunctionLibraryRuntime {
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
+
+  // DeviceMgr with *all* available devices.
+  virtual DeviceMgr* remote_device_mgr() const = 0;
 };
 
 // Extracts the actual type from "attr_values" based on its definition

@@ -742,8 +742,8 @@ class RNN(Layer):
         zero_output_for_mask=self.zero_output_for_mask)
     if self.stateful:
       updates = []
-      for i in range(len(states)):
-        updates.append(state_ops.assign(self.states[i], states[i]))
+      for state_, state in zip(nest.flatten(self.states), nest.flatten(states)):
+        updates.append(state_ops.assign(state_, state))
       self.add_update(updates, inputs)
 
     if self.return_sequences:
@@ -812,48 +812,36 @@ class RNN(Layer):
                        'the batch size by passing a '
                        '`batch_shape` argument to your Input layer.')
     # initialize state if None
-    if self.states[0] is None:
-      if _is_multiple_state(self.cell.state_size):
-        self.states = [
-            K.zeros([batch_size] + tensor_shape.as_shape(dim).as_list())
-            for dim in self.cell.state_size
-        ]
-      else:
-        self.states = [
-            K.zeros([batch_size] +
-                    tensor_shape.as_shape(self.cell.state_size).as_list())
-        ]
+    if nest.flatten(self.states)[0] is None:
+      def create_state_variable(state):
+        return K.zeros([batch_size] + tensor_shape.as_shape(state).as_list())
+      self.states = nest.map_structure(
+          create_state_variable, self.cell.state_size)
+      if not nest.is_sequence(self.states):
+        self.states = [self.states]
     elif states is None:
-      if _is_multiple_state(self.cell.state_size):
-        for state, dim in zip(self.states, self.cell.state_size):
-          K.set_value(state,
-                      np.zeros([batch_size] +
-                               tensor_shape.as_shape(dim).as_list()))
-      else:
-        K.set_value(self.states[0], np.zeros(
-            [batch_size] +
-            tensor_shape.as_shape(self.cell.state_size).as_list()))
+      for state, size in zip(nest.flatten(self.states),
+                             nest.flatten(self.cell.state_size)):
+        K.set_value(state, np.zeros([batch_size] +
+                                    tensor_shape.as_shape(size).as_list()))
     else:
-      if not isinstance(states, (list, tuple)):
-        states = [states]
-      if len(states) != len(self.states):
+      flat_states = nest.flatten(self.states)
+      flat_input_states = nest.flatten(states)
+      if len(flat_input_states) != len(flat_states):
         raise ValueError('Layer ' + self.name + ' expects ' +
-                         str(len(self.states)) + ' states, '
-                         'but it received ' + str(len(states)) +
+                         str(len(flat_states)) + ' states, '
+                         'but it received ' + str(len(flat_input_states)) +
                          ' state values. Input received: ' + str(states))
-      for index, (value, state) in enumerate(zip(states, self.states)):
-        if _is_multiple_state(self.cell.state_size):
-          dim = self.cell.state_size[index]
-        else:
-          dim = self.cell.state_size
-        if value.shape != tuple([batch_size] +
-                                tensor_shape.as_shape(dim).as_list()):
+      set_value_tuples = []
+      for i, (value, state) in enumerate(zip(flat_input_states,
+                                             flat_states)):
+        if value.shape != state.shape:
           raise ValueError(
-              'State ' + str(index) + ' is incompatible with layer ' +
+              'State ' + str(i) + ' is incompatible with layer ' +
               self.name + ': expected shape=' + str(
-                  (batch_size, dim)) + ', found shape=' + str(value.shape))
-        # TODO(fchollet): consider batch calls to `set_value`.
-        K.set_value(state, value)
+                  (batch_size, state)) + ', found shape=' + str(value.shape))
+        set_value_tuples.append((state, value))
+      K.batch_set_value(set_value_tuples)
 
   def get_config(self):
     config = {

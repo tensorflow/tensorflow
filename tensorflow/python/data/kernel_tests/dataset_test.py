@@ -373,9 +373,6 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       second_dataset = dataset_ops.Dataset.range(11)
       self.assertEqual(55, self.evaluate(_uses_dataset(second_dataset)))
       first_concrete = _uses_dataset.get_concrete_function(first_dataset)
-      self.skipTest(
-          ("Not currently working: functions treat Datasets as opaque Python "
-           "objects"))
       # The dataset should not be a captured input
       self.assertEmpty(first_concrete.graph.captures)
       # The two datasets have the same structure and so should re-use a trace.
@@ -386,6 +383,26 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           first_concrete,
           _uses_dataset.get_concrete_function(
               dataset_ops.Dataset.zip((first_dataset, second_dataset))))
+
+  def testLimitedRetracingWithCompositeTensors(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(ds):
+      trace_count[0] += 1
+      counter = np.int64(0)
+      for elem in ds:
+        counter += elem
+      return counter
+
+    dataset = dataset_ops.Dataset.range(5)
+    dataset2 = dataset_ops.Dataset.range(10)
+
+    for _ in range(10):
+      self.assertEqual(self.evaluate(f(dataset)), 10)
+      self.assertEqual(self.evaluate(f(dataset2)), 45)
+      self.assertEqual(trace_count[0], 1)
+
 
 if __name__ == "__main__":
   test.main()

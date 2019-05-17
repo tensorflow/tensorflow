@@ -126,7 +126,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const string& callee_name, absl::Span<llvm::Value* const> operands,
       absl::Span<const PrimitiveType> input_types, PrimitiveType output_type);
 
-  const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;
 };
 

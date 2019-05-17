@@ -114,18 +114,18 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(variance_)),
-      operand_desc,                        //
-      scale_offset_desc,                   //
-      epsilon_,                            //
-      &output,                             //
-      /*batch_mean=*/nullptr,              //
-      /*batch_var=*/nullptr,               //
-      /*saved_mean=*/nullptr,              //
-      /*saved_inv_var=*/nullptr,           //
-      /*is_training=*/false,               //
-      /*var_to_inv_var=*/nullptr,          //
-      /*inv_var_to_var=*/nullptr,          //
-      /*reserve_space_allocator=*/nullptr, //
+      operand_desc,                         //
+      scale_offset_desc,                    //
+      epsilon_,                             //
+      &output,                              //
+      /*batch_mean=*/nullptr,               //
+      /*batch_var=*/nullptr,                //
+      /*saved_mean=*/nullptr,               //
+      /*saved_inv_var=*/nullptr,            //
+      /*is_training=*/false,                //
+      /*var_to_inv_var=*/nullptr,           //
+      /*inv_var_to_var=*/nullptr,           //
+      /*reserve_space_allocator=*/nullptr,  //
       /*workspace_allocator=*/nullptr);
 
   if (!stream->ok()) {

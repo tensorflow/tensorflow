@@ -42,8 +42,10 @@ class GraphMatcherTest(test_util.TensorFlowTestCase):
       with g.as_default():
         inputs = array_ops.placeholder(dtypes.float32, shape=[8, 5, 5, 3])
 
-      with contrib_ops.arg_scope(
-          [layers.batch_norm], fused=True, is_training=True, trainable=True):
+      with contrib_ops.arg_scope([layers.batch_norm],
+                                 fused=True,
+                                 is_training=True,
+                                 trainable=True):
         return layers.convolution(
             inputs,
             num_outputs=16,

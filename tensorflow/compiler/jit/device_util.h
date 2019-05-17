@@ -198,9 +198,12 @@ xla::StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 
-// This is like `PickDeviceForXla` except that it returns false (instead of a
+// This is like `PickDeviceForXla` except that it returns nullopt (instead of a
 // non-OK Status) if no unambiguous choice of device exists.
-xla::StatusOr<bool> CanPickDeviceForXla(
+//
+// We return a failing Status for errors unrelated to the device choice
+// algorithm itself.
+xla::StatusOr<absl::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 }  // namespace tensorflow

@@ -789,7 +789,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           [assign],
           feed_dict={placeholder: np.zeros(shape=[2, 2], dtype=np.float32)})
 
-  def testAssignDifferentShapesEager(self):
+  def testAssignDifferentShapesEagerNotAllowed(self):
     with context.eager_mode():
       with variable_scope.variable_scope("foo"):
         var = variable_scope.get_variable("x", shape=[1, 1],
@@ -798,6 +798,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                      "Shapes.*and.*are incompatible"):
           assign = var.assign(np.zeros(shape=[2, 2]))
           self.evaluate(assign)
+
+  @test_util.disable_xla("XLA doesn't allow changing shape at assignment, as "
+                         "dictated by tf2xla/xla_resource.cc:SetTypeAndShape")
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignDifferentShapesAllowed(self):
+    var = resource_variable_ops.ResourceVariable(
+        initial_value=np.zeros(shape=[1, 1]),
+        shape=tensor_shape.TensorShape(None))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(np.zeros(shape=[1, 1]), var.read_value())
+    self.evaluate(var.assign(np.zeros(shape=[2, 2])))
+    self.assertAllEqual(np.zeros(shape=[2, 2]), var.read_value())
 
   @test_util.run_deprecated_v1
   def testDtypeAfterFromProto(self):

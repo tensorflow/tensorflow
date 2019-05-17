@@ -39,9 +39,8 @@ class FusedBatchNormOp : public XlaOpKernel {
     is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
 
-  void Compile(XlaOpKernelContext* ctx) override {
-    CompileImpl(ctx);
-  }
+  void Compile(XlaOpKernelContext* ctx) override { CompileImpl(ctx); }
+
  protected:
   virtual void CompileImpl(XlaOpKernelContext* ctx) {
     xla::PrimitiveType input_type;
@@ -122,7 +121,7 @@ class FusedBatchNormOp : public XlaOpKernel {
 
 class FusedBatchNormOpV3 : public FusedBatchNormOp {
  public:
-  explicit FusedBatchNormOpV3(OpKernelConstruction* ctx) 
+  explicit FusedBatchNormOpV3(OpKernelConstruction* ctx)
       : FusedBatchNormOp(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {

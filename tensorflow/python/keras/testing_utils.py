@@ -406,7 +406,7 @@ class _SubclassModelCustomBuild(keras.Model):
     return x
 
 
-def get_model_from_layers(layers, input_shape=None):
+def get_model_from_layers(layers, input_shape=None, input_dtype=None):
   """Builds a model from a sequence of layers."""
   model_type = get_model_type()
   if model_type == 'subclass':
@@ -419,7 +419,8 @@ def get_model_from_layers(layers, input_shape=None):
   if model_type == 'sequential':
     model = keras.models.Sequential()
     if input_shape:
-      model.add(keras.layers.InputLayer(input_shape=input_shape))
+      model.add(keras.layers.InputLayer(input_shape=input_shape,
+                                        dtype=input_dtype))
     for layer in layers:
       model.add(layer)
     return model
@@ -428,7 +429,7 @@ def get_model_from_layers(layers, input_shape=None):
     if not input_shape:
       raise ValueError('Cannot create a functional model from layers with no '
                        'input shape.')
-    inputs = keras.Input(shape=input_shape)
+    inputs = keras.Input(shape=input_shape, dtype=input_dtype)
     outputs = inputs
     for layer in layers:
       outputs = layer(outputs)

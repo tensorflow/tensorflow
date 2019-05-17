@@ -185,7 +185,7 @@ def _FindFusedBatchNorms(graph):
               graph_matcher.OpTypePattern('*')])
 
   batch_norm_pattern = graph_matcher.OpTypePattern(
-      'FusedBatchNormV3',
+      'FusedBatchNorm|FusedBatchNormV3',
       inputs=[
           graph_matcher.OneofPattern(
               [matmul_reshape_pattern, layer_output_pattern]), gamma_pattern,

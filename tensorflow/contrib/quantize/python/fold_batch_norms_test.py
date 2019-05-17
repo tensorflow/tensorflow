@@ -739,7 +739,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     self.assertAllClose(unfolded_backward, folded_backward, atol=1e-3)
 
   def testCompareFoldAndUnfolded(self):
-    self._RunTestOverParameters(self._TestCompareFoldAndUnfolded)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestCompareFoldAndUnfolded)
 
   def _BatchNormParams(self, scale=True, fused=False):
     return {

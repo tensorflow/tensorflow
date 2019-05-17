@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/profiling/profile_summarizer.h"
+
 #include <string>
 #include <vector>
 
@@ -22,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
 

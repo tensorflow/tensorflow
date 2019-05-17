@@ -1402,8 +1402,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {
-    *optimized_graph = item.graph;
-    return Status::OK();
+    return errors::Aborted("Nothing to do.");
   }
 
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));

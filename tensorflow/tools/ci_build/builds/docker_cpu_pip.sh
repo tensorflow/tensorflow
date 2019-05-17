@@ -36,4 +36,9 @@ bazel test --define=no_tensorflow_py_deps=true \
       --test_size_filters=small,medium \
       --test_timeout 300,450,1200,3600 \
       --test_output=errors \
-      -- //${PIP_TEST_ROOT}/tensorflow/python/...
+      -- //${PIP_TEST_ROOT}/tensorflow/python/... \
+      -//${PIP_TEST_ROOT}/tensorflow/python/keras:training_eager_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python/keras:base_layer_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python/distribute:distribute_lib_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test_gpu

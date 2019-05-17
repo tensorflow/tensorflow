@@ -233,6 +233,29 @@ class MarkForCompilationPassImpl {
   // Returns true if any new clusters were created.
   StatusOr<bool> RunEdgeContractionLoopInPostOrderOnce();
 
+  // Runs through all the nodes in `cycles_graph_` and tries to contract high
+  // priority edges for clusters. Returns true if any new clusters were created.
+  //
+  // There are potentially many maximal clustering results, but they will not
+  // all be equally performant. Some clustering decision are likely to improve
+  // performance much more than others, and we cannot order contractions on this
+  // cost function, nor can we look at global information while deciding on
+  // individual edges to contract. Instead, we will make decisions on these
+  // important edges then make decisions on all other edges, causing the highest
+  // chance of all most important edges to be contracted.
+  //
+  // An example of where this might occur is with a digraph:
+  // {A -> B, B -> C, A -> X, X -> C} where B is a Size operation and X is
+  // not-compilable. In this case, the valid clusterings are {A,B} or {B,C}. B
+  // should be clustered with A because it will prevent a potentially large
+  // tensor from A being computed and copied.
+  //
+  // This pass will ensure that contraction happens, which cannot be enforced in
+  // a single pass with the current algorithm.
+  // graph and prevent B->C from being clusterd in anticipation of a later A->B
+  // cluster.
+  StatusOr<bool> ContractPreferredEdges();
+
   // Contracts as many edges as possible to create XLA clusters.  After this
   // finishes the clustering decisions made are implicitly stored in
   // `clusters_`.
@@ -270,7 +293,7 @@ class MarkForCompilationPassImpl {
   StatusOr<bool> ShouldCompileCluster(const Cluster& cluster);
 
   StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(
-      const Cluster& to);
+      const Cluster& from, const Cluster& to);
 
   // Returns true if the devices in `cluster_a` and `cluster_b` are compatible
   // and therefore not a hindrance for combining the two clusters into a larger
@@ -314,6 +337,13 @@ class MarkForCompilationPassImpl {
   //
   // Returns nullptr if `node_id` is not a compilation candidate.
   Cluster* GetClusterForCyclesGraphNode(int node_id) {
+    // We have to check `graph_->FindNodeId(node) == nullptr` because we add all
+    // nodes in [0, graph_->num_node_ids()) to the cycle detection graph but the
+    // TF graph may be missing some node ids.
+    if (node_id >= graph_->num_node_ids() ||
+        graph_->FindNodeId(node_id) == nullptr) {
+      return nullptr;
+    }
     Cluster* cluster = cluster_for_node_[node_id].Get();
     if (cluster) {
       DCHECK_EQ(cluster->cycles_graph_node_id(), node_id);
@@ -369,6 +399,13 @@ class MarkForCompilationPassImpl {
     cluster_for_node_[from].Merge(&cluster_for_node_[to]);
 
     return true;
+  }
+
+  string EdgeContractionFailureMsg(Cluster* from, Cluster* to,
+                                   absl::string_view reason) {
+    return absl::StrCat("Could not contract ", from->DebugString(*graph_),
+                        " -> ", to->DebugString(*graph_), " because ", reason,
+                        ".");
   }
 
   DebugOptions debug_options_;
@@ -581,6 +618,50 @@ Status MarkForCompilationPassImpl::Initialize() {
   return BuildInitialClusterSet();
 }
 
+StatusOr<bool> MarkForCompilationPassImpl::ContractPreferredEdges() {
+  bool changed = false;
+  for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
+    Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
+    if (!cluster_from) {
+      continue;
+    }
+
+    // Make a copy of the set of successors because we may modify the graph in
+    // TryToContractEdge.
+    std::vector<int32> successors_copy =
+        cycles_graph_.SuccessorsCopy(cluster_from->cycles_graph_node_id());
+
+    for (int to : successors_copy) {
+      iteration_count_++;
+
+      Cluster* cluster_to = GetClusterForCyclesGraphNode(to);
+      if (!cluster_to) {
+        continue;
+      }
+
+      if (cluster_to->cluster_size() == 1) {
+        Node* n = graph_->FindNodeId(cluster_to->GetIdOfOnlyNode());
+
+        // Shape consuming operations are desirable to cluster with their
+        // operands because they return a small set of scalar values after
+        // consuming a large amount of data. For example, given a graph X -> Y
+        // -> Size -> Z, where the possible clustering is [{X, Y, Size}, {Z}] or
+        // [{X, Y}, {Size, Z}], the better clustering is Size with Y because the
+        // output of size will be a small tensor while Y is a potentially large
+        // tensor that must be computed and possible transposed/copied before
+        // the second cluster executes.
+        if (IsShapeConsumerOp(*n)) {
+          TF_ASSIGN_OR_RETURN(bool contracted_edge,
+                              TryToContractEdge(cluster_from, cluster_to));
+          changed |= contracted_edge;
+        }
+      }
+    }
+  }
+
+  return changed;
+}
+
 StatusOr<bool>
 MarkForCompilationPassImpl::RunEdgeContractionLoopInPostOrderOnce() {
   bool changed = false;
@@ -596,15 +677,8 @@ MarkForCompilationPassImpl::RunEdgeContractionLoopInPostOrderOnce() {
   //    digraph { X->Y; Y->Z; } then collapsing X->Y does not make it possible
   //    to contract Y->Z if Y->Z was not contractible originally.
   for (int32 node : cycles_graph_.AllNodesInPostOrder()) {
-    // We have to check `graph_->FindNodeId(node) == nullptr` because we add all
-    // nodes in [0, graph_->num_node_ids()) to the cycle detection graph but the
-    // TF graph may be missing some node ids.
-    if (node >= graph_->num_node_ids() || graph_->FindNodeId(node) == nullptr) {
-      continue;
-    }
-
     Cluster* cluster_from = GetClusterForCyclesGraphNode(node);
-    if (cluster_from == nullptr) {
+    if (!cluster_from) {
       continue;
     }
 
@@ -623,7 +697,13 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
   // example, from the Grappler fusion pass).
 
-  TF_ASSIGN_OR_RETURN(bool changed, RunEdgeContractionLoopInPostOrderOnce());
+  // Run twice, first only targeted at contracting very beneficial edges then
+  // without restrictions. This helps to minimize data output from clusters (and
+  // possible transpose operations before outputs) that might occur if a
+  // ShapeConsumingOp is on the edge of 2 clusters due to cycle considerations.
+  TF_ASSIGN_OR_RETURN(bool changed, ContractPreferredEdges());
+
+  TF_ASSIGN_OR_RETURN(changed, RunEdgeContractionLoopInPostOrderOnce());
 
   // Check that RunEdgeContractionLoopInPostOrderOnce is idempotent.  Once the
   // linear time post-order scheme has been battle tested we can move this to
@@ -634,11 +714,13 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return Status::OK();
 }
 
+std::atomic<int64> cluster_sequence_num;
+
+int64 GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
+
 Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
   clusters_created_ = true;
-
-  static std::atomic<int64> cluster_sequence_num;
 
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
@@ -672,7 +754,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        name = absl::StrCat("cluster_", cluster_sequence_num++);
+        name = absl::StrCat("cluster_", GetNextClusterSequenceNumber());
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -698,7 +780,7 @@ Status MarkForCompilationPassImpl::DumpDebugInfo() {
 
 StatusOr<bool>
 MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
-    const Cluster& cluster_to) {
+    const Cluster& cluster_from, const Cluster& cluster_to) {
   // If any of the consumer's producers are on a different device, do not
   // cluster these nodes. This prevents other work on this device from being
   // delayed by work on other devices. We consider predecessors of the entire
@@ -711,14 +793,15 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
   // where a cluster is producing data for multiple devices.
   for (const auto& in_id :
        cycles_graph_.Predecessors(cluster_to.cycles_graph_node_id())) {
-    if (in_id >= graph_->num_node_ids()) {
-      continue;
-    }
-
     const Cluster* cluster_in = GetClusterForCyclesGraphNode(in_id);
     if (cluster_in) {
       TF_ASSIGN_OR_RETURN(bool devices_compatible,
                           AreDevicesCompatible(cluster_to, *cluster_in));
+      if (!devices_compatible) {
+        return true;
+      }
+      TF_ASSIGN_OR_RETURN(devices_compatible,
+                          AreDevicesCompatible(cluster_from, *cluster_in));
       if (!devices_compatible) {
         return true;
       }
@@ -991,8 +1074,7 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
 
 bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
     Cluster* from, Cluster* to, absl::string_view reason) {
-  VLOG(3) << "Could not contract " << from->DebugString(*graph_) << " -> "
-          << to->DebugString(*graph_) << " because " << reason << ".";
+  VLOG(3) << EdgeContractionFailureMsg(from, to, reason);
   return false;
 }
 
@@ -1001,8 +1083,14 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   DCHECK(from->deadness_predicate().has_value() ==
          to->deadness_predicate().has_value());
   if (from->deadness_predicate() != to->deadness_predicate()) {
-    return LogNotContractableAndReturnFalse(
-        from, to, "the two nodes have mismatching deadness");
+    VLOG(3) << EdgeContractionFailureMsg(
+        from, to,
+        absl::StrCat(
+            "the two nodes have mismatching deadness: ",
+            deadness_analysis_->DebugString(*from->deadness_predicate()),
+            " and ",
+            deadness_analysis_->DebugString(*to->deadness_predicate())));
+    return false;
   }
 
   TF_ASSIGN_OR_RETURN(bool devices_compatible,
@@ -1026,7 +1114,7 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   }
 
   TF_ASSIGN_OR_RETURN(bool will_introduce_cross_device_dependency,
-                      ClusteringWillIntroduceInterDeviceDependency(*to));
+                      ClusteringWillIntroduceInterDeviceDependency(*from, *to));
 
   if (will_introduce_cross_device_dependency) {
     return LogNotContractableAndReturnFalse(
@@ -1062,14 +1150,14 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
 StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdgesFrom(
     Cluster* cluster_from) {
   bool changed = false;
-  for (int to :
-       cycles_graph_.Successors(cluster_from->cycles_graph_node_id())) {
+
+  // Make a copy of the set of successors because we may modify the graph in
+  // TryToContractEdge.
+  std::vector<int32> successors_copy =
+      cycles_graph_.SuccessorsCopy(cluster_from->cycles_graph_node_id());
+
+  for (int to : successors_copy) {
     iteration_count_++;
-    if (to >= graph_->num_node_ids()) {
-      // Node is a fictitious node that is present only in the cycle detection
-      // graph. No clustering is possible.
-      continue;
-    }
 
     Cluster* cluster_to = GetClusterForCyclesGraphNode(to);
     if (!cluster_to) {
@@ -1265,19 +1353,15 @@ StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
   DeviceSet devices = cluster_a.devices();
   devices.UnionWith(cluster_b.devices());
 
-  // First check if we will even be able to pick a device for the larger
-  // combined cluster.
   TF_ASSIGN_OR_RETURN(
-      bool can_pick_device,
-      CanPickDeviceForXla(device_info_cache_, devices,
-                          /*allow_mixing_unknown_and_cpu=*/false));
-  if (!can_pick_device) {
+      absl::optional<jit::DeviceId> maybe_chosen_device,
+      MaybePickDeviceForXla(device_info_cache_, devices,
+                            /*allow_mixing_unknown_and_cpu=*/false));
+  if (!maybe_chosen_device.has_value()) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(DeviceId chosen_device,
-                      PickDeviceForXla(device_info_cache_, devices,
-                                       /*allow_mixing_unknown_and_cpu=*/false));
+  jit::DeviceId chosen_device = *maybe_chosen_device;
 
   // If we are able to pick a device `chosen_device` for the larger cluster, the
   // resource operations in `cluster_a` and `cluster_b` must be placed on the
@@ -1415,7 +1499,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_control_trigger = true;
   op_filter.allow_eliding_assert_and_checknumerics_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
-  op_filter.allow_svd_op = true;
+  op_filter.allow_slow_and_inaccurate_ops = true;
 
   return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
       .IsCompilableCall(ndef, flr);
@@ -1452,4 +1536,8 @@ Status MarkForCompilationPass::RunForTest(
 
   return MarkForCompilation(options, debug_options);
 }
+
+namespace testing {
+void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
+}  // namespace testing
 }  // namespace tensorflow

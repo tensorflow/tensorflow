@@ -352,6 +352,13 @@ TEST_P(HloEvaluatorBf16Test, DoesAbsR1WithZeroSize) {
   auto expected = LiteralUtil::CreateR1<float>({});
   TestUnaryOp(HloOpcode::kAbs, std::move(expected), std::move(operand));
 }
+
+TEST_F(HloEvaluatorTest, DoesAbsC128) {
+  auto x = LiteralUtil::CreateR0<complex128>({1, 2});
+  auto expected_real = LiteralUtil::CreateR0<double>(2.23607);
+  TestUnaryOp(HloOpcode::kAbs, std::move(expected_real), std::move(x), 3e-06);
+}
+
 TEST_F(HloEvaluatorTest, DoesNegateR2) {
   auto operand = LiteralUtil::CreateR2<int32>(
       {{0, std::numeric_limits<int32>::min()}, {-1, 4}});
@@ -4332,6 +4339,21 @@ TEST_F(HloEvaluatorTest, IsFiniteBf16) {
       HloEvaluator().Evaluate(*m_->entry_computation(), {}));
   EXPECT_THAT(actual_literal.data<bool>(),
               ::testing::ElementsAre(false, true, false, true, false, false));
+}
+
+// Check that evaluating `f32[<huge>, 0] iota` doesn't oom (it's an empty
+// array!).
+TEST_F(HloEvaluatorTest, ZeroSizedIotaWithHugeDimension) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY t {
+    ROOT i = f32[1000000000000, 0] iota(), iota_dimension=0
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual_literal,
+      HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_THAT(actual_literal.data<float>(), ::testing::IsEmpty());
 }
 
 }  // namespace

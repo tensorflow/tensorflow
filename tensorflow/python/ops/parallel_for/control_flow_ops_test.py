@@ -28,8 +28,8 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
-from tensorflow.python.eager import backprop
 from tensorflow.python.compat import compat
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -102,6 +102,12 @@ class PForTest(PForTestCase):
     with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
+  def test_vectorized_map(self):
+    def compute(x):
+      return math_ops.reduce_mean(x, axis=0, keepdims=True)
+    result = pfor_control_flow_ops.vectorized_map(
+        compute, array_ops.ones((10, 5, 3)))
+    self.run_and_assert_equal(result, array_ops.ones((10, 1, 3)))
 
 @test_util.run_all_in_graph_and_eager_modes
 class ReductionTest(PForTestCase):
@@ -372,9 +378,9 @@ class NNTest(PForTestCase):
                   data_format=data_format,
                   is_training=is_training)
               outputs = list(outputs)
-              # We only test the first value of outputs when is_training is False.
-              # It looks like CPU and GPU have different outputs for batch_mean
-              # and batch_variance for this case.
+              # We only test the first value of outputs when is_training is
+              # False. It looks like CPU and GPU have different outputs for
+              # batch_mean and batch_variance for this case.
               if not is_training:
                 outputs[1] = constant_op.constant(0.)
                 outputs[2] = constant_op.constant(0.)

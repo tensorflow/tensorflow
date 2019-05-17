@@ -417,5 +417,4 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-# -----------------------------------------------------------------------------
-# Google-internal targets go here (must be at the end).
+# Placeholder for Google-internal load statements.

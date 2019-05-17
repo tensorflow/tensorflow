@@ -234,13 +234,13 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
     # tests if an exception is raised if a two dimensional
     # input is used, i.e. the images have shape [height, width]
     with self.cached_session(use_gpu=True):
-      # 2-D input without batch dimension.
-      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2])
+      # 1-D input without batch dimension.
+      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([2])
 
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
 
       # this is the error message we expect the function to raise
-      err_msg = "A grayscale image must be at least three-dimensional"
+      err_msg = "A grayscale image must be at least two-dimensional"
       with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
@@ -4553,11 +4553,11 @@ class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
         [0.2, 0.0, 1.0],
     ]
     scores_np = [0.7, 0.9, 0.1]
-    max_ouput_size_np = 3
+    max_output_size_np = 3
 
     overlaps = constant_op.constant(overlaps_np)
     scores = constant_op.constant(scores_np)
-    max_output_size = constant_op.constant(max_ouput_size_np)
+    max_output_size = constant_op.constant(max_output_size_np)
     overlap_threshold = 0.6
     score_threshold = 0.4
 
@@ -5121,6 +5121,21 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
                                              dtypes.float32)
       image0, image1 = self.evaluate([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testExpandAnimations(self):
+    with self.cached_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/gif/testdata"
+      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+      image0 = image_ops.decode_image(
+          gif0, dtype=dtypes.float32, expand_animations=False)
+      # image_ops.decode_png() handles GIFs and returns 3D tensors
+      animation = image_ops.decode_gif(gif0)
+      first_frame = array_ops.gather(animation, 0)
+      image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
+      image0, image1 = self.evaluate([image0, image1])
+      self.assertEqual(len(image0.shape), 3)
+      self.assertAllEqual(list(image0.shape), [40, 20, 3])
       self.assertAllEqual(image0, image1)
 
 

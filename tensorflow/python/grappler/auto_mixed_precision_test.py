@@ -355,7 +355,8 @@ class AutoMixedPrecisionTest(test.TestCase):
         self._assert_output_fp16(node_map, 'Conv2D')
         self._assert_output_fp16(node_map, 'FusedBatchNormV3')
         self._assert_output_fp16(node_map, 'Conv2D_1')
-        self.assertEqual(num_to_fp16, 3)  # Before Conv2D:0, Conv2D:1, Conv2D_1:1
+        self.assertEqual(num_to_fp16,
+                         3)  # Before Conv2D:0, Conv2D:1, Conv2D_1:1
         self.assertEqual(num_to_fp32, 1)  # After FusedBatchNormV3:0
         self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 

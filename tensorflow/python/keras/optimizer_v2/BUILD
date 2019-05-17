@@ -27,13 +27,13 @@ py_library(
     deps = [
         ":learning_rate_schedule",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend",
@@ -203,6 +203,7 @@ py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
+    python_version = "PY2",
     shard_count = 8,
     tags = [
         "no_gpu",  # b/127001953

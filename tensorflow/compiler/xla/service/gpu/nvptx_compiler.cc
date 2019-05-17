@@ -120,13 +120,18 @@ namespace {
 
 namespace tracing = tensorflow::tracing;
 
+static std::vector<std::string> CandidateCudaRoots(
+    const HloModuleConfig& config) {
+  return tensorflow::CandidateCudaRoots(
+      config.debug_options().xla_gpu_cuda_data_dir());
+}
+
 void PrintCantFindCudaMessage(absl::string_view msg,
                               const HloModuleConfig& hlo_module_config) {
   LOG(WARNING) << msg;
-  LOG(WARNING) << "Searched in the following directories:";
+  LOG(WARNING) << "Searched for CUDA in the following directories:";
 
-  for (const auto& dir :
-       GetCudaRootCandidates(PtxCompilationOptions(hlo_module_config))) {
+  for (const auto& dir : CandidateCudaRoots(hlo_module_config)) {
     LOG(WARNING) << "  " << dir;
   }
   LOG(WARNING)
@@ -137,9 +142,7 @@ void PrintCantFindCudaMessage(absl::string_view msg,
 
 // Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  const auto& candidate_dirs =
-      GetCudaRootCandidates(PtxCompilationOptions(hlo_module_config));
-  for (const string& cuda_root : candidate_dirs) {
+  for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
     string libdevice_dir =
         tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
@@ -149,9 +152,9 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
     }
   }
   PrintCantFindCudaMessage(
-      "Can't find directory containing CUDA libdevice.  This may result in "
-      "compilation or runtime failures, if the program we try to run uses "
-      "routines from libdevice.",
+      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
+      "result in compilation or runtime failures, if the program we try to run "
+      "uses routines from libdevice.",
       hlo_module_config);
 
   // GetCudaRotCandidates always inclues ".", but but if everything fails, we
@@ -164,7 +167,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
 // It takes a compiler pointer, as passes may compile and execute HLOs on the
 // fly for cuDNN verification or other purposes.
 Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         DeviceMemoryAllocator* device_allocator,
+                         se::DeviceMemoryAllocator* device_allocator,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
@@ -463,7 +466,7 @@ NVPTXCompiler::NVPTXCompiler()
 
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
   tensorflow::profiler::TraceMe activity(
@@ -479,7 +482,7 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
@@ -521,9 +524,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
-  IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
-                                      &stream_exec->GetDeviceDescription(),
-                                      &llvm_module);
+  IrEmitterContext ir_emitter_context(
+      module.get(), buffer_assignment.get(), stream_exec->platform(),
+      &stream_exec->GetDeviceDescription(), &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
@@ -695,9 +698,10 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
           }
           if (log_warning) {
             PrintCantFindCudaMessage(
-                "Can't find ptxas binary.  Will back to the GPU driver "
-                "for PTX -> sass compilation.  This is OK so long as you don't "
-                "see a warning below about an out-of-date driver version.",
+                "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to the "
+                "GPU driver for PTX -> sass compilation.  This is OK so long "
+                "as you don't see a warning below about an out-of-date driver "
+                "version.",
                 hlo_module_config);
           }
 

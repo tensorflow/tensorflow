@@ -27,8 +27,12 @@ py_test(
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
+    tags = [
+        "no_pip",
+        "no_rocm",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -44,6 +48,7 @@ py_test(
 py_test(
     name = "deprecation_test",
     srcs = ["deprecation_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

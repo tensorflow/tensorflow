@@ -1300,7 +1300,7 @@ def fused_batch_norm(
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2019, 6, 6): 
+  if compat.forward_compatible(2019, 6, 6):
     y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
         x,
         scale,
@@ -1313,10 +1313,10 @@ def fused_batch_norm(
         name=name)
     return y, batch_mean, batch_var
 
-  if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:	
-    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2	
-  else:	
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access	
+  if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
+    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
+  else:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
   y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,

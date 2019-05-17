@@ -51,6 +51,9 @@ void* aligned_alloc(size_t alignment, size_t size, void** freeing_buffer) {
 
 // Use /proc/cpuinfo to test whether we have the right processor.
 bool HasSdotInstruction() {
+#ifdef __MINGW32__
+  return false;
+#else
   // TODO(strohman): Replace this with a proper API call once we are running
   // on kernels that can tell us about this instruction: (b/119112014)
   // Note that the C++ spec ensures that this variable will be initialized
@@ -90,6 +93,7 @@ bool HasSdotInstruction() {
     return found;
   }();
   return has_sdot;
+#endif  // MINGW32
 }
 
 }  // namespace

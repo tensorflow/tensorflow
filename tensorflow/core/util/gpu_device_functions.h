@@ -31,8 +31,8 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
-#include "cuda/include/cuComplex.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 #include "tensorflow/core/platform/types.h"
 
@@ -459,7 +459,8 @@ __host__ __device__ inline std::complex<double> CudaLdg(
 template <typename T>
 __global__ void SetZero(const int count, T* ptr) {
   // Check that the grid is one dimensional and index doesn't overflow.
-  assert(blockDim.y == 1 && blockDim.z == 1);
+  assert(blockDim.y == 1);
+  assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : CudaGridRangeX(count)) {
     ptr[i] = T(0);
@@ -470,7 +471,8 @@ __global__ void SetZero(const int count, T* ptr) {
 template <typename T>
 __global__ void SetToValue(const int count, T* ptr, T value) {
   // Check that the grid is one dimensional and index doesn't overflow.
-  assert(blockDim.y == 1 && blockDim.z == 1);
+  assert(blockDim.y == 1);
+  assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
   for (int i : CudaGridRangeX(count)) {
     ptr[i] = value;

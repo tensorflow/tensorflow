@@ -81,7 +81,12 @@ inline uint64 Fingerprint64(StringPiece s) {
 #ifdef USE_OSS_FARMHASH
   return ::util::Fingerprint64(s.data(), s.size());
 #else
+  // Fingerprint op depends on the fact that Fingerprint64() is implemented by
+  // Farmhash. If the implementation ever changes, Fingerprint op should be
+  // modified to keep using Farmhash.
+  // LINT.IfChange
   return farmhash::Fingerprint64(s.data(), s.size());
+  // LINT.ThenChange(//third_party/tensorflow/core/kernels/fingerprint_op.cc)
 #endif
 }
 

@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 // clang-format off
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "absl/strings/string_view.h"
 // clang-format on
 
@@ -1512,10 +1512,11 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
   RETURN_IF_CUDNN_ERROR(
       cudnnGetBatchNormalizationForwardTrainingExWorkspaceSize(
           /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-          /*xDesc=*/x_descriptor.handle(), /*zDesc=*/NULL,
+          /*xDesc=*/x_descriptor.handle(), /*zDesc=*/nullptr,
           /*yDesc=*/x_descriptor.handle(),
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
-          /*activationDesc=*/NULL, /*sizeInBytes=*/&workspace_size_in_bytes));
+          /*activationDesc=*/nullptr,
+          /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -1536,10 +1537,10 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
       /*xDesc=*/x_descriptor.handle(),
       /*yDesc=*/x_descriptor.handle(),
       /*dyDesc=*/x_descriptor.handle(),
-      /*dzDesc=*/NULL,
+      /*dzDesc=*/nullptr,
       /*dxDesc=*/x_descriptor.handle(),
-      /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
-      /*activationDesc=*/NULL, /*sizeInBytes=*/&workspace_size_in_bytes));
+      /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
+      /*activationDesc=*/nullptr, /*sizeInBytes=*/&workspace_size_in_bytes));
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
@@ -3315,7 +3316,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
       RETURN_IF_CUDNN_ERROR(
           cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
               /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
-              /*activationDesc=*/NULL, /*xDesc=*/x_descriptor.handle(),
+              /*activationDesc=*/nullptr, /*xDesc=*/x_descriptor.handle(),
               /*sizeInBytes=*/&reserve_space_size_in_bytes));
       SE_ASSIGN_OR_RETURN(reserve_space,
                           reserve_space_allocator->AllocateBytes(
@@ -3352,20 +3353,20 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
           /*beta=*/&zero,
           /*xDesc=*/x_descriptor.handle(),
           /*xData=*/x.opaque(),
-          /*zDesc=*/NULL,
-          /*zData=*/NULL,
+          /*zDesc=*/nullptr,
+          /*zData=*/nullptr,
           /*yDesc=*/x_descriptor.handle(),
           /*yData=*/y->opaque(),
           /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
-          /*bnScaleData=*/scale.opaque(),
-          /*bnBiasData=*/offset.opaque(),
+          /*bnScale=*/scale.opaque(),
+          /*bnBias=*/offset.opaque(),
           /*exponentialAverageFactor=*/1.0,
-          /*resultRunningMeanData=*/batch_mean_opaque,
-          /*resultRunningVarianceData=*/batch_var_opaque,
+          /*resultRunningMean=*/batch_mean_opaque,
+          /*resultRunningVariance=*/batch_var_opaque,
           /*epsilon=*/epsilon,
-          /*saveMean=*/saved_mean->opaque(),
-          /*saveInvVariance=*/saved_inv_var->opaque(),
-          /*cudnnActivationDescriptor_t=*/NULL,
+          /*resultSaveMean=*/saved_mean->opaque(),
+          /*resultSaveInvVariance=*/saved_inv_var->opaque(),
+          /*activationDesc=*/nullptr,
           /*workspace=*/workspace.opaque(),
           /*workSpaceSizeInBytes=*/workspace.size(),
           /*reserveSpace=*/reserve_space.opaque(),
@@ -3471,23 +3472,23 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
         /*betaParamDiff=*/&zero,
         /*xDesc=*/x_descriptor.handle(),
         /*xData=*/x.opaque(),
-        /*yDesc=*/NULL,
-        /*yData=*/NULL,
+        /*yDesc=*/nullptr,
+        /*yData=*/nullptr,
         /*dyDesc=*/x_descriptor.handle(),
         /*dyData=*/y_backprop.opaque(),
-        /*dzDesc=*/NULL,
-        /*dzData=*/NULL,
+        /*dzDesc=*/nullptr,
+        /*dzData=*/nullptr,
         /*dxDesc=*/x_descriptor.handle(),
         /*dxData=*/x_backprop->opaque(),
         /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
         /*bnScaleData=*/scale.opaque(),
-        /*bnBiasData=*/NULL,
+        /*bnBiasData=*/nullptr,
         /*dBnScaleData=*/scale_backprop->opaque(),
         /*dBnBiasData=*/offset_backprop->opaque(),
         /*epsilon=*/epsilon,
         /*savedMean=*/mean.opaque(),
         /*savedInvVariance=*/inv_var.opaque(),
-        /*activationDesc=*/NULL,
+        /*activationDesc=*/nullptr,
         /*workspace=*/workspace.opaque(),
         /*workSpaceSizeInBytes=*/workspace.size(),
         /*reserveSpace=*/reserve_space_data->opaque(),

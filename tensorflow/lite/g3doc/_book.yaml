@@ -81,6 +81,8 @@ upper_tabs:
         path: /lite/performance/gpu
       - title: "Advanced GPU"
         path: /lite/performance/gpu_advanced
+      - title: "Quantization specification"
+        path: /lite/performance/quantization_spec
 
       - heading: "Build TensorFlow Lite"
       - title: "Build for iOS"

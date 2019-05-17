@@ -87,6 +87,72 @@ float ActivationFunction(float x) {
                                       output_activation_max);
 }
 
+inline void BiasAndClamp(float clamp_min, float clamp_max, int bias_size,
+                         const float* bias_data, int array_size,
+                         float* array_data) {
+  // Note: see b/132215220: in May 2019 we thought it would be OK to replace
+  // this with the Eigen one-liner:
+  //   return (array.colwise() + bias).cwiseMin(clamp_max).cwiseMin(clamp_max).
+  // This turned out to severely regress performance: +4ms (i.e. 8%) on
+  // MobileNet v2 / 1.0 / 224. So we keep custom NEON code for now.
+  TFLITE_DCHECK_EQ((array_size % bias_size), 0);
+#ifdef USE_NEON
+  float* array_ptr = array_data;
+  float* array_end_ptr = array_ptr + array_size;
+  const auto clamp_min_vec = vdupq_n_f32(clamp_min);
+  const auto clamp_max_vec = vdupq_n_f32(clamp_max);
+  for (; array_ptr != array_end_ptr; array_ptr += bias_size) {
+    int i = 0;
+    for (; i <= bias_size - 16; i += 16) {
+      auto b0 = vld1q_f32(bias_data + i);
+      auto b1 = vld1q_f32(bias_data + i + 4);
+      auto b2 = vld1q_f32(bias_data + i + 8);
+      auto b3 = vld1q_f32(bias_data + i + 12);
+      auto a0 = vld1q_f32(array_ptr + i);
+      auto a1 = vld1q_f32(array_ptr + i + 4);
+      auto a2 = vld1q_f32(array_ptr + i + 8);
+      auto a3 = vld1q_f32(array_ptr + i + 12);
+      auto x0 = vaddq_f32(a0, b0);
+      auto x1 = vaddq_f32(a1, b1);
+      auto x2 = vaddq_f32(a2, b2);
+      auto x3 = vaddq_f32(a3, b3);
+      x0 = vmaxq_f32(clamp_min_vec, x0);
+      x1 = vmaxq_f32(clamp_min_vec, x1);
+      x2 = vmaxq_f32(clamp_min_vec, x2);
+      x3 = vmaxq_f32(clamp_min_vec, x3);
+      x0 = vminq_f32(clamp_max_vec, x0);
+      x1 = vminq_f32(clamp_max_vec, x1);
+      x2 = vminq_f32(clamp_max_vec, x2);
+      x3 = vminq_f32(clamp_max_vec, x3);
+      vst1q_f32(array_ptr + i, x0);
+      vst1q_f32(array_ptr + i + 4, x1);
+      vst1q_f32(array_ptr + i + 8, x2);
+      vst1q_f32(array_ptr + i + 12, x3);
+    }
+    for (; i <= bias_size - 4; i += 4) {
+      auto b = vld1q_f32(bias_data + i);
+      auto a = vld1q_f32(array_ptr + i);
+      auto x = vaddq_f32(a, b);
+      x = vmaxq_f32(clamp_min_vec, x);
+      x = vminq_f32(clamp_max_vec, x);
+      vst1q_f32(array_ptr + i, x);
+    }
+    for (; i < bias_size; i++) {
+      array_ptr[i] = ActivationFunctionWithMinMax(array_ptr[i] + bias_data[i],
+                                                  clamp_min, clamp_max);
+    }
+  }
+#else  // not NEON
+  for (int array_offset = 0; array_offset < array_size;
+       array_offset += bias_size) {
+    for (int i = 0; i < bias_size; i++) {
+      array_data[array_offset + i] = ActivationFunctionWithMinMax(
+          array_data[array_offset + i] + bias_data[i], clamp_min, clamp_max);
+    }
+  }
+#endif
+}
+
 inline int32 MultiplyByQuantizedMultiplierSmallerThanOneExp(
     int32 x, int32 quantized_multiplier, int left_shift) {
   using gemmlowp::RoundingDivideByPOT;
@@ -579,6 +645,9 @@ Integer CeilQuotient(Integer a, Integer b) {
 // This function is a copy of gemmlowp::HowManyThreads, copied when we dropped
 // the direct dependency of internal/optimized/ on gemmlowp.
 //
+// It computes a reasonable number of threads to use for a GEMM of shape
+// (rows, cols, depth).
+//
 // TODO(b/131910176): get rid of this function by switching each call site
 // to its own more sensible logic for its own workload.
 template <int KernelRows>
@@ -589,25 +658,10 @@ inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
     return 1;
   }
 
-  // Basic calculation: take into account max pool size, and
-  // how many rows we have to feed our kernel.
-  // The motivation for an absolute minimum number of rows per thread,
-  // potentially higher than KernelRows, is that very thin thread workload
-  // currently defeat assumptions of the AddMod generator, resulting
-  // in substantial bias in TestWithRealData on 24 threads.
-  // Ideally, the AddMod generator should be aware of global (r,c) coordinates
-  // so as to be independent of the number of threads.
-  static const int AbsoluteMinRowsPerThread = 16;
-  static const int MinRowsPerThread = KernelRows > AbsoluteMinRowsPerThread
-                                          ? KernelRows
-                                          : AbsoluteMinRowsPerThread;
-  int thread_count =
-      std::min(max_num_threads, CeilQuotient(rows, MinRowsPerThread));
+  // Ensure that each thread has KernelRows rows to process, if at all possible.
+  int thread_count = std::min(max_num_threads, rows / KernelRows);
 
-  // At this point for small products we already have thread_count==1 so
-  // we can avoid doing more work; otherwise, we still want to check
-  // that the cubic size (rows*cols*depth) is big enough to keep
-  // workers_ busy.
+  // Limit the number of threads according to the overall size of the problem.
   if (thread_count > 1) {
     // Empirically determined value.
     static constexpr std::uint64_t min_cubic_size_per_thread = 64 * 1024;
@@ -618,10 +672,10 @@ inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
 
     thread_count = std::min(
         thread_count, static_cast<int>(cubic_size / min_cubic_size_per_thread));
+  }
 
-    if (thread_count < 1) {
-      thread_count = 1;
-    }
+  if (thread_count < 1) {
+    thread_count = 1;
   }
 
   assert(thread_count > 0 && thread_count <= max_num_threads);
@@ -630,16 +684,9 @@ inline int LegacyHowManyThreads(int max_num_threads, int rows, int cols,
 
 template <typename T>
 void optimized_ops_preload_l1_stream(const T* ptr) {
-#ifdef __aarch64__
-  // Aarch64 has very detailed prefetch instructions, that compilers
-  // can't know how to map __builtin_prefetch to, and as a result, don't,
-  // leaving __builtin_prefetch a no-op on this architecture.
-  // For our purposes, "pldl1keep" is usually what we want, meaning:
-  // "prefetch for load, into L1 cache, using each value multiple times".
-  asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#elif defined __GNUC__
+#ifdef __GNUC__
   // builtin offered by GCC-compatible compilers including clang
-  __builtin_prefetch(ptr);
+  __builtin_prefetch(ptr, /* 0 means read */ 0, /* 0 means no locality */ 0);
 #else
   (void)ptr;
 #endif
@@ -647,16 +694,19 @@ void optimized_ops_preload_l1_stream(const T* ptr) {
 
 template <typename T>
 void optimized_ops_preload_l1_keep(const T* ptr) {
-#ifdef __aarch64__
-  // Aarch64 has very detailed prefetch instructions, that compilers
-  // can't know how to map __builtin_prefetch to, and as a result, don't,
-  // leaving __builtin_prefetch a no-op on this architecture.
-  // For our purposes, "pldl1keep" is usually what we want, meaning:
-  // "prefetch for load, into L1 cache, using each value multiple times".
-  asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-#elif defined __GNUC__
+#ifdef __GNUC__
   // builtin offered by GCC-compatible compilers including clang
-  __builtin_prefetch(ptr);
+  __builtin_prefetch(ptr, /* 0 means read */ 0, /* 3 means high locality */ 3);
+#else
+  (void)ptr;
+#endif
+}
+
+template <typename T>
+void optimized_ops_prefetch_write_l1_keep(const T* ptr) {
+#ifdef __GNUC__
+  // builtin offered by GCC-compatible compilers including clang
+  __builtin_prefetch(ptr, /* 1 means write */ 1, /* 3 means high locality */ 3);
 #else
   (void)ptr;
 #endif

@@ -69,6 +69,13 @@ def all_strategy_and_input_config_combinations():
       eager_mode_test_configuration() + graph_mode_test_configuration()))
 
 
+def strategy_minus_tpu_and_input_config_combinations_eager():
+  return (combinations.times(
+      combinations.combine(
+          distribution=strategy_combinations.strategies_minus_tpu),
+      eager_mode_test_configuration()))
+
+
 def strategies_for_embedding_models():
   """Returns distribution strategies to test for embedding models.
 
@@ -285,11 +292,23 @@ def compare_results(results_with_ds,
                     results_without_ds,
                     distribution,
                     testcase,
-                    partial_last_batch=False):
+                    partial_last_batch=None):
   """Compares results of model compiled with/without distribution strategy."""
-
-  default_tolerance = 1e-5
-  relaxed_tolerance = 1e-4
+  if partial_last_batch == 'train_and_eval':
+    # We relax the tolerence a lot in the partial last batch case as
+    #   1. the examples in uneven batches may have different weights when
+    #      applying the gradients in the distributed case.
+    #   2. TF Keras and TF Keras DS have different ways to handle the case when
+    #      training with epochs > 1 with numpy inputs. In TF Keras, every epoch
+    #      may have a partial batch. While in TF Keras DS, as we convert
+    #      numpy inputs into dataset, it will do a repeat() first and calculate
+    #      steps_per_epoch, so it will at most have one partial batch. This
+    #      makes the 1-CPU result even different.
+    default_tolerance = 1e-3
+    relaxed_tolerance = 1e-3
+  else:
+    default_tolerance = 1e-5
+    relaxed_tolerance = 1e-4
 
   def _get_compare_result_tolerance(key):
     """Returns tolerance to compare results."""
@@ -317,7 +336,7 @@ def compare_results(results_with_ds,
     # We don't compare the loss as loss is currently not computed as metric
     # in Keras, the loss value is inaccurate for last partial batch due to
     # more weights for the last batch samples.
-    if partial_last_batch:
+    if partial_last_batch is not None:
       if key.startswith('eval_result'):
         results_with_ds[key] = results_with_ds[key][1:]
         results_without_ds[key] = results_without_ds[key][1:]
@@ -377,8 +396,10 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     return (x_train.astype('float32'), y_train.astype('float32'), None)
 
   def get_data_with_partial_last_batch(self):
-    x_train, y_train, x_predict = self.get_data()
-    return  x_train, y_train, x_train, y_train, x_predict
+    raise NotImplementedError
+
+  def get_data_with_partial_last_batch_eval(self):
+    raise NotImplementedError
 
   def get_input_for_correctness_test(self, **kwargs):
     """Generates inputs that are dictionaries.
@@ -411,15 +432,16 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            cloning=None,
                            with_batch_norm=False,
                            is_stateful_model=False,
-                           partial_last_batch=False,
+                           partial_last_batch=None,
                            training_epochs=2):
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
       self.skip_unsupported_test_configuration(distribution)
 
-      # Train, eval, and predict datasets are created with the same input numpy
-      # arrays.
-      if partial_last_batch:
+      if partial_last_batch == 'eval':
+        x_train, y_train, x_eval, y_eval, x_predict = (
+            self.get_data_with_partial_last_batch_eval())
+      elif partial_last_batch == 'train_and_eval':
         x_train, y_train, x_eval, y_eval, x_predict = (
             self.get_data_with_partial_last_batch())
       else:

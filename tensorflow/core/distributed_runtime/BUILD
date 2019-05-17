@@ -129,6 +129,7 @@ cc_library(
     hdrs = ["session_mgr.h"],
     deps = [
         ":graph_mgr",
+        ":remote_device",
         ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
@@ -199,6 +200,7 @@ tf_cuda_library(
     deps = [
         ":graph_mgr",
         ":partial_run_mgr",
+        ":recent_request_ids",
         ":rendezvous_mgr_interface",
         ":session_mgr",
         ":tensor_coding",
@@ -206,7 +208,6 @@ tf_cuda_library(
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/distributed_runtime:recent_request_ids",
         "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )

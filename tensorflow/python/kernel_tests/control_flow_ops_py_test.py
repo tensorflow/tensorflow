@@ -448,12 +448,8 @@ class ControlFlowTest(test.TestCase):
       values = constant_op.constant(10)
       indices = constant_op.constant(0)
       x = ops.IndexedSlices(values, indices)
-      v1_msg = "The two structures don't have the same nested structure"
-      v2_msg = ("true_fn and false_fn arguments to tf.cond must have the same "
-                "number, type, and overall structure of return values.")
       with self.assertRaisesRegexp(
-          TypeError,
-          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
+          TypeError, "Cannot reconcile tf.cond 0-th outputs"):
         control_flow_ops.cond(
             constant_op.constant(True),
             lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices),
@@ -516,7 +512,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(sess.run(g, {pred: True}), [2.0, 2.0, 2.0])
       self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
 
-  @test_util.disable_control_flow_v2("b/113293074")
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
@@ -779,6 +774,33 @@ class ControlFlowTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+      f()
+
+  def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
+
+    @def_function.function
+    def f():
+      c = constant_op.constant(1.)
+      inputs = {"c": c}
+
+      def br1_fn(inputs):
+        inputs["c"] = array_ops.identity(inputs["c"], name="br1_identity")
+        return inputs["c"]
+
+      def br4_fn(inputs):
+        return array_ops.identity(inputs["c"])
+
+      def other_fn():
+        return array_ops.identity(c)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(2),
+          [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
+           lambda: br4_fn(inputs)])
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
       f()
 
   def testCondListOutput(self):

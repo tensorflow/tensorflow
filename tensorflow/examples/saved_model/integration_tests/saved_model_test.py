@@ -25,6 +25,21 @@ from tensorflow.examples.saved_model.integration_tests import integration_script
 
 class SavedModelTest(integration_scripts.TestCase):
 
+  def __init__(self, method_name="runTest", has_extra_deps=False):
+    super(SavedModelTest, self).__init__(method_name)
+    self.has_extra_deps = has_extra_deps
+
+  def skipIfMissingExtraDeps(self):
+    """Skip test if it requires extra dependencies.
+
+    b/132234211: The extra dependencies are not available in all environments
+    that run the tests, e.g. "tensorflow_hub" is not available from tests
+    within "tensorflow" alone. Those tests are instead run by another
+    internal test target.
+    """
+    if not self.has_extra_deps:
+      self.skipTest("Missing extra dependencies")
+
   def test_text_rnn(self):
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded("export_text_rnn_model", export_dir=export_dir)
@@ -36,6 +51,7 @@ class SavedModelTest(integration_scripts.TestCase):
     self.assertCommandSucceeded("use_rnn_cell", model_dir=export_dir)
 
   def test_text_embedding_in_sequential_keras(self):
+    self.skipIfMissingExtraDeps()
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_simple_text_embedding", export_dir=export_dir)
@@ -53,6 +69,7 @@ class SavedModelTest(integration_scripts.TestCase):
         "use_text_embedding_in_dataset", model_dir=export_dir)
 
   def test_mnist_cnn(self):
+    self.skipIfMissingExtraDeps()
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
@@ -60,6 +77,7 @@ class SavedModelTest(integration_scripts.TestCase):
         "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
 
   def test_mnist_cnn_with_mirrored_strategy(self):
+    self.skipIfMissingExtraDeps()
     self.skipTest(
         "b/129134185 - saved model and distribution strategy integration")
     export_dir = self.get_temp_dir()
@@ -73,6 +91,7 @@ class SavedModelTest(integration_scripts.TestCase):
         fast_test_mode="true",
         use_mirrored_strategy=True,
     )
+
 
 if __name__ == "__main__":
   integration_scripts.MaybeRunScriptInstead()

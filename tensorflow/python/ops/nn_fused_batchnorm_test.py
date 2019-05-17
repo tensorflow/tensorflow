@@ -384,7 +384,10 @@ class BatchNormalizationTest(test.TestCase):
       for dtype in [np.float16, np.float32]:
         if test.is_gpu_available(cuda_only=True):
           self._test_inference(
-              x_shape, dtype, [131], np.float32, use_gpu=True,
+              x_shape,
+              dtype, [131],
+              np.float32,
+              use_gpu=True,
               data_format='NCHW')
           self._test_inference(
               x_shape, dtype, [6], np.float32, use_gpu=True, data_format='NHWC')
@@ -435,7 +438,10 @@ class BatchNormalizationTest(test.TestCase):
       for dtype in [np.float16, np.float32]:
         if test.is_gpu_available(cuda_only=True):
           self._test_training(
-              x_shape, dtype, [131], np.float32, use_gpu=True,
+              x_shape,
+              dtype, [131],
+              np.float32,
+              use_gpu=True,
               data_format='NCHW')
           self._test_training(
               x_shape, dtype, [6], np.float32, use_gpu=True, data_format='NHWC')

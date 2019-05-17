@@ -2456,6 +2456,7 @@ def trace(x, name=None):
 
 
 @tf_export("linalg.matmul", "matmul")
+@dispatch.add_dispatch_support
 def matmul(a,
            b,
            transpose_a=False,
