@@ -34,6 +34,8 @@ add_llvm_library(Linalg1
   RangeOp.cpp
   Utils.cpp
   ViewType.cpp
+  DEPENDS
+  intrinsics_gen
   )
 target_link_libraries(Linalg1
   PUBLIC
