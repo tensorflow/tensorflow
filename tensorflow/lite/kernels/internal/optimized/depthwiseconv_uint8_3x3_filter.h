@@ -5802,6 +5802,8 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
     // x2 %[shuffled_filter_data]
     // x3 %[adjusted_bias_data]
     // x4 %[function_params]
+#define DC_PER_DEPTH_1 "1"
+#define DC_PER_DEPTH_2 "2"
 
     asm volatile(
         "ldp    w12, w11, [%[function_params], #" STR(DP_OFFSET_BIAS_INCREMENT) "]\n"
@@ -5824,12 +5826,12 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
         // implicit-def: $q17
         // implicit-def: $q18
         // implicit-def: $q19
-        "b      DC_PER_DEPTH_2\n"
-        "   DC_PER_DEPTH_1:\n"  // in Loop: Header=BB177_2 Depth=1
+        "b      " DC_PER_DEPTH_2 "f\n"
+        DC_PER_DEPTH_1 ":\n"  // in Loop: Header=BB177_2 Depth=1
         "add    x13, %[filter_data], x8, lsl #3\n"
         "ld1    { v19.d }[0], [x13], x9\n"
-        "movi   v21.2d, #0\n"
-        "movi   v20.2d, #0\n"
+        "movi   v21.16b, #0\n"
+        "movi   v20.16b, #0\n"
         "add    x8, x8, #1\n"  // =1
         "ld1    { v18.d }[0], [x13], x9\n"
         "ld1    { v17.d }[0], [x13], x9\n"
@@ -5873,9 +5875,9 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
         "mla    v23.4s, v21.4s, v1.4s\n"
         "add    %[bias_data], x1, x11\n"
         "stp    q22, q23, [%[adjusted_bias_data]], #32\n"
-        "   DC_PER_DEPTH_2:\n"  // =>This Inner Loop Header: Depth=1
+        DC_PER_DEPTH_2 ":\n"  // =>This Inner Loop Header: Depth=1
         "cmp    w8, w10\n"
-        "b.lt   DC_PER_DEPTH_1\n"
+        "b.lt   " DC_PER_DEPTH_1 "b\n"
         :
         // Outputs.
         [ filter_data ] "+r"(filter_data),
@@ -7161,6 +7163,32 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     // x2 %[bias_data]
     // x3 %[output_block_data]
     // x4 %[function_params]
+#define DC_KERNEL_NO_MULT_1 "1"
+#define DC_KERNEL_NO_MULT_2 "2"
+#define DC_KERNEL_NO_MULT_3 "3"
+#define DC_KERNEL_NO_MULT_4 "4"
+#define DC_KERNEL_NO_MULT_5 "5"
+#define DC_KERNEL_NO_MULT_6 "6"
+#define DC_KERNEL_NO_MULT_7 "7"
+#define DC_KERNEL_NO_MULT_8 "8"
+#define DC_KERNEL_NO_MULT_9 "9"
+#define DC_KERNEL_NO_MULT_10 "10"
+#define DC_KERNEL_NO_MULT_11 "11"
+#define DC_KERNEL_NO_MULT_12 "12"
+#define DC_KERNEL_NO_MULT_13 "13"
+#define DC_KERNEL_NO_MULT_14 "14"
+#define DC_KERNEL_NO_MULT_15 "15"
+#define DC_KERNEL_NO_MULT_16 "16"
+#define DC_KERNEL_NO_MULT_17 "17"
+#define DC_KERNEL_NO_MULT_18 "18"
+#define DC_KERNEL_NO_MULT_19 "19"
+#define DC_KERNEL_NO_MULT_20 "20"
+#define DC_KERNEL_NO_MULT_21 "21"
+#define DC_KERNEL_NO_MULT_22 "22"
+#define DC_KERNEL_NO_MULT_23 "23"
+#define DC_KERNEL_NO_MULT_24 "24"
+#define DC_KERNEL_NO_MULT_25 "25"
+#define DC_KERNEL_NO_MULT_26 "26"
 
     asm volatile(
         "sub    sp, sp, #288\n"  // =448
@@ -7245,8 +7273,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "str    x12, [sp, #120]\n"  // 8-byte Folded Spill
         "str    %[output_block_data], [sp, #40]\n"  // 8-byte Folded Spill
         "stp    d6, d5, [sp, #72]\n"  // 8-byte Folded Spill
-        "b      DC_KERNEL_NO_MULT_26\n"
-        "   DC_KERNEL_NO_MULT_1:\n"  // in Loop: Header=BB225_26 Depth=1
+        "b      " DC_KERNEL_NO_MULT_26 "f\n"
+        DC_KERNEL_NO_MULT_1 ":\n"  // in Loop: Header=BB225_26 Depth=1
         "ldr    x10, [sp, #32]\n"  // 8-byte Folded Reload
         "str    w6, [sp, #28]\n"  // 4-byte Folded Spill
         "ldr    w12, [sp, #132]\n"  // 4-byte Folded Reload
@@ -7256,13 +7284,13 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "cmp    w12, #4\n"  // =4
         "add    x10, x10, #96\n"  // =96
         "str    x10, [sp, #32]\n"  // 8-byte Folded Spill
-        "b.ne   DC_KERNEL_NO_MULT_14\n"
+        "b.ne   " DC_KERNEL_NO_MULT_14 "f\n"
         // %bb.2:        // in Loop: Header=BB225_26 Depth=1
         "ldp    %[scratch_block_data], x13, [sp, #48]\n"  // 8-byte Folded Reload
         "ldr    x6, [sp, #64]\n"  // 8-byte Folded Reload
         "mov    x12, xzr\n"
-        "b      DC_KERNEL_NO_MULT_13\n"
-        "   DC_KERNEL_NO_MULT_3:\n"  // in Loop: Header=BB225_13 Depth=2
+        "b      " DC_KERNEL_NO_MULT_13 "f\n"
+        DC_KERNEL_NO_MULT_3 ":\n"  // in Loop: Header=BB225_13 Depth=2
         "ldr    x10, [sp, #136]\n"  // 8-byte Folded Reload
         "str    x12, [sp, #168]\n"  // 8-byte Folded Spill
         "ldr    q21, [x6]\n"
@@ -7296,8 +7324,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "stp    %[scratch_block_data], x13, [sp, #152]\n"  // 8-byte Folded Spill
         "mov    x12, x13\n"
         "ldr    x13, [sp, #144]\n"  // 8-byte Folded Reload
-        "b      DC_KERNEL_NO_MULT_5\n"
-        "   DC_KERNEL_NO_MULT_4:\n"  // in Loop: Header=BB225_5 Depth=3
+        "b      " DC_KERNEL_NO_MULT_5 "f\n"
+        DC_KERNEL_NO_MULT_4 ":\n"  // in Loop: Header=BB225_5 Depth=3
         ".word 0x4e8e965f  // sdot   v31.4s, v18.16b, v14.16b\n"
         ".word 0x4e979648  // sdot   v8.4s, v18.16b, v23.16b\n"
         ".word 0x4e999669  // sdot   v9.4s, v19.16b, v25.16b\n"
@@ -7487,26 +7515,26 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    %[scratch_block_data], x0, %[bias_data]\n"
         "add    x12, x12, #32\n"  // =32
         "mov    v14.16b, v22.16b\n"
-        "   DC_KERNEL_NO_MULT_5:\n"  // Parent Loop BB225_26 Depth=1
+        DC_KERNEL_NO_MULT_5 ":\n"  // Parent Loop BB225_26 Depth=1
         // Parent Loop BB225_13 Depth=2
         // =>  This Inner Loop Header: Depth=3
         "cmp    w17, w14\n"
-        "b.lt   DC_KERNEL_NO_MULT_4\n"
+        "b.lt   " DC_KERNEL_NO_MULT_4 "b\n"
         // %bb.6:        // in Loop: Header=BB225_13 Depth=2
         "ldp    d6, d5, [sp, #72]\n"  // 8-byte Folded Reload
         "cmp    w18, #0\n"  // =0
         "add    x6, x6, #16\n"  // =16
         "str    x6, [sp, #224]\n"  // 8-byte Folded Spill
-        "b.le   DC_KERNEL_NO_MULT_12\n"
+        "b.le   " DC_KERNEL_NO_MULT_12 "f\n"
         // %bb.7:        // in Loop: Header=BB225_13 Depth=2
-        "movi   v28.2d, #0\n"
+        "movi   v28.16b, #0\n"
         "cmp    w18, #3\n"  // =3
-        "movi   v29.2d, #0\n"
-        "movi   v30.2d, #0\n"
-        "movi   v11.2d, #0\n"
-        "movi   v12.2d, #0\n"
-        "movi   v13.2d, #0\n"
-        "b.lt   DC_KERNEL_NO_MULT_9\n"
+        "movi   v29.16b, #0\n"
+        "movi   v30.16b, #0\n"
+        "movi   v11.16b, #0\n"
+        "movi   v12.16b, #0\n"
+        "movi   v13.16b, #0\n"
+        "b.lt   " DC_KERNEL_NO_MULT_9 "f\n"
         // %bb.8:        // in Loop: Header=BB225_13 Depth=2
         "ldr    q28, [x9, x12]\n"
         "ldr    q29, [x24, x12]\n"
@@ -7514,7 +7542,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ldr    q11, [x8, x12]\n"
         "ldr    q12, [x22, x12]\n"
         "ldr    q13, [x15, x12]\n"
-        "   DC_KERNEL_NO_MULT_9:\n"  // in Loop: Header=BB225_13 Depth=2
+        DC_KERNEL_NO_MULT_9 ":\n"  // in Loop: Header=BB225_13 Depth=2
         "ldr    x6, [sp, #144]\n"  // 8-byte Folded Reload
         "mov    x12, xzr\n"
         "mov    w17, wzr\n"
@@ -7522,8 +7550,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x13, x5, %[scratch_block_data]\n"
         "add    %[output_block_data], x11, %[scratch_block_data]\n"
         "add    %[scratch_block_data], x6, x0\n"
-        "b      DC_KERNEL_NO_MULT_11\n"
-        "   DC_KERNEL_NO_MULT_10:\n"  // in Loop: Header=BB225_11 Depth=3
+        "b      " DC_KERNEL_NO_MULT_11 "f\n"
+        DC_KERNEL_NO_MULT_10 ":\n"  // in Loop: Header=BB225_11 Depth=3
         ".word 0x4e8e965f  // sdot   v31.4s, v18.16b, v14.16b\n"
         ".word 0x4e979648  // sdot   v8.4s, v18.16b, v23.16b\n"
         ".word 0x4e999669  // sdot   v9.4s, v19.16b, v25.16b\n"
@@ -7587,12 +7615,12 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         ".word 0x4e989649  // sdot   v9.4s, v18.16b, v24.16b\n"
         ".word 0x4e99964a  // sdot   v10.4s, v18.16b, v25.16b\n"
         "add    x12, x12, x16\n"
-        "   DC_KERNEL_NO_MULT_11:\n"  // Parent Loop BB225_26 Depth=1
+        DC_KERNEL_NO_MULT_11 ":\n"  // Parent Loop BB225_26 Depth=1
         // Parent Loop BB225_13 Depth=2
         // =>  This Inner Loop Header: Depth=3
         "cmp    w17, w18\n"
-        "b.lt   DC_KERNEL_NO_MULT_10\n"
-        "   DC_KERNEL_NO_MULT_12:\n"  // in Loop: Header=BB225_13 Depth=2
+        "b.lt   " DC_KERNEL_NO_MULT_10 "b\n"
+        DC_KERNEL_NO_MULT_12 ":\n"  // in Loop: Header=BB225_13 Depth=2
         "ldp    x13, x12, [sp, #160]\n"  // 8-byte Folded Reload
         "ldr    %[scratch_block_data], [sp, #152]\n"  // 8-byte Folded Reload
         "ldr    x6, [sp, #224]\n"  // 8-byte Folded Reload
@@ -7602,21 +7630,21 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x13, x13, #16\n"  // =16
         "mov    v19.16b, v16.16b\n"
         "mov    v18.16b, v7.16b\n"
-        "   DC_KERNEL_NO_MULT_13:\n"  // Parent Loop BB225_26 Depth=1
+        DC_KERNEL_NO_MULT_13 ":\n"  // Parent Loop BB225_26 Depth=1
         // =>  This Loop Header: Depth=2
         // Child Loop BB225_5 Depth 3
         // Child Loop BB225_11 Depth 3
         "cmp    x12, #2\n"  // =2
-        "b.ne   DC_KERNEL_NO_MULT_3\n"
-        "b      DC_KERNEL_NO_MULT_25\n"
-        "   DC_KERNEL_NO_MULT_14:\n"  // in Loop: Header=BB225_26 Depth=1
+        "b.ne   " DC_KERNEL_NO_MULT_3 "b\n"
+        "b      " DC_KERNEL_NO_MULT_25 "f\n"
+        DC_KERNEL_NO_MULT_14 ":\n"  // in Loop: Header=BB225_26 Depth=1
         "ldr    x10, [sp, #64]\n"  // 8-byte Folded Reload
         "ldr    x17, [sp, #40]\n"  // 8-byte Folded Reload
         "ldr    %[output_block_data], [sp, #136]\n"  // 8-byte Folded Reload
         "mov    w12, wzr\n"
         "ldp    q21, q22, [x10]\n"
-        "b      DC_KERNEL_NO_MULT_24\n"
-        "   DC_KERNEL_NO_MULT_15:\n"  // in Loop: Header=BB225_24 Depth=2
+        "b      " DC_KERNEL_NO_MULT_24 "f\n"
+        DC_KERNEL_NO_MULT_15 ":\n"  // in Loop: Header=BB225_24 Depth=2
         "ldr    x10, [sp, #184]\n"  // 8-byte Folded Reload
         "str    w12, [sp, #224]\n"  // 4-byte Folded Spill
         "ldp    q23, q24, [%[output_block_data]]\n"
@@ -7628,20 +7656,20 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x10, %[output_block_data], x10\n"
         "ldp    q27, q28, [x10]\n"
         "str    x17, [sp, #208]\n"  // 8-byte Folded Spill
-        "b      DC_KERNEL_NO_MULT_22\n"
-        "   DC_KERNEL_NO_MULT_16:\n"  // in Loop: Header=BB225_22 Depth=3
+        "b      " DC_KERNEL_NO_MULT_22 "f\n"
+        DC_KERNEL_NO_MULT_16 ":\n"  // in Loop: Header=BB225_22 Depth=3
         "cmp    w12, w14\n"
         "orr    w13, wzr, #0x4\n"
         "csel   w13, w18, w13, eq\n"
         "add    x10, %[output_block_data], #32\n"  // =32
-        "movi   v29.2d, #0\n"
-        "movi   v30.2d, #0\n"
-        "movi   v8.2d, #0\n"
-        "movi   v31.2d, #0\n"
+        "movi   v29.16b, #0\n"
+        "movi   v30.16b, #0\n"
+        "movi   v8.16b, #0\n"
+        "movi   v31.16b, #0\n"
         "cmp    w13, #3\n"  // =3
-        "movi   v9.2d, #0\n"
-        "movi   v10.2d, #0\n"
-        "b.lt   DC_KERNEL_NO_MULT_18\n"
+        "movi   v9.16b, #0\n"
+        "movi   v10.16b, #0\n"
+        "b.lt   " DC_KERNEL_NO_MULT_18 "f\n"
         // %bb.17:        // in Loop: Header=BB225_22 Depth=3
         "ldr    %[scratch_block_data], [sp, #184]\n"  // 8-byte Folded Reload
         "ldp    q29, q31, [%[output_block_data], #32]\n"
@@ -7650,10 +7678,10 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ldp    q30, q9, [x6]\n"
         "add    %[scratch_block_data], x10, x0\n"
         "ldp    q8, q10, [%[scratch_block_data]]\n"
-        "   DC_KERNEL_NO_MULT_18:\n"  // in Loop: Header=BB225_22 Depth=3
+        DC_KERNEL_NO_MULT_18 ":\n"  // in Loop: Header=BB225_22 Depth=3
         "mov    w3, wzr\n"
-        "b      DC_KERNEL_NO_MULT_20\n"
-        "   DC_KERNEL_NO_MULT_19:\n"  // in Loop: Header=BB225_20 Depth=4
+        "b      " DC_KERNEL_NO_MULT_20 "f\n"
+        DC_KERNEL_NO_MULT_19 ":\n"  // in Loop: Header=BB225_20 Depth=4
         "mov    v3.16b, v21.16b\n"
         "mov    v11.16b, v22.16b\n"
         ".word 0x4e979643  // sdot   v3.4s, v18.16b, v23.16b\n"
@@ -7693,22 +7721,22 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "str    d3, [x17]\n"
         "add    x17, x17, x16\n"
         "add    w3, w3, #1\n"  // =1
-        "   DC_KERNEL_NO_MULT_20:\n"  // Parent Loop BB225_26 Depth=1
+        DC_KERNEL_NO_MULT_20 ":\n"  // Parent Loop BB225_26 Depth=1
         // Parent Loop BB225_24 Depth=2
         // Parent Loop BB225_22 Depth=3
         // =>  This Inner Loop Header: Depth=4
         "cmp    w3, w13\n"
-        "b.lt   DC_KERNEL_NO_MULT_19\n"
+        "b.lt   " DC_KERNEL_NO_MULT_19 "b\n"
         // %bb.21:        // in Loop: Header=BB225_22 Depth=3
         "add    w12, w12, #1\n"  // =1
         "mov    %[output_block_data], x10\n"
-        "   DC_KERNEL_NO_MULT_22:\n"  // Parent Loop BB225_26 Depth=1
+        DC_KERNEL_NO_MULT_22 ":\n"  // Parent Loop BB225_26 Depth=1
         // Parent Loop BB225_24 Depth=2
         // =>  This Loop Header: Depth=3
         // Child Loop BB225_20 Depth 4
         "ldr    w10, [sp, #252]\n"  // 4-byte Folded Reload
         "cmp    w12, w10\n"
-        "b.lt   DC_KERNEL_NO_MULT_16\n"
+        "b.lt   " DC_KERNEL_NO_MULT_16 "b\n"
         // %bb.23:        // in Loop: Header=BB225_24 Depth=2
         "ldr    x10, [sp, #120]\n"  // 8-byte Folded Reload
         "ldr    x17, [sp, #208]\n"  // 8-byte Folded Reload
@@ -7716,14 +7744,14 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ldr    %[output_block_data], [sp, #192]\n"  // 8-byte Folded Reload
         "add    x17, x17, x10\n"
         "add    w12, w12, #1\n"  // =1
-        "   DC_KERNEL_NO_MULT_24:\n"  // Parent Loop BB225_26 Depth=1
+        DC_KERNEL_NO_MULT_24 ":\n"  // Parent Loop BB225_26 Depth=1
         // =>  This Loop Header: Depth=2
         // Child Loop BB225_22 Depth 3
         // Child Loop BB225_20 Depth 4
         "ldr    w10, [sp, #132]\n"  // 4-byte Folded Reload
         "cmp    w12, w10\n"
-        "b.lt   DC_KERNEL_NO_MULT_15\n"
-        "   DC_KERNEL_NO_MULT_25:\n"  // in Loop: Header=BB225_26 Depth=1
+        "b.lt   " DC_KERNEL_NO_MULT_15 "b\n"
+        DC_KERNEL_NO_MULT_25 ":\n"  // in Loop: Header=BB225_26 Depth=1
         "ldr    x10, [sp, #64]\n"  // 8-byte Folded Reload
         "ldr    x12, [sp, #16]\n"  // 8-byte Folded Reload
         "ldr    w6, [sp, #28]\n"  // 4-byte Folded Reload
@@ -7742,7 +7770,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ldr    x10, [sp, #56]\n"  // 8-byte Folded Reload
         "add    x10, x10, x12\n"
         "str    x10, [sp, #56]\n"  // 8-byte Folded Spill
-        "   DC_KERNEL_NO_MULT_26:\n"  // =>This Loop Header: Depth=1
+        DC_KERNEL_NO_MULT_26 ":\n"  // =>This Loop Header: Depth=1
         // Child Loop BB225_24 Depth 2
         // Child Loop BB225_22 Depth 3
         // Child Loop BB225_20 Depth 4
@@ -7751,7 +7779,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         // Child Loop BB225_11 Depth 3
         "ldr    w10, [sp, #24]\n"  // 4-byte Folded Reload
         "cmp    w6, w10\n"
-        "b.lt   DC_KERNEL_NO_MULT_1\n"
+        "b.lt   " DC_KERNEL_NO_MULT_1 "b\n"
         // %bb.27:
         "add    sp, sp, #288\n"  // =448
         :
@@ -7800,6 +7828,25 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     // x2 %[bias_data]
     // x3 %[output_block_data]
     // x4 %[function_params]
+#define DC_KERNEL_NO_MULT_STRIDE_1 "1"
+#define DC_KERNEL_NO_MULT_STRIDE_2 "2"
+#define DC_KERNEL_NO_MULT_STRIDE_3 "3"
+#define DC_KERNEL_NO_MULT_STRIDE_4 "4"
+#define DC_KERNEL_NO_MULT_STRIDE_5 "5"
+#define DC_KERNEL_NO_MULT_STRIDE_6 "6"
+#define DC_KERNEL_NO_MULT_STRIDE_7 "7"
+#define DC_KERNEL_NO_MULT_STRIDE_8 "8"
+#define DC_KERNEL_NO_MULT_STRIDE_9 "9"
+#define DC_KERNEL_NO_MULT_STRIDE_10 "10"
+#define DC_KERNEL_NO_MULT_STRIDE_11 "11"
+#define DC_KERNEL_NO_MULT_STRIDE_12 "12"
+#define DC_KERNEL_NO_MULT_STRIDE_13 "13"
+#define DC_KERNEL_NO_MULT_STRIDE_14 "14"
+#define DC_KERNEL_NO_MULT_STRIDE_15 "15"
+#define DC_KERNEL_NO_MULT_STRIDE_16 "16"
+#define DC_KERNEL_NO_MULT_STRIDE_17 "17"
+#define DC_KERNEL_NO_MULT_STRIDE_18 "18"
+#define DC_KERNEL_NO_MULT_STRIDE_19 "19"
 
     asm volatile(
         "sub    sp, sp, #32\n"  // =192
@@ -7848,8 +7895,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "stp    %[filter_workspace], x24, [sp, #16]\n"  // 8-byte Folded Spill
         "str    w25, [sp, #12]\n"  // 4-byte Folded Spill
         "str    %[scratch_block_data], [sp]\n"  // 8-byte Folded Spill
-        "b      DC_KERNEL_NO_MULT_STRIDE_19\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_1:\n"  // in Loop: Header=BB227_19 Depth=1
+        "b      " DC_KERNEL_NO_MULT_STRIDE_19 "f\n"
+        DC_KERNEL_NO_MULT_STRIDE_1 ":\n"  // in Loop: Header=BB227_19 Depth=1
         "and    x15, x8, #0x1fffffff\n"
         "add    w16, w8, w8, lsl #1\n"
         "add    x20, %[output_block_data], x15, lsl #3\n"
@@ -7858,7 +7905,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x21, %[filter_workspace], x15\n"
         "mov    x22, xzr\n"
         "mov    x23, xzr\n"
-        "b.ne   DC_KERNEL_NO_MULT_STRIDE_11\n"
+        "b.ne   " DC_KERNEL_NO_MULT_STRIDE_11 "f\n"
         // %bb.2:        // in Loop: Header=BB227_19 Depth=1
         "sxtw   x15, w8\n"
         "ubfiz  %[filter_workspace], x8, #3, #29\n"
@@ -7868,8 +7915,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x25, %[output_block_data], %[filter_workspace]\n"
         "add    x26, x20, x9\n"
         "mov    x27, %[bias_data]\n"
-        "b      DC_KERNEL_NO_MULT_STRIDE_9\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_3:\n"  // in Loop: Header=BB227_9 Depth=2
+        "b      " DC_KERNEL_NO_MULT_STRIDE_9 "f\n"
+        DC_KERNEL_NO_MULT_STRIDE_3 ":\n"  // in Loop: Header=BB227_9 Depth=2
         "add    %[filter_workspace], x24, x23, lsl #4\n"
         "add    x15, x21, x23, lsl #4\n"
         "ldr    q8, [%[filter_workspace], x5]\n"
@@ -7886,8 +7933,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x15, x25, x23, lsl #2\n"
         "mov    x29, x22\n"
         "mov    v9.16b, v8.16b\n"
-        "b      DC_KERNEL_NO_MULT_STRIDE_5\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_4:\n"  // in Loop: Header=BB227_5 Depth=3
+        "b      " DC_KERNEL_NO_MULT_STRIDE_5 "f\n"
+        DC_KERNEL_NO_MULT_STRIDE_4 ":\n"  // in Loop: Header=BB227_5 Depth=3
         "mov    v23.16b, v24.16b\n"
         "mov    v10.16b, v24.16b\n"
         ".word 0x4e9e9737  // sdot   v23.4s, v25.16b, v30.16b\n"
@@ -7957,13 +8004,13 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "mov    v31.16b, v22.16b\n"
         "mov    v9.16b, v8.16b\n"
         "mov    v23.16b, v8.16b\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_5:\n"  // Parent Loop BB227_19 Depth=1
+        DC_KERNEL_NO_MULT_STRIDE_5 ":\n"  // Parent Loop BB227_19 Depth=1
         // Parent Loop BB227_9 Depth=2
         // =>  This Inner Loop Header: Depth=3
         "cmp    x28, x7\n"
-        "b.lt   DC_KERNEL_NO_MULT_STRIDE_4\n"
-        "b      DC_KERNEL_NO_MULT_STRIDE_7\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_6:\n"  // in Loop: Header=BB227_7 Depth=3
+        "b.lt   " DC_KERNEL_NO_MULT_STRIDE_4 "b\n"
+        "b      " DC_KERNEL_NO_MULT_STRIDE_7 "f\n"
+        DC_KERNEL_NO_MULT_STRIDE_6 ":\n"  // in Loop: Header=BB227_7 Depth=3
         "mov    v8.16b, v24.16b\n"
         "mov    v10.16b, v24.16b\n"
         ".word 0x4e9e9728  // sdot   v8.4s, v25.16b, v30.16b\n"
@@ -7997,29 +8044,29 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "str    s8, [x20, x29]\n"
         "st1    { v8.s }[1], [x15]\n"
         "add    x29, x29, x6\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_7:\n"  // Parent Loop BB227_19 Depth=1
+        DC_KERNEL_NO_MULT_STRIDE_7 ":\n"  // Parent Loop BB227_19 Depth=1
         // Parent Loop BB227_9 Depth=2
         // =>  This Inner Loop Header: Depth=3
         "cmp    x28, x11\n"
-        "b.lt   DC_KERNEL_NO_MULT_STRIDE_6\n"
+        "b.lt   " DC_KERNEL_NO_MULT_STRIDE_6 "b\n"
         // %bb.8:        // in Loop: Header=BB227_9 Depth=2
         "add    x27, x27, #16\n"  // =16
         "add    x23, x23, #1\n"  // =1
         "add    x22, x22, #4\n"  // =4
-        "   DC_KERNEL_NO_MULT_STRIDE_9:\n"  // Parent Loop BB227_19 Depth=1
+        DC_KERNEL_NO_MULT_STRIDE_9 ":\n"  // Parent Loop BB227_19 Depth=1
         // =>  This Loop Header: Depth=2
         // Child Loop BB227_5 Depth 3
         // Child Loop BB227_7 Depth 3
         "cmp    x23, #2\n"  // =2
-        "b.ne   DC_KERNEL_NO_MULT_STRIDE_3\n"
+        "b.ne   " DC_KERNEL_NO_MULT_STRIDE_3 "b\n"
         // %bb.10:        // in Loop: Header=BB227_19 Depth=1
         "ldp    %[filter_workspace], x24, [sp, #16]\n"  // 8-byte Folded Reload
         "ldr    %[scratch_block_data], [sp]\n"  // 8-byte Folded Reload
         "ldr    w25, [sp, #12]\n"  // 4-byte Folded Reload
         "mov    %[output_block_data], x16\n"
         "mov    x26, x12\n"
-        "b      DC_KERNEL_NO_MULT_STRIDE_18\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_11:\n"  // in Loop: Header=BB227_19 Depth=1
+        "b      " DC_KERNEL_NO_MULT_STRIDE_18 "f\n"
+        DC_KERNEL_NO_MULT_STRIDE_11 ":\n"  // in Loop: Header=BB227_19 Depth=1
         "mul    w15, w26, w8\n"
         "add    x15, %[scratch_block_data], w15, sxtw\n"
         "add    x12, x15, x10\n"
@@ -8032,11 +8079,11 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ldp    q30, q31, [%[bias_data]]\n"
         "ldp    q13, q11, [x15]\n"
         "add    x21, x15, #32\n"  // =32
-        "b      DC_KERNEL_NO_MULT_STRIDE_17\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_12:\n"  // in Loop: Header=BB227_17 Depth=2
+        "b      " DC_KERNEL_NO_MULT_STRIDE_17 "f\n"
+        DC_KERNEL_NO_MULT_STRIDE_12 ":\n"  // in Loop: Header=BB227_17 Depth=2
         "cmp    w11, w14\n"
         "ccmp   x19, x22, #0, eq\n"
-        "b.eq   DC_KERNEL_NO_MULT_STRIDE_14\n"
+        "b.eq   " DC_KERNEL_NO_MULT_STRIDE_14 "f\n"
         // %bb.13:        // in Loop: Header=BB227_17 Depth=2
         "and    x15, x22, #0xffffffe0\n"
         "add    x15, x21, x15\n"
@@ -8045,7 +8092,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ldp    q5, q7, [x15]\n"
         "ldp    q6, q17, [x12]\n"
         "ldp    q16, q18, [x16]\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_14:\n"  // in Loop: Header=BB227_17 Depth=2
+        DC_KERNEL_NO_MULT_STRIDE_14 ":\n"  // in Loop: Header=BB227_17 Depth=2
         "mov    v14.16b, v30.16b\n"
         "mov    v15.16b, v31.16b\n"
         ".word 0x4e8d970e  // sdot   v14.4s, v24.16b, v13.16b\n"
@@ -8079,7 +8126,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "umin   v14.8b, v14.8b, v2.8b\n"
         "trn1   v12.8h, v12.8h, v18.8h\n"
         "str    d14, [x20]\n"
-        "b.eq   DC_KERNEL_NO_MULT_STRIDE_16\n"
+        "b.eq   " DC_KERNEL_NO_MULT_STRIDE_16 "f\n"
         // %bb.15:        // in Loop: Header=BB227_17 Depth=2
         "mov    v14.16b, v30.16b\n"
         ".word 0x4e8d970e  // sdot   v14.4s, v24.16b, v13.16b\n"
@@ -8106,24 +8153,24 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "mov    v11.16b, v7.16b\n"
         "mov    v9.16b, v17.16b\n"
         "mov    v12.16b, v18.16b\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_16:\n"  // in Loop: Header=BB227_17 Depth=2
+        DC_KERNEL_NO_MULT_STRIDE_16 ":\n"  // in Loop: Header=BB227_17 Depth=2
         "add    x23, x23, #1\n"  // =1
         "add    x20, x20, x6\n"
         "add    x22, x22, #32\n"  // =32
-        "   DC_KERNEL_NO_MULT_STRIDE_17:\n"  // Parent Loop BB227_19 Depth=1
+        DC_KERNEL_NO_MULT_STRIDE_17 ":\n"  // Parent Loop BB227_19 Depth=1
         // =>  This Inner Loop Header: Depth=2
         "cmp    x23, x11\n"
-        "b.lt   DC_KERNEL_NO_MULT_STRIDE_12\n"
-        "   DC_KERNEL_NO_MULT_STRIDE_18:\n"  // in Loop: Header=BB227_19 Depth=1
+        "b.lt   " DC_KERNEL_NO_MULT_STRIDE_12 "b\n"
+        DC_KERNEL_NO_MULT_STRIDE_18 ":\n"  // in Loop: Header=BB227_19 Depth=1
         "add    %[bias_data], x2, #32\n"  // =32
         "add    x8, x8, #1\n"  // =1
-        "   DC_KERNEL_NO_MULT_STRIDE_19:\n"  // =>This Loop Header: Depth=1
+        DC_KERNEL_NO_MULT_STRIDE_19 ":\n"  // =>This Loop Header: Depth=1
         // Child Loop BB227_17 Depth 2
         // Child Loop BB227_9 Depth 2
         // Child Loop BB227_5 Depth 3
         // Child Loop BB227_7 Depth 3
         "cmp    x8, x24\n"
-        "b.lt   DC_KERNEL_NO_MULT_STRIDE_1\n"
+        "b.lt   " DC_KERNEL_NO_MULT_STRIDE_1 "b\n"
         // %bb.20:
         "add    sp, sp, #32\n"  // =192
         :
@@ -8172,6 +8219,28 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     // x2 %[bias_data]
     // x3 %[output_block_data]
     // x4 %[function_params]
+#define DC_KERNEL_MULT_1 "1"
+#define DC_KERNEL_MULT_2 "2"
+#define DC_KERNEL_MULT_3 "3"
+#define DC_KERNEL_MULT_4 "4"
+#define DC_KERNEL_MULT_5 "5"
+#define DC_KERNEL_MULT_6 "6"
+#define DC_KERNEL_MULT_7 "7"
+#define DC_KERNEL_MULT_8 "8"
+#define DC_KERNEL_MULT_9 "9"
+#define DC_KERNEL_MULT_10 "10"
+#define DC_KERNEL_MULT_11 "11"
+#define DC_KERNEL_MULT_12 "12"
+#define DC_KERNEL_MULT_13 "13"
+#define DC_KERNEL_MULT_14 "14"
+#define DC_KERNEL_MULT_15 "15"
+#define DC_KERNEL_MULT_16 "16"
+#define DC_KERNEL_MULT_17 "17"
+#define DC_KERNEL_MULT_18 "18"
+#define DC_KERNEL_MULT_19 "19"
+#define DC_KERNEL_MULT_20 "20"
+#define DC_KERNEL_MULT_21 "21"
+#define DC_KERNEL_MULT_22 "22"
 
     asm volatile(
         "sub    sp, sp, #160\n"  // =288
@@ -8254,8 +8323,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x16, x12, #4\n"  // =4
         "str    x12, [sp, #64]\n"  // 8-byte Folded Spill
         "str    %[output_block_data], [sp, #24]\n"  // 8-byte Folded Spill
-        "b      DC_KERNEL_MULT_22\n"
-        "   DC_KERNEL_MULT_1:\n"  // in Loop: Header=BB205_22 Depth=1
+        "b      " DC_KERNEL_MULT_22 "f\n"
+        DC_KERNEL_MULT_1 ":\n"  // in Loop: Header=BB205_22 Depth=1
         "ldr    x12, [sp, #16]\n"  // 8-byte Folded Reload
         "str    w7, [sp, #12]\n"  // 4-byte Folded Spill
         "ldr    x13, [sp, #88]\n"  // 8-byte Folded Reload
@@ -8266,12 +8335,12 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "cmp    w13, #4\n"  // =4
         "str    x12, [sp, #16]\n"  // 8-byte Folded Spill
         "mov    x12, xzr\n"
-        "b.ne   DC_KERNEL_MULT_12\n"
+        "b.ne   " DC_KERNEL_MULT_12 "f\n"
         // %bb.2:        // in Loop: Header=BB205_22 Depth=1
         "ldp    x19, x13, [sp, #32]\n"  // 16-byte Folded Reload
         "str    x13, [sp, #120]\n"  // 8-byte Folded Spill
-        "b      DC_KERNEL_MULT_11\n"
-        "   DC_KERNEL_MULT_3:\n"  // in Loop: Header=BB205_11 Depth=2
+        "b      " DC_KERNEL_MULT_11 "f\n"
+        DC_KERNEL_MULT_3 ":\n"  // in Loop: Header=BB205_11 Depth=2
         "str    x12, [sp, #112]\n"  // 8-byte Folded Spill
         "ldr    w12, [%[scratch_block_data]]\n"
         "add    %[output_block_data], %[scratch_block_data], x11\n"
@@ -8311,8 +8380,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "mov    v24.s[3], w3\n"
         ".word 0x4e88965f  // sdot   v31.4s, v18.16b, v8.16b\n"
         "mov    x12, x19\n"
-        "b      DC_KERNEL_MULT_5\n"
-        "   DC_KERNEL_MULT_4:\n"  // in Loop: Header=BB205_5 Depth=3
+        "b      " DC_KERNEL_MULT_5 "f\n"
+        DC_KERNEL_MULT_4 ":\n"  // in Loop: Header=BB205_5 Depth=3
         ".word 0x4f95e25c  // sdot   v28.4s, v18.16b, v21.4b[0]\n"
         ".word 0x4f95ea5d  // sdot   v29.4s, v18.16b, v21.4b[2]\n"
         ".word 0x4f97ea7e  // sdot   v30.4s, v19.16b, v23.4b[2]\n"
@@ -8503,18 +8572,18 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         ".word 0x4f97ea5f  // sdot   v31.4s, v18.16b, v23.4b[2]\n"
         "st1    { v8.s }[3], [%[output_block_data]]\n"
         "add    x12, x12, x10\n"
-        "   DC_KERNEL_MULT_5:\n"  // Parent Loop BB205_22 Depth=1
+        DC_KERNEL_MULT_5 ":\n"  // Parent Loop BB205_22 Depth=1
         // Parent Loop BB205_11 Depth=2
         // =>  This Inner Loop Header: Depth=3
         "cmp    w13, w9\n"
-        "b.lt   DC_KERNEL_MULT_4\n"
+        "b.lt   " DC_KERNEL_MULT_4 "b\n"
         // %bb.6:        // in Loop: Header=BB205_11 Depth=2
         "ldr    %[output_block_data], [sp, #120]\n"  // 8-byte Folded Reload
         "cmp    w13, w25\n"
         "str    x19, [sp, #104]\n"  // 8-byte Folded Spill
         "add    %[output_block_data], x3, #16\n"  // =16
         "str    %[output_block_data], [sp, #120]\n"  // 8-byte Folded Spill
-        "b.ge   DC_KERNEL_MULT_10\n"
+        "b.ge   " DC_KERNEL_MULT_10 "f\n"
         // %bb.7:        // in Loop: Header=BB205_11 Depth=2
         "add    x7, %[scratch_block_data], x13, lsl #2\n"
         "add    x19, x23, x13, lsl #2\n"
@@ -8536,8 +8605,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    x7, %[function_params], x12\n"
         "add    x19, x5, x12\n"
         "add    x12, x20, x12\n"
-        "b      DC_KERNEL_MULT_9\n"
-        "   DC_KERNEL_MULT_8:\n"  // in Loop: Header=BB205_9 Depth=3
+        "b      " DC_KERNEL_MULT_9 "f\n"
+        DC_KERNEL_MULT_8 ":\n"  // in Loop: Header=BB205_9 Depth=3
         ".word 0x4f95e25c  // sdot   v28.4s, v18.16b, v21.4b[0]\n"
         ".word 0x4f95ea5d  // sdot   v29.4s, v18.16b, v21.4b[2]\n"
         ".word 0x4f97ea7e  // sdot   v30.4s, v19.16b, v23.4b[2]\n"
@@ -8584,32 +8653,32 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         ".word 0x4f97e25e  // sdot   v30.4s, v18.16b, v23.4b[0]\n"
         ".word 0x4f97ea5f  // sdot   v31.4s, v18.16b, v23.4b[2]\n"
         "add    %[output_block_data], x3, x15\n"
-        "   DC_KERNEL_MULT_9:\n"  // Parent Loop BB205_22 Depth=1
+        DC_KERNEL_MULT_9 ":\n"  // Parent Loop BB205_22 Depth=1
         // Parent Loop BB205_11 Depth=2
         // =>  This Inner Loop Header: Depth=3
         "cmp    w6, w17\n"
-        "b.lt   DC_KERNEL_MULT_8\n"
-        "   DC_KERNEL_MULT_10:\n"  // in Loop: Header=BB205_11 Depth=2
+        "b.lt   " DC_KERNEL_MULT_8 "b\n"
+        DC_KERNEL_MULT_10 ":\n"  // in Loop: Header=BB205_11 Depth=2
         "ldp    x19, x12, [sp, #104]\n"  // 16-byte Folded Reload
         "mov    v20.16b, v17.16b\n"
         "mov    v19.16b, v16.16b\n"
         "mov    v18.16b, v7.16b\n"
         "add    x12, x12, #1\n"  // =1
         "add    x19, x19, #4\n"  // =4
-        "   DC_KERNEL_MULT_11:\n"  // Parent Loop BB205_22 Depth=1
+        DC_KERNEL_MULT_11 ":\n"  // Parent Loop BB205_22 Depth=1
         // =>  This Loop Header: Depth=2
         // Child Loop BB205_5 Depth 3
         // Child Loop BB205_9 Depth 3
         "cmp    x12, #2\n"  // =2
-        "b.ne   DC_KERNEL_MULT_3\n"
-        "b      DC_KERNEL_MULT_21\n"
-        "   DC_KERNEL_MULT_12:\n"  // in Loop: Header=BB205_22 Depth=1
+        "b.ne   " DC_KERNEL_MULT_3 "b\n"
+        "b      " DC_KERNEL_MULT_21 "f\n"
+        DC_KERNEL_MULT_12 ":\n"  // in Loop: Header=BB205_22 Depth=1
         "ldr    x13, [sp, #40]\n"  // 8-byte Folded Reload
         "ldp    q21, q22, [x13]\n"
         "ldr    x13, [sp, #24]\n"  // 8-byte Folded Reload
         "str    x13, [sp, #120]\n"  // 8-byte Folded Spill
-        "b      DC_KERNEL_MULT_20\n"
-        "   DC_KERNEL_MULT_13:\n"  // in Loop: Header=BB205_20 Depth=2
+        "b      " DC_KERNEL_MULT_20 "f\n"
+        DC_KERNEL_MULT_13 ":\n"  // in Loop: Header=BB205_20 Depth=2
         "madd   x6, x12, x11, %[scratch_block_data]\n"
         "ldr    w13, [x6]\n"
         "add    x7, x6, x11\n"
@@ -8621,8 +8690,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ld1r   { v24.4s }, [x7]\n"
         "ldr    x7, [sp, #120]\n"  // 8-byte Folded Reload
         "mov    v23.s[3], w13\n"
-        "b      DC_KERNEL_MULT_18\n"
-        "   DC_KERNEL_MULT_14:\n"  // in Loop: Header=BB205_18 Depth=3
+        "b      " DC_KERNEL_MULT_18 "f\n"
+        DC_KERNEL_MULT_14 ":\n"  // in Loop: Header=BB205_18 Depth=3
         "add    x6, x6, #4\n"  // =4
         "mov    x13, x6\n"
         "ld1    { v23.s }[1], [x13], x8\n"
@@ -8633,8 +8702,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ld1    { v24.s }[1], [x13]\n"
         "orr    w13, wzr, #0x4\n"
         "csel   w13, w17, w13, eq\n"
-        "b      DC_KERNEL_MULT_16\n"
-        "   DC_KERNEL_MULT_15:\n"  // in Loop: Header=BB205_16 Depth=4
+        "b      " DC_KERNEL_MULT_16 "f\n"
+        DC_KERNEL_MULT_15 ":\n"  // in Loop: Header=BB205_16 Depth=4
         "mov    v25.16b, v21.16b\n"
         "mov    v26.16b, v22.16b\n"
         ".word 0x4f97e259  // sdot   v25.4s, v18.16b, v23.4b[0]\n"
@@ -8658,34 +8727,34 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "str    d25, [x7]\n"
         "add    x7, x7, x15\n"
         "add    w19, w19, #1\n"  // =1
-        "   DC_KERNEL_MULT_16:\n"  // Parent Loop BB205_22 Depth=1
+        DC_KERNEL_MULT_16 ":\n"  // Parent Loop BB205_22 Depth=1
         // Parent Loop BB205_20 Depth=2
         // Parent Loop BB205_18 Depth=3
         // =>  This Inner Loop Header: Depth=4
         "cmp    w19, w13\n"
-        "b.lt   DC_KERNEL_MULT_15\n"
+        "b.lt   " DC_KERNEL_MULT_15 "b\n"
         // %bb.17:        // in Loop: Header=BB205_18 Depth=3
         "add    w3, w3, #1\n"  // =1
-        "   DC_KERNEL_MULT_18:\n"  // Parent Loop BB205_22 Depth=1
+        DC_KERNEL_MULT_18 ":\n"  // Parent Loop BB205_22 Depth=1
         // Parent Loop BB205_20 Depth=2
         // =>  This Loop Header: Depth=3
         // Child Loop BB205_16 Depth 4
         "cmp    w3, w25\n"
-        "b.lt   DC_KERNEL_MULT_14\n"
+        "b.lt   " DC_KERNEL_MULT_14 "b\n"
         // %bb.19:        // in Loop: Header=BB205_20 Depth=2
         "ldr    x13, [sp, #80]\n"  // 8-byte Folded Reload
         "ldr    %[output_block_data], [sp, #120]\n"  // 8-byte Folded Reload
         "add    x12, x12, #1\n"  // =1
         "add    %[output_block_data], x3, x13\n"
         "str    %[output_block_data], [sp, #120]\n"  // 8-byte Folded Spill
-        "   DC_KERNEL_MULT_20:\n"  // Parent Loop BB205_22 Depth=1
+        DC_KERNEL_MULT_20 ":\n"  // Parent Loop BB205_22 Depth=1
         // =>  This Loop Header: Depth=2
         // Child Loop BB205_18 Depth 3
         // Child Loop BB205_16 Depth 4
         "ldr    x13, [sp, #88]\n"  // 8-byte Folded Reload
         "cmp    x12, x13\n"
-        "b.lt   DC_KERNEL_MULT_13\n"
-        "   DC_KERNEL_MULT_21:\n"  // in Loop: Header=BB205_22 Depth=1
+        "b.lt   " DC_KERNEL_MULT_13 "b\n"
+        DC_KERNEL_MULT_21 ":\n"  // in Loop: Header=BB205_22 Depth=1
         "ldr    x12, [sp, #40]\n"  // 8-byte Folded Reload
         "ldr    w7, [sp, #12]\n"  // 4-byte Folded Reload
         "add    x12, x12, #32\n"  // =32
@@ -8697,7 +8766,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ldr    x12, [sp, #32]\n"  // 8-byte Folded Reload
         "add    x12, x12, #8\n"  // =8
         "str    x12, [sp, #32]\n"  // 8-byte Folded Spill
-        "   DC_KERNEL_MULT_22:\n"  // =>This Loop Header: Depth=1
+        DC_KERNEL_MULT_22 ":\n"  // =>This Loop Header: Depth=1
         // Child Loop BB205_20 Depth 2
         // Child Loop BB205_18 Depth 3
         // Child Loop BB205_16 Depth 4
@@ -8706,7 +8775,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         // Child Loop BB205_9 Depth 3
         "ldr    w12, [sp, #8]\n"  // 4-byte Folded Reload
         "cmp    w7, w12\n"
-        "b.lt   DC_KERNEL_MULT_1\n"
+        "b.lt   " DC_KERNEL_MULT_1 "b\n"
         // %bb.23:
         "add    sp, sp, #160\n"  // =288
         :
@@ -8755,6 +8824,19 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
     // x2 %[bias_data]
     // x3 %[output_block_data]
     // x4 %[function_params]
+#define DC_KERNEL_MULT_STRIDE_1 "1"
+#define DC_KERNEL_MULT_STRIDE_2 "2"
+#define DC_KERNEL_MULT_STRIDE_3 "3"
+#define DC_KERNEL_MULT_STRIDE_4 "4"
+#define DC_KERNEL_MULT_STRIDE_5 "5"
+#define DC_KERNEL_MULT_STRIDE_6 "6"
+#define DC_KERNEL_MULT_STRIDE_7 "7"
+#define DC_KERNEL_MULT_STRIDE_8 "8"
+#define DC_KERNEL_MULT_STRIDE_9 "9"
+#define DC_KERNEL_MULT_STRIDE_10 "10"
+#define DC_KERNEL_MULT_STRIDE_11 "11"
+#define DC_KERNEL_MULT_STRIDE_12 "12"
+#define DC_KERNEL_MULT_STRIDE_13 "13"
 
     asm volatile(
         "ldr    w15, [%[function_params], #" STR(DP_OFFSET_OUTPUT_RESIDUAL_WIDTH) "]\n"
@@ -8784,8 +8866,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "add    %[function_params], x10, x10, lsl #1\n"
         "sxtw   x6, w6\n"
         "add    x7, x9, x13\n"
-        "b      DC_KERNEL_MULT_STRIDE_MULT_STRIDE_13\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_1:\n"  // in Loop: Header=BB206_13 Depth=1
+        "b      " DC_KERNEL_MULT_STRIDE_13 "f\n"
+        DC_KERNEL_MULT_STRIDE_1 ":\n"  // in Loop: Header=BB206_13 Depth=1
         "ldr    w20, [%[scratch_block_data]]\n"
         "add    x21, %[scratch_block_data], x10\n"
         "ldp    q5, q6, [%[filter_workspace]]\n"
@@ -8802,7 +8884,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "cmp    w14, #2\n"  // =2
         "mov    v21.s[3], w20\n"
         "mov    x20, xzr\n"
-        "b.ne   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_7\n"
+        "b.ne   " DC_KERNEL_MULT_STRIDE_7 "f\n"
         // %bb.2:        // in Loop: Header=BB206_13 Depth=1
         "dup    v22.4s, v22.s[0]\n"
         "add    x21, %[scratch_block_data], %[function_params]\n"
@@ -8810,8 +8892,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "ld1    { v22.s }[2], [x21]\n"
         "ld1r   { v23.4s }, [x22]\n"
         "mov    x21, xzr\n"
-        "b      DC_KERNEL_MULT_STRIDE_MULT_STRIDE_4\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_3:\n"  // in Loop: Header=BB206_4 Depth=2
+        "b      " DC_KERNEL_MULT_STRIDE_4 "f\n"
+        DC_KERNEL_MULT_STRIDE_3 ":\n"  // in Loop: Header=BB206_4 Depth=2
         "and    x22, x20, #0xfffffffc\n"
         "add    x23, x16, x22\n"
         "lsl    x24, x10, #2\n"
@@ -8918,12 +9000,12 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "str    s24, [x23, #4]\n"
         "st1    { v24.s }[1], [x25]\n"
         "add    x20, x20, #4\n"  // =4
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_4:\n"  // Parent Loop BB206_13 Depth=1
+        DC_KERNEL_MULT_STRIDE_4 ":\n"  // Parent Loop BB206_13 Depth=1
         // =>  This Inner Loop Header: Depth=2
         "cmp    x21, x6\n"
-        "b.lt   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_3\n"
-        "b      DC_KERNEL_MULT_STRIDE_MULT_STRIDE_6\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_5:\n"  // in Loop: Header=BB206_6 Depth=2
+        "b.lt   " DC_KERNEL_MULT_STRIDE_3 "b\n"
+        "b      " DC_KERNEL_MULT_STRIDE_6 "f\n"
+        DC_KERNEL_MULT_STRIDE_5 ":\n"  // in Loop: Header=BB206_6 Depth=2
         "and    x22, x20, #0xfffffffc\n"
         "add    x22, x16, x22\n"
         "lsl    x23, x10, #2\n"
@@ -8984,16 +9066,16 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "st1    { v24.s }[1], [x22]\n"
         "add    x19, x19, x13\n"
         "add    x20, x20, #4\n"  // =4
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_6:\n"  // Parent Loop BB206_13 Depth=1
+        DC_KERNEL_MULT_STRIDE_6 ":\n"  // Parent Loop BB206_13 Depth=1
         // =>  This Inner Loop Header: Depth=2
         "cmp    x21, x11\n"
-        "b.lt   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_5\n"
-        "b      DC_KERNEL_MULT_STRIDE_MULT_STRIDE_12\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_7:\n"  // in Loop: Header=BB206_13 Depth=1
+        "b.lt   " DC_KERNEL_MULT_STRIDE_5 "b\n"
+        "b      " DC_KERNEL_MULT_STRIDE_12 "f\n"
+        DC_KERNEL_MULT_STRIDE_7 ":\n"  // in Loop: Header=BB206_13 Depth=1
         "mov    x21, xzr\n"
         "dup    v22.4s, v22.s[0]\n"
-        "b      DC_KERNEL_MULT_STRIDE_MULT_STRIDE_11\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_8:\n"  // in Loop: Header=BB206_11 Depth=2
+        "b      " DC_KERNEL_MULT_STRIDE_11 "f\n"
+        DC_KERNEL_MULT_STRIDE_8 ":\n"  // in Loop: Header=BB206_11 Depth=2
         "and    x22, x20, #0xfffffffc\n"
         "add    x22, x16, x22\n"
         "mov    x23, x22\n"
@@ -9025,7 +9107,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "str    d24, [x19]\n"
         "ushr   v24.2d, v22.2d, #16\n"
         "add    x19, x19, x13\n"
-        "b.eq   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_10\n"
+        "b.eq   " DC_KERNEL_MULT_STRIDE_10 "f\n"
         // %bb.9:        // in Loop: Header=BB206_11 Depth=2
         "mov    v25.16b, v19.16b\n"
         "mov    v26.16b, v20.16b\n"
@@ -9049,23 +9131,23 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "umin   v21.8b, v21.8b, v4.8b\n"
         "str    d21, [x19]\n"
         "add    x19, x19, x13\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_10:\n"  // in Loop: Header=BB206_11 Depth=2
+        DC_KERNEL_MULT_STRIDE_10 ":\n"  // in Loop: Header=BB206_11 Depth=2
         "add    x21, x21, #1\n"  // =1
         "add    x20, x20, #4\n"  // =4
         "mov    v22.16b, v24.16b\n"
         "mov    v21.16b, v23.16b\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_11:\n"  // Parent Loop BB206_13 Depth=1
+        DC_KERNEL_MULT_STRIDE_11 ":\n"  // Parent Loop BB206_13 Depth=1
         // =>  This Inner Loop Header: Depth=2
         "cmp    x21, x11\n"
-        "b.lt   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_8\n"
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_12:\n"  // in Loop: Header=BB206_13 Depth=1
+        "b.lt   " DC_KERNEL_MULT_STRIDE_8 "b\n"
+        DC_KERNEL_MULT_STRIDE_12 ":\n"  // in Loop: Header=BB206_13 Depth=1
         "add    x8, x8, #1\n"  // =1
-        "   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_13:\n"  // =>This Loop Header: Depth=1
+        DC_KERNEL_MULT_STRIDE_13 ":\n"  // =>This Loop Header: Depth=1
         // Child Loop BB206_11 Depth 2
         // Child Loop BB206_4 Depth 2
         // Child Loop BB206_6 Depth 2
         "cmp    x8, x12\n"
-        "b.lt   DC_KERNEL_MULT_STRIDE_MULT_STRIDE_1\n"
+        "b.lt   " DC_KERNEL_MULT_STRIDE_1 "b\n"
         :
         // Outputs.
         [ scratch_block_data ] "+r"(scratch_block_data),
