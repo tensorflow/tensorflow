@@ -10822,6 +10822,106 @@ func StatefulStandardNormalV2(scope *Scope, resource tf.Output, algorithm tf.Out
 	return op.Output(0)
 }
 
+// FusedBatchNormV3Attr is an optional argument to FusedBatchNormV3.
+type FusedBatchNormV3Attr func(optionalAttr)
+
+// FusedBatchNormV3Epsilon sets the optional epsilon attribute to value.
+//
+// value: A small float number added to the variance of x.
+// If not specified, defaults to 0.0001
+func FusedBatchNormV3Epsilon(value float32) FusedBatchNormV3Attr {
+	return func(m optionalAttr) {
+		m["epsilon"] = value
+	}
+}
+
+// FusedBatchNormV3DataFormat sets the optional data_format attribute to value.
+//
+// value: The data format for x and y. Either "NHWC" (default) or "NCHW".
+// If not specified, defaults to "NHWC"
+func FusedBatchNormV3DataFormat(value string) FusedBatchNormV3Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// FusedBatchNormV3IsTraining sets the optional is_training attribute to value.
+//
+// value: A bool value to indicate the operation is for training (default)
+// or inference.
+// If not specified, defaults to true
+func FusedBatchNormV3IsTraining(value bool) FusedBatchNormV3Attr {
+	return func(m optionalAttr) {
+		m["is_training"] = value
+	}
+}
+
+// Batch normalization.
+//
+// Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+// The size of 1D Tensors matches the dimension C of the 4D Tensors.
+//
+// Arguments:
+//	x: A 4D Tensor for input data.
+//	scale: A 1D Tensor for scaling factor, to scale the normalized x.
+//	offset: A 1D Tensor for offset, to shift to the normalized x.
+//	mean: A 1D Tensor for population mean. Used for inference only;
+// must be empty for training.
+//	variance: A 1D Tensor for population variance. Used for inference only;
+// must be empty for training.
+//
+// Returns A 4D Tensor for output data.A 1D Tensor for the computed batch mean, to be used by TensorFlow
+// to compute the running mean.A 1D Tensor for the computed batch variance, to be used by
+// TensorFlow to compute the running variance.A 1D Tensor for the computed batch mean, to be reused
+// in the gradient computation.A 1D Tensor for the computed batch variance (inverted variance
+// in the cuDNN case), to be reused in the gradient computation.A 1D Tensor for some intermediate results, to be reused in the gradient
+// computation for better efficiency.
+func FusedBatchNormV3(scope *Scope, x tf.Output, scale tf.Output, offset tf.Output, mean tf.Output, variance tf.Output, optional ...FusedBatchNormV3Attr) (y tf.Output, batch_mean tf.Output, batch_variance tf.Output, reserve_space_1 tf.Output, reserve_space_2 tf.Output, reserve_space_3 tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FusedBatchNormV3",
+		Input: []tf.Input{
+			x, scale, offset, mean, variance,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4), op.Output(5)
+}
+
+// Component-wise divides a SparseTensor by a dense Tensor.
+//
+// *Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+// the other direction.
+//
+// Arguments:
+//	sp_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+// SparseTensor, possibly not in canonical ordering.
+//	sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
+//	sp_shape: 1-D.  Shape of the input SparseTensor.
+//	dense: `R`-D.  The dense Tensor operand.
+//
+// Returns 1-D.  The `N` values that are operated on.
+func SparseDenseCwiseDiv(scope *Scope, sp_indices tf.Output, sp_values tf.Output, sp_shape tf.Output, dense tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseDenseCwiseDiv",
+		Input: []tf.Input{
+			sp_indices, sp_values, sp_shape, dense,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Generate the bucket boundaries for each feature based on accumulated summaries.
 //
 // An op that returns a list of float tensors for a quantile stream resource. Each
@@ -14482,33 +14582,6 @@ func TridiagonalMatMul(scope *Scope, superdiag tf.Output, maindiag tf.Output, su
 	return op.Output(0)
 }
 
-// Component-wise divides a SparseTensor by a dense Tensor.
-//
-// *Limitation*: this Op only broadcasts the dense side to the sparse side, but not
-// the other direction.
-//
-// Arguments:
-//	sp_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
-// SparseTensor, possibly not in canonical ordering.
-//	sp_values: 1-D.  `N` non-empty values corresponding to `sp_indices`.
-//	sp_shape: 1-D.  Shape of the input SparseTensor.
-//	dense: `R`-D.  The dense Tensor operand.
-//
-// Returns 1-D.  The `N` values that are operated on.
-func SparseDenseCwiseDiv(scope *Scope, sp_indices tf.Output, sp_values tf.Output, sp_shape tf.Output, dense tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseDenseCwiseDiv",
-		Input: []tf.Input{
-			sp_indices, sp_values, sp_shape, dense,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Adds up a `SparseTensor` and a dense `Tensor`, producing a dense `Tensor`.
 //
 // This Op does not require `a_indices` be sorted in standard lexicographic order.
@@ -16885,130 +16958,6 @@ func Dilation2D(scope *Scope, input tf.Output, filter tf.Output, strides []int64
 			input, filter,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Constructs an Optional variant from a tuple of tensors.
-func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "OptionalFromValue",
-		Input: []tf.Input{
-			tf.OutputList(components),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MatrixSolveAttr is an optional argument to MatrixSolve.
-type MatrixSolveAttr func(optionalAttr)
-
-// MatrixSolveAdjoint sets the optional adjoint attribute to value.
-//
-// value: Boolean indicating whether to solve with `matrix` or its (block-wise)
-// adjoint.
-// If not specified, defaults to false
-func MatrixSolveAdjoint(value bool) MatrixSolveAttr {
-	return func(m optionalAttr) {
-		m["adjoint"] = value
-	}
-}
-
-// Solves systems of linear equations.
-//
-// `Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
-// a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
-// satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
-// If `adjoint` is `True` then each output matrix satisfies
-// `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
-//
-// Arguments:
-//	matrix: Shape is `[..., M, M]`.
-//	rhs: Shape is `[..., M, K]`.
-//
-// Returns Shape is `[..., M, K]`.
-func MatrixSolve(scope *Scope, matrix tf.Output, rhs tf.Output, optional ...MatrixSolveAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixSolve",
-		Input: []tf.Input{
-			matrix, rhs,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Slice a `SparseTensor` based on the `start` and `size`.
-//
-// For example, if the input is
-//
-//     input_tensor = shape = [2, 7]
-//     [    a   d e  ]
-//     [b c          ]
-//
-// Graphically the output tensors are:
-//
-//     sparse_slice([0, 0], [2, 4]) = shape = [2, 4]
-//     [    a  ]
-//     [b c    ]
-//
-//     sparse_slice([0, 4], [2, 3]) = shape = [2, 3]
-//     [ d e  ]
-//     [      ]
-//
-// Arguments:
-//	indices: 2-D tensor represents the indices of the sparse tensor.
-//	values: 1-D tensor represents the values of the sparse tensor.
-//	shape: 1-D. tensor represents the shape of the sparse tensor.
-//	start: 1-D. tensor represents the start of the slice.
-//	size: 1-D. tensor represents the size of the slice.
-// output indices: A list of 1-D tensors represents the indices of the output
-// sparse tensors.
-//
-// Returns A list of 1-D tensors represents the values of the output sparse
-// tensors.A list of 1-D tensors represents the shape of the output sparse
-// tensors.
-func SparseSlice(scope *Scope, indices tf.Output, values tf.Output, shape tf.Output, start tf.Output, size tf.Output) (output_indices tf.Output, output_values tf.Output, output_shape tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSlice",
-		Input: []tf.Input{
-			indices, values, shape, start, size,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
-//
-// See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
-// ](http://arxiv.org/abs/1511.07289)
-func Elu(scope *Scope, features tf.Output) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Elu",
-		Input: []tf.Input{
-			features,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -20638,52 +20587,6 @@ func EnqueueTPUEmbeddingSparseBatch(scope *Scope, sample_indices []tf.Output, em
 	return scope.AddOperation(opspec)
 }
 
-// RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr is an optional argument to RetrieveTPUEmbeddingStochasticGradientDescentParameters.
-type RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId(value int64) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// Retrieve SGD embedding parameters.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns Parameter parameters updated by the stochastic gradient descent optimization algorithm.
-func RetrieveTPUEmbeddingStochasticGradientDescentParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr) (parameters tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingStochasticGradientDescentParameters",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
 //
 // true, this follows Python semantics in that the result here is consistent
@@ -23470,6 +23373,52 @@ func MapUnstageNoKey(scope *Scope, indices tf.Output, dtypes []tf.DataType, opti
 		return
 	}
 	return key, values
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr is an optional argument to RetrieveTPUEmbeddingStochasticGradientDescentParameters.
+type RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId(value int64) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// Retrieve SGD embedding parameters.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns Parameter parameters updated by the stochastic gradient descent optimization algorithm.
+func RetrieveTPUEmbeddingStochasticGradientDescentParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr) (parameters tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingStochasticGradientDescentParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Outputs deterministic pseudorandom random integers from a uniform distribution.
@@ -27467,6 +27416,130 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Slice a `SparseTensor` based on the `start` and `size`.
+//
+// For example, if the input is
+//
+//     input_tensor = shape = [2, 7]
+//     [    a   d e  ]
+//     [b c          ]
+//
+// Graphically the output tensors are:
+//
+//     sparse_slice([0, 0], [2, 4]) = shape = [2, 4]
+//     [    a  ]
+//     [b c    ]
+//
+//     sparse_slice([0, 4], [2, 3]) = shape = [2, 3]
+//     [ d e  ]
+//     [      ]
+//
+// Arguments:
+//	indices: 2-D tensor represents the indices of the sparse tensor.
+//	values: 1-D tensor represents the values of the sparse tensor.
+//	shape: 1-D. tensor represents the shape of the sparse tensor.
+//	start: 1-D. tensor represents the start of the slice.
+//	size: 1-D. tensor represents the size of the slice.
+// output indices: A list of 1-D tensors represents the indices of the output
+// sparse tensors.
+//
+// Returns A list of 1-D tensors represents the values of the output sparse
+// tensors.A list of 1-D tensors represents the shape of the output sparse
+// tensors.
+func SparseSlice(scope *Scope, indices tf.Output, values tf.Output, shape tf.Output, start tf.Output, size tf.Output) (output_indices tf.Output, output_values tf.Output, output_shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSlice",
+		Input: []tf.Input{
+			indices, values, shape, start, size,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
+//
+// See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
+// ](http://arxiv.org/abs/1511.07289)
+func Elu(scope *Scope, features tf.Output) (activations tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Elu",
+		Input: []tf.Input{
+			features,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Constructs an Optional variant from a tuple of tensors.
+func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "OptionalFromValue",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MatrixSolveAttr is an optional argument to MatrixSolve.
+type MatrixSolveAttr func(optionalAttr)
+
+// MatrixSolveAdjoint sets the optional adjoint attribute to value.
+//
+// value: Boolean indicating whether to solve with `matrix` or its (block-wise)
+// adjoint.
+// If not specified, defaults to false
+func MatrixSolveAdjoint(value bool) MatrixSolveAttr {
+	return func(m optionalAttr) {
+		m["adjoint"] = value
+	}
+}
+
+// Solves systems of linear equations.
+//
+// `Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+// form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
+// a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
+// satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+// If `adjoint` is `True` then each output matrix satisfies
+// `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
+//
+// Arguments:
+//	matrix: Shape is `[..., M, M]`.
+//	rhs: Shape is `[..., M, K]`.
+//
+// Returns Shape is `[..., M, K]`.
+func MatrixSolve(scope *Scope, matrix tf.Output, rhs tf.Output, optional ...MatrixSolveAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixSolve",
+		Input: []tf.Input{
+			matrix, rhs,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // SparseReduceMaxSparseAttr is an optional argument to SparseReduceMaxSparse.
 type SparseReduceMaxSparseAttr func(optionalAttr)
 
@@ -29307,6 +29380,46 @@ func TensorListGetItem(scope *Scope, input_handle tf.Output, index tf.Output, el
 	return op.Output(0)
 }
 
+// Worker heartbeat op.
+//
+// Heartbeats may be sent periodically to indicate the coordinator is still active,
+// to retrieve the current worker status and to expedite shutdown when necessary.
+//
+// Arguments:
+//	request: A string tensor containing a serialized WorkerHeartbeatRequest
+//
+// Returns A string tensor containing a serialized WorkerHeartbeatResponse
+func WorkerHeartbeat(scope *Scope, request tf.Output) (response tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WorkerHeartbeat",
+		Input: []tf.Input{
+			request,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes square of x element-wise.
+//
+// I.e., \\(y = x * x = x^2\\).
+func Square(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Square",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the gradient for the sqrt of `x` wrt its input.
 //
 // Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
@@ -29340,6 +29453,84 @@ func Rsqrt(scope *Scope, x tf.Output) (y tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// FusedBatchNormGradV3Attr is an optional argument to FusedBatchNormGradV3.
+type FusedBatchNormGradV3Attr func(optionalAttr)
+
+// FusedBatchNormGradV3Epsilon sets the optional epsilon attribute to value.
+//
+// value: A small float number added to the variance of x.
+// If not specified, defaults to 0.0001
+func FusedBatchNormGradV3Epsilon(value float32) FusedBatchNormGradV3Attr {
+	return func(m optionalAttr) {
+		m["epsilon"] = value
+	}
+}
+
+// FusedBatchNormGradV3DataFormat sets the optional data_format attribute to value.
+//
+// value: The data format for y_backprop, x, x_backprop.
+// Either "NHWC" (default) or "NCHW".
+// If not specified, defaults to "NHWC"
+func FusedBatchNormGradV3DataFormat(value string) FusedBatchNormGradV3Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// FusedBatchNormGradV3IsTraining sets the optional is_training attribute to value.
+//
+// value: A bool value to indicate the operation is for training (default)
+// or inference.
+// If not specified, defaults to true
+func FusedBatchNormGradV3IsTraining(value bool) FusedBatchNormGradV3Attr {
+	return func(m optionalAttr) {
+		m["is_training"] = value
+	}
+}
+
+// Gradient for batch normalization.
+//
+// Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+// The size of 1D Tensors matches the dimension C of the 4D Tensors.
+//
+// Arguments:
+//	y_backprop: A 4D Tensor for the gradient with respect to y.
+//	x: A 4D Tensor for input data.
+//	scale: A 1D Tensor for scaling factor, to scale the normalized x.
+//	reserve_space_1: When is_training is True, a 1D Tensor for the computed batch
+// mean to be reused in gradient computation. When is_training is
+// False, a 1D Tensor for the population mean to be reused in both
+// 1st and 2nd order gradient computation.
+//	reserve_space_2: When is_training is True, a 1D Tensor for the computed batch
+// variance (inverted variance in the cuDNN case) to be reused in
+// gradient computation. When is_training is False, a 1D Tensor
+// for the population variance to be reused in both 1st and 2nd
+// order gradient computation.
+//	reserve_space_3: When is_training is True, a 1D Tensor for some intermediate results to be reused
+// in gradient computation. When is_training is False, a dummy empty Tensor will be
+// created.
+//
+// Returns A 4D Tensor for the gradient with respect to x.A 1D Tensor for the gradient with respect to scale.A 1D Tensor for the gradient with respect to offset.Unused placeholder to match the mean input in FusedBatchNorm.Unused placeholder to match the variance input
+// in FusedBatchNorm.
+func FusedBatchNormGradV3(scope *Scope, y_backprop tf.Output, x tf.Output, scale tf.Output, reserve_space_1 tf.Output, reserve_space_2 tf.Output, reserve_space_3 tf.Output, optional ...FusedBatchNormGradV3Attr) (x_backprop tf.Output, scale_backprop tf.Output, offset_backprop tf.Output, reserve_space_4 tf.Output, reserve_space_5 tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FusedBatchNormGradV3",
+		Input: []tf.Input{
+			y_backprop, x, scale, reserve_space_1, reserve_space_2, reserve_space_3,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
 }
 
 // Computes the gradient for the rsqrt of `x` wrt its input.
@@ -40467,44 +40658,4 @@ func QueueEnqueueManyV2(scope *Scope, handle tf.Output, components []tf.Output, 
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Worker heartbeat op.
-//
-// Heartbeats may be sent periodically to indicate the coordinator is still active,
-// to retrieve the current worker status and to expedite shutdown when necessary.
-//
-// Arguments:
-//	request: A string tensor containing a serialized WorkerHeartbeatRequest
-//
-// Returns A string tensor containing a serialized WorkerHeartbeatResponse
-func WorkerHeartbeat(scope *Scope, request tf.Output) (response tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "WorkerHeartbeat",
-		Input: []tf.Input{
-			request,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes square of x element-wise.
-//
-// I.e., \\(y = x * x = x^2\\).
-func Square(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Square",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
