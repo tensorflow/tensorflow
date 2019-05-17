@@ -31,8 +31,8 @@ inline void AddN(const AddNParams* params, const RuntimeShape& input_shape,
   // All inputs and output should have the same shape, this is checked during
   // Prepare stage.
   const size_t size = input_shape.FlatSize();
-  const uint32_t int8_max_value = std::numeric_limits<T>::max();
-  const int32_t int8_min_value = std::numeric_limits<T>::min();
+  const T int8_max_value = std::numeric_limits<T>::max();
+  const T int8_min_value = std::numeric_limits<T>::min();
 
   for (int i = 0; i < size; ++i) {
     int32 raw_sum = 0;

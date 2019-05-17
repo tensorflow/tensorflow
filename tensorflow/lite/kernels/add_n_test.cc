@@ -99,44 +99,44 @@ class QuantizedAddNOpModel : public BaseAddNOpModel {
   }
 };
 
-// for quantized Add, the error shouldn't exceed step
-float GetTolerance(float min, float max) {
-  float kQuantizedStep = (max - min) / 255.0;
+// for quantized Add N, the error shouldn't exceed step
+float GetTolerance(int N, float min, float max) {
+  float kQuantizedStep = ((max - min) / 255.0) * N;
   return kQuantizedStep;
 }
 
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedTestsAddN() {
-  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  float kQuantizedTolerance = GetTolerance(3, -8.0, 8.0);
 
   std::vector<std::vector<float>> inputs1 = {
-                                              {0.1, 0.1, 0.3, 0.4},
-                                              {-0.8, 0.2, 0.4, 0.7},
-                                              {-0.8, 0.2, 0.7, 0.3}
+                                              {1.1, 2.1, 0.3, 0.4},
+                                              {-1.8, 0.2, 3.4, 6.7},
+                                              {-7.8, 0.2, 0.7, 2.3}
                                              };
   std::vector<std::vector<float>> inputs2 = {
                                               {0.2, 0.4, 0.3, 0.1},
-                                              {0.6, 0.4, 0.2, -0.8},
-                                              {0.6, 0.4, -0.8, 0.5}
+                                              {2.6, 2.4, 0.2, -0.8},
+                                              {1.6, 0.4, -0.8, 1.5}
                                              };
   std::vector<std::vector<float>> inputs3 = {
-                                              {0.3, 0.2, 0.1, -0.1},
+                                              {0.3, 1.2, 0.1, -0.1},
                                               {0.2, 0.3, 0.1, 0.8},
-                                              {0.2, 0.3, 0.1, 0.1}
+                                              {2.2, 0.3, 0.1, 2.1}
                                              };
 
   std::vector<std::vector<float>> results = {
-                                              {0.6, 0.7, 0.7, 0.4},
-                                              {0.0, 0.9, 0.7, 0.7},
-                                              {-0.0, 0.9, -0.0, 0.9}
+                                              {1.6, 3.7, 0.7, 0.4},
+                                              {1.0, 2.9, 3.7, 6.7},
+                                              {-4.0, 0.9, -0.0, 5.9}
                                              };
 
   for (size_t i = 0; i < inputs1.size(); ++i) {
 
-    QuantizedAddNOpModel m({{tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
-                            {tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
-                            {tensor_type, {1, 2, 2, 1}, -1.0, 1.0}},
-                            {tensor_type, {}, -1.0, 1.0});
+    QuantizedAddNOpModel m({{tensor_type, {1, 2, 2, 1}, -8.0, 8.0},
+                            {tensor_type, {1, 2, 2, 1}, -8.0, 8.0},
+                            {tensor_type, {1, 2, 2, 1}, -8.0, 8.0}},
+                            {tensor_type, {}, -8.0, 8.0});
 
     m.QuantizeAndPopulate<integer_dtype>(m.input(0), inputs1[i]);
     m.QuantizeAndPopulate<integer_dtype>(m.input(1), inputs2[i]);
