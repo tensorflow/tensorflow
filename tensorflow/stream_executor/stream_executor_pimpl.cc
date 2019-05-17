@@ -875,9 +875,10 @@ port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
   DeviceMemoryBase result =
       stream_executor_or.ValueOrDie()->AllocateArray<uint8>(size);
   if (size > 0 && result == nullptr) {
-    return tensorflow::errors::ResourceExhausted(
+    return tensorflow::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",
-        tensorflow::strings::HumanReadableNumBytes(size), size, device_ordinal);
+        tensorflow::strings::HumanReadableNumBytes(size), size,
+        device_ordinal));
   }
   VLOG(3) << absl::StreamFormat(
       "Allocated %s (%uB) on device ordinal %d: %p",
@@ -902,8 +903,8 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
 port::StatusOr<StreamExecutor *>
 StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
   if (device_ordinal < 0) {
-    return tensorflow::errors::InvalidArgument(
-        "device ordinal value (%d) must be non-negative", device_ordinal);
+    return tensorflow::errors::InvalidArgument(absl::StrFormat(
+        "device ordinal value (%d) must be non-negative", device_ordinal));
   }
   if (stream_executors_[device_ordinal] == nullptr) {
     return tensorflow::errors::NotFound(
