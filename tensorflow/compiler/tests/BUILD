@@ -1005,7 +1005,6 @@ tf_xla_py_test(
         "//tensorflow/python:training",
         "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -1064,7 +1063,6 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(

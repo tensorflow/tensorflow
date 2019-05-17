@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/device_memory.h"
 
@@ -29,8 +30,9 @@ namespace {
 class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
-      : platform_(
-            se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie()),
+      : platform_(se::MultiPlatformManager::PlatformWithName(
+                      tensorflow::GpuPlatformName())
+                      .ValueOrDie()),
         stream_exec_(platform_->ExecutorForDevice(0).ValueOrDie()) {}
 
   // Take floats only for convenience. Still uses ElementType internally.

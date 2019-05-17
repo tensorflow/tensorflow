@@ -183,7 +183,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 }  // namespace gpu
 }  // namespace xla
 
-static std::unique_ptr<xla::TransferManager> CreateAMDGpuTransferManager() {
+static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
   return absl::make_unique<xla::gpu::GpuTransferManager>(
 #if TENSORFLOW_USE_ROCM
       /*id=*/stream_executor::rocm::kROCmPlatformId,
@@ -196,9 +196,13 @@ static std::unique_ptr<xla::TransferManager> CreateAMDGpuTransferManager() {
 }
 
 static bool InitModule() {
-  // XXX figure out how to support both AMDGPU and NVPTX at the same time
+#if TENSORFLOW_USE_ROCM
   xla::TransferManager::RegisterTransferManager(
-      stream_executor::rocm::kROCmPlatformId, &CreateAMDGpuTransferManager);
+      stream_executor::rocm::kROCmPlatformId, &CreateGpuTransferManager);
+#else
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::cuda::kCudaPlatformId, &CreateGpuTransferManager);
+#endif
   return true;
 }
 static bool module_initialized = InitModule();
