@@ -395,6 +395,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//third_party/eigen3",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],

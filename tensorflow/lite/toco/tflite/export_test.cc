@@ -219,7 +219,7 @@ TEST_F(ExportTest, Export) {
   ExportParams params;
   params.allow_custom_ops = true;
   params.enable_select_tf_ops = false;
-  params.quantize_weights = false;
+  params.quantize_weights = QuantizedBufferType::NONE;
 
   EXPECT_THAT(ExportAndSummarizeOperators(params),
               ElementsAre("builtin:ADD", "builtin:CONV_2D", "custom:MyCrazyOp",
@@ -366,7 +366,7 @@ class OpSetsTest : public ExportTest {
     import_all_ops_as_unsupported_ = true;
     params_.allow_custom_ops = false;
     params_.enable_select_tf_ops = false;
-    params_.quantize_weights = false;
+    params_.quantize_weights = QuantizedBufferType::NONE;
 
     for (const OpSet& i : sets) {
       switch (i) {

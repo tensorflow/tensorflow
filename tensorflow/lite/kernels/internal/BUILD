@@ -385,6 +385,7 @@ cc_library(
         ":types",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
+        "//third_party/eigen3",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
@@ -421,6 +422,7 @@ cc_library(
         ":legacy_types",
         ":tensor",
         ":types",
+        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",

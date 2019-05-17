@@ -606,7 +606,9 @@ tensorflow::Status Export(
                   builder.CreateVector(subgraphs), description, buffers);
   ::tflite::FinishModelBuffer(builder, new_model_location);
 
-  if (params.quantize_weights) {
+  if (params.quantize_weights == QuantizedBufferType::NONE) {
+    WriteModelToString(builder, output_file_contents);
+  } else {
     // Call the quantize_weights tool.
     LOG(INFO) << "Quantizing TFLite model after conversion to flatbuffer. "
                  "dump_graphviz will only output the model before this "
@@ -615,14 +617,21 @@ tensorflow::Status Export(
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
     const uint8_t* buffer = builder.GetBufferPointer();
     const ::tflite::Model* input_model = ::tflite::GetModel(buffer);
-    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model) !=
-        kTfLiteOk) {
+    ::tflite::optimize::BufferType quantized_type;
+    if (params.quantize_weights == QuantizedBufferType::INT8) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_INT8;
+    } else if (params.quantize_weights == QuantizedBufferType::FLOAT16) {
+      quantized_type = ::tflite::optimize::BufferType::QUANTIZED_FLOAT16;
+    } else {
+      return tensorflow::errors::InvalidArgument(
+          "Quantized type not recognized");
+    }
+    if (::tflite::optimize::QuantizeWeights(&q_builder, input_model,
+                                            quantized_type) != kTfLiteOk) {
       return tensorflow::errors::InvalidArgument(
           "Quantize weights transformation failed.");
     }
     WriteModelToString(q_builder, output_file_contents);
-  } else {
-    WriteModelToString(builder, output_file_contents);
   }
 
   return tensorflow::Status();
