@@ -47,7 +47,7 @@ template <typename T> class ArrayRef;
 template <typename T> class MutableArrayRef;
 template <typename T> class TinyPtrVector;
 template <typename T> class Optional;
-template <typename PT1, typename PT2> class PointerUnion;
+template <typename... PT> class PointerUnion;
 namespace detail {
 template <typename KeyT, typename ValueT> struct DenseMapPair;
 }
