@@ -874,7 +874,6 @@ class Layer(module.Module):
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
-      base_layer_utils.check_graph_consistency(loss, method='add_loss')
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -895,6 +894,7 @@ class Layer(module.Module):
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
+        base_layer_utils.check_graph_consistency(loss, method='add_loss')
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
 
