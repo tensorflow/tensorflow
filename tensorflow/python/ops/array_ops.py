@@ -3443,6 +3443,12 @@ def gather(params,
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
+  if compat.forward_compatible(2019, 6, 10):
+    if axis is None:
+      axis = batch_dims
+    return gen_array_ops.gather_v2(
+        params, indices, axis, batch_dims=batch_dims, name=name)
+
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):
       return _batch_gather(params, indices, batch_dims, axis)
