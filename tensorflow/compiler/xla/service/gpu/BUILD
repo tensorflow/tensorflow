@@ -91,7 +91,7 @@ cc_library(
 tf_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    tags = ["requires-gpu-sm35", "no_rocm"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test_helpers",
