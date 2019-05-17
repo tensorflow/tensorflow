@@ -412,9 +412,20 @@ inline bool Fast3x3FilterKernelSupported(
 
   if (quantization_type == QuantizationType::kPerChannelInt8) {
     for (int i = 0; i < output_depth; ++i) {
-      if (output_shift_ptr[i] <= 0) {
+      if (output_shift_ptr[i] > 0 ||
+          output_shift_ptr[i] != output_shift_ptr[0]) {
         return false;
       }
+    }
+
+    // TODO(b/132879305): Support stride == 2 case.
+    if (stride_height == 2 || stride_width == 2) {
+      return false;
+    }
+
+    // TODO(b/132878669): Support padding.
+    if (pad_height == 1) {
+      return false;
     }
   }
 

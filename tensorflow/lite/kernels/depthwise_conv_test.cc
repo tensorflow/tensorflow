@@ -1843,7 +1843,6 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
 
   // Invoke and verify output.
   m.Invoke();
-  printf("\n");
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 36, 54, 0, 0})));
 }
