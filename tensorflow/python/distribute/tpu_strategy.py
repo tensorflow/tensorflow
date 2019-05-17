@@ -41,6 +41,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
@@ -547,7 +548,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return output
 
   def _update(self, var, fn, args, kwargs, group):
-    assert isinstance(var, values.TPUMirroredVariable)
+    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
+        var, resource_variable_ops.ResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
         return fn(var, *args, **kwargs)
@@ -567,7 +569,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return values.update_regroup(self, self._device_map, updates, group)
 
   def read_var(self, var):
-    assert isinstance(var, values.TPUMirroredVariable)
+    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
+        var, resource_variable_ops.ResourceVariable)
     return var.read_value()
 
   def _local_results(self, val):
