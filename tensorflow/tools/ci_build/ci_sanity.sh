@@ -294,7 +294,7 @@ do_buildifier(){
 
   rm -rf ${BUILDIFIER_OUTPUT_FILE}
 
-  buildifier -showlog -v -mode=check \
+  buildifier -v -mode=check \
     ${BUILD_FILES} 2>&1 | tee ${BUILDIFIER_OUTPUT_FILE}
   BUILDIFIER_END_TIME=$(date +'%s')
 
