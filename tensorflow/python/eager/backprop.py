@@ -692,10 +692,10 @@ class GradientTape(object):
   d2y_dx2 = g.gradient(dy_dx, x)  # Will compute to 2.0
   ```
 
-  By default, the resources held by a GradientTape are released as soon as
-  GradientTape.gradient() method is called. To compute multiple gradients over
+  By default, the resources held by a `GradientTape` are released as soon as
+  `GradientTape.gradient()` method is called. To compute multiple gradients over
   the same computation, create a persistent gradient tape. This allows multiple
-  calls to the gradient() method as resources are released when the tape object
+  calls to the `gradient()` method as resources are released when the tape object
   is garbage collected. For example:
 
   ```python
@@ -969,7 +969,7 @@ class GradientTape(object):
                experimental_use_pfor=True):
     """Computes the jacobian using operations recorded in context of this tape.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
+    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
     definition of a Jacobian.
 
     Example usage:
@@ -1070,15 +1070,16 @@ class GradientTape(object):
                      experimental_use_pfor=True):
     """Computes and stacks per-example jacobians.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
+    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
     definition of a Jacobian.  This function is essentially an efficient
     implementation of the following:
-    `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`.
+    
+    `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`
 
     Note that compared to `GradientTape.jacobian` which computes gradient of
     each output value w.r.t each input value, this function is useful when
-    `target[i,...] is independent of `source[j,...]` for `j != i`. This
-    independence assumption allows more efficient computation as compared to
+    `target[i,...]` is independent of `source[j,...]` for `j != i`. This
+    assumption allows more efficient computation as compared to
     `GradientTape.jacobian`. The output, as well as intermediate activations,
     are lower dimensional and avoid a bunch of redundant zeros which would
     result in the jacobian computation given the independence assumption.
