@@ -134,13 +134,13 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   // 3. Operands of the given hlo.
   //
   // This set can be increased as we need.
-  std::vector<const LogicalBuffer*> worklist;
+  std::vector<const BufferValue*> worklist;
   auto add_buffers_to_worklist =
       [&worklist, &assignment](const HloInstruction* instruction) {
         ShapeUtil::ForEachSubshape(
             instruction->shape(),
             [&](const Shape& /*shape*/, const ShapeIndex& index) {
-              for (const LogicalBuffer* buffer :
+              for (const BufferValue* buffer :
                    assignment.GetSourceBuffers(instruction, index)) {
                 worklist.push_back(buffer);
               }
@@ -160,7 +160,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   }
 
   std::set<BufferAllocation::Slice> buffers;
-  for (const LogicalBuffer* buffer : worklist) {
+  for (const BufferValue* buffer : worklist) {
     // Skip buffers which cannot be added to the noalias set.
     if (!assignment.HasAllocation(*buffer) ||
         buffer->instruction()->opcode() == HloOpcode::kParameter) {
