@@ -184,6 +184,19 @@ class Device {
   std::unique_ptr<WorkerThread> worker_thread_;
 };
 
+struct AllocatorConfig {
+  enum class Kind {
+    kDefault,   // Client picks the best option for the platform.
+    kPlatform,  // The platform's default.
+    kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
+           // only available for GPU.
+  };
+  Kind kind = Kind::kDefault;
+
+  // Only used if kind == kBFC. Fraction of available memory to allocate.
+  double memory_fraction = .9;
+};
+
 // Encapsulates the state of Python session with XLA.
 class PyLocalClient {
  public:
@@ -191,9 +204,11 @@ class PyLocalClient {
   // such platform exists, or if the platform has no visible devices.
   static StatusOr<std::shared_ptr<PyLocalClient>> Get(
       const std::string& platform_name, const std::string& xla_platform_name,
-      bool asynchronous);
+      bool asynchronous, const AllocatorConfig& allocator_config);
 
+  // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(std::string platform_name, LocalClient* client,
+                         std::unique_ptr<se::DeviceMemoryAllocator> allocator,
                          bool asynchronous);
   virtual ~PyLocalClient() = default;
 
@@ -206,6 +221,7 @@ class PyLocalClient {
     return *devices_.at(device_ordinal);
   }
   LocalClient* client() const { return client_; }
+  se::DeviceMemoryAllocator* allocator() const { return allocator_; }
 
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
     return &h2d_transfer_pool_;
@@ -217,6 +233,8 @@ class PyLocalClient {
   std::string platform_name_;
   LocalClient* client_;
   std::vector<std::unique_ptr<Device>> devices_;
+  se::DeviceMemoryAllocator* allocator_;
+  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 

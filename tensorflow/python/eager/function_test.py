@@ -3015,7 +3015,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     train()
 
-
 if __name__ == '__main__':
   ops.enable_eager_execution(
       config=config_pb2.ConfigProto(device_count={'CPU': 4}))

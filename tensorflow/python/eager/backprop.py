@@ -723,7 +723,7 @@ class GradientTape(object):
   with tf.GradientTape(watch_accessed_variables=False) as tape:
     tape.watch(variable_a)
     y = variable_a ** 2  # Gradients will be available for `variable_a`.
-    z = variable_b ** 3  # No gradients will be avaialble since `variable_b` is
+    z = variable_b ** 3  # No gradients will be available since `variable_b` is
                          # not being watched.
   ```
 

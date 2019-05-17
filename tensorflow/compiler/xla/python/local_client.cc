@@ -71,6 +71,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
+#include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -83,6 +84,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_mem_allocator.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -171,9 +174,42 @@ void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
       [this, callback]() { worker_thread_->Schedule(std::move(callback)); });
 }
 
+static StatusOr<std::unique_ptr<tensorflow::MultiDeviceAdapter>>
+CreateBFCAllocator(se::Platform* platform, LocalClient* client,
+                   double memory_fraction) {
+  CHECK_GT(client->backend().device_count(), 0);
+  std::vector<std::unique_ptr<tensorflow::Allocator>> allocators;
+  for (se::StreamExecutor* executor : client->backend().stream_executors()) {
+    int device_ordinal = executor->device_ordinal();
+    tensorflow::GPUMemAllocator* sub_allocator =
+        new tensorflow::GPUMemAllocator(
+            executor, tensorflow::PlatformGpuId(device_ordinal),
+            /*use_unified_memory=*/false, /*alloc_visitors=*/{},
+            /*free_visitors=*/{});
+
+    int64 free_memory;
+    int64 total_memory;
+    if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+      return Unavailable("Failed to query available memory from device %i",
+                         device_ordinal);
+    }
+    size_t allocator_memory = free_memory * memory_fraction;
+    LOG(INFO) << "XLA backend reserving " << allocator_memory << " out of "
+              << total_memory << " bytes on device " << device_ordinal
+              << " for BFCAllocator.";
+
+    tensorflow::BFCAllocator* gpu_bfc_allocator = new tensorflow::BFCAllocator(
+        sub_allocator, allocator_memory, /*allow_growth=*/false,
+        absl::StrCat("GPU_", device_ordinal, "_bfc"));
+    allocators.emplace_back(gpu_bfc_allocator);
+  }
+  return absl::make_unique<tensorflow::MultiDeviceAdapter>(
+      platform, std::move(allocators));
+}
+
 StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
     const std::string& platform_name, const std::string& xla_platform_name,
-    bool asynchronous) {
+    bool asynchronous, const AllocatorConfig& allocator_config) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform(xla_platform_name));
   if (platform->VisibleDeviceCount() <= 0) {
@@ -184,15 +220,35 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
   options.set_platform(platform);
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
-  return std::make_shared<PyLocalClient>(platform_name, client, asynchronous);
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator;
+  if (allocator_config.kind == AllocatorConfig::Kind::kBFC ||
+      (platform_name == "gpu" &&
+       allocator_config.kind == AllocatorConfig::Kind::kDefault)) {
+    if (platform_name != "gpu") {
+      return Unimplemented("BFCAllocator only available for GPU.");
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto bfc_allocator,
+        CreateBFCAllocator(platform, client, allocator_config.memory_fraction));
+    allocator = std::move(bfc_allocator);
+  }
+  return std::make_shared<PyLocalClient>(platform_name, client,
+                                         std::move(allocator), asynchronous);
 }
 
-PyLocalClient::PyLocalClient(std::string platform_name, LocalClient* client,
-                             bool asynchronous)
+PyLocalClient::PyLocalClient(
+    std::string platform_name, LocalClient* client,
+    std::unique_ptr<se::DeviceMemoryAllocator> allocator, bool asynchronous)
     : platform_name_(std::move(platform_name)),
       client_(client),
+      owned_allocator_(std::move(allocator)),
       h2d_transfer_pool_(tensorflow::Env::Default(), "py_xla_h2d_transfer",
                          client->device_count()) {
+  if (owned_allocator_ != nullptr) {
+    allocator_ = owned_allocator_.get();
+  } else {
+    allocator_ = client_->backend().memory_allocator();
+  }
   devices_.reserve(client->device_count());
   // TODO(phawkins): enable multistream mode on GPU too.
   bool use_multiple_streams = (platform_name == "tpu");
@@ -228,8 +284,7 @@ StatusOr<pybind11::object> PyLocalClient::TransferFromOutfeed(
 static StatusOr<PyLocalBuffer> TransferHostToDeviceAsync(
     const PythonBufferTree& tree, int device_ordinal,
     std::shared_ptr<PyLocalClient> client, const Device& device) {
-  se::DeviceMemoryAllocator* allocator =
-      client->client()->backend().memory_allocator();
+  se::DeviceMemoryAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
   TF_ASSIGN_OR_RETURN(
@@ -378,8 +433,7 @@ PyLocalBuffer::FromPythonValues(
     host_shapes.push_back(buffer.on_host_shape());
     device_buffers.push_back(buffer.device_buffer());
   }
-  se::DeviceMemoryAllocator* allocator =
-      client->client()->backend().memory_allocator();
+  se::DeviceMemoryAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
   const Device& device = client->device(device_ordinal);
@@ -532,7 +586,7 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
   ExecutableRunOptions options;
   options.set_stream(device.compute_stream());
   options.set_host_to_device_stream(device.host_to_device_stream());
-  options.set_allocator(client_->client()->backend().memory_allocator());
+  options.set_allocator(client_->allocator());
   options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   options.set_device_assignment(&device_assignment_);

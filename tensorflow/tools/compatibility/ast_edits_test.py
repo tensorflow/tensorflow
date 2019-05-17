@@ -16,6 +16,8 @@
 
 All of the tests assume that we want to change from an API containing
 
+    import foo as f
+
     def f(a, b, kw1, kw2): ...
     def g(a, b, kw1, c, kw1_alias): ...
     def g2(a, b, kw1, c, d, kw1_alias): ...
@@ -24,6 +26,8 @@ All of the tests assume that we want to change from an API containing
 and the changes to the API consist of renaming, reordering, and/or removing
 arguments. Thus, we want to be able to generate changes to produce each of the
 following new APIs:
+
+    import bar as f
 
     def f(a, b, kw1, kw3): ...
     def f(a, b, kw2, kw1): ...
@@ -59,6 +63,7 @@ class NoUpdateSpec(ast_edits.APIChangeSpec):
     self.function_warnings = {}
     self.change_to_function = {}
     self.module_deprecations = {}
+    self.import_renames = {}
 
 
 class ModuleDeprecationSpec(NoUpdateSpec):
@@ -167,6 +172,18 @@ class RemoveMultipleKeywordArguments(NoUpdateSpec):
     self.function_keyword_renames["h"] = {
         "kw1_alias": "kw1",
         "kw2_alias": "kw2",
+    }
+
+
+class RenameImports(NoUpdateSpec):
+  """Specification for renaming imports."""
+
+  def __init__(self):
+    NoUpdateSpec.__init__(self)
+    self.import_renames = {
+        "foo": ast_edits.ImportRename(
+            "bar",
+            excluded_prefixes=["foo.baz"])
     }
 
 
@@ -457,6 +474,113 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "Attribute(value=Attribute(value=Name(id='a', ctx=Load()), attr='b', "
         "ctx=Load()), attr='c', ctx=Load())"
     )
+
+  def testImport(self):
+    # foo should be renamed to bar.
+    text = "import foo as f"
+    expected_text = "import bar as f"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import foo"
+    expected_text = "import bar as foo"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import foo.test"
+    expected_text = "import bar.test"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import foo.test as t"
+    expected_text = "import bar.test as t"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import foo as f, a as b"
+    expected_text = "import bar as f, a as b"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+  def testFromImport(self):
+    # foo should be renamed to bar.
+    text = "from foo import a"
+    expected_text = "from bar import a"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "from foo.a import b"
+    expected_text = "from bar.a import b"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "from foo import *"
+    expected_text = "from bar import *"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "from foo import a, b"
+    expected_text = "from bar import a, b"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+  def testImport_NoChangeNeeded(self):
+    text = "import bar as b"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(text, new_text)
+
+  def testFromImport_NoChangeNeeded(self):
+    text = "from bar import a as b"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(text, new_text)
+
+  def testExcludedImport(self):
+    # foo.baz module is excluded from changes.
+    text = "import foo.baz"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(text, new_text)
+
+    text = "import foo.baz as a"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(text, new_text)
+
+    text = "from foo import baz as a"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(text, new_text)
+
+    text = "from foo.baz import a"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(text, new_text)
+
+  def testMultipleImports(self):
+    text = "import foo.bar as a, foo.baz as b, foo.baz.c, foo.d"
+    expected_text = "import bar.bar as a, foo.baz as b, foo.baz.c, bar.d"
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "from foo import baz, a, c"
+    expected_text = """from foo import baz
+from bar import a, c"""
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
+  def testImportInsideFunction(self):
+    text = """
+def t():
+  from c import d
+  from foo import baz, a
+  from e import y
+"""
+    expected_text = """
+def t():
+  from c import d
+  from foo import baz
+  from bar import a
+  from e import y
+"""
+    _, new_text = self._upgrade(RenameImports(), text)
+    self.assertEqual(expected_text, new_text)
+
 
 if __name__ == "__main__":
   test_lib.main()

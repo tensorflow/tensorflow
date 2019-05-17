@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
+import six
+
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
@@ -365,7 +369,20 @@ class DistributedDataset(object):
     # pipeline and only receive its own shard of the dataset.
     assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
-      dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+      try:
+        dataset = distribute._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
+      except errors.InvalidArgumentError as e:
+        if "without encountering a batch" in str(e):
+          six.reraise(
+              ValueError,
+              ValueError(
+                  "Call the `batch` method on the input Dataset in order to be "
+                  "able to split your input across {} replicas.\n Please "
+                  "the tf.distribute.Strategy guide. {}".format(
+                      split_batch_by, e)),
+              sys.exc_info()[2])
+        else:
+          raise
 
     self._cloned_datasets = []
     if input_context:
@@ -948,3 +965,4 @@ class MultiStepContext(object):
             distribution.experimental_local_results(value))
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=(output,))
+

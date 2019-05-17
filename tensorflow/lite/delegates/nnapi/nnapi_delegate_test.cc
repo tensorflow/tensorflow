@@ -217,6 +217,23 @@ TEST(NNAPIDelegate, StatefulDelegate) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
 }
 
+// Sanity check for the state-ful NNAPI delegate with accelerator_name
+// specified.
+TEST(NNAPIDelegate, StatefulDelegateWithAcceleratorName) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference =
+      StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
+  options.accelerator_name = "nnapi-reference";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
 class FloatMulOpModel : public SingleOpModelWithNNAPI {
  public:
   FloatMulOpModel(const TensorData& input1, const TensorData& input2,

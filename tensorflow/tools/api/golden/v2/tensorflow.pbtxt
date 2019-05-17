@@ -989,6 +989,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "switch_case"
+    argspec: "args=[\'branch_index\', \'branch_fns\', \'default\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'switch_case\'], "
+  }
+  member_method {
     name: "tan"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

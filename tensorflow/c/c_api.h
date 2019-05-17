@@ -19,6 +19,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/c/tf_attrtype.h"
+
 // --------------------------------------------------------------------------
 // C API for TensorFlow.
 //
@@ -685,19 +687,6 @@ TF_CAPI_EXPORT extern int TF_OperationNumControlOutputs(TF_Operation* oper);
 TF_CAPI_EXPORT extern int TF_OperationGetControlOutputs(
     TF_Operation* oper, TF_Operation** control_outputs,
     int max_control_outputs);
-
-// TF_AttrType describes the type of the value of an attribute on an operation.
-typedef enum TF_AttrType {
-  TF_ATTR_STRING = 0,
-  TF_ATTR_INT = 1,
-  TF_ATTR_FLOAT = 2,
-  TF_ATTR_BOOL = 3,
-  TF_ATTR_TYPE = 4,
-  TF_ATTR_SHAPE = 5,
-  TF_ATTR_TENSOR = 6,
-  TF_ATTR_PLACEHOLDER = 7,
-  TF_ATTR_FUNC = 8,
-} TF_AttrType;
 
 // TF_AttrMetadata describes the value of an attribute on an operation.
 typedef struct TF_AttrMetadata {

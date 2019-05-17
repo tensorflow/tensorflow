@@ -34,8 +34,6 @@ cc_test(
     srcs = ["nnapi_delegate_test.cc"],
     tags = [
         "no_windows",
-        # TODO(b/122987564): Enable on Android after resolving API 27 failures.
-        "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <unordered_map>
 #include <utility>
@@ -95,8 +96,11 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
+      // TODO(b/128853131,b/132707282): Remove NCCL special case when we have
+      // NCCL implementations for all collectives.
       status = CollectiveRegistry::LookupParamResolverInstance(
-          GetCollectiveName(cp, nccl_), &col_impl);
+          nccl_ ? "NcclReduce" : GetCollectiveName(cp, /*nccl=*/false),
+          &col_impl);
       if (status.ok()) {
         status = col_impl->InitializeCollectiveGroupRuntimeDetails(
             &gr->group.runtime_details);

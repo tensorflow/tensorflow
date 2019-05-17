@@ -311,6 +311,7 @@ tf_kernel_library(
     srcs = ["case_op.cc"],
     hdrs = ["case_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",

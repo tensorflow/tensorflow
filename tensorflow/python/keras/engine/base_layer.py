@@ -577,7 +577,7 @@ class Layer(module.Module):
         not base_layer_utils.is_in_call_context()):
       self._clear_losses()
 
-    with base_layer_utils.call_context(self):
+    with base_layer_utils.call_context(self, build_graph):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build

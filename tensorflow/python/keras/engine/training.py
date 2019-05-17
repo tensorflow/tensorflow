@@ -1782,9 +1782,6 @@ class Model(network.Network):
             # Compute the stateless loss value.
             output_loss = losses_utils.reduce_weighted_loss(
                 weighted_losses, reduction=loss_reduction)
-            if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
-              output_loss = losses_utils.scale_loss_for_distribution(
-                  output_loss)
           else:
             # Compute the stateless loss value for a custom loss class.
             # Here we assume that the class takes care of loss reduction
@@ -1792,8 +1789,6 @@ class Model(network.Network):
             # differentiate between use case where a custom optimizer
             # expects a vector loss value vs unreduced per-sample loss value.
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
-            # For custom losses we assume reduction was mean.
-            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor for the loss.
@@ -1804,6 +1799,13 @@ class Model(network.Network):
                   output_loss,
                   strategy=self._distribution_strategy))
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
+
+        # Scale output loss for distribution. For custom losses we assume
+        # reduction was mean.
+        if (getattr(loss_fn, 'reduction',
+                    losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
+            losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if total_loss is None:
           total_loss = loss_weight * output_loss

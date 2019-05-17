@@ -40,8 +40,6 @@ py_library(
         "@gast_archive//:gast",
         "@six_archive//:six",
         "@termcolor_archive//:termcolor",
-        # TODO(mdan): Remove this dependency.
-        "//tensorflow/python:util",
     ],
 )
 

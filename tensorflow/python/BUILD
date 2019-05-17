@@ -3748,6 +3748,7 @@ cuda_py_test(
         ":while_v2",
         "//tensorflow/python/eager:def_function",
     ],
+    shard_count = 2,
     xla_enable_strict_auto_jit = True,
 )
 

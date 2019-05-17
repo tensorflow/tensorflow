@@ -2593,8 +2593,15 @@ class Operation(object):
     func = attr_value_pb2.NameAttrList(name=func_name)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
 
+  def _set_func_list_attr(self, attr_name, func_names):
+    """Private method used to set a list(function) attribute in the node_def."""
+    funcs = [attr_value_pb2.NameAttrList(name=func_name)
+             for func_name in func_names]
+    funcs_list = attr_value_pb2.AttrValue.ListValue(func=funcs)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=funcs_list))
+
   def _set_type_list_attr(self, attr_name, types):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(type) attribute in the node_def."""
     if not types:
       return
     if isinstance(types[0], dtypes.DType):
@@ -2603,7 +2610,7 @@ class Operation(object):
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
 
   def _set_shape_list_attr(self, attr_name, shapes):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(shape) attribute in the node_def."""
     shapes = [s.as_proto() for s in shapes]
     shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))

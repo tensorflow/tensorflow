@@ -1109,7 +1109,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
              absl::Span<const string>(
                  {"_xla_token_arg_node",
                   "outside_compilation_O1_host_compute"})}},
-           {"F"}},
+           {"F", "outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"C:o:0", "D:o:0"},
@@ -1990,7 +1990,8 @@ TEST(EncapsulateSubgraphsTest,
             {"_xla_token_input_nodes",
              absl::Span<const string>(
                  {"_xla_token_arg_node",
-                  "outside_compilation_O1_host_compute"})}}},
+                  "outside_compilation_O1_host_compute"})}},
+           {"outside_compilation_O1_host_compute"}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"h_0_retval_retval", "H:o:0"}});
@@ -2117,7 +2118,8 @@ TEST(EncapsulateSubgraphsTest,
             {"_xla_token_input_nodes",
              absl::Span<const string>(
                  {"_xla_token_arg_node",
-                  "outside_compilation_O1_host_compute"})}}},
+                  "outside_compilation_O1_host_compute"})}},
+           {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"D:o:0"},
@@ -2267,7 +2269,7 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"_xla_token_input_nodes",
           absl::Span<const string>(
               {"_xla_token_arg_node", "outside_compilation_O1_host_compute"})}},
-        {}},
+        {"outside_compilation_O1_host_compute"}},
        {{"outside_compilation_O3_host_compute"},
         "XlaHostCompute",
         {"D:o:0"},
@@ -2282,7 +2284,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
           absl::Span<const string>({"_xla_token_arg_node",
                                     "outside_compilation_O1_host_compute",
                                     "outside_compilation_O2_host_compute"})}},
-        {}}},
+        {"outside_compilation_O1_host_compute",
+         "outside_compilation_O2_host_compute"}}},
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"h_0_retval_retval", "H:o:0"}});
 

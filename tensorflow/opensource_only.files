@@ -45,12 +45,14 @@ tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda10.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda10.0-cudnn7/cuda/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc-cuda10.0/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc-cuda10.0/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/generate/workspace.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
 tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py3/BUILD
 tensorflow/third_party/toolchains/preconfig/centos6/py/BUILD

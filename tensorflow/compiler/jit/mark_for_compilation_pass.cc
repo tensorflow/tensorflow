@@ -401,6 +401,13 @@ class MarkForCompilationPassImpl {
     return true;
   }
 
+  string EdgeContractionFailureMsg(Cluster* from, Cluster* to,
+                                   absl::string_view reason) {
+    return absl::StrCat("Could not contract ", from->DebugString(*graph_),
+                        " -> ", to->DebugString(*graph_), " because ", reason,
+                        ".");
+  }
+
   DebugOptions debug_options_;
   Graph* graph_;
   FunctionLibraryDefinition* flib_def_;
@@ -707,11 +714,13 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   return Status::OK();
 }
 
+std::atomic<int64> cluster_sequence_num;
+
+int64 GetNextClusterSequenceNumber() { return cluster_sequence_num++; }
+
 Status MarkForCompilationPassImpl::CreateClusters() {
   TF_RET_CHECK(initialized_ && edges_contracted_ && !clusters_created_);
   clusters_created_ = true;
-
-  static std::atomic<int64> cluster_sequence_num;
 
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
@@ -745,7 +754,7 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        name = absl::StrCat("cluster_", cluster_sequence_num++);
+        name = absl::StrCat("cluster_", GetNextClusterSequenceNumber());
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -1065,8 +1074,7 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
 
 bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
     Cluster* from, Cluster* to, absl::string_view reason) {
-  VLOG(3) << "Could not contract " << from->DebugString(*graph_) << " -> "
-          << to->DebugString(*graph_) << " because " << reason << ".";
+  VLOG(3) << EdgeContractionFailureMsg(from, to, reason);
   return false;
 }
 
@@ -1075,8 +1083,14 @@ StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(Cluster* from,
   DCHECK(from->deadness_predicate().has_value() ==
          to->deadness_predicate().has_value());
   if (from->deadness_predicate() != to->deadness_predicate()) {
-    return LogNotContractableAndReturnFalse(
-        from, to, "the two nodes have mismatching deadness");
+    VLOG(3) << EdgeContractionFailureMsg(
+        from, to,
+        absl::StrCat(
+            "the two nodes have mismatching deadness: ",
+            deadness_analysis_->DebugString(*from->deadness_predicate()),
+            " and ",
+            deadness_analysis_->DebugString(*to->deadness_predicate())));
+    return false;
   }
 
   TF_ASSIGN_OR_RETURN(bool devices_compatible,
@@ -1522,4 +1536,8 @@ Status MarkForCompilationPass::RunForTest(
 
   return MarkForCompilation(options, debug_options);
 }
+
+namespace testing {
+void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
+}  // namespace testing
 }  // namespace tensorflow

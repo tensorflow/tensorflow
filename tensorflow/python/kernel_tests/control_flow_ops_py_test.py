@@ -776,6 +776,33 @@ class ControlFlowTest(test.TestCase):
         "Tensor true_branch:0 in true_fn is accessed from false_fn."):
       f()
 
+  def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
+
+    @def_function.function
+    def f():
+      c = constant_op.constant(1.)
+      inputs = {"c": c}
+
+      def br1_fn(inputs):
+        inputs["c"] = array_ops.identity(inputs["c"], name="br1_identity")
+        return inputs["c"]
+
+      def br4_fn(inputs):
+        return array_ops.identity(inputs["c"])
+
+      def other_fn():
+        return array_ops.identity(c)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(2),
+          [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
+           lambda: br4_fn(inputs)])
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
+      f()
+
   def testCondListOutput(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)

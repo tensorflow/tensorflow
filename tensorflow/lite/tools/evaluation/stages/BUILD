@@ -105,6 +105,7 @@ cc_library(
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
@@ -123,6 +124,7 @@ cc_test(
     deps = [
         ":tflite_inference_stage",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",

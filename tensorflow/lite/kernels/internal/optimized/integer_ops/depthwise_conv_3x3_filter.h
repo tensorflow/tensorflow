@@ -2588,7 +2588,7 @@ struct DepthwiseConvMultiRowPerChannel {
           for (int32 i = 0; i < shuffle_params.input_height; i++) {
             const uint8* ptr = h_ptr;
             for (int32 j = 0; j < shuffle_params.input_width; j++) {
-              asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+              optimized_ops_preload_l1_keep(ptr);
               ptr += params.input_depth;
             }
             h_ptr += params.input_row_size;
@@ -2613,7 +2613,7 @@ struct DepthwiseConvMultiRowPerChannel {
         for (int32 i = 0; i < shuffle_params.input_height; i++) {
           const uint8* ptr = h_ptr;
           for (int32 j = 0; j < shuffle_params.input_width; j++) {
-            asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+            optimized_ops_preload_l1_keep(ptr);
             ptr += params.input_depth;
           }
           h_ptr += params.input_row_size;

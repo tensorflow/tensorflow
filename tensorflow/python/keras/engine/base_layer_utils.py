@@ -373,15 +373,25 @@ def mark_checked(tensors):
 
 
 @tf_contextlib.contextmanager
-def call_context(layer):
-  """Scope that marks when we are currently inside a Layer/Model's `call`."""
+def call_context(layer, build_graph):
+  """Scope that marks when we are currently inside a Layer/Model's `call`.
+
+  Args:
+    layer: The current layer we are entering.
+    build_graph: True if the layer is building a graph to handle symbolic
+      inputs, False if the layer is processing eager inputs eagerly.
+
+  Yields:
+    A scope in the new call context.
+  """
   was_in_call = is_in_call_context()
   was_frozen = is_in_frozen_context()
   was_in_keras_graph = getattr(_call_context, 'in_keras_graph', False)
   _call_context.in_call = True
   _call_context.in_keras_graph = (
       was_in_keras_graph or
-      getattr(backend.get_graph(), 'name', None) == 'keras_graph')
+      (build_graph and
+       getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
   if not layer.trainable:
     _call_context.frozen = True
   try:

@@ -38,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_de
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary.writer import writer_cache
@@ -1192,12 +1193,14 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.one_device_strategy
           ],
           mode=['graph', 'eager'], cloning=[True, False]))
-  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
-  # restored.
-  def DISABLED_test_dataset_wrong_input_shape(self, distribution, cloning):
+  def test_dataset_wrong_input_shape(self, distribution, cloning, mode):
+    if cloning or mode == 'graph':
+      self.skipTest('TODO(b/120943676, b/120957836): Re-enable for cloning=True'
+                    ' once the validation code is restored.')
     with self.cached_session():
       with distribution.scope():
         # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
@@ -1228,10 +1231,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           ],
           mode=['graph', 'eager'],
           cloning=[True, False]))
-  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
-  # restored.
-  def DISABLED_test_dataset_no_batch_input_validation(self, distribution,
-                                                      cloning):
+  def test_dataset_no_batch_input_validation(self, distribution,
+                                             cloning, mode):
+    if cloning or mode == 'graph':
+      self.skipTest('TODO(b/120943676, b/120957836): Re-enable for cloning=True'
+                    ' once the validation code is restored.')
     with self.cached_session():
       with distribution.scope():
         model = get_model()
@@ -1240,12 +1244,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         model.compile(optimizer, loss, cloning=cloning)
 
       # User forgets to batch the dataset
-      inputs = np.zeros((10, 3), dtype=np.float32)
+      inputs = np.zeros((10, 6), dtype=np.float32)
       targets = np.zeros((10, 4), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
 
-      with self.assertRaisesRegexp(ValueError, 'expected input to have shape'):
+      with self.assertRaisesRegexp(ValueError, 'Call.*batch.*on.*Dataset'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(
@@ -1595,6 +1599,51 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       y = np.random.randint(3, size=64)
 
       model.fit(x, y, epochs=1, steps_per_epoch=2)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus
+          ],
+          mode=['graph', 'eager'],
+          cloning=[True, False],
+          reduction=[
+              loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE,
+              loss_reduction.ReductionV2.SUM
+          ]))
+  def test_distribution_strategy_with_loss_reduction_types(
+      self, distribution, cloning, reduction):
+    np.random.seed(_RANDOM_SEED)
+
+    def _get_model():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = keras.layers.Dense(10, kernel_initializer='zeros')(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      return model
+
+    x = np.random.random((64, 10))
+    y = np.random.random((64, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.batch(32)
+
+    model = _get_model()
+    model.compile(
+        'sgd', loss=keras.losses.MeanSquaredError(reduction=reduction))
+    history = model.fit(dataset, steps_per_epoch=2, epochs=1, shuffle=False)
+
+    with distribution.scope():
+      ds_model = _get_model()
+      ds_model.compile(
+          'sgd',
+          loss=keras.losses.MeanSquaredError(reduction=reduction),
+          cloning=cloning)
+      ds_history = ds_model.fit(
+          dataset, steps_per_epoch=2, epochs=1, shuffle=False)
+    self.assertArrayNear(history.history['loss'], ds_history.history['loss'],
+                         1e-5)
 
   @combinations.generate(
       combinations.times(all_strategy_minus_default_and_tpu_combinations(),
