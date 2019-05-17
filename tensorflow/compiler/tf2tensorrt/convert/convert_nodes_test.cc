@@ -1351,10 +1351,6 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  void TestMatMulHelper(
-      const std::function<NodeDef(DataType, bool, bool)>& get_matmul,
-      const std::string& op_name);
-
   // Expose quantization_ranges_ for tests
   std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
     return converter_->quantization_ranges_;
@@ -1682,59 +1678,60 @@ TEST_F(OpConverterTest, ConvertReshape) {
 // Helper function for testing MatMul and BatchMatMul
 // get_matmul corresponds to the function used to generate the node. It should
 // accept (DataType, transpose_a, transpose_b) as parameters.
-void OpConverterTest::TestMatMulHelper(
+void TestMatMulHelper(
+    OpConverterTest* test,
     const std::function<NodeDef(DataType, bool, bool)>& get_matmul,
     const std::string& op_name) {
   // HACK: This needs to be done in a better way.
   const bool is_batch_matmul = op_name == "BatchMatMul";
   {
     // Unsupported data type.
-    Reset();
+    test->Reset();
     NodeDef node_def = get_matmul(DT_INT32, false, false);
-    AddTestTensor("input", {2}, /*batch_size=*/1, nvinfer1::DataType::kINT32);
-    AddTestWeights<int32>("weights", {2, 1}, {3, 5});
-    RunValidationAndConversion(
+    test->AddTestTensor("input", {2}, /*batch_size=*/1,
+                        nvinfer1::DataType::kINT32);
+    test->AddTestWeights<int32>("weights", {2, 1}, {3, 5});
+    test->RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        ("Data type int32 is not supported for " + op_name +
-         ", "
-         "must be one of [float, half], at my_matmul")
+        StrCat("Data type int32 is not supported for ", op_name,
+               ", must be one of [float, half], at my_matmul")
             .c_str());
   }
   // OK.
   for (bool transpose_a : {false, true}) {
     for (bool transpose_b : {false, true}) {
-      Reset();
+      test->Reset();
       NodeDef node_def = get_matmul(DT_FLOAT, transpose_a, transpose_b);
-      AddTestTensor("input", {2}, /*batch_size=*/1);
-      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+      test->AddTestTensor("input", {2}, /*batch_size=*/1);
+      test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       if (is_batch_matmul) {
         if (transpose_a || transpose_b) {
-          RunValidationAndConversion(
+          test->RunValidationAndConversion(
               node_def, error::INVALID_ARGUMENT,
               "Input weight attempts to broadcast across batch dimension for "
               "BatchMatMul, at my_matmul");
         } else {
-          RunValidationAndConversion(
+          test->RunValidationAndConversion(
               node_def, error::INVALID_ARGUMENT,
               "Input weight attempts to broadcast across batch dimension");
         }
         continue;
       } else if (transpose_a) {
-        RunValidationAndConversion(
+        test->RunValidationAndConversion(
             node_def, error::INVALID_ARGUMENT,
             "Cannot transpose first input if it is a tensor with fewer than 2 "
             "non-batch dimensions");
         continue;
       }
-      RunValidationAndConversion(node_def);
+      test->RunValidationAndConversion(node_def);
       TRT_TensorOrWeights output;
-      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+      TF_EXPECT_OK(test->GetTensorOrWeights("my_matmul", &output));
       ASSERT_TRUE(output.is_tensor());
       ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
 
       const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
       DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
-      BuildAndRun(input_data, &output_data);
+      test->BuildAndRun(input_data, &output_data);
       if (transpose_b) {
         EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
       } else {
@@ -1744,31 +1741,31 @@ void OpConverterTest::TestMatMulHelper(
   }
   // OK, 3D inputs
   for (bool transpose_b : {false, true}) {
-    Reset();
+    test->Reset();
     NodeDef node_def = get_matmul(DT_FLOAT, /*transpose_a=*/false, transpose_b);
-    AddTestTensor("input", {2}, /*batch_size=*/1);
-    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    test->AddTestTensor("input", {2}, /*batch_size=*/1);
+    test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
       if (transpose_b) {
-        RunValidationAndConversion(
+        test->RunValidationAndConversion(
             node_def, error::INVALID_ARGUMENT,
             "Input weight attempts to broadcast across batch dimension for "
             "BatchMatMul, at my_matmul");
       } else {
-        RunValidationAndConversion(
+        test->RunValidationAndConversion(
             node_def, error::INVALID_ARGUMENT,
             "Input weight attempts to broadcast across batch dimension");
       }
       continue;
     }
-    RunValidationAndConversion(node_def);
+    test->RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_matmul", &output));
     ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
     const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
     DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
-    BuildAndRun(input_data, &output_data);
+    test->BuildAndRun(input_data, &output_data);
     if (transpose_b) {
       EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
     } else {
@@ -1832,7 +1829,7 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         node_def, error::INVALID_ARGUMENT,
         "Cannot currently transpose constant input if it is not 2 dimensional");
   }
-  TestMatMulHelper(get_matmul_nodedef, "MatMul");
+  TestMatMulHelper(this, get_matmul_nodedef, "MatMul");
 }
 
 TEST_F(OpConverterTest, ConvertBatchMatMul) {
@@ -1889,7 +1886,7 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
     }
   }
 
-  TestMatMulHelper(get_batch_matmul_nodedef, "BatchMatMul");
+  TestMatMulHelper(this, get_batch_matmul_nodedef, "BatchMatMul");
 }
 
 template <DataType dtype>
