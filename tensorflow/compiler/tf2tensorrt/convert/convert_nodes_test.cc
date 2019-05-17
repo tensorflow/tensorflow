@@ -1005,7 +1005,7 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     }
   };
 
-  // Both inputs are weights.
+  // Both inputs are weights. This should be handled by constfold grappler.
   symmetric_test({1}, {1}, kIsNotTensor, kIsNotTensor, {1}, {1});
 
   // One tensor and one weights.
@@ -1999,7 +1999,7 @@ void CheckAddedLayers(OpConverterTest* test, bool expect_scale_layer) {
 }
 
 template <DataType dtype>
-void checkBinaryResults(OpConverterTest* test, const NodeDef& node_def,
+void CheckBinaryResults(OpConverterTest* test, const NodeDef& node_def,
                         const DataVec& input_data, DataVec& output_data) {
   using CType = typename EnumToDataType<dtype>::Type;
 
@@ -2059,7 +2059,7 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
       {"input1", test::AsTensor<CType>({CType(3), CType(6)})},
       {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  checkBinaryResults<dtype>(test, node_def, input_data, output_data);
+  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
 
 template <typename OpType, DataType dtype>
@@ -2077,7 +2077,7 @@ void TestBinaryTensorOpWeight(OpConverterTest* test) {
   const DataVec input_data{
       {"input1", test::AsTensor<CType>({CType(3), CType(6)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  checkBinaryResults<dtype>(test, node_def, input_data, output_data);
+  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
 
 template <typename OpType, DataType dtype>
@@ -2095,7 +2095,7 @@ void TestBinaryWeightOpTensor(OpConverterTest* test) {
   const DataVec input_data{
       {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  checkBinaryResults<dtype>(test, node_def, input_data, output_data);
+  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
 
 TEST_F(OpConverterTest, ConvertBinary) {
@@ -2152,6 +2152,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryWeightOpTensor<ops::Pow, DT_FLOAT>(this);
 
   // FP16 tests
+  // TODO(tmorris): Use templates to avoid duplication.
   TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Sub, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Mul, DT_HALF>(this);
