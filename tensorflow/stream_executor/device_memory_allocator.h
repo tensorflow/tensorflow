@@ -200,10 +200,17 @@ class DeviceMemoryAllocator {
 
 // Default memory allocator for a platform which uses
 // StreamExecutor::Allocate/Deallocate.
+//
+// Holds a mapping from device ordinals
 class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
+  // Create an allocator supporting a single device, corresponding to the passed
+  // executor.
   explicit StreamExecutorMemoryAllocator(StreamExecutor *executor);
 
+  // Create an allocator supporting multiple stream executors.
+  //
+  // Precondition: all stream_executors have different device ordinals.
   StreamExecutorMemoryAllocator(
       const Platform* platform,
       absl::Span<StreamExecutor* const> stream_executors);
@@ -221,10 +228,11 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  private:
   port::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal);
 
-  // A vector indexed by device ordinal of StreamExecutors for each device of
-  // the allocator's platform type. If an element is nullptr, then the device
-  // with the respective device ordinal is not supported by XLA.
-  std::vector<StreamExecutor*> stream_executors_;
+  // A mapping from device ordinals to StreamExecutors, for each device of
+  // the allocator's platform type. If an element does not exist in the
+  // mapping, the device with the respective device ordinal is not supported
+  // by this allocator.
+  std::map<int, StreamExecutor *> stream_executors_;
 };
 
 template <typename ElemT>

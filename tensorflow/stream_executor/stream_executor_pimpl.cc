@@ -144,8 +144,7 @@ StreamExecutor::StreamExecutor(
       live_stream_count_(0),
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
-      memory_limit_bytes_(GetMemoryLimitBytes()),
-      allocator_(this) {
+      memory_limit_bytes_(GetMemoryLimitBytes()) {
   string name = absl::AsciiStrToLower(platform_->Name());
   if (name == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
@@ -855,14 +854,18 @@ internal::StreamExecutorInterface *StreamExecutor::implementation() {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     StreamExecutor *executor)
-    : DeviceMemoryAllocator(executor->platform()),
-      stream_executors_({executor}) {}
+    : DeviceMemoryAllocator(executor->platform()) {
+  stream_executors_[executor->device_ordinal()] = executor;
+}
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     const Platform *platform,
     absl::Span<StreamExecutor *const> stream_executors)
-    : DeviceMemoryAllocator(platform),
-      stream_executors_(stream_executors.begin(), stream_executors.end()) {}
+    : DeviceMemoryAllocator(platform) {
+  for (StreamExecutor *executor : stream_executors) {
+    stream_executors_[executor->device_ordinal()] = executor;
+  }
+}
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
@@ -901,11 +904,6 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
   if (device_ordinal < 0) {
     return tensorflow::errors::InvalidArgument(
         "device ordinal value (%d) must be non-negative", device_ordinal);
-  }
-  if (device_ordinal >= stream_executors_.size()) {
-    return tensorflow::errors::InvalidArgument(
-        "device ordinal value (%d) >= number of devices (%u)", device_ordinal,
-        stream_executors_.size());
   }
   if (stream_executors_[device_ordinal] == nullptr) {
     return tensorflow::errors::NotFound(
