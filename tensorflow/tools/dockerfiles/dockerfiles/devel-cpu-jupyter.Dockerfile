@@ -19,7 +19,7 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=16.04
+ARG UBUNTU_VERSION=18.04
 
 FROM ubuntu:${UBUNTU_VERSION} AS base
 
@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         rsync \
         software-properties-common \
+	sudo \
         unzip \
         zip \
         zlib1g-dev \

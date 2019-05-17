@@ -53,8 +53,8 @@ Tensor* OpsTestBase::GetOutput(int output_index) {
           new Tensor(allocator(), output->dtype(), output->shape());
       auto src = output->tensor_data();
       auto dst = managed_output->tensor_data();
-      context_->eigen_gpu_device().memcpy(const_cast<char*>(dst.data()),
-                                          src.data(), src.size());
+      context_->eigen_gpu_device().memcpyDeviceToHost(
+          const_cast<char*>(dst.data()), src.data(), src.size());
       context_->eigen_gpu_device().synchronize();
       managed_outputs_[output_index] = managed_output;
     }

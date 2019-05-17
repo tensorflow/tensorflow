@@ -269,10 +269,16 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
-    DeviceAssignment* device_assignment, bool use_threads) {
+    DeviceAssignment* device_assignment) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
+  return ExecuteReplicated(executable.get(), options, device_assignment);
+}
+
+StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+    Executable* executable, const ReplicatedExecuteOptions& options,
+    DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   std::vector<std::unique_ptr<se::Stream>> streams;
   std::vector<ServiceExecutableRunOptions> service_run_options;
 
@@ -366,7 +372,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 
   LOG(INFO) << "Replicated execution started";
   std::vector<ScopedShapedBuffer> results;
-  if (!use_threads) {
+  if (!options.use_threads) {
     TF_ASSIGN_OR_RETURN(results,
                         executable->ExecuteOnStreams(service_run_options,
                                                      argument_buffer_slices));
@@ -412,13 +418,12 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 }
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
-    bool use_threads) {
+    std::unique_ptr<HloModule> module,
+    const ReplicatedExecuteOptions& options) {
   TF_ASSIGN_OR_RETURN(
       DeviceAssignment device_assignment,
       backend().computation_placer()->AssignDevices(options.num_replicas, 1));
-  return ExecuteReplicated(std::move(module), options, &device_assignment,
-                           use_threads);
+  return ExecuteReplicated(std::move(module), options, &device_assignment);
 }
 
 StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(

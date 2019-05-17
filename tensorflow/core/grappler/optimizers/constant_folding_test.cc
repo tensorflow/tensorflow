@@ -2511,8 +2511,12 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
   attr = attr.KeepDims(true);
   Output p2 = ops::Prod(scope.WithOpName("p2"), v2, c2, attr);
 
+  // Test with unknown input shape.
+  Output a = ops::Placeholder(scope.WithOpName("a"), DT_FLOAT);
+  Output p3 = ops::Prod(scope.WithOpName("p3"), a, i, attr);
+
   GrapplerItem item;
-  item.fetch = {"s", "p2"};
+  item.fetch = {"s", "p2", "p3"};
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
   ConstantFolding optimizer(/*cpu_device=*/nullptr);
@@ -2534,19 +2538,28 @@ TEST_F(ConstantFoldingTest, NoOpReduction) {
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("v2", node.input(0));
       EXPECT_EQ("^c2", node.input(1));
+    } else if (node.name() == "p3") {
+      found++;
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("a", node.input(0));
+      EXPECT_EQ("^i", node.input(1));
     }
   }
-  EXPECT_EQ(2, found);
+  EXPECT_EQ(3, found);
 
   auto v_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 5, 7}));
   auto v2_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 5, 1}));
-  auto tensors_expected =
-      EvaluateNodes(item.graph, item.fetch, {{"v", v_t}, {"v2", v2_t}});
-  EXPECT_EQ(2, tensors_expected.size());
-  auto tensors = EvaluateNodes(output, item.fetch, {{"v", v_t}, {"v2", v2_t}});
-  EXPECT_EQ(2, tensors.size());
+  auto a_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 5, 7}));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch,
+                                        {{"v", v_t}, {"v2", v2_t}, {"a", a_t}});
+  EXPECT_EQ(3, tensors_expected.size());
+  auto tensors =
+      EvaluateNodes(output, item.fetch, {{"v", v_t}, {"v2", v2_t}, {"a", a_t}});
+  EXPECT_EQ(3, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-5);
   test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-5);
+  test::ExpectTensorNear<float>(tensors_expected[2], tensors[2], 1e-5);
 }
 
 TEST_F(ConstantFoldingTest, SingleElementEmptyAxisReduction) {
@@ -3825,55 +3838,6 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   ASSERT_EQ(tensors.size(), 1);
   ASSERT_EQ(tensors_expected.size(), 1);
   test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
-}
-
-TEST_F(ConstantFoldingTest, CompressConstants) {
-  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
-  Tensor zeros_t(DT_FLOAT, TensorShape({64}));
-  Tensor ones_t(DT_FLOAT, TensorShape({64}));
-  for (int i = 0; i < 64; ++i) {
-    zeros_t.flat<float>()(i) = 0.0f;
-    ones_t.flat<float>()(i) = 1.0f;
-  }
-  Output zeros = ops::Const(scope.WithOpName("zeros"), zeros_t);
-  Output host_ones = ops::Const(scope.WithOpName("host_ones"), ones_t);
-  GrapplerItem item;
-  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-  ASSERT_EQ(item.graph.node(1).name(), "host_ones");
-  // There is not C++ api for HostConst, so we manually change the node type
-  // here.
-  item.graph.mutable_node(1)->set_op("HostConst");
-  item.fetch = {"zeros", "host_ones"};
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
-
-  ConstantFolding optimizer(/*cpu_device=*/nullptr);
-  GraphDef output;
-  TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
-
-  {
-    ASSERT_EQ(output.node_size(), 2);
-    const NodeDef& node = output.node(0);
-    EXPECT_EQ(node.name(), "zeros");
-    EXPECT_EQ(node.op(), "Const");
-    const TensorProto& zeroes_t = node.attr().at("value").tensor();
-    EXPECT_EQ(zeroes_t.float_val_size(), 1);
-    EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
-  }
-  {
-    const NodeDef& node = output.node(1);
-    EXPECT_EQ(node.name(), "host_ones");
-    EXPECT_EQ(node.op(), "HostConst");
-    const TensorProto& ones_t = node.attr().at("value").tensor();
-    EXPECT_EQ(ones_t.float_val_size(), 1);
-    EXPECT_EQ(ones_t.float_val(0), 1.0f);
-  }
-
-  auto tensors = EvaluateNodes(output, item.fetch, {});
-  ASSERT_EQ(tensors.size(), 2);
-  ASSERT_EQ(tensors_expected.size(), 2);
-  for (int i = 0; i < 2; ++i) {
-    test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
-  }
 }
 
 }  // namespace

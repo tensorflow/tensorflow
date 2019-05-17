@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 // See core/kernels/function_ops.cc for related kernels.
 
@@ -401,6 +402,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     Executor* exec = nullptr;
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
     string executor_type;
+    Executor::RendezvousFactory rendezvous_factory = nullptr;
 
     ~Item() {
       delete this->func_graph;
@@ -498,7 +500,6 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();
@@ -511,6 +512,12 @@ class CallOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
+    profiler::TraceMe trace_me(
+        [&] {
+          return absl::StrCat("CallOp #parent_step_id=", ctx->step_id(),
+                              ",function_step_id=", opts.step_id, "#");
+        },
+        /*level=*/2);
     lib->Run(opts, handle_, args, rets,
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {
@@ -773,6 +780,11 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.lib_def);
       }
+      item->rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                    Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      };
       local_handle = next_handle_++;
       items_.emplace(local_handle, std::unique_ptr<Item>(item));
     }
@@ -924,6 +936,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
+  params.rendezvous_factory = (*item)->rendezvous_factory;
   Graph* graph = g.get();
   std::unique_ptr<Executor> exec;
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, std::move(g), &exec));

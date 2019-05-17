@@ -233,6 +233,69 @@ LogicalDeviceSpec = collections.namedtuple(
     "LogicalDeviceSpec", ("device_map", "logical_device"))
 
 
+class WorkerDeviceMap(DeviceMap):
+  """A device map for one value per worker."""
+
+  def __init__(self, devices, num_replicas_per_worker):
+    """Initialize a `WorkerDeviceMap`.
+
+    Args:
+      devices: `devices[i]` is the string device for worker `i` in in-graph
+        relication case; devices is single-element list for its corresponding
+        worker in between-graph case.
+      num_replicas_per_worker: number of replicas per worker, useful in in-graph
+        replication case.
+    """
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    if len(set(self._devices)) != len(self._devices):
+      raise ValueError("Duplicate devices in %s, after canonicalization: %s" %
+                       (devices, self._devices))
+    self._num_replicas_per_worker = num_replicas_per_worker
+
+  @property
+  def all_devices(self):
+    return self._devices
+
+  @property
+  def devices_by_replica(self):
+    raise ValueError("`WorkerDeviceMap` is not indexed by replicas")
+
+  @property
+  def num_logical_devices(self):
+    return 1
+
+  @property
+  def num_replicas_in_graph(self):
+    return len(self._devices)
+
+  def logical_device_from_values(self, values):
+    del values
+    return 0
+
+  def logical_to_actual_devices(self, logical_device_id):
+    assert logical_device_id == 0
+    return self._devices
+
+  def select_for_current_replica(self, values, replica_context):
+    return values[replica_context.replica_id_in_sync_group //
+                  self._num_replicas_per_worker]
+
+  def replica_for_device(self, device):
+    raise ValueError("`WorkerDeviceMap` not indexed by replicas")
+
+  def select_for_device(self, values, device):
+    # TODO(yuefengz): this should map from any device to the value on its
+    # corresponding worker.
+    return values[self._devices.index(device_util.canonicalize(device))]
+
+  def is_device_in_replica(self, device, replica_id):
+    raise ValueError("WorkerDeviceMap not indexed by replicas")
+
+  def __repr__(self):
+    return "%s(%r, num_replicas_per_worker=%d)" % (
+        self.__class__.__name__, self._devices, self._num_replicas_per_worker)
+
+
 class DistributedValues(object):
   """Holds a map from device to values. Either PerReplica or Mirrored."""
 
@@ -683,6 +746,23 @@ def _apply_aggregation(strategy, value, aggregation, destinations):
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 
+_aggregation_error_msg = (
+    "You must specify an aggregation method to update a "
+    "{variable_type} in Replica Context. You can do so by passing "
+    "an explicit value for argument `aggregation` to tf.Variable(..)."
+    "e.g. `tf.Variable(..., aggregation=tf.VariableAggregation.SUM)`"
+    "`tf.VariableAggregation` lists the possible aggregation methods."
+    "This is required because {variable_type} should always be "
+    "kept in sync. When updating them or assigning to them in a "
+    "replica context, we automatically try to aggregate the values "
+    "before updating the variable. For this aggregation, we need to "
+    "know the aggregation method. "
+    "Another alternative is to not try to update such "
+    "{variable_type} in replica context, but in cross replica "
+    "context. You can enter cross replica context by calling "
+    "`tf.distribute.get_replica_context().merge_call(merge_fn, ..)`."
+    "Inside `merge_fn`, you can then update the {variable_type} "
+    "using `tf.distribute.StrategyExtended.update()`.")
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
   """Class for defining how to restore a MirroredVariable."""
@@ -738,8 +818,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
         # We call the function on each of the mirrored variables with the
         # reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "MirroredVariable in Replica Context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="MirroredVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -876,7 +956,6 @@ class TPUMirroredVariable(variables_lib.Variable):
     raise NotImplementedError(
         "numpy() is only available when eager execution is enabled.")
 
-  @property
   def initialized_value(self):
     return self.primary.initialized_value()
 
@@ -1034,8 +1113,8 @@ class TPUMirroredVariable(variables_lib.Variable):
         # We call the function on each of the mirrored variables with the
         # reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "TPUMirroredVariable in Replica Context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="TPUMirroredVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1572,8 +1651,8 @@ class AggregatingVariable(variables_lib.Variable):
         # we handle the different use cases can be found in the _reduce method.
         # We call the function with the reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "a variable in replica context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="AggregatingVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1598,7 +1677,6 @@ class AggregatingVariable(variables_lib.Variable):
   def initializer(self):
     return self._v.initializer
 
-  @property
   def initialized_value(self):
     return self._v.initialized_value()
 

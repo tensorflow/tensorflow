@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/cpu_backend_support.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -85,11 +86,13 @@ struct OpData {
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
   eigen_support::IncrementUsageCounter(context);
+  cpu_backend_support::IncrementUsageCounter(context);
   return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
   eigen_support::DecrementUsageCounter(context);
+  cpu_backend_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -306,8 +309,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 template <KernelType kernel_type>
-void EvalFloat(const TfLiteTransposeConvParams* params, const OpData* data,
-               const TfLiteTensor* input, const TfLiteTensor* weights,
+void EvalFloat(TfLiteContext* context, const TfLiteTransposeConvParams* params,
+               const OpData* data, const TfLiteTensor* input,
+               const TfLiteTensor* weights,
                const TfLiteTensor* transposed_weights, TfLiteTensor* col2im,
                TfLiteTensor* output) {
   tflite::ConvParams op_params;
@@ -333,7 +337,8 @@ void EvalFloat(const TfLiteTransposeConvParams* params, const OpData* data,
           GetTensorShape(transposed_weights),
           GetTensorData<float>(transposed_weights), GetTensorShape(output),
           GetTensorData<float>(output), GetTensorShape(col2im),
-          GetTensorData<float>(col2im));
+          GetTensorData<float>(col2im),
+          cpu_backend_support::GetFromContext(context));
       break;
     }
   }
@@ -419,8 +424,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           ResizeAndTransposeWeights(context, weights, transposed_weights);
         }
       }
-      EvalFloat<kernel_type>(params, data, input, weights, transposed_weights,
-                             col2im, output);
+      EvalFloat<kernel_type>(context, params, data, input, weights,
+                             transposed_weights, col2im, output);
       break;
     }
     case kTfLiteUInt8: {

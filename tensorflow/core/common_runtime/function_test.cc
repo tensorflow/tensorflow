@@ -98,6 +98,11 @@ class FunctionTest : public ::testing::Test {
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
+    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+      *r = new IntraProcessRendezvous(device_mgr);
+      return Status::OK();
+    };
     Executor* exec;
     TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
     exec_.reset(exec);

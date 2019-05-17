@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
+#include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -106,7 +107,6 @@ ComputeArgAndRetvalCores(const Graph& graph) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Retval index";
-      TF_ASSIGN_OR_RETURN(retval_cores[index], get_sharding_for_node(n));
       retval_cores[index] = core;
     }
   }
@@ -776,7 +776,7 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  if (input_to_args->empty()) {
+  if (input_to_args->empty() && !use_tuple_arg) {
     return Status::OK();
   }
 
@@ -829,8 +829,9 @@ Status XlaCompiler::BuildArguments(
             xla::ShapeUtil::GetLeafCount(arg_shapes[i]),
             args[input_to_args->at(i)].is_same_data_across_replicas);
       }
-      xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
-                                                             tuple_sharding);
+      xla::XlaScopedShardingAssignment assign_tuple_sharding(
+          builder, input_to_args->empty() ? absl::optional<xla::OpSharding>()
+                                          : tuple_sharding);
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple",
                              is_same_across_replicas);
     } else {
@@ -1098,6 +1099,11 @@ Status XlaCompiler::CompileGraph(
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
+  TF_RETURN_IF_ERROR(RearrangeFunctionArguments(
+      [this](const NameAttrList& function, const FunctionBody** fbody) {
+        return FindFunctionBody(function, fbody);
+      },
+      graph.get(), local_flib_def_.get()));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
             << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,

@@ -1,64 +1,55 @@
 ---
 name: Documentation Issue
-about: Use this template for documentation related issues
+about: Use this template for documentation related
+labels: 'type:docs'
 
 ---
 
-<em>Thanks so much for taking the time to file a documentation issue and even
-more thanks if you intend to contribute to updating it! Please do introduce
-yourself on our mailing list with
-[Google Groups](https://groups.google.com/a/tensorflow.org/forum/#!forum/docs)
-or [email](mailto:docs@tensorflow.org) and let us know if you have any
-questions. We also encourage you to review our
-[Documentation Contributor Guide](https://www.tensorflow.org/community/contribute/docs).
-As a side note, per our
-[GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md),
-we only address code/doc bugs, performance issues, feature requests and
-build/installation issues on GitHub. tag:doc_template</em>
+Thank you for submitting a TensorFlow documentation issue. Per our GitHub
+policy, we only address code/doc bugs, performance issues, feature requests, and
+build/installation issues on GitHub.
 
-## Existing URLs containing the issue:
+The TensorFlow docs are open source! To get involved, read the documentation
+contributor guide: https://www.tensorflow.org/community/contribute/docs
 
-Link to the documentation entry, for example:
+## URL(s) with the issue:
+
+Please provide a link to the documentation entry, for example:
 https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/MyMethod
 
 ## Description of issue (what needs changing):
 
-### Correct Links
+### Clear description
 
-Is the link pointing to the source code correct? To find the source code, use
-`git grep my_method` from the git command line in your locally checked out
-repository.
+For example, why should someone use this method? How is it useful?
 
-### Clear Description
+### Correct links
 
-Why should someone use this method? How is it useful?
+Is the link to the source code correct?
 
-### Usage Example
+### Parameters defined
 
-Is there a usage example?
+Are all parameters defined and formatted correctly?
 
-### Parameters Defined
-
-Are all arguments that can be passed in defined and formatted correctly?
-
-### Returns Defined
+### Returns defined
 
 Are return values defined?
 
-### Raises Listed and Defined
+### Raises listed and defined
 
-Are errors defined?
-[Example](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/feature_column/categorical_column_with_vocabulary_file#raises)
+Are the errors defined? For example,
+https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/feature_column/categorical_column_with_vocabulary_file#raises
 
-### Request Visuals, if Applicable
+### Usage example
 
-Are there currently visuals? If not, would they make the content clearer?
+Is there a usage example?
 
-### Submit PR?
+### Request visuals, if applicable
 
-Are you planning to also submit a
-[Pull Request](https://help.github.com/en/articles/about-pull-requests) to fix
-this issue? See the
-[Documentation Contributor Guide](https://www.tensorflow.org/community/contribute/docs)
-the
-[Documentation Style Guide](https://www.tensorflow.org/community/contribute/docs_style).
+Are there currently visuals? If not, will it clarify the content?
+
+### Submit a pull request?
+
+Are you planning to also submit a pull request to fix the issue? See the docs
+contributor guide: https://www.tensorflow.org/community/contribute/docs and the
+docs style guide: https://www.tensorflow.org/community/contribute/docs_style

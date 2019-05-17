@@ -52,6 +52,7 @@ py_test(
     srcs = [
         "policy_test.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":policy",
@@ -78,6 +79,7 @@ py_test(
     name = "autocast_variable_test",
     size = "medium",
     srcs = ["autocast_variable_test.py"],
+    python_version = "PY2",
     deps = [
         ":autocast_variable",
         "//tensorflow/python:client_testlib",
@@ -94,7 +96,7 @@ py_library(
     srcs = ["loss_scale_optimizer.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":loss_scale",
+        "//tensorflow/python:loss_scale",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -111,30 +113,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
-    ],
-)
-
-py_library(
-    name = "loss_scale",
-    srcs = ["loss_scale.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:framework",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_test(
-    name = "loss_scale_test",
-    size = "medium",
-    srcs = ["loss_scale_test.py"],
-    deps = [
-        ":loss_scale",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:one_device_strategy",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

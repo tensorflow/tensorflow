@@ -663,15 +663,6 @@ class MappingTests(test.TestCase):
     model.save_weights(save_path)
     model.load_weights(save_path)
 
-  def testDelNoSave(self):
-    model = training.Model()
-    model.d = {}
-    model.d["a"] = []
-    del model.d["a"]
-    save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
-      model.save_weights(save_path)
-
   def testPopNoSave(self):
     model = training.Model()
     model.d = {}
@@ -690,14 +681,13 @@ class MappingTests(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "modified outside the wrapper"):
       model.save_weights(save_path)
 
-  def testOverwriteNoSave(self):
+  def testOverwriteCanStillSave(self):
     model = training.Model()
     model.d = {}
     model.d["a"] = {}
     model.d["a"] = {}
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
-      model.save_weights(save_path)
+    model.save_weights(save_path)
 
   def testIter(self):
     model = training.Model()

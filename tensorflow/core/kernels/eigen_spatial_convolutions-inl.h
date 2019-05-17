@@ -21,26 +21,34 @@ namespace Eigen {
 
 namespace internal {
 
-// OptimizedPacketLoadOverTwoColumns<TensorEvaluatorType, PacketType, IndexType>
+// TensorEvaluatorHasPartialPacket<TensorEvaluatorType, PacketType, IndexType>
 // provides `value` that is true if TensorEvaluatorType has `PacketType
-// partialPacket(IndexType, unpacket_traits<PacketType>::mask_t) const` and if
-// the PacketType supports masked load. In this case, we can split the packet
-// over two columns and use partial loads for each individual part before
-// combining them to get the required packet. This class is used to pick the
-// correct implementation of loadPacketStandard function.
+// partialPacket<PacketType>(IndexType, unpacket_traits<PacketType>::mask_t)
+// const` and if the PacketType supports masked load.
+//
+// Partial packets are used to:
+//
+// 1) Split the packet over two columns and use partial loads for each
+//    individual part before combining them to get the required packet. This
+//    class is used to pick the correct implementation of loadPacketStandard
+//    function below.
+//
+// 2) Finalize packing of columns in gemm_pack_colmajor after processing
+//    vectorized part with full packets (see eigen_spatiual_convolutions.h).
 template <typename TensorEvaluatorType, typename PacketType, typename IndexType>
-class OptimizedPacketLoadOverTwoColumns {
+class TensorEvaluatorHasPartialPacket {
  public:
   template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
   static auto functionExistsSfinae(
       typename std::enable_if<
           unpacket_traits<PacketT>::masked_load_available &&
-          std::is_same<
-              PacketT,
-              decltype(std::declval<const TensorEvaluatorT>().partialPacket(
-                  std::declval<IndexT>(),
-                  std::declval<typename unpacket_traits<PacketT>::mask_t>()))>::
-              value>::type*) -> std::true_type;
+          std::is_same<PacketT,
+                       decltype(std::declval<const TensorEvaluatorT>()
+                                    .template partialPacket<PacketT>(
+                                        std::declval<IndexT>(),
+                                        std::declval<typename unpacket_traits<
+                                            PacketT>::mask_t>()))>::value>::
+          type*) -> std::true_type;
 
   template <typename TensorEvaluatorT, typename PacketT, typename IndexT>
   static auto functionExistsSfinae(...) -> std::false_type;
@@ -51,6 +59,22 @@ class OptimizedPacketLoadOverTwoColumns {
 
   static const bool value = status::value;
 };
+
+// Compute a mask for loading/storing coefficients in/from a packet in a
+// [from, to) range. If the mask bit is 1, element will be loaded/stored.
+template <typename Packet>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
+    typename std::enable_if<unpacket_traits<Packet>::masked_load_available,
+                            typename unpacket_traits<Packet>::mask_t>::type
+    mask(int from, int to) {
+  const Index packet_size = internal::unpacket_traits<Packet>::size;
+  eigen_assert(0 <= from && to <= (packet_size + 1) && from < to);
+
+  using Mask = typename internal::unpacket_traits<Packet>::mask_t;
+  const Mask mask_max = std::numeric_limits<Mask>::max();
+
+  return (mask_max >> (packet_size - to)) ^ (mask_max >> (packet_size - from));
+}
 
 // WARNING: Most of the code here implicitly assumes that the matrix is in
 // ColMajor layout. This is guaranteed by the tensor contraction (see
@@ -121,6 +145,8 @@ class TensorContractionInputMapper<
   typedef SubMapper VectorMapper;
   typedef SubMapper LinearMapper;
   typedef typename packet_traits<Scalar>::type Packet;
+
+  typedef TensorEvaluator<ArgType, Device> TensorEvaluatorT;
 
   EIGEN_DEVICE_FUNC
   TensorContractionInputMapper(
@@ -410,16 +436,8 @@ class TensorContractionInputMapper<
       const Index depth = patchId - patchOffsets[0] * patchDepth();
       const Index inputIndex = depth + inputRows[0] * m_rowInputStride +
                                inputCol * m_colInputStride + otherIndex;
-      // Determine mask corresponding to the partial packet. If the mask bit is
-      // 1, element will be loaded, otherwise 0 will be loaded.
-      const Index packetSize = internal::unpacket_traits<Packet>::size;
-      typename internal::unpacket_traits<Packet>::mask_t mask_t_max =
-          +std::numeric_limits<
-              typename internal::unpacket_traits<Packet>::mask_t>::max();
-      typename internal::unpacket_traits<Packet>::mask_t umask =
-          (mask_t_max >> (packetSize - span[1] - 1)) ^
-          (mask_t_max >> (packetSize - span[0]));
-      return m_impl.partialPacket(inputIndex - span[0], umask);
+      return m_impl.template partialPacket<Packet>(
+          inputIndex - span[0], mask<Packet>(span[0], span[1] + 1));
     } else {
       // Using slow path for this partial packet.
       // We need to load elements starting from index span[0] all the way upto
@@ -512,12 +530,11 @@ class TensorContractionInputMapper<
   // for the TesnorEvaluator or if the packet type does not support masked
   // load.
   template <typename PacketT, typename TensorEvaluatorT>
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-      typename std::enable_if<!OptimizedPacketLoadOverTwoColumns<
-                                  TensorEvaluatorT, PacketT, Index>::value,
-                              PacketT>::type
-      loadPacketStandard(Index patchId, Index rowIndex, Index colIndex,
-                         Index otherIndex) const {
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
+      !TensorEvaluatorHasPartialPacket<TensorEvaluatorT, PacketT, Index>::value,
+      PacketT>::type
+  loadPacketStandard(Index patchId, Index rowIndex, Index colIndex,
+                     Index otherIndex) const {
     const Index packetSize = internal::unpacket_traits<Packet>::size;
     EIGEN_STATIC_ASSERT(packetSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
     eigen_assert(patchId < patchDepth() * patchRows() * m_patch_cols);
@@ -561,12 +578,11 @@ class TensorContractionInputMapper<
   // packet. The idea is to enable fast load (if possible) of these 'partial'
   // packets.
   template <typename PacketT, typename TensorEvaluatorT>
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-      typename std::enable_if<OptimizedPacketLoadOverTwoColumns<
-                                  TensorEvaluatorT, PacketT, Index>::value,
-                              PacketT>::type
-      loadPacketStandard(Index patchId, Index rowIndex, Index colIndex,
-                         Index otherIndex) const {
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
+      TensorEvaluatorHasPartialPacket<TensorEvaluatorT, PacketT, Index>::value,
+      PacketT>::type
+  loadPacketStandard(Index patchId, Index rowIndex, Index colIndex,
+                     Index otherIndex) const {
     const Index packetSize = internal::unpacket_traits<PacketT>::size;
     EIGEN_STATIC_ASSERT(packetSize > 1, YOU_MADE_A_PROGRAMMING_MISTAKE)
     eigen_assert(patchId < patchDepth() * patchRows() * m_patch_cols);
@@ -744,6 +760,8 @@ class TensorContractionSubMapper<
 
   typedef Self LinearMapper;
 
+  typedef typename ParentMapper::TensorEvaluatorT TensorEvaluatorT;
+
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorContractionSubMapper(
       const ParentMapper& base_mapper, Index vert_offset, Index horiz_offset)
       : m_depth_offset(vert_offset),
@@ -896,7 +914,16 @@ class TensorContractionSubMapper<
     const Index inputIndex = depth + baseIndex;
     return m_base_mapper.m_impl.coeff(inputIndex);
   }
-
+  template <typename PacketT = Packet>
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE typename std::enable_if<
+      TensorEvaluatorHasPartialPacket<TensorEvaluatorT, PacketT, Index>::value,
+      PacketT>::type
+  partialPacketNoPadding(const Index depth, const Index baseIndex,
+                         Index num_coeffs) const {
+    const Index inputIndex = depth + baseIndex;
+    return m_base_mapper.m_impl.template partialPacket<PacketT>(
+        inputIndex, mask<PacketT>(0, num_coeffs));
+  }
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE bool padRow(const Index row) const {
     const Index r = m_rowIndex + row;

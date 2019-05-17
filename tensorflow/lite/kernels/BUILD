@@ -51,10 +51,24 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# TODO(b/132204084): Update all kernel tests to use this main lib.
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    srcs = ["test_main.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:command_line_flags",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -145,6 +159,7 @@ cc_library(
     name = "cpu_backend_gemm",
     srcs = [
         "cpu_backend_gemm_ruy.h",
+        "cpu_backend_gemm_custom_gemv.h",
     ] + select({
         "//tensorflow/lite/kernels:tflite_with_ruy": [],
         "//conditions:default": [
@@ -157,9 +172,12 @@ cc_library(
         "cpu_backend_gemm.h",
         "cpu_backend_gemm_params.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/kernels/internal:common",
         ":cpu_backend_context",
+        ":cpu_backend_threadpool",
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "//tensorflow/lite/experimental/ruy",
@@ -327,6 +345,7 @@ cc_library(
         "resize_nearest_neighbor.cc",
         "reverse.cc",
         "reverse_sequence.cc",
+        "round.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -386,11 +405,13 @@ cc_library(
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
     deps = [
+        ":kernel_util",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//third_party/eigen3",
+        "@gemmlowp",
     ],
 )
 
@@ -511,8 +532,10 @@ cc_test(
     name = "div_test",
     size = "small",
     srcs = ["div_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
@@ -523,8 +546,10 @@ cc_test(
     name = "sub_test",
     size = "small",
     srcs = ["sub_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
@@ -535,8 +560,10 @@ cc_test(
     name = "transpose_test",
     size = "small",
     srcs = ["transpose_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels/internal:reference",
@@ -623,8 +650,10 @@ cc_test(
     name = "dequantize_test",
     size = "small",
     srcs = ["dequantize_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels/internal:types",
@@ -662,8 +691,10 @@ cc_test(
     name = "floor_test",
     size = "small",
     srcs = ["floor_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
@@ -674,6 +705,21 @@ cc_test(
     name = "ceil_test",
     size = "small",
     srcs = ["ceil_test.cc"],
+    tags = [
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "round_test",
+    size = "small",
+    srcs = ["round_test.cc"],
     tags = [
         "tflite_not_portable_ios",
     ],
@@ -947,8 +993,10 @@ cc_test(
     name = "local_response_norm_test",
     size = "small",
     srcs = ["local_response_norm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
@@ -971,8 +1019,10 @@ cc_test(
     name = "softmax_test",
     size = "small",
     srcs = ["softmax_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/kernels/internal:reference_base",
@@ -997,8 +1047,10 @@ cc_test(
     name = "lsh_projection_test",
     size = "small",
     srcs = ["lsh_projection_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

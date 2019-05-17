@@ -1040,6 +1040,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
+    case HloOpcode::kPartitionId:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:

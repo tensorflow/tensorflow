@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"

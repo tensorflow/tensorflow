@@ -266,7 +266,8 @@ class TensorListElementShapeOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorListElementShapeOp);
 };
 
-REGISTER_XLA_OP(Name("TensorListElementShape"), TensorListElementShapeOp);
+REGISTER_XLA_OP(Name("TensorListElementShape").IsMetadataOp(),
+                TensorListElementShapeOp);
 
 class TensorListGetItemOp : public XlaOpKernel {
  public:

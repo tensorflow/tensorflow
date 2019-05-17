@@ -160,6 +160,19 @@ tf_java_test(
 )
 
 tf_java_test(
+    name = "EagerOperationTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/EagerOperationTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.EagerOperationTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
     name = "GraphTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/GraphTest.java"],

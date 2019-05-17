@@ -18,6 +18,7 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/env.h"
@@ -44,16 +45,10 @@ using se::cuda::ScopedActivateExecutorContext;
 
 // Contains data for a single stream used for nccl communication; this includes
 // a background thread that calls NcclManager::LoopKernelLaunches.
-struct NcclManager::NcclStream {
+struct NcclManager::NcclStream : public core::RefCounted {
  public:
-  NcclStream() {}
-  ~NcclStream() {
-    VLOG(2) << "Entered ~NcclStream " << this;
-    mutex_lock l(mu);
-    shutdown_requested = true;
-    cv.notify_all();
-    VLOG(2) << "Done ~NcclStream " << this;
-  }
+  NcclStream() = default;
+  ~NcclStream() = default;
 
   se::StreamExecutor* executor = nullptr;
 
@@ -61,11 +56,13 @@ struct NcclManager::NcclStream {
   // This is a different stream than the tensorflow compute stream.
   std::unique_ptr<se::Stream> stream;
 
-  // See NcclManager::LoopKernelLaunches for information on these.
-  std::unique_ptr<Thread> thread;
+  // `mu` protects access to `pending_launches_`, which is the list of
+  // collectives ready but whose kernels are yet to be launched.  When the
+  // NcclManager object that owns this NcclStream object is destroyed, it
+  // signals `cv` to unblock the thread waiting on more collectives.
   mutex mu;
   condition_variable cv;
-  // Has collective,participant_idx pairs.
+  // Has (collective, participant_idx) pairs.
   std::deque<std::pair<Collective*, int>> pending_launches_ GUARDED_BY(mu);
   bool shutdown_requested GUARDED_BY(mu) = false;
 };
@@ -78,7 +75,7 @@ struct NcclManager::CommunicatorMember {
   }
 
   ncclComm_t nccl_comm = nullptr;
-  // Owned by NcclManager::device_to_comm_streams_.
+  // Owned by NcclManager::device_to_comm_streams_ and LoopKernelLaunches.
   NcclStream* nccl_stream = nullptr;
 };
 
@@ -129,7 +126,7 @@ void StringToNcclUniqueId(const string& str_id, ncclUniqueId* nccl_id) {
 // have a single `Collective` per step.  However, a collective that executes on
 // 3 nodes with 4 GPUs each would have a `Collective` per node, each of which is
 // tracking the 4 GPUs local to that node.
-struct NcclManager::Collective {
+struct NcclManager::Collective : public core::RefCounted {
   Collective(DataType data_type_in, CollectiveType type_in,
              ncclRedOp_t reduction_op_in, int num_local_devices_in,
              int num_global_devices_in, const string& communicator_key_in)
@@ -139,8 +136,7 @@ struct NcclManager::Collective {
         num_local_devices(num_local_devices_in),
         num_global_devices(num_global_devices_in),
         single_node(num_local_devices_in == num_global_devices_in),
-        communicator_key(communicator_key_in),
-        remaining_participants(num_local_devices_in) {
+        communicator_key(communicator_key_in) {
     participants.reserve(num_local_devices_in);
   }
 
@@ -176,13 +172,23 @@ struct NcclManager::Collective {
   int available_participants = 0;
   bool multi_node_ready = false;
 
-  mutable std::atomic_int_fast32_t remaining_participants;
-
   Status status;
 };
 
 NcclManager::NcclManager() { VLOG(2) << "New NcclManager " << this; }
-NcclManager::~NcclManager() { VLOG(2) << "~NcclManager " << this; }
+NcclManager::~NcclManager() {
+  VLOG(2) << "~NcclManager " << this;
+  for (auto& it : device_to_comm_streams_) {
+    for (NcclStream* nccl_stream : it.second) {
+      {
+        mutex_lock l(nccl_stream->mu);
+        nccl_stream->shutdown_requested = true;
+        nccl_stream->cv.notify_all();
+      }
+      nccl_stream->Unref();
+    }
+  }
+}
 NcclManager* NcclManager::instance() {
   static NcclManager* instance = new NcclManager();
   return instance;
@@ -278,8 +284,8 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     auto& streams = device_to_comm_streams_[executor];
     NcclStream* nccl_stream = nullptr;
     for (const auto& s : streams) {
-      if (used_streams.insert(s.get()).second) {
-        nccl_stream = s.get();
+      if (used_streams.insert(s).second) {
+        nccl_stream = s;
         break;
       }
     }
@@ -292,9 +298,11 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
       streams.emplace_back(nccl_stream);
       used_streams.insert(nccl_stream);
 
-      nccl_stream->thread.reset(env->StartThread(
-          ThreadOptions(), "nccl_kernel_launch",
-          [this, nccl_stream] { LoopKernelLaunches(nccl_stream); }));
+      nccl_stream->Ref();
+      env->SchedClosure([this, nccl_stream]() {
+        LoopKernelLaunches(nccl_stream);
+        nccl_stream->Unref();
+      });
     }
 
     members[i].nccl_stream = nccl_stream;
@@ -386,9 +394,11 @@ void NcclManager::SignalMultiNodeReady(const string& collective_key) {
     mutex_lock l(mu_);
     auto collective_it = collectives_.find(collective_key);
     if (collective_it != collectives_.end()) {
-      Collective* collective = collective_it->second.get();
+      Collective* collective = collective_it->second;
       collective->multi_node_ready = true;
-      to_run = CheckReady(collective_key, collective);
+      if (CheckReady(collective_key, collective)) {
+        to_run = collective;
+      }
     }
   }
 
@@ -406,14 +416,12 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
     auto collective_it = collectives_.find(context.collective_key);
     Collective* collective = nullptr;
     if (collective_it == collectives_.end()) {
-      auto collective_unique_ptr = absl::make_unique<Collective>(
+      collective = new Collective(
           data_type, collective_type, reduction_op, context.num_local_devices,
           context.num_global_devices, context.communicator_key);
-      collective = collective_unique_ptr.get();
-      collectives_.emplace(context.collective_key,
-                           std::move(collective_unique_ptr));
+      collectives_.emplace(context.collective_key, collective);
     } else {
-      collective = collective_it->second.get();
+      collective = collective_it->second;
     }
 
     // Check `collective` is correct and consistent.
@@ -467,26 +475,25 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
     collective->participants.emplace_back(std::move(participant));
     ++collective->available_participants;
 
-    to_run = CheckReady(context.collective_key, collective);
+    if (CheckReady(context.collective_key, collective)) {
+      to_run = collective;
+    }
   }
 
   if (to_run != nullptr) RunCollective(to_run);
 }
 
-NcclManager::Collective* NcclManager::CheckReady(const string& collective_key,
-                                                 Collective* collective) {
-  Collective* to_run = nullptr;
+bool NcclManager::CheckReady(const string& collective_key,
+                             Collective* collective) {
   if (collective->available_participants == collective->num_local_devices) {
     if (collective->num_global_devices == collective->num_local_devices ||
         collective->multi_node_ready) {
       // Ownership transferred to callee.
-      to_run = collective;
-      auto collectives_it = collectives_.find(collective_key);
-      collectives_it->second.release();
-      collectives_.erase(collectives_it);
+      collectives_.erase(collective_key);
+      return true;
     }
   }
-  return to_run;
+  return false;
 }
 
 void NcclManager::RunCollective(Collective* collective) {
@@ -500,7 +507,7 @@ void NcclManager::RunCollective(Collective* collective) {
     for (int i = 0; i < collective->num_local_devices; ++i) {
       collective->participants[i]->done_callback(s);
     }
-    delete collective;
+    collective->Unref();
     return;
   }
 
@@ -537,9 +544,13 @@ void NcclManager::RunCollective(Collective* collective) {
           collective->communicator->members[i].nccl_stream;
       mutex_lock l(nccl_stream->mu);
       nccl_stream->pending_launches_.push_front(std::make_pair(collective, i));
+      // Ownership is shared between LoopKernelLaunches for each stream in this
+      // collective.
+      collective->Ref();
       nccl_stream->cv.notify_all();
     }
   }
+  collective->Unref();
 }
 
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
@@ -629,15 +640,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         collective->participants[p_idx]->done_callback(errors::Unknown(
             "Error invoking NCCL: ", ncclGetErrorString(nccl_result)));
       }
-
-      // TODO(cwhipkey): use RefCounted after figuring out how to use in a
-      // custom op library.
-      // See tensorflow/core/lib/core/refcount.h for details on this locking.
-      if (collective->remaining_participants.load(std::memory_order_acquire) ==
-              1 ||
-          collective->remaining_participants.fetch_sub(1) == 1) {
-        delete collective;
-      }
+      collective->Unref();
     };
     p->event_mgr->ThenExecute(comm_stream, done_callback);
   }

@@ -18,10 +18,13 @@ load(
     "if_tensorrt",
 )
 load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_default_copts",
     "if_cuda",
-    "if_cuda_is_configured",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -68,8 +71,6 @@ def if_not_v2(a):
         clean_dep("//tensorflow:api_version_2"): [],
         "//conditions:default": a,
     })
-
-# if_cuda_is_configured def placeholder
 
 def if_cuda_is_configured_compat(x):
     return if_cuda_is_configured(x)
@@ -1687,9 +1688,9 @@ def _collect_deps_aspect_impl(target, ctx):
     alldeps = depset()
     if hasattr(ctx.rule.attr, "deps"):
         for dep in ctx.rule.attr.deps:
-            alldeps = alldeps | depset([dep.label])
+            alldeps = depset([dep.label], transitive = [alldeps])
             if hasattr(dep, "tf_collected_deps"):
-                alldeps = alldeps | dep.tf_collected_deps
+                alldeps = depset(transitive = [alldeps, dep.tf_collected_deps])
     return struct(tf_collected_deps = alldeps)
 
 collect_deps_aspect = aspect(

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -283,6 +284,16 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // Ignore empty node replacement sets.
+  if (!nodes_to_replace->size) {
+    return kTfLiteOk;
+  }
+
+  TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+             "Replacing %d node(s) with delegate (%s) node.",
+             nodes_to_replace->size,
+             registration.custom_name ? registration.custom_name : "unknown");
+
   // Annotate the registration as DELEGATE op.
   registration.builtin_code = BuiltinOperator_DELEGATE;
 
@@ -468,6 +479,9 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
       break;
     case kTfLiteInt8:
       *bytes = sizeof(int8_t) * count;
+      break;
+    case kTfLiteFloat16:
+      *bytes = sizeof(TfLiteFloat16) * count;
       break;
     default:
       ReportError(
@@ -700,7 +714,7 @@ TfLiteStatus Subgraph::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
-    SCOPED_OPERATOR_PROFILE(profiler_, node_index);
+    TFLITE_SCOPED_OPERATOR_PROFILE(profiler_, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not

@@ -278,7 +278,7 @@ struct ResizeBilinear<GPUDevice, T> {
     const int total_count = batch * out_height * out_width * channels;
     if (total_count == 0) return;
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
     if (half_pixel_centers) {
       TF_CHECK_OK(CudaLaunchKernel(
           ResizeBilinearKernel<T>, config.block_count, config.thread_per_block,
@@ -312,19 +312,19 @@ struct ResizeBilinearGrad<GPUDevice, T> {
     const int resized_width = input_grad.dimension(2);
 
     int total_count;
-    CudaLaunchConfig config;
+    GpuLaunchConfig config;
 
     // Initialize output_grad with all zeros.
     total_count = batch * original_height * original_width * channels;
     if (total_count == 0) return;
-    config = GetCudaLaunchConfig(total_count, d);
+    config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(
         SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, output_grad.data()));
 
     // Accumulate.
     total_count = batch * resized_height * resized_width * channels;
-    config = GetCudaLaunchConfig(total_count, d);
+    config = GetGpuLaunchConfig(total_count, d);
     if (half_pixel_centers) {
       TF_CHECK_OK(CudaLaunchKernel(
           ResizeBilinearGradKernel<T>, config.block_count,

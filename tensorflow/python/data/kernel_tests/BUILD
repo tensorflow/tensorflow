@@ -24,6 +24,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -194,6 +195,7 @@ tf_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
     ],
     grpc_enabled = True,
 )
@@ -278,6 +280,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -435,6 +438,7 @@ tf_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -706,6 +710,8 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
     ],
 )
 

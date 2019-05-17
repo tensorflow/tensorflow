@@ -1302,6 +1302,35 @@ class RNNTest(keras_parameterized.TestCase):
       custom_rnn = keras.layers.RNN(cell, stateful=True)
       custom_rnn.reset_states()
 
+  @parameterized.parameters(
+      [keras.layers.SimpleRNNCell, keras.layers.GRUCell, keras.layers.LSTMCell])
+  def test_stateful_rnn_with_stacking(self, cell):
+    # See https://github.com/tensorflow/tensorflow/issues/28614.
+    batch = 12
+    timesteps = 10
+    input_dim = 8
+    output_dim = 64
+    cells = [cell(32), cell(64)]
+    x = keras.Input(batch_shape=(batch, None, input_dim))
+    layer = keras.layers.RNN(cells, stateful=True)
+    y = layer(x)
+
+    model = keras.Model(x, y)
+    model.compile(optimizer='rmsprop', loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        np.zeros((batch, timesteps, input_dim)),
+        np.zeros((batch, output_dim)))
+    model.predict(np.ones((batch, timesteps, input_dim)))
+
+    model.reset_states()
+    model.predict(np.ones((batch, timesteps, input_dim)))
+
+    new_states = nest.map_structure(lambda s: np.ones((batch, s)),
+                                    layer.cell.state_size)
+    layer.reset_states(new_states)
+    model.predict(np.ones((batch, timesteps, input_dim)))
+
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
     self.assertEqual(simple_rnn._batch_input_shape, (None, 10, 8))

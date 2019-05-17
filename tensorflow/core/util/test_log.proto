@@ -212,4 +212,8 @@ message TestResults {
   // * presubmit: results from oneshot requests.
   // * culprit: results from culprit finder rerun.
   string run_mode = 11;
+
+  // TensorFlow version this benchmark runs against.
+  // This can be either set to full version or just the major version.
+  string tf_version = 12;
 };

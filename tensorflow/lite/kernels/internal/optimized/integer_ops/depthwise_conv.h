@@ -15,11 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 
-#include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -1890,7 +1891,31 @@ inline void DepthwiseConvWithRounding(
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
-  // TODO(renjieliu): Optimize for 3x3 filter case.
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+
+  // Call kernel optimized for depthwise convolutions using 3x3 filters if
+  // parameters are supported.
+  if (optimized_ops::depthwise_conv::Fast3x3FilterKernelSupported<
+          optimized_ops::depthwise_conv::QuantizationType::kPerChannelInt8>(
+          input_shape, filter_shape, stride_width, stride_height,
+          dilation_width_factor, dilation_height_factor, pad_width, pad_height,
+          depth_multiplier, output_shape, 0, output_shift)) {
+    gemmlowp::ScopedProfilingLabel specialized_label(
+        "DepthwiseConvInt8/8bit/3x3");
+    optimized_ops::depthwise_conv::DepthwiseConv3x3FilterPerChannel<
+        DepthwiseConvOutputRounding::kUpward>(
+        params, output_multiplier, output_shift, input_shape, input_data,
+        filter_shape, filter_data, bias_shape, bias_data, output_shape,
+        output_data, thread_start, thread_end, thread_dim);
+    return;
+  }
+#endif
 
   gemmlowp::ScopedProfilingLabel specialized_label(
       "DepthwiseConvInt8/8bit/General");

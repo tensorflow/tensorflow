@@ -157,21 +157,21 @@ def _Check3DImage(image, require_static=True):
 def _Assert3DImage(image):
   """Assert that we are working with a properly shaped image.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Args:
-      image: 3-D Tensor of shape [height, width, channels]
+  Args:
+    image: 3-D Tensor of shape [height, width, channels]
 
-    Raises:
-      ValueError: if `image.shape` is not a 3-vector.
+  Raises:
+    ValueError: if `image.shape` is not a 3-vector.
 
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
-    """
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
+  """
   return control_flow_ops.with_dependencies(
       _Check3DImage(image, require_static=False), image)
 
@@ -179,20 +179,20 @@ def _Assert3DImage(image):
 def _AssertAtLeast3DImage(image):
   """Assert that we are working with a properly shaped image.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Args:
-      image: >= 3-D Tensor of size [*, height, width, depth]
+  Args:
+    image: >= 3-D Tensor of size [*, height, width, depth]
 
-    Raises:
-      ValueError: if image.shape is not a [>= 3] vector.
+  Raises:
+    ValueError: if image.shape is not a [>= 3] vector.
 
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
   """
   return control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
@@ -241,40 +241,37 @@ def _CheckAtLeast3DImage(image, require_static=True):
 
 
 def _AssertGrayscaleImage(image):
-  """Assert that we are working with a properly shaped
+  """Assert that we are working with a properly shaped grayscale image.
 
-     grayscale image.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Args:
+    image: >= 2-D Tensor of size [*, 1]
 
-    Args:
-      image: >= 3-D Tensor of size [*, height, width, depth]
+  Raises:
+    ValueError: if image.shape is not a [>= 2] vector or if
+              last dimension is not size 1.
 
-    Raises:
-      ValueError: if image.shape is not a [>= 3] vector or if
-                last dimension is not size 1.
-
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
   """
   return control_flow_ops.with_dependencies(
       _CheckGrayscaleImage(image, require_static=False), image)
 
 
 def _CheckGrayscaleImage(image, require_static=True):
-  """Assert that we are working with properly shaped
-
-  grayscale image.
+  """Assert that we are working with properly shaped grayscale image.
 
   Args:
-    image: >= 3-D Tensor of size [*, height, width, depth]
+    image: >= 2-D Tensor of size [*, 1]
+    require_static: Boolean, whether static shape is required.
 
   Raises:
-    ValueError: if image.shape is not a [>= 3] vector or if
+    ValueError: if image.shape is not a [>= 2] vector or if
               last dimension is not size 1.
 
   Returns:
@@ -283,11 +280,11 @@ def _CheckGrayscaleImage(image, require_static=True):
   """
   try:
     if image.get_shape().ndims is None:
-      image_shape = image.get_shape().with_rank(3)
+      image_shape = image.get_shape().with_rank(2)
     else:
-      image_shape = image.get_shape().with_rank_at_least(3)
+      image_shape = image.get_shape().with_rank_at_least(2)
   except ValueError:
-    raise ValueError('A grayscale image must be at least three-dimensional.')
+    raise ValueError('A grayscale image must be at least two-dimensional.')
   if require_static and not image_shape.is_fully_defined():
     raise ValueError('\'image\' must be fully defined.')
   if image_shape.is_fully_defined():
@@ -302,7 +299,7 @@ def _CheckGrayscaleImage(image, require_static=True):
         check_ops.assert_greater_equal(
             array_ops.rank(image),
             3,
-            message='A grayscale image must be at least three-dimensional.')
+            message='A grayscale image must be at least two-dimensional.')
     ]
   else:
     return []
@@ -468,6 +465,7 @@ def _flip(image, flip_index, scope_name):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     flip_index: 0 For vertical, 1 for horizontal.
+    scope_name: string, scope name.
 
   Returns:
     A tensor of the same type and shape as `image`.
@@ -1662,6 +1660,7 @@ def adjust_gamma(image, gamma=1, gain=1):
   input images at first to float representation, then transforms them
   pixelwise according to the equation `Out = gain * In**gamma`,
   and then converts the back to the original data type.
+
   Args:
     image : RGB image or images to adjust.
     gamma : A scalar or tensor. Non negative real number.
@@ -2139,7 +2138,11 @@ tf_export(
     'io.decode_image',
     'image.decode_image',
     v1=['io.decode_image', 'image.decode_image'])
-def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
+def decode_image(contents,
+                 channels=None,
+                 dtype=dtypes.uint8,
+                 name=None,
+                 expand_animations=True):
   """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
@@ -2150,7 +2153,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
   arrays `[height, width, num_channels]`. Make sure to take this into account
   when constructing your graph if you are intermixing GIF files with BMP, JPEG,
-  and/or PNG files.
+  and/or PNG files. Alternately, set the `expand_animations` argument of this
+  function to `False`, in which case the op will return 3-dimensional tensors
+  and will truncate animated GIF files to the first frame.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -2158,11 +2163,15 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       the decoded image.
     dtype: The desired DType of the returned `Tensor`.
     name: A name for the operation (optional)
+    expand_animations: Controls the shape of the returned op's output.
+      If `True`, the returned op will produce a 3-D tensor for PNG, JPEG, and
+      BMP files; and a 4-D tensor for all GIFs, whether animated or not.
+      If, `False`, the returned op will produce a 3-D tensor for all file
+      types and will truncate animated GIFs to the first frame.
 
   Returns:
-    `Tensor` with type `dtype` and shape `[height, width, num_channels]` for
-      BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
-      GIF images.
+    `Tensor` with type `dtype` and a 3- or 4-dimensional shape, depending on
+    the file type and the value of the `expand_animations` parameter.
 
   Raises:
     ValueError: On incorrect number of channels.
@@ -2173,7 +2182,7 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
     substr = string_ops.substr(contents, 0, 3)
 
     def _bmp():
-      """Decodes a GIF image."""
+      """Decodes a BMP image."""
       signature = string_ops.substr(contents, 0, 2)
       # Create assert op to check that bytes are BMP decodable
       is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
@@ -2187,9 +2196,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
         return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
 
     def _gif():
+      """Decodes a GIF image."""
       # Create assert to make sure that channels is not set to 1
       # Already checked above that channels is in (None, 0, 1, 3)
-
       gif_channels = 0 if channels is None else channels
       good_channels = math_ops.logical_and(
           math_ops.not_equal(gif_channels, 1, name='check_gif_channels'),
@@ -2197,7 +2206,12 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        result = convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        if not expand_animations:
+          # For now we decode animated GIFs fully and toss out all but the
+          # first frame when expand_animations is False
+          result = array_ops.gather(result, 0)
+        return result
 
     def check_gif():
       # Create assert op to check that bytes are GIF decodable

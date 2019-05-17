@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import itertools as it
+import os
 import sys
 import traceback
 from absl.testing import parameterized
@@ -41,9 +42,12 @@ from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.summary import summary_iterator
 
 
 class DynamicLayer(base_layer.Layer):
@@ -501,6 +505,37 @@ class SymbolicSupportTest(test.TestCase):
       function_name = last_entry[2]
       self.assertEqual(function_name, 'easily_identifiable_name')
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_summaries_in_tf_function(self):
+    if not context.executing_eagerly():
+      return
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        summary_ops_v2.scalar('mean', math_ops.reduce_mean(inputs))
+        return inputs
+
+    tmp_dir = self.get_temp_dir()
+    writer = summary_ops_v2.create_file_writer_v2(tmp_dir)
+    with writer.as_default(), summary_ops_v2.always_record_summaries():
+      my_layer = MyLayer()
+      x = array_ops.ones((10, 10))
+
+      def my_fn(x):
+        return my_layer(x)
+
+      _ = my_fn(x)
+
+    event_file = gfile.Glob(os.path.join(tmp_dir, 'events*'))
+    self.assertLen(event_file, 1)
+    event_file = event_file[0]
+    tags = set()
+    for e in summary_iterator.summary_iterator(event_file):
+      for val in e.summary.value:
+        tags.add(val.tag)
+    self.assertEqual(set(['my_layer/mean']), tags)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NestedTrackingTest(test.TestCase):
@@ -651,13 +686,20 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
 
   def test_name_scope_sublayer(self):
+
+    class NameScopeTracker(keras.layers.Layer):
+
+      def call(self, inputs):
+        self.active_name_scope = ops.get_name_scope()
+        return inputs
+
     x = keras.backend.placeholder(shape=(10, 10))
-    layer = keras.layers.Dense(
-        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName2')
-    y = layer(x)
+    sublayer = NameScopeTracker(name='Sublayer')
+    layer = keras.layers.Dense(10, activation=sublayer, name='MyName2')
+    layer(x)
     self.assertEqual(layer.bias.name, 'MyName2/bias:0')
     self.assertEqual(layer.kernel.name, 'MyName2/kernel:0')
-    self.assertEqual(y.name, 'MyName2/MyAct/Relu:0')
+    self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
     x = ops.convert_to_tensor(np.ones((10, 10)))
@@ -779,7 +821,8 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
 
       def call(self, inputs, training=None):
         if training:
-          self.add_update(self.counter.assign_add(math_ops.reduce_sum(inputs)))
+          z = math_ops.reduce_sum(inputs)
+          self.add_update(lambda: self.counter.assign_add(z))
         return inputs
 
       def compute_output_shape(self, input_shape):
@@ -797,7 +840,9 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       # TODO(fchollet): support the same workflow in graph mode.
       with self.assertRaisesRegexp(RuntimeError,
                                    '`add_update` in a control flow branch'):
-        layer = MyLayer()(keras.Input((3,)))
+        layer = MyLayer()
+        layer(keras.Input((3,)))
+        _ = layer.updates
 
   @parameterized.named_parameters(('eager', True),
                                   ('symbolic', False))

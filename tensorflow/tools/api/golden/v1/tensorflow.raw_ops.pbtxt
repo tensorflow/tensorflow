@@ -1333,6 +1333,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Fingerprint"
+    argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "FixedLengthRecordDataset"
     argspec: "args=[\'filenames\', \'header_bytes\', \'record_bytes\', \'footer_bytes\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1405,7 +1409,15 @@ tf_module {
     argspec: "args=[\'y_backprop\', \'x\', \'scale\', \'reserve_space_1\', \'reserve_space_2\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
+    name: "FusedBatchNormGradV3"
+    argspec: "args=[\'y_backprop\', \'x\', \'scale\', \'reserve_space_1\', \'reserve_space_2\', \'reserve_space_3\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "FusedBatchNormV2"
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "FusedBatchNormV3"
     argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
@@ -1426,7 +1438,7 @@ tf_module {
   }
   member_method {
     name: "GatherV2"
-    argspec: "args=[\'params\', \'indices\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'params\', \'indices\', \'axis\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "GenerateVocabRemapping"
@@ -2390,7 +2402,7 @@ tf_module {
   }
   member_method {
     name: "PrefetchDataset"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'slack_period\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "Prelinearize"
@@ -3347,6 +3359,10 @@ tf_module {
   member_method {
     name: "Select"
     argspec: "args=[\'condition\', \'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SelectV2"
+    argspec: "args=[\'condition\', \'t\', \'e\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "SelfAdjointEig"

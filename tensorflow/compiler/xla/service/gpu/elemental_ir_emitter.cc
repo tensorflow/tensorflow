@@ -71,7 +71,6 @@ GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
     llvm::IRBuilder<>* b, NestedComputer compute_nested)
     : ElementalIrEmitter(hlo_module_config, module, b),
-      hlo_module_config_(hlo_module_config),
       compute_nested_(std::move(compute_nested)) {}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
@@ -269,16 +268,6 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   llvm::Value* input = FPCast(value, type);
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
   return FPCast(fast_tanh, value->getType());
-}
-
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
-    PrimitiveType prim_type, llvm::Value* value) {
-  // Use libdevice __nv_round instead of llvm.round. This is to workaround a
-  // bug in the PTX backend, which implements llvm.round with PTX cvt.rni.
-  // When the llvm.round is fixed, we may still want to use __nv_round here as
-  // expanding the non-trivial implementation early while inlining allows better
-  // optimizations.
-  return EmitLibdeviceMathCall("__nv_round", {value}, {prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(

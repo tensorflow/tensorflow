@@ -234,6 +234,12 @@ class Delegate {
 
     // TODO(impjdi): Remove code duplication.
     auto values = graph.values();
+    auto find_value = [&](int tensor_index) -> Value<TensorRefFloat32>* {
+      for (auto value : values) {
+        if (value->tensor.ref == tensor_index) return value;
+      }
+      return nullptr;
+    };
     tensors_.reserve(values.back()->id + 1);
     for (const auto* value : values) {
       if (tensors_.size() <= value->id) tensors_.resize(value->id + 1);
@@ -244,21 +250,38 @@ class Delegate {
     }
 
     // Prepare graph inputs.
+    //
+    // Note that graph.inputs() cannot be used directly, as the notion of graph input has a
+    // different meaning in public API and GPU-internal API.
     inputs_.reserve(delegate_params->input_tensors->size);
-    for (auto input : graph.inputs()) {
-      inputs_.push_back(input->id);
+    for (int i = 0; i < delegate_params->input_tensors->size; ++i) {
+      const int tensor_index = delegate_params->input_tensors->data[i];
+      auto* tensor = context->tensors + tensor_index;
+      if (tensor->allocation_type == TfLiteAllocationType::kTfLiteMmapRo) continue;
+      const auto* input = find_value(tensor_index);
+      if (!input || tensor->type != TfLiteType::kTfLiteFloat32) {
+        return NotFoundError("Input tensor is not found in the graph.");
+      }
 
-      auto tensor = &context->tensors[input->tensor.ref];
+      inputs_.push_back(input->id);
       tensor->buffer_handle = input->id;
       tensor->delegate = &delegate_;
     }
 
     // Prepare graph outputs.
+    //
+    // Note that graph.outputs() cannot be used directly, as the notion of graph output has a
+    // different meaning in public API and GPU-internal API.
     outputs_.reserve(delegate_params->output_tensors->size);
-    for (auto output : graph.outputs()) {
-      outputs_.push_back(output->id);
+    for (int i = 0; i < delegate_params->output_tensors->size; ++i) {
+      const int tensor_index = delegate_params->output_tensors->data[i];
+      auto* tensor = context->tensors + tensor_index;
+      const auto* output = find_value(tensor_index);
+      if (!output || tensor->type != TfLiteType::kTfLiteFloat32) {
+        return NotFoundError("Output tensor is not found in the graph.");
+      }
 
-      auto tensor = &context->tensors[output->tensor.ref];
+      outputs_.push_back(output->id);
       tensor->buffer_handle = output->id;
       tensor->delegate = &delegate_;
     }

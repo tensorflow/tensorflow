@@ -172,7 +172,7 @@ class TFLiteConverterBase(object):
             "Provide an input generator for representative_dataset")
     elif self._int8_target_required():
       raise ValueError("representative_dataset is required when specifying "
-                       "TFLITE_BUILTINs_INT8 target.")
+                       "TFLITE_BUILTINS_INT8 target.")
 
   def _int8_target_required(self):
     return set([OpsSet.TFLITE_BUILTINS_INT8]) == set(self._target_ops)
@@ -295,7 +295,10 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Raises:
       Invalid signature keys.
     """
-    saved_model = _load(saved_model_dir, tags)
+    # Ensures any graphs created in Eager mode are able to run. This is required
+    # in order to create a tf.estimator.Exporter that exports a TFLite model.
+    with context.eager_mode():
+      saved_model = _load(saved_model_dir, tags)
     if not signature_keys:
       signature_keys = saved_model.signatures
 

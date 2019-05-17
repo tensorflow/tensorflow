@@ -207,14 +207,14 @@ TEST_F(ReadyNodeManagerTest, AddAndRemoveMultipleLIFOManager) {
 
 TEST_F(ReadyNodeManagerTest, GetSingleNodeFirstReadyManager) {
   FirstReadyManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
   manager.AddNode(&node1_);
   EXPECT_EQ(manager.GetCurrNode()->name(), "Node1");
 }
 
 TEST_F(ReadyNodeManagerTest, RemoveSingleNodeFirstReadyManager) {
   FirstReadyManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
   manager.AddNode(&node1_);
   manager.RemoveCurrNode();
   EXPECT_TRUE(manager.Empty());
@@ -222,7 +222,7 @@ TEST_F(ReadyNodeManagerTest, RemoveSingleNodeFirstReadyManager) {
 
 TEST_F(ReadyNodeManagerTest, GetAndRemoveMultipleFirstReadyManager) {
   FirstReadyManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
   // Insert nodes in some random order.
   manager.AddNode(&node2_);
   manager.AddNode(&node1_);
@@ -250,7 +250,7 @@ TEST_F(ReadyNodeManagerTest, GetAndRemoveMultipleFirstReadyManager) {
 
 TEST_F(ReadyNodeManagerTest, GetCurrNodeFirstReadyManager) {
   FirstReadyManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
 
   // Inserts nodes in some random order.
   manager.AddNode(&node2_);
@@ -308,9 +308,9 @@ TEST_F(ReadyNodeManagerTest, GetCurrNodeFirstReadyManager) {
 
 TEST_F(ReadyNodeManagerTest, DeterminismInFirstReadyManager) {
   FirstReadyManager manager1;
-  manager1.Init(&node_states_);
+  TF_EXPECT_OK(manager1.Init(&node_states_));
   FirstReadyManager manager2;
-  manager2.Init(&node_states_);
+  TF_EXPECT_OK(manager2.Init(&node_states_));
 
   // 6 nodes with same time_ready.
   NodeDef node7;
@@ -372,9 +372,43 @@ TEST_F(ReadyNodeManagerTest, DeterminismInFirstReadyManager) {
   EXPECT_TRUE(manager2.Empty());
 }
 
+TEST_F(ReadyNodeManagerTest, GetAndRemoveMultiplePriorityReadyManager) {
+  PriorityReadyManager manager;
+  TF_EXPECT_OK(manager.Init(&node_states_));
+
+  // Sets up node priorities.
+  std::unordered_map<string, int> node_priority = {{"Node1", 1}, {"Node2", 2},
+                                                   {"Node3", 3}, {"Node4", 4},
+                                                   {"Node5", 5}, {"Node6", 6}};
+  TF_EXPECT_OK(manager.SetPriority(node_priority));
+
+  // Inserts nodes in some random order.
+  manager.AddNode(&node2_);
+  manager.AddNode(&node1_);
+  manager.AddNode(&node4_);
+  manager.AddNode(&node5_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node6_);
+
+  // Expects nodes scheduled based on priority.
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node1");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node2");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node3");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node4");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node5");
+  manager.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), "Node6");
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
 TEST_F(ReadyNodeManagerTest, RemoveSingleNodeCompositeNodeManager) {
   CompositeNodeManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
   manager.AddNode(&node1_);
   manager.RemoveCurrNode();
   EXPECT_TRUE(manager.Empty());
@@ -382,7 +416,7 @@ TEST_F(ReadyNodeManagerTest, RemoveSingleNodeCompositeNodeManager) {
 
 TEST_F(ReadyNodeManagerTest, GetAndRemoveMultipleComopsiteNodeManager) {
   CompositeNodeManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
   manager.AddNode(&node1_);
   manager.AddNode(&node2_);
   manager.AddNode(&node3_);
@@ -412,7 +446,7 @@ TEST_F(ReadyNodeManagerTest, GetAndRemoveMultipleComopsiteNodeManager) {
 
 TEST_F(ReadyNodeManagerTest, MultiDeviceSendRecvComopsiteNodeManager) {
   CompositeNodeManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
   // Additional nodes on kCPU1.
   NodeDef node7;
   NodeDef node8;
@@ -491,9 +525,9 @@ TEST_F(ReadyNodeManagerTest, MultiDeviceSendRecvComopsiteNodeManager) {
 
 TEST_F(ReadyNodeManagerTest, DeterminismInCompositeNodeManager) {
   CompositeNodeManager manager;
-  manager.Init(&node_states_);
+  TF_EXPECT_OK(manager.Init(&node_states_));
   CompositeNodeManager manager2;
-  manager2.Init(&node_states_);
+  TF_EXPECT_OK(manager2.Init(&node_states_));
 
   // 6 nodes with same time_ready.
   NodeDef node7;
