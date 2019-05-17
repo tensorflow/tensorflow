@@ -385,10 +385,10 @@ string DebugString(const nvinfer1::ITensor& tensor) {
                 ", dims=", DebugString(tensor.getDimensions()), ")");
 }
 
-Status Converter::GetTrtBroadcastShape(
+Status GetTrtBroadcastShape(
     const TRT_TensorOrWeights& operand_l, const TRT_TensorOrWeights& operand_r,
     nvinfer1::Dims* operand_l_new_dims,
-    nvinfer1::Dims* operand_r_new_dims) const {
+    nvinfer1::Dims* operand_r_new_dims) {
   // TensorRT Elementwise op supports broadcast but requires both tensor to be
   // of Identical rank.
   // This function broadcasts the lower rank dimension across the higher rank
@@ -396,17 +396,15 @@ Status Converter::GetTrtBroadcastShape(
   (*operand_l_new_dims) = operand_l.GetTrtDims();
   (*operand_r_new_dims) = operand_r.GetTrtDims();
 
-  // clang-format off
   // Weights may include a batch dimension, so we need to remove it.
   // We determine if that is the case by checking if the rank of the weights is
   // larger than the rank of the tensor. Needed for cases such as:
   // t: [1, 1] w/ implicit batch size of 1
   // w: [1, 1, 1]
   // where the output in TRT is expected to be 2D, not 3D.
-  // clang-format on
   if (operand_l.is_weights() &&
       operand_l_new_dims->nbDims > operand_r_new_dims->nbDims) {
-    if (operand_l_new_dims->d[0] != -1 && operand_l_new_dims->d[0] != 1) {
+    if (operand_l_new_dims->d[0] != 1) {
       return errors::InvalidArgument(
           "Cannot broadcast weights with non-trivial batch dimension");
     }
@@ -415,7 +413,7 @@ Status Converter::GetTrtBroadcastShape(
 
   if (operand_r.is_weights() &&
       operand_r_new_dims->nbDims > operand_l_new_dims->nbDims) {
-    if (operand_r_new_dims->d[0] != -1 && operand_r_new_dims->d[0] != 1) {
+    if (operand_r_new_dims->d[0] != 1) {
       return errors::InvalidArgument(
           "Cannot broadcast weights with non-trivial batch dimension");
     }
@@ -3112,7 +3110,8 @@ Status ConvertBinary(OpConverterParams* params) {
         "both input as constant at: ",
         node_def.name());
   }
-
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   const TRT_TensorOrWeights& operand_l = inputs.at(0);
   const TRT_TensorOrWeights& operand_r = inputs.at(1);
 
@@ -3133,30 +3132,20 @@ Status ConvertBinary(OpConverterParams* params) {
   }
 
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  Status status = params->converter->GetTrtBroadcastShape(
-      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r);
-  if (!status.ok()) {
-    return errors::InvalidArgument(
-        "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
-        status.error_message());
-  }
-  if (params->validation_only) return Status::OK();
+  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
+      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r));
 
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
   // This will also convert constants to tensors, and set quantization ranges.
-  status = params->converter->PrepareTensorForShape(
-      operand_l, broadcasted_dims_l, params->validation_only, &tensor_l);
-  if (status.ok()) {
-    status = params->converter->PrepareTensorForShape(
-        operand_r, broadcasted_dims_r, params->validation_only, &tensor_r);
-  }
-  if (!status.ok()) {
-    return errors::Internal("Failed to convert binary op ", node_def.name(),
-                            ": ", status.error_message());
-  }
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      operand_l, broadcasted_dims_l, params->validation_only, &tensor_l));
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      operand_r, broadcasted_dims_r, params->validation_only, &tensor_r));
+  if (params->validation_only) return Status::OK();
 
   // Check type consistency.
+  // TODO(tmorris): Check if this is still necessary.
   TFAttrs attrs(node_def);
   nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
   TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
@@ -3167,14 +3156,12 @@ Status ConvertBinary(OpConverterParams* params) {
   // Add ElementWise layer.
   nvinfer1::IElementWiseLayer* layer =
       params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r), op_pair->second);
+          *tensor_l, *tensor_r, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   // Pass the output
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return tensorflow::Status::OK();
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
 }
 
 Status ConvertRsqrt(OpConverterParams* params) {
@@ -4327,7 +4314,7 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // Broadcast inputs.
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  TF_RETURN_IF_ERROR(params->converter->GetTrtBroadcastShape(
+  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
       inputs.at(0), inputs.at(1), &broadcasted_dims_l, &broadcasted_dims_r));
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
