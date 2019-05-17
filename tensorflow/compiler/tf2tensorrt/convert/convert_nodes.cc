@@ -396,11 +396,12 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   (*operand_l_new_dims) = operand_l.GetTrtDims();
   (*operand_r_new_dims) = operand_r.GetTrtDims();
 
-  // Weights may include a batch dimension, so we need to remove it.
-  // We determine if that is the case by checking if the rank of the weights is
-  // larger than the rank of the tensor. Needed for cases such as:
+  // Weights may include a dimension which must be broadcasted against a
+  // tensor's batch dimension. This occurs when the rank of the weights is
+  // larger than the rank of the tensor. Example:
   // t: [1, 1] w/ implicit batch size of 1
   // w: [1, 1, 1]
+  ///    ^ this dimension in w needs to be broadcasted against t's batch dim.
   // where the output in TRT is expected to be 2D, not 3D.
   if (operand_l.is_weights() &&
       operand_l_new_dims->nbDims > operand_r_new_dims->nbDims) {
@@ -410,7 +411,6 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
     }
     TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_l_new_dims));
   }
-
   if (operand_r.is_weights() &&
       operand_r_new_dims->nbDims > operand_l_new_dims->nbDims) {
     if (operand_r_new_dims->d[0] != 1) {
