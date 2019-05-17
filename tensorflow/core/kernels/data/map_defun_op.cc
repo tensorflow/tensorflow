@@ -250,7 +250,6 @@ class MapDefunOp : public AsyncOpKernel {
   void SetRunOptions(OpKernelContext* ctx,
                      FunctionLibraryRuntime::Options* opts,
                      ComputeOptions* compute_opts, bool always_collect_stats) {
-    opts->step_id = ctx->step_id();
     opts->rendezvous = ctx->rendezvous();
     if (always_collect_stats) {
       opts->stats_collector = ctx->stats_collector();

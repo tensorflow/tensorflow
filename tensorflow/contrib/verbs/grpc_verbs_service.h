@@ -18,6 +18,9 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_VERBS
 
+#include "grpcpp/alarm.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/server_builder.h"
 #include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
 #include "tensorflow/contrib/verbs/rdma_mgr.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"

@@ -113,6 +113,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
   CheckSimpleOperator<CeilOperator>("CEIL", OperatorType::kCeil);
   CheckSimpleOperator<EluOperator>("ELU", OperatorType::kElu);
+  CheckSimpleOperator<RoundOperator>("ROUND", OperatorType::kRound);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
@@ -817,6 +818,31 @@ TEST_F(OperatorTest, VersioningPackTest) {
   SimpleVersioningTest<PackOperator>();
 }
 
+TEST_F(OperatorTest, VersioningUnpackTest) {
+  UnpackOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model int32_model;
+  Array& int32_array = int32_model.GetOrCreateArray(op.inputs[0]);
+  int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &op, .model = &int32_model};
+  EXPECT_EQ(base_op->GetVersion(int32_signature), 1);
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 2);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+}
+
 TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
   SimpleVersioningTest<BatchToSpaceNDOperator>();
 }
@@ -965,6 +991,29 @@ TEST_F(OperatorTest, VersioningConv2DTest) {
   Array& output_float_array = float_model.GetOrCreateArray(conv_op.outputs[0]);
   output_float_array.data_type = ArrayDataType::kFloat;
   OperatorSignature float_signature = {.op = &conv_op, .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 2);
+}
+
+TEST_F(OperatorTest, VersioningFloorDivOperatorTest) {
+  FloorDivOperator floordiv_op;
+  floordiv_op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(floordiv_op.type).get();
+
+  Model int32_model;
+  Array& input_int32_array =
+      int32_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_int32_array.data_type = ArrayDataType::kInt32;
+  OperatorSignature int32_signature = {.op = &floordiv_op,
+                                       .model = &int32_model};
+  EXPECT_EQ(op->GetVersion(int32_signature), 1);
+
+  Model float_model;
+  Array& input_float_array =
+      float_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &floordiv_op,
+                                       .model = &float_model};
   EXPECT_EQ(op->GetVersion(float_signature), 2);
 }
 

@@ -31,8 +31,8 @@ void AdjustSaturationGPU<T>::operator()(GPUDevice* device,
                                         const float* const scale,
                                         T* const output) {
   const auto stream = device->stream();
-  const CudaLaunchConfig config =
-      GetCudaLaunchConfig(number_of_elements, *device);
+  const GpuLaunchConfig config =
+      GetGpuLaunchConfig(number_of_elements, *device);
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;

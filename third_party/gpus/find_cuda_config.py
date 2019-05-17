@@ -53,6 +53,7 @@ tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
 
+import io
 import os
 import glob
 import platform
@@ -104,6 +105,10 @@ def _matches_version(actual_version, required_version):
   """
   if actual_version is None:
     return False
+
+  # Strip spaces from the versions.
+  actual_version = actual_version.strip()
+  required_version = required_version.strip()
   return actual_version.startswith(required_version)
 
 
@@ -115,7 +120,7 @@ def _at_least_version(actual_version, required_version):
 
 def _get_header_version(path, name):
   """Returns preprocessor defines in C header file."""
-  for line in open(path, "r").readlines():
+  for line in io.open(path, "r", encoding="utf-8").readlines():
     match = re.match("#define %s +(\d+)" % name, line)
     if match:
       return match.group(1)
@@ -387,6 +392,13 @@ def _find_tensorrt_config(base_paths, required_version):
   header_path, header_version = _find_header(base_paths, "NvInfer.h",
                                              required_version,
                                              get_header_version)
+
+  if ".." in header_version:
+    # From TRT 6.0 onwards, version information has been moved to NvInferVersion.h.
+    header_path, header_version = _find_header(base_paths, "NvInferVersion.h",
+                                               required_version,
+                                               get_header_version)
+
   tensorrt_version = header_version.split(".")[0]
 
   library_path = _find_library(base_paths, "nvinfer", tensorrt_version)
@@ -403,6 +415,20 @@ def _list_from_env(env_name, default=[]):
   if env_name in os.environ:
     return os.environ[env_name].split(",")
   return default
+
+
+def _get_legacy_path(env_name, default=[]):
+  """Returns a path specified by a legacy environment variable.
+
+  CUDNN_INSTALL_PATH, NCCL_INSTALL_PATH, TENSORRT_INSTALL_PATH set to
+  '/usr/lib/x86_64-linux-gnu' would previously find both library and header
+  paths. Detect those and return '/usr', otherwise forward to _list_from_env().
+  """
+  if env_name in os.environ:
+    match = re.match("^(/[^/ ]*)+/lib/\w+-linux-gnu/?$", os.environ[env_name])
+    if match:
+      return [match.group(1)]
+  return _list_from_env(env_name, default)
 
 
 def _normalize_path(path):
@@ -427,22 +453,26 @@ def find_cuda_config():
     result.update(_find_cuda_config(cuda_paths, cuda_version))
 
     cuda_version = result["cuda_version"]
+    cublas_paths = base_paths
+    if tuple(int(v) for v in cuda_version.split(".")) < (10, 1):
+      # Before CUDA 10.1, cuBLAS was in the same directory as the toolkit.
+      cublas_paths = cuda_paths
     cublas_version = os.environ.get("TF_CUBLAS_VERSION", "")
-    result.update(_find_cublas_config(cuda_paths, cublas_version, cuda_version))
+    result.update(
+        _find_cublas_config(cublas_paths, cublas_version, cuda_version))
 
   if "cudnn" in libraries:
-    cudnn_paths = _list_from_env("CUDNN_INSTALL_PATH", base_paths)
+    cudnn_paths = _get_legacy_path("CUDNN_INSTALL_PATH", base_paths)
     cudnn_version = os.environ.get("TF_CUDNN_VERSION", "")
     result.update(_find_cudnn_config(cudnn_paths, cudnn_version))
 
   if "nccl" in libraries:
-    nccl_paths = _list_from_env("NCCL_INSTALL_PATH",
-                                base_paths) + _list_from_env("NCCL_HDR_PATH")
+    nccl_paths = _get_legacy_path("NCCL_INSTALL_PATH", base_paths)
     nccl_version = os.environ.get("TF_NCCL_VERSION", "")
     result.update(_find_nccl_config(nccl_paths, nccl_version))
 
   if "tensorrt" in libraries:
-    tensorrt_paths = _list_from_env("TENSORRT_INSTALL_PATH", base_paths)
+    tensorrt_paths = _get_legacy_path("TENSORRT_INSTALL_PATH", base_paths)
     tensorrt_version = os.environ.get("TF_TENSORRT_VERSION", "")
     result.update(_find_tensorrt_config(tensorrt_paths, tensorrt_version))
 

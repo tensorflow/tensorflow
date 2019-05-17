@@ -42,6 +42,7 @@ from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -212,7 +213,7 @@ class MultiWorkerTestBase(test.TestCase):
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=0)
+    cls._cluster_spec = create_in_process_cluster(num_workers=2, num_ps=1)
     cls._default_target = 'grpc://' + cls._cluster_spec['worker'][0]
 
   def setUp(self):
@@ -289,9 +290,14 @@ class MultiWorkerTestBase(test.TestCase):
 
     return config
 
-  def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
-                  **kwargs):
-    result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+  def _run_client(self, client_fn, task_type, task_id, num_gpus, eager_mode,
+                  *args, **kwargs):
+    if eager_mode:
+      with context.eager_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
+    else:
+      with context.graph_mode():
+        result = client_fn(task_type, task_id, num_gpus, *args, **kwargs)
     if np.all(result):
       with self._lock:
         self._result += 1
@@ -313,7 +319,8 @@ class MultiWorkerTestBase(test.TestCase):
       for task_id in range(len(cluster_spec.get(task_type, []))):
         t = threading.Thread(
             target=self._run_client,
-            args=(client_fn, task_type, task_id, num_gpus) + args,
+            args=(client_fn, task_type, task_id, num_gpus,
+                  context.executing_eagerly()) + args,
             kwargs=kwargs)
         t.start()
         threads.append(t)
@@ -372,7 +379,6 @@ class IndependentWorkerTestBase(test.TestCase):
   """Testing infra for independent workers."""
 
   def _make_mock_run_std_server(self):
-    thread_local = threading.local()
 
     def _mock_run_std_server(*args, **kwargs):
       ret = original_run_std_server(*args, **kwargs)
@@ -380,9 +386,9 @@ class IndependentWorkerTestBase(test.TestCase):
       # of remote sessions taking local ports that have been assigned to std
       # servers. Only call this barrier the first time this function is run for
       # each thread.
-      if not getattr(thread_local, 'server_started', False):
+      if not getattr(self._thread_local, 'server_started', False):
         self._barrier.wait()
-      thread_local.server_started = True
+      self._thread_local.server_started = True
       return ret
 
     return _mock_run_std_server
@@ -394,6 +400,8 @@ class IndependentWorkerTestBase(test.TestCase):
     self._coord = coordinator.Coordinator()
     super(IndependentWorkerTestBase, self).setUp()
     self._mock_context.__enter__()
+    # threading local object to be shared by all threads
+    self._thread_local = threading.local()
 
   def tearDown(self):
     self._mock_context.__exit__(None, None, None)
@@ -414,18 +422,39 @@ class IndependentWorkerTestBase(test.TestCase):
 
   def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
                           *args, **kwargs):
-    if task_type:
-      tf_config = {
-          'cluster': cluster_spec,
-          'task': {
-              'type': task_type,
-              'index': task_id
-          }
-      }
-    else:
-      tf_config = {
-          'cluster': cluster_spec,
-      }
+    """Run tasks in a thread.
+
+    If `tf_config` is provided, use it for the new thread; if not, construct one
+    from `cluster_spec`, `task_type`, and `task_id`, and provide it to the new
+    thread to be set as `TF_CONFIG` environment.
+
+    Arguments:
+      task_fn: The function to run in the new thread.
+      cluster_spec: The cluster spec.
+      task_type: The task type.
+      task_id: The task id.
+      *args: Additional positional arguments to provide to the thread's task_fn.
+      **kwargs: Additional keyword arguments to provide to the thread's task_fn.
+        If `tf_config` is provided, that dict will be used for the TF_CONFIG for
+        the new thread.
+
+    Returns:
+      The thread that has started.
+    """
+    tf_config = kwargs.pop('tf_config', None)
+    if tf_config is None:
+      if task_type:
+        tf_config = {
+            'cluster': cluster_spec,
+            'task': {
+                'type': task_type,
+                'index': task_id
+            }
+        }
+      else:
+        tf_config = {
+            'cluster': cluster_spec,
+        }
     t = threading.Thread(
         target=self._task_thread,
         args=(task_fn, tf_config, context.executing_eagerly()) + args,
@@ -446,7 +475,13 @@ class IndependentWorkerTestBase(test.TestCase):
     return threads
 
   def join_independent_workers(self, worker_threads):
-    self._coord.join(worker_threads)
+    try:
+      self._coord.join(worker_threads)
+    except errors.UnknownError as e:
+      if 'Could not start gRPC server' in e.message:
+        self.skipTest('Cannot start std servers.')
+      else:
+        raise
 
 
 class MultiWorkerMultiProcessTest(test.TestCase):

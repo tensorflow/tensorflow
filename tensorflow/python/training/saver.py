@@ -1061,8 +1061,12 @@ class Saver(object):
     Args:
       checkpoint_paths: a list of checkpoint paths.
     """
-    mtimes = checkpoint_management.get_checkpoint_mtimes(checkpoint_paths)
-    self.set_last_checkpoints_with_time(list(zip(checkpoint_paths, mtimes)))
+    checkpoints_with_mtimes = []
+    for checkpoint_path in checkpoint_paths:
+      mtime = checkpoint_management.get_checkpoint_mtimes([checkpoint_path])
+      if mtime:
+        checkpoints_with_mtimes.append((checkpoint_path, mtime[0]))
+    self.set_last_checkpoints_with_time(checkpoints_with_mtimes)
 
   def save(self,
            sess,

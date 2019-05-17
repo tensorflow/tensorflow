@@ -300,24 +300,28 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   }
 }
 
-// Returns a vector of potential locations of the CUDA root directory.
-// Searches through tensorflow CUDA locations AND through the CUDA location
-// specified in HLO configuration.
-std::vector<string> GetCudaRootCandidates(
-    PtxCompilationOptions compile_ptx_options) {
-  std::vector<string> potential_cuda_roots = tensorflow::CandidateCudaRoots();
+StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
+    se::StreamExecutor* executor, absl::string_view ptx,
+    PtxCompilationOptions compilation_options) {
+  using PtxCacheKey = std::tuple<se::StreamExecutor*, std::string,
+                                 PtxCompilationOptions::PtxOptionsTuple>;
+  static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
+  static auto& ptx_cache GUARDED_BY(ptx_cache_mutex) =
+      *new absl::flat_hash_map<PtxCacheKey, std::vector<uint8>>();
 
-  // "." is our last resort, even though it probably won't work.
-  potential_cuda_roots.push_back(".");
-
-  // CUDA location explicitly specified by user via --xla_gpu_cuda_data_dir has
-  // highest priority.
-  string xla_gpu_cuda_data_dir = compile_ptx_options.xla_gpu_cuda_data_dir;
-  if (!xla_gpu_cuda_data_dir.empty()) {
-    potential_cuda_roots.insert(potential_cuda_roots.begin(),
-                                xla_gpu_cuda_data_dir);
+  tensorflow::mutex_lock lock(ptx_cache_mutex);
+  PtxCacheKey cache_key{executor, std::string(ptx),
+                        compilation_options.ToTuple()};
+  auto it = ptx_cache.find(cache_key);
+  if (it == ptx_cache.end()) {
+    TF_ASSIGN_OR_RETURN(std::vector<uint8> compiled,
+                        CompilePtx(executor, ptx, compilation_options));
+    it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
   }
-  return potential_cuda_roots;
+
+  CHECK(it != ptx_cache.end());
+  const std::vector<uint8>& compiled = it->second;
+  return absl::MakeSpan(compiled);
 }
 
 StatusOr<std::vector<uint8>> CompilePtx(
@@ -336,7 +340,8 @@ StatusOr<std::vector<uint8>> CompilePtx(
       "Compile PTX", tensorflow::profiler::TraceMeLevel::kInfo);
   auto env = tensorflow::Env::Default();
   string ptxas_path;
-  for (const string& cuda_root : GetCudaRootCandidates(compile_ptx_options)) {
+  for (const string& cuda_root : tensorflow::CandidateCudaRoots(
+           /*preferred_location=*/compile_ptx_options.xla_gpu_cuda_data_dir)) {
     ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", "ptxas");
     VLOG(2) << "Looking for ptxas at " << ptxas_path;
     if (env->FileExists(ptxas_path).ok()) {

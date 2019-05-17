@@ -1629,12 +1629,13 @@ void RdmaTensorRequest::RecvTensorContent() {
     CountCopies(key_, (void*)DMAHelper::base(proxy_tensor_),
                 (void*)DMAHelper::base(result_tensor_),
                 result_tensor_->TotalBytes(), false);
-    GPUUtil::CopyCPUTensorToGPU(proxy_tensor_, recv_args_.device_context,
-                                dst_dev_, result_tensor_,
-                                [this](const Status& s) {
-                                  CHECK(s.ok()) << "copy tensor to gpu sync";
-                                  Done(s);
-                                });
+    GPUUtil::CopyCPUTensorToGPU(
+        proxy_tensor_, recv_args_.device_context, dst_dev_, result_tensor_,
+        [this](const Status& s) {
+          CHECK(s.ok()) << "copy tensor to gpu sync";
+          Done(s);
+        },
+        true /*sync_dst_compute*/);
     return;
   }
 #endif

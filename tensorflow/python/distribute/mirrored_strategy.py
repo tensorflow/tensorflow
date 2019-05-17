@@ -432,7 +432,7 @@ class MirroredStrategy(distribute_lib.Strategy):
     devices: a list of device strings.  If `None`, all available GPUs are used.
     If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
-      set, nccl will be use by default.
+      set, nccl will be used by default.
   """
 
   def __init__(self, devices=None, cross_device_ops=None):
@@ -549,7 +549,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
       for i, d in enumerate(devices):
-        with ops.init_scope(), ops.device(d):
+        with ops.device(d):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = value_list[0].name.split(":")[0]
@@ -559,7 +559,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
             def initial_value_fn(device=d):
-              if context.executing_eagerly():
+              if context.executing_eagerly() or ops.inside_function():
                 init_value = value_list[0].value()
                 return array_ops.identity(init_value)
               else:
@@ -585,7 +585,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
-        dataset, self._input_workers, self._num_replicas_in_sync)
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -598,12 +601,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_input_pipelines=num_workers,
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
-    return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, input_contexts)
+    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
+                                           input_contexts,
+                                           self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset):
-    return input_lib.get_distributed_dataset(dataset, self._input_workers,
-                                             self._num_replicas_in_sync)
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(

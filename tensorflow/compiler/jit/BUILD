@@ -17,6 +17,9 @@ package_group(
 package(
     default_visibility = [
         ":internal",
+        # BEGIN-GOOGLE-INTERNAL
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        # END-GOOGLE-INTERNAL
     ],
 )
 
@@ -220,6 +223,7 @@ cc_library(
     name = "shape_inference_helpers",
     srcs = ["shape_inference_helpers.cc"],
     hdrs = ["shape_inference_helpers.h"],
+    visibility = [":friends"],
     deps = ["//tensorflow/core:graph"],
 )
 
@@ -253,6 +257,11 @@ cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
+    # TODO(skyewm): remove this once XlaAllocator is factored out.
+    visibility = [
+        ":internal",
+        "//tensorflow/compiler/xla/python:__pkg__",
+    ],
     deps = [
         ":common",
         ":xla_compilation_cache",
@@ -262,7 +271,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -270,6 +278,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -318,7 +327,6 @@ cc_library(
     deps = [
         ":compilation_passes",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
-        "//tensorflow/compiler/tf2xla:rearrange_function_argument_pass_registration",
         "//tensorflow/core:core_cpu_internal",
     ],
     alwayslink = 1,
@@ -466,6 +474,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -518,7 +529,7 @@ cc_library(
     deps = [
         "compilability_check_util",
         ":common",
-        ":device_info_cache",
+        ":device_util",
         ":encapsulate_util",
         ":flags",
         ":resource_operation_safety_analysis",
@@ -585,17 +596,30 @@ cc_library(
 )
 
 cc_library(
-    name = "device_info_cache",
-    srcs = ["device_info_cache.cc"],
-    hdrs = ["device_info_cache.h"],
+    name = "device_util",
+    srcs = ["device_util.cc"],
+    hdrs = ["device_util.h"],
     deps = [
-        ":xla_cluster_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "device_util_test",
+    srcs = ["device_util_test.cc"],
+    deps = [
+        ":device_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -682,7 +706,7 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/tf2xla:rearrange_function_argument_pass",
+        "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:test_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -772,7 +796,7 @@ cc_library(
     hdrs = ["compilability_check_util.h"],
     deps = [
         ":common",
-        ":device_info_cache",
+        ":device_util",
         ":flags",
         ":resource_operation_safety_analysis",
         ":union_find",

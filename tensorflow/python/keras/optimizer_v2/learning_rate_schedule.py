@@ -141,10 +141,7 @@ class ExponentialDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(
-        self.name, "ExponentialDecay",
-        [self.initial_learning_rate, step, self.decay_steps, self.decay_rate]
-    ) as name:
+    with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -238,8 +235,7 @@ class PiecewiseConstantDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "PiecewiseConstant",
-                        [step, self.boundaries, self.values, self.name]):
+    with ops.name_scope_v2(self.name or "PiecewiseConstant"):
       boundaries = ops.convert_n_to_tensor(self.boundaries)
       values = ops.convert_n_to_tensor(self.values)
       x_recomp = ops.convert_to_tensor(step)
@@ -389,11 +385,7 @@ class PolynomialDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(
-        self.name, "PolynomialDecay",
-        [self.initial_learning_rate, step, self.decay_steps,
-         self.end_learning_rate, self.power]
-    ) as name:
+    with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -512,9 +504,7 @@ class InverseTimeDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "InverseTimeDecay",
-                        [self.initial_learning_rate, step, self.decay_rate]
-                       ) as name:
+    with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -606,8 +596,7 @@ class CosineDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "CosineDecay",
-                        [self.initial_learning_rate, step]):
+    with ops.name_scope_v2(self.name or "CosineDecay"):
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -707,9 +696,7 @@ class CosineDecayRestarts(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "SGDRDecay",
-                        [self.initial_learning_rate, step]
-                       ) as name:
+    with ops.name_scope_v2(self.name or "SGDRDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -844,8 +831,7 @@ class LinearCosineDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "LinearCosineDecay",
-                        [self.initial_learning_rate, step]) as name:
+    with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
@@ -969,8 +955,7 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
     self.name = name
 
   def __call__(self, step):
-    with ops.name_scope(self.name, "NoisyLinearCosineDecay",
-                        [self.initial_learning_rate, step]) as name:
+    with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
       initial_learning_rate = ops.convert_to_tensor(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype

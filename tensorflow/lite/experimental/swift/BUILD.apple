@@ -42,7 +42,7 @@ ios_application(
     sdk_frameworks = [
         "CoreGraphics",
     ],
-    tags = TFL_DEFAULT_TAGS + ["manual"],
+    tags = TFL_DEFAULT_TAGS,
     deps = [
         ":AppLib",
     ],

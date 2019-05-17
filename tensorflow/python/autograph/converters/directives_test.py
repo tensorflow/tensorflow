@@ -99,6 +99,23 @@ class DirectivesTest(converter_testing.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Unexpected keyword.*'):
       directives_converter._map_args(node, invalid_directive)
 
+  def test_value_verification_does_not_trigger_properties(self):
+
+    class TestClass(object):
+
+      @property
+      def b(self):
+        raise ValueError('This should never be evaluated')
+
+    tc = TestClass()
+
+    def test_fn():
+      return tc.b + 1
+
+    node, ctx = self.prepare(test_fn, {'tc': tc})
+    node = directives_converter.transform(node, ctx)
+    self.assertIsNotNone(node)
+
 
 if __name__ == '__main__':
   test.main()

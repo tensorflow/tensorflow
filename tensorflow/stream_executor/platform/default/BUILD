@@ -6,7 +6,6 @@ cc_library(
     name = "platform",
     textual_hdrs = [
         "initialize.h",
-        "mutex.h",
     ],
     deps = ["//tensorflow/core:lib"],
 )

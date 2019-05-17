@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -189,6 +190,21 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.evaluate(counter_var.initializer)
     self.assertEqual(self.evaluate(fn()), b"hello")
     self.assertEqual(self.evaluate(counter_var), 4)
+
+  def testStateOnGPU(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPUs available.")
+
+    state = constant_op.constant(0, dtype=dtypes.int64)
+
+    def reduce_fn(state, value):
+      with ops.device("/gpu:0"):
+        return state + value
+
+    for i in range(10):
+      ds = dataset_ops.Dataset.range(1, i + 1)
+      result = ds.reduce(state, reduce_fn)
+      self.assertEqual(((i + 1) * i) // 2, self.evaluate(result))
 
 
 if __name__ == "__main__":

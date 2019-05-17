@@ -471,8 +471,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
         // Create an iterator for the dataset that was returned by `f`.
-        return returned_dataset->MakeIterator(ctx, prefix(),
-                                              &current_group_iterator_);
+        return returned_dataset->MakeIterator(
+            ctx, strings::StrCat(prefix(), "::Reduce"),
+            &current_group_iterator_);
       }
 
       mutex mu_;

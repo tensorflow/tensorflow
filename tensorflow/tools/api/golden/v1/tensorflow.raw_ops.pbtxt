@@ -1333,6 +1333,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'predicate\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Fingerprint"
+    argspec: "args=[\'data\', \'method\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "FixedLengthRecordDataset"
     argspec: "args=[\'filenames\', \'header_bytes\', \'record_bytes\', \'footer_bytes\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2390,7 +2394,7 @@ tf_module {
   }
   member_method {
     name: "PrefetchDataset"
-    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\', \'slack_period\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "Prelinearize"
@@ -2410,7 +2414,7 @@ tf_module {
   }
   member_method {
     name: "PrintV2"
-    argspec: "args=[\'input\', \'output_stream\', \'name\'], varargs=None, keywords=None, defaults=[\'stderr\', \'None\'], "
+    argspec: "args=[\'input\', \'output_stream\', \'end\', \'name\'], varargs=None, keywords=None, defaults=[\'stderr\', \'\\n\', \'None\'], "
   }
   member_method {
     name: "PriorityQueue"
@@ -3349,6 +3353,10 @@ tf_module {
     argspec: "args=[\'condition\', \'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SelectV2"
+    argspec: "args=[\'condition\', \'t\', \'e\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SelfAdjointEig"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -3873,6 +3881,10 @@ tf_module {
     argspec: "args=[\'input\', \'unit\', \'name\'], varargs=None, keywords=None, defaults=[\'BYTE\', \'None\'], "
   }
   member_method {
+    name: "StringLower"
+    argspec: "args=[\'input\', \'encoding\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
     name: "StringSplit"
     argspec: "args=[\'input\', \'delimiter\', \'skip_empty\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -3899,6 +3911,10 @@ tf_module {
   member_method {
     name: "StringToNumber"
     argspec: "args=[\'string_tensor\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StringUpper"
+    argspec: "args=[\'input\', \'encoding\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
   }
   member_method {
     name: "Sub"
@@ -4275,6 +4291,10 @@ tf_module {
   member_method {
     name: "Transpose"
     argspec: "args=[\'x\', \'perm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "TridiagonalMatMul"
+    argspec: "args=[\'superdiag\', \'maindiag\', \'subdiag\', \'rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "TridiagonalSolve"

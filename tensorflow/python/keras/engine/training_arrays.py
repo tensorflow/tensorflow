@@ -72,7 +72,11 @@ def model_iteration(model,
       sample_weights: Optional list of sample weight arrays.
       batch_size: Integer batch size or None if unknown.
       epochs: Number of times to iterate over the data
-      verbose: Verbosity mode, 0, 1 or 2
+      verbose: 0, 1, or 2. Verbosity mode.
+        0 = silent, 1 = progress bar, 2 = one line per epoch.
+        Note that the progress bar is not particularly useful when
+        logged to a file, so verbose=2 is recommended when not running
+        interactively (eg, in a production environment).
       callbacks: List of callbacks to be called during training
       val_inputs: Either a list or dictionary of arrays, or a dataset instance.
       val_targets: List/dictionary of target arrays.
@@ -235,6 +239,8 @@ def model_iteration(model,
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
 
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break
@@ -303,7 +309,7 @@ def model_iteration(model,
           batch_outs = [batch_outs]
 
         if model._distribution_strategy:
-          batch_outs = distributed_training_utils._per_device_aggregate_batch(
+          batch_outs = distributed_training_utils._per_replica_aggregate_batch(
               batch_outs, model, mode)
 
         # Aggregate results.

@@ -132,8 +132,10 @@ class ReadyNodeManager {
  public:
   ReadyNodeManager() {}
   virtual ~ReadyNodeManager() {}
-  virtual void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
+  virtual Status Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_map) {
+    return Status::OK();
+  }
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;
   virtual void RemoveCurrNode() = 0;
@@ -144,8 +146,6 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
-  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
-      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
@@ -166,8 +166,6 @@ class LIFOManager : public ReadyNodeManager {
  public:
   LIFOManager() : ReadyNodeManager() {}
   ~LIFOManager() override {}
-  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
-      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -182,21 +180,22 @@ class LIFOManager : public ReadyNodeManager {
   std::list<const NodeDef*>::iterator curr_pos_ = nodes_.end();
 };
 
-// FirstReadyManager picks a node with the minimum time_ready value.
-// Behavior is unknown if there are more than one nodes with the minimum
-// time_ready value (it depends on C++ STL push_heap and pop_heap).
-class FirstReadyManager : public ReadyNodeManager {
+// Abstract class that maintains a heap/priority queue for scheduling ready
+// nodes. Derived class needs to implement the Greater() function which returns
+// the comparator for the heap.
+class HeapReadyManager : public ReadyNodeManager {
  public:
-  FirstReadyManager();
-  void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
-  ~FirstReadyManager() override {}
+  HeapReadyManager();
+  Status Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
+  ~HeapReadyManager() override {}
   void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
   bool Empty() const override;
 
- private:
+ protected:
+  virtual std::function<bool(const NodeDef*, const NodeDef*)> Greater() = 0;
   // Move all the nodes in the waiting_queue_ to nodes_.
   void DrainWaitingQueue();
 
@@ -213,7 +212,38 @@ class FirstReadyManager : public ReadyNodeManager {
 
   // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
-  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+  const std::unordered_map<const NodeDef*, NodeState>* node_map_;
+};
+
+// FirstReadyManager picks a node with the minimum time_ready value.
+// Behavior is deterministic when there are more than one nodes with the minimum
+// time_ready value with unique node names as the tie-breaker.
+class FirstReadyManager : public HeapReadyManager {
+ public:
+  FirstReadyManager() : HeapReadyManager() {}
+  ~FirstReadyManager() override {}
+
+ protected:
+  std::function<bool(const NodeDef*, const NodeDef*)> Greater() override;
+};
+
+// PriorityReadyManager uses the given node priorities when picking up next node
+// from all the ready nodes.
+class PriorityReadyManager : public HeapReadyManager {
+ public:
+  PriorityReadyManager() : HeapReadyManager() {}
+  ~PriorityReadyManager() override {}
+
+  // Note this should be called after Init().
+  Status SetPriority(const std::unordered_map<string, int>& node_priority);
+
+ protected:
+  std::function<bool(const NodeDef*, const NodeDef*)> Greater() override;
+
+ private:
+  // A map from unique node name to unique priority. Lower number means higher
+  // priority.
+  std::unordered_map<string, int> node_priority_;
 };
 
 // CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
@@ -227,8 +257,8 @@ class CompositeNodeManager : public ReadyNodeManager {
   CompositeNodeManager();
   ~CompositeNodeManager() override {}
 
-  void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
+  Status Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
@@ -245,8 +275,8 @@ class CompositeNodeManager : public ReadyNodeManager {
   FirstReadyManager recv_manager_;
 
   // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
-  // Not owned by FirstReadyManager.
-  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+  // Not owned by CompositeReadyManager.
+  const std::unordered_map<const NodeDef*, NodeState>* node_map_;
 
   // Cached curr node. Set back to nullptr from RemoveCurrNode().
   const NodeDef* curr_node_;
@@ -303,13 +333,6 @@ class VirtualScheduler {
   void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
 
  private:
-  // Constants.
-  const string kAttrInputSrc = "input_source_";
-  const string kAttrSrcDevice = "send_device";
-  const string kAttrDstDevice = "recv_device";
-  const string kAttrTensorName = "tensor_name";
-  const string kChannelDevice = "Channel";
-
   // Methods called from Init(). Fails if initialize_ is set.
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
@@ -321,10 +344,6 @@ class VirtualScheduler {
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
 
   // Helper methods.
-  Costs& FindOrCreateZero(const string& op_name,
-                          std::map<string, Costs>* op_cost);
-  float Round2(const float x) const;
-  bool IsPersistentNode(const NodeDef* node) const;
   void AddOutputNodesToReadyQueue(const NodeDef* node,
                                   const Costs::Duration& curr_time);
 

@@ -31,17 +31,17 @@ double GetDurationOfEventMs(const ProfileEvent* event) {
   return (event->end_timestamp_us - event->begin_timestamp_us) / 1e3;
 }
 
-void SleepForQuarterSecond(Profiler* profiler) {
+void SleepForQuarterSecond(tflite::Profiler* profiler) {
   ScopedProfile profile(profiler, "SleepForQuarter");
   std::this_thread::sleep_for(std::chrono::milliseconds(250));
 }
 
-void ChildFunction(Profiler* profiler) {
+void ChildFunction(tflite::Profiler* profiler) {
   ScopedProfile profile(profiler, "Child");
   SleepForQuarterSecond(profiler);
 }
 
-void ParentFunction(Profiler* profiler) {
+void ParentFunction(tflite::Profiler* profiler) {
   ScopedProfile profile(profiler, "Parent");
   for (int i = 0; i < 2; i++) {
     ChildFunction(profiler);
@@ -49,14 +49,14 @@ void ParentFunction(Profiler* profiler) {
 }
 
 TEST(ProfilerTest, NoProfilesAreCollectedWhenDisabled) {
-  Profiler profiler;
+  BufferedProfiler profiler;
   ParentFunction(&profiler);
   auto profile_events = profiler.GetProfileEvents();
   EXPECT_EQ(0, profile_events.size());
 }
 
 TEST(ProfilingTest, ProfilesAreCollected) {
-  Profiler profiler;
+  BufferedProfiler profiler;
   profiler.StartProfiling();
   ParentFunction(&profiler);
   profiler.StopProfiling();
@@ -101,12 +101,21 @@ TEST(ProfilingTest, NullProfiler) {
 }
 
 TEST(ProfilingTest, ScopedProfile) {
-  Profiler profiler;
+  BufferedProfiler profiler;
   profiler.StartProfiling();
   { SCOPED_OPERATOR_PROFILE(&profiler, 1); }
   profiler.StopProfiling();
   auto profile_events = profiler.GetProfileEvents();
   EXPECT_EQ(1, profile_events.size());
+}
+
+TEST(ProfilingTest, NoopProfiler) {
+  NoopProfiler profiler;
+  profiler.StartProfiling();
+  { SCOPED_OPERATOR_PROFILE(&profiler, 1); }
+  profiler.StopProfiling();
+  auto profile_events = profiler.GetProfileEvents();
+  EXPECT_EQ(0, profile_events.size());
 }
 
 }  // namespace
