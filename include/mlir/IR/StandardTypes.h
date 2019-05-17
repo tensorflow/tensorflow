@@ -227,10 +227,10 @@ public:
   int64_t getSizeInBits() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardTypes::Vector ||
-           kind == StandardTypes::RankedTensor ||
-           kind == StandardTypes::UnrankedTensor;
+  static bool classof(Type type) {
+    return type.getKind() == StandardTypes::Vector ||
+           type.getKind() == StandardTypes::RankedTensor ||
+           type.getKind() == StandardTypes::UnrankedTensor;
   }
 };
 
@@ -285,9 +285,9 @@ public:
   }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardTypes::RankedTensor ||
-           kind == StandardTypes::UnrankedTensor;
+  static bool classof(Type type) {
+    return type.getKind() == StandardTypes::RankedTensor ||
+           type.getKind() == StandardTypes::UnrankedTensor;
   }
 };
 

@@ -45,6 +45,14 @@ public:
   /// Return a unique identifier for the concrete type.
   static ClassID *getClassID() { return ClassID::getID<ConcreteT>(); }
 
+  /// Provide a default implementation of 'classof' that invokes a 'kindof'
+  /// method on the concrete type.
+  template <typename T> static bool classof(T val) {
+    static_assert(std::is_convertible<ConcreteT, T>::value,
+                  "casting from a non-convertible type");
+    return ConcreteT::kindof(val.getKind());
+  }
+
 protected:
   /// Get or create a new ConcreteT instance within the ctx. This
   /// function is guaranteed to return a non null object and will assert if

@@ -261,7 +261,7 @@ inline ::llvm::hash_code hash_value(Type arg) {
 
 template <typename U> bool Type::isa() const {
   assert(impl && "isa<> used on a null type.");
-  return U::kindof(getKind());
+  return U::classof(*this);
 }
 template <typename U> U Type::dyn_cast() const {
   return isa<U>() ? U(impl) : U(nullptr);

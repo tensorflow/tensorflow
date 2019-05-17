@@ -81,9 +81,9 @@ public:
                                int64_t storageTypeMin, int64_t storageTypeMax);
 
   /// Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) {
-    return kind >= Type::FIRST_QUANTIZATION_TYPE &&
-           kind <= QuantizationTypes::LAST_USED_QUANTIZATION_TYPE;
+  static bool classof(Type type) {
+    return type.getKind() >= Type::FIRST_QUANTIZATION_TYPE &&
+           type.getKind() <= QuantizationTypes::LAST_USED_QUANTIZATION_TYPE;
   }
 
   /// Gets the minimum possible stored by a storageType. storageTypeMin must

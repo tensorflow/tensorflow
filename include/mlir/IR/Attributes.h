@@ -104,7 +104,7 @@ public:
   template <typename U> U cast() const;
 
   // Support dyn_cast'ing Attribute to itself.
-  static bool kindof(unsigned) { return true; }
+  static bool classof(Attribute) { return true; }
 
   /// Return the classification for this attribute.
   unsigned getKind() const { return impl->getKind(); }
@@ -424,9 +424,9 @@ public:
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind >= StandardAttributes::FIRST_ELEMENTS_ATTR &&
-           kind <= StandardAttributes::LAST_ELEMENTS_ATTR;
+  static bool classof(Attribute attr) {
+    return attr.getKind() >= StandardAttributes::FIRST_ELEMENTS_ATTR &&
+           attr.getKind() <= StandardAttributes::LAST_ELEMENTS_ATTR;
   }
 };
 
@@ -483,9 +483,9 @@ public:
   static APInt readBits(const char *rawData, size_t bitPos, size_t bitWidth);
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::DenseIntElements ||
-           kind == StandardAttributes::DenseFPElements;
+  static bool classof(Attribute attr) {
+    return attr.getKind() == StandardAttributes::DenseIntElements ||
+           attr.getKind() == StandardAttributes::DenseFPElements;
   }
 
 protected:
@@ -698,7 +698,7 @@ public:
 
 template <typename U> bool Attribute::isa() const {
   assert(impl && "isa<> used on a null attribute.");
-  return U::kindof(getKind());
+  return U::classof(*this);
 }
 template <typename U> U Attribute::dyn_cast() const {
   return isa<U>() ? U(impl) : U(nullptr);
