@@ -89,6 +89,41 @@ static const std::vector<HloMatcherPattern> patterns = {
       })
   ),
 
+  // Remove convert to/from F32 before reshape and after reduction, where
+  // initial value is a constant
+  HloMatcherPattern(
+    PatternType("reshape_reduction_no_convert"),
+    PatternMetaTarget(1),
+    PatternInputs({5}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
+      {HloOpcode::kReduce, NodeOperands({2, 4}), IsF32},
+      {HloOpcode::kReshape, NodeOperands({3}), IsF32},
+      {HloOpcode::kConvert, NodeOperands({5}), IsF16ToF32Convert},
+      {HloOpcode::kConstant, NodeOperands({}), IsF32},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
+    })
+  ),
+
+  // Remove convert to/from F32 before reshape and after reduction, where
+  // initial value is a convert from F16
+  HloMatcherPattern(
+    PatternType("reshape_reduction_no_convert"),
+    PatternMetaTarget(1),
+    PatternInputs({5, 6}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
+      {HloOpcode::kReduce, NodeOperands({2, 4}), IsF32},
+      {HloOpcode::kReshape, NodeOperands({3}), IsF32},
+      {HloOpcode::kConvert, NodeOperands({5}), IsF16ToF32Convert},
+      {HloOpcode::kConvert, NodeOperands({6}), IsF16ToF32Convert},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({}), IsF16}
+    })
+  ),
+
   // Remove convert to/from F32 before/after reduction window, where initial
   // value is a constant
   HloMatcherPattern(

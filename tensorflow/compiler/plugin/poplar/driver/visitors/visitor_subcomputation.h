@@ -32,12 +32,11 @@ namespace xla {
 class HloParameterInstruction;
 namespace poplarplugin {
 
-using TensorInputDescription = absl::flat_hash_map<int64, std::vector<bool>>;
+using TensorInputDescription = std::vector<std::vector<bool>>;
 
 class SubComputationVisitor : public DeferredAllocationVisitor {
  public:
   SubComputationVisitor(CompilerResources& res, const ArgVectors& inputs,
-                        bool inplace_inputs = false,
                         const std::vector<const SubComputationVisitor*>&
                             dependent_subcomputations = {});
 
@@ -55,11 +54,14 @@ class SubComputationVisitor : public DeferredAllocationVisitor {
   bool InputHasAllocationTarget(int64 param, unsigned int index) const;
 
  protected:
+  virtual StatusOr<bool> HandleTensor(HloParameterInstruction* inst,
+                                      Shape& shape, const uint64 tuple_index,
+                                      poplar::Tensor& tensor);
+
   StatusOr<poplar::Tensor> PostProcessParameterAllocation(
       const HloInstruction* inst, int64 flat_tuple_index,
       poplar::Tensor tensor) override;
 
- private:
   bool InputIsUsedInThisSubComputation(HloParameterInstruction* inst,
                                        const std::vector<xla::Shape>& shapes,
                                        unsigned int index);
@@ -69,10 +71,8 @@ class SubComputationVisitor : public DeferredAllocationVisitor {
   ArgVectors inputs_;
   OutVector outputs_;
 
-  // If set to true, this computation consumes the inputs.
-  bool inplace_inputs_;
-
   const std::vector<const SubComputationVisitor*>& dependent_subcomputations_;
+
   // Allocated tensors for inputs which are used by this subcomputation only.
   TensorInputDescription used_tensors_;
   // Allocated tensors for inputs which are used by this or dependent
@@ -80,6 +80,22 @@ class SubComputationVisitor : public DeferredAllocationVisitor {
   TensorInputDescription allocated_tensors_;
   // Allocated tensors which have an allocation target;
   TensorInputDescription has_allocation_target_;
+};
+
+class InplaceSubComputationVisitor : public SubComputationVisitor {
+ public:
+  InplaceSubComputationVisitor(CompilerResources& res, const ArgVectors& inputs,
+                               const TensorInputDescription& input_has_layout,
+                               const std::vector<const SubComputationVisitor*>&
+                                   dependent_subcomputations = {});
+
+  StatusOr<bool> HandleTensor(HloParameterInstruction* inst, Shape& shape,
+                              const uint64 tuple_index,
+                              poplar::Tensor& tensor) override;
+
+ private:
+  // Indicates whether the input has a layout.
+  TensorInputDescription input_has_layout_;
 };
 
 }  // namespace poplarplugin

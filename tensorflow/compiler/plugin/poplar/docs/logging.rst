@@ -238,4 +238,8 @@ _______
 This event contains the Poplar execution report in the ``execution_report``
 field.
 
+TensorFlow options for reporting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+TODO add TF_CPP_MIN_VLOG_LEVEL, TF_CPP_VMODULE, and useful XLA_FLAGS options
 

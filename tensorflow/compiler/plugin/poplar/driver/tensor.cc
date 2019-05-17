@@ -46,6 +46,7 @@ limitations under the License.
 #include <poplar/OptionFlags.hpp>
 #include <poplar/TensorCloneMethod.hpp>
 #include <poplin/Norms.hpp>
+#include <popops/DynamicSlice.hpp>
 #include <poputil/TileMapping.hpp>
 
 #include <functional>
@@ -365,9 +366,31 @@ static StatusOr<poplar::Tensor> ReversePathTransform(
 StatusOr<poplar::Tensor> AddDynamicSliceTensor(
     poplar::Graph& graph, const std::string& debug_name,
     const xla::Shape& shape_xla, const xla::Shape& slice_shape_xla) {
-  poplar::Tensor unused;
-  return AddDynamicSliceTensor(graph, debug_name, shape_xla, slice_shape_xla,
-                               unused);
+  auto input_shape = PoplarShapeFromXlaShape(shape_xla);
+  // Get the dimensions we slice in and the slice sizes.
+  std::vector<size_t> sliced_dims;
+  std::vector<size_t> slice_sizes;
+  for (int i = 0; i < slice_shape_xla.dimensions_size(); i++) {
+    auto slice_dim = slice_shape_xla.dimensions(i);
+    if (slice_dim != input_shape[i]) {
+      sliced_dims.push_back(i);
+      slice_sizes.push_back(slice_dim);
+    }
+  }
+
+  if (sliced_dims.size() == slice_shape_xla.rank()) {
+    // Use the old dynamic slice allocator when we are slicing in all
+    // dimensions.
+    // TODO Remove this special case once T8594 is fixed.
+    poplar::Tensor unused;
+    return AddDynamicSliceTensor(graph, debug_name, shape_xla, slice_shape_xla,
+                                 unused);
+  } else {
+    TF_ASSIGN_OR_RETURN(auto poplar_type, PoplarDataType(shape_xla));
+    return popops::createSliceableTensor(graph, poplar_type, input_shape,
+                                         sliced_dims, slice_sizes, 0,
+                                         debug_name);
+  }
 }
 
 StatusOr<poplar::Tensor> AddDynamicSliceTensor(

@@ -110,8 +110,8 @@ class DropoutOp : public PoplibsOpDef {
 
     // Perform the actual dropout by calling into the poprand function.
     poplar::Tensor final_output =
-        poprand::dropout(graph, &as_unsgined, seed_modifier, input, reference,
-                         rate, scale, seq, "Dropout");
+        poprand::dropout(graph, &as_unsgined, seed_modifier, input, input, rate,
+                         scale, seq, GetDebugName(inst));
 
     // Mark that tensor as our output.
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, final_output));
