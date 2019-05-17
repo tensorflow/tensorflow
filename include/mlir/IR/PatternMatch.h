@@ -206,7 +206,7 @@ protected:
 ///     to apply patterns and observe their effects (e.g. to keep worklists or
 ///     other data structures up to date).
 ///
-class PatternRewriter : public Builder {
+class PatternRewriter : public FuncBuilder {
 public:
   /// Create operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
@@ -282,7 +282,7 @@ public:
                           ArrayRef<Value *> valuesToRemoveIfDead = {});
 
 protected:
-  PatternRewriter(MLIRContext *context) : Builder(context) {}
+  PatternRewriter(Function *fn) : FuncBuilder(fn) {}
   virtual ~PatternRewriter();
 
   // These are the callback methods that subclasses can choose to implement if

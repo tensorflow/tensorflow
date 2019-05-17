@@ -46,8 +46,7 @@ class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(Function &fn,
                                       OwningRewritePatternList &&patterns)
-      : PatternRewriter(fn.getContext()), matcher(std::move(patterns), *this),
-        builder(&fn) {
+      : PatternRewriter(&fn), matcher(std::move(patterns), *this) {
     worklist.reserve(64);
   }
 
@@ -89,7 +88,7 @@ protected:
   // Implement the hook for creating operations, and make sure that newly
   // created ops are added to the worklist for processing.
   Operation *createOperation(const OperationState &state) override {
-    auto *result = builder.createOperation(state);
+    auto *result = FuncBuilder::createOperation(state);
     addToWorklist(result);
     return result;
   }
@@ -133,9 +132,6 @@ private:
   /// The low-level pattern matcher.
   RewritePatternMatcher matcher;
 
-  /// This builder is used to create new operations.
-  FuncBuilder builder;
-
   /// The worklist for this transformation keeps track of the operations that
   /// need to be revisited, plus their index in the worklist.  This allows us to
   /// efficiently remove operations from the worklist when they are erased from
@@ -147,7 +143,7 @@ private:
 
 /// Perform the rewrites.
 bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
-  Function *fn = builder.getFunction();
+  Function *fn = getFunction();
   FoldHelper helper(fn);
 
   bool changed = false;
@@ -201,7 +197,7 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       }
 
       // Make sure that any new operations are inserted at this point.
-      builder.setInsertionPoint(op);
+      setInsertionPoint(op);
 
       // Try to match one of the canonicalization patterns. The rewriter is
       // automatically notified of any necessary changes, so there is nothing

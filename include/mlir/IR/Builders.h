@@ -195,6 +195,7 @@ public:
   }
 
   explicit FuncBuilder(Function &func) : FuncBuilder(&func) {}
+  virtual ~FuncBuilder();
 
   /// Create a function builder and set insertion point to the given
   /// operation, which will cause subsequent insertions to go right before it.
@@ -262,7 +263,7 @@ public:
   Block *getBlock() const { return block; }
 
   /// Creates an operation given the fields represented as an OperationState.
-  Operation *createOperation(const OperationState &state);
+  virtual Operation *createOperation(const OperationState &state);
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
