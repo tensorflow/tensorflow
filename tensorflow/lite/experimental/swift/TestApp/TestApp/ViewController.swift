@@ -1,4 +1,8 @@
-import TensorFlowLite
+import class TensorFlowLite.Interpreter
+import struct TensorFlowLite.InterpreterOptions
+import struct TensorFlowLite.Tensor
+import struct TensorFlowLite.TensorShape
+import enum TensorFlowLite.Runtime
 import UIKit
 
 class ViewController: UIViewController {
@@ -66,6 +70,7 @@ class ViewController: UIViewController {
     super.viewDidLoad()
 
     invokeButton.isEnabled = false
+    updateResultsText("Using TensorFlow Lite runtime version \(TensorFlowLite.Runtime.version).")
     loadModel()
   }
 
@@ -103,7 +108,9 @@ class ViewController: UIViewController {
   private func setUpInterpreter(withModelPath modelPath: String) {
     interpreterQueue.async {
       do {
-        self.interpreter = try Interpreter(modelPath: modelPath)
+        var options = InterpreterOptions()
+        options.threadCount = 2
+        self.interpreter = try Interpreter(modelPath: modelPath, options: options)
       } catch let error {
         self.updateResultsText(
           "Failed to create the interpreter with error: \(error.localizedDescription)"

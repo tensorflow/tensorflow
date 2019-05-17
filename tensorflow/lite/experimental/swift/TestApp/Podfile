@@ -1,6 +1,6 @@
 platform :ios, '9.0'
 
-target 'TensorFlowLiteApp' do
+target 'TestApp' do
   use_frameworks!
   pod 'TensorFlowLiteSwift'
 end
