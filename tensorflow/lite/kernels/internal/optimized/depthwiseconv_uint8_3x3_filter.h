@@ -136,7 +136,9 @@ static_assert(offsetof(DepthwiseConvParams, output_height) ==
 #endif  // ARM NEON
 
 #ifdef USE_NEON
-#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+// Dot product ops hard-coded
+
 // Represents the number of bytes offset from the start of the
 // DepthwiseConvDotProdParams struct. This is used in the asm to load
 // parameters. Keep these values in sync with the static_asserts below.
@@ -283,7 +285,7 @@ static_assert(offsetof(DepthwiseConvDotProdParams, workspace_height_stride) ==
 static_assert(offsetof(DepthwiseConvDotProdParams, four_over_stride) ==
                   DP_OFFSET_FOUR_OVER_STRIDE,
               "");
-#endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
+#endif  // __aarch64__ && !GOOGLE_L4T - Dot product ops hard-coded
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 
@@ -5785,9 +5787,11 @@ struct WorkspacePrefetchWrite<
                   fill_data_vec, 0);
   }
 };
+
 #endif  // USE_NEON &&__aarch64__
 
-#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+// Dot product ops hard-coded
 
 template <>
 struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
@@ -7804,6 +7808,33 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "x26", "x27", "x28", "x29", "x30");
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
+#undef DC_KERNEL_NO_MULT_1
+#undef DC_KERNEL_NO_MULT_2
+#undef DC_KERNEL_NO_MULT_3
+#undef DC_KERNEL_NO_MULT_4
+#undef DC_KERNEL_NO_MULT_5
+#undef DC_KERNEL_NO_MULT_6
+#undef DC_KERNEL_NO_MULT_7
+#undef DC_KERNEL_NO_MULT_8
+#undef DC_KERNEL_NO_MULT_9
+#undef DC_KERNEL_NO_MULT_10
+#undef DC_KERNEL_NO_MULT_11
+#undef DC_KERNEL_NO_MULT_12
+#undef DC_KERNEL_NO_MULT_13
+#undef DC_KERNEL_NO_MULT_14
+#undef DC_KERNEL_NO_MULT_15
+#undef DC_KERNEL_NO_MULT_16
+#undef DC_KERNEL_NO_MULT_17
+#undef DC_KERNEL_NO_MULT_18
+#undef DC_KERNEL_NO_MULT_19
+#undef DC_KERNEL_NO_MULT_20
+#undef DC_KERNEL_NO_MULT_21
+#undef DC_KERNEL_NO_MULT_22
+#undef DC_KERNEL_NO_MULT_23
+#undef DC_KERNEL_NO_MULT_24
+#undef DC_KERNEL_NO_MULT_25
+#undef DC_KERNEL_NO_MULT_26
+
   static void __attribute__((noinline))
   Run(const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
@@ -8194,6 +8225,26 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25",
         "x26", "x27", "x28", "x29", "x30");
   }  // NOLINT(readability/fn_size) Manually unrolled.
+
+#undef DC_KERNEL_NO_MULT_STRIDE_1
+#undef DC_KERNEL_NO_MULT_STRIDE_2
+#undef DC_KERNEL_NO_MULT_STRIDE_3
+#undef DC_KERNEL_NO_MULT_STRIDE_4
+#undef DC_KERNEL_NO_MULT_STRIDE_5
+#undef DC_KERNEL_NO_MULT_STRIDE_6
+#undef DC_KERNEL_NO_MULT_STRIDE_7
+#undef DC_KERNEL_NO_MULT_STRIDE_8
+#undef DC_KERNEL_NO_MULT_STRIDE_9
+#undef DC_KERNEL_NO_MULT_STRIDE_10
+#undef DC_KERNEL_NO_MULT_STRIDE_11
+#undef DC_KERNEL_NO_MULT_STRIDE_12
+#undef DC_KERNEL_NO_MULT_STRIDE_13
+#undef DC_KERNEL_NO_MULT_STRIDE_14
+#undef DC_KERNEL_NO_MULT_STRIDE_15
+#undef DC_KERNEL_NO_MULT_STRIDE_16
+#undef DC_KERNEL_NO_MULT_STRIDE_17
+#undef DC_KERNEL_NO_MULT_STRIDE_18
+#undef DC_KERNEL_NO_MULT_STRIDE_19
 
   static void __attribute__((noinline))
   Run(const int8* scratch_block_data, const int8* filter_workspace,
@@ -8800,6 +8851,29 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "x26", "x27", "x28", "x29", "x30");
   }  // NOLINT(readability/fn_size) Manually unrolled.
 
+#undef DC_KERNEL_MULT_1
+#undef DC_KERNEL_MULT_2
+#undef DC_KERNEL_MULT_3
+#undef DC_KERNEL_MULT_4
+#undef DC_KERNEL_MULT_5
+#undef DC_KERNEL_MULT_6
+#undef DC_KERNEL_MULT_7
+#undef DC_KERNEL_MULT_8
+#undef DC_KERNEL_MULT_9
+#undef DC_KERNEL_MULT_10
+#undef DC_KERNEL_MULT_11
+#undef DC_KERNEL_MULT_12
+#undef DC_KERNEL_MULT_13
+#undef DC_KERNEL_MULT_14
+#undef DC_KERNEL_MULT_15
+#undef DC_KERNEL_MULT_16
+#undef DC_KERNEL_MULT_17
+#undef DC_KERNEL_MULT_18
+#undef DC_KERNEL_MULT_19
+#undef DC_KERNEL_MULT_20
+#undef DC_KERNEL_MULT_21
+#undef DC_KERNEL_MULT_22
+
   static void __attribute__((noinline))
   Run(const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
@@ -9168,6 +9242,20 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
         "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25");
   }
 
+#undef DC_KERNEL_MULT_STRIDE_1
+#undef DC_KERNEL_MULT_STRIDE_2
+#undef DC_KERNEL_MULT_STRIDE_3
+#undef DC_KERNEL_MULT_STRIDE_4
+#undef DC_KERNEL_MULT_STRIDE_5
+#undef DC_KERNEL_MULT_STRIDE_6
+#undef DC_KERNEL_MULT_STRIDE_7
+#undef DC_KERNEL_MULT_STRIDE_8
+#undef DC_KERNEL_MULT_STRIDE_9
+#undef DC_KERNEL_MULT_STRIDE_10
+#undef DC_KERNEL_MULT_STRIDE_11
+#undef DC_KERNEL_MULT_STRIDE_12
+#undef DC_KERNEL_MULT_STRIDE_13
+
   static void __attribute__((noinline))
   Run(const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
@@ -9214,7 +9302,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
 //
 #undef DP_OFFSET_FOUR_OVER_STRIDE
 
-#endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
+#endif  // __aarch64__ && !GOOGLE_L4T - Dot product ops hard-coded
 
 // Top-level implementation function for 3x3 depthwise convolution using NEON
 // dot-product instructions.

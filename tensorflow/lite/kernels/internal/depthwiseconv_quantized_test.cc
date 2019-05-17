@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/ruy/context.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -162,7 +164,10 @@ inline void DispatchDepthwiseConv(
       break;
     }
     case DepthwiseConvImplementation::kUseNeon3x3DotProduct: {
-#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
+      // This is compiled-in even if dot-product instructions are unavailable.
+      // However, tests should skip dot-product testing in that case and not
+      // call this code.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
@@ -689,6 +694,21 @@ void TestOneDepthwiseConv3x3Filter(
 }
 
 void TestOneNeonDot3x3(const TestParam& test_param) {
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  CpuBackendContext backend_context;
+  ruy::Context* ruy_context = backend_context.ruy_context();
+  const auto ruy_paths = ruy_context != nullptr
+                             ? ruy_context->GetRuntimeEnabledPaths()
+                             : ruy::Path::kNone;
+  const bool has_dot_product_instructions =
+      (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+  if (test_param.forced_invocation ==
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct &&
+      !has_dot_product_instructions) {
+    return;
+  }
+#endif
+
   while (!TryTestOneNeonDot3x3(test_param, ParamsSpecialization::kSymmetric)) {
   }
 }
@@ -774,7 +794,7 @@ INSTANTIATE_TEST_SUITE_P(
         Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
-#endif
+#endif  // __aarch64__ && !GOOGLE_L4T
 
 // While 3x3 coverage tests are primarily targeted at specialized kernels, we
 // also run it against the generic kernel.
@@ -821,6 +841,9 @@ INSTANTIATE_TEST_SUITE_P(
     TestParam::TestNameSuffix);
 
 #if defined(USE_NEON)
+// Intrinsics tests are run in emulation mode (such as for dot-product
+// instructions) unless the tests are built specifically with dot-product
+// instructions enabled.
 INSTANTIATE_TEST_SUITE_P(
     Intrinsics, DepthwiseConvTest,
     testing::Combine(
@@ -836,7 +859,7 @@ INSTANTIATE_TEST_SUITE_P(
     TestParam::TestNameSuffix);
 #endif
 
-#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 INSTANTIATE_TEST_SUITE_P(
     NeonAsm, DepthwiseConvTest,
     testing::Combine(

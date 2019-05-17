@@ -667,6 +667,8 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "//tensorflow/lite/experimental/ruy:context",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
