@@ -301,7 +301,7 @@ class BinaryCrossentropy(LossFunctionWrapper):
   ```python
   bce = tf.keras.losses.BinaryCrossentropy()
   loss = bce([0., 0., 1., 1.], [1., 1., 1., 0.])
-  print('Loss: ', loss.numpy())  # Loss: 12.007
+  print('Loss: ', loss.numpy())  # Loss: 11.522857
   ```
 
   Usage with tf.keras API:
