@@ -546,6 +546,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:nn_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
