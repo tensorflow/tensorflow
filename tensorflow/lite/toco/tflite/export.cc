@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
@@ -431,6 +432,31 @@ tensorflow::Status Export(const Model& model, string* output_file_contents,
   return Export(model, output_file_contents, params, ops_by_type);
 }
 
+void ParseControlFlowErrors(std::set<string>* custom_ops,
+                            std::vector<string>* error_msgs) {
+  std::set<string> unsupported_control_flow_ops;
+  // Check if unsupported ops contains control flow ops. It's impossible
+  // to implement these ops as custom ops at the moment.
+  for (const auto& op : *custom_ops) {
+    if (IsControlFlowOp(op)) {
+      unsupported_control_flow_ops.insert(op);
+    }
+  }
+  if (!unsupported_control_flow_ops.empty()) {
+    error_msgs->push_back(absl::StrCat(
+        "TensorFlow Lite currently doesn't support control flow ops: ",
+        absl::StrJoin(unsupported_control_flow_ops, ", "), ".",
+        " We are working on supporting control flow ops, please see github "
+        "issue at "
+        "https://github.com/tensorflow/tensorflow/issues/28485."));
+  }
+  // Remove control flow ops from `custom_ops` set so that they won't be
+  // reported again in later messages.
+  for (const auto& op : unsupported_control_flow_ops) {
+    custom_ops->erase(op);
+  }
+}
+
 tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
@@ -483,6 +509,18 @@ tensorflow::Status Export(
 
   if (!custom_ops.empty()) {
     if (!params.allow_custom_ops) {
+      auto please_report_bug_message = []() {
+        return "We are continually in the process of adding support to "
+               "TensorFlow Lite for more ops. It would be helpful if you could "
+               "inform us of how this conversion went by opening a github "
+               "issue at "
+               "https://github.com/tensorflow/tensorflow/issues/new?template="
+               "40-tflite-op-request.md\n and pasting the following:\n\n";
+      };
+
+      std::vector<string> error_msgs;
+      ParseControlFlowErrors(&custom_ops, &error_msgs);
+
       // Remove ExpandDims and ReorderAxes from unimplemented list unless they
       // compose the list. Both ops are removed during graph transformations.
       // However, if an op is unimplemented earlier in the model, the graph
@@ -499,61 +537,44 @@ tensorflow::Status Export(
         custom_ops_final = custom_ops;
       }
 
-      auto please_report_bug_message = []() {
-        return "We are continually in the process of adding support to "
-               "TensorFlow Lite for more ops. It would be helpful if you could "
-               "inform us of how this conversion went by opening a github "
-               "issue at "
-               "https://github.com/tensorflow/tensorflow/issues/new?template="
-               "40-tflite-op-request.md\n and pasting the following:\n\n";
-      };
-
-      if (params.enable_select_tf_ops) {
-        return tensorflow::errors::InvalidArgument(absl::StrCat(
-            please_report_bug_message(),
-            "Some of the operators in the model are not supported by "
-            "the standard TensorFlow Lite runtime and are not recognized by "
-            "TensorFlow. If you have a custom "
-            "implementation for them you can disable this error with "
-            "--allow_custom_ops, or by setting allow_custom_ops=True "
-            "when calling tf.lite.TFLiteConverter(). Here is a list "
-            "of builtin operators you are using: ",
-            absl::StrJoin(builtin_ops, ", "),
-            ". Here is a list "
-            "of operators for which you will need custom implementations: ",
-            absl::StrJoin(custom_ops_final, ", "), "."));
-      } else {
-        return tensorflow::errors::InvalidArgument(absl::StrCat(
-            please_report_bug_message(),
-            "Some of the operators in the model are not supported by "
-            "the standard TensorFlow Lite runtime. If those are native "
-            "TensorFlow operators, you might be able to use the extended "
-            "runtime by passing --enable_select_tf_ops, or by setting "
-            "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
-            "tf.lite.TFLiteConverter(). Otherwise, if you have a "
-            "custom implementation for them you can disable this error with "
-            "--allow_custom_ops, or by setting allow_custom_ops=True "
-            "when calling tf.lite.TFLiteConverter(). Here is a list "
-            "of builtin operators you are using: ",
-            absl::StrJoin(builtin_ops, ", "),
-            ". Here is a list "
-            "of operators for which you will need custom implementations: ",
-            absl::StrJoin(custom_ops_final, ", "), "."));
+      if (!custom_ops_final.empty()) {
+        if (params.enable_select_tf_ops) {
+          error_msgs.push_back(absl::StrCat(
+              "Some of the operators in the model are not supported by "
+              "the standard TensorFlow Lite runtime and are not recognized "
+              "by "
+              "TensorFlow. If you have a custom "
+              "implementation for them you can disable this error with "
+              "--allow_custom_ops, or by setting allow_custom_ops=True "
+              "when calling tf.lite.TFLiteConverter(). Here is a list "
+              "of builtin operators you are using: ",
+              absl::StrJoin(builtin_ops, ", "),
+              ". Here is a list "
+              "of operators for which you will need custom implementations: ",
+              absl::StrJoin(custom_ops_final, ", "), "."));
+        } else {
+          error_msgs.push_back(absl::StrCat(
+              "Some of the operators in the model are not supported by "
+              "the standard TensorFlow Lite runtime. If those are native "
+              "TensorFlow operators, you might be able to use the extended "
+              "runtime by passing --enable_select_tf_ops, or by setting "
+              "target_ops=TFLITE_BUILTINS,SELECT_TF_OPS when calling "
+              "tf.lite.TFLiteConverter(). Otherwise, if you have a "
+              "custom implementation for them you can disable this error "
+              "with "
+              "--allow_custom_ops, or by setting allow_custom_ops=True "
+              "when calling tf.lite.TFLiteConverter(). Here is a list "
+              "of builtin operators you are using: ",
+              absl::StrJoin(builtin_ops, ", "),
+              ". Here is a list "
+              "of operators for which you will need custom implementations: ",
+              absl::StrJoin(custom_ops_final, ", "), "."));
+        }
       }
-    }
-
-    std::set<string> unsupported_control_flow_ops;
-    // Check if unsupported ops contains control flow ops. It's impossible
-    // to implement these ops as custom ops at the moment.
-    for (const auto& op : custom_ops) {
-      if (IsControlFlowOp(op)) {
-        unsupported_control_flow_ops.insert(op);
+      if (!error_msgs.empty()) {
+        return tensorflow::errors::InvalidArgument(absl::StrCat(
+            please_report_bug_message(), absl::StrJoin(error_msgs, " ")));
       }
-    }
-    if (!unsupported_control_flow_ops.empty()) {
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "TensorFlow Lite currently doesn't support control flow ops: ",
-          absl::StrJoin(unsupported_control_flow_ops, ", "), "."));
     }
   }
 
