@@ -621,15 +621,15 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader, const char*
 }
 
 void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims, TF_Status* status) {
-  const auto& m = reader->GetVariableToShapeMap();
-  int rank = m.at(name).dims();
+  const auto& shape = reader->GetVariableToShapeMap().at(name);
+  int rank = shape.dims();
   if (num_dims != rank){
     status->status = InvalidArgument("Expected rank is ", num_dims,
                                      " but actual rank is ", rank);
     return;
   }
   for (int i=0; i<num_dims; i++){
-    dims[i] = m.at(name).dim_size(i);
+    dims[i] = shape.dim_size(i);
   }
 }
 
