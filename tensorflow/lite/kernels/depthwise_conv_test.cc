@@ -299,66 +299,6 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationRelu6Test) {
                              }));
 }
 
-TEST_P(DepthwiseConvolutionOpTest, ActivationTanhTest) {
-  DepthwiseConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
-      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
-      Padding_VALID,
-      /*stride_width*/ 1,
-      /*stride_height*/ 1,
-      /*ActivationFunctionType*/ ActivationFunctionType_TANH);
-
-  m.SetInput({
-      1, 2, 7, 8,    // column 1
-      3, 4, 9, 10,   // column 2
-      5, 6, 11, 12,  // column 3
-  });
-  m.SetFilter({
-      1, 2, 3, 4,        //
-      -9, 10, -11, 12,   //
-      5, 6, 7, 8,        //
-      13, -14, 15, -16,  //
-  });
-  m.SetBias({1, 2, 3, 4});
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 71, -34, 99, -20,  //
-                                 91, -26, 127, -4,  //
-                             }));
-}
-
-TEST_P(DepthwiseConvolutionOpTest, ActivationSignTest) {
-  DepthwiseConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
-      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
-      Padding_VALID,
-      /*stride_width*/ 1,
-      /*stride_height*/ 1,
-      /*ActivationFunctionType*/ ActivationFunctionType_SIGN_BIT);
-
-  m.SetInput({
-      1, 2, 7, 8,    // column 1
-      3, 4, 9, 10,   // column 2
-      5, 6, 10, 11,  // column 3
-  });
-  m.SetFilter({
-      1, 2, 3, 4,        //
-      -9, 10, -11, 12,   //
-      5, 6, 7, 8,        //
-      13, -14, 15, -16,  //
-  });
-  m.SetBias({1, 2, 3, 4});
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 71, -34, 99, -20,  //
-                                 78, -12, 112, 12,  //
-                             }));
-}
-
 void StrideTest(TfLiteRegistration* registration, int num_thread) {
   DepthwiseConvolutionOpModel m(
       registration, {TensorType_FLOAT32, {1, 3, 2, 2}},
