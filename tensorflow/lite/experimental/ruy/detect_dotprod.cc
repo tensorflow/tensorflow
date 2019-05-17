@@ -13,7 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef __aarch64__
+// b/132973173: this signal-handling code does not work as intended on iOS,
+// resulting in 'EXC_BAD_INSTRUCTION' signals killing the process.
+// Is it because this code uses a signal handler for SIGILL, and Apple's
+// EXC_BAD_INSTRUCTION is actually a different signal?
+// Anyway, we don't need this code on Apple devices at the moment, as none of
+// them supports dot-product instructions at the moment.
+#if defined __aarch64__ && !defined __APPLE__
+#define RUY_IMPLEMENT_DETECT_DOTPROD
+#endif
+
+#ifdef RUY_IMPLEMENT_DETECT_DOTPROD
 
 #include <setjmp.h>
 #include <signal.h>
@@ -28,7 +38,7 @@ limitations under the License.
 
 namespace ruy {
 
-#ifdef __aarch64__
+#ifdef RUY_IMPLEMENT_DETECT_DOTPROD
 
 namespace {
 
