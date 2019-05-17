@@ -3342,6 +3342,7 @@ cc_library(
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = [":lib_internal"],
 )
