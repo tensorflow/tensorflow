@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/schedulers/look_ahead_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
@@ -546,9 +547,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
     };
 
-    pipeline.AddPass<HloMemoryScheduler>(
-        size_function, CreateSyncListMemoryScheduler(
-                           poplarExecutor->GetMaxAllReduceBufferSize()));
+    // If user has specified to use the fallback scheduler use that, else use
+    // the default look ahead scheduler.
+    if (tensorflow::GetPoplarXlaFlags().fallback_scheduler) {
+      pipeline.AddPass<HloMemoryScheduler>(
+          size_function, CreateSyncListMemoryScheduler(
+                             poplarExecutor->GetMaxAllReduceBufferSize()));
+    } else {
+      // The default scheduler.
+      pipeline.AddPass<HloMemoryScheduler>(
+          size_function, CreateLookAheadMemoryScheduler(
+                             poplarExecutor->GetMaxAllReduceBufferSize()));
+    }
     pipeline.AddPass<CombineAllReduce>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());

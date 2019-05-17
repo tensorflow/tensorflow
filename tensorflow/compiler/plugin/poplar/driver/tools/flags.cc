@@ -60,7 +60,9 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
        "Path to a file where the Poplar vertex graph should be saved to. "
        "(path)"},
       {"executable_cache_path", "Path to the executable cache. (path)"},
-  };
+      {"dump_schedule_as_dot", "Dumps the scheduler graph as a dot file."},
+      {"fallback_scheduler",
+       "Use the sync list scheduler rather than the default one."}};
   return flag_usage;
 }
 
@@ -100,6 +102,12 @@ void AllocateAndParseFlags() {
   // Path to the executable cache.
   poplar_xla_flags->executable_cache_path = "";
 
+  // Dump the schedule graph as a dot to VLOG.
+  poplar_xla_flags->dump_schedule_as_dot = false;
+
+  // Use the fallback scheduler instead of the default one.
+  poplar_xla_flags->fallback_scheduler = false;
+
   auto flag_usage = GetFlagUsage();
 
   std::vector<Flag> flag_list = {
@@ -115,6 +123,9 @@ void AllocateAndParseFlags() {
     ADD_FLAG(save_oom_profiler)
     ADD_FLAG(save_vertex_graph)
     ADD_FLAG(executable_cache_path)
+    ADD_FLAG(dump_schedule_as_dot)
+    ADD_FLAG(fallback_scheduler)
+
 // clang-format on
 #undef ADD_FLAG
   };
