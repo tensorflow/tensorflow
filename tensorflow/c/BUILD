@@ -150,6 +150,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        ":checkpoint_reader",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/compiler/jit:flags",
