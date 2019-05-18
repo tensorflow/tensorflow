@@ -230,6 +230,9 @@ Status MatMulShape(shape_inference::InferenceContext* c);
 // batch dimensions.
 Status BatchMatMulV2Shape(shape_inference::InferenceContext* c);
 
+// Shape function for Einsum.
+Status EinsumShape(shape_inference::InferenceContext* c);
+
 // Shape function for BiasAdd-like operations.
 Status BiasAddShape(shape_inference::InferenceContext* c);
 
