@@ -313,8 +313,8 @@ public:
       if (!op)
         return true;
       // Return true if any use of 'memref' escapes the function.
-      for (auto &use : memref->getUses())
-        if (!isMemRefDereferencingOp(*use.getOwner()))
+      for (auto *user : memref->getUsers())
+        if (!isMemRefDereferencingOp(*user))
           return true;
     }
     return false;
@@ -700,9 +700,9 @@ bool MemRefDependenceGraph::init(Function &f) {
       continue;
     auto *opInst = node.op;
     for (auto *value : opInst->getResults()) {
-      for (auto &use : value->getUses()) {
+      for (auto *user : value->getUsers()) {
         SmallVector<AffineForOp, 4> loops;
-        getLoopIVs(*use.getOwner(), &loops);
+        getLoopIVs(*user, &loops);
         if (loops.empty())
           continue;
         assert(forToNodeMap.count(loops[0].getOperation()) > 0);
@@ -2025,11 +2025,11 @@ public:
     // Search for siblings which load the same memref function argument.
     auto *fn = dstNode->op->getFunction();
     for (unsigned i = 0, e = fn->getNumArguments(); i != e; ++i) {
-      for (auto &use : fn->getArgument(i)->getUses()) {
-        if (auto loadOp = dyn_cast<LoadOp>(use.getOwner())) {
+      for (auto *user : fn->getArgument(i)->getUsers()) {
+        if (auto loadOp = dyn_cast<LoadOp>(user)) {
           // Gather loops surrounding 'use'.
           SmallVector<AffineForOp, 4> loops;
-          getLoopIVs(*use.getOwner(), &loops);
+          getLoopIVs(*user, &loops);
           // Skip 'use' if it is not within a loop nest.
           if (loops.empty())
             continue;

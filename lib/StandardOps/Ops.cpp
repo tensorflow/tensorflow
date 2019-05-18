@@ -1241,8 +1241,8 @@ struct SimplifyDeadDealloc : public RewritePattern {
       return matchFailure();
 
     // Check that all of the uses of the AllocOp are other DeallocOps.
-    for (auto &use : memref->getUses())
-      if (!isa<DeallocOp>(use.getOwner()))
+    for (auto *user : memref->getUsers())
+      if (!isa<DeallocOp>(user))
         return matchFailure();
 
     // Erase the dealloc operation.

@@ -102,8 +102,8 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
   // all store ops.
   SmallVector<Operation *, 8> storeOps;
   unsigned minSurroundingLoops = getNestingDepth(*loadOpInst);
-  for (auto &use : loadOp.getMemRef()->getUses()) {
-    auto storeOp = dyn_cast<StoreOp>(use.getOwner());
+  for (auto *user : loadOp.getMemRef()->getUsers()) {
+    auto storeOp = dyn_cast<StoreOp>(user);
     if (!storeOp)
       continue;
     auto *storeOpInst = storeOp.getOperation();
@@ -241,17 +241,14 @@ void MemRefDataFlowOpt::runOnFunction() {
       // TODO(mlir-team): if the memref was returned by a 'call' operation, we
       // could still erase it if the call had no side-effects.
       continue;
-    if (std::any_of(memref->use_begin(), memref->use_end(),
-                    [&](OpOperand &use) {
-                      auto *ownerInst = use.getOwner();
-                      return (!isa<StoreOp>(ownerInst) &&
-                              !isa<DeallocOp>(ownerInst));
-                    }))
+    if (llvm::any_of(memref->getUsers(), [&](Operation *ownerInst) {
+          return (!isa<StoreOp>(ownerInst) && !isa<DeallocOp>(ownerInst));
+        }))
       continue;
 
     // Erase all stores, the dealloc, and the alloc on the memref.
-    for (auto &use : llvm::make_early_inc_range(memref->getUses()))
-      use.getOwner()->erase();
+    for (auto *user : llvm::make_early_inc_range(memref->getUsers()))
+      user->erase();
     defInst->erase();
   }
 }

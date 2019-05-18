@@ -105,9 +105,8 @@ protected:
   // before the root is changed.
   void notifyRootReplaced(Operation *op) override {
     for (auto *result : op->getResults())
-      // TODO: Add a result->getUsers() iterator.
-      for (auto &user : result->getUses())
-        addToWorklist(user.getOwner());
+      for (auto *user : result->getUsers())
+        addToWorklist(user);
   }
 
 private:
@@ -183,11 +182,9 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
 
         // Add all the users of the result to the worklist so we make sure
         // to revisit them.
-        //
-        // TODO: Add a result->getUsers() iterator.
-        for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-          for (auto &operand : op->getResult(i)->getUses())
-            addToWorklist(operand.getOwner());
+        for (auto *result : op->getResults())
+          for (auto *operand : result->getUsers())
+            addToWorklist(operand);
       };
 
       // Try to fold this op.

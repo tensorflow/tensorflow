@@ -216,11 +216,11 @@ static void findMatchingStartFinishInsts(
     // We only double buffer if the buffer is not live out of loop.
     auto *memref = dmaStartOp.getOperand(dmaStartOp.getFasterMemPos());
     bool escapingUses = false;
-    for (const auto &use : memref->getUses()) {
+    for (auto *user : memref->getUsers()) {
       // We can double buffer regardless of dealloc's outside the loop.
-      if (isa<DeallocOp>(use.getOwner()))
+      if (isa<DeallocOp>(user))
         continue;
-      if (!forOp.getBody()->findAncestorInstInBlock(*use.getOwner())) {
+      if (!forOp.getBody()->findAncestorInstInBlock(*user)) {
         LLVM_DEBUG(llvm::dbgs()
                        << "can't pipeline: buffer is live out of loop\n";);
         escapingUses = true;
@@ -292,9 +292,8 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
       if (oldMemRef->use_empty()) {
         allocInst->erase();
       } else if (oldMemRef->hasOneUse()) {
-        auto *singleUse = oldMemRef->use_begin()->getOwner();
-        if (isa<DeallocOp>(singleUse)) {
-          singleUse->erase();
+        if (auto dealloc = dyn_cast<DeallocOp>(*oldMemRef->user_begin())) {
+          dealloc.erase();
           oldMemRef->getDefiningOp()->erase();
         }
       }

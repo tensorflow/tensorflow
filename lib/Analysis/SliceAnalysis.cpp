@@ -51,21 +51,15 @@ static void getForwardSliceImpl(Operation *op,
   }
 
   if (auto forOp = dyn_cast<AffineForOp>(op)) {
-    for (auto &u : forOp.getInductionVar()->getUses()) {
-      auto *ownerInst = u.getOwner();
-      if (forwardSlice->count(ownerInst) == 0) {
+    for (auto *ownerInst : forOp.getInductionVar()->getUsers())
+      if (forwardSlice->count(ownerInst) == 0)
         getForwardSliceImpl(ownerInst, forwardSlice, filter);
-      }
-    }
   } else {
     assert(op->getNumResults() <= 1 && "NYI: multiple results");
     if (op->getNumResults() > 0) {
-      for (auto &u : op->getResult(0)->getUses()) {
-        auto *ownerInst = u.getOwner();
-        if (forwardSlice->count(ownerInst) == 0) {
+      for (auto *ownerInst : op->getResult(0)->getUsers())
+        if (forwardSlice->count(ownerInst) == 0)
           getForwardSliceImpl(ownerInst, forwardSlice, filter);
-        }
-      }
     }
   }
 

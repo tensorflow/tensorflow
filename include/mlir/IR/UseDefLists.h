@@ -31,6 +31,7 @@ namespace mlir {
 class IROperand;
 class Operation;
 template <typename OperandType> class ValueUseIterator;
+template <typename OperandType> class ValueUserIterator;
 
 class IRObjectWithUseList {
 public:
@@ -52,6 +53,15 @@ public:
 
   /// Returns a range of all uses, which is useful for iterating over all uses.
   inline use_range getUses() const;
+
+  using user_iterator = ValueUserIterator<IROperand>;
+  using user_range = llvm::iterator_range<user_iterator>;
+
+  inline user_iterator user_begin() const;
+  inline user_iterator user_end() const;
+
+  /// Returns a range of all users.
+  inline user_range getUsers() const;
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
@@ -228,14 +238,43 @@ inline auto IRObjectWithUseList::use_end() const -> use_iterator {
   return use_iterator(nullptr);
 }
 
-inline auto IRObjectWithUseList::getUses() const
-    -> llvm::iterator_range<use_iterator> {
+inline auto IRObjectWithUseList::getUses() const -> use_range {
   return {use_begin(), use_end()};
 }
 
 /// Returns true if this value has exactly one use.
 inline bool IRObjectWithUseList::hasOneUse() const {
   return firstUse && firstUse->getNextOperandUsingThisValue() == nullptr;
+}
+
+/// An iterator over all users of a ValueBase.
+template <typename OperandType>
+class ValueUserIterator final
+    : public llvm::mapped_iterator<ValueUseIterator<OperandType>,
+                                   Operation *(*)(OperandType &)> {
+  static Operation *unwrap(OperandType &value) { return value.getOwner(); }
+
+public:
+  using pointer = Operation *;
+  using reference = Operation *;
+
+  /// Initializes the result type iterator to the specified result iterator.
+  ValueUserIterator(ValueUseIterator<OperandType> it)
+      : llvm::mapped_iterator<ValueUseIterator<OperandType>,
+                              Operation *(*)(OperandType &)>(it, &unwrap) {}
+  Operation *operator->() { return **this; }
+};
+
+inline auto IRObjectWithUseList::user_begin() const -> user_iterator {
+  return user_iterator(use_begin());
+}
+
+inline auto IRObjectWithUseList::user_end() const -> user_iterator {
+  return user_iterator(use_end());
+}
+
+inline auto IRObjectWithUseList::getUsers() const -> user_range {
+  return {user_begin(), user_end()};
 }
 
 } // namespace mlir

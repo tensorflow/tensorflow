@@ -79,9 +79,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   SmallVector<Operation *, 8> opsToErase;
 
   // Walk all uses of old memref. Operation using the memref gets replaced.
-  for (auto &use : llvm::make_early_inc_range(oldMemRef->getUses())) {
-    auto *opInst = use.getOwner();
-
+  for (auto *opInst : llvm::make_early_inc_range(oldMemRef->getUsers())) {
     // Skip this use if it's not dominated by domInstFilter.
     if (domInstFilter && !domInfo->dominates(domInstFilter, opInst))
       continue;
@@ -241,8 +239,8 @@ void mlir::createAffineComputationSlice(
   bool localized = true;
   for (auto *op : affineApplyOps) {
     for (auto *result : op->getResults()) {
-      for (auto &use : result->getUses()) {
-        if (use.getOwner() != opInst) {
+      for (auto *user : result->getUsers()) {
+        if (user != opInst) {
           localized = false;
           break;
         }
