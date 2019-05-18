@@ -941,7 +941,7 @@ void LLVMLowering::initConverters(OwningRewritePatternList &patterns,
   module = &llvmDialect->getLLVMModule();
 
   // FIXME: this should be tablegen'ed
-  ConversionListBuilder<
+  RewriteListBuilder<
       AddFOpLowering, AddIOpLowering, AndOpLowering, AllocOpLowering,
       BranchOpLowering, CallIndirectOpLowering, CallOpLowering, CmpIOpLowering,
       CondBranchOpLowering, ConstLLVMOpLowering, DeallocOpLowering,

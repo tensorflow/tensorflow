@@ -348,6 +348,29 @@ private:
 ///
 bool applyPatternsGreedily(Function &fn, OwningRewritePatternList &&patterns);
 
+/// Helper class to create a list of rewrite patterns given a list of their
+/// types and a list of attributes perfect-forwarded to each of the conversion
+/// constructors.
+template <typename Arg, typename... Args> struct RewriteListBuilder {
+  template <typename... ConstructorArgs>
+  static void build(OwningRewritePatternList &patterns,
+                    ConstructorArgs &&... constructorArgs) {
+    RewriteListBuilder<Args...>::build(
+        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
+    RewriteListBuilder<Arg>::build(
+        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
+  }
+};
+
+// Template specialization to stop recursion.
+template <typename Arg> struct RewriteListBuilder<Arg> {
+  template <typename... ConstructorArgs>
+  static void build(OwningRewritePatternList &patterns,
+                    ConstructorArgs &&... constructorArgs) {
+    patterns.emplace_back(llvm::make_unique<Arg>(
+        std::forward<ConstructorArgs>(constructorArgs)...));
+  }
+};
 } // end namespace mlir
 
 #endif // MLIR_PATTERN_MATCH_H

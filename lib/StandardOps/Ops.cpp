@@ -378,8 +378,8 @@ struct SimplifyDeadAlloc : public RewritePattern {
 
 void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyAllocConst>(context));
-  results.push_back(llvm::make_unique<SimplifyDeadAlloc>(context));
+  RewriteListBuilder<SimplifyAllocConst, SimplifyDeadAlloc>::build(results,
+                                                                   context);
 }
 
 //===----------------------------------------------------------------------===//

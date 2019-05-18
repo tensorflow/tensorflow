@@ -125,7 +125,7 @@ protected:
   // Initialize the list of converters.
   void initConverters(OwningRewritePatternList &patterns,
                       MLIRContext *context) override {
-    ConversionListBuilder<MulOpConversion>::build(patterns, context);
+    RewriteListBuilder<MulOpConversion>::build(patterns, context);
   }
 };
 

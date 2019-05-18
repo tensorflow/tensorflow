@@ -326,9 +326,9 @@ protected:
   /// Initialize the list of converters.
   void initConverters(OwningRewritePatternList &patterns,
                       MLIRContext *context) override {
-    ConversionListBuilder<AddOpConversion, PrintOpConversion,
-                          ConstantOpConversion, TransposeOpConversion,
-                          ReturnOpConversion>::build(patterns, context);
+    RewriteListBuilder<AddOpConversion, PrintOpConversion, ConstantOpConversion,
+                       TransposeOpConversion,
+                       ReturnOpConversion>::build(patterns, context);
   }
 
   /// Convert a Toy type, this gets called for block and region arguments, and

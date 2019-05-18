@@ -51,9 +51,8 @@ public:
   // This gets called once to set up operation converters.
   llvm::DenseSet<DialectOpConversion *>
   initConverters(MLIRContext *context) override {
-    return ConversionListBuilder<MulOpConversion,
-                                 PrintOpConversion,
-                                 TransposeOpConversion>::build(allocator, context);
+    RewriteListBuilder<MulOpConversion, PrintOpConversion,
+                       TransposeOpConversion>::build(allocator, context);
   }
 
 private:

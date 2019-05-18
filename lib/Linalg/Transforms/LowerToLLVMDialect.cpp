@@ -588,12 +588,14 @@ namespace {
 class Lowering : public LLVMLowering {
 protected:
   void initAdditionalConverters(OwningRewritePatternList &patterns) override {
-    return ConversionListBuilder<
-        BufferAllocOpConversion, BufferDeallocOpConversion,
-        BufferSizeOpConversion, DimOpConversion, DotOpConversion,
-        LoadOpConversion, RangeOpConversion, RangeIntersectOpConversion,
-        SliceOpConversion, StoreOpConversion,
-        ViewOpConversion>::build(patterns, llvmDialect->getContext(), *this);
+    RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
+                       BufferSizeOpConversion, DimOpConversion, DotOpConversion,
+                       LoadOpConversion, RangeOpConversion,
+                       RangeIntersectOpConversion, SliceOpConversion,
+                       StoreOpConversion,
+                       ViewOpConversion>::build(patterns,
+                                                llvmDialect->getContext(),
+                                                *this);
   }
 
   Type convertAdditionalType(Type t) override {

@@ -138,8 +138,8 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
 static void getConversions(mlir::OwningRewritePatternList &patterns,
                            mlir::MLIRContext *context) {
   linalg::getDescriptorConverters(patterns, context);
-  ConversionListBuilder<LoadOpConversion, StoreOpConversion>::build(patterns,
-                                                                    context);
+  RewriteListBuilder<LoadOpConversion, StoreOpConversion>::build(patterns,
+                                                                 context);
 }
 
 void linalg::convertLinalg3ToLLVM(Module &module) {

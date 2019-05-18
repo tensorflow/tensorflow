@@ -397,8 +397,8 @@ public:
 
 void linalg::getDescriptorConverters(mlir::OwningRewritePatternList &patterns,
                                      mlir::MLIRContext *context) {
-  ConversionListBuilder<DropConsumer, RangeOpConversion, SliceOpConversion,
-                        ViewOpConversion>::build(patterns, context);
+  RewriteListBuilder<DropConsumer, RangeOpConversion, SliceOpConversion,
+                     ViewOpConversion>::build(patterns, context);
 }
 
 namespace {

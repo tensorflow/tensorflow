@@ -169,9 +169,8 @@ void TransposeOp::getCanonicalizationPatterns(
 // Register our patterns for rewrite by the Canonicalization framework.
 void ReshapeOp::getCanonicalizationPatterns(
     mlir::OwningRewritePatternList &results, mlir::MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyReshapeConstant>(context));
-  results.push_back(llvm::make_unique<SimplifyReshapeReshape>(context));
-  results.push_back(llvm::make_unique<SimplifyNullReshape>(context));
+  mlir::RewriteListBuilder<SimplifyReshapeConstant, SimplifyReshapeReshape,
+                           SimplifyNullReshape>::build(results, context);
 }
 
 namespace {

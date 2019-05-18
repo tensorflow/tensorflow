@@ -628,7 +628,7 @@ protected:
     // conversion instances given a list of classes as template parameters.
     // These instances will be allocated within `allocator` and their lifetime
     // is managed by the Lowering class.
-    return ConversionListBuilder<
+    return RewriteListBuilder<
         LoadOpConversion, SliceOpConversion, StoreOpConversion,
         ViewOpConversion>::build(allocator, context);
   }

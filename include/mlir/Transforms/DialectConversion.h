@@ -103,30 +103,6 @@ private:
   using RewritePattern::rewrite;
 };
 
-// Helper class to create a list of dialect conversion patterns given a list of
-// their types and a list of attributes perfect-forwarded to each of the
-// conversion constructors.
-template <typename Arg, typename... Args> struct ConversionListBuilder {
-  template <typename... ConstructorArgs>
-  static void build(OwningRewritePatternList &patterns,
-                    ConstructorArgs &&... constructorArgs) {
-    ConversionListBuilder<Args...>::build(
-        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
-    ConversionListBuilder<Arg>::build(
-        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
-  }
-};
-
-// Template specialization to stop recursion.
-template <typename Arg> struct ConversionListBuilder<Arg> {
-  template <typename... ConstructorArgs>
-  static void build(OwningRewritePatternList &patterns,
-                    ConstructorArgs &&... constructorArgs) {
-    patterns.emplace_back(llvm::make_unique<Arg>(
-        std::forward<ConstructorArgs>(constructorArgs)...));
-  }
-};
-
 /// Base class for dialect conversion interface.  Specific converters must
 /// derive this class and implement the pure virtual functions.
 ///
