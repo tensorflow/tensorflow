@@ -243,19 +243,3 @@ TensorFlow options for reporting
 
 TODO add TF_CPP_MIN_VLOG_LEVEL, TF_CPP_VMODULE, and useful XLA_FLAGS options
 
-Scheduler Debugging
-___________________
-
-The scheduled order of the graph can be dumpbed by providing:
-
-::
-        
-        TF_POPLAR_FLAGS="--dump_schedule_as_dot"
-
-If there appears to be a problem with the scheduler there is a fallback which 
-can be used via:
-
-::
-
-        TF_POPLAR_FLAGS="--fallback_scheduler"
-

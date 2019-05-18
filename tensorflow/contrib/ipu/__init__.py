@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Ops related to the Graphcore IPU
-
+"""Operations and utilies related to the Graphcore IPU
 """
 
 from __future__ import absolute_import
@@ -32,6 +31,7 @@ from tensorflow.contrib.ipu.python import ops
 from tensorflow.contrib.ipu.python import popnn_embedding
 from tensorflow.contrib.ipu.python import popnn_normalization
 from tensorflow.contrib.ipu.python import popnn_rnn
+from tensorflow.contrib.ipu.python import poprand
 from tensorflow.contrib.ipu.python import popops_cross_replica_sum
 from tensorflow.contrib.ipu.python import sharded_optimizer
 from tensorflow.contrib.ipu.python import utils

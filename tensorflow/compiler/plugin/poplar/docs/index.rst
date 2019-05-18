@@ -12,6 +12,7 @@ Targeting the IPU from TensorFlow
     device_selection
     variables
     logging
+    poplar_ops 
     perf_training
     troubleshooting
     examples

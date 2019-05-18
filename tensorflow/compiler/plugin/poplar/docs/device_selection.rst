@@ -143,6 +143,12 @@ location.
 
 ``--executable_cache_path`` enables the Poplar executable cache. See below.
 
+``--dump_schedule_as_dot`` creates a file containing the scheduled HLO graph as
+a graphviz DOT file.
+
+``--fallback_scheduler`` uses the standard TensorFlow scheduler, instead of
+the GraphCore specific one.
+
 The options can be used at the same time by treating them as command line
 switches, eg. ``--executable_cache_path=/tmp/cache --force_replicated_mode``
 
