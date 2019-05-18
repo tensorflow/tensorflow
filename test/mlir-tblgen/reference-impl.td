@@ -12,8 +12,8 @@ class X_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<X_Dialect, mnemonic, traits>;
 
 def X_AddOp : X_Op<"add">,
-    Arguments<(ins Tensor:$A, Tensor:$B)>,
-    Results<(outs Tensor: $C)> {
+    Arguments<(ins AnyTensor:$A, AnyTensor:$B)>,
+    Results<(outs AnyTensor: $C)> {
     // TODO: extract referenceImplementation to Op.
   code referenceImplementation = [{
     auto ivs = IndexHandle::makeIndexHandles(view_A.rank());

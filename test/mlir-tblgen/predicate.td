@@ -29,7 +29,7 @@ def OpB : NS_Op<"op_for_AllOf_PredOpTrait", [
 def OpC : NS_Op<"op_for_TCopVTEtIs", [
     PredOpTrait<"first operand has i32 element type",
                 TCopVTEtIs<0, I32>>]> {
-  let arguments = (ins Tensor:$x);
+  let arguments = (ins AnyTensor:$x);
 }
 
 // CHECK-LABEL: OpC::verify
@@ -40,7 +40,7 @@ def OpD : NS_Op<"op_for_TCOpVTEtIsSameAs", [
     PredOpTrait<"first operand is a vector or tensor with the same "
                 "elemental type as itself",
                 TCopVTEtIsSameAs<0, 0>>]> {
-  let arguments = (ins Tensor:$x);
+  let arguments = (ins AnyTensor:$x);
 }
 
 // CHECK-LABEL: OpD::verify
@@ -52,8 +52,8 @@ def OpE : NS_Op<"op_for_TCresVTEtIsSameAsOp", [
     PredOpTrait<"first operand is a vector or tensor with the same "
                 "elemental type as first result",
                 TCresVTEtIsSameAsOp<0, 0>>]> {
-  let arguments = (ins Tensor:$x);
-  let results = (outs Tensor:$y);
+  let arguments = (ins AnyTensor:$x);
+  let results = (outs AnyTensor:$y);
 }
 
 // CHECK-LABEL: OpE::verify
@@ -97,11 +97,11 @@ def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt", [
                 PredOpTrait<"operands indexed at 0, 2, 3 should all have "
                  "the same type", TCopVTEtAreSameAt<[0, 2, 3]>>]> {
   let arguments = (ins
-    Tensor:$a,
-    Tensor:$b,
-    Tensor:$c,
-    Tensor:$d,
-    Tensor:$e
+    AnyTensor:$a,
+    AnyTensor:$b,
+    AnyTensor:$c,
+    AnyTensor:$d,
+    AnyTensor:$e
   );
 }
 
@@ -116,4 +116,4 @@ def OpK : NS_Op<"op_for_AnyTensorOf", []> {
 }
 
 // CHECK-LABEL: OpK::verify
-// CHECK: if (!(((this->getOperation()->getOperand(0)->getType().isa<TensorType>())) && (((this->getOperation()->getOperand(0)->getType().cast<TensorType>().getElementType().isF32())) || ((this->getOperation()->getOperand(0)->getType().cast<TensorType>().getElementType().isInteger(32))))))
+// CHECK: if (!(((this->getOperation()->getOperand(0)->getType().isa<TensorType>())) && (((this->getOperation()->getOperand(0)->getType().cast<ShapedType>().getElementType().isF32())) || ((this->getOperation()->getOperand(0)->getType().cast<ShapedType>().getElementType().isInteger(32))))))

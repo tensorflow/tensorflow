@@ -195,12 +195,11 @@ def IsMemRefTypePred : CPred<"$_self.isa<MemRefType>()">;
 // Whether a type is a ShapedType.
 def IsShapedTypePred : CPred<"$_self.isa<ShapedType>()">;
 
+// For a ShapedType, verify that it has a static shape.
+def HasStaticShapePred : CPred<"$_self.cast<ShapedType>().hasStaticShape()">;
+
 // Whether a type is a TupleType.
 def IsTupleTypePred : CPred<"$_self.isa<TupleType>()">;
-
-// For a TensorType, verify that it is a statically shaped tensor.
-def IsStaticShapeTensorTypePred :
-  CPred<"$_self.cast<TensorType>().hasStaticShape()">;
 
 //===----------------------------------------------------------------------===//
 // Dialect definitions
@@ -230,7 +229,7 @@ class Type<Pred condition, string descr = ""> :
 // more than one variadic operand/result, and that operand/result must be the
 // last one in the operand/result list.
 class Variadic<Type type, string descr = "">
-    // TODO: support variadic type conditions
+    // TODO(b/132908002): support variadic type conditions
     : TypeConstraint<CPred<"true">, descr> {
   Type baseType = type;
 }
@@ -254,7 +253,7 @@ def AnyType : Type<CPred<"true">, "any type">;
 def NoneType : Type<CPred<"$_self.isa<NoneType>()">, "none type">;
 
 // Any type from the given list
-class AnyTypeOf<list<Type> allowedTypes, string description> : Type<
+class AnyTypeOf<list<Type> allowedTypes, string description = ""> : Type<
     // Satisfy any of the allowed type's condition
     AnyOf<!foreach(allowedtype, allowedTypes, allowedtype.predicate)>,
     !if(!eq(description, ""),
@@ -330,69 +329,48 @@ class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
   code getElementTypeCall = elementTypeCall;
 }
 
+class ShapedContainerType<Type etype, Pred containerPred, string descr> :
+    ContainerType<etype, containerPred,
+                  "$_self.cast<ShapedType>().getElementType()", descr>;
+
 // Vector types.
-class TypedVector<Type t> : ContainerType<t, IsVectorTypePred,
-    "$_self.cast<VectorType>().getElementType()", "vector">;
 
-class Vector<Type t, list<int> dims> : ContainerType<t, AllOf<[
-    IsVectorTypePred,
-    // Match dims. Construct an ArrayRef with the elements of `dims` by folding
-    // over the list.
-    CPred<"$_self.cast<VectorType>().getShape() == ArrayRef{{" #
-      Stringify<dims>.result # "}">]>,
-    "$_self.cast<VectorType>().getElementType()",
-    "vector"> {
-  list<int> dimensions = dims;
-}
+class Vector<Type t> : ShapedContainerType<t, IsVectorTypePred, "vector">;
 
-// Tensor type.
+def AnyVector : Vector<AnyType>;
 
-// This represents a generic tensor without constraints on elemental type,
-// rank, size. As there is no constraint on elemental type, derive from Type
-// directly instead of ContainerType.
-def Tensor : Type<IsTensorTypePred, "tensor">;
+// Tensor types.
 
-// A tensor with static shape but no other constraints. Note: as
-// Tensor is a def this doesn't derive from it, but reuses the predicate
-// that must hold for it to be a tensor.
-def StaticShapeTensor
-    : Type<AllOf<[Tensor.predicate, IsStaticShapeTensorTypePred]>,
-           "statically shaped tensor">;
+class Tensor<Type t> : ShapedContainerType<t, IsTensorTypePred, "tensor">;
 
-// For typed tensors.
-class TypedTensor<Type t>
-    : ContainerType<t, Tensor.predicate,
-                    "$_self.cast<TensorType>().getElementType()",
-                    "tensor">;
+def AnyTensor : Tensor<AnyType>;
 
-class TypedStaticShapeTensor<Type t>
-    : Type<AllOf<[ TypedTensor<t>.predicate, IsStaticShapeTensorTypePred ]>,
-           "statically shaped tensor">;
-
-def I1Tensor      : TypedTensor<I1>;
-def I8Tensor      : TypedTensor<I8>;
-def I16Tensor     : TypedTensor<I16>;
-def I32Tensor     : TypedTensor<I32>;
-def I64Tensor     : TypedTensor<I64>;
-
-def BF16Tensor : TypedTensor<BF16>;
-def F16Tensor  : TypedTensor<F16>;
-def F32Tensor  : TypedTensor<F32>;
-def F64Tensor  : TypedTensor<F64>;
-
-// Any tensor type whose element type is from the given
-// `allowedTypes` list
+// Any tensor type whose element type is from the given `allowedTypes` list
 class AnyTensorOf<list<Type> allowedTypes, string elementDescription = ""> :
-  TypedTensor<AnyTypeOf<allowedTypes, elementDescription>>;
+  Tensor<AnyTypeOf<allowedTypes, elementDescription>>;
 
-def VectorOrTensor :
-    AnyTypeOf<[TypedVector<AnyType>, Tensor], "vector or tensor">;
+// TODO(b/130807343) Fix description to contain element information.
+class StaticShapeTensor<Type t>
+    : Type<AllOf<[ Tensor<t>.predicate, HasStaticShapePred ]>,
+           "statically shaped tensor">;
+
+def AnyStaticShapeTensor : StaticShapeTensor<AnyType>;
+
+def I1Tensor   : Tensor<I1>;
+def I8Tensor   : Tensor<I8>;
+def I16Tensor  : Tensor<I16>;
+def I32Tensor  : Tensor<I32>;
+def I64Tensor  : Tensor<I64>;
+
+def BF16Tensor : Tensor<BF16>;
+def F16Tensor  : Tensor<F16>;
+def F32Tensor  : Tensor<F32>;
+def F64Tensor  : Tensor<F64>;
 
 // This represents a generic tuple without any constraints on elemental type,
 // ranks, or size. As Tuples can contain tensors, vectors, or scalar values
 // there is not only a single elemental type.
 def Tuple : Type<IsTupleTypePred, "tuple">;
-
 
 // A Tuple that only holds elements of a certain type. This cannot inherit from
 // ContainerType because tuples do not always have a single element type that
@@ -438,12 +416,12 @@ def F64MemRef  : MemRef<F64>;
 // Type constraint for integer-like types: integers, indices, vectors of
 // integers, tensors of integers.
 def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
-        TypedVector<Integer>.predicate, TypedTensor<Integer>.predicate]>,
+        Vector<Integer>.predicate, Tensor<Integer>.predicate]>,
     "integer-like">;
 
 // Type constraint for float-like types: floats, vectors or tensors thereof.
 def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
-        TypedVector<Float>.predicate, TypedTensor<Float>.predicate]>,
+        Vector<Float>.predicate, Tensor<Float>.predicate]>,
     "floating-point-like">;
 
 
@@ -1037,7 +1015,7 @@ def addBenefit;
 // def : Pattern<(OneResultOp1:$op1 $arg0, $arg1),
 //               [(OneResultOp2:$op2 $arg0, $arg1),
 //                (OneResultOp3 $op2 (OneResultOp4))],
-//               [(IsStaticShapeTensorTypePred $op1)]>;
+//               [(HasStaticShapePred $op1)]>;
 // ```
 //
 // `$argN` is bound to the `OneResultOp1`'s N-th argument and used later to

@@ -317,7 +317,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
       %1 = dim %0, 2 : tensor<?x?x?xf32>
   }];
 
-  let arguments = (ins AnyTypeOf<[MemRef<AnyType>, Tensor],
+  let arguments = (ins AnyTypeOf<[MemRef<AnyType>, AnyTensor],
                                  "any tensor or memref type">:$memrefOrTensor,
                        APIntAttr:$index);
   let results = (outs Index);
@@ -366,7 +366,7 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
       %0 = extract_element %0[%1, %2] : vector<4x4xi32>
   }];
 
-  let arguments = (ins VectorOrTensor:$aggregate,
+  let arguments = (ins AnyTypeOf<[AnyVector, AnyTensor]>:$aggregate,
                        Variadic<Index>:$indices);
   let results = (outs AnyType);
 
@@ -498,8 +498,8 @@ def TensorCastOp : CastOp<"tensor_cast"> {
        %2 = tensor_cast %1 : tensor<??f32> to tensor<?x?xf32>
   }];
 
-  let arguments = (ins Tensor);
-  let results = (outs Tensor);
+  let arguments = (ins AnyTensor);
+  let results = (outs AnyTensor);
 
   let extraClassDeclaration = [{
     /// Return true if `a` and `b` are valid operand and result pairs for

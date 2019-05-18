@@ -37,7 +37,7 @@ def OpB : NS_Op<"one_variadic_operand_op", []> {
 // CHECK:         tblgen_state->addOperands(input);
 
 def OpC : NS_Op<"all_variadic_inputs_op", [SameVariadicOperandSize]> {
-  let arguments = (ins Variadic<Tensor>:$input1, Variadic<Tensor>:$input2);
+  let arguments = (ins Variadic<AnyTensor>:$input1, Variadic<AnyTensor>:$input2);
 }
 
 // CHECK-LABEL: Operation::operand_range OpC::input1()
@@ -55,7 +55,7 @@ def OpC : NS_Op<"all_variadic_inputs_op", [SameVariadicOperandSize]> {
 // CHECK-NEXT: tblgen_state->addOperands(input2);
 
 def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> {
-  let arguments = (ins Variadic<Tensor>:$input1, Tensor:$input2, Variadic<Tensor>:$input3);
+  let arguments = (ins Variadic<AnyTensor>:$input1, AnyTensor:$input2, Variadic<AnyTensor>:$input3);
 }
 
 // CHECK-LABEL: Operation::operand_range OpD::input1()
@@ -79,7 +79,7 @@ def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> 
 // CHECK-NEXT: tblgen_state->addOperands(input3);
 
 def OpE : NS_Op<"one_variadic_among_multi_normal_inputs_op", []> {
-  let arguments = (ins Tensor:$input1, Tensor:$input2, Variadic<Tensor>:$input3, Tensor:$input4, Tensor:$input5);
+  let arguments = (ins AnyTensor:$input1, AnyTensor:$input2, Variadic<AnyTensor>:$input3, AnyTensor:$input4, AnyTensor:$input5);
 }
 
 // CHECK-LABEL: Value *OpE::input1()

@@ -48,7 +48,7 @@ def OpC : NS_Op<"three_normal_result_op", []> {
 def IntegerTypeAttr : TypeAttrBase<"IntegerType", "Integer type attribute">;
 def OpD : NS_Op<"type_attr_as_result_type", [FirstAttrDerivedResultType]> {
   let arguments = (ins I32:$x, IntegerTypeAttr:$attr, F32Attr:$f32);
-  let results = (outs Tensor:$y);
+  let results = (outs AnyTensor:$y);
 }
 
 // CHECK-LABEL: OpD definitions
@@ -57,7 +57,7 @@ def OpD : NS_Op<"type_attr_as_result_type", [FirstAttrDerivedResultType]> {
 
 def OpE : NS_Op<"value_attr_as_result_type", [FirstAttrDerivedResultType]> {
   let arguments = (ins I32:$x, F32Attr:$attr);
-  let results = (outs Tensor:$y);
+  let results = (outs AnyTensor:$y);
 }
 
 // CHECK-LABEL: OpE definitions
@@ -94,7 +94,7 @@ def OpG : NS_Op<"one_normal_and_one_variadic_result_op", []> {
 
 
 def OpH : NS_Op<"all_variadic_results_op", [SameVariadicResultSize]> {
-  let results = (outs Variadic<Tensor>:$output1, Variadic<Tensor>:$output2);
+  let results = (outs Variadic<AnyTensor>:$output1, Variadic<AnyTensor>:$output2);
 }
 
 // CHECK-LABEL: Operation::result_range OpH::output1()
@@ -113,7 +113,7 @@ def OpH : NS_Op<"all_variadic_results_op", [SameVariadicResultSize]> {
 // CHECK-NEXT:    tblgen_state->addTypes(output2);
 
 def OpI : NS_Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> {
-  let results = (outs Variadic<Tensor>:$output1, Tensor:$output2, Variadic<Tensor>:$output3);
+  let results = (outs Variadic<AnyTensor>:$output1, AnyTensor:$output2, Variadic<AnyTensor>:$output3);
 }
 
 // CHECK-LABEL: Operation::result_range OpI::output1()
@@ -137,7 +137,7 @@ def OpI : NS_Op<"mix_variadic_and_normal_results_op", [SameVariadicResultSize]> 
 // CHECK-NEXT:    tblgen_state->addTypes(output3);
 
 def OpJ : NS_Op<"one_variadic_among_multi_normal_results_op", []> {
-  let results = (outs Tensor:$output1, Tensor:$output2, Variadic<Tensor>:$output3, Tensor:$output4, Tensor:$output5);
+  let results = (outs AnyTensor:$output1, AnyTensor:$output2, Variadic<AnyTensor>:$output3, AnyTensor:$output4, AnyTensor:$output5);
 }
 
 // CHECK-LABEL: Value *OpJ::output1()
@@ -159,8 +159,8 @@ def OpJ : NS_Op<"one_variadic_among_multi_normal_results_op", []> {
 // pack to set result type
 // ---
 def OpK : NS_Op<"only_input_is_variadic_with_same_value_type_op", [SameValueType]> {
-  let arguments = (ins Variadic<Tensor>:$input);
-  let results = (outs Tensor:$result);
+  let arguments = (ins Variadic<AnyTensor>:$input);
+  let results = (outs AnyTensor:$result);
 }
 
 // CHECK-LABEL: OpK::build(Builder *, OperationState *tblgen_state, ArrayRef<Value *> input)
