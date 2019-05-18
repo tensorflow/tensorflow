@@ -42,63 +42,65 @@ class FunctionConversion;
 }
 
 /// Base class for the dialect op conversion patterns.  Specific conversions
-/// must derive this class and implement least one of `rewrite` and
-/// `rewriteTerminator`. Optionally they can also override
-/// `PatternMatch match(Operation *)` to match more specific operations than the
-/// `rootName` provided in the constructor.
-//
-// TODO(zinenko): this should eventually converge with RewritePattern.  So far,
-// rewritePattern is missing support for operations with successors as well as
-// an ability to accept new operands instead of reusing those of the existing
-// operation.
-class DialectOpConversion : public Pattern {
+/// must derive this class and implement least one `rewrite` method. Optionally
+/// they can also override `PatternMatch match(Operation *)` to match more
+/// specific operations than the `rootName` provided in the constructor.
+/// NOTE: These conversion patterns can only be used with the DialectConversion
+/// class.
+class DialectOpConversion : public RewritePattern {
 public:
   /// Construct an DialectOpConversion.  `rootName` must correspond to the
   /// canonical name of the first operation matched by the pattern.
   DialectOpConversion(StringRef rootName, PatternBenefit benefit,
                       MLIRContext *ctx)
-      : Pattern(rootName, benefit, ctx) {}
+      : RewritePattern(rootName, benefit, ctx) {}
 
-  /// Hook for derived classes to implement rewriting.  `op` is the (first)
+  /// Hook for derived classes to implement matching. Dialect conversion
+  /// generally unconditionally match the root operation, so default to success
+  /// here.
+  virtual PatternMatchResult match(Operation *op) const override {
+    return matchSuccess();
+  }
+
+  /// Hook for derived classes to implement rewriting. `op` is the (first)
   /// operation matched by the pattern, `operands` is a list of rewritten values
   /// that are passed to this operation, `rewriter` can be used to emit the new
-  /// operations.  This function returns the values produced by the newly
-  /// created operation(s).  These values will be used instead of those produced
-  /// by the original operation.  This function must be reimplemented if the
-  /// DialectOpConversion ever needs to replace an operation that does not have
-  /// successors.  This function should not fail.  If some specific cases of the
-  /// operation are not supported, these cases should not be matched.
-  virtual SmallVector<Value *, 4> rewrite(Operation *op,
-                                          ArrayRef<Value *> operands,
-                                          FuncBuilder &rewriter) const {
-    llvm_unreachable("unimplemented rewrite, did you mean rewriteTerminator?");
-  };
+  /// operations. This function must be reimplemented if the DialectOpConversion
+  /// ever needs to replace an operation that does not have successors. This
+  /// function should not fail. If some specific cases of the operation are not
+  /// supported, these cases should not be matched.
+  virtual void rewrite(Operation *op, ArrayRef<Value *> operands,
+                       PatternRewriter &rewriter) const {
+    llvm_unreachable("unimplemented rewrite");
+  }
 
-  /// Hook for derived classes to implement rewriting.  `op` is the (first)
+  /// Hook for derived classes to implement rewriting. `op` is the (first)
   /// operation matched by the pattern, `properOperands` is a list of rewritten
   /// values that are passed to the operation itself, `destinations` is a list
   /// of (potentially rewritten) successor blocks, `operands` is a list of lists
   /// of rewritten values passed to each of the successors, co-indexed with
-  /// `destinations`, `rewriter` can be used to emit the new operations.  Since
-  /// terminators never produce results (which could not be used anyway), this
-  /// function does not return anything.  It must be reimplemented if the
-  /// DialectOpConversion ever needs to replace a terminator operation that has
-  /// successors.  This function should not fail the pass.  If some specific
-  /// cases of the operation are not supported, these cases should not be
-  /// matched.
-  virtual void rewriteTerminator(Operation *op,
-                                 ArrayRef<Value *> properOperands,
-                                 ArrayRef<Block *> destinations,
-                                 ArrayRef<ArrayRef<Value *>> operands,
-                                 FuncBuilder &rewriter) const {
-    llvm_unreachable("unimplemented rewriteTerminator, did you mean rewrite?");
+  /// `destinations`, `rewriter` can be used to emit the new operations. It must
+  /// be reimplemented if the DialectOpConversion ever needs to replace a
+  /// terminator operation that has successors. This function should not fail
+  /// the pass. If some specific cases of the operation are not supported,
+  /// these cases should not be matched.
+  virtual void rewrite(Operation *op, ArrayRef<Value *> properOperands,
+                       ArrayRef<Block *> destinations,
+                       ArrayRef<ArrayRef<Value *>> operands,
+                       PatternRewriter &rewriter) const {
+    llvm_unreachable("unimplemented rewrite for terminators");
   }
 
-  /// Provide a default implementation for matching: most DialectOpConversion
-  /// implementations are unconditionally matching.
-  PatternMatchResult match(Operation *op) const override {
-    return matchSuccess();
-  }
+  /// Rewrite the IR rooted at the specified operation with the result of
+  /// this pattern, generating any new operations with the specified
+  /// builder. If an unexpected error is encountered (an internal
+  /// compiler error), it is emitted through the normal MLIR diagnostic
+  /// hooks and the IR is left in a valid state.
+  void rewrite(Operation *op, PatternRewriter &rewriter) const final;
+
+private:
+  using RewritePattern::matchAndRewrite;
+  using RewritePattern::rewrite;
 };
 
 // Helper class to create a list of dialect conversion patterns given a list of
@@ -106,27 +108,22 @@ public:
 // conversion constructors.
 template <typename Arg, typename... Args> struct ConversionListBuilder {
   template <typename... ConstructorArgs>
-  static llvm::DenseSet<DialectOpConversion *>
-  build(llvm::BumpPtrAllocator *allocator,
-        ConstructorArgs &&... constructorArgs) {
-    auto sub = ConversionListBuilder<Args...>::build(
-        allocator, std::forward<ConstructorArgs>(constructorArgs)...);
-    auto *ptr = allocator->Allocate<Arg>();
-    new (ptr) Arg(std::forward<ConstructorArgs>(constructorArgs)...);
-    sub.insert(ptr);
-    return sub;
+  static void build(OwningRewritePatternList &patterns,
+                    ConstructorArgs &&... constructorArgs) {
+    ConversionListBuilder<Args...>::build(
+        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
+    ConversionListBuilder<Arg>::build(
+        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
   }
 };
 
 // Template specialization to stop recursion.
 template <typename Arg> struct ConversionListBuilder<Arg> {
   template <typename... ConstructorArgs>
-  static llvm::DenseSet<DialectOpConversion *>
-  build(llvm::BumpPtrAllocator *allocator,
-        ConstructorArgs &&... constructorArgs) {
-    auto *ptr = allocator->Allocate<Arg>();
-    new (ptr) Arg(std::forward<ConstructorArgs>(constructorArgs)...);
-    return {ptr};
+  static void build(OwningRewritePatternList &patterns,
+                    ConstructorArgs &&... constructorArgs) {
+    patterns.emplace_back(llvm::make_unique<Arg>(
+        std::forward<ConstructorArgs>(constructorArgs)...));
   }
 };
 
@@ -138,19 +135,17 @@ template <typename Arg> struct ConversionListBuilder<Arg> {
 ///    current MLIR context.
 /// 2. For each function in the module do the following.
 //    a. Create a new function with the same name and convert its signature
-//    using `convertType`.
+//       using `convertType`.
 //    b. For each block in the function, create a block in the function with
-//    its arguments converted using `convertType`.
+//       its arguments converted using `convertType`.
 //    c. Traverse blocks in DFS-preorder of successors starting from the entry
-//    block (if any), and convert individual operations as follows.  Pattern
-//    match against the list of conversions.  On the first match, call
-//    `rewriteTerminator` for terminator operations with successors and
-//    `rewrite` for other operations, and advance to the next iteration.  If no
-//    match is found, replicate the operation as is.  Note that if two patterns
-//    match the same operation, it is undefined which of them will be applied.
+//       block (if any), and convert individual operations as follows.  Pattern
+//       match against the list of conversions.  On the first match, call
+//       `rewrite` for the operations, and advance to the next iteration.  If no
+//       match is found, replicate the operation as is.
 /// 3. Update all attributes of function type to point to the new functions.
 /// 4. Replace old functions with new functions in the module.
-/// If any error happend during the conversion, the pass fails as soon as
+/// If any error happened during the conversion, the pass fails as soon as
 /// possible.
 ///
 /// If the conversion fails, the module is not modified.
@@ -167,9 +162,10 @@ public:
 protected:
   /// Derived classes must implement this hook to produce a set of conversion
   /// patterns to apply.  They may use `mlirContext` to obtain registered
-  /// dialects or operations.  This will be called in the beginning of the pass.
-  virtual llvm::DenseSet<DialectOpConversion *>
-  initConverters(MLIRContext *mlirContext) = 0;
+  /// dialects or operations.  This will be called in the beginning of the
+  /// conversion.
+  virtual void initConverters(OwningRewritePatternList &patterns,
+                              MLIRContext *mlirContext) = 0;
 
   /// Derived classes must reimplement this hook if they need to convert
   /// block or function argument types or function result types.  If the target

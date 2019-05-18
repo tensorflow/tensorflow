@@ -56,18 +56,15 @@ public:
   llvm::LLVMContext &getLLVMContext();
 
 protected:
-  /// Create a set of converters that live in the pass object by passing them a
-  /// reference to the LLVM IR dialect.  Store the module associated with the
-  /// dialect for further type conversion.
-  llvm::DenseSet<DialectOpConversion *>
-  initConverters(MLIRContext *mlirContext) override final;
+  /// Add a set of converters to the given pattern list. Store the module
+  /// associated with the dialect for further type conversion.
+  void initConverters(OwningRewritePatternList &patterns,
+                      MLIRContext *mlirContext) override final;
 
   /// Derived classes can override this function to initialize custom converters
   /// in addition to the existing converters from Standard operations.  It will
   /// be called after the `module` and `llvmDialect` have been made available.
-  virtual llvm::DenseSet<DialectOpConversion *> initAdditionalConverters() {
-    return {};
-  };
+  virtual void initAdditionalConverters(OwningRewritePatternList &patterns) {}
 
   /// Derived classes can override this function to convert custom types.  It
   /// will be called by convertType if the default conversion from standard and

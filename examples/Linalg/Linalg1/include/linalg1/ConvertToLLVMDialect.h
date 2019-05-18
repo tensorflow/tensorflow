@@ -28,7 +28,9 @@ class DialectConversion;
 class DialectOpConversion;
 class MLIRContext;
 class Module;
+class RewritePattern;
 class Type;
+using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 namespace LLVM {
 class LLVMType;
 } // end namespace LLVM
@@ -39,22 +41,18 @@ namespace linalg {
 /// Keep all other types unmodified.
 mlir::Type convertLinalgType(mlir::Type t);
 
-/// Allocate the conversion patterns for RangeOp, ViewOp and SliceOp from the
-/// Linalg dialect to the LLVM IR dialect.  The converters are allocated in the
-/// `allocator` using the provided `context`.  The latter must have the LLVM IR
-/// dialect registered.
-/// This function can be used to apply multiple conversion patterns in the same
-/// pass.  It does not have to be called explicitly before the conversion.
-llvm::DenseSet<mlir::DialectOpConversion *>
-allocateDescriptorConverters(llvm::BumpPtrAllocator *allocator,
+/// Get the conversion patterns for RangeOp, ViewOp and SliceOp from the Linalg
+/// dialect to the LLVM IR dialect. The LLVM IR dialect must be registered. This
+/// function can be used to apply multiple conversion patterns in the same pass.
+/// It does not have to be called explicitly before the conversion.
+void getDescriptorConverters(mlir::OwningRewritePatternList &patterns,
                              mlir::MLIRContext *context);
 
 /// Create a DialectConversion from the Linalg dialect to the LLVM IR dialect.
 /// The conversion is set up to convert types and function signatures using
 /// `convertLinalgType` and obtains operation converters by calling `initer`.
 std::unique_ptr<mlir::DialectConversion> makeLinalgToLLVMLowering(
-    std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
-        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+    std::function<void(mlir::OwningRewritePatternList &, mlir::MLIRContext *)>
         initer);
 
 /// Convert the Linalg dialect types and RangeOp, ViewOp and SliceOp operations

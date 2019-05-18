@@ -46,7 +46,7 @@ class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(Function &fn,
                                       OwningRewritePatternList &&patterns)
-      : PatternRewriter(&fn), matcher(std::move(patterns), *this) {
+      : PatternRewriter(&fn), matcher(std::move(patterns)) {
     worklist.reserve(64);
   }
 
@@ -202,7 +202,7 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       // Try to match one of the canonicalization patterns. The rewriter is
       // automatically notified of any necessary changes, so there is nothing
       // else to do here.
-      changed |= matcher.matchAndRewrite(op);
+      changed |= matcher.matchAndRewrite(op, *this);
     }
   } while (changed && ++i < maxIterations);
   // Whether the rewrite converges, i.e. wasn't changed in the last iteration.

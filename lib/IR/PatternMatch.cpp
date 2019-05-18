@@ -123,8 +123,8 @@ void PatternRewriter::updatedRootInPlace(
 //===----------------------------------------------------------------------===//
 
 RewritePatternMatcher::RewritePatternMatcher(
-    OwningRewritePatternList &&patterns, PatternRewriter &rewriter)
-    : patterns(std::move(patterns)), rewriter(rewriter) {
+    OwningRewritePatternList &&patterns)
+    : patterns(std::move(patterns)) {
   // Sort the patterns by benefit to simplify the matching logic.
   std::stable_sort(this->patterns.begin(), this->patterns.end(),
                    [](const std::unique_ptr<RewritePattern> &l,
@@ -134,7 +134,8 @@ RewritePatternMatcher::RewritePatternMatcher(
 }
 
 /// Try to match the given operation to a pattern and rewrite it.
-bool RewritePatternMatcher::matchAndRewrite(Operation *op) {
+bool RewritePatternMatcher::matchAndRewrite(Operation *op,
+                                            PatternRewriter &rewriter) {
   for (auto &pattern : patterns) {
     // Ignore patterns that are for the wrong root or are impossible to match.
     if (pattern->getRootKind() != op->getName() ||

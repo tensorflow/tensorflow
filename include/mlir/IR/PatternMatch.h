@@ -248,8 +248,8 @@ public:
   /// clients can specify a list of other nodes that this replacement may make
   /// (perhaps transitively) dead.  If any of those values are dead, this will
   /// remove them as well.
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
-                 ArrayRef<Value *> valuesToRemoveIfDead = {});
+  virtual void replaceOp(Operation *op, ArrayRef<Value *> newValues,
+                         ArrayRef<Value *> valuesToRemoveIfDead = {});
 
   /// Replaces the result op with a new op that is created without verification.
   /// The result values of the two ops must be the same types.
@@ -326,14 +326,12 @@ using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 ///
 class RewritePatternMatcher {
 public:
-  /// Create a RewritePatternMatcher with the specified set of patterns and
-  /// rewriter.
-  explicit RewritePatternMatcher(OwningRewritePatternList &&patterns,
-                                 PatternRewriter &rewriter);
+  /// Create a RewritePatternMatcher with the specified set of patterns.
+  explicit RewritePatternMatcher(OwningRewritePatternList &&patterns);
 
   /// Try to match the given operation to a pattern and rewrite it. Return
   /// true if any pattern matches.
-  bool matchAndRewrite(Operation *op);
+  bool matchAndRewrite(Operation *op, PatternRewriter &rewriter);
 
 private:
   RewritePatternMatcher(const RewritePatternMatcher &) = delete;
@@ -342,9 +340,6 @@ private:
   /// The group of patterns that are matched for optimization through this
   /// matcher.
   OwningRewritePatternList patterns;
-
-  /// The rewriter used when applying matched patterns.
-  PatternRewriter &rewriter;
 };
 
 /// Rewrite the specified function by repeatedly applying the highest benefit

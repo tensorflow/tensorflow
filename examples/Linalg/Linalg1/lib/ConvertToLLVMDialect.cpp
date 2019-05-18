@@ -146,14 +146,8 @@ public:
   explicit RangeOpConversion(MLIRContext *context)
       : DialectOpConversion(linalg::RangeOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    if (isa<linalg::RangeOp>(op))
-      return matchSuccess();
-    return matchFailure();
-  }
-
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     auto rangeOp = cast<linalg::RangeOp>(op);
     auto rangeDescriptorType =
         linalg::convertLinalgType(rangeOp.getResult()->getType());
@@ -169,7 +163,7 @@ public:
                                   operands[1], makePositionAttr(rewriter, 1));
     rangeDescriptor = insertvalue(rangeDescriptorType, rangeDescriptor,
                                   operands[2], makePositionAttr(rewriter, 2));
-    return {rangeDescriptor};
+    rewriter.replaceOp(op, rangeDescriptor);
   }
 };
 
@@ -178,14 +172,8 @@ public:
   explicit ViewOpConversion(MLIRContext *context)
       : DialectOpConversion(linalg::ViewOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    if (isa<linalg::ViewOp>(op))
-      return matchSuccess();
-    return matchFailure();
-  }
-
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     auto viewOp = cast<linalg::ViewOp>(op);
     auto viewDescriptorType = linalg::convertLinalgType(viewOp.getViewType());
     auto memrefType =
@@ -301,7 +289,7 @@ public:
       ++i;
     }
 
-    return {viewDescriptor};
+    rewriter.replaceOp(op, viewDescriptor);
   }
 };
 
@@ -310,14 +298,8 @@ public:
   explicit SliceOpConversion(MLIRContext *context)
       : DialectOpConversion(linalg::SliceOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    if (isa<linalg::SliceOp>(op))
-      return matchSuccess();
-    return matchFailure();
-  }
-
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     auto sliceOp = cast<linalg::SliceOp>(op);
     auto newViewDescriptorType =
         linalg::convertLinalgType(sliceOp.getViewType());
@@ -398,7 +380,7 @@ public:
                                       stride, pos({3, i}));
     }
 
-    return {newViewDescriptor};
+    rewriter.replaceOp(op, newViewDescriptor);
   }
 };
 
@@ -409,41 +391,30 @@ public:
   explicit DropConsumer(MLIRContext *context)
       : DialectOpConversion("some_consumer", 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    if (op->getName().getStringRef() == "some_consumer")
-      return matchSuccess();
-    return matchFailure();
-  }
-
-  SmallVector<Value *, 4> rewrite(Operation *, ArrayRef<Value *>,
-                                  FuncBuilder &) const override {
-    return {};
-  }
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {}
 };
 
-llvm::DenseSet<mlir::DialectOpConversion *>
-linalg::allocateDescriptorConverters(llvm::BumpPtrAllocator *allocator,
+void linalg::getDescriptorConverters(mlir::OwningRewritePatternList &patterns,
                                      mlir::MLIRContext *context) {
-  return ConversionListBuilder<DropConsumer, RangeOpConversion,
-                               SliceOpConversion,
-                               ViewOpConversion>::build(allocator, context);
+  ConversionListBuilder<DropConsumer, RangeOpConversion, SliceOpConversion,
+                        ViewOpConversion>::build(patterns, context);
 }
 
 namespace {
 // The conversion class from Linalg to LLVMIR.
 class Lowering : public DialectConversion {
 public:
-  explicit Lowering(std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
-                        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+  explicit Lowering(std::function<void(mlir::OwningRewritePatternList &patterns,
+                                       mlir::MLIRContext *context)>
                         conversions)
       : setup(conversions) {}
 
 protected:
   // Initialize the list of converters.
-  llvm::DenseSet<DialectOpConversion *>
-  initConverters(MLIRContext *context) override {
-    converterStorage.Reset();
-    return setup(&converterStorage, context);
+  void initConverters(OwningRewritePatternList &patterns,
+                      MLIRContext *context) override {
+    setup(patterns, context);
   }
 
   // This gets called for block and region arguments, and attributes.
@@ -475,19 +446,15 @@ protected:
   }
 
 private:
-  // Storage for individual converters.
-  llvm::BumpPtrAllocator converterStorage;
-
   // Conversion setup.
-  std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
-      llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+  std::function<void(mlir::OwningRewritePatternList &patterns,
+                     mlir::MLIRContext *context)>
       setup;
 };
 } // end anonymous namespace
 
 std::unique_ptr<mlir::DialectConversion> linalg::makeLinalgToLLVMLowering(
-    std::function<llvm::DenseSet<mlir::DialectOpConversion *>(
-        llvm::BumpPtrAllocator *, mlir::MLIRContext *context)>
+    std::function<void(mlir::OwningRewritePatternList &, mlir::MLIRContext *)>
         initer) {
   return llvm::make_unique<Lowering>(initer);
 }
@@ -502,7 +469,7 @@ void linalg::convertToLLVM(mlir::Module &module) {
 
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
-  auto r = Lowering(allocateDescriptorConverters).convert(&module);
+  auto r = Lowering(getDescriptorConverters).convert(&module);
   (void)r;
   assert(succeeded(r) && "conversion failed");
 

@@ -104,15 +104,15 @@ public:
 // an LLVM IR load.
 class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
   using Base::Base;
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     auto elementType = linalg::convertLinalgType(*op->getResultTypes().begin());
     Value *viewDescriptor = operands[0];
     ArrayRef<Value *> indices = operands.drop_front();
     Value *ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     Value *element = intrinsics::load(elementType, ptr);
-    return {element};
+    rewriter.replaceOp(op, {element});
   }
 };
 
@@ -120,15 +120,14 @@ class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
 // an LLVM IR store.
 class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
   using Base::Base;
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     Value *viewDescriptor = operands[1];
     Value *data = operands[0];
     ArrayRef<Value *> indices = operands.drop_front(2);
     Value *ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     intrinsics::store(data, ptr);
-    return {};
   }
 };
 
@@ -136,15 +135,11 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
 
 // Helper function that allocates the descriptor converters and adds load/store
 // coverters to the list.
-static llvm::DenseSet<mlir::DialectOpConversion *>
-allocateConversions(llvm::BumpPtrAllocator *allocator,
-                    mlir::MLIRContext *context) {
-  auto conversions = linalg::allocateDescriptorConverters(allocator, context);
-  auto additional =
-      ConversionListBuilder<LoadOpConversion, StoreOpConversion>::build(
-          allocator, context);
-  conversions.insert(additional.begin(), additional.end());
-  return conversions;
+static void getConversions(mlir::OwningRewritePatternList &patterns,
+                           mlir::MLIRContext *context) {
+  linalg::getDescriptorConverters(patterns, context);
+  ConversionListBuilder<LoadOpConversion, StoreOpConversion>::build(patterns,
+                                                                    context);
 }
 
 void linalg::convertLinalg3ToLLVM(Module &module) {
@@ -155,7 +150,7 @@ void linalg::convertLinalg3ToLLVM(Module &module) {
   (void)rr;
   assert(succeeded(rr) && "affine loop lowering failed");
 
-  auto lowering = makeLinalgToLLVMLowering(allocateConversions);
+  auto lowering = makeLinalgToLLVMLowering(getConversions);
   auto r = lowering->convert(&module);
   (void)r;
   assert(succeeded(r) && "conversion failed");

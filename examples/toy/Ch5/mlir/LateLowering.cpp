@@ -91,8 +91,8 @@ public:
   /// the rewritten operands for `op` in the new function.
   /// The results created by the new IR with the builder are returned, and their
   /// number must match the number of result of `op`.
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     auto add = cast<toy::AddOp>(op);
     auto loc = add.getLoc();
     // Create a `toy.alloc` operation to allocate the output buffer for this op.
@@ -119,7 +119,7 @@ public:
 
     // Return the newly allocated buffer, with a type.cast to preserve the
     // consumers.
-    return {typeCast(rewriter, result, add.getType())};
+    rewriter.replaceOp(op, {typeCast(rewriter, result, add.getType())});
   }
 };
 
@@ -130,8 +130,8 @@ public:
   explicit PrintOpConversion(MLIRContext *context)
       : DialectOpConversion(toy::PrintOp::getOperationName(), 1, context) {}
 
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
     Function *printfFunc = getPrintf(*op->getFunction()->getModule());
 
@@ -175,7 +175,6 @@ public:
       });
       // clang-format on
     }
-    return {};
   }
 
 private:
@@ -232,8 +231,8 @@ public:
   explicit ConstantOpConversion(MLIRContext *context)
       : DialectOpConversion(toy::ConstantOp::getOperationName(), 1, context) {}
 
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     toy::ConstantOp cstOp = cast<toy::ConstantOp>(op);
     auto loc = cstOp.getLoc();
     auto retTy = cstOp.getResult()->getType().cast<toy::ToyArrayType>();
@@ -265,7 +264,7 @@ public:
             constant_float(value, f64Ty);
       }
     }
-    return {result};
+    rewriter.replaceOp(op, result);
   }
 };
 
@@ -275,8 +274,8 @@ public:
   explicit TransposeOpConversion(MLIRContext *context)
       : DialectOpConversion(toy::TransposeOp::getOperationName(), 1, context) {}
 
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     auto transpose = cast<toy::TransposeOp>(op);
     auto loc = transpose.getLoc();
     Value *result = memRefTypeCast(
@@ -297,7 +296,7 @@ public:
     });
     // clang-format on
 
-    return {typeCast(rewriter, result, transpose.getType())};
+    rewriter.replaceOp(op, {typeCast(rewriter, result, transpose.getType())});
   }
 };
 
@@ -307,8 +306,8 @@ public:
   explicit ReturnOpConversion(MLIRContext *context)
       : DialectOpConversion(toy::ReturnOp::getOperationName(), 1, context) {}
 
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     auto retOp = cast<toy::ReturnOp>(op);
     using namespace edsc;
     auto loc = retOp.getLoc();
@@ -317,7 +316,6 @@ public:
       rewriter.create<ReturnOp>(loc, operands[0]);
     else
       rewriter.create<ReturnOp>(loc);
-    return {};
   }
 };
 
@@ -326,31 +324,25 @@ public:
 class LateLowering : public DialectConversion {
 protected:
   /// Initialize the list of converters.
-  llvm::DenseSet<DialectOpConversion *>
-  initConverters(MLIRContext *context) override {
-    return ConversionListBuilder<AddOpConversion, PrintOpConversion,
-                                 ConstantOpConversion, TransposeOpConversion,
-                                 ReturnOpConversion>::build(&allocator,
-                                                            context);
+  void initConverters(OwningRewritePatternList &patterns,
+                      MLIRContext *context) override {
+    ConversionListBuilder<AddOpConversion, PrintOpConversion,
+                          ConstantOpConversion, TransposeOpConversion,
+                          ReturnOpConversion>::build(patterns, context);
   }
 
   /// Convert a Toy type, this gets called for block and region arguments, and
   /// attributes.
   Type convertType(Type t) override {
-    if (auto array = t.cast<toy::ToyArrayType>()) {
+    if (auto array = t.cast<toy::ToyArrayType>())
       return array.toMemref();
-    }
     return t;
   }
-
-private:
-  llvm::BumpPtrAllocator allocator;
 };
 
 /// This is lowering to Linalg the parts that can be (matmul and add on arrays)
 /// and is targeting LLVM otherwise.
 struct LateLoweringPass : public ModulePass<LateLoweringPass> {
-
   void runOnModule() override {
     // Perform Toy specific lowering
     if (failed(LateLowering().convert(&getModule()))) {

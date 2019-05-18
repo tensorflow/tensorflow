@@ -28,6 +28,84 @@
 
 using namespace mlir;
 
+namespace {
+/// This class implements a pattern rewriter for DialectOpConversion patterns.
+/// It automatically performs remapping of replaced operation values.
+struct DialectConversionRewriter final : public PatternRewriter {
+  DialectConversionRewriter(Function *fn) : PatternRewriter(fn) {}
+  ~DialectConversionRewriter() = default;
+
+  // Implement the hook for replacing an operation with new values.
+  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
+                 ArrayRef<Value *> valuesToRemoveIfDead) override {
+    assert(newValues.size() == op->getNumResults());
+    for (unsigned i = 0, e = newValues.size(); i < e; ++i)
+      mapping.map(op->getResult(i), newValues[i]);
+  }
+
+  // Implement the hook for creating operations, and make sure that newly
+  // created ops are added to the worklist for processing.
+  Operation *createOperation(const OperationState &state) override {
+    return FuncBuilder::createOperation(state);
+  }
+
+  void lookupValues(Operation::operand_range operands,
+                    SmallVectorImpl<Value *> &remapped) {
+    remapped.reserve(llvm::size(operands));
+    for (Value *operand : operands) {
+      Value *value = mapping.lookupOrNull(operand);
+      assert(value && "converting op before ops defining its operands");
+      remapped.push_back(value);
+    }
+  }
+
+  // Mapping between values(blocks) in the original function and in the new
+  // function.
+  BlockAndValueMapping mapping;
+};
+} // end anonymous namespace
+
+/// Rewrite the IR rooted at the specified operation with the result of
+/// this pattern, generating any new operations with the specified
+/// builder.  If an unexpected error is encountered (an internal
+/// compiler error), it is emitted through the normal MLIR diagnostic
+/// hooks and the IR is left in a valid state.
+void DialectOpConversion::rewrite(Operation *op,
+                                  PatternRewriter &rewriter) const {
+  SmallVector<Value *, 4> operands;
+  auto &dialectRewriter = static_cast<DialectConversionRewriter &>(rewriter);
+  dialectRewriter.lookupValues(op->getOperands(), operands);
+
+  // If this operation has no successors, invoke the rewrite directly.
+  if (op->getNumSuccessors() == 0)
+    return rewrite(op, operands, rewriter);
+
+  // Otherwise, we need to remap the successors.
+  SmallVector<Block *, 2> destinations;
+  destinations.reserve(op->getNumSuccessors());
+
+  SmallVector<ArrayRef<Value *>, 2> operandsPerDestination;
+  unsigned firstSuccessorOperand = op->getSuccessorOperandIndex(0);
+  for (unsigned i = 0, seen = 0, e = op->getNumSuccessors(); i < e; ++i) {
+    // Lookup the successor.
+    auto *successor = dialectRewriter.mapping.lookupOrNull(op->getSuccessor(i));
+    assert(successor && "block was not remapped");
+    destinations.push_back(successor);
+
+    // Lookup the successors operands.
+    unsigned n = op->getNumSuccessorOperands(i);
+    operandsPerDestination.push_back(
+        llvm::makeArrayRef(operands.data() + firstSuccessorOperand + seen, n));
+    seen += n;
+  }
+
+  // Rewrite the operation.
+  rewrite(op,
+          llvm::makeArrayRef(operands.data(),
+                             operands.data() + firstSuccessorOperand),
+          destinations, operandsPerDestination, rewriter);
+}
+
 namespace mlir {
 namespace impl {
 // Implementation detail class of the DialectConversion pass.  Performs
@@ -36,43 +114,20 @@ namespace impl {
 // old functions with the new ones in the module.
 class FunctionConversion {
 public:
-  // Entry point.  Uses hooks defined in `conversion` to obtain the list of
-  // conversion patterns and to convert function and block argument types.
-  // Converts the `module` in-place by replacing all existing functions with the
-  // converted ones.
-  static LogicalResult convert(DialectConversion *conversion, Module *module);
-
-private:
   // Constructs a FunctionConversion by storing the hooks.
-  explicit FunctionConversion(DialectConversion *conversion)
-      : dialectConversion(conversion) {}
+  explicit FunctionConversion(DialectConversion *conversion, Function *func,
+                              RewritePatternMatcher &matcher)
+      : dialectConversion(conversion), rewriter(func), matcher(matcher) {}
 
-  // Utility that looks up a list of value in the value remapping table. Returns
-  // an empty vector if one of the values is not mapped yet.
-  SmallVector<Value *, 4> lookupValues(Operation::operand_range operands);
-
-  // Converts the given function to the dialect using hooks defined in
+  // Converts the current function to the dialect using hooks defined in
   // `dialectConversion`.  Returns the converted function or `nullptr` on error.
-  Function *convertFunction(Function *f);
+  Function *convertFunction();
 
   // Converts the given region starting from the entry block and following the
   // block successors.  Returns the converted region or `nullptr` on error.
   template <typename RegionParent>
   std::unique_ptr<Region> convertRegion(MLIRContext *context, Region *region,
                                         RegionParent *parent);
-
-  // Converts an operation with successors.  Extracts the converted operands
-  // from `valueRemapping` and the converted blocks from `blockRemapping`, and
-  // passes them to `converter->rewriteTerminator` function defined in the
-  // pattern, together with `builder`.
-  LogicalResult convertOpWithSuccessors(DialectOpConversion *converter,
-                                        Operation *op, FuncBuilder &builder);
-
-  // Converts an operation without successors.  Extracts the converted operands
-  // from `valueRemapping` and passes them to the `converter->rewrite` function
-  // defined in the pattern, together with `builder`.
-  LogicalResult convertOp(DialectOpConversion *converter, Operation *op,
-                          FuncBuilder &builder);
 
   // Converts a block by traversing its operations sequentially, looking for
   // the first pattern match and dispatching the operation conversion to
@@ -81,128 +136,40 @@ private:
   //
   // After converting operations, traverses the successor blocks unless they
   // have been visited already as indicated in `visitedBlocks`.
-  LogicalResult convertBlock(Block *block, FuncBuilder &builder,
+  LogicalResult convertBlock(Block *block,
                              llvm::DenseSet<Block *> &visitedBlocks);
-
-  // Converts the module as follows.
-  // 1. Call `convertFunction` on each function of the module and collect the
-  // mapping between old and new functions.
-  // 2. Remap all function attributes in the new functions to point to the new
-  // functions instead of the old ones.
-  // 3. Replace old functions with the new in the module.
-  LogicalResult run(Module *m);
 
   // Pointer to a specific dialect pass.
   DialectConversion *dialectConversion;
 
-  // Set of known conversion patterns.
-  llvm::DenseSet<DialectOpConversion *> conversions;
+  /// The writer used when rewriting operations.
+  DialectConversionRewriter rewriter;
 
-  // Mapping between values(blocks) in the original function and in the new
-  // function.
-  BlockAndValueMapping mapping;
+  /// The matcher use when converting operations.
+  RewritePatternMatcher &matcher;
 };
 } // end namespace impl
 } // end namespace mlir
 
-SmallVector<Value *, 4>
-impl::FunctionConversion::lookupValues(Operation::operand_range operands) {
-  SmallVector<Value *, 4> remapped;
-  remapped.reserve(llvm::size(operands));
-  for (Value *operand : operands) {
-    Value *value = mapping.lookupOrNull(operand);
-    if (!value)
-      return {};
-    remapped.push_back(value);
-  }
-  return remapped;
-}
-
-LogicalResult impl::FunctionConversion::convertOpWithSuccessors(
-    DialectOpConversion *converter, Operation *op, FuncBuilder &builder) {
-  SmallVector<Block *, 2> destinations;
-  destinations.reserve(op->getNumSuccessors());
-  SmallVector<Value *, 4> operands = lookupValues(op->getOperands());
-  assert((!operands.empty() || op->getNumOperands() == 0) &&
-         "converting op before ops defining its operands");
-
-  SmallVector<ArrayRef<Value *>, 2> operandsPerDestination;
-  unsigned numSuccessorOperands = 0;
-  for (unsigned i = 0, e = op->getNumSuccessors(); i < e; ++i)
-    numSuccessorOperands += op->getNumSuccessorOperands(i);
-  unsigned seen = 0;
-  unsigned firstSuccessorOperand = op->getNumOperands() - numSuccessorOperands;
-  for (unsigned i = 0, e = op->getNumSuccessors(); i < e; ++i) {
-    Block *successor = mapping.lookupOrNull(op->getSuccessor(i));
-    assert(successor && "block was not remapped");
-    destinations.push_back(successor);
-    unsigned n = op->getNumSuccessorOperands(i);
-    operandsPerDestination.push_back(
-        llvm::makeArrayRef(operands.data() + firstSuccessorOperand + seen, n));
-    seen += n;
-  }
-  converter->rewriteTerminator(
-      op,
-      llvm::makeArrayRef(operands.data(),
-                         operands.data() + firstSuccessorOperand),
-      destinations, operandsPerDestination, builder);
-  return success();
-}
-
 LogicalResult
-impl::FunctionConversion::convertOp(DialectOpConversion *converter,
-                                    Operation *op, FuncBuilder &builder) {
-  auto operands = lookupValues(op->getOperands());
-  assert((!operands.empty() || op->getNumOperands() == 0) &&
-         "converting op before ops defining its operands");
-
-  auto results = converter->rewrite(op, operands, builder);
-  if (results.size() != op->getNumResults())
-    return op->emitError("rewriting produced a different number of results");
-
-  for (unsigned i = 0, e = results.size(); i < e; ++i)
-    mapping.map(op->getResult(i), results[i]);
-  return success();
-}
-
-LogicalResult
-impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
+impl::FunctionConversion::convertBlock(Block *block,
                                        llvm::DenseSet<Block *> &visitedBlocks) {
   // First, add the current block to the list of visited blocks.
   visitedBlocks.insert(block);
   // Setup the builder to the insert to the converted block.
-  builder.setInsertionPointToStart(mapping.lookupOrNull(block));
+  rewriter.setInsertionPointToStart(rewriter.mapping.lookupOrNull(block));
 
   // Iterate over ops and convert them.
   for (Operation &op : *block) {
-    // Find the first matching conversion and apply it.
-    bool converted = false;
-    for (auto *conversion : conversions) {
-      // Ignore patterns that are for the wrong root or are impossible to match.
-      if (conversion->getRootKind() != op.getName() ||
-          conversion->getBenefit().isImpossibleToMatch())
-        continue;
+    if (matcher.matchAndRewrite(&op, rewriter))
+      continue;
 
-      if (!conversion->match(&op))
-        continue;
-
-      if (op.getNumSuccessors() != 0) {
-        if (failed(convertOpWithSuccessors(conversion, &op, builder)))
-          return failure();
-      } else if (failed(convertOp(conversion, &op, builder))) {
-        return failure();
-      }
-      converted = true;
-      break;
-    }
     // If there is no conversion provided for the op, clone the op and convert
     // its regions, if any.
-    if (!converted) {
-      auto *newOp = builder.cloneWithoutRegions(op, mapping);
-      for (int i = 0, e = op.getNumRegions(); i < e; ++i) {
-        auto newRegion = convertRegion(op.getContext(), &op.getRegion(i), &op);
-        newOp->getRegion(i).takeBody(*newRegion);
-      }
+    auto *newOp = rewriter.cloneWithoutRegions(op, rewriter.mapping);
+    for (int i = 0, e = op.getNumRegions(); i < e; ++i) {
+      auto newRegion = convertRegion(op.getContext(), &op.getRegion(i), &op);
+      newOp->getRegion(i).takeBody(*newRegion);
     }
   }
 
@@ -210,7 +177,7 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
   for (Block *succ : block->getSuccessors()) {
     if (visitedBlocks.count(succ) != 0)
       continue;
-    if (failed(convertBlock(succ, builder, visitedBlocks)))
+    if (failed(convertBlock(succ, visitedBlocks)))
       return failure();
   }
   return success();
@@ -234,33 +201,31 @@ impl::FunctionConversion::convertRegion(MLIRContext *context, Region *region,
   for (Block &block : *region) {
     auto *newBlock = new Block;
     newRegion->push_back(newBlock);
-    mapping.map(&block, newBlock);
+    rewriter.mapping.map(&block, newBlock);
     for (auto *arg : block.getArguments()) {
       auto convertedType = dialectConversion->convertType(arg->getType());
       if (!convertedType)
         return emitError("could not convert block argument type");
       newBlock->addArgument(convertedType);
-      mapping.map(arg, *newBlock->args_rbegin());
+      rewriter.mapping.map(arg, *newBlock->args_rbegin());
     }
   }
 
   // Start a DFS-order traversal of the CFG to make sure defs are converted
   // before uses in dominated blocks.
   llvm::DenseSet<Block *> visitedBlocks;
-  FuncBuilder builder(&newRegion->front());
-  if (failed(convertBlock(&region->front(), builder, visitedBlocks)))
+  if (failed(convertBlock(&region->front(), visitedBlocks)))
     return nullptr;
 
   // If some blocks are not reachable through successor chains, they should have
   // been removed by the DCE before this.
-
   if (visitedBlocks.size() != std::distance(region->begin(), region->end()))
     return emitError("unreachable blocks were not converted");
   return newRegion;
 }
 
-Function *impl::FunctionConversion::convertFunction(Function *f) {
-  assert(f && "expected function");
+Function *impl::FunctionConversion::convertFunction() {
+  Function *f = rewriter.getFunction();
   MLIRContext *context = f->getContext();
   auto emitError = [context](llvm::Twine f) -> Function * {
     context->emitError(UnknownLoc::get(context), f.str());
@@ -278,8 +243,8 @@ Function *impl::FunctionConversion::convertFunction(Function *f) {
       f->getLoc(), f->getName().strref(), newFunctionType.cast<FunctionType>(),
       f->getAttrs(), newFunctionArgAttrs);
 
-  // Return early if the function has no blocks.
-  if (f->getBlocks().empty())
+  // Return early if the function is external.
+  if (f->isExternal())
     return newFunction.release();
 
   auto newBody = convertRegion(context, &f->getBody(), f);
@@ -288,54 +253,6 @@ Function *impl::FunctionConversion::convertFunction(Function *f) {
   newFunction->getBody().takeBody(*newBody);
 
   return newFunction.release();
-}
-
-LogicalResult impl::FunctionConversion::convert(DialectConversion *conversion,
-                                                Module *module) {
-  return impl::FunctionConversion(conversion).run(module);
-}
-
-LogicalResult impl::FunctionConversion::run(Module *module) {
-  if (!module)
-    return failure();
-
-  MLIRContext *context = module->getContext();
-  conversions = dialectConversion->initConverters(context);
-
-  // Convert the functions but don't add them to the module yet to avoid
-  // converted functions to be converted again.
-  SmallVector<Function *, 0> originalFuncs, convertedFuncs;
-  DenseMap<Attribute, FunctionAttr> functionAttrRemapping;
-  originalFuncs.reserve(module->getFunctions().size());
-  for (auto &func : *module)
-    originalFuncs.push_back(&func);
-  convertedFuncs.reserve(module->getFunctions().size());
-  for (auto *func : originalFuncs) {
-    Function *converted = convertFunction(func);
-    if (!converted)
-      return failure();
-
-    auto origFuncAttr = FunctionAttr::get(func);
-    auto convertedFuncAttr = FunctionAttr::get(converted);
-    convertedFuncs.push_back(converted);
-    functionAttrRemapping.insert({origFuncAttr, convertedFuncAttr});
-  }
-
-  // Remap function attributes in the converted functions (they are not yet in
-  // the module).  Original functions will disappear anyway so there is no
-  // need to remap attributes in them.
-  for (const auto &funcPair : functionAttrRemapping) {
-    remapFunctionAttrs(*funcPair.getSecond().getValue(), functionAttrRemapping);
-  }
-
-  // Remove original functions from the module, then insert converted
-  // functions.  The order is important to avoid name collisions.
-  for (auto &func : originalFuncs)
-    func->erase();
-  for (auto *func : convertedFuncs)
-    module->getFunctions().push_back(func);
-
-  return success();
 }
 
 // Create a function type with arguments and results converted, and argument
@@ -363,6 +280,55 @@ FunctionType DialectConversion::convertFunctionSignatureType(
   return FunctionType::get(arguments, results, type.getContext());
 }
 
-LogicalResult DialectConversion::convert(Module *m) {
-  return impl::FunctionConversion::convert(this, m);
+// Converts the module as follows.
+// 1. Call `convertFunction` on each function of the module and collect the
+// mapping between old and new functions.
+// 2. Remap all function attributes in the new functions to point to the new
+// functions instead of the old ones.
+// 3. Replace old functions with the new in the module.
+LogicalResult DialectConversion::convert(Module *module) {
+  if (!module)
+    return failure();
+
+  // Grab the conversion patterns from the converter and create the pattern
+  // matcher.
+  MLIRContext *context = module->getContext();
+  OwningRewritePatternList patterns;
+  initConverters(patterns, context);
+  RewritePatternMatcher matcher(std::move(patterns));
+
+  // Convert the functions but don't add them to the module yet to avoid
+  // converted functions to be converted again.
+  SmallVector<Function *, 0> originalFuncs, convertedFuncs;
+  DenseMap<Attribute, FunctionAttr> functionAttrRemapping;
+  originalFuncs.reserve(module->getFunctions().size());
+  for (auto &func : *module)
+    originalFuncs.push_back(&func);
+  convertedFuncs.reserve(module->getFunctions().size());
+  for (auto *func : originalFuncs) {
+    impl::FunctionConversion converter(this, func, matcher);
+    Function *converted = converter.convertFunction();
+    if (!converted)
+      return failure();
+
+    auto origFuncAttr = FunctionAttr::get(func);
+    auto convertedFuncAttr = FunctionAttr::get(converted);
+    convertedFuncs.push_back(converted);
+    functionAttrRemapping.insert({origFuncAttr, convertedFuncAttr});
+  }
+
+  // Remap function attributes in the converted functions (they are not yet in
+  // the module).  Original functions will disappear anyway so there is no
+  // need to remap attributes in them.
+  for (const auto &funcPair : functionAttrRemapping)
+    remapFunctionAttrs(*funcPair.getSecond().getValue(), functionAttrRemapping);
+
+  // Remove original functions from the module, then insert converted
+  // functions.  The order is important to avoid name collisions.
+  for (auto &func : originalFuncs)
+    func->erase();
+  for (auto *func : convertedFuncs)
+    module->getFunctions().push_back(func);
+
+  return success();
 }

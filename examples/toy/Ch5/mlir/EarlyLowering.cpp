@@ -86,8 +86,8 @@ public:
   explicit MulOpConversion(MLIRContext *context)
       : DialectOpConversion(toy::MulOp::getOperationName(), 1, context) {}
 
-  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+  void rewrite(Operation *op, ArrayRef<Value *> operands,
+               PatternRewriter &rewriter) const override {
     using namespace edsc;
     using intrinsics::constant_index;
     using linalg::intrinsics::range;
@@ -115,7 +115,7 @@ public:
     auto rhsView = view(rhs, {r1, r2});
     auto resultView = view(result, {r0, r2});
     rewriter.create<linalg::MatmulOp>(loc, lhsView, rhsView, resultView);
-    return {typeCast(rewriter, result, mul.getType())};
+    rewriter.replaceOp(op, {typeCast(rewriter, result, mul.getType())});
   }
 };
 
@@ -123,20 +123,16 @@ public:
 class EarlyLowering : public DialectConversion {
 protected:
   // Initialize the list of converters.
-  llvm::DenseSet<DialectOpConversion *>
-  initConverters(MLIRContext *context) override {
-    return ConversionListBuilder<MulOpConversion>::build(&allocator, context);
+  void initConverters(OwningRewritePatternList &patterns,
+                      MLIRContext *context) override {
+    ConversionListBuilder<MulOpConversion>::build(patterns, context);
   }
-
-private:
-  llvm::BumpPtrAllocator allocator;
 };
 
 /// This is lowering to Linalg the parts that are computationally intensive
 /// (like matmul for example...) while keeping the rest of the code in the Toy
 /// dialect.
 struct EarlyLoweringPass : public ModulePass<EarlyLoweringPass> {
-
   void runOnModule() override {
     if (failed(EarlyLowering().convert(&getModule()))) {
       getModule().getContext()->emitError(
