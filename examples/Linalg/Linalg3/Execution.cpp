@@ -44,7 +44,8 @@ Function *makeFunctionWithAMatmulOp(Module &module, StringRef name) {
       module, name,
       {dynamic2DMemRefType, dynamic2DMemRefType, dynamic2DMemRefType}, {});
 
-  ScopedContext scope(f);
+  mlir::FuncBuilder builder(f);
+  ScopedContext scope(builder, f->getLoc());
   // clang-format off
   ValueHandle
     M = dim(f->getArgument(0), 0),

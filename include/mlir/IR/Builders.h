@@ -215,12 +215,46 @@ public:
   /// Return the function this builder is referring to.
   Function *getFunction() const { return function; }
 
+  /// This class represents a saved insertion point.
+  class InsertPoint {
+  public:
+    /// Creates a new insertion point which doesn't point to anything.
+    InsertPoint() = default;
+
+    /// Creates a new insertion point at the given location.
+    InsertPoint(Block *insertBlock, Block::iterator insertPt)
+        : block(insertBlock), point(insertPt) {}
+
+    /// Returns true if this insert point is set.
+    bool isSet() const { return (block != nullptr); }
+
+    Block *getBlock() const { return block; }
+    Block::iterator getPoint() const { return point; }
+
+  private:
+    Block *block = nullptr;
+    Block::iterator point;
+  };
+
   /// Reset the insertion point to no location.  Creating an operation without a
   /// set insertion point is an error, but this can still be useful when the
   /// current insertion point a builder refers to is being removed.
   void clearInsertionPoint() {
     this->block = nullptr;
     insertPoint = Block::iterator();
+  }
+
+  /// Return a saved insertion point.
+  InsertPoint saveInsertionPoint() const {
+    return InsertPoint(getInsertionBlock(), getInsertionPoint());
+  }
+
+  /// Restore the insert point to a previously saved point.
+  void restoreInsertionPoint(InsertPoint ip) {
+    if (ip.isSet())
+      setInsertionPoint(ip.getBlock(), ip.getPoint());
+    else
+      clearInsertionPoint();
   }
 
   /// Set the insertion point to the specified location.

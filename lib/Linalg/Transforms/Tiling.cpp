@@ -56,7 +56,8 @@ public:
     auto it = map.find(v);
     if (it != map.end())
       return it->second;
-    edsc::ScopedContext s(&f);
+    FuncBuilder builder(f);
+    edsc::ScopedContext s(builder, f.getLoc());
     return map.insert(std::make_pair(v, edsc::intrinsics::constant_index(v)))
         .first->getSecond();
   }
@@ -258,7 +259,8 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
              tileSizes.size() &&
          "expected matching number of tile sizes and loops");
 
-  ScopedContext scope(FuncBuilder(op.getOperation()), op.getLoc());
+  FuncBuilder builder(op.getOperation());
+  ScopedContext scope(builder, op.getLoc());
   auto loopRanges = makeTiledLoopRanges(
       scope.getBuilder(), scope.getLocation(),
       // The flattened loopToOperandRangesMaps is expected to be an invertible

@@ -101,8 +101,8 @@ static mlir::Value *createFullyComposedIndexing(unsigned dim,
 }
 
 ViewOp linalg::emitAndReturnFullyComposedView(Value *v) {
-  ScopedContext scope(FuncBuilder(v->getDefiningOp()),
-                      v->getDefiningOp()->getLoc());
+  FuncBuilder builder(v->getDefiningOp());
+  ScopedContext scope(builder, v->getDefiningOp()->getLoc());
   assert(v->getType().isa<ViewType>() && "must be a ViewType");
   auto *memRef = getViewSupportingMemRef(v);
   auto chain = getViewChain(v);

@@ -62,7 +62,8 @@ TEST_FUNC(builder_dynamic_for_func_args) {
   auto f =
       makeFunction("builder_dynamic_for_func_args", {}, {indexType, indexType});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle i(indexType), j(indexType), lb(f->getArgument(0)),
       ub(f->getArgument(1));
   ValueHandle f7(constant_float(llvm::APFloat(7.0f), f32Type));
@@ -112,7 +113,8 @@ TEST_FUNC(builder_dynamic_for) {
   auto f = makeFunction("builder_dynamic_for", {},
                         {indexType, indexType, indexType, indexType});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle i(indexType), a(f->getArgument(0)), b(f->getArgument(1)),
       c(f->getArgument(2)), d(f->getArgument(3));
   LoopBuilder(&i, a - b, c + d, 2)({});
@@ -134,7 +136,8 @@ TEST_FUNC(builder_max_min_for) {
   auto f = makeFunction("builder_max_min_for", {},
                         {indexType, indexType, indexType, indexType});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle i(indexType), lb1(f->getArgument(0)), lb2(f->getArgument(1)),
       ub1(f->getArgument(2)), ub2(f->getArgument(3));
   LoopBuilder(&i, {lb1, lb2}, {ub1, ub2}, 1)({});
@@ -154,7 +157,8 @@ TEST_FUNC(builder_blocks) {
   using namespace edsc::op;
   auto f = makeFunction("builder_blocks");
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle c1(ValueHandle::create<ConstantIntOp>(42, 32)),
       c2(ValueHandle::create<ConstantIntOp>(1234, 32));
   ValueHandle arg1(c1.getType()), arg2(c1.getType()), arg3(c1.getType()),
@@ -201,7 +205,8 @@ TEST_FUNC(builder_blocks_eager) {
   using namespace edsc::op;
   auto f = makeFunction("builder_blocks_eager");
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle c1(ValueHandle::create<ConstantIntOp>(42, 32)),
       c2(ValueHandle::create<ConstantIntOp>(1234, 32));
   ValueHandle arg1(c1.getType()), arg2(c1.getType()), arg3(c1.getType()),
@@ -243,7 +248,8 @@ TEST_FUNC(builder_cond_branch) {
   auto f = makeFunction("builder_cond_branch", {},
                         {IntegerType::get(1, &globalContext())});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle funcArg(f->getArgument(0));
   ValueHandle c32(ValueHandle::create<ConstantIntOp>(32, 32)),
       c64(ValueHandle::create<ConstantIntOp>(64, 64)),
@@ -283,7 +289,8 @@ TEST_FUNC(builder_cond_branch_eager) {
   auto f = makeFunction("builder_cond_branch_eager", {},
                         {IntegerType::get(1, &globalContext())});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle funcArg(f->getArgument(0));
   ValueHandle c32(ValueHandle::create<ConstantIntOp>(32, 32)),
       c64(ValueHandle::create<ConstantIntOp>(64, 64)),
@@ -322,7 +329,8 @@ TEST_FUNC(builder_helpers) {
   auto f =
       makeFunction("builder_helpers", {}, {memrefType, memrefType, memrefType});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   // clang-format off
   ValueHandle f7(
       ValueHandle::create<ConstantFloatOp>(llvm::APFloat(7.0f), f32Type));
@@ -373,7 +381,8 @@ TEST_FUNC(custom_ops) {
   auto indexType = IndexType::get(&globalContext());
   auto f = makeFunction("custom_ops", {}, {indexType, indexType});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   CustomOperation<ValueHandle> MY_CUSTOM_OP("my_custom_op");
   CustomOperation<OperationHandle> MY_CUSTOM_OP_0("my_custom_op_0");
   CustomOperation<OperationHandle> MY_CUSTOM_OP_2("my_custom_op_2");
@@ -410,7 +419,9 @@ TEST_FUNC(insertion_in_block) {
   using namespace edsc::op;
   auto indexType = IndexType::get(&globalContext());
   auto f = makeFunction("insertion_in_block", {}, {indexType, indexType});
-  ScopedContext scope(f.get());
+
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   BlockHandle b1;
   // clang-format off
   ValueHandle::create<ConstantIntOp>(0, 32);
@@ -435,7 +446,8 @@ TEST_FUNC(select_op) {
   auto memrefType = MemRefType::get({-1, -1, -1}, f32Type, {}, 0);
   auto f = makeFunction("select_op", {}, {memrefType});
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   // clang-format off
   ValueHandle zero = constant_index(0), one = constant_index(1);
   MemRefView vA(f->getArgument(0));
@@ -469,9 +481,9 @@ TEST_FUNC(tile_2d) {
   auto memrefType =
       MemRefType::get({-1, -1, -1}, FloatType::getF32(&globalContext()), {}, 0);
   auto f = makeFunction("tile_2d", {}, {memrefType, memrefType, memrefType});
-  FuncBuilder builder(f.get());
 
-  ScopedContext scope(f.get());
+  FuncBuilder builder(*f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle zero = constant_index(0);
   MemRefView vA(f->getArgument(0)), vB(f->getArgument(1)),
       vC(f->getArgument(2));
@@ -544,7 +556,8 @@ TEST_FUNC(vectorize_2d) {
   mlir::Module module(&globalContext());
   module.getFunctions().push_back(f);
 
-  ScopedContext scope(f);
+  FuncBuilder builder(f);
+  ScopedContext scope(builder, f->getLoc());
   ValueHandle zero = constant_index(0);
   MemRefView vA(f->getArgument(0)), vB(f->getArgument(1)),
       vC(f->getArgument(2));

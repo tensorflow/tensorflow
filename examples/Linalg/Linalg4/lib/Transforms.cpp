@@ -149,7 +149,8 @@ writeContractionAsTiledViews(TensorContractionBase<ConcreteOp> &contraction,
          contraction.getNumParallelDims() + contraction.getNumReductionDims());
 
   auto *op = static_cast<ConcreteOp *>(&contraction);
-  ScopedContext scope(mlir::FuncBuilder(op->getOperation()), op->getLoc());
+  mlir::FuncBuilder builder(op->getOperation());
+  ScopedContext scope(builder, op->getLoc());
   SmallVector<IndexHandle, 4> ivs(tileSizes.size());
   auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
 

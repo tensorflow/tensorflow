@@ -50,9 +50,13 @@ class ValueHandle;
 /// setting and restoring of insertion points.
 class ScopedContext {
 public:
-  /// Sets location to fun->getLoc() in case the provided Loction* is null.
-  ScopedContext(Function *fun, Location *loc = nullptr);
-  ScopedContext(FuncBuilder builder, Location location);
+  ScopedContext(FuncBuilder &builder, Location location);
+
+  /// Sets the insertion point of the builder to 'newInsertPt' for the duration
+  /// of the scope. The existing insertion point of the builder is restored on
+  /// destruction.
+  ScopedContext(FuncBuilder &builder, FuncBuilder::InsertPoint newInsertPt,
+                Location location);
   ~ScopedContext();
 
   static MLIRContext *getContext();
@@ -70,8 +74,10 @@ private:
 
   static ScopedContext *&getCurrentScopedContext();
 
-  /// Current FuncBuilder.
-  FuncBuilder builder;
+  /// Top level FuncBuilder.
+  FuncBuilder &builder;
+  /// The previous insertion point of the builder.
+  llvm::Optional<FuncBuilder::InsertPoint> prevBuilderInsertPoint;
   /// Current location.
   Location location;
   /// Parent context we return into.
@@ -115,9 +121,10 @@ protected:
   /// Step back "prev" times from the end of the block to set up the insertion
   /// point, which is useful for non-empty blocks.
   void enter(mlir::Block *block, int prev = 0) {
-    bodyScope =
-        new ScopedContext(FuncBuilder(block, std::prev(block->end(), prev)),
-                          ScopedContext::getLocation());
+    bodyScope = new ScopedContext(
+        *ScopedContext::getBuilder(),
+        FuncBuilder::InsertPoint(block, std::prev(block->end(), prev)),
+        ScopedContext::getLocation());
     bodyScope->nestedBuilder = this;
   }
 

@@ -24,23 +24,33 @@
 using namespace mlir;
 using namespace mlir::edsc;
 
-mlir::edsc::ScopedContext::ScopedContext(Function *fun, Location *loc)
-    : builder(fun), location(loc ? *loc : fun->getLoc()),
-      enclosingScopedContext(ScopedContext::getCurrentScopedContext()),
-      nestedBuilder(nullptr) {
-  getCurrentScopedContext() = this;
-}
-
-mlir::edsc::ScopedContext::ScopedContext(FuncBuilder builder, Location location)
+mlir::edsc::ScopedContext::ScopedContext(FuncBuilder &builder,
+                                         Location location)
     : builder(builder), location(location),
       enclosingScopedContext(ScopedContext::getCurrentScopedContext()),
       nestedBuilder(nullptr) {
   getCurrentScopedContext() = this;
 }
 
+/// Sets the insertion point of the builder to 'newInsertPt' for the duration
+/// of the scope. The existing insertion point of the builder is restored on
+/// destruction.
+mlir::edsc::ScopedContext::ScopedContext(FuncBuilder &builder,
+                                         FuncBuilder::InsertPoint newInsertPt,
+                                         Location location)
+    : builder(builder), prevBuilderInsertPoint(builder.saveInsertionPoint()),
+      location(location),
+      enclosingScopedContext(ScopedContext::getCurrentScopedContext()),
+      nestedBuilder(nullptr) {
+  getCurrentScopedContext() = this;
+  builder.restoreInsertionPoint(newInsertPt);
+}
+
 mlir::edsc::ScopedContext::~ScopedContext() {
   assert(!nestedBuilder &&
          "Active NestedBuilder must have been exited at this point!");
+  if (prevBuilderInsertPoint)
+    builder.restoreInsertionPoint(*prevBuilderInsertPoint);
   getCurrentScopedContext() = enclosingScopedContext;
 }
 

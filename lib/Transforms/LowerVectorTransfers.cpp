@@ -267,7 +267,7 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
   VectorTransferReadOp transfer = cast<VectorTransferReadOp>(op);
 
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(op), transfer.getLoc());
+  ScopedContext scope(rewriter, transfer.getLoc());
   IndexedValue remote(transfer.getMemRef());
   MemRefView view(transfer.getMemRef());
   VectorView vectorView(transfer.getVector());
@@ -326,7 +326,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   VectorTransferWriteOp transfer = cast<VectorTransferWriteOp>(op);
 
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(op), transfer.getLoc());
+  ScopedContext scope(rewriter, transfer.getLoc());
   IndexedValue remote(transfer.getMemRef());
   MemRefView view(transfer.getMemRef());
   ValueHandle vectorValue(transfer.getVector());

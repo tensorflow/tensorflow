@@ -62,8 +62,10 @@ void linalg::DotOp::emitScalarImplementation(
   using edsc::op::operator*;
   using edsc::op::operator==;
   using edsc::intrinsics::select;
-  ScopedContext scope( // account for affine.terminator in loop.
-      FuncBuilder(body, std::prev(body->end(), 1)), innermostLoop.getLoc());
+
+  // Account for affine.terminator in loop.
+  FuncBuilder builder(body, std::prev(body->end(), 1));
+  ScopedContext scope(builder, innermostLoop.getLoc());
   FloatType fTy = getOperand(0)
                       ->getType()
                       .cast<ViewType>()
@@ -106,7 +108,8 @@ void linalg::MatvecOp::writeAsFinerGrainTensorContraction() {
   assert(
       llvm::isa_and_nonnull<RangeOp>(indexingPosPair.first->getDefiningOp()));
   // clang-format off
-  ScopedContext scope(FuncBuilder(op), op->getLoc());
+  FuncBuilder builder(op);
+  ScopedContext scope(builder, op->getLoc());
   IndexHandle i;
   using linalg::common::LoopNestRangeBuilder;
   LoopNestRangeBuilder(&i, ValueHandle(indexingPosPair.first))({
@@ -132,8 +135,9 @@ void linalg::MatvecOp::emitScalarImplementation(
   using edsc::op::operator*;
   using edsc::op::operator==;
   using edsc::intrinsics::select;
-  ScopedContext scope( // account for affine.terminator in loop.
-      FuncBuilder(body, std::prev(body->end(), 1)), innermostLoop.getLoc());
+  // Account for affine.terminator in loop.
+  FuncBuilder builder(body, std::prev(body->end(), 1));
+  ScopedContext scope(builder, innermostLoop.getLoc());
   FloatType fTy = getOperand(0)
                       ->getType()
                       .cast<ViewType>()
@@ -181,7 +185,8 @@ void linalg::MatmulOp::writeAsFinerGrainTensorContraction() {
       llvm::isa_and_nonnull<RangeOp>(indexingPosPair.first->getDefiningOp()));
   using linalg::common::LoopNestRangeBuilder;
   // clang-format off
-  ScopedContext scope(FuncBuilder(op), op->getLoc());
+  FuncBuilder builder(op);
+  ScopedContext scope(builder, op->getLoc());
   IndexHandle j;
   LoopNestRangeBuilder(&j, ValueHandle(indexingPosPair.first))({
     [&j, &vA, &vB, &vC]() {
@@ -206,8 +211,9 @@ void linalg::MatmulOp::emitScalarImplementation(
   using edsc::op::operator*;
   using edsc::op::operator==;
   using edsc::intrinsics::select;
-  ScopedContext scope( // account for affine.terminator in loop.
-      FuncBuilder(body, std::prev(body->end(), 1)), innermostLoop.getLoc());
+  // Account for affine.terminator in loop.
+  FuncBuilder builder(body, std::prev(body->end(), 1));
+  ScopedContext scope(builder, innermostLoop.getLoc());
   FloatType fTy = getOperand(0)
                       ->getType()
                       .cast<ViewType>()
