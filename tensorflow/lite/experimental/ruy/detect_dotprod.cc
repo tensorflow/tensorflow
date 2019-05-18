@@ -19,7 +19,9 @@ limitations under the License.
 // EXC_BAD_INSTRUCTION is actually a different signal?
 // Anyway, we don't need this code on Apple devices at the moment, as none of
 // them supports dot-product instructions at the moment.
-#if defined __aarch64__ && !defined __APPLE__
+// In fact, for the moment, we only care about Linux, so restricting to it
+// limits our risk.
+#if defined __aarch64__ && defined __linux__
 #define RUY_IMPLEMENT_DETECT_DOTPROD
 #endif
 
