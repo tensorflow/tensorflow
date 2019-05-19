@@ -116,6 +116,8 @@ point control register.
 
 See the documentation in :ref:`api-section` for more details.
 
+.. _env-var-section:
+
 TF_POPLAR_FLAGS environment variable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -175,6 +177,12 @@ metadata and the Poplar executable.
 The cache does not manage the files within the directory. It is the
 responsibility of the user to delete files.  No index is kept of the
 files, so they can be deleted without risk.
+
+Supported operations
+~~~~~~~~~~~~~~~~~~~~
+
+The Poplar SDK is distributed with another file containing a list of all
+TensorFlow operations which are supported by the IPU.
 
 Unsupported operations
 ~~~~~~~~~~~~~~~~~~~~~~
