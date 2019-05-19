@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,6 +35,8 @@ from tensorflow.python.platform import test
 
 _TEST_TYPES = (dtypes.int64, dtypes.float32,
                dtypes.complex64, dtypes.complex128)
+
+# TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
 
 
 class GatherTest(test.TestCase, parameterized.TestCase):
@@ -272,7 +275,8 @@ class GatherTest(test.TestCase, parameterized.TestCase):
           expected=[[[[8, 9], [9, 8]], [[8, 8], [9, 9]]],
                     [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
 
-      # batch_dims=indices.shape.ndims - 1 (equivalent to tf.batch_gather)
+      # batch_dims=indices.shape.ndims - 1
+      # (equivalent to tf.compat.v1.batch_gather)
       dict(  # 2D indices (1 batch dim)
           batch_dims=1,
           params=[[10, 11, 12, 13], [20, 21, 22, 23]],
@@ -337,6 +341,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def testBatchDims(self, params, indices, batch_dims, expected=None,
                     axis=None):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    self.assertAllEqual(expected, result)
+
+    with compat.forward_compatibility_horizon(2019, 6, 11):
+      result = array_ops.gather(
+          params, indices, axis=axis, batch_dims=batch_dims)
+
     self.assertAllEqual(expected, result)
 
   @parameterized.parameters([
@@ -430,6 +440,13 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     indices = indices.tolist()
 
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    self.assertAllEqual(output_shape, result.shape.as_list())
+    self.assertAllEqual(expected, result)
+
+    with compat.forward_compatibility_horizon(2019, 6, 11):
+      result = array_ops.gather(
+          params, indices, axis=axis, batch_dims=batch_dims)
+
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 

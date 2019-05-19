@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -115,6 +115,26 @@ XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
       transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
 
   LiteralTestUtil::ExpectR1Equal<float>(test_vector, result);
+}
+
+XLA_TEST_F(TransferManagerTest, TransferR1LargeUnalignedF32) {
+  std::vector<float> test_vector(1025);
+  std::iota(test_vector.begin(), test_vector.end(), 0);
+  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  BorrowingLiteral literal(reinterpret_cast<const char*>(&test_vector[1]),
+                           shape);
+  auto device_buffer = AllocateDeviceBuffer(shape);
+
+  // Round trip literal through device.
+  ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                          device_buffer));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+
+  std::vector<float> expected_output(1024);
+  std::iota(expected_output.begin(), expected_output.end(), 1);
+  LiteralTestUtil::ExpectR1Equal<float>(expected_output, result);
 }
 
 XLA_TEST_F(TransferManagerTest, TransferR1U8) {

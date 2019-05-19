@@ -636,6 +636,7 @@ CORE_CC_ALL_SRCS := \
 $(ABSL_CC_SRCS) \
 tensorflow/c/c_api.cc \
 tensorflow/c/kernels.cc \
+tensorflow/c/tf_status.cc \
 tensorflow/c/tf_status_helper.cc \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
@@ -650,6 +651,10 @@ $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
+tensorflow/core/profiler/internal/profiler_interface.cc \
+tensorflow/core/profiler/internal/traceme_recorder.cc \
+tensorflow/core/profiler/lib/profiler_session.cc \
+tensorflow/core/profiler/lib/traceme.cc \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))

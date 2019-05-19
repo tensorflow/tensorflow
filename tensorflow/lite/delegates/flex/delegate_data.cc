@@ -22,7 +22,9 @@ namespace tflite {
 namespace flex {
 DelegateData::DelegateData() {}
 
-DelegateData::~DelegateData() {}
+DelegateData::~DelegateData() {
+  if (eager_context_) eager_context_->Unref();
+}
 
 tensorflow::Status DelegateData::Prepare(
     const tensorflow::SessionOptions& session_options) {
@@ -40,10 +42,10 @@ tensorflow::Status DelegateData::Prepare(
   // Note that Rendezvous is ref-counted so it will be automatically deleted.
   tensorflow::Rendezvous* rendezvous =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
-  eager_context_.reset(new tensorflow::EagerContext(
+  eager_context_ = new tensorflow::EagerContext(
       session_options,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, std::move(device_mgr), rendezvous));
+      /*async=*/false, std::move(device_mgr), rendezvous);
   return tensorflow::Status();
 }
 

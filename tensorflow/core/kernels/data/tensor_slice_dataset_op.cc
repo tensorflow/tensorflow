@@ -129,23 +129,28 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        mutex_lock l(mu_);
-        if (i_ < n_) {
-          out_tensors->clear();
-          out_tensors->reserve(dataset()->tensors_.size());
-          for (int i = 0; i < dataset()->tensors_.size(); ++i) {
-            const Tensor& t = dataset()->tensors_[i];
-            out_tensors->emplace_back(
-                ctx->allocator({}), t.dtype(),
-                TensorShape(dataset()->shapes_[i].dim_sizes()));
-            TF_RETURN_IF_ERROR(
-                batch_util::CopySliceToElement(t, &out_tensors->back(), i_));
+        int64 index = 0;
+        {
+          mutex_lock l(mu_);
+          if (i_ < n_) {
+            index = i_;
+            ++i_;
+          } else {
+            *end_of_sequence = true;
+            return Status::OK();
           }
-          ++i_;
-          *end_of_sequence = false;
-        } else {
-          *end_of_sequence = true;
         }
+        out_tensors->clear();
+        out_tensors->reserve(dataset()->tensors_.size());
+        for (int i = 0; i < dataset()->tensors_.size(); ++i) {
+          const Tensor& t = dataset()->tensors_[i];
+          out_tensors->emplace_back(
+              ctx->allocator({}), t.dtype(),
+              TensorShape(dataset()->shapes_[i].dim_sizes()));
+          TF_RETURN_IF_ERROR(
+              batch_util::CopySliceToElement(t, &out_tensors->back(), index));
+        }
+        *end_of_sequence = false;
         return Status::OK();
       }
 

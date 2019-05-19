@@ -49,9 +49,8 @@ VAR_MAP_V1 = {
 VAR_MAP_V2 = {
     "SGD": ("dense/bias", "learning_rate", "decay", "iter", "dense/kernel",
             "momentum"),
-    "Adagrad": ("iter", "epsilon", "dense/bias", "dense/kernel",
-                "learning_rate", "decay", "dense/kernel/accumulator",
-                "dense/bias/accumulator")
+    "Adagrad": ("iter", "dense/bias", "dense/kernel", "learning_rate", "decay",
+                "dense/kernel/accumulator", "dense/bias/accumulator")
 }
 
 
@@ -334,8 +333,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         def loss_fn():
           # Use fixed initialization to make the steps deterministic.
           predict = math_ops.matmul(x, w)
-          return losses_impl.mean_squared_error(
+          loss = losses_impl.mean_squared_error(
               y, predict, reduction=loss_reduction)
+          if loss_reduction == losses_impl.Reduction.SUM:
+            return loss
+          return loss / distribution.num_replicas_in_sync
 
         optimizer = optimizer_fn()  # GradientDescent with 0.2 learning rate
 

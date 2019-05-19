@@ -22,12 +22,11 @@ limitations under the License.
 #include <cfloat>
 #include <vector>
 
-#include "tensorflow/core/kernels/dilation_ops.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/dilation_ops.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -194,7 +193,7 @@ struct Dilation<GPUDevice, T> {
     const int output_cols = output.dimension(2);
 
     const int total_count = batch * output_rows * output_cols * depth;
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         DilationKernel<T>, config.block_count, config.thread_per_block, 0,
@@ -225,18 +224,18 @@ struct DilationBackpropInput<GPUDevice, T> {
     const int output_cols = out_backprop.dimension(2);
 
     int total_count;
-    CudaLaunchConfig config;
+    GpuLaunchConfig config;
 
     // Initialize in_backprop with all zeros.
     total_count = batch * input_rows * input_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
+    config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(SetZero<T>, config.block_count,
                                  config.thread_per_block, 0, d.stream(),
                                  total_count, in_backprop.data()));
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
+    config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(
         DilationBackpropInputKernel<T>, config.block_count,
         config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
@@ -267,18 +266,18 @@ struct DilationBackpropFilter<GPUDevice, T> {
     const int output_cols = out_backprop.dimension(2);
 
     int total_count;
-    CudaLaunchConfig config;
+    GpuLaunchConfig config;
 
     // Initialize filter_backprop with all zeros.
     total_count = filter_rows * filter_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
+    config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(SetZero<T>, config.block_count,
                                  config.thread_per_block, 0, d.stream(),
                                  total_count, filter_backprop.data()));
 
     // Accumulate.
     total_count = batch * output_rows * output_cols * depth;
-    config = GetCudaLaunchConfig(total_count, d);
+    config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(
         DilationBackpropFilterKernel<T>, config.block_count,
         config.thread_per_block, 0, d.stream(), config.virtual_thread_count,

@@ -31,6 +31,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -209,6 +210,18 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     test_model(dummy_data)
     self.assertTrue(test_model.uses_custom_build, 'Model should use user '
                                                   'defined build when called.')
+
+  def test_attribute_conflict_error(self):
+
+    class ModelWithProperty(keras.Model):
+
+      @property
+      def read_only(self):
+        return 1.
+
+    m = ModelWithProperty()
+    with self.assertRaisesRegexp(AttributeError, 'read_only'):
+      m.read_only = 2.
 
   def test_custom_build_with_fit(self):
 
@@ -512,7 +525,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
 
     m.dense.trainable = False
     self.assertEqual(
-        [m.var, m.dense.kernel, m.dense.bias, m.not_trainable_var],
+        [m.dense.kernel, m.dense.bias, m.var, m.not_trainable_var],
         m.variables)
     self.assertEqual([m.var], m.trainable_variables)
     self.assertEqual([m.dense.kernel, m.dense.bias, m.not_trainable_var],
@@ -979,6 +992,28 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
+
+  def test_no_loss_in_compile(self):
+
+    class InternalLossModel(keras.Model):
+
+      def __init__(self):
+        super(InternalLossModel, self).__init__()
+        self.dense = keras.layers.Dense(1)
+
+      def call(self, inputs):
+        out = self.dense(inputs)
+        self.add_loss(math_ops.reduce_sum(out))
+        return out
+
+    model = InternalLossModel()
+    x = np.ones((10, 10))
+    model.predict(x)
+    model.compile(
+        optimizer='rmsprop',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x)
+    model.evaluate(x)
 
 
 class GraphSpecificModelSubclassingTests(test.TestCase):

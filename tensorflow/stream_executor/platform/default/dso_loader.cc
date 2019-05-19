@@ -18,8 +18,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "cuda/cuda_config.h"
-#include "tensorflow/core/platform/load_library.h"
+#include "third_party/gpus/cuda/cuda_config.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/path.h"
@@ -31,6 +30,7 @@ namespace internal {
 
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
+string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
@@ -75,15 +75,23 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
 }
 
 port::StatusOr<void*> GetCublasDsoHandle() {
-  return GetDsoHandle("cublas", GetCudaVersion());
+  return GetDsoHandle("cublas", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCufftDsoHandle() {
-  return GetDsoHandle("cufft", GetCudaVersion());
+  return GetDsoHandle("cufft", GetCudaLibVersion());
+}
+
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  return GetDsoHandle("cusolver", GetCudaLibVersion());
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  return GetDsoHandle("cusparse", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCurandDsoHandle() {
-  return GetDsoHandle("curand", GetCudaVersion());
+  return GetDsoHandle("curand", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCuptiDsoHandle() {
@@ -143,6 +151,16 @@ port::StatusOr<void*> GetCurandDsoHandle() {
 
 port::StatusOr<void*> GetCufftDsoHandle() {
   static auto result = new auto(DsoLoader::GetCufftDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusolverDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusolverDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCusparseDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCusparseDsoHandle());
   return *result;
 }
 

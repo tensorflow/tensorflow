@@ -412,6 +412,20 @@ TEST(OutputTypesForNode, Simple) {
   EXPECT_FALSE(OutputTypeForNode(node_def, op_def, 2, &type).ok());
 }
 
+TEST(OutputTypesForNode_AttrSliceOverload, Simple) {
+  const OpDef op_def = ToOpDef(OpDefBuilder("Simple")
+                                   .Input("a: float")
+                                   .Input("b: int32")
+                                   .Output("c: string")
+                                   .Output("d: bool"));
+  const AttrSlice attr_slice = AttrSlice(ToNodeDef(
+      NodeDefBuilder("simple", &op_def).Input(FakeInput()).Input(FakeInput())));
+  DataTypeVector types;
+  EXPECT_TRUE(OutputTypesForNode(attr_slice, op_def, &types).ok());
+  EXPECT_EQ(types[0], DT_STRING);
+  EXPECT_EQ(types[1], DT_BOOL);
+}
+
 TEST(NameRangesForNodeTest, Simple) {
   const OpDef op_def = ToOpDef(OpDefBuilder("Simple")
                                    .Input("a: float")

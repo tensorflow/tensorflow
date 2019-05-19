@@ -501,7 +501,6 @@ class FlattenTest(parameterized.TestCase, test.TestCase):
                                   layers.Dense(2)])
 
     self.assertEqual(m.submodules, (m.layers[0], m.layers[1]))
-    self.assertEmpty(m.variables)
     m(layers.Input((1,)))
     self.assertLen(m.variables, 4)
 

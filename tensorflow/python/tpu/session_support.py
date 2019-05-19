@@ -62,7 +62,7 @@ class WorkerHeartbeatManager(object):
     (Prefer using `WorkerHeartbeatManager.from_devices` when possible.)
 
     Args:
-      session: `tf.Session`, session to use for heartbeat operations.
+      session: `tf.compat.v1.Session`, session to use for heartbeat operations.
       devices: `list[string]` Set of devices to connect to.
       heartbeat_ops: `list[tf.Operation]` Heartbeat operations.
       request_placeholder: `tf.Placeholder[String]` Placeholder used to specify

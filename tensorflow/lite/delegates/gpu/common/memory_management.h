@@ -40,6 +40,11 @@ struct TensorUsageRecord {
 
   TensorUsageRecord(uint32_t size, TaskId first, TaskId last)
       : tensor_size(size), first_task(first), last_task(last) {}
+
+  // Default order of tensor usage records is increasing order of first_task.
+  bool operator<(const TensorUsageRecord& other) const {
+    return first_task < other.first_task;
+  }
 };
 
 // Information about assignment of tensors to shared objects
@@ -58,6 +63,11 @@ enum class MemoryStrategy {
   // Greedy strategy uses greedy algorithm to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY,
+
+  // Mincostflow strategy consists of building auxiliary flow graph and solving
+  // the minimum-cost flow problem in it. In the end edges with zero residual
+  // capacity determine assignment of shared objects to tensors.
+  MINCOSTFLOW,
 };
 
 // Calculates the assignement of shared objects to given tensors, including

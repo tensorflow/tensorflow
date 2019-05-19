@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -656,7 +656,7 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
       kBlockDepth * (tile_pixels + filter_pixels) * sizeof(S);
   const int num_outputs = args.out_rows * args.out_cols * block_count;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+  GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
       num_outputs, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
   TF_CHECK_OK(CudaLaunchKernel(kernel, config.block_count, block_dim,
@@ -744,8 +744,8 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_outputs, device, kernel, 0, 0);
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(num_outputs, device, kernel, 0, 0);
   // The compile-time constant version runs faster with a single block.
   const int max_block_count = kKnownFilterWidth < 0 || kKnownFilterHeight < 0 ||
                                       kKnownDepthMultiplier < 0
@@ -967,8 +967,8 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_in_backprop, device, kernel, 0, 0);
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
   TF_CHECK_OK(CudaLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
@@ -1611,7 +1611,7 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
                                      " is not supported");
   }
   const int num_out_backprop = args.out_rows * args.out_cols * block_count;
-  CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+  GpuLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
       num_out_backprop, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
   TF_CHECK_OK(CudaLaunchKernel(kernel, config.block_count, block_dim,
@@ -1715,8 +1715,8 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   auto device = ctx->eigen_gpu_device();
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_out_backprop, device, kernel, 0, 0);
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
   TF_CHECK_OK(CudaLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, input, filter_backprop, num_out_backprop));

@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 // See core/kernels/function_ops.cc for related kernels.
 
@@ -207,7 +208,8 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
 
   Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-               FunctionLibraryRuntime** out_flr) override;
+               FunctionLibraryRuntime** out_flr,
+               bool skip_flib_def = false) override;
 
  private:
   FunctionLibraryRuntime* base_flr_;          // not owned
@@ -309,11 +311,11 @@ int FunctionLibraryRuntimeOverlay::graph_def_version() const {
 Status FunctionLibraryRuntimeOverlay::Clone(
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-    FunctionLibraryRuntime** out_flr) {
+    FunctionLibraryRuntime** out_flr, bool skip_flib_def) {
   // NOTE(ezhulenev): The cloned FunctionLibraryRuntime will be missing the
   // FunctionLibraryDefinition override, but that's ok because we anyway do not
   // copy / clone instantiated items from the base FLR.
-  return base_flr_->Clone(out_lib_def, out_pflr, out_flr);
+  return base_flr_->Clone(out_lib_def, out_pflr, out_flr, skip_flib_def);
 }
 
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
@@ -342,10 +344,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
-  // NOTE(mrry): This overload is currently only implemented for local function
-  // execution.
-  // TODO(b/70346412): Implement support for remote function execution when
-  // passing a call frame.
   void Run(const Options& opts, Handle handle, CallFrameInterface* frame,
            DoneCallback done) override;
 
@@ -371,7 +369,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-               FunctionLibraryRuntime** out_flr) override;
+               FunctionLibraryRuntime** out_flr,
+               bool skip_flib_def = false) override;
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
@@ -403,6 +402,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     Executor* exec = nullptr;
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
     string executor_type;
+    Executor::RendezvousFactory rendezvous_factory = nullptr;
 
     ~Item() {
       delete this->func_graph;
@@ -414,8 +414,11 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
-  Status CreateKernel(const NodeDef& ndef,
-                      const FunctionLibraryDefinition* lib_def,
+  // Overloads the CreateKernel method, providing a FunctionLibraryRuntime
+  // to use for kernel creation and execution. In particular, this method can
+  // accept a FunctionLibraryRuntimeOverlay that overlays a different
+  // FunctionLibraryDefinition.
+  Status CreateKernel(const NodeDef& ndef, FunctionLibraryRuntime* flr,
                       OpKernel** kernel);
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            const FunctionLibraryDefinition* lib_def,
@@ -497,7 +500,6 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();
@@ -510,6 +512,12 @@ class CallOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
+    profiler::TraceMe trace_me(
+        [&] {
+          return absl::StrCat("CallOp #parent_step_id=", ctx->step_id(),
+                              ",function_step_id=", opts.step_id, "#");
+        },
+        /*level=*/2);
     lib->Run(opts, handle_, args, rets,
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {
@@ -562,12 +570,12 @@ Status FunctionLibraryRuntimeImpl::GetRetTypes(Handle h,
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
-  return CreateKernel(ndef, base_lib_def_, kernel);
+  return CreateKernel(ndef, this, kernel);
 }
 
-Status FunctionLibraryRuntimeImpl::CreateKernel(
-    const NodeDef& ndef, const FunctionLibraryDefinition* lib_def,
-    OpKernel** kernel) {
+Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
+                                                FunctionLibraryRuntime* flr,
+                                                OpKernel** kernel) {
   // If a custom kernel creator is given, try that.
   Status s;
   if (custom_kernel_creator_ != nullptr &&
@@ -582,9 +590,11 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
     return s;
   }
 
+  const FunctionLibraryDefinition* lib_def =
+      flr->GetFunctionLibraryDefinition();
   if (lib_def->Find(ndef.op()) == nullptr) {
     // A primitive operation. Creates the registered kernel.
-    return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
+    return CreateNonCachedKernel(device_, flr, ndef, graph_def_version_,
                                  kernel);
   }
 
@@ -618,7 +628,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   auto device_type = DeviceType(device_->attributes().device_type());
   OpKernelConstruction construction(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
-      &fbody->fdef.signature(), this, fbody->arg_types, input_memory_types,
+      &fbody->fdef.signature(), flr, fbody->arg_types, input_memory_types,
       fbody->ret_types, output_memory_types, graph_def_version_, &s);
   if (s.ok()) {
     *kernel = new CallOp(handle, &construction);
@@ -764,13 +774,17 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
       item->func_graph = fbody.release();
-      item->lib_def = options.lib_def;
       item->instantiation_counter = 1;
       item->executor_type = ExecutorType(options, attrs);
       if (options.lib_def) {
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.lib_def);
       }
+      item->rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                    Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      };
       local_handle = next_handle_++;
       items_.emplace(local_handle, std::unique_ptr<Item>(item));
     }
@@ -819,11 +833,11 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
 
 void DumpGraph(StringPiece label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
-  VLOG(1) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
+  VLOG(2) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
           << g->num_edges();
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(4)) {
     for (const auto& line : str_util::Split(DebugString(g), '\n')) {
-      VLOG(2) << "|| " << line;
+      VLOG(4) << "|| " << line;
     }
   }
 }
@@ -887,17 +901,18 @@ void PruneFunctionBody(const FunctionDef& fdef, Graph* g) {
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   const FunctionBody* fbody;
-  const FunctionLibraryDefinition* lib_def;
+  FunctionLibraryRuntime* flr;
   string executor_type;
   {
     tf_shared_lock l(mu_);
     fbody = (*item)->func_graph;
-    lib_def = (*item)->lib_def;
+    flr = (*item)->overlay_flr
+              ? static_cast<FunctionLibraryRuntime*>((*item)->overlay_flr)
+              : static_cast<FunctionLibraryRuntime*>(this);
     executor_type = (*item)->executor_type;
   }
-  if (!lib_def) {
-    lib_def = base_lib_def_;
-  }
+  const FunctionLibraryDefinition* lib_def =
+      flr->GetFunctionLibraryDefinition();
   std::unique_ptr<Graph> g(new Graph(lib_def));
   CopyGraph(*fbody->graph, g.get());
 
@@ -910,21 +925,18 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   // holding mu_ because create_kernel_ calls back into the library.
   LocalExecutorParams params;
   params.device = device_;
-  params.function_library =
-      (*item)->overlay_flr
-          ? static_cast<FunctionLibraryRuntime*>((*item)->overlay_flr)
-          : static_cast<FunctionLibraryRuntime*>(this);
-  if (lib_def == base_lib_def_) {
+  params.function_library = flr;
+  if (flr == this) {
     params.create_kernel = create_kernel_;
   } else {
-    params.create_kernel = [this, lib_def](const NodeDef& ndef,
-                                           OpKernel** kernel) {
-      return CreateKernel(ndef, lib_def, kernel);
+    params.create_kernel = [this, flr](const NodeDef& ndef, OpKernel** kernel) {
+      return CreateKernel(ndef, flr, kernel);
     };
   }
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
+  params.rendezvous_factory = (*item)->rendezvous_factory;
   Graph* graph = g.get();
   std::unique_ptr<Executor> exec;
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, std::move(g), &exec));
@@ -1084,10 +1096,14 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_);
     run_opts.rendezvous = rendezvous;
     run_opts.create_rendezvous = false;
-    done = [done, rendezvous](const Status& status) {
-      rendezvous->Unref();
-      done(status);
-    };
+    done = std::bind(
+        [rendezvous](DoneCallback done,
+                     // Begin unbound arguments.
+                     const Status& status) {
+          rendezvous->Unref();
+          done(status);
+        },
+        std::move(done), std::placeholders::_1);
   }
 
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
@@ -1110,7 +1126,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 
   if (run_opts.remote_execution) {
     // NOTE(mrry): `RunRemote()` will set `exec_args->call_frame` for us.
-    RunRemote(run_opts, handle, args, rets, item, done);
+    RunRemote(run_opts, handle, args, rets, item, std::move(done));
     return;
   }
 
@@ -1149,11 +1165,6 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     done(errors::Cancelled(""));
     return;
   }
-  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
-  if (local_handle == kInvalidLocalHandle || opts.remote_execution) {
-    done(errors::Unimplemented("Remote calling with CallFrameInterface"));
-    return;
-  }
 
   Options run_opts = opts;
   if (opts.create_rendezvous) {
@@ -1168,6 +1179,21 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
           done(status);
         },
         std::move(done), std::placeholders::_1);
+  }
+
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+  if (local_handle == kInvalidLocalHandle) {
+    parent_->Run(run_opts, handle, frame, done);
+    return;
+  }
+
+  if (opts.remote_execution) {
+    // NOTE(mrry): This bit is only set for a local function when `parent_`
+    // calls back into this class, and the current implementation of
+    // `ProcessFunctionLibraryRuntime` currently always uses the vector-based
+    // `args`/`rets` interface.
+    done(errors::Unimplemented("Remote calling with CallFrameInterface"));
+    return;
   }
 
   Item* item = nullptr;
@@ -1206,10 +1232,10 @@ string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
 Status FunctionLibraryRuntimeImpl::Clone(
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-    FunctionLibraryRuntime** out_flr) {
-  TF_RETURN_IF_ERROR(
-      parent_->Clone(env_, graph_def_version_, optimizer_.options(),
-                     custom_kernel_creator_, out_lib_def, out_pflr));
+    FunctionLibraryRuntime** out_flr, bool skip_flib_def) {
+  TF_RETURN_IF_ERROR(parent_->Clone(
+      env_, graph_def_version_, optimizer_.options(), custom_kernel_creator_,
+      out_lib_def, out_pflr, skip_flib_def));
   *out_flr = (*out_pflr)->GetFLR(device_->name());
   if (out_flr != nullptr) {
     return Status::OK();
@@ -1472,13 +1498,26 @@ using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
 string InlineFunctionBodyOptions::DebugString() const {
   const auto true_false = [](bool b) { return b ? "true" : "false"; };
-  return absl::StrCat("disable_inlining=", true_false(disable_inlining),
-                      ", ignore_noinline=", true_false(ignore_noinline),
-                      ", override_device=", true_false(ignore_noinline),
-                      ", output_control_src=",
-                      output_control_src == OutputControlSrc::kDataOutputs
-                          ? "DataOutputs"
-                          : "ControlOutputs");
+
+  const auto keep_caller_node_str = [this]() -> string {
+    switch (keep_caller_node) {
+      case KeepCallerNode::kDoNotKeep:
+        return "DoNotKeep";
+      case KeepCallerNode::kFetchable:
+        return "Fetchable";
+      case KeepCallerNode::kTargetable:
+        return "Targetable";
+    }
+  };
+
+  return absl::StrCat(
+      "disable_inlining=", true_false(disable_inlining),
+      ", ignore_noinline=", true_false(ignore_noinline),
+      ", override_device=", true_false(ignore_noinline),
+      ", initialize_empty_device=", true_false(initialize_empty_device),
+      ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
+      output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
+                                                           : "ControlOutputs");
 }
 
 Status ValidateInlining(const Node* node, const FunctionBody* fbody,
@@ -1673,16 +1712,21 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   std::vector<Node*> node_map(fbody->graph->num_node_ids());
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
-    ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    if (options.override_device || ndef.device().empty()) {
+
+    if (options.override_device) {
       ndef.set_device(caller->def().device());
     }
-    for (auto& attr : *ndef.mutable_attr()) {
-      if (attr.first == "_class") {
-        attr.second.set_s(
-            strings::StrCat(caller->name(), "/", attr.second.s()));
-      }
+    if (options.initialize_empty_device && ndef.device().empty()) {
+      ndef.set_device(caller->def().device());
     }
+
+    // Add the function node name as a prefix:
+    //  1) to node name to avoid collisions
+    //  2) to frame name to avoid multiple LoopCond nodes in one frame
+    //  3) to colocation attribute
+    const string prefix = strings::StrCat(caller->name(), "/");
+    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef));
+
     Status added_node;
     Node* clone = g->AddNode(ndef, &added_node);
     if (options.override_device && !caller->assigned_device_name().empty()) {
@@ -1790,10 +1834,15 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   }
 
   Node* output_control_node = nullptr;
-  bool has_control_outputs = absl::c_any_of(
+  const bool has_control_outputs = absl::c_any_of(
       caller->out_edges(), [](const Edge* e) { return e->IsControlEdge(); });
 
-  if (has_control_outputs || options.keep_caller_fetchable) {
+  using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
+  const bool keep_caller_node =
+      options.keep_caller_node == KeepCallerNode::kFetchable ||
+      options.keep_caller_node == KeepCallerNode::kTargetable;
+
+  if (has_control_outputs || keep_caller_node) {
     output_control_node = no_op("output_control_node");
     if (options.output_control_src == OutputControlSrc::kDataOutputs) {
       for (Node* n : outputs) {
@@ -1833,27 +1882,29 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   // ------------------------------------------------------------------------ //
   // Add an IdentityN or NoOp node in-place of caller node to keep `caller`
-  // fetchable.
+  // fetchable or targetable.
 
-  if (options.keep_caller_fetchable) {
+  if (keep_caller_node) {
     std::vector<NodeBuilder::NodeOut> output_tensors;
     absl::c_transform(outputs, std::back_inserter(output_tensors),
                       [](Node* n) { return NodeBuilder::NodeOut(n, 0); });
 
-    Node* fetchable_node;
-    if (output_tensors.empty()) {
+    Node* caller_substitute_node;
+    if (options.keep_caller_node == KeepCallerNode::kTargetable ||
+        output_tensors.empty()) {
       // IdentityN node must have at least one data input. If function has no
-      // data outputs, it still could be used as a callable target.
+      // data outputs, we can't keep it fetchable.
       TF_CHECK_OK(NodeBuilder(caller->name(), "NoOp")
                       .Device(caller->requested_device())
                       .ControlInput(output_control_node)
-                      .Finalize(g, &fetchable_node));
-    } else {
+                      .Finalize(g, &caller_substitute_node));
+
+    } else if (options.keep_caller_node == KeepCallerNode::kFetchable) {
       TF_CHECK_OK(NodeBuilder(caller->name(), "IdentityN")
                       .Device(caller->requested_device())
                       .Input(output_tensors)
                       .ControlInput(output_control_node)
-                      .Finalize(g, &fetchable_node));
+                      .Finalize(g, &caller_substitute_node));
     }
   }
 
@@ -2061,6 +2112,10 @@ void SymbolicGradientHelper::Copy(FunctionBody* gbody) {
   Graph* dst = gbody->graph;
 
   std::vector<Node*> node_map(src.num_node_ids());
+
+  // Copy just the fdef attributes (copy '_noinline' and other similar flags to
+  // the gradient function body).
+  *(gbody->fdef.mutable_attr()) = fbody_->fdef.attr();
 
   // Copy the nodes.
   node_map[src.source_node()->id()] = dst->source_node();

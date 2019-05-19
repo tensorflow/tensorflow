@@ -25,10 +25,15 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
+
+Logger& TRTEngineCacheResource::GetLogger() {
+  static Logger* logger = new Logger();
+  return *logger;
+}
 
 TRTEngineCacheResource::TRTEngineCacheResource(OpKernelContext* ctx,
                                                size_t capacity)

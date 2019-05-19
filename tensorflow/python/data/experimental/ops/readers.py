@@ -235,7 +235,7 @@ def make_tf_record_dataset(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of TFRecord file paths.
-      See `tf.gfile.Glob` for pattern rules.
+      See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     parser_fn: (Optional.) A function accepting string input to parse
@@ -340,7 +340,7 @@ def make_csv_dataset_v2(
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
-      records. See `tf.gfile.Glob` for pattern rules.
+      records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     column_names: An optional list of strings that corresponds to the CSV
@@ -583,7 +583,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     We can construct a CsvDataset from it as follows:
 
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
      dataset = tf.data.experimental.CsvDataset(
         "my_file*.csv",
@@ -768,11 +768,11 @@ def make_batched_features_dataset_v2(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-      `Example` records. See `tf.gfile.Glob` for pattern rules.
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
-      `VarLenFeature` values. See `tf.parse_example`.
+      `VarLenFeature` values. See `tf.io.parse_example`.
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
@@ -808,7 +808,7 @@ def make_batched_features_dataset_v2(file_pattern,
     Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
 
   Raises:
-    TypeError: If `reader` is a `tf.ReaderBase` subclass.
+    TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
@@ -934,7 +934,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     For example:
 
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
     dataset = tf.data.experimental.SqlDataset("sqlite", "/foo/bar.sqlite3",
                                               "SELECT name, age FROM people",

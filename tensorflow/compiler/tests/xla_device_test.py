@@ -37,7 +37,7 @@ class XlaDeviceTest(xla_test.XLATestCase):
               [16384, 1], [1, 16384], [1, 20000, 1, 1]]
     for dtype in self.numeric_types:
       for shape in shapes:
-        with self.cached_session() as sess:
+        with self.session() as sess:
           with ops.device("CPU"):
             x = array_ops.placeholder(dtype, shape)
           with self.test_scope():
@@ -58,7 +58,7 @@ class XlaDeviceTest(xla_test.XLATestCase):
     ])
     shape = (10, 10)
     for unsupported_dtype in test_types - self.all_types:
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with ops.device("CPU"):
           x = array_ops.placeholder(unsupported_dtype, shape)
         with self.test_scope():
@@ -78,7 +78,7 @@ class XlaDeviceTest(xla_test.XLATestCase):
             pass
 
   def testControlTrigger(self):
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = gen_control_flow_ops.control_trigger()
       self.evaluate(x)

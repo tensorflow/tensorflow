@@ -81,7 +81,7 @@ FunctionDef IsZero() {
       // Args
       {"x: T"},
       // Return values
-      {"equal: T"},
+      {"equal: bool"},
       // Attr def
       {"T:{float, double, int32, int64, string}"},
       {
@@ -345,7 +345,7 @@ FunctionDef Swap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {{{"o0"}, "Identity", {"i1"}, {{"T", "$T"}}},
        {{"o1"}, "Identity", {"i0"}, {{"T", "$T"}}}});
@@ -360,7 +360,7 @@ FunctionDef EmptyBodySwap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {},
       // Output mapping
@@ -384,6 +384,22 @@ FunctionDef ResourceOutput() {
           {{"mul"}, "Mul", {"x", "two:output:0"}, {{"T", DT_FLOAT}}, {}},
       },
       {{"y_out", "y"}, {"two_x", "mul:z:0"}});
+}
+
+FunctionDef ResourceIdentity() {
+  return FDH::Create(
+      // Name
+      "ResourceIdentity",
+      // Args
+      {"x: resource"},
+      // Return values
+      {"y: resource"},
+      // Attr def
+      {},
+      // Nodes
+      {},
+      // Output mapping
+      {{"y", "x"}});
 }
 
 FunctionDef ReadResourceVariable() {
@@ -551,6 +567,23 @@ FunctionDef MakeTensorSliceDataset() {
         {"x"},
         {{"Toutput_types", "$Toutput_types"},
          {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef Unique() {
+  return FDH::Create(
+      // Name
+      "GetUnique",
+      // Args
+      {"x:T"},
+      // Return values
+      {"y:T", "idx: out_idx"},
+      // Attr def
+      {"T: type", "out_idx: {int32, int64} = DT_INT32"},
+      // Nodes
+      {
+          {{"result"}, "Unique", {"x"}, {{"T", "$T"}, {"out_idx", "$out_idx"}}},
+      },
+      {{"y", "result:y:0"}, {"idx", "result:idx:0"}});
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {

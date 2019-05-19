@@ -77,19 +77,27 @@ PHILOX_DEVICE_INLINE void UpdateMemWithPhiloxRandom(PhiloxRandom const& philox,
 template <typename Device, typename Distribution>
 struct UpdateVariableAndFill_Philox;
 
+template <typename Device>
+struct RngSkip_Philox;
+
 using CPUDevice = Eigen::ThreadPoolDevice;
 
 #if GOOGLE_CUDA
 
 using GPUDevice = Eigen::GpuDevice;
 
-// Declares the partially GPU-specialized functor struct.
+// Declares the partially GPU-specialized functor structs.
 template <typename Distribution>
 struct UpdateVariableAndFill_Philox<GPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const GPUDevice& device,
                   Distribution dist, int64 output_size, int64 alg_tag_skip,
                   ScopedUnlockUnrefVar* not_used, Tensor* state_tensor,
                   typename Distribution::ResultElementType* output_data);
+};
+
+template <>
+struct RngSkip_Philox<GPUDevice> {
+  void operator()(const GPUDevice& device, int64 delta, Tensor* state_tensor);
 };
 
 #endif  // GOOGLE_CUDA

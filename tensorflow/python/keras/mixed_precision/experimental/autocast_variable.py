@@ -130,8 +130,8 @@ class AutoCastVariable(trackable.Trackable):
     return self._variable.assign_sub(
         delta, use_locking=use_locking, name=name, read_value=read_value)
 
-  # TODO(reedwm): Support assigning variables with tf.assign(), var.scatter_add,
-  # etc.
+  # TODO(reedwm): Support assigning variables with tf.compat.v1.assign(),
+  # var.scatter_add, etc.
 
   def __getattr__(self, name):
     return getattr(self._variable, name)

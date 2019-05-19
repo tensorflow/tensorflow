@@ -334,7 +334,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, GetNext) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 TEST_F(ParallelMapDatasetOpTest, DatasetNodeName) {
@@ -755,9 +755,9 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {
     VariantTensorDataWriter writer(&data);
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
-
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *parallel_map_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
@@ -769,7 +769,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 TEST_F(ParallelMapDatasetOpTest, InvalidNumParallelCalls) {

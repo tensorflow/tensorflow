@@ -1,5 +1,5 @@
 package(
-    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    default_visibility = ["//tensorflow:internal"],
 )
 
 licenses(["notice"])  # Apache 2.0

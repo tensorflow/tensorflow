@@ -49,8 +49,8 @@ class VocabInfo(
   VocabInfo to warm-start.
 
   Attributes:
-    new_vocab: [Required] A path to the new vocabulary file (used with the
-      model to be trained).
+    new_vocab: [Required] A path to the new vocabulary file (used with the model
+      to be trained).
     new_vocab_size: [Required] An integer indicating how many entries of the new
       vocabulary will used in training.
     num_oov_buckets: [Required] An integer indicating how many OOV buckets are
@@ -76,7 +76,7 @@ class VocabInfo(
           num_oov_buckets=1,
           old_vocab='pretrained_embeddings_vocab',
           old_vocab_size=10000,
-          backup_initializer=tf.truncated_normal_initializer(
+          backup_initializer=tf.compat.v1.truncated_normal_initializer(
               mean=0.0, stddev=(1 / math.sqrt(embedding_dim))),
           axis=0)
 
@@ -86,7 +86,7 @@ class VocabInfo(
           num_oov_buckets=0,  # No OOV for classes.
           old_vocab='old_class_vocab',
           old_vocab_size=8,
-          backup_initializer=tf.glorot_uniform_initializer(),
+          backup_initializer=tf.compat.v1.glorot_uniform_initializer(),
           axis=1)
 
       softmax_output_layer_bias_vocab_info = tf.VocabInfo(
@@ -95,7 +95,7 @@ class VocabInfo(
           num_oov_buckets=0,  # No OOV for classes.
           old_vocab='old_class_vocab',
           old_vocab_size=8,
-          backup_initializer=tf.zeros_initializer(),
+          backup_initializer=tf.compat.v1.zeros_initializer(),
           axis=0)
 
       Currently, only axis=0 and axis=1 are supported.
@@ -255,8 +255,7 @@ def _warm_start_var_with_vocab(var,
     partition_info = None
     if slice_info:
       partition_info = variable_scope._PartitionInfo(
-          full_shape=slice_info.full_shape,
-          var_offset=slice_info.var_offset)
+          full_shape=slice_info.full_shape, var_offset=slice_info.var_offset)
 
     if axis == 0:
       new_row_vocab_size = current_vocab_size
@@ -301,6 +300,8 @@ def _warm_start_var_with_vocab(var,
     new_init_val = ops.convert_to_tensor(
         init(shape=v_shape, partition_info=partition_info))
     v._initializer_op = state_ops.assign(v, new_init_val)
+
+
 # pylint: enable=protected-access
 
 
@@ -314,12 +315,12 @@ def _get_grouped_variables(vars_to_warm_start):
     vars_to_warm_start: One of the following:
 
       - A regular expression (string) that captures which variables to
-        warm-start (see tf.get_collection).  This expression will only consider
-        variables in the TRAINABLE_VARIABLES collection.
-      - A list of Variables to warm-start.
+        warm-start (see tf.compat.v1.get_collection).  This expression will
+        only consider variables in the TRAINABLE_VARIABLES collection.
       - A list of strings, each representing a full variable name to warm-start.
-      - `None`, in which case only variables specified in
-        `var_name_to_vocab_info` will be warm-started.
+        These will consider variables in GLOBAL_VARIABLES collection.
+      - A list of Variables to warm-start.
+      - `None`, in which case all variables in TRAINABLE_VARIABLES will be used.
   Returns:
     A dictionary mapping variable names (strings) to lists of Variables.
   Raises:
@@ -329,15 +330,15 @@ def _get_grouped_variables(vars_to_warm_start):
   if isinstance(vars_to_warm_start, str) or vars_to_warm_start is None:
     # Both vars_to_warm_start = '.*' and vars_to_warm_start = None will match
     # everything (in TRAINABLE_VARIABLES) here.
+    logging.info("Warm-starting variables only in TRAINABLE_VARIABLES.")
     list_of_vars = ops.get_collection(
-        ops.GraphKeys.TRAINABLE_VARIABLES,
-        scope=vars_to_warm_start)
+        ops.GraphKeys.TRAINABLE_VARIABLES, scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
     if all(isinstance(v, str) for v in vars_to_warm_start):
       list_of_vars = []
       for v in vars_to_warm_start:
-        list_of_vars += ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
-                                           scope=v)
+        list_of_vars += ops.get_collection(
+            ops.GraphKeys.GLOBAL_VARIABLES, scope=v)
     elif all(checkpoint_utils._is_variable(v) for v in vars_to_warm_start):  # pylint: disable=protected-access
       list_of_vars = vars_to_warm_start
     else:
@@ -377,17 +378,17 @@ def warm_start(ckpt_to_initialize_from,
     vars_to_warm_start: [Optional] One of the following:
 
       - A regular expression (string) that captures which variables to
-        warm-start (see tf.get_collection).  This expression will only consider
-        variables in the TRAINABLE_VARIABLES collection -- if you need to
-        warm-start non_TRAINABLE vars (such as optimizer accumulators or batch
-        norm statistics), please use the below option.
+        warm-start (see tf.compat.v1.get_collection).  This expression will only
+        consider variables in the TRAINABLE_VARIABLES collection -- if you need
+        to warm-start non_TRAINABLE vars (such as optimizer accumulators or
+        batch norm statistics), please use the below option.
+      - A list of strings, each a regex scope provided to
+        tf.compat.v1.get_collection with GLOBAL_VARIABLES (please see
+        tf.compat.v1.get_collection).  For backwards compatibility reasons,
+        this is separate from the single-string argument type.
       - A list of Variables to warm-start.  If you do not have access to the
-        `Variable` objects at the call site, please use the below option.
-      - A list of strings, each a regex scope provided to tf.get_collection with
-        GLOBAL_VARIABLES (please see tf.get_collection).  For backwards
-        compatibility reasons, this is separate from the single-string argument
-        type.
-      - `None`, in which case only variables specified in
+        `Variable` objects at the call site, please use the above option.
+      - `None`, in which case only TRAINABLE variables specified in
         `var_name_to_vocab_info` will be warm-started.
 
       Defaults to `'.*'`, which warm-starts all variables in the
@@ -404,6 +405,7 @@ def warm_start(ckpt_to_initialize_from,
       effect on the set of variables that is warm-started, and only controls
       name mapping (use `vars_to_warm_start` for controlling what variables to
       warm-start).
+
   Raises:
     ValueError: If the WarmStartSettings contains prev_var_name or VocabInfo
       configuration for variable names that are not used.  This is to ensure
@@ -416,6 +418,7 @@ def warm_start(ckpt_to_initialize_from,
     var_name_to_prev_var_name = {}
   logging.info("Warm-starting from: %s", (ckpt_to_initialize_from,))
   grouped_variables = _get_grouped_variables(vars_to_warm_start)
+  warmstarted_count = 0
 
   # Keep track of which var_names in var_name_to_prev_var_name and
   # var_name_to_vocab_info have been used.  Err on the safer side by throwing an
@@ -434,18 +437,15 @@ def warm_start(ckpt_to_initialize_from,
     vocab_info = var_name_to_vocab_info.get(var_name)
     if vocab_info:
       vocab_info_used.add(var_name)
-      logging.info(
+      warmstarted_count += 1
+      logging.debug(
           "Warm-starting variable: {}; current_vocab: {} current_vocab_size: {}"
           " prev_vocab: {} prev_vocab_size: {} current_oov: {} prev_tensor: {}"
           " initializer: {}".format(
-              var_name,
-              vocab_info.new_vocab,
-              vocab_info.new_vocab_size,
-              vocab_info.old_vocab,
-              (vocab_info.old_vocab_size if vocab_info.old_vocab_size > 0
-               else "All"),
-              vocab_info.num_oov_buckets,
-              prev_var_name or "Unchanged",
+              var_name, vocab_info.new_vocab, vocab_info.new_vocab_size,
+              vocab_info.old_vocab, (vocab_info.old_vocab_size if
+                                     vocab_info.old_vocab_size > 0 else "All"),
+              vocab_info.num_oov_buckets, prev_var_name or "Unchanged",
               vocab_info.backup_initializer or "zero-initialized"))
       _warm_start_var_with_vocab(
           variable,
@@ -462,7 +462,8 @@ def warm_start(ckpt_to_initialize_from,
       # For the special value of vars_to_warm_start = None,
       # we only warm-start variables with explicitly specified vocabularies.
       if vars_to_warm_start:
-        logging.info("Warm-starting variable: {}; prev_var_name: {}".format(
+        warmstarted_count += 1
+        logging.debug("Warm-starting variable: {}; prev_var_name: {}".format(
             var_name, prev_var_name or "Unchanged"))
         # Because we use a default empty list in grouped_variables, single
         # unpartitioned variables will be lists here, which we rectify in order
@@ -476,6 +477,8 @@ def warm_start(ckpt_to_initialize_from,
   prev_var_name_not_used = set(
       var_name_to_prev_var_name.keys()) - prev_var_name_used
   vocab_info_not_used = set(var_name_to_vocab_info.keys()) - vocab_info_used
+
+  logging.info("Warm-started %d variables.", warmstarted_count)
 
   if prev_var_name_not_used:
     raise ValueError(

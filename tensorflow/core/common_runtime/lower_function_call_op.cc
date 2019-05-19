@@ -23,6 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
 constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
@@ -48,7 +49,9 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
   // NOTE(ezhulenev): We explicitly choose not to deal with SymbolicGradient,
   // because it has been deprecated for a long time.
   InlineFunctionBodyOptions inline_options;
-  inline_options.keep_caller_fetchable = keep_caller_fetchable;
+  inline_options.keep_caller_node = keep_caller_fetchable
+                                        ? KeepCallerNode::kFetchable
+                                        : KeepCallerNode::kTargetable;
 
   if (LowerAsMultiDeviceFunction(n)) {
     // Multi-device function calls (PartitionedCall or StatefulPartitionedCall
@@ -57,6 +60,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     // Tensorflow 2.0 Eager mode, and it has control outputs to represent
     // side-effects that must always execute (see `control_ret` in FunctionDef).
     inline_options.override_device = false;
+    inline_options.initialize_empty_device = true;
     inline_options.output_control_src = OutputControlSrc::kControlOutputs;
   } else {
     // Native function call (node.type_string() is the function name). These

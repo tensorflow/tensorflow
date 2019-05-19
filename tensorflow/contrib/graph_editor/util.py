@@ -450,18 +450,19 @@ def placeholder_name(t=None, scope=None, prefix=_DEFAULT_PLACEHOLDER_PREFIX):
 
 def make_placeholder_from_tensor(t, scope=None,
                                  prefix=_DEFAULT_PLACEHOLDER_PREFIX):
-  """Create a `tf.placeholder` for the Graph Editor.
+  """Create a `tf.compat.v1.placeholder` for the Graph Editor.
 
   Note that the correct graph scope must be set by the calling function.
 
   Args:
-    t: a `tf.Tensor` whose name will be used to create the placeholder
-      (see function placeholder_name).
-    scope: absolute scope within which to create the placeholder. None
-      means that the scope of `t` is preserved. `""` means the root scope.
+    t: a `tf.Tensor` whose name will be used to create the placeholder (see
+      function placeholder_name).
+    scope: absolute scope within which to create the placeholder. None means
+      that the scope of `t` is preserved. `""` means the root scope.
     prefix: placeholder name prefix.
+
   Returns:
-    A newly created `tf.placeholder`.
+    A newly created `tf.compat.v1.placeholder`.
   Raises:
     TypeError: if `t` is not `None` or a `tf.Tensor`.
   """
@@ -472,7 +473,7 @@ def make_placeholder_from_tensor(t, scope=None,
 
 def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None,
                                           prefix=_DEFAULT_PLACEHOLDER_PREFIX):
-  """Create a tf.placeholder for the Graph Editor.
+  """Create a tf.compat.v1.placeholder for the Graph Editor.
 
   Note that the correct graph scope must be set by the calling function.
   The placeholder is named using the function placeholder_name (with no
@@ -481,9 +482,10 @@ def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None,
   Args:
     dtype: the tensor type.
     shape: the tensor shape (optional).
-    scope: absolute scope within which to create the placeholder. None
-      means that the scope of t is preserved. "" means the root scope.
+    scope: absolute scope within which to create the placeholder. None means
+      that the scope of t is preserved. "" means the root scope.
     prefix: placeholder name prefix.
+
   Returns:
     A newly created tf.placeholder.
   """

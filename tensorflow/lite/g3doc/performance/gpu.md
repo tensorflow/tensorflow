@@ -44,7 +44,7 @@ package in the existing `dependencies` block.
 dependencies {
     ...
     implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-gpu-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly'
 }
 ```
 
@@ -123,14 +123,13 @@ Settings` set `Build Active Architecture Only > Release` to Yes.
 
 ### Android
 
-Look at the demo to see how to add the
-delegate. In your application, add the AAR as above, import
-`org.tensorflow.lite.experimental.GpuDelegate` module, and use the`addDelegate`
-function to register the GPU delegate to the interpreter:
+Look at the demo to see how to add the delegate. In your application, add the
+AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
+the`addDelegate` function to register the GPU delegate to the interpreter:
 
 ```java
 import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.experimental.GpuDelegate;
+import org.tensorflow.lite.gpu.GpuDelegate;
 
 // Initialize interpreter with GPU delegate
 GpuDelegate delegate = new GpuDelegate();

@@ -58,6 +58,12 @@ class ImageClassificationStage : public EvaluationStage {
     ground_truth_label_ = ground_truth_label;
   }
 
+  // Provides a pointer to the underlying TfLiteInferenceStage.
+  // Returns non-null value only if this stage has been initialized.
+  TfliteInferenceStage* const GetInferenceStage() {
+    return inference_stage_.get();
+  }
+
  private:
   const std::vector<std::string>* all_labels_ = nullptr;
   std::unique_ptr<ImagePreprocessingStage> preprocessing_stage_;

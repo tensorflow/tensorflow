@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/concat_lib_gpu.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -140,8 +140,8 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
                    const GpuDeviceArrayStruct<IntType>& output_scan,
                    bool fixed_size, int split_size,
                    typename TTypes<T, 2>::Matrix* output) {
-  auto config = GetCuda2DLaunchConfig(output->dimension(1),
-                                      output->dimension(0), gpu_device);
+  auto config = GetGpu2DLaunchConfig(output->dimension(1), output->dimension(0),
+                                     gpu_device);
 
   if (fixed_size) {
     TF_CHECK_OK(CudaLaunchKernel(

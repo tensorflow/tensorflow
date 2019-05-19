@@ -36,7 +36,6 @@ from tensorflow.python.keras import models
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale as loss_scale_module
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
@@ -45,6 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
@@ -293,9 +293,14 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'testcase_name': 'regularizer',
       'strategy_fn': create_mirrored_strategy,
       'use_regularizer': True
+  }, {
+      'testcase_name': 'nocloning',
+      'strategy_fn': create_mirrored_strategy,
+      'cloning': False
   })
   @test_util.run_in_graph_and_eager_modes
-  def test_model(self, strategy_fn, use_operator=False, use_regularizer=False):
+  def test_model(self, strategy_fn, use_operator=False, use_regularizer=False,
+                 cloning=True):
     regularizer = IdentityRegularizer() if use_regularizer else None
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
@@ -314,7 +319,7 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         # the variable will not change. So this tests the learning rate not
         # applied to a float16 value, but instead the float32 variable.
         opt = gradient_descent.SGD(2 ** -14)
-        model.compile(opt, loss=loss_fn)
+        model.compile(opt, loss=loss_fn, cloning=cloning)
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((2, 1))
@@ -327,6 +332,53 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
     if use_regularizer:
       # Regularizer adds another 2 ** -14 to the gradient.
       expected -= 2 ** -14
+    self.assertEqual(backend.eval(layer.v), expected)
+
+  @parameterized.named_parameters({
+      'testcase_name': 'base',
+      'strategy_fn': default_strategy_fn
+  }, {
+      'testcase_name': 'distribute',
+      'strategy_fn': create_mirrored_strategy,
+  }, {
+      'testcase_name': 'nocloning',
+      'strategy_fn': create_mirrored_strategy,
+      'cloning': False,
+  })
+  @test_util.run_in_graph_and_eager_modes
+  def test_fixed_loss_scaling(self, strategy_fn, cloning=True):
+    # Note: We do not test mixed precision in this method, only loss scaling.
+    loss_scale = 8.
+    batch_size = 4
+    with strategy_fn().scope():
+      x = layers.Input(shape=(1,), batch_size=batch_size)
+      layer = AddLayer()
+      y = layer(x)
+
+      # The gradient of 'y' at this point is 1. With loss scaling, the gradient
+      # is 'loss_scale'. We divide by the batch size since the loss is averaged
+      # across batch elements.
+      expected_gradient = loss_scale / batch_size
+      identity_with_grad_check_fn = (
+          mp_test_util.create_identity_with_grad_check_fn([expected_gradient]))
+      y = core.Lambda(identity_with_grad_check_fn)(y)
+      model = models.Model(inputs=x, outputs=y)
+
+      def loss_fn(y_true, y_pred):
+        del y_true
+        return math_ops.reduce_mean(y_pred)
+
+      opt = gradient_descent.SGD(1.)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      model.compile(opt, loss=loss_fn, cloning=cloning)
+
+    self.assertEqual(backend.eval(layer.v), 1)
+    x = np.ones((batch_size, 1))
+    y = np.ones((batch_size, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(batch_size)
+    model.fit(dataset)
+    # Variable starts at 1, and should have gradient of 1 subtracted from it.
+    expected = 0
     self.assertEqual(backend.eval(layer.v), expected)
 
   @parameterized.named_parameters({
@@ -372,14 +424,13 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         y = layer4(y)
         if use_loss_scaling:
           # The gradient of 'y' at this point is 1. With loss scaling, the
-          # gradient is 'loss_scale'. The DistributionStrategy additionally
-          # scales the gradient by 1/num_replicas in_sync. We divide by the
-          # batch size of 2 since the loss is averaged across batch elements.
-          expected_gradient = loss_scale / strategy.num_replicas_in_sync / 2
+          # gradient is 'loss_scale'. We divide by the batch size of 2 since the
+          # loss is averaged across batch elements.
+          expected_gradient = loss_scale / 2
           identity_with_grad_check_fn = (
               mp_test_util.create_identity_with_grad_check_fn(
                   expected_dtype=dtypes.float16,
-                  expected_gradient=[expected_gradient] * 2))
+                  expected_gradient=[expected_gradient]))
           y = core.Lambda(identity_with_grad_check_fn)(y)
         y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
@@ -406,24 +457,29 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         # Layer does not have weight regularizer
         self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
 
+  # TODO(reedwm): Add and fix test where cloning=False is passed to
+  # Model.compile. Currently the test fails if cloning=False is passed.
   @parameterized.named_parameters({
       'testcase_name': 'base',
       'strategy_fn': default_strategy_fn
   }, {
       'testcase_name': 'distribute',
       'strategy_fn': create_mirrored_strategy,
+  }, {
+      'testcase_name': 'nocloning',
+      'strategy_fn': create_mirrored_strategy,
+      'cloning': False,
   })
   @test_util.run_in_graph_and_eager_modes
-  def test_dynamic_loss_scaling(self, strategy_fn):
+  def test_dynamic_loss_scaling(self, strategy_fn, cloning=True):
     strategy = strategy_fn()
     initial_loss_scale = 2.
-    batch_size = 2
-    expected_gradient = backend.variable(
-        [initial_loss_scale / strategy.num_replicas_in_sync / batch_size] * 2,
-        dtype=dtypes.float16)
+    batch_size = 4
+    expected_gradient = backend.variable([initial_loss_scale / batch_size],
+                                         dtype=dtypes.float16)
     # If this variable is set to True, the model below will have NaN gradients
     have_nan_gradients = backend.variable(False, dtype=dtypes.bool)
-    with strategy_fn().scope():
+    with strategy.scope():
       with policy.policy_scope(policy.Policy('infer_float32_vars')):
         x = layers.Input(shape=(1,), batch_size=batch_size,
                          dtype=dtypes.float16)
@@ -449,12 +505,12 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         loss_scale = loss_scale_module.DynamicLossScale(
             initial_loss_scale=initial_loss_scale, increment_period=2)
         opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-        model.compile(opt, loss=loss_fn)
+        model.compile(opt, loss=loss_fn, cloning=cloning)
 
     self.assertEqual(backend.eval(layer.v), 1)
-    x = np.ones((2, 1))
-    y = np.ones((2, 1))
-    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
+    x = np.ones((batch_size, 1))
+    y = np.ones((batch_size, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(batch_size)
     model.fit(dataset)
     # The variables starts with 1 and has a gradient of 1, so will go down by 1
     # each step.

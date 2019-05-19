@@ -28,10 +28,8 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -127,8 +125,9 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
           self.assertEqual(
               sess.run(list(left.values)), list(right.values))
 
-  def _testReductionAndBroadcast(self, cross_device_ops, distribution):
-    devices = distribution.extended.worker_devices
+  def _testReductionAndBroadcast(self, cross_device_ops, devices):
+    if context.num_gpus() < sum(1 for d in devices if "GPU" in d.upper()):
+      self.skipTest("Not enough GPUs")
 
     values = [constant_op.constant(float(d)) for d in range(len(devices))]
     per_replica = _make_per_replica(values, devices)
@@ -241,9 +240,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
 
 
 class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
-  # TODO(yuefengz): decouple the num_gpus check from distribution in
-  # combinations module so that we can pass in devices instead of a distribution
-  # strategy.
+
   reduction_to_one_combinations = combinations.combine(
       cross_device_ops=[
           combinations.NamedObject("DefaultReductionToOneDevice",
@@ -257,10 +254,10 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
               cross_device_ops_lib.ReductionToOneDevice(
                   accumulation_fn=math_ops.accumulate_n)),
       ],
-      distribution=[
-          strategy_combinations.one_device_strategy,
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          strategy_combinations.mirrored_strategy_with_two_gpus,
+      devices=[
+          ["/cpu:0"],
+          ["/cpu:0", "/gpu:0"],
+          ["/gpu:0", "/gpu:1"],
       ],
       mode=["graph", "eager"])
   allreduce_combinations = combinations.combine(
@@ -281,15 +278,14 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
               cross_device_ops_lib.AllReduceCrossDeviceOps(
                   "hierarchical_copy", 0, 100, 10))
       ],
-      distribution=[
-          strategy_combinations.mirrored_strategy_with_two_gpus,
+      devices=[
+          ["/gpu:0", "/gpu:1"],
       ],
       mode=["graph", "eager"])
 
   @combinations.generate(reduction_to_one_combinations + allreduce_combinations)
-  def testReductionAndBroadcast(self, cross_device_ops, distribution):
-    with distribution.scope():
-      self._testReductionAndBroadcast(cross_device_ops, distribution)
+  def testReductionAndBroadcast(self, cross_device_ops, devices):
+    self._testReductionAndBroadcast(cross_device_ops, devices)
 
   def testChooseAlgorithm(self):
     device_links = [[1, 2, 3, 4], [0, 2, 3, 5], [0, 1, 3, 6], [0, 1, 2, 7],
@@ -394,32 +390,27 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
                   worker_devices, 2, [("pscpu/pscpu", 2, 100),
                                       ("xring", 2, -1)], 0, 0, 0)),
       ],
-      distribution=[
-          combinations.NamedDistribution(
-              "MirroredCPU",
-              lambda: mirrored_strategy.MirroredStrategy(["/device:CPU:0"]),
-              required_gpus=0),
-          combinations.NamedDistribution(
-              "Mirrored1GPU",
-              lambda: mirrored_strategy.MirroredStrategy(["/device:GPU:0"]),
-              required_gpus=1),
-          combinations.NamedDistribution(
-              "Mirrored2GPUs",
-              # pylint: disable=g-long-lambda
-              lambda: mirrored_strategy.MirroredStrategy(
-                  ["/device:GPU:0", "/device:GPU:1"]),
-              required_gpus=2),
+      devices=[
+          [
+              "/job:worker/replica:0/task:0/device:CPU:0",
+              "/job:worker/replica:0/task:1/device:CPU:0"
+          ],
+          [
+              "/job:worker/replica:0/task:0/device:GPU:0",
+              "/job:worker/replica:0/task:1/device:GPU:0"
+          ],
+          [
+              "/job:worker/replica:0/task:0/device:GPU:0",
+              "/job:worker/replica:0/task:0/device:GPU:1",
+              "/job:worker/replica:0/task:1/device:GPU:0",
+              "/job:worker/replica:0/task:1/device:GPU:1"
+          ],
       ],
       mode=["graph"])
 
   @combinations.generate(multi_worker_allreduce_combinations)
-  def testReductionAndBroadcast(self, cross_device_ops, distribution):
-    distribution.configure(cluster_spec={
-        "worker":
-            ["/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"]
-    })
-    with distribution.scope():
-      self._testReductionAndBroadcast(cross_device_ops, distribution)
+  def testReductionAndBroadcast(self, cross_device_ops, devices):
+    self._testReductionAndBroadcast(cross_device_ops, devices)
 
 
 NUM_WORKERS = 3

@@ -38,7 +38,6 @@ from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.converters import directives
-from tensorflow.python.autograph.converters import error_handlers
 from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
@@ -47,7 +46,6 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
@@ -311,7 +309,7 @@ def convert(entity, program_ctx):
   return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
 
-def is_whitelisted_for_graph(o):
+def is_whitelisted_for_graph(o, check_call_override=True):
   """Checks whether an entity is whitelisted for use in graph mode.
 
   Examples of whitelisted entities include all members of the tensorflow
@@ -319,6 +317,9 @@ def is_whitelisted_for_graph(o):
 
   Args:
     o: A Python entity.
+    check_call_override: Reserved for internal use. When set to `False`, it
+      disables the rule according to which classes are whitelisted if their
+      __call__ method is whitelisted.
 
   Returns:
     Boolean
@@ -334,15 +335,9 @@ def is_whitelisted_for_graph(o):
   if hasattr(m, '__name__'):
     # Builtins typically have unnamed modules.
     for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
-      if m.__name__.startswith(prefix):
+      if m.__name__.startswith(prefix + '.') or m.__name__ == prefix:
         logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
         return True
-
-    # Temporary -- whitelist tensorboard modules.
-    # TODO(b/122731813): Remove.
-    if m.__name__ == 'tensorboard' or '.tensorboard' in m.__name__:
-      logging.log(2, 'Whitelisted: %s: name contains "tensorboard"', o)
-      return True
 
   if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
     logging.log(2, 'Whitelisted: %s: already converted', o)
@@ -355,7 +350,7 @@ def is_whitelisted_for_graph(o):
     logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
     return True
 
-  if hasattr(o, '__call__'):
+  if check_call_override and hasattr(o, '__call__'):
     # Callable objects: whitelisted if their __call__ method is.
     # The type check avoids infinite recursion around the __call__ method
     # of function objects.
@@ -387,7 +382,9 @@ def is_whitelisted_for_graph(o):
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      if is_whitelisted_for_graph(owner_class):
+      is_call_override = (o.__name__ == '__call__')
+      if is_whitelisted_for_graph(
+          owner_class, check_call_override=not is_call_override):
         logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True
@@ -580,8 +577,6 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
-    ag_internal.rewrite_graph_construction_error = (
-        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -615,7 +610,8 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
     node, = nodes
 
   # TODO(znado): Place inside standard_analysis.
-  origin_info.resolve(node, source, f)
+  origin_info.resolve_entity(node, source, f)
+
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)
   namer = naming.Namer(namespace)
@@ -681,13 +677,10 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
-  if context.program.options.uses(converter.Feature.LOGICAL_EXPRESSIONS):
-    node = converter.apply_(node, context, logical_expressions)
+  node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.
   if context.program.options.uses(converter.Feature.NAME_SCOPES):
     node = converter.apply_(node, context, function_scopes)
-  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
-    node = converter.apply_(node, context, error_handlers)
   return node

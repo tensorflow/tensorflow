@@ -58,6 +58,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "AvgPool3D",
           "AvgPoolGrad",
           "BatchMatMul",
+          "BatchMatMulV2",
           "BatchNormWithGlobalNormalization",
           "BatchNormWithGlobalNormalizationGrad",
           "BatchToSpace",

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/boosted_trees/resources.h"
@@ -261,7 +262,7 @@ class BoostedTreesCenterBiasOp : public OpKernel {
     const Tensor* mean_gradients_t;
     OP_REQUIRES_OK(context,
                    context->input("mean_gradients", &mean_gradients_t));
-
+    const int32 logits_dim = mean_gradients_t->dim_size(1);
     const Tensor* mean_hessians_t;
     OP_REQUIRES_OK(context, context->input("mean_hessians", &mean_hessians_t));
 
@@ -274,14 +275,18 @@ class BoostedTreesCenterBiasOp : public OpKernel {
     const auto l2 = l2_t->scalar<float>()();
 
     // For now, assume 1-dimensional weight on leaves.
-    float logits;
+    Eigen::VectorXf logits_vector(1);
     float unused_gain;
 
-    // TODO(nponomareva): change this when supporting multiclass.
-    const float gradients_mean = mean_gradients_t->flat<float>()(0);
-    const float hessians_mean = mean_hessians_t->flat<float>()(0);
-    CalculateWeightsAndGains(gradients_mean, hessians_mean, l1, l2, &logits,
-                             &unused_gain);
+    // TODO(crawles): Support multiclass.
+    DCHECK_EQ(logits_dim, 1);
+    Eigen::VectorXf gradients_mean(1);
+    Eigen::VectorXf hessians_mean(1);
+    gradients_mean[0] = mean_gradients_t->flat<float>()(0);
+    hessians_mean[0] = mean_hessians_t->flat<float>()(0);
+    CalculateWeightsAndGains(gradients_mean, hessians_mean, l1, l2,
+                             &logits_vector, &unused_gain);
+    const float logits = logits_vector[0];
 
     float current_bias = 0.0;
     bool continue_centering = true;

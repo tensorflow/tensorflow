@@ -111,6 +111,9 @@ FunctionDef EmptyBodySwap();
 // x:float, y:resource -> y:resource, 2*x:float.
 FunctionDef ResourceOutput();
 
+// x:resource -> x:resource
+FunctionDef ResourceIdentity();
+
 // x:resource -> y:float.
 FunctionDef ReadResourceVariable();
 
@@ -131,6 +134,9 @@ FunctionDef RandomUniformLess();
 
 // x:T -> y: TensorSliceDatasetOp::Dataset
 FunctionDef MakeTensorSliceDataset();
+
+// x:T -> y: T, idx: out_idx
+FunctionDef Unique();
 
 void FunctionTestSchedClosure(std::function<void()> fn);
 

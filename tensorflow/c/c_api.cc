@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/kernels/logging_ops.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -112,28 +112,6 @@ const char* TF_Version() { return TF_VERSION_STRING; }
 size_t TF_DataTypeSize(TF_DataType dt) {
   return static_cast<size_t>(
       tensorflow::DataTypeSize(static_cast<DataType>(dt)));
-}
-
-// --------------------------------------------------------------------------
-
-TF_Status* TF_NewStatus() { return new TF_Status; }
-
-void TF_DeleteStatus(TF_Status* s) { delete s; }
-
-void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
-  if (code == TF_OK) {
-    s->status = Status::OK();
-    return;
-  }
-  s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
-}
-
-TF_Code TF_GetCode(const TF_Status* s) {
-  return static_cast<TF_Code>(s->status.code());
-}
-
-const char* TF_Message(const TF_Status* s) {
-  return s->status.error_message().c_str();
 }
 
 // --------------------------------------------------------------------------

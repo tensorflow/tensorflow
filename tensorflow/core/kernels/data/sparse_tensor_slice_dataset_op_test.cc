@@ -524,7 +524,8 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Roundtrip) {
     TF_ASSERT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_ASSERT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_ASSERT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *dataset, &iterator));
   }
 }
 

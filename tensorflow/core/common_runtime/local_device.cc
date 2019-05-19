@@ -109,7 +109,9 @@ struct LocalDevice::EigenThreadPoolInfo {
     eigen_worker_threads_.num_threads = intra_op_parallelism_threads;
     eigen_worker_threads_.workers = new thread::ThreadPool(
         options.env, thread_opts, strings::StrCat("numa_", numa_node, "_Eigen"),
-        intra_op_parallelism_threads);
+        intra_op_parallelism_threads,
+        !options.config.experimental().disable_thread_spinning(),
+        /*allocator=*/nullptr);
     Eigen::ThreadPoolInterface* threadpool =
         eigen_worker_threads_.workers->AsEigenThreadPool();
     if (threadpool == nullptr) {

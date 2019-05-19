@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 ENV CUDA_VERSION 10.0.130
 ENV CUDA_PKG_VERSION 10-0=$CUDA_VERSION-1
 ENV CUDNN_VERSION 7.3.1.20
-ENV TENSORRT_VERSION 5.0.2
+ENV TENSORRT_VERSION 5.1.5
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 ENV NVIDIA_REQUIRE_CUDA "cuda>=10.0,driver>=410"
 ENV NVIDIA_VISIBLE_DEVICES all
@@ -47,8 +47,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcudnn7=$CUDNN_VERSION-1+cuda10.0 \
         libcudnn7=$CUDNN_VERSION-1+cuda10.0 \
         libcudnn7-dev=$CUDNN_VERSION-1+cuda10.0 \
-        nvinfer-runtime-trt-repo-ubuntu1604-$TENSORRT_VERSION-ga-cuda10.0 && \
-    apt-get update && apt-get install -y --no-install-recommends \
         libnvinfer5=$TENSORRT_VERSION-1+cuda10.0 \
         libnvinfer-dev=$TENSORRT_VERSION-1+cuda10.0 && \
     ln -s cuda-10.0 /usr/local/cuda && \

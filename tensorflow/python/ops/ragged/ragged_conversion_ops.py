@@ -18,15 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
-def from_tensor(tensor, lengths=None, padding=None, ragged_rank=1, name=None):
+def from_tensor(tensor, lengths=None, padding=None, ragged_rank=1,
+                row_splits_dtype=dtypes.int64, name=None):
   if ragged_tensor.is_ragged(tensor):
     return tensor
   else:
-    return ragged_tensor.RaggedTensor.from_tensor(tensor, lengths, padding,
-                                                  ragged_rank, name)
+    return ragged_tensor.RaggedTensor.from_tensor(
+        tensor,
+        lengths=lengths,
+        padding=padding,
+        ragged_rank=ragged_rank,
+        row_splits_dtype=row_splits_dtype,
+        name=name)
 
 
 def to_tensor(rt_input, default_value=None, name=None):

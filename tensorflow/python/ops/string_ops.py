@@ -123,7 +123,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   Example:
     Formatting a single-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor = tf.range(10)
         formatted = tf.strings.format("tensor: {}, suffix", tensor)
@@ -135,7 +135,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
 
     Formatting a multi-tensor template:
     ```python
-    sess = tf.Session()
+    sess = tf.compat.v1.Session()
     with sess.as_default():
         tensor_one = tf.reshape(tf.range(100), [10, 10])
         tensor_two = tf.range(10)
@@ -459,7 +459,7 @@ def string_to_hash_bucket(input, num_buckets, name=None):
 
   Note that the hash function may change from time to time.
   This functionality will be deprecated and it's recommended to use
-  `tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
+  `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
 
   Args:
     input: A `Tensor` of type `string`.

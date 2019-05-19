@@ -17,14 +17,20 @@ package_group(
 package_group(
     name = "friends",
     includes = [":internal"],
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/brain/tools/tf_replay/...",
+        "//tensorflow/...",
+    ],
 )
 
 package(
     default_visibility = [":internal"],
 )
 
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
 
 cc_library(
@@ -190,6 +196,7 @@ cc_library(
         ":tf2xla_util",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_cluster_util",
+        "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -210,6 +217,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
@@ -285,6 +293,7 @@ cc_library(
     name = "tf2xla_util",
     srcs = ["tf2xla_util.cc"],
     hdrs = ["tf2xla_util.h"],
+    visibility = [":friends"],
     deps = [
         ":sharding_util",
         ":tf2xla_proto",
@@ -376,6 +385,7 @@ tf_cc_test(
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -390,6 +400,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -491,6 +502,28 @@ cc_library(
         ":functionalize_while",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "rearrange_function_argument",
+    srcs = [
+        "rearrange_function_argument.cc",
+    ],
+    hdrs = [
+        "rearrange_function_argument.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",

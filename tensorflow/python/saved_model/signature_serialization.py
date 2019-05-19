@@ -136,7 +136,7 @@ def canonicalize_signatures(signatures):
 def _is_flat(sequence):
   sequence_flat = nest.flatten(sequence)
   try:
-    nest.assert_same_structure(sequence_flat, sequence)
+    nest.assert_same_structure(sequence_flat, sequence, check_types=False)
     return True
   except ValueError:
     return False

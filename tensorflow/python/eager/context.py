@@ -335,7 +335,12 @@ class Context(object):
     self._execution_mode = execution_mode
     self._server_def = server_def
     self._collective_ops_server_def = None
+    self._collective_leader = None
+    self._collective_scoped_allocator_enabled_ops = None
+    self._collective_use_nccl_communication = None
+    self._collective_device_filters = None
 
+    self._device_lock = threading.Lock()
     self._physical_devices = None
     self._visible_device_list = []
     self._memory_growth_map = None
@@ -371,7 +376,7 @@ class Context(object):
     """
     return self._rng.randint(0, _MAXINT32)
 
-  def _initialize_devices(self):
+  def _initialize_logical_devices(self):
     """Helper to initialize devices."""
     # Store list of devices
     self._logical_devices = []
@@ -423,7 +428,7 @@ class Context(object):
         pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
                                                   server_def_str)
 
-      self._initialize_devices()
+      self._initialize_logical_devices()
 
   def _clear_caches(self):
     self.scalar_cache().clear()
@@ -462,12 +467,10 @@ class Context(object):
       # Clear all the caches in case there are remote tensors in them.
       self._clear_caches()
 
-      self._initialize_devices()
+      self._initialize_logical_devices()
 
   def enable_collective_ops(self, server_def):
-    """Enable collective ops with an appropriate server_def.
-
-    If previously enabled, this cannot be re-enabled.
+    """Enable distributed collective ops with an appropriate server_def.
 
     Args:
       server_def: A tensorflow::ServerDef proto. Enables execution on remote
@@ -475,18 +478,58 @@ class Context(object):
 
     Raises:
       ValueError: if server_def is None.
+      RuntimeError: if this method is not called at program startup.
     """
     if not server_def:
       raise ValueError("server_def is None.")
-    if not self._context_handle:
-      self._collective_ops_server_def = server_def
-    else:
-      server_def_str = server_def.SerializeToString()
-      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
-                                                server_def_str)
 
-      self._clear_caches()
-      self._initialize_devices()
+    if self._context_handle is not None:
+      raise RuntimeError("Collective ops must be enabled at program startup")
+
+    self._collective_ops_server_def = server_def
+
+  def configure_collective_ops(
+      self,
+      collective_leader="",
+      scoped_allocator_enabled_ops=("CollectiveReduce",),
+      use_nccl_communication=False,
+      device_filters=None):
+    """Configure collective ops.
+
+      Collective group leader is necessary for collective ops to run, other
+      configurations are mainly for the purpose of performance.
+
+    Args:
+      collective_leader: a device string for collective leader, e.g.
+        "/job:worker/replica:0/task:"; empty string means local execution of
+          collective ops.
+      scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
+        allocator to run with.
+      use_nccl_communication: whether to use nccl communication for collective
+        ops.
+      device_filters: a tuple or a list of device strings. If set, corresponding
+        task can only see the devices filtered by these device filters.
+
+    Raises:
+      RuntimeError: if this method is not called at program startup.
+    """
+    if self._collective_leader is not None:
+      if (self._collective_leader != collective_leader or
+          self._collective_scoped_allocator_enabled_ops !=
+          scoped_allocator_enabled_ops or
+          self._collective_use_nccl_communication != use_nccl_communication or
+          self._collective_device_filters != device_filters):
+        raise ValueError("Collective ops are already configured.")
+      else:
+        return
+
+    if self._context_handle is not None:
+      raise RuntimeError("Collective ops must be configured at program startup")
+
+    self._collective_leader = collective_leader
+    self._collective_scoped_allocator_enabled_ops = scoped_allocator_enabled_ops
+    self._collective_use_nccl_communication = use_nccl_communication
+    self._collective_device_filters = device_filters
 
   @property
   def _handle(self):
@@ -667,6 +710,9 @@ class Context(object):
   @property
   def config(self):
     """Return the ConfigProto with all runtime deltas applied."""
+    # Ensure physical devices have been discovered and config has been imported
+    self._initialize_physical_devices()
+
     config = config_pb2.ConfigProto()
     if self._config is not None:
       config.CopyFrom(self._config)
@@ -720,6 +766,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
     nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
     if nodes is not None:
@@ -728,7 +775,7 @@ class Context(object):
     # Compute device counts
     config.device_count["CPU"] = 0
     config.device_count["GPU"] = 0
-    for dev in self.list_physical_devices():
+    for dev in self._physical_devices:
       if dev not in self._visible_device_list:
         continue
 
@@ -741,6 +788,23 @@ class Context(object):
     # Configure gpu_options
     gpu_options = self._compute_gpu_options()
     config.gpu_options.MergeFrom(gpu_options)
+
+    # Configure collective ops
+    if self._collective_leader:
+      config.experimental.collective_group_leader = self._collective_leader
+    if self._collective_scoped_allocator_enabled_ops:
+      rewrite_options = config.graph_options.rewrite_options
+      rewrite_options.scoped_allocator_optimization = (
+          rewriter_config_pb2.RewriterConfig.ON)
+      del rewrite_options.scoped_allocator_opts.enable_op[:]
+      for op in self._collective_scoped_allocator_enabled_ops:
+        rewrite_options.scoped_allocator_opts.enable_op.append(op)
+    if self._collective_use_nccl_communication:
+      config.experimental.collective_nccl = True
+    if self._collective_device_filters:
+      del config.device_filters[:]
+      for f in self._collective_device_filters:
+        config.device_filters.append(f)
 
     return config
 
@@ -846,6 +910,17 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
+  def remove_function(self, name):
+    """Remove a function from the context.
+
+    Once removed, the function cannot be executed anymore.
+
+    Args:
+      name: function signature name.
+    """
+    self.ensure_initialized()
+    pywrap_tensorflow.TFE_ContextRemoveFunction(self._handle, name)
+
   def has_function(self, name):
     """Check if a function `name` is registered."""
     self.ensure_initialized()
@@ -886,6 +961,31 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
+  def _initialize_physical_devices(self):
+    """Get local devices visible to the system."""
+    # We lazy initialize self._physical_devices since we do not want to do this
+    # the constructor since the backend may not be initialized yet.
+    with self._device_lock:
+      if self._physical_devices is not None:
+        return
+
+      devs = pywrap_tensorflow.TF_ListPhysicalDevices()
+      self._physical_devices = [
+          PhysicalDevice(name=d.decode(),
+                         device_type=d.decode().split(":")[1]) for d in devs]
+      # Construct the visible device list from all physical devices but ignore
+      # XLA devices
+      self._visible_device_list = [
+          d for d in self._physical_devices
+          if not d.device_type.startswith("XLA")
+      ]
+      self._memory_growth_map = {
+          d: None for d in self._physical_devices if d.device_type == "GPU"
+      }
+
+    # Import device settings that may have been passed into the constructor
+    self._import_config()
+
   def list_physical_devices(self, device_type=None):
     """List local devices visible to the system.
 
@@ -899,26 +999,7 @@ class Context(object):
     Returns:
       List of PhysicalDevice objects.
     """
-    # We lazy initialize self._physical_devices since we do not want to do this
-    # the constructor since the backend may not be initialized yet.
-    if self._physical_devices is None:
-      devs = pywrap_tensorflow.TF_ListPhysicalDevices()
-      self._physical_devices = [
-          PhysicalDevice(name=d.decode(), device_type=d.decode().split(":")[1])
-          for d in devs
-      ]
-      # Construct the visible device list from all physical devices but ignore
-      # XLA devices
-      self._visible_device_list = [
-          d for d in self._physical_devices
-          if not d.device_type.startswith("XLA")
-      ]
-      self._memory_growth_map = {
-          d: None for d in self._physical_devices if d.device_type == "GPU"
-      }
-
-      # Import device settings that may have been passed into the constructor
-      self._import_config()
+    self._initialize_physical_devices()
 
     if device_type is not None:
       return [
@@ -948,13 +1029,31 @@ class Context(object):
         self.set_virtual_device_configuration(
             cpus[0], [VirtualDeviceConfiguration() for _ in range(num_cpus)])
 
+    # Parse GPU options
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
+
+    # If there are no GPUs detected, simply ignore all the GPU options passed in
+    # rather than doing any validation checks.
+    if not gpus:
+      return
+
     gpu_count = self._config.device_count.get("GPU", None)
-    if gpu_count == 0:
-      self.set_visible_devices([], "GPU")
-    elif gpu_count is not None:
-      # TODO(gjn): Handle importing existing virtual GPU configuration
-      self.set_visible_devices(gpus[:gpu_count], "GPU")
+
+    visible_gpus = []
+    # TODO(gjn): Handle importing existing virtual GPU configuration
+    visible_indices = self._config.gpu_options.visible_device_list
+    if visible_indices:
+      for index in visible_indices.split(","):
+        if int(index) >= len(gpus):
+          raise ValueError("Invalid visible device index: %s" % index)
+        visible_gpus.append(gpus[int(index)])
+    else:
+      visible_gpus = gpus
+
+    if gpu_count is not None:
+      visible_gpus = visible_gpus[:gpu_count]
+
+    self.set_visible_devices(visible_gpus, "GPU")
 
   def list_logical_devices(self, device_type=None):
     """Return logical devices."""
@@ -971,6 +1070,8 @@ class Context(object):
 
   def get_visible_devices(self, device_type=None):
     """Get the list of visible devices."""
+    self._initialize_physical_devices()
+
     if device_type is None:
       return self._visible_device_list
     else:
@@ -982,6 +1083,8 @@ class Context(object):
     """Set the list of visible devices."""
     if self._context_handle is not None:
       raise RuntimeError("Visible devices must be set at program startup")
+
+    self._initialize_physical_devices()
 
     if not isinstance(devices, list):
       devices = [devices]
@@ -1003,6 +1106,8 @@ class Context(object):
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
+    self._initialize_physical_devices()
+
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
 
@@ -1012,6 +1117,8 @@ class Context(object):
     """Set if memory growth should be enabled for a PhysicalDevice."""
     if self._context_handle is not None:
       raise RuntimeError("Memory growth must be set at program startup")
+
+    self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
@@ -1024,6 +1131,8 @@ class Context(object):
 
   def get_virtual_device_configuration(self, dev):
     """Get the virtual device configuration for a PhysicalDevice."""
+    self._initialize_physical_devices()
+
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
 
@@ -1033,6 +1142,8 @@ class Context(object):
     """Set the virtual device configuration for a PhysicalDevice."""
     if self._context_handle is not None:
       raise RuntimeError("Virtual devices must be set at program startup")
+
+    self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
       raise ValueError("Unrecognized device: %s" % repr(dev))
@@ -1095,6 +1206,7 @@ class Context(object):
     rewriter_toggle("scoped_allocator_optimization")
     rewriter_toggle("pin_to_host_optimization")
     rewriter_toggle("implementation_selector")
+    rewriter_toggle("auto_mixed_precision")
     rewriter_bool("disable_meta_optimizer")
 
     if rewrite_options.min_graph_nodes != 0:
@@ -1152,6 +1264,9 @@ class Context(object):
 
   @log_device_placement.setter
   def log_device_placement(self, enabled):
+    if self._log_device_placement == enabled:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
           "Device placement logging must be set at program startup")
@@ -1205,7 +1320,7 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
 
   def disable_graph_collection(self):
-    """Disables graph collections of executed functions."""
+    """Disables graph collection of executed functions."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
@@ -1339,9 +1454,9 @@ def internal_operation_seed():
 def executing_eagerly():
   """Returns True if the current thread has eager execution enabled.
 
-  Eager execution is typically enabled via `tf.enable_eager_execution`,
-  but may also be enabled within the context of a Python function via
-  tf.contrib.eager.py_func.
+  Eager execution is typically enabled via
+  `tf.compat.v1.enable_eager_execution`, but may also be enabled within the
+  context of a Python function via tf.contrib.eager.py_func.
   """
   if context_safe() is None:
     return default_execution_mode == EAGER_MODE
@@ -1411,7 +1526,7 @@ def device(name):
   with tf.device('gpu:0'):
     with tf.device('cpu:0'):
       shape = tf.constant([], dtype=tf.int32)
-    x = tf.truncated_normal(shape, tf.float32)
+    x = tf.random.truncated_normal(shape, tf.float32)
   ```
   will ensure that the `shape` Tensor is on CPU but the `truncated_normal`
   operation runs on GPU 0.
@@ -1544,16 +1659,16 @@ def disable_run_metadata():
 
 
 def enable_graph_collection():
-  """Enables tracing of op execution via RunMetadata.
+  """Enables graph collection of executed functions.
 
-  To retrieve the accumulated metadata call context.export_run_metadata()
-  and to stop tracing call context.disable_run_metadata().
+  To retrieve the accumulated graphs call context.export_run_metadata()
+  and to stop collecting graphs call context.disable_graph_collection().
   """
   context().enable_graph_collection()
 
 
 def disable_graph_collection():
-  """Disables tracing of op execution via RunMetadata."""
+  """Disables graph collection of executed functions."""
   context().disable_graph_collection()
 
 
@@ -1576,6 +1691,11 @@ def set_server_def(server_def):
 def add_function(fdef):
   """Add a function definition to the context."""
   context().add_function(fdef)
+
+
+def remove_function(name):
+  """Remove a function from the context."""
+  context().remove_function(name)
 
 
 # Not every user creates a Context via context.context()
