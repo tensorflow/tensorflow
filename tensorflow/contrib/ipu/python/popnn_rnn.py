@@ -60,6 +60,7 @@ class PopnnLSTM(base_layer.Layer):
                num_units,
                dtype=dtypes.float32,
                partials_dtype=dtypes.float32,
+               seed=None,
                weights_initializer=None,
                bias_initializer=None,
                name=None):
@@ -70,6 +71,8 @@ class PopnnLSTM(base_layer.Layer):
       dtype: tf.float16 or tf.float32
       partials_dtype: the type used by Popnn to perform partial calculations.
         Either tf.float16 or tf.float32.
+      seed: A Python integer. Used to create the default Glorot uniform
+        initializer weights_initializer.
       weights_initializer: starting value to initialize the weight
         (default is all zeros).
       bias_initializer: starting value to initialize the bias
@@ -89,6 +92,7 @@ class PopnnLSTM(base_layer.Layer):
     self._num_units = num_units
     self._weights_initializer = weights_initializer
     self._bias_initializer = bias_initializer
+    self._seed = seed
     # Init input_size to None, which will be set after build().
     self._input_size = None
     self._saveable = None
@@ -158,8 +162,8 @@ class PopnnLSTM(base_layer.Layer):
     # Create the variables
     with vs.variable_scope(self._scope, reuse=self.built):
       if self._weights_initializer is None:
-        self._weights_initializer = init_ops.constant_initializer(
-            0.0, dtype=self._plain_dtype)
+        self._weights_initializer = init_ops.glorot_uniform_initializer(
+            self._seed, dtype=self._plain_dtype)
       if self._bias_initializer is None:
         self._bias_initializer = init_ops.constant_initializer(
             0.0, dtype=self._plain_dtype)
