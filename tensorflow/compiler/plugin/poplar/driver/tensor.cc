@@ -475,6 +475,9 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
 
   auto name = StrCat(debug_name, "_input");
   poplar::OptionFlags opts;
+  opts.set("pass",
+           ConvClassificationTypeToString(target, resources.annotations));
+
   poplar::Tensor out = poplin::createInput(graph, params, name, opts,
                                            &resources.convolution_cache);
   return ShuffleConvolutionInputToTensorflow(target, out);
@@ -488,6 +491,9 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
 
   auto name = StrCat(debug_name, "_weights");
   poplar::OptionFlags opts;
+  opts.set("pass",
+           ConvClassificationTypeToString(target, resources.annotations));
+
   poplar::Tensor out = poplin::createWeights(graph, params, name, opts,
                                              &resources.convolution_cache);
 
