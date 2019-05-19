@@ -206,8 +206,13 @@ __device__ OutType lower_bound(const T* first, OutType count, T val) {
 
   return first - orig;
 }
-}  // namespace gpu_helper
-namespace cuda_helper = gpu_helper;
+
+}  // namespace cuda_helper
+
+#ifndef TENSORFLOW_USE_ROCM
+  namespace cuda_helper = gpu_helper;
+#endif
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
