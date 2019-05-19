@@ -1452,6 +1452,54 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
             output_shapes=state_structure._flat_shapes,
             output_types=state_structure._flat_types))
 
+  def unbatch(self):
+    """Splits elements of a dataset into multiple elements.
+
+    For example, if elements of the dataset are shaped `[B, a0, a1, ...]`,
+    where `B` may vary for each input element, then for each element in the
+    dataset, the unbatched dataset will contain `B` consecutive elements
+    of shape `[a0, a1, ...]`.
+
+    ```python
+    # NOTE: The following example uses `{ ... }` to represent the contents
+    # of a dataset.
+    ds = { ['a', 'b', 'c'], ['a', 'b'], ['a', 'b', 'c', 'd'] }
+
+    ds.unbatch() == {'a', 'b', 'c', 'a', 'b', 'a', 'b', 'c', 'd'}
+    ```
+
+    Returns:
+      A `Dataset` transformation function, which can be passed to
+      `tf.data.Dataset.apply`.
+    """
+
+    # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
+    # are normalized to the rank-1 dense representation, so that the
+    # sparse-oblivious unbatching logic will slice them
+    # appropriately. This leads to a somewhat inefficient re-encoding step
+    # for all SparseTensor components.
+    # TODO(mrry): Consider optimizing this in future if it turns out to be
+    # a bottleneck.
+    def normalize(arg, *rest):
+      # pylint: disable=protected-access
+      if rest:
+        return self._element_structure._to_batched_tensor_list((arg,) + rest)
+      else:
+        return self._element_structure._to_batched_tensor_list(arg)
+
+    normalized_dataset = self.map(normalize)
+
+    # NOTE(mrry): Our `map()` has lost information about the sparseness
+    # of any SparseTensor components, so re-apply the structure of the
+    # original dataset.
+    restructured_dataset = _RestructuredDataset(
+        normalized_dataset,
+        get_legacy_output_types(self),
+        get_legacy_output_shapes(self),
+        get_legacy_output_classes(self),
+        allow_unsafe_cast=True)
+    return _UnbatchDataset(restructured_dataset)
+
   def with_options(self, options):
     """Returns a new `tf.data.Dataset` with the given options set.
 
@@ -3556,3 +3604,120 @@ class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
         **flat_structure(self))
     super(_PrivateThreadPoolDataset, self).__init__(input_dataset,
                                                     variant_tensor)
+
+
+class _RestructuredDataset(UnaryDataset):
+  """An internal helper for changing the structure and shape of a dataset."""
+
+  def __init__(self,
+               dataset,
+               output_types,
+               output_shapes=None,
+               output_classes=None,
+               allow_unsafe_cast=False):
+    """Creates a new dataset with the given output types and shapes.
+
+    The given `dataset` must have a structure that is convertible:
+    * `dataset.output_types` must be the same as `output_types` module nesting.
+    * Each shape in `dataset.output_shapes` must be compatible with each shape
+      in `output_shapes` (if given).
+
+    Note: This helper permits "unsafe casts" for shapes, equivalent to using
+    `tf.Tensor.set_shape()` where domain-specific knowledge is available.
+
+    Args:
+      dataset: A `Dataset` object.
+      output_types: A nested structure of `tf.DType` objects.
+      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects.
+        If omitted, the shapes will be inherited from `dataset`.
+      output_classes: (Optional.) A nested structure of class types. If omitted,
+        the class types will be inherited from `dataset`.
+      allow_unsafe_cast: (Optional.) If `True`, the caller may switch the
+        reported output types and shapes of the restructured dataset, e.g. to
+        switch a sparse tensor represented as `tf.variant` to its user-visible
+        type and shape.
+
+    Raises:
+      ValueError: If either `output_types` or `output_shapes` is not compatible
+        with the structure of `dataset`.
+    """
+    self._input_dataset = dataset
+
+    input_types = get_legacy_output_types(dataset)
+    if not allow_unsafe_cast:
+      # Validate that the types are compatible.
+      output_types = nest.map_structure(dtypes.as_dtype, output_types)
+      flat_original_types = nest.flatten(input_types)
+      flat_new_types = nest.flatten(output_types)
+      if flat_original_types != flat_new_types:
+        raise ValueError(
+            "Dataset with output types %r cannot be restructured to have "
+            "output types %r" %
+            (get_legacy_output_types(dataset), output_types))
+
+    input_shapes = get_legacy_output_shapes(dataset)
+    if output_shapes is None:
+      # Inherit shapes from the original `dataset`.
+      output_shapes = nest.pack_sequence_as(
+          output_types, nest.flatten(input_shapes))
+    else:
+      if not allow_unsafe_cast:
+        # Validate that the shapes are compatible.
+        nest.assert_same_structure(output_types, output_shapes)
+        flat_original_shapes = nest.flatten(input_shapes)
+        flat_new_shapes = nest.flatten_up_to(output_types, output_shapes)
+
+        for original_shape, new_shape in zip(flat_original_shapes,
+                                             flat_new_shapes):
+          if not original_shape.is_compatible_with(new_shape):
+            raise ValueError(
+                "Dataset with output shapes %r cannot be restructured to have "
+                "incompatible output shapes %r" % (input_shapes,
+                                                   output_shapes))
+      output_shapes = nest.map_structure_up_to(
+          output_types, tensor_shape.as_shape, output_shapes)
+
+    input_classes = get_legacy_output_classes(dataset)
+    if output_classes is None:
+      # Inherit class types from the original `dataset`.
+      output_classes = nest.pack_sequence_as(
+          output_types, nest.flatten(input_classes))
+
+    self._structure = structure_lib.convert_legacy_structure(
+        output_types, output_shapes, output_classes)
+    variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
+    super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
+
+  @property
+  def _element_structure(self):
+    return self._structure
+
+
+class _UnbatchDataset(UnaryDataset):
+  """A dataset that splits the elements of its input into multiple elements."""
+
+  def __init__(self, input_dataset):
+    """See `unbatch()` for more details."""
+    input_shapes = get_legacy_output_shapes(input_dataset)
+    flat_shapes = nest.flatten(input_shapes)
+    if any(s.ndims == 0 for s in flat_shapes):
+      raise ValueError("Cannot unbatch an input with scalar components.")
+    known_batch_dim = tensor_shape.Dimension(None)
+    for s in flat_shapes:
+      try:
+        known_batch_dim = known_batch_dim.merge_with(s[0])
+      except ValueError:
+        raise ValueError("Cannot unbatch an input whose components have "
+                         "different batch sizes.")
+    self._input_dataset = input_dataset
+
+    self._structure = get_structure(input_dataset)._unbatch()  # pylint: disable=protected-access
+
+    variant_tensor = ged_ops.experimental_unbatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        **flat_structure(self))
+    super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  @property
+  def _element_structure(self):
+    return self._structure
