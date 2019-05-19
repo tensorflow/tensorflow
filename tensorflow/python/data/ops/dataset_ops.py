@@ -327,7 +327,6 @@ class DatasetV2(object):
 
     ```python
     import itertools
-    tf.enable_eager_execution()
 
     def gen():
       for i in itertools.count(1):
