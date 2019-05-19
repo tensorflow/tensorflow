@@ -254,8 +254,8 @@ public:
   /// Replaces the result op with a new op that is created without verification.
   /// The result values of the two ops must be the same types.
   template <typename OpTy, typename... Args>
-  void replaceOpWithNewOp(Operation *op, Args... args) {
-    auto newOp = create<OpTy>(op->getLoc(), args...);
+  void replaceOpWithNewOp(Operation *op, Args &&... args) {
+    auto newOp = create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
     replaceOpWithResultsOfAnotherOp(op, newOp.getOperation(), {});
   }
 
@@ -263,9 +263,9 @@ public:
   /// The result values of the two ops must be the same types.  This allows
   /// specifying a list of ops that may be removed if dead.
   template <typename OpTy, typename... Args>
-  void replaceOpWithNewOp(Operation *op, ArrayRef<Value *> valuesToRemoveIfDead,
-                          Args... args) {
-    auto newOp = create<OpTy>(op->getLoc(), args...);
+  void replaceOpWithNewOp(ArrayRef<Value *> valuesToRemoveIfDead, Operation *op,
+                          Args &&... args) {
+    auto newOp = create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
     replaceOpWithResultsOfAnotherOp(op, newOp.getOperation(),
                                     valuesToRemoveIfDead);
   }

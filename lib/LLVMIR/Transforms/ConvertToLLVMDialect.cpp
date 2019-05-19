@@ -311,7 +311,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
     // If the operation produced 0 or 1 result, return them immediately.
     if (numResults == 0)
-      return;
+      return rewriter.replaceOp(op, llvm::None);
     if (numResults == 1)
       return rewriter.replaceOp(op, newOp.getOperation()->getResult(0));
 
@@ -542,8 +542,8 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
         rewriter, op->getLoc(), operands[0], elementPtrType, hasStaticShape);
     Value *casted = rewriter.create<LLVM::BitcastOp>(
         op->getLoc(), getVoidPtrType(), bufferPtr);
-    rewriter.create<LLVM::CallOp>(op->getLoc(), ArrayRef<Type>(),
-                                  rewriter.getFunctionAttr(freeFunc), casted);
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+        op, ArrayRef<Type>(), rewriter.getFunctionAttr(freeFunc), casted);
   }
 };
 
@@ -803,7 +803,7 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, operands[1],
                                 operands.drop_front(2), rewriter, getModule());
-    rewriter.create<LLVM::StoreOp>(op->getLoc(), operands[0], dataPtr);
+    rewriter.replaceOpWithNewOp<LLVM::StoreOp>(op, operands[0], dataPtr);
   }
 };
 
@@ -818,8 +818,8 @@ struct OneToOneLLVMTerminatorLowering
                ArrayRef<Block *> destinations,
                ArrayRef<ArrayRef<Value *>> operands,
                PatternRewriter &rewriter) const override {
-    rewriter.create<TargetOp>(op->getLoc(), properOperands, destinations,
-                              operands, op->getAttrs());
+    rewriter.replaceOpWithNewOp<TargetOp>(op, properOperands, destinations,
+                                          operands, op->getAttrs());
   }
 };
 
@@ -838,17 +838,15 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.
     if (numArguments == 0) {
-      rewriter.create<LLVM::ReturnOp>(
-          op->getLoc(), llvm::ArrayRef<Value *>(), llvm::ArrayRef<Block *>(),
+      return rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
+          op, llvm::ArrayRef<Value *>(), llvm::ArrayRef<Block *>(),
           llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
-      return;
     }
     if (numArguments == 1) {
-      rewriter.create<LLVM::ReturnOp>(
-          op->getLoc(), llvm::ArrayRef<Value *>(operands.front()),
+      return rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
+          op, llvm::ArrayRef<Value *>(operands.front()),
           llvm::ArrayRef<Block *>(), llvm::ArrayRef<llvm::ArrayRef<Value *>>(),
           op->getAttrs());
-      return;
     }
 
     // Otherwise, we need to pack the arguments into an LLVM struct type before
@@ -861,8 +859,8 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
           op->getLoc(), packedType, packed, operands[i],
           getIntegerArrayAttr(rewriter, i));
     }
-    rewriter.create<LLVM::ReturnOp>(
-        op->getLoc(), llvm::makeArrayRef(packed), llvm::ArrayRef<Block *>(),
+    rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
+        op, llvm::makeArrayRef(packed), llvm::ArrayRef<Block *>(),
         llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
   }
 };

@@ -26,6 +26,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
+#include "mlir/LLVMIR/LLVMLowering.h"
 #include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
@@ -392,7 +393,9 @@ public:
       : DialectOpConversion("some_consumer", 1, context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {}
+               PatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, llvm::None);
+  }
 };
 
 void linalg::getDescriptorConverters(mlir::OwningRewritePatternList &patterns,
@@ -403,7 +406,7 @@ void linalg::getDescriptorConverters(mlir::OwningRewritePatternList &patterns,
 
 namespace {
 // The conversion class from Linalg to LLVMIR.
-class Lowering : public DialectConversion {
+class Lowering : public LLVMLowering {
 public:
   explicit Lowering(std::function<void(mlir::OwningRewritePatternList &patterns,
                                        mlir::MLIRContext *context)>
@@ -412,37 +415,13 @@ public:
 
 protected:
   // Initialize the list of converters.
-  void initConverters(OwningRewritePatternList &patterns,
-                      MLIRContext *context) override {
-    setup(patterns, context);
+  void initAdditionalConverters(OwningRewritePatternList &patterns) override {
+    setup(patterns, llvmDialect->getContext());
   }
 
   // This gets called for block and region arguments, and attributes.
-  Type convertType(Type t) override { return linalg::convertLinalgType(t); }
-
-  // This gets called for function signatures.  Convert function arguments and
-  // results to the LLVM types, but keep the outer function type as built-in
-  // MLIR function type.  This does not support multi-result functions because
-  // LLVM does not.
-  FunctionType convertFunctionSignatureType(
-      FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
-      SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) override {
-    convertedArgAttrs.reserve(argAttrs.size());
-    convertedArgAttrs.insert(convertedArgAttrs.end(), argAttrs.begin(),
-                             argAttrs.end());
-
-    SmallVector<Type, 4> argTypes;
-    argTypes.reserve(t.getNumInputs());
-    for (auto ty : t.getInputs())
-      argTypes.push_back(linalg::convertLinalgType(ty));
-
-    SmallVector<Type, 1> resultTypes;
-    resultTypes.reserve(t.getNumResults());
-    for (auto ty : t.getResults())
-      resultTypes.push_back(linalg::convertLinalgType(ty));
-    assert(t.getNumResults() <= 1 && "NYI: multi-result functions");
-
-    return FunctionType::get(argTypes, resultTypes, t.getContext());
+  Type convertAdditionalType(Type t) override {
+    return linalg::convertLinalgType(t);
   }
 
 private:
@@ -472,13 +451,6 @@ void linalg::convertToLLVM(mlir::Module &module) {
   auto r = Lowering(getDescriptorConverters).convert(&module);
   (void)r;
   assert(succeeded(r) && "conversion failed");
-
-  // Convert the remaining standard MLIR operations to the LLVM IR dialect using
-  // the default converter.
-  auto converter = createStdToLLVMConverter();
-  r = converter->convert(&module);
-  (void)r;
-  assert(succeeded(r) && "second conversion failed");
 }
 
 namespace {

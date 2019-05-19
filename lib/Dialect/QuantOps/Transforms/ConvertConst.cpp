@@ -115,7 +115,7 @@ void QuantizedConstRewrite::rewrite(Operation *op,
   auto newConstOp =
       rewriter.create<ConstantOp>(fusedLoc, newConstValueType, newConstValue);
   rewriter.replaceOpWithNewOp<StorageCastOp>(
-      op, {origConstOp}, *op->result_type_begin(), newConstOp);
+      {origConstOp}, op, *op->result_type_begin(), newConstOp);
 }
 
 void ConvertConstPass::runOnFunction() {

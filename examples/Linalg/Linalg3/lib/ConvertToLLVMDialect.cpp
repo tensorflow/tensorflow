@@ -58,13 +58,6 @@ public:
       : DialectOpConversion(Op::getOperationName(), 1, context) {}
   using Base = LoadStoreOpConversion<Op>;
 
-  // Match the Op specified as template argument.
-  PatternMatchResult match(Operation *op) const override {
-    if (isa<Op>(op))
-      return matchSuccess();
-    return matchFailure();
-  }
-
   // Compute the pointer to an element of the buffer underlying the view given
   // current view indices.  Use the base offset and strides stored in the view
   // descriptor to emit IR iteratively computing the actual offset, followed by
@@ -128,6 +121,7 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
     ArrayRef<Value *> indices = operands.drop_front(2);
     Value *ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     intrinsics::store(data, ptr);
+    rewriter.replaceOp(op, llvm::None);
   }
 };
 
@@ -154,11 +148,4 @@ void linalg::convertLinalg3ToLLVM(Module &module) {
   auto r = lowering->convert(&module);
   (void)r;
   assert(succeeded(r) && "conversion failed");
-
-  // Convert the remaining standard MLIR operations to the LLVM IR dialect using
-  // the default converter.
-  auto converter = createStdToLLVMConverter();
-  r = converter->convert(&module);
-  (void)r;
-  assert(succeeded(r) && "second conversion failed");
 }

@@ -175,6 +175,7 @@ public:
       });
       // clang-format on
     }
+    rewriter.replaceOp(op, llvm::None);
   }
 
 private:
@@ -308,14 +309,11 @@ public:
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
-    auto retOp = cast<toy::ReturnOp>(op);
-    using namespace edsc;
-    auto loc = retOp.getLoc();
     // Argument is optional, handle both cases.
-    if (retOp.getNumOperands())
-      rewriter.create<ReturnOp>(loc, operands[0]);
+    if (op->getNumOperands())
+      rewriter.replaceOpWithNewOp<ReturnOp>(op, operands[0]);
     else
-      rewriter.create<ReturnOp>(loc);
+      rewriter.replaceOpWithNewOp<ReturnOp>(op);
   }
 };
 

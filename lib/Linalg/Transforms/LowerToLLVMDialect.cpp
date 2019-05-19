@@ -243,6 +243,7 @@ public:
     Value *casted = bitcast(voidPtrTy, extractvalue(elementPtrTy, operands[0],
                                                     positionAttr(rewriter, 0)));
     call(ArrayRef<Type>(), rewriter.getFunctionAttr(freeFunc), casted);
+    rewriter.replaceOp(op, llvm::None);
   }
 };
 
@@ -498,6 +499,7 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
     ArrayRef<Value *> indices = operands.drop_front(2);
     Value *ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     llvm_store(data, ptr);
+    rewriter.replaceOp(op, llvm::None);
   }
 };
 
@@ -578,8 +580,8 @@ public:
 
     auto fAttr = rewriter.getFunctionAttr(f);
     auto named = rewriter.getNamedAttr("callee", fAttr);
-    rewriter.create<LLVM::CallOp>(op->getLoc(), operands,
-                                  ArrayRef<NamedAttribute>{named});
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, operands,
+                                              ArrayRef<NamedAttribute>{named});
   }
 };
 
