@@ -293,6 +293,15 @@ Function *Operation::getFunction() {
   return block ? block->getFunction() : nullptr;
 }
 
+/// Replace any uses of 'from' with 'to' within this operation.
+void Operation::replaceUsesOfWith(Value *from, Value *to) {
+  if (from == to)
+    return;
+  for (auto &operand : getOpOperands())
+    if (operand.get() == from)
+      operand.set(to);
+}
+
 //===----------------------------------------------------------------------===//
 // Operation Walkers
 //===----------------------------------------------------------------------===//

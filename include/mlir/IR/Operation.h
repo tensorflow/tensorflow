@@ -127,6 +127,9 @@ public:
   /// Returns nullptr if the operation is unlinked.
   Function *getFunction();
 
+  /// Replace any uses of 'from' with 'to' within this operation.
+  void replaceUsesOfWith(Value *from, Value *to);
+
   /// Destroys this operation and its subclass data.
   void destroy();
 
