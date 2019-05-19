@@ -402,6 +402,27 @@ tf_cc_test(
     ],
 )
 
+xla_test(
+    name = "dynamic_update_slice_test",
+    srcs = ["dynamic_update_slice_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service/cpu:cpu_executable",
+        "//tensorflow/compiler/xla/service/cpu:parallel_task_assignment",
+        "//tensorflow/compiler/xla/service/cpu:target_machine_features",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "dfs_hlo_visitor_with_default_test",
     srcs = ["dfs_hlo_visitor_with_default_test.cc"],
