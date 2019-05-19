@@ -220,6 +220,13 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
     }
   }
 
+  if (VLOG_IS_ON(2)) {
+    for (const auto& it : classification_) {
+      VLOG(2) << it.first->name() << " : "
+              << ConvClassificationTypeToString(it.second);
+    }
+  }
+
   return true;
 }
 
