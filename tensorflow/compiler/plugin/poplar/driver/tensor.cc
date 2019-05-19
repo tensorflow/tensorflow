@@ -657,6 +657,8 @@ static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
   b_shape = PoplarRightMatMulShape(b_shape, target->dot_dimension_numbers());
   auto name = StrCat(debug_name, "_lhs");
   poplar::OptionFlags opts;
+  opts.set("fullyConnectedPass",
+           ConvClassificationTypeToString(target, resources.annotations));
 
   auto result = poplin::createMatMulGroupedInputLHS(
       graph, type, a_shape, b_shape, name, opts, &resources.dot_cache);
@@ -723,6 +725,8 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
   b_shape = PoplarRightMatMulShape(b_shape, target->dot_dimension_numbers());
   auto name = StrCat(debug_name, "_rhs");
   poplar::OptionFlags opts;
+  opts.set("fullyConnectedPass",
+           ConvClassificationTypeToString(target, resources.annotations));
 
   auto result = poplin::createMatMulGroupedInputRHS(
       graph, type, a_shape, b_shape, name, opts, &resources.dot_cache);
