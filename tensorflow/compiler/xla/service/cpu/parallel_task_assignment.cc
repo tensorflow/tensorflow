@@ -74,8 +74,9 @@ class DefaultCostModel : public ParallelCostModel {
       // Limit max parallelism for I/O bound instructions by assuming a
       // sub-linear scaling function (fit based on empirical benchmark results).
       // TODO(b/29630486) Develop system bandwidth model.
-      max_parallelism =
-          std::ceil(std::sqrt(tensorflow::port::NumSchedulableCPUs()));
+      max_parallelism = std::min<int64>(
+          max_parallelism_,
+          std::ceil(std::sqrt(tensorflow::port::NumSchedulableCPUs())));
       // Use shape size instruction cost and L2 cache size min per-thread cost.
       instruction_cost = shape_size_(instruction->shape());
       min_cost_per_thread = 256LL << 10;  // 256KB L2 Cache size.
