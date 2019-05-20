@@ -22,11 +22,7 @@
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/LLVMIR/Transforms.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR.h"
-#include "mlir/Transforms/Passes.h"
 
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
@@ -238,29 +234,6 @@ static inline Error make_string_error(const llvm::Twine &message) {
                                              llvm::inconvertibleErrorCode());
 }
 
-// Given a list of PassRegistryEntry coming from a higher level, populates the
-// given pass manager and appends the default set of required passes to lower to
-// LLVMIR.
-// Currently, these passes are:
-// - constant folding
-// - CSE
-// - canonicalization
-// - affine lowering
-static void getDefaultPasses(
-    PassManager &manager,
-    const std::vector<const mlir::PassRegistryEntry *> &mlirPassRegistryList) {
-  // Run each of the passes that were selected.
-  for (const auto *passEntry : mlirPassRegistryList)
-    passEntry->addToPipeline(manager);
-
-  // Append the extra passes for lowering to MLIR.
-  manager.addPass(mlir::createCanonicalizerPass());
-  manager.addPass(mlir::createCSEPass());
-  manager.addPass(mlir::createCanonicalizerPass());
-  manager.addPass(mlir::createLowerAffinePass());
-  manager.addPass(mlir::createConvertToLLVMIRPass());
-}
-
 // Setup LLVM target triple from the current machine.
 bool ExecutionEngine::setupTargetTriple(llvm::Module *llvmModule) {
   // Setup the machine properties from the current architecture.
@@ -349,16 +322,13 @@ void packFunctionArguments(llvm::Module *module) {
 ExecutionEngine::~ExecutionEngine() = default;
 
 Expected<std::unique_ptr<ExecutionEngine>>
-ExecutionEngine::create(Module *m, PassManager *pm,
+ExecutionEngine::create(Module *m,
                         std::function<llvm::Error(llvm::Module *)> transformer,
                         ArrayRef<StringRef> sharedLibPaths) {
   auto engine = llvm::make_unique<ExecutionEngine>();
   auto expectedJIT = impl::OrcJIT::createDefault(transformer, sharedLibPaths);
   if (!expectedJIT)
     return expectedJIT.takeError();
-
-  if (pm && failed(pm->run(m)))
-    return make_string_error("passes failed");
 
   auto llvmModule = translateModuleToLLVMIR(*m);
   if (!llvmModule)
@@ -374,16 +344,6 @@ ExecutionEngine::create(Module *m, PassManager *pm,
   engine->jit = std::move(*expectedJIT);
 
   return std::move(engine);
-}
-
-Expected<std::unique_ptr<ExecutionEngine>>
-ExecutionEngine::create(Module *m,
-                        std::function<llvm::Error(llvm::Module *)> transformer,
-                        ArrayRef<StringRef> sharedLibPaths) {
-  // Construct and run the default MLIR pipeline.
-  PassManager manager;
-  getDefaultPasses(manager, {});
-  return create(m, &manager, transformer, sharedLibPaths);
 }
 
 Expected<void (*)(void **)> ExecutionEngine::lookup(StringRef name) const {

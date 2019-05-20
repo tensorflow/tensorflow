@@ -37,7 +37,6 @@ class Module;
 namespace mlir {
 
 class Module;
-class PassManager;
 
 namespace impl {
 class OrcJIT;
@@ -56,17 +55,6 @@ class OrcJIT;
 class ExecutionEngine {
 public:
   ~ExecutionEngine();
-
-  /// Creates an execution engine for the given module.  If `pm` is provided,
-  /// runs it on the MLIR module.  If `transformer` is
-  /// provided, it will be called on the LLVM module during JIT-compilation and
-  /// can be used, e.g., for reporting or optimization.
-  /// If `sharedLibPaths` are provided, the underlying JIT-compilation will open
-  /// and link the shared libraries for symbol resolution.
-  static llvm::Expected<std::unique_ptr<ExecutionEngine>>
-  create(Module *m, PassManager *pm,
-         std::function<llvm::Error(llvm::Module *)> transformer = {},
-         ArrayRef<StringRef> sharedLibPaths = {});
 
   /// Creates an execution engine for the given module.  If `transformer` is
   /// provided, it will be called on the LLVM module during JIT-compilation and

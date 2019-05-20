@@ -259,14 +259,11 @@ int runJit() {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
 
-  // Create an MLIR execution engine.  Note that it takes a null pass manager
-  // to make sure it won't run "default" passes on the MLIR that would trigger
-  // a second conversion to LLVM IR.  The execution engine eagerly JIT-compiles
+  // Create an MLIR execution engine. The execution engine eagerly JIT-compiles
   // the module.
   auto optPipeline = mlir::makeOptimizingTransformer(
       /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0);
-  auto maybeEngine =
-      mlir::ExecutionEngine::create(module.get(), /*pm=*/nullptr, optPipeline);
+  auto maybeEngine = mlir::ExecutionEngine::create(module.get(), optPipeline);
   assert(maybeEngine && "failed to construct an execution engine");
   auto &engine = maybeEngine.get();
 

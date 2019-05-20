@@ -32,7 +32,9 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
+#include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR.h"
 #include "mlir/Transforms/Passes.h"
 #include "pybind11/pybind11.h"
@@ -186,6 +188,16 @@ struct PythonMLIRModule {
   PythonAttribute boolAttr(bool value);
 
   void compile() {
+    PassManager manager;
+    manager.addPass(mlir::createCanonicalizerPass());
+    manager.addPass(mlir::createCSEPass());
+    manager.addPass(mlir::createLowerAffinePass());
+    manager.addPass(mlir::createConvertToLLVMIRPass());
+    if (failed(manager.run(module.get()))) {
+      llvm::errs() << "conversion to the LLVM IR dialect failed\n";
+      return;
+    }
+
     auto created = mlir::ExecutionEngine::create(module.get());
     llvm::handleAllErrors(created.takeError(),
                           [](const llvm::ErrorInfoBase &b) {

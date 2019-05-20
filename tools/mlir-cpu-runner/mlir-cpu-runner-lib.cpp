@@ -27,8 +27,12 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
+#include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Parser.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
+#include "mlir/Transforms/Passes.h"
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -140,6 +144,22 @@ static void printMemRefArguments(ArrayRef<Type> argTypes,
   }
 }
 
+// Calls the passes necessary to convert affine and standard dialects to the
+// LLVM IR dialect.
+// Currently, these passes are:
+// - CSE
+// - canonicalization
+// - affine to standard lowering
+// - standard to llvm lowering
+static LogicalResult convertAffineStandardToLLVMIR(Module *module) {
+  PassManager manager;
+  manager.addPass(mlir::createCanonicalizerPass());
+  manager.addPass(mlir::createCSEPass());
+  manager.addPass(mlir::createLowerAffinePass());
+  manager.addPass(mlir::createConvertToLLVMIRPass());
+  return manager.run(module);
+}
+
 static Error compileAndExecuteFunctionWithMemRefs(
     Module *module, StringRef entryPoint,
     std::function<llvm::Error(llvm::Module *)> transformer) {
@@ -161,6 +181,9 @@ static Error compileAndExecuteFunctionWithMemRefs(
   auto expectedArguments = allocateMemRefArguments(mainFunction, init);
   if (!expectedArguments)
     return expectedArguments.takeError();
+
+  if (failed(convertAffineStandardToLLVMIR(module)))
+    return make_string_error("conversion to the LLVM IR dialect failed");
 
   SmallVector<StringRef, 4> libs(clSharedLibs.begin(), clSharedLibs.end());
   auto expectedEngine =
