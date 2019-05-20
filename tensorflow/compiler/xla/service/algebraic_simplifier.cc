@@ -1122,7 +1122,7 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
     return ReplaceInstruction(divide, new_divide);
   }
 
-  // A / Broaddcast(B) => A * Broadcast(1/B)
+  // A / Broadcast(B) => A * Broadcast(1/B)
   if (Match(divide, m::Divide(m::Op(&a), m::Broadcast(&c, m::Op(&b))))) {
     auto one = MakeBroadcastHlo(
         computation_->AddInstruction(HloInstruction::CreateConstant(
