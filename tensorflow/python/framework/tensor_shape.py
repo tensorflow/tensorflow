@@ -1175,6 +1175,8 @@ class TensorShape(object):
       other = as_shape(other)
     except TypeError:
       return NotImplemented
+    if self.rank is None or other.rank is None:
+      raise ValueError("The inequality of unknown TensorShapes is undefined.")
     return self._dims == other.dims
 
   def __ne__(self, other):
