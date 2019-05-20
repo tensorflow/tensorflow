@@ -27,11 +27,16 @@
 // Common utilities for defining TableGen mechanisms
 //===----------------------------------------------------------------------===//
 
-// Concatenates a list of integers into a string separated with comma.
-class Stringify<list<int> integers> {
-  string result = !foldl(/*init*/!cast<string>(!head(integers)),
-                         /*list*/!tail(integers), prev, cur, prev # ", " # cur);
+// Concatenates a list of strings with a separator (default ", ")
+class StrJoin<list<string> strings, string sep = ", "> {
+  string result =
+      !if(!empty(strings), "",
+          !foldl(!head(strings), !tail(strings), prev, cur, prev # sep # cur));
 }
+
+// Concatenates a list of integers into a string separated with comma.
+class Stringify<list<int> integers> :
+    StrJoin<!foreach(i, integers, !cast<string>(i))>;
 
 //===----------------------------------------------------------------------===//
 // Predicate definitions
@@ -269,11 +274,7 @@ class AnyTypeOf<list<Type> allowedTypes, string description = ""> : Type<
     // Satisfy any of the allowed type's condition
     Or<!foreach(allowedtype, allowedTypes, allowedtype.predicate)>,
     !if(!eq(description, ""),
-        // Join all allowed types' descriptions with " or " as the description
-        // if not provided during template specialization
-        !foldl(!head(allowedTypes).description, !tail(allowedTypes), prev, cur,
-               prev # " or " # cur.description),
-        // Otherwise use the provided one
+        StrJoin<!foreach(t, allowedTypes, t.description), " or ">.result,
         description)>;
 
 // Integer types.
