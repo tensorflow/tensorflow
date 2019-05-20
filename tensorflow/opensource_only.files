@@ -65,8 +65,7 @@ tensorflow/third_party/toolchains/preconfig/centos6/gcc7/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/centos6/gcc7/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/centos6/gcc7/BUILD
 tensorflow/third_party/toolchains/preconfig/centos6/py3/BUILD
-tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/BUILD
-tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/dummy_toolchain.bzl
+tensorflow/third_party/toolchains/preconfig/win_1803/bazel_025/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
