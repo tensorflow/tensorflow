@@ -2007,13 +2007,11 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
     // VALID padding is the default TRT behavior.
     if (attrs.get<string>("padding") == "SAME") {
-      VLOG(2) << "Using SAME padding";
       // SAME_UPPER means that post padding is preferred.
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
-    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
 #endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
@@ -2027,12 +2025,10 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setStride(stride);
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
     if (attrs.get<string>("padding") == "SAME") {
-      VLOG(2) << "Using SAME padding";
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
-    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
 #endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
@@ -2787,8 +2783,6 @@ Status ConvertPool(OpConverterParams* params) {
   // Asymmetric padding case. 
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
-    VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
-            << padding[1].first << padding[1].second;
     auto pad_layer = params->converter->network()->addPadding(
         *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
