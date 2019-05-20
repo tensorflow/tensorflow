@@ -8,4 +8,8 @@ tf_module {
     name: "enable_mixed_precision_graph_rewrite"
     argspec: "args=[\'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'dynamic\'], "
   }
+  member_method {
+    name: "mixed_precision_graph_rewrite_scope"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
 }

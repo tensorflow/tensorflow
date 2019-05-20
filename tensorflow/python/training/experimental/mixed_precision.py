@@ -32,9 +32,10 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 
-@tf_export(v1=['train.experimental.auto_mixed_precision_scope'])
+@tf_export('train.experimental.mixed_precision_graph_rewrite_scope',
+           v1=['train.experimental.mixed_precision_graph_rewrite_scope'])
 @contextlib.contextmanager
-def auto_mixed_precision_scope(select=True):
+def mixed_precision_graph_rewrite_scope(select=True):
   """Allow/Disallow the rewriting of specific sections of the graph.
 
   This function uses a context manager to apply attributes to any node

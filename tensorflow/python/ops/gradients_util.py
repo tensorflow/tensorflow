@@ -385,9 +385,10 @@ def _SymGrad(op, out_grads):
   return in_grads
 
 
-def _MaybeCompile(scope, op, func, grad_fn):
-  """Compile the calculation in grad_fn if op was marked as compiled.
-     Also apply mixed precision attributes to their respective gradient ops."""
+def _GetGradAttrs(scope, op, func):
+  """Returns a dictionary of attributes to be applied to the gradient ops.
+     Currently handles XLA compilation and Automatic Mixed Precision
+     attributes."""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
     xla_compile = func.definition.attr["_XlaCompile"].b
@@ -412,7 +413,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
       xla_compile = False
 
   if not (xla_compile or auto_mixed_precision_scope):
-    return grad_fn()  # Exit early
+    return {}  # Exit early
 
   if auto_mixed_precision_scope:
     auto_mixed_precision_attrs = {
@@ -423,10 +424,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
     auto_mixed_precision_attrs = {}
 
   if not xla_compile:
-    with ops.get_default_graph()._attr_scope(  # pylint: disable=protected-access
-        auto_mixed_precision_attrs):
-      return grad_fn()
-
+    return auto_mixed_precision_attrs
 
   # If the gradients are supposed to be compiled separately, we give them a
   # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
@@ -442,8 +440,8 @@ def _MaybeCompile(scope, op, func, grad_fn):
       "_XlaScope": attr_value_pb2.AttrValue(s=xla_grad_scope.encode())
   }
   attrs.update(auto_mixed_precision_attrs)
-  with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
-    return grad_fn()
+  return attrs
+
 
 
 def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
@@ -748,16 +746,16 @@ def _GradientsHelper(ys,
             # pylint: disable=protected-access
             with src_graph._original_op(op):
               # pylint: enable=protected-access
-              if grad_fn:
-                # If grad_fn was found, do not use SymbolicGradient even for
-                # functions.
-                in_grads = _MaybeCompile(grad_scope, op, func_call,
-                                         lambda: grad_fn(op, *out_grads))
-              else:
-                # For function call ops, we add a 'SymbolicGradient'
-                # node to the graph to compute gradients.
-                in_grads = _MaybeCompile(grad_scope, op, func_call,
-                                         lambda: _SymGrad(op, out_grads))
+              grad_attrs = _GetGradAttrs(grad_scope, op, func_call)
+              with ops.get_default_graph()._attr_scope(grad_attrs):  # pylint: disable=protected-access
+                if grad_fn:
+                  # If grad_fn was found, do not use SymbolicGradient even for
+                  # functions.
+                  in_grads = grad_fn(op, *out_grads)
+                else:
+                  # For function call ops, we add a 'SymbolicGradient'
+                  # node to the graph to compute gradients.
+                  in_grads = _SymGrad(op, out_grads)
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len([x for x in in_grads

@@ -41,7 +41,8 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training.experimental.mixed_precision import auto_mixed_precision_scope
+from tensorflow.python.training.experimental.mixed_precision\
+    import mixed_precision_graph_rewrite_scope
 
 
 def _input(shape):
@@ -558,9 +559,9 @@ class AutoMixedPrecisionTest(test.TestCase):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       y = _input([2, 8, 8, 1])
-      with auto_mixed_precision_scope(False):
+      with mixed_precision_graph_rewrite_scope(False):
         x = _conv_bn(y)
-        with auto_mixed_precision_scope(True):
+        with mixed_precision_graph_rewrite_scope(True):
           x = _conv_bn(x)
       output = gradients.gradients(x, [y])
       output_val_ref, output_val, cost_graph = self._run(output)
