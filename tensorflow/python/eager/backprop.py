@@ -1112,7 +1112,7 @@ class GradientTape(object):
 
     ```python
     with tf.GradientTape() as g:
-      x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
+      x = tf.constant([[1., 2.], [3., 4.]], dtype=tf.float32)
       g.watch(x)
       y = x * x
     batch_jacobian = g.batch_jacobian(y, x) 
