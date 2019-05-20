@@ -283,6 +283,8 @@ def _instantiate(entity, converted_entity_info, free_nonglobal_var_names):
   if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
     # Attach the default argument to the converted function.
     converted_entity.__defaults__ = entity.__defaults__
+    if hasattr(entity, '__kwdefaults__'):
+      converted_entity.__kwdefaults__ = entity.__kwdefaults__
 
   return converted_entity
 

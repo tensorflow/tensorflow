@@ -26,10 +26,13 @@ import os
 import pdb
 import re
 import sys
-import textwrap
 import traceback
-
+import textwrap
 from enum import Enum
+
+# pylint:disable=g-bad-import-order
+import six
+# pylint:enable=g-bad-import-order
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
@@ -425,11 +428,16 @@ def converted_call(f, owner, options, args, kwargs):
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
                   converted_f.__defaults__)
+      if six.PY3:
+        logging.log(2, 'KW defaults of %s : %s',
+                    converted_f, converted_f.__kwdefaults__)
+
       if kwargs is not None:
         callargs = tf_inspect.getcallargs(converted_f, *effective_args,
                                           **kwargs)
       else:
         callargs = tf_inspect.getcallargs(converted_f, *effective_args)
+
       formatted_callargs = '\n'.join(
           '    {}: {}'.format(k, v) for k, v in callargs.items())
       logging.log(2, 'Calling %s with\n%s\n', converted_f, formatted_callargs)
