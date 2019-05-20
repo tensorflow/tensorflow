@@ -52,7 +52,6 @@ from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -622,12 +621,7 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
       future_features=future_features,
       namespace=namespace)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  try:
-    node = node_to_graph(node, context)
-  except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-    logging.error(1, 'Error converting %s', f, exc_info=True)
-    raise errors.InternalError('conversion', e)
-    # TODO(mdan): Catch and rethrow syntax errors.
+  node = node_to_graph(node, context)
 
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())
