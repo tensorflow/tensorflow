@@ -977,11 +977,11 @@ Status GetRootFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
 }
 
 // Compute a special topological order for the Graph, where nodes having the
-// same root frame are placed adjacent to each other.  The traversal is a
+// same root frame are placed adjacent to each other.  The traversal uses a
 // variant of Kahn's algorithm.  num_ready_inputs is used to keep track of how
 // many inputs of each node are ready; a node is ready to be scheduled if all
 // of its inputs are ready.
-// For details, see https://en.wikipedia.org/wiki/Topological_sorting
+// Ref. to https://en.wikipedia.org/wiki/Topological_sorting for details.
 Status GetFrameBasedTopologicalOrder(const Graph* g,
                                      absl::Span<const ControlFlowInfo> cf_infos,
                                      std::vector<Node*>* order) {
@@ -1012,10 +1012,13 @@ Status GetFrameBasedTopologicalOrder(const Graph* g,
 
   std::deque<Node*> ready;
   ready.push_back(src_node);
-  absl::flat_hash_map<string, std::vector<Node*>> staging_enter_vecs;
+  // ready_enters_per_frame and ready_exits serve as a staging area to buffer
+  // the ready enters/exits before they are moved to the `ready` queue for
+  // controlling the start and end of a processing frame.
+  absl::flat_hash_map<string, std::vector<Node*>> ready_enters_per_frame;
   // Exit nodes shall all be from the same frame, as we process a frame at a
   // time. So, one vector is enough.
-  std::vector<Node*> staging_exit_vec;
+  std::vector<Node*> ready_exits;
   while (!ready.empty()) {
     Node* curr_node = ready.front();
     ready.pop_front();
@@ -1037,35 +1040,36 @@ Status GetFrameBasedTopologicalOrder(const Graph* g,
       bool is_root_level = cf_infos[out_id].parent_frame == src_node;
       string frame_name = cf_infos[out_id].frame_name;
       if (IsEnter(out) && is_root_level) {
-        staging_enter_vecs[frame_name].push_back(out);
+        ready_enters_per_frame[frame_name].push_back(out);
       } else if (IsExit(out) && is_root_level) {
-        staging_exit_vec.push_back(out);
+        ready_exits.push_back(out);
       } else {
         ready.push_back(out);
       }
     }
 
     if (ready.empty()) {
-      if (!staging_exit_vec.empty()) {
-        // Move staging nodes into the ready queue if any.  If there are staging
-        // exits we must process them before processing the staging enters to
-        // make sure all nodes in the currently processing frame are visited
-        // before starting processing other frames.
-        string frame_name = cf_infos[staging_exit_vec.front()->id()].frame_name;
-        CHECK_EQ(staging_exit_vec.size(), num_exits[frame_name]);
-        ready.insert(ready.end(), staging_exit_vec.begin(),
-                     staging_exit_vec.end());
-        staging_exit_vec.clear();
+      // Try moving nodes from ready_enters_per_frame and read_exits to `ready`.
+      if (!ready_exits.empty()) {
+        // If there are nodes in ready_exits we must process them before
+        // processing ready_enters_per_frame to make sure all nodes in the
+        // currently processing frame are visited before starting processing
+        // other frames.
+        string frame_name = cf_infos[ready_exits.front()->id()].frame_name;
+        CHECK_EQ(ready_exits.size(), num_exits[frame_name]);
+        ready.insert(ready.end(), ready_exits.begin(),
+                     ready_exits.end());
+        ready_exits.clear();
       } else {
-        // Otherwise, try moving the staging enter nodes into the ready queue.
-        for (auto iter = staging_enter_vecs.begin();
-             iter != staging_enter_vecs.end(); ++iter) {
+        // Otherwise, try moving nodes from ready_enters to `ready`.
+        for (auto iter = ready_enters_per_frame.begin();
+             iter != ready_enters_per_frame.end(); ++iter) {
           string frame_name = iter->first;
-          const std::vector<Node*>& staging_enters = iter->second;
-          if (staging_enters.size() == num_enters[frame_name]) {
-            ready.insert(ready.end(), staging_enters.begin(),
-                         staging_enters.end());
-            staging_enter_vecs.erase(iter);
+          const std::vector<Node*>& ready_enters = iter->second;
+          if (ready_enters.size() == num_enters[frame_name]) {
+            ready.insert(ready.end(), ready_enters.begin(),
+                         ready_enters.end());
+            ready_enters_per_frame.erase(iter);
             break;
           }
         }
@@ -1073,7 +1077,7 @@ Status GetFrameBasedTopologicalOrder(const Graph* g,
     }
   }
 
-  CHECK(staging_enter_vecs.empty() && staging_exit_vec.empty());
+  CHECK(ready_enters_per_frame.empty() && ready_exits.empty());
   return Status::OK();
 }
 }  // namespace
