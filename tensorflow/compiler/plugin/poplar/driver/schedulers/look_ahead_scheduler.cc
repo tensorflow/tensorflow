@@ -108,7 +108,26 @@ class LookAheadScheduler {
   // that needs a custom comparitor.
   struct ClusterComparitor {
     bool operator()(const Cluster::Ref& lhs, const Cluster::Ref& rhs) const {
-      return lhs->net_memory_usage < rhs->net_memory_usage;
+      if (lhs->net_memory_usage != rhs->net_memory_usage) {
+        return lhs->net_memory_usage < rhs->net_memory_usage;
+      }
+
+      if (rhs->nodes.empty()) {
+        // Nothing compares less than an empty set.
+        return false;
+      }
+
+      if (lhs->nodes.empty()) {
+        return true;
+      }
+
+      // Compare the minimum HloInstruction id between the two clusters.
+      auto compare_id = [](const HloInstruction* inst1,
+                           const HloInstruction* inst2) {
+        return inst1->unique_id() < inst2->unique_id();
+      };
+      return compare_id(*absl::c_min_element(lhs->nodes, compare_id),
+                        *absl::c_min_element(rhs->nodes, compare_id));
     }
   };
 
@@ -124,7 +143,9 @@ class LookAheadScheduler {
     // Compute the full cluster graph and store it in parent.
     void ClusterNodes();
 
-    const absl::flat_hash_set<Cluster::Ref>& GetRoots() { return root_nodes; }
+    const std::set<Cluster::Ref, ClusterComparitor>& GetRoots() {
+      return root_nodes;
+    }
 
    private:
     // Cluster instructions by following through continous chains of
@@ -140,7 +161,7 @@ class LookAheadScheduler {
     // Roots of the cluster graph. These are nodes which have no strict
     // dependencies (a dependency that isn't itself) so can be scheduled
     // immediately.
-    absl::flat_hash_set<Cluster::Ref> root_nodes;
+    std::set<Cluster::Ref, ClusterComparitor> root_nodes;
 
     absl::flat_hash_map<HloInstruction*, Cluster::Ref>
         previously_clustered_node;
