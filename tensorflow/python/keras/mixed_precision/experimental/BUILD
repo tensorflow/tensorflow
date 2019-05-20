@@ -43,6 +43,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
+        "//tensorflow/python:mixed_precision_global_state",
     ],
 )
 
@@ -58,6 +59,8 @@ py_test(
         ":policy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
+        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 
