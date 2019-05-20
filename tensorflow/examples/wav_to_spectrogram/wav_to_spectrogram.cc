@@ -68,7 +68,14 @@ tensorflow::Status WavToSpectrogram(const tensorflow::string& input_wav,
   Output expand_dims_const = Const(root.WithOpName("expand_dims_const"), -1);
   Output expand_dims =
       ExpandDims(root.WithOpName("expand_dims"), cast, expand_dims_const);
-  Output squeeze = Squeeze(root.WithOpName("squeeze"), expand_dims,
+  Output slice_begin_const =
+      Const(root.WithOpName("slice_begin_const"), {0, 0, 0, 0});
+  Output slice_size_const =
+      Const(root.WithOpName("slice_size_const"), {1, -1, -1, -1});
+  Output slice =
+      Slice(root.WithOpName("slice"), expand_dims, slice_begin_const,
+            slice_size_const);
+  Output squeeze = Squeeze(root.WithOpName("squeeze"), slice, 
                            Squeeze::Attrs().Axis({0}));
   Output png_encoder = EncodePng(root.WithOpName("png_encoder"), squeeze);
   tensorflow::ops::WriteFile file_writer = tensorflow::ops::WriteFile(

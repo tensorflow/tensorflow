@@ -132,6 +132,10 @@ bool Spectrogram::ComputeSquaredMagnitudeSpectrogram(
   }
   CHECK(output);
   output->clear();
+  samples_to_next_step_ = window_length_;
+  fft_integer_working_area_[0] = 0;
+  input_queue_.clear();
+
   int input_start = 0;
   while (GetNextWindowOfSamples(input, &input_start)) {
     DCHECK_EQ(input_queue_.size(), window_length_);
