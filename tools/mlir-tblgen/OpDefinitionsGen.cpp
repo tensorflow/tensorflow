@@ -417,9 +417,16 @@ void OpEmitter::emitDef(const Record &def, raw_ostream &os) {
   OpEmitter(def).emitDef(os);
 }
 
-void OpEmitter::emitDecl(raw_ostream &os) { opClass.writeDeclTo(os); }
+void OpEmitter::emitDecl(raw_ostream &os) {
+  os << formatv(opCommentHeader, op.getQualCppClassName(), "declarations");
+  opClass.writeDeclTo(os);
+}
 
-void OpEmitter::emitDef(raw_ostream &os) { opClass.writeDefTo(os); }
+void OpEmitter::emitDef(raw_ostream &os) {
+  os << formatv(opCommentHeader, op.getQualCppClassName(), "definitions");
+
+  opClass.writeDefTo(os);
+}
 
 void OpEmitter::genAttrGetters() {
   FmtContext fctx;
@@ -1028,14 +1035,8 @@ static void emitOpClasses(const std::vector<Record *> &defs, raw_ostream &os,
   IfDefScope scope("GET_OP_CLASSES", os);
   for (auto *def : defs) {
     if (emitDecl) {
-      os << formatv(opCommentHeader,
-                    Operator::getQualCppClassName(def->getName()),
-                    "declarations");
       OpEmitter::emitDecl(*def, os);
     } else {
-      os << formatv(opCommentHeader,
-                    Operator::getQualCppClassName(def->getName()),
-                    "definitions");
       OpEmitter::emitDef(*def, os);
     }
   }
@@ -1046,10 +1047,10 @@ static void emitOpList(const std::vector<Record *> &defs, raw_ostream &os) {
   IfDefScope scope("GET_OP_LIST", os);
 
   interleave(
-      defs,
-      [&os](Record *def) {
-        os << Operator::getQualCppClassName(def->getName());
-      },
+      // TODO: We are constructing the Operator wrapper instance just for
+      // getting it's qualified class name here. Reduce the overhead by having a
+      // lightweight version of Operator class just for that purpose.
+      defs, [&os](Record *def) { os << Operator(def).getQualCppClassName(); },
       [&os]() { os << ",\n"; });
 }
 

@@ -25,6 +25,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/TableGen/Argument.h"
 #include "mlir/TableGen/Attribute.h"
+#include "mlir/TableGen/Dialect.h"
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Type.h"
 #include "llvm/ADT/PointerUnion.h"
@@ -50,25 +51,20 @@ public:
   explicit Operator(const llvm::Record &def);
   explicit Operator(const llvm::Record *def) : Operator(*def) {}
 
-  // Returns the operation name.
-  std::string getOperationName() const;
-
   // Returns this op's dialect name.
   StringRef getDialectName() const;
+
+  // Returns the operation name. The name will follow the "<dialect>.<op-name>"
+  // format if its dialect name is not empty.
+  std::string getOperationName() const;
+
+  // Returns this op's C++ namespaces.
+  StringRef getCppNamespaces() const;
 
   // Returns this op's C++ class name.
   StringRef getCppClassName() const;
 
-  // Returns this op's extra class declaration code.
-  StringRef getExtraClassDeclaration() const;
-
-  // Returns the qualified C++ class name for the given TableGen def `name`.
-  // The first `_` in `name` is treated as separating the dialect namespace
-  // and the op class name if the dialect namespace is not empty. Otherwise,
-  // if `name` starts with a `_`, the `_` is considered as part the class name.
-  static std::string getQualCppClassName(StringRef name);
-
-  // Returns this op's C++ class name prefixed with dialect namespace.
+  // Returns this op's C++ class name prefixed with namespaces.
   std::string getQualCppClassName() const;
 
   // Returns the number of results this op produces.
@@ -147,12 +143,15 @@ public:
   bool hasSummary() const;
   StringRef getSummary() const;
 
+  // Returns this op's extra class declaration code.
+  StringRef getExtraClassDeclaration() const;
+
 private:
   // Populates the vectors containing operands, attributes, results and traits.
   void populateOpStructure();
 
-  // The dialect name of the op.
-  StringRef dialectName;
+  // The dialect of this op.
+  Dialect dialect;
 
   // The unqualified C++ class name of the op.
   StringRef cppClassName;

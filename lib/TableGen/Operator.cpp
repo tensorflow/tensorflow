@@ -33,42 +33,46 @@ using llvm::DagInit;
 using llvm::DefInit;
 using llvm::Record;
 
-tblgen::Operator::Operator(const llvm::Record &def) : def(def) {
-  std::tie(dialectName, cppClassName) = def.getName().split('_');
-  if (dialectName.empty()) {
-    // Class name with a leading underscore and without dialect name
+tblgen::Operator::Operator(const llvm::Record &def)
+    : dialect(def.getValueAsDef("opDialect")), def(def) {
+  // The first `_` in the op's TableGen def name is treated as separating the
+  // dialect prefix and the op class name. The dialect prefix will be ignored if
+  // not empty. Otherwise, if def name starts with a `_`, the `_` is considered
+  // as part of the class name.
+  StringRef prefix;
+  std::tie(prefix, cppClassName) = def.getName().split('_');
+  if (prefix.empty()) {
+    // Class name with a leading underscore and without dialect prefix
     cppClassName = def.getName();
   } else if (cppClassName.empty()) {
-    // Class name without dialect name
-    std::swap(dialectName, cppClassName);
+    // Class name without dialect prefix
+    cppClassName = prefix;
   }
 
   populateOpStructure();
 }
 
 std::string tblgen::Operator::getOperationName() const {
-  auto *dialect = def.getValueAsDef("opDialect");
-  assert(dialect && "op defined without dialect");
-  auto prefix = dialect->getValueAsString("name");
+  auto prefix = dialect.getName();
+  auto opName = def.getValueAsString("opName");
   if (prefix.empty())
-    return def.getValueAsString("opName");
-  return llvm::formatv("{0}.{1}", prefix, def.getValueAsString("opName"));
+    return opName;
+  return llvm::formatv("{0}.{1}", prefix, opName);
 }
 
-StringRef tblgen::Operator::getDialectName() const { return dialectName; }
+StringRef tblgen::Operator::getDialectName() const { return dialect.getName(); }
+
+StringRef tblgen::Operator::getCppNamespaces() const {
+  return dialect.getCppNamespace();
+}
 
 StringRef tblgen::Operator::getCppClassName() const { return cppClassName; }
 
-std::string tblgen::Operator::getQualCppClassName(StringRef name) {
-  StringRef ns, cls;
-  std::tie(ns, cls) = name.split('_');
-  if (ns.empty() || cls.empty())
-    return name;
-  return (ns + "::" + cls).str();
-}
-
 std::string tblgen::Operator::getQualCppClassName() const {
-  return getQualCppClassName(def.getName());
+  auto prefix = dialect.getCppNamespace();
+  if (prefix.empty())
+    return cppClassName;
+  return llvm::formatv("{0}::{1}", prefix, cppClassName);
 }
 
 int tblgen::Operator::getNumResults() const {

@@ -27,6 +27,7 @@ include "mlir/LLVMIR/LLVMOpBase.td"
 
 def NVVM_Dialect : Dialect {
   let name = "nvvm";
+  let cppNamespace = "NVVM";
 }
 
 class NVVM_Op<string mnemonic, list<OpTrait> traits = []> :

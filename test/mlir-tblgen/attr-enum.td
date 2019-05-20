@@ -11,6 +11,7 @@ def NS_SomeEnum : EnumAttr<
 
 def Test_Dialect : Dialect {
   let name = "test";
+  let cppNamespace = "NS";
 }
 class NS_Op<string mnemonic, list<OpTrait> traits> :
     Op<Test_Dialect, mnemonic, traits>;
@@ -29,7 +30,7 @@ def NS_OpA : NS_Op<"op_a_with_enum_attr", []> {
 
 // DEF-LABEL: OpA::verify()
 // DEF:         auto tblgen_attr = this->getAttr("attr");
-// DEF:         if (!(((tblgen_attr.isa<StringAttr>())) && (((tblgen_attr.cast<StringAttr>().getValue() == "A")) || ((tblgen_attr.cast<StringAttr>().getValue() == "B"))))) 
+// DEF:         if (!(((tblgen_attr.isa<StringAttr>())) && (((tblgen_attr.cast<StringAttr>().getValue() == "A")) || ((tblgen_attr.cast<StringAttr>().getValue() == "B")))))
 // DEF-SAME:      return emitOpError("attribute 'attr' failed to satisfy constraint: some enum");
 
 def NS_OpB : NS_Op<"op_b_with_enum_attr", []> {

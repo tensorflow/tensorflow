@@ -214,6 +214,18 @@ class Dialect {
 
   // The description of the dialect.
   string description = ?;
+
+  // The C++ namespace that ops of this dialect should be placed into.
+  //
+  // By default, uses the name of the dialect as the only namespace. To avoid
+  // placing in any namespace, use "". To specify nested namespaces, use "::"
+  // as the delimiter, e.g., given "A::B", ops will be placed in
+  // `namespace A { namespace B { <ops> } }`.
+  //
+  // Note that this works in conjunction with dialect C++ code. Depending on how
+  // the generated files are included into the dialect, you may want to specify
+  // a full namespace path or a partial one.
+  string cppNamespace = name;
 }
 
 //===----------------------------------------------------------------------===//

@@ -31,6 +31,7 @@ include "mlir/IR/OpBase.td"
 
 def LLVM_Dialect : Dialect {
   let name = "llvm";
+  let cppNamespace = "LLVM";
 }
 
 // LLVM IR type wrapped in MLIR.

@@ -30,6 +30,7 @@ include "mlir/IR/OpBase.td"
 
 def Std_Dialect : Dialect {
   let name = "std";
+  let cppNamespace = "";
 }
 
 // Base class for Standard dialect ops.

@@ -1,4 +1,4 @@
-# Table-driven Operation Definition Specification
+# Table-driven Operation Definition Specification (ODS)
 
 In addition to specializing the `mlir::Op` C++ template, MLIR also supports
 defining operations in a table-driven manner. This is achieved via
@@ -134,10 +134,14 @@ of the `Op` class for the complete list of fields supported.
 ### Operation name
 
 The operation name is a unique identifier of the operation within MLIR, e.g.,
-`Add` for addition operation. This is the equivalent of the mnemonic in assembly
-language. It is used for parsing and printing in the textual format. It is also
-used for pattern matching in graph rewrites. The operation name is provided as
-the first template parameter to the `Op` class.
+`tf.Add` for addition operation in the TensorFlow dialect. This is the
+equivalent of the mnemonic in assembly language. It is used for parsing and
+printing in the textual format. It is also used for pattern matching in graph
+rewrites.
+
+The full operation name is composed of the dialect name and the op name, with
+the former provided via the dialect and the latter provided as the second
+template parameter to the `Op` class.
 
 ### Operation documentation
 
@@ -387,6 +391,37 @@ literally to the generated C++ op class.
 Note that `extraClassDeclaration` is a mechanism intended for long-tail cases
 by power users; for not-yet-implemented widely-applicable cases, improving the
 infrastructure is preferable.
+
+### Generated C++ code
+
+[OpDefinitionsGen][OpDefinitionsGen] processes the op definition spec file and
+generates two files containing the corresponding C++ code: one for declarations,
+the other for definitions. The former is generated via the `-gen-op-decls`
+command-line option, while the latter is via the `-gen-op-defs` option.
+
+The definition file contains all the op method definitions, which can be
+included and enabled by defining `GET_OP_CLASSES`. Besides, it also
+contains a comma-separated list of all defined ops, which can be included
+and enabled by defining `GET_OP_LIST`.
+
+### Class name and namespaces
+
+For each operation, its generated C++ class name is the symbol `def`ed with
+TableGen with dialect prefix removed. The first `_` serves as the delimiter.
+For example, for `def TF_AddOp`, the C++ class name would be `AddOp`.
+We remove the `TF` prefix because it is for scoping ops; other dialects
+may as well define their own `AddOp`s.
+
+The namespaces of the generated C++ class will come from the dialect's
+`cppNamespace` field. For example, if a dialect's `cppNamespace` is `A::B`,
+then an op of that dialect will be placed in
+`namespace A { namespace B { ... } }`. If a dialect does not specify a
+`cppNamespace`, we then use the dialect's name as the namespace.
+
+This means the qualified name of the generated C++ class does not necessarily
+match exactly with the operation name as explained in
+[Operation name](#operation-name). This is to allow flexible naming to satisfy
+coding style requirements.
 
 ## Constraints
 

@@ -4,6 +4,7 @@ include "mlir/IR/OpBase.td"
 
 def Test_Dialect : Dialect {
   let name = "test";
+  let cppNamespace = "";
 }
 class NS_Op<string mnemonic, list<OpTrait> traits> :
     Op<Test_Dialect, mnemonic, traits>;
