@@ -2780,7 +2780,7 @@ Status ConvertPool(OpConverterParams* params) {
 // TensorRT 5.1 added support for asymmetric padding. Before that, we need an
 // extra padding layer.
 #if !IS_TRT_VERSION_GE(5, 1, 0, 0)
-  // Asymmetric padding case. 
+  // Asymmetric padding case.
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     auto pad_layer = params->converter->network()->addPadding(
