@@ -128,15 +128,6 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
-  def testWriteSnapshotMultiFileSuccessful(self):
-    tmpdir = self.makeSnapshotDirectory()
-
-    dataset = dataset_ops.Dataset.range(20000)
-    dataset = dataset.apply(snapshot.snapshot(tmpdir))
-    self.assertDatasetProduces(dataset, list(range(20000)))
-
-    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 2)
-
   @parameterized.parameters(snapshot.COMPRESSION_NONE,
                             snapshot.COMPRESSION_GZIP)
   def testReadSnapshotBackAfterWrite(self, compression):
