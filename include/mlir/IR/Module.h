@@ -69,6 +69,7 @@ public:
 
 private:
   friend struct llvm::ilist_traits<Function>;
+  friend class Function;
 
   /// getSublistAccess() - Returns pointer to member of function list
   static FunctionListType Module::*getSublistAccess(Function *) {

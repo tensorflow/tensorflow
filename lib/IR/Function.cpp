@@ -44,6 +44,14 @@ Function::~Function() {
 
 MLIRContext *Function::getContext() { return getType().getContext(); }
 
+/// Swap the name of the given function with this one.
+void Function::takeName(Function &rhs) {
+  auto *module = getModule();
+  assert(module && module == rhs.getModule() && "expected same parent module");
+  std::swap(module->symbolTable[name], module->symbolTable[rhs.getName()]);
+  std::swap(name, rhs.name);
+}
+
 Module *llvm::ilist_traits<Function>::getContainingModule() {
   size_t Offset(
       size_t(&((Module *)nullptr->*Module::getSublistAccess(nullptr))));
