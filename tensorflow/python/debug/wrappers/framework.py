@@ -25,10 +25,7 @@ b) Release control to an external (i.e., non-Session) object before and after
    launching a UI to let users inspect the intermediate tensors and partition
    graphs from the run() call.
 
-c) (To be implemented) Intercept a run() call and give control to DebugStepper
-   to let it perform stepping / continuing-to actions on the graph.
-
-b) (To be implemented in a future CL) Enter an instruction loop to let an
+c) (To be implemented in a future CL) Enter an instruction loop to let an
    external object (e.g., remote client) launch run() and cont() calls
    remotely.
 
@@ -70,14 +67,6 @@ A1) Right at the start of each run() call, the on_run_start() callback is
 
     If the action is NON_DEBUG_RUN, a non-debug (normal) run will ensue.
 
-    If the action is INVOKE_STEPPER, no run() call will be issued to the
-    wrapped session. But instead, a DebugStepper (i.e., "continuation
-    debugger") will be used to perform stepping / continue-to actions on
-    the graph.
-
-TODO(cais): The event loop for the DebugStepper will request additional
-   callbacks including on_cont_start() and on_cont_end(). Add those.
-
 A2) Right before the run() returns, the on_run_end() callback is invoked,
     with an OnRunEndRequest object as the argument, which carries information
     including the actual action performed in the warpper run() call and the
@@ -93,9 +82,7 @@ B1) Callback on_instr_start() is invoked. The callback will return an
     OnInstrStartResponse object with an action field which can order one of
     the following actions:
         i) a run() call with fetches, feeds and debug_urls specified.
-       ii) a DebugStepper cont() call with target specified.
-      iii) value overrides in the cached tensors from the DebugStepper.
-       iv) exit the instruction loop.
+       ii) exit the instruction loop.
 
 B2) The wrapper session carries out the action specified above.
 
@@ -112,6 +99,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import re
 import threading
 
@@ -120,7 +108,6 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_utils
-from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
@@ -234,10 +221,6 @@ class OnRunStartAction(object):
   # Run without debug tensor-watching.
   NON_DEBUG_RUN = "non_debug_run"
 
-  # Instead of running the fetches as a whole, as would normally happen, invoke
-  # the (to-be-implemented) debug stepper.
-  # TODO(cais): Remove "to-be-implemented".
-  INVOKE_STEPPER = "invoke_stepper"
 
 
 class OnRunStartResponse(object):
@@ -338,9 +321,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
   Concrete classes that inherit from this class need to implement the abstract
   methods such as on_session_init, on_run_start and on_run_end.
   """
-
-  # TODO(cais): Add on_cont_start and on_cont_end callbacks once the stepper is
-  # is available.
 
   def __init__(self, sess, thread_name_filter=None,
                pass_through_operrors=False):
@@ -460,7 +440,19 @@ class BaseDebugWrapperSession(session.SessionInterface):
           "but are used simultaneously.")
 
     self.increment_run_call_count()
-    empty_fetches = not nest.flatten(fetches)
+
+    def is_empty(x):
+      """Check whether a possibly nested structure is empty."""
+      if not nest.is_nested(x):
+        return False
+      if isinstance(x, collections.Mapping):
+        return is_empty(list(x.values()))
+      for item in x:
+        if not is_empty(item):
+          return False
+      return True
+
+    empty_fetches = is_empty(fetches)
     if empty_fetches:
       tf_logging.info(
           "Due to empty fetches, tfdbg Session wrapper is letting a "
@@ -568,19 +560,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
           run_start_resp.action,
           run_metadata=run_metadata,
           client_graph_def=self._sess.graph.as_graph_def())
-    elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
-          run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
-      if callable_runner:
-        raise NotImplementedError(
-            "Stepper mode is not implemented for callables created by "
-            "Session.make_callable().")
-
-      if run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
-        with stepper.NodeStepper(
-            self._sess, fetches, feed_dict) as node_stepper:
-          retvals = self.invoke_node_stepper(
-              node_stepper, restore_variable_values_on_exit=True)
-
+    elif run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN:
       # Invoke run() method of the wrapped session.
       retvals = self._sess.run(
           fetches,
@@ -748,9 +728,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
     Returns:
       An instance of `OnRunStartResponse`, carrying information to
-        1) direct the wrapper session to perform a specified action (e.g., run
-          with or without debug tensor watching, invoking the stepper.)
-        2) debug URLs used to watch the tensors.
+        debug URLs used to watch the tensors.
     """
 
   @abc.abstractmethod
@@ -790,26 +768,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
   # TODO(cais): Add _node_name_regex_whitelist and
   #   _node_op_type_regex_whitelist.
-
-  def invoke_node_stepper(self,
-                          node_stepper,
-                          restore_variable_values_on_exit=True):
-    """Callback invoked when the client intends to step through graph nodes.
-
-    Args:
-      node_stepper: (stepper.NodeStepper) An instance of NodeStepper to be used
-        in this stepping session.
-      restore_variable_values_on_exit: (bool) Whether any variables whose values
-        have been altered during this node-stepper invocation should be restored
-        to their old values when this invocation ends.
-
-    Returns:
-      The same return values as the `Session.run()` call on the same fetches as
-        the NodeStepper.
-    """
-    raise NotImplementedError(
-        self.__class__.__name__ + " does not support node-stepper mode.")
-
 
   def should_stop(self):
     if hasattr(self._sess, "should_stop"):
@@ -974,11 +932,3 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
     """See doc of BaseDebugWrapperSession.on_run_end."""
 
     return OnRunEndResponse()
-
-  def invoke_node_stepper(self,
-                          node_stepper,
-                          restore_variable_values_on_exit=True):
-    """See doc of BaseDebugWrapperSession.invoke_node_stepper."""
-
-    raise NotImplementedError(
-        "NonInteractiveDebugWrapperSession does not support node-stepper mode.")

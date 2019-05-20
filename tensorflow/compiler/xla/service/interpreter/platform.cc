@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"

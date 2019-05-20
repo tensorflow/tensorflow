@@ -1217,9 +1217,8 @@ class DropoutWrapperBase(object):
 
     If `variational_recurrent` is set to `True` (**NOT** the default behavior),
     then the same dropout mask is applied at every step, as described in:
-
-    Y. Gal, Z Ghahramani.  "A Theoretically Grounded Application of Dropout in
-    Recurrent Neural Networks".  https://arxiv.org/abs/1512.05287
+    [A Theoretically Grounded Application of Dropout in Recurrent
+    Neural Networks. Y. Gal, Z. Ghahramani](https://arxiv.org/abs/1512.05287).
 
     Otherwise a different dropout mask is applied at every time step.
 

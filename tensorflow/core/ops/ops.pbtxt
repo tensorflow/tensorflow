@@ -3141,6 +3141,13 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
@@ -9221,6 +9228,45 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+}
+op {
+  name: "DecodePaddedRaw"
+  input_arg {
+    name: "input_bytes"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "fixed_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT16
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "little_endian"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
@@ -16591,7 +16637,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "Less"
@@ -20280,7 +20325,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "MultiDeviceIterator"
@@ -22128,6 +22172,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "parallel_copy"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "Toutput_types"
@@ -23990,7 +24041,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "QuantizedAvgPool"
@@ -26597,7 +26647,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "QuantizedRelu"
@@ -33077,7 +33126,6 @@ op {
       }
     }
   }
-  is_commutative: true
 }
 op {
   name: "Rint"

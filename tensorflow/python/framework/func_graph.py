@@ -27,7 +27,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -79,7 +78,6 @@ def convert_structure_to_signature(structure, arg_names=None):
     Identical structure that has TensorSpec objects instead of Tensors and
     UknownArgument instead of any unsupported types.
   """
-  structure = composite_tensor.replace_composites_with_components(structure)
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
@@ -370,7 +368,6 @@ class FuncGraph(ops.Graph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_shapes=True,
       compute_device=True):
     # When capturing by value, do the read outside
     reverse_captures = dict((v, k) for k, v in self.captures.items())
@@ -383,8 +380,14 @@ class FuncGraph(ops.Graph):
             context.context())
       else:
         op = ops.get_default_graph().create_op(
-            op_type, uncaptured_inputs, dtypes, input_types, name, attrs,
-            op_def, compute_shapes, compute_device)
+            op_type,
+            uncaptured_inputs,
+            dtypes,
+            input_types,
+            name,
+            attrs,
+            op_def,
+            compute_device=compute_device)
         value = op.outputs[0]
     captured_value = self.capture(value)
     return captured_value.op
@@ -432,11 +435,11 @@ class FuncGraph(ops.Graph):
     Returns:
       An `Operation` object.
     """
+    del compute_shapes
     if self.capture_by_value and op_type in ["ReadVariableOp",
                                              "ResourceGather"]:
-      return self._capture_by_value(
-          op_type, inputs, dtypes, input_types, name, attrs, op_def,
-          compute_shapes, compute_device)
+      return self._capture_by_value(op_type, inputs, dtypes, input_types, name,
+                                    attrs, op_def, compute_device)
 
     # This capturing logic interacts poorly with control flow contexts which
     # want to replace inputs of ops far too late in the process. This can lead

@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -218,8 +220,12 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
                                     FunctionLibraryRuntime* lib,
                                     OpKernelContext* ctx, DoneCallback done) {
   FunctionLibraryRuntime::Options run_opts;
-  run_opts.step_id = ctx->step_id();
-  run_opts.step_container = ctx->step_container();
+  ResourceMgr* resource_mgr = lib->device()->resource_manager();
+  ScopedStepContainer* step_container = new ScopedStepContainer(
+      run_opts.step_id, [resource_mgr](const string& name) {
+        resource_mgr->Cleanup(name).IgnoreError();
+      });
+  run_opts.step_container = step_container;
   run_opts.cancellation_manager = ctx->cancellation_manager();
   run_opts.stats_collector = ctx->stats_collector();
   run_opts.collective_executor = ctx->collective_executor();
@@ -229,15 +235,27 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   run_opts.source_device =
       lib->device() == nullptr ? "" : lib->device()->name();
   run_opts.allow_dead_tensors = true;
-  // TODO(akshayka): Accommodate the multiple-worker scenario by adding the
-  // constructed rendezvous to a rendezvous manager.
-  Rendezvous* rendez = new IntraProcessRendezvous(lib->device_mgr());
+
+  Rendezvous* rendez;
+  OP_REQUIRES_OK_ASYNC(
+      ctx,
+      ctx->create_rendezvous(run_opts.step_id,
+                             ctx->function_library()->device_mgr(), &rendez),
+      done);
   run_opts.rendezvous = rendez;
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
+  profiler::TraceMe trace_me(
+      [&] {
+        return absl::StrCat(
+            "PartitionedCallOp #parent_step_id=", ctx->step_id(),
+            ",function_step_id=", run_opts.step_id, "#");
+      },
+      /*level=*/2);
   lib->Run(run_opts, handle, inputs, rets,
-           [rets, rendez, done, ctx, func_name](const Status& status) {
+           [rets, rendez, done, ctx, func_name,
+            step_container](const Status& status) {
              if (!status.ok()) {
                const string function_and_msg =
                    strings::StrCat(errors::FormatFunctionForError(func_name),
@@ -249,6 +267,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
                }
              }
              delete rets;
+             delete step_container;
              rendez->Unref();
              done();
            });

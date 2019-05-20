@@ -29,8 +29,13 @@ template <typename T>
 class DecodeRawOp : public OpKernel {
  public:
   explicit DecodeRawOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("little_endian", &little_endian_));
     OP_REQUIRES_OK(context, context->GetAttr("out_type", &out_type_));
+
+    const bool host_is_little_endian = port::kLittleEndian;
+    bool data_is_little_endian;
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("little_endian", &data_is_little_endian));
+    convert_data_endianness_ = host_is_little_endian != data_is_little_endian;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -70,13 +75,18 @@ class DecodeRawOp : public OpKernel {
     auto out = output_tensor->flat_inner_dims<T>();
     DCHECK_EQ(flat_in.size(), out.dimensions()[0]);
     T* out_data = out.data();
-    if (port::kLittleEndian == little_endian_ || sizeof(T) == 1) {
+
+    // If the data is already in the host's byte order, or if the width of the
+    // output type is a single byte, we can copy the memory directly.
+    if (!convert_data_endianness_ || sizeof(T) == 1) {
       for (int64 i = 0; i < flat_in.size(); ++i) {
         const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
         memcpy(out_data, in_data, str_size);
         out_data += added_dim;
       }
     } else {
+      // Otherwise, the data is not in the host's byte order, and rather than a
+      // direct copy, we need to reverse the byte ordering of each element.
       for (int64 i = 0; i < flat_in.size(); ++i) {
         const char* in_data_bytes =
             reinterpret_cast<const char*>(flat_in(i).data());
@@ -92,7 +102,12 @@ class DecodeRawOp : public OpKernel {
   }
 
  private:
-  bool little_endian_;
+  // True if the endianness of the data and the endianness of the host are
+  // different, and the data needs conversion.
+  bool convert_data_endianness_;
+
+  // True if the input data is in little endian format.
+  bool data_is_little_endian_;
   DataType out_type_;
 };
 

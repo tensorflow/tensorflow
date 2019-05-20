@@ -77,6 +77,7 @@ py_library(
 py_test(
     name = "periodic_resample_op_test",
     srcs = ["python/kernel_tests/periodic_resample_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "notap",

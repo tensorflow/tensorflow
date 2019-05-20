@@ -24,15 +24,11 @@ import functools
 import inspect
 import os
 import pdb
+import re
 import sys
 import textwrap
 
 from enum import Enum
-
-# pylint:disable=g-bad-import-order
-import six
-# pylint:enable=g-bad-import-order
-
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
@@ -192,7 +188,6 @@ def _is_known_loaded_type(f, module_name, entity_name):
     return True
   # Note: inspect is required here, to avoid unpacking tf.function decorators.
   if inspect.ismethod(f):
-    f = six.get_unbound_function(f)
     # The the unbound method if of this type. Example:
     #
     # class ClassType:
@@ -201,7 +196,7 @@ def _is_known_loaded_type(f, module_name, entity_name):
     #     ...
     # o = ClassType()
     # o.method()
-    if isinstance(f, type_entity):
+    if isinstance(f.__func__, type_entity):
       return True
   return False
 
@@ -262,8 +257,16 @@ def converted_call(f, owner, options, args, kwargs):
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
-  if any(f in m.__dict__.values() for m in (collections, pdb, copy, inspect)):
+  if any(
+      f in m.__dict__.values() for m in (collections, pdb, copy, inspect, re)):
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
+    return _call_unconverted(f, args, kwargs)
+
+  # Custom ops and kernels are also permanently whitelisted.
+  # See tensorflow.framework.load_library.
+  if (hasattr(f, '__module__')
+      and hasattr(f.__module__, '_IS_TENSORFLOW_PLUGIN')):
+    logging.log(2, 'Permanently whitelisted: %s: TensorFlow plugin', f)
     return _call_unconverted(f, args, kwargs)
 
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
@@ -319,11 +322,18 @@ def converted_call(f, owner, options, args, kwargs):
       target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
 
-    if (not tf_inspect.isclass(target_entity) and
-        not hasattr(target_entity, '__code__')):
-      logging.log(
-          2, 'Permanently whitelisted: %s: native binding', target_entity)
-      return _call_unconverted(f, args, kwargs)
+    if not tf_inspect.isclass(target_entity):
+      if not hasattr(target_entity, '__code__'):
+        logging.log(
+            2, 'Permanently whitelisted: %s: native binding', target_entity)
+        return _call_unconverted(f, args, kwargs)
+      elif (hasattr(target_entity.__code__, 'co_filename') and
+            target_entity.__code__.co_filename == '<string>'):
+        # TODO(mdan): __globals__['txt'] might work in Py3.
+        logging.log(
+            2, 'Permanently whitelisted: %s: dynamic code (exec?)',
+            target_entity)
+        return _call_unconverted(f, args, kwargs)
 
     converted_f = to_graph(
         target_entity,
@@ -362,10 +372,17 @@ def converted_call(f, owner, options, args, kwargs):
 
     return _call_unconverted(f, args, kwargs)
 
-  if kwargs is not None:
-    result = converted_f(*effective_args, **kwargs)
-  else:
-    result = converted_f(*effective_args)
+  try:
+    if kwargs is not None:
+      result = converted_f(*effective_args, **kwargs)
+    else:
+      result = converted_f(*effective_args)
+  except errors.StagingError as e:
+    target_origin = errors.extract_origin_info(converted_f)
+    raise errors.StagingError((target_origin,) + e.user_trace, e.original_error)
+  except errors.AutoGraphError as e:
+    target_origin = errors.extract_origin_info(converted_f)
+    raise errors.StagingError((target_origin,), e)
 
   return result
 

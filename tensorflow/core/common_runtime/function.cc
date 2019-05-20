@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 // See core/kernels/function_ops.cc for related kernels.
 
@@ -401,6 +402,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     Executor* exec = nullptr;
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
     string executor_type;
+    Executor::RendezvousFactory rendezvous_factory = nullptr;
 
     ~Item() {
       delete this->func_graph;
@@ -498,7 +500,6 @@ class CallOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();
@@ -511,6 +512,12 @@ class CallOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
+    profiler::TraceMe trace_me(
+        [&] {
+          return absl::StrCat("CallOp #parent_step_id=", ctx->step_id(),
+                              ",function_step_id=", opts.step_id, "#");
+        },
+        /*level=*/2);
     lib->Run(opts, handle_, args, rets,
              [ctx, done, rets](const Status& status) {
                if (!status.ok()) {
@@ -773,6 +780,11 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.lib_def);
       }
+      item->rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                    Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      };
       local_handle = next_handle_++;
       items_.emplace(local_handle, std::unique_ptr<Item>(item));
     }
@@ -924,6 +936,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
+  params.rendezvous_factory = (*item)->rendezvous_factory;
   Graph* graph = g.get();
   std::unique_ptr<Executor> exec;
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, std::move(g), &exec));
@@ -1501,6 +1514,7 @@ string InlineFunctionBodyOptions::DebugString() const {
       "disable_inlining=", true_false(disable_inlining),
       ", ignore_noinline=", true_false(ignore_noinline),
       ", override_device=", true_false(ignore_noinline),
+      ", initialize_empty_device=", true_false(initialize_empty_device),
       ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
       output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
                                                            : "ControlOutputs");
@@ -1698,16 +1712,21 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   std::vector<Node*> node_map(fbody->graph->num_node_ids());
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
-    ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    if (options.override_device || ndef.device().empty()) {
+
+    if (options.override_device) {
       ndef.set_device(caller->def().device());
     }
-    for (auto& attr : *ndef.mutable_attr()) {
-      if (attr.first == "_class") {
-        attr.second.set_s(
-            strings::StrCat(caller->name(), "/", attr.second.s()));
-      }
+    if (options.initialize_empty_device && ndef.device().empty()) {
+      ndef.set_device(caller->def().device());
     }
+
+    // Add the function node name as a prefix:
+    //  1) to node name to avoid collisions
+    //  2) to frame name to avoid multiple LoopCond nodes in one frame
+    //  3) to colocation attribute
+    const string prefix = strings::StrCat(caller->name(), "/");
+    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef));
+
     Status added_node;
     Node* clone = g->AddNode(ndef, &added_node);
     if (options.override_device && !caller->assigned_device_name().empty()) {
@@ -2093,6 +2112,10 @@ void SymbolicGradientHelper::Copy(FunctionBody* gbody) {
   Graph* dst = gbody->graph;
 
   std::vector<Node*> node_map(src.num_node_ids());
+
+  // Copy just the fdef attributes (copy '_noinline' and other similar flags to
+  // the gradient function body).
+  *(gbody->fdef.mutable_attr()) = fbody_->fdef.attr();
 
   // Copy the nodes.
   node_map[src.source_node()->id()] = dst->source_node();

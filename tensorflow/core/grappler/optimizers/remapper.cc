@@ -415,7 +415,8 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx,
   if (!batch_norm || !IsFusedBatchNorm(*batch_norm)) return false;
 
   // V2 has a separate data type for the scale/offset/mean/variance inputs.
-  if (batch_norm->op() == "FusedBatchNormV2" &&
+  if ((batch_norm->op() == "FusedBatchNormV2" ||
+       batch_norm->op() == "FusedBatchNormV3") &&
       !HasDataType(batch_norm, DT_FLOAT, "U"))
     return false;
 
@@ -540,6 +541,7 @@ void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d) {
   (*attr)["T"] = src_attr.at("T");
   (*attr)["strides"] = src_attr.at("strides");
   (*attr)["padding"] = src_attr.at("padding");
+  (*attr)["explicit_paddings"] = src_attr.at("explicit_paddings");
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
@@ -878,9 +880,11 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   FusedBatchNorm                        fused_batch_norm;
   ContractionWithBiasAdd                contract_with_bias;
   ContractionWithBiasAddAndActivation   contract_with_bias_and_activation;
+#ifndef INTEL_MKL
   ContractionWithBatchNorm              contract_with_batch_norm;
   ContractionWithBatchNormAndActivation contract_with_batch_norm_and_activation;
   ContractionWithSqueezeAndBiasAdd      contract_with_squeeze_and_bias;
+#endif  // INTEL_MKL
   // clang-format on
 
   // Processing graph in reverse-topological sorted order allows to remap

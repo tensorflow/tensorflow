@@ -30,6 +30,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
@@ -42,6 +43,7 @@ from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -79,7 +81,7 @@ ops.NotDifferentiable("ReduceDataset")
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(tracking_base.Trackable):
+class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
@@ -141,7 +143,7 @@ class DatasetV2(tracking_base.Trackable):
       raise NotImplementedError(
           "Can only export Datasets which were created executing eagerly. "
           "Please file a feature request if this is important to you.")
-    with context.eager_mode():
+    with context.eager_mode(), ops.device("CPU"):
       graph_def = graph_pb2.GraphDef().FromString(
           self._as_serialized_graph().numpy())  # pylint: disable=protected-access
     output_node_name = None
@@ -236,7 +238,10 @@ class DatasetV2(tracking_base.Trackable):
       if t_options.private_threadpool_size is not None:
         dataset = _PrivateThreadPoolDataset(dataset,
                                             t_options.private_threadpool_size)
-    static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    static_optimizations = options._static_optimizations()
+    static_optimization_configs = options._static_optimization_configs()
+    # pylint: enable=protected-access
     if static_optimizations:
       if self._has_captured_ref():
         warnings.warn(
@@ -247,7 +252,7 @@ class DatasetV2(tracking_base.Trackable):
             ", ".join(static_optimizations))
       else:
         dataset = _OptimizeDataset(dataset, static_optimizations,
-                                   options._static_optimization_configs())  # pylint: disable=protected-access
+                                   static_optimization_configs)
 
     autotune = True
     cpu_budget = 0  # Indicates that all CPU cores should be used.
@@ -298,6 +303,24 @@ class DatasetV2(tracking_base.Trackable):
     output_types = str(output_types).replace("'", "")
     return ("<%s shapes: %s, types: %s>" % (type(self).__name__, output_shapes,
                                             output_types))
+
+  def _to_components(self):
+    return [self._variant_tensor]
+
+  def _component_metadata(self):
+    return self._element_structure
+
+  @classmethod
+  def _from_components(cls, components, metadata):
+    return _VariantDataset(components[0], metadata)
+
+  def _shape_invariant_to_components(self, shape=None):
+    del shape  # not used
+    return tensor_shape.TensorShape([])  # dataset component is always a scalar.
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._variant_tensor, "graph")
 
   @staticmethod
   def from_tensors(tensors):
@@ -701,8 +724,8 @@ class DatasetV2(tracking_base.Trackable):
         - /path/to/dir/a.txt
         - /path/to/dir/b.py
         - /path/to/dir/c.py
-      If we pass "/path/to/dir/*.py" as the directory, the dataset would
-      produce:
+      If we pass "/path/to/dir/*.py" as the directory, the dataset
+      would produce:
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
@@ -764,7 +787,32 @@ class DatasetV2(tracking_base.Trackable):
     """
     return RepeatDataset(self, count)
 
-  def _enumerate(self, start=0):
+  def enumerate(self, start=0):
+    """Enumerates the elements of this dataset.
+
+    It is similar to python's `enumerate`.
+
+    For example:
+
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
+    a = { 1, 2, 3 }
+    b = { (7, 8), (9, 10) }
+
+    # The nested structure of the `datasets` argument determines the
+    # structure of elements in the resulting dataset.
+    a.enumerate(start=5)) == { (5, 1), (6, 2), (7, 3) }
+    b.enumerate() == { (0, (7, 8)), (1, (9, 10)) }
+    ```
+
+    Args:
+      start: A `tf.int64` scalar `tf.Tensor`, representing the start value for
+        enumeration.
+
+    Returns:
+      Dataset: A `Dataset`.
+    """
 
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
     return Dataset.zip((Dataset.range(start, max_value), self))
@@ -1053,6 +1101,17 @@ class DatasetV2(tracking_base.Trackable):
     In addition to `tf.Tensor` objects, `map_func` can accept as arguments and
     return `tf.SparseTensor` objects.
 
+    Note that irrespective of the context in which `map_func` is defined (eager
+    vs. graph), tf.data traces the function and executes it as a graph. To use
+    Python code inside of the function you have two options:
+
+    1) Rely on AutoGraph to convert Python code into an equivalent graph
+    computation. The downside of this approach is that AutoGraph can convert
+    some but not all Python code.
+
+    2) Use `tf.py_function`, which allows you to write arbitrary Python code but
+    will generally result in worse performance than 1).
+
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
         and types defined by `self.output_shapes` and `self.output_types`) to
@@ -1237,22 +1296,33 @@ class DatasetV2(tracking_base.Trackable):
     return dataset
 
   def window(self, size, shift=None, stride=1, drop_remainder=False):
-    """Combines input elements into a dataset of windows.
+    """Combines (nests of) input elements into a dataset of (nests of) windows.
 
-    Each window is a dataset itself and contains `size` elements (or
-    possibly fewer if there are not enough input elements to fill the window
-    and `drop_remainder` evaluates to false).
+    A "window" is a finite dataset of flat elements of size `size` (or possibly
+    fewer if there are not enough input elements to fill the window and
+    `drop_remainder` evaluates to false).
 
-    The `stride` argument determines the stride of the input elements,
-    and the `shift` argument determines the shift of the window.
+    The `stride` argument determines the stride of the input elements, and the
+    `shift` argument determines the shift of the window.
 
-    For example:
+    For example, letting {...} to represent a Dataset:
+
     - `tf.data.Dataset.range(7).window(2)` produces
       `{{0, 1}, {2, 3}, {4, 5}, {6}}`
     - `tf.data.Dataset.range(7).window(3, 2, 1, True)` produces
       `{{0, 1, 2}, {2, 3, 4}, {4, 5, 6}}`
     - `tf.data.Dataset.range(7).window(3, 1, 2, True)` produces
       `{{0, 2, 4}, {1, 3, 5}, {2, 4, 6}}`
+
+    Note that when the `window` transformation is applied to a dataset of
+    nested elements, it produces a dataset of nested windows.
+
+    For example:
+
+    - `tf.data.Dataset.from_tensor_slices((range(4), range(4)).window(2)`
+      produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
+    - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
+      produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
@@ -1267,9 +1337,9 @@ class DatasetV2(tracking_base.Trackable):
         `window_size`.
 
     Returns:
-      Dataset: A `Dataset` of windows, each of which is a nested `Dataset` with
-        the same structure as this dataset, but a finite subsequence of its
-        elements.
+      Dataset: A `Dataset` of (nests of) windows -- a finite datasets of flat
+        elements created from the (nests of) input elements.
+
     """
     if shift is None:
       shift = size
@@ -1304,17 +1374,7 @@ class DatasetV2(tracking_base.Trackable):
     """
 
     with ops.name_scope("initial_state"):
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      initial_state = nest.pack_sequence_as(initial_state, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(initial_state))
-      ])
-
-    # Compute initial values for the state classes, shapes and types based on
-    # the initial state.
+      initial_state = structure_lib.normalize_tensors(initial_state)
     state_structure = structure_lib.Structure.from_value(initial_state)
 
     # Iteratively rerun the reduce function until reaching a fixed point on
@@ -2014,11 +2074,13 @@ class Options(options_lib.OptionsBase):
       "Whether the outputs need to be produced in deterministic order. If None,"
       " defaults to True.")
 
-  experimental_numa_aware = options_lib.create_option(
-      name="experimental_numa_aware",
-      ty=bool,
+  experimental_distribute = options_lib.create_option(
+      name="experimental_distribute",
+      ty=distribute_options.DistributeOptions,
       docstring=
-      "Whether to use NUMA-aware operations. If None, defaults to False.")
+      "The distribution options associated with the dataset. See "
+      "`tf.data.experimental.DistributeOptions` for more details.",
+      default_factory=distribute_options.DistributeOptions)
 
   experimental_optimization = options_lib.create_option(
       name="experimental_optimization",
@@ -2027,6 +2089,15 @@ class Options(options_lib.OptionsBase):
       "The optimization options associated with the dataset. See "
       "`tf.data.experimental.OptimizationOptions` for more details.",
       default_factory=optimization_options.OptimizationOptions)
+
+  experimental_slack = options_lib.create_option(
+      name="experimental_slack",
+      ty=bool,
+      docstring="Whether to introduce 'slack' in the last `prefetch` of the "
+      "input pipeline, if it exists. This may reduce CPU contention with "
+      "accelerator host-side activity at the start of a step. The slack "
+      "frequency is determined by the number of devices attached to this "
+      "input pipeline. If None, defaults to False.")
 
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
@@ -2050,18 +2121,28 @@ class Options(options_lib.OptionsBase):
     result = []
     result.extend(self.experimental_optimization._static_optimizations())  # pylint: disable=protected-access
 
-    if self.experimental_numa_aware:
-      result.append("make_numa_aware")
     if self.experimental_deterministic is False:
       result.append("make_sloppy")
     exp_stats_options = self.experimental_stats
     if exp_stats_options and exp_stats_options.latency_all_edges:
       result.append("latency_all_edges")
+    if self.experimental_slack:
+      result.append("slack")
     return result
 
   def _static_optimization_configs(self):
     """Produces the list of configurations for enabled static optimizations."""
-    return self.experimental_optimization._static_optimization_configs()  # pylint: disable=protected-access
+    result = []
+    if self.experimental_optimization:
+      result.extend(
+          self.experimental_optimization._static_optimization_configs())  # pylint: disable=protected-access
+
+    if self.experimental_slack:
+      num_devices = self.experimental_distribute.num_devices
+      if num_devices is None:
+        num_devices = 1
+      result.append("slack:slack_period:%d" % num_devices)
+    return result
 
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
@@ -2137,12 +2218,7 @@ class TensorSliceDataset(DatasetSource):
   def __init__(self, tensors):
     """See `Dataset.from_tensor_slices()` for details."""
     with ops.name_scope("tensors"):
-      tensors = nest.pack_sequence_as(tensors, [
-          sparse_tensor_lib.SparseTensor.from_value(t)
-          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
-              t, name="component_%d" % i)
-          for i, t in enumerate(nest.flatten(tensors))
-      ])
+      tensors = structure_lib.normalize_tensors(tensors)
 
     batched_structure = structure_lib.Structure.from_value(tensors)
     # pylint: disable=protected-access
@@ -2243,6 +2319,14 @@ class DatasetStructure(structure_lib.Structure):
 
   def __init__(self, element_structure):
     self._element_structure = element_structure
+
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, DatasetStructure) and
+            self._element_structure == other._element_structure)
+
+  def __hash__(self):
+    return hash(self._element_structure)
 
   @property
   def _flat_shapes(self):
@@ -2692,6 +2776,7 @@ class RangeDataset(DatasetSource):
   def __init__(self, *args):
     """See `Dataset.range()` for details."""
     self._parse_args(*args)
+    self._structure = structure_lib.TensorStructure(dtypes.int64, [])
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -2721,7 +2806,7 @@ class RangeDataset(DatasetSource):
 
   @property
   def _element_structure(self):
-    return structure_lib.TensorStructure(dtypes.int64, [])
+    return self._structure
 
 
 class CacheDataset(UnaryUnchangedStructureDataset):
@@ -2862,7 +2947,7 @@ class BatchDataset(UnaryDataset):
     return self._structure
 
 
-class _VariantTracker(tracking.TrackableResource):
+class _VariantTracker(tracking.CapturableResource):
   """Allows export of functions capturing a Dataset in SavedModels.
 
   When saving a SavedModel, `tf.saved_model.save` traverses the object
@@ -2882,7 +2967,7 @@ class _VariantTracker(tracking.TrackableResource):
         variant-dtype Tensor. This function will be included in SavedModels and
         run to re-create the Dataset's variant Tensor on restore.
     """
-    super(_VariantTracker, self).__init__()
+    super(_VariantTracker, self).__init__(device="CPU")
     self._resource_handle = variant_tensor
     self._create_resource = resource_creator
 
@@ -3312,8 +3397,19 @@ class FilterDataset(UnaryUnchangedStructureDataset):
 class PrefetchDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that asynchronously prefetches its input."""
 
-  def __init__(self, input_dataset, buffer_size):
-    """See `Dataset.prefetch()` for details."""
+  def __init__(self, input_dataset, buffer_size, slack_period=None):
+    """See `Dataset.prefetch()` for details.
+
+    Args:
+      input_dataset: The input dataset.
+      buffer_size: See `Dataset.prefetch()` for details.
+      slack_period: (Optional.) An integer. If non-zero, determines the number
+        of GetNext calls before injecting slack into the execution. This may
+        reduce CPU contention at the start of a step. Note that a tensorflow
+        user should not have to set this manually; enable this behavior
+        automatically via `tf.data.Options.experimental_slack` instead. Defaults
+        to None.
+    """
     self._input_dataset = input_dataset
     if buffer_size is None:
       buffer_size = -1  # This is the sentinel for auto-tuning.
@@ -3322,6 +3418,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     variant_tensor = gen_dataset_ops.prefetch_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
+        slack_period=slack_period,
         **flat_structure(self))
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 

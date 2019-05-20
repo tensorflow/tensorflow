@@ -208,10 +208,18 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       node_def->add_input(
           strings::StrCat(edge->src()->name(), ":", edge->src_output()));
     }
-
     // Add control inputs
+    std::vector<std::string> control_inputs;
+    control_inputs.reserve(control_edges.size());
     for (const Edge* edge : control_edges) {
-      node_def->add_input(strings::StrCat("^", edge->src()->name()));
+      control_inputs.push_back(strings::StrCat("^", edge->src()->name()));
+    }
+    // Sort the control inputs so that nodes that are semantically equivalent
+    // generate idential node_def.
+    std::sort(control_inputs.begin(), control_inputs.end());
+
+    for (const auto& input : control_inputs) {
+      node_def->add_input(input);
     }
 
     // Populate tensor_renaming.

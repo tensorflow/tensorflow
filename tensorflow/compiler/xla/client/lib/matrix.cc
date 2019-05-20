@@ -253,6 +253,11 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
 }
 
 XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision) {
+  return BatchDot(x, false, y, false, precision);
+}
+
+XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
+               PrecisionConfig::Precision precision) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
@@ -296,10 +301,20 @@ XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision) {
         return InvalidArgument("Expected batch dot dimension to be equal or 1");
       }
     }
-    x_config.push_back(ndims - 2);
-    x_config.push_back(ndims);
-    y_config.push_back(ndims);
-    y_config.push_back(ndims - 1);
+    if (transpose_x) {
+      x_config.push_back(ndims);
+      x_config.push_back(ndims - 2);
+    } else {
+      x_config.push_back(ndims - 2);
+      x_config.push_back(ndims);
+    }
+    if (transpose_y) {
+      y_config.push_back(ndims - 1);
+      y_config.push_back(ndims);
+    } else {
+      y_config.push_back(ndims);
+      y_config.push_back(ndims - 1);
+    }
     output_config.push_back(ndims - 2);
     output_config.push_back(ndims - 1);
     if (!x_implicit_broadcast.empty()) {

@@ -151,6 +151,7 @@ py_library(
 py_test(
     name = "metrics_test",
     srcs = ["metrics_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":metrics",
@@ -188,6 +189,7 @@ py_library(
 py_test(
     name = "evaluator_test",
     srcs = ["evaluator_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":evaluator",
@@ -220,6 +222,7 @@ py_library(
 py_test(
     name = "network_test",
     srcs = ["network_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":network",

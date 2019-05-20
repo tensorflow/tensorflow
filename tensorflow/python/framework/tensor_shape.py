@@ -245,7 +245,10 @@ class Dimension(object):
     Returns:
       True if this Dimension and `other` are compatible.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     return (self._value is None or other.value is None or
             self._value == other.value)
 
@@ -293,7 +296,10 @@ class Dimension(object):
       ValueError: If `self` and `other` are not compatible (see
         is_compatible_with).
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     self.assert_is_compatible_with(other)
     if self._value is None:
       return Dimension(other.value)
@@ -322,7 +328,10 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the sum of `self` and `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -361,7 +370,10 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the subtraction of `other` from `self`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:

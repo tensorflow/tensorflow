@@ -64,16 +64,13 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     mixed_precision_global_state.non_mixed_precision_session_created = False
 
   def tearDown(self):
-    # Set auto_mixed_precision back to it's default value.
-    config.set_optimizer_experimental_options({'auto_mixed_precision': False})
     # Set the IGNORE_PERF_VAR variable back to it's original value.
     if self._original_ignore_perf_value is not None:
       os.environ[self.IGNORE_PERF_VAR] = self._original_ignore_perf_value
     else:
       del os.environ[self.IGNORE_PERF_VAR]
-    # Revert global variables
-    mixed_precision_global_state.mixed_precision_is_enabled = False
-    mixed_precision_global_state.non_mixed_precision_session_created = False
+
+    mixed_precision.disable_mixed_precision_graph_rewrite()
     super(MixedPrecisionTest, self).tearDown()
 
   @test_util.run_in_graph_and_eager_modes
@@ -141,6 +138,10 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(f().numpy(), float('Inf'))
       # Outside a def_function.function, the grappler pass will not be applied.
       self.assertAlmostEqual(overflow_in_float16().numpy(), 2 ** 20)
+
+      # Test disabling mixed precision.
+      mixed_precision.disable_mixed_precision_graph_rewrite()
+      self.assertEqual(f().numpy(), 2 ** 20)
     else:
       with session.Session() as sess:
         out = overflow_in_float16()
@@ -154,8 +155,19 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
         sess.run(var.initializer)
         self.assertEqual(sess.run(out), float('Inf'))
 
+      # Test disabling mixed precision.
+      mixed_precision.disable_mixed_precision_graph_rewrite()
+      with session.Session() as sess:
+        out = overflow_in_float16()
+        sess.run(var.initializer)
+        self.assertAlmostEqual(sess.run(out), 2 ** 20)
+
   @test.mock.patch.object(tf_logging, 'warn')
   def test_warn_if_session_already_exists(self, mock_warn):
+    # Set this to False, so Sessions created in previous tests do not trigger
+    # the warning.
+    mixed_precision_global_state.non_mixed_precision_session_created = False
+
     with session.Session():
       enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
       mock_warn.assert_any_call(
@@ -165,6 +177,10 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @test.mock.patch.object(tf_logging, 'warn')
   def test_do_not_warn_if_session_does_not_already_exist(self, mock_warn):
+    # Set this to False, so Sessions created in previous tests do not trigger
+    # the warning.
+    mixed_precision_global_state.non_mixed_precision_session_created = False
+
     enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
     with session.Session():
       # Make sure the "You already have existing Sessions" warning was not

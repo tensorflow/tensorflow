@@ -22,28 +22,15 @@ namespace tensorflow {
 namespace data {
 
 // Returns a GraphDef representation of the given dataset.
-Status AsGraphDef(OpKernelContext* ctx, DatasetBase* dataset,
+Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
+                  SerializationContext&& serialization_ctx,
                   GraphDef* graph_def);
 
-// This method is used to determine whether we can short-circuit the evaluation
-// of the user-defined function `func`. Short-circuting is possible if every
-// function output corresponds to one of its inputs (e.g. `f(x) = x`, `f(x,y) =
-// (y,x)`, or `f(x) = (x,x)`).
-//
-// If short-circuiting is possible, the method stores the mapping from output
-// indices to input indices in `indices`. Otherwise, `indices` will be empty.
-//
-// Returns non-ok status if analysis of the function fails.
-//
-// TODO(jsimsa): Extend this to support constants as well.
-Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
-                                  const NameAttrList& func,
-                                  std::vector<int>* indices);
-
-// Given a vector that maps output indices to input indices, return a vector
-// that identifies for which output indices can we move the input (assuming
-// output indices are processed left to right).
-std::vector<bool> ComputeMoveVector(const std::vector<int>& indices);
+// Rewrites the input dataset using the given config.
+Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                      std::function<RewriterConfig(void)> config_factory,
+                      bool optimize_function_library,
+                      DatasetBase** rewritten_input);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.
@@ -107,10 +94,6 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
 // Creates a runner that runs functions with limited parallelism.
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
     std::function<void(std::function<void()>)> runner, int max_parallelism);
-
-Status CreateFunctionLibraryDefinition(
-    const FunctionLibraryDefinition* lib_def, const string& func_name,
-    std::shared_ptr<FunctionLibraryDefinition>* result);
 
 }  // namespace data
 }  // namespace tensorflow

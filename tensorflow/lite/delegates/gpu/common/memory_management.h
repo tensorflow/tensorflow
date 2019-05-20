@@ -40,6 +40,11 @@ struct TensorUsageRecord {
 
   TensorUsageRecord(uint32_t size, TaskId first, TaskId last)
       : tensor_size(size), first_task(first), last_task(last) {}
+
+  // Default order of tensor usage records is increasing order of first_task.
+  bool operator<(const TensorUsageRecord& other) const {
+    return first_task < other.first_task;
+  }
 };
 
 // Information about assignment of tensors to shared objects

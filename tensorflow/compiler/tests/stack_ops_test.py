@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class StackOpTest(xla_test.XLATestCase):
 
   def testStackPushPop(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
 
       v = array_ops.placeholder(dtypes.float32)
 
@@ -47,7 +47,7 @@ class StackOpTest(xla_test.XLATestCase):
                           xla.compile(fn)[0].eval({v: [[4.0, 5.0]]}))
 
   def testStackPushPopSwap(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       a = np.arange(2000)
       x = array_ops.placeholder(dtypes.float32)
 
@@ -60,7 +60,7 @@ class StackOpTest(xla_test.XLATestCase):
       self.assertAllClose(a, xla.compile(fn)[0].eval({x: a}))
 
   def testMultiStack(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       v = array_ops.placeholder(dtypes.float32)
 
       def fn():
@@ -78,7 +78,7 @@ class StackOpTest(xla_test.XLATestCase):
 
   def testSameNameStacks(self):
     """Different stacks with the same name do not interfere."""
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       v1 = array_ops.placeholder(dtypes.float32)
       v2 = array_ops.placeholder(dtypes.float32)
 
@@ -100,7 +100,7 @@ class StackOpTest(xla_test.XLATestCase):
       self.assertAllClose(out2, 5.0)
 
   def testCloseStack(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
 
       def fn():
         h = gen_data_flow_ops.stack_v2(5, dtypes.float32, stack_name="foo")
@@ -109,7 +109,7 @@ class StackOpTest(xla_test.XLATestCase):
       sess.run(xla.compile(fn))
 
   def testPushCloseStack(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       v = array_ops.placeholder(dtypes.float32)
 
       def fn():

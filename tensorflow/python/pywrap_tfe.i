@@ -17,11 +17,15 @@ limitations under the License.
 
 %ignore "";
 
+%rename("%s") TF_SetXlaEnableLazyCompilation;
+%rename("%s") TF_SetXLaAutoJitMode;
+%rename("%s") TF_SetXlaMinClusterSize;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextRemoveFunction;
 %rename("%s") TFE_ContextHasFunction;
 %rename("%s") TFE_ContextEnableRunMetadata;
 %rename("%s") TFE_ContextDisableRunMetadata;

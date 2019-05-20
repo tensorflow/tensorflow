@@ -35,6 +35,6 @@ cd /bazel
 
 curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-dist.zip
 unzip bazel-$BAZEL_VERSION-dist.zip
-bash ./compile.sh
+env EXTRA_BAZEL_ARGS="--host_javabase=@local_jdk//:jdk" bash ./compile.sh
 cp output/bazel /usr/local/bin/
 rm -rf /bazel

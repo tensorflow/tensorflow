@@ -8,6 +8,7 @@ load("//tensorflow:tensorflow.bzl", "py_binary")
 py_binary(
     name = "linear_regression",
     srcs = ["linear_regression.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":linear_regression_lib"],
 )

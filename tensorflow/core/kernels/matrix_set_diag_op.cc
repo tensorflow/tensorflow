@@ -121,16 +121,17 @@ struct MatrixSetDiag<CPUDevice, T> {
     if (input.data() != output.data()) {
       output.device(device) = input;
     }
-    auto compute_shard = [&output, &diag](int64 begin, int64 end) {
-      for (int64 batch = begin; batch < end; ++batch) {
-        for (int64 col = 0; col < diag.dimension(1); ++col) {
+    auto compute_shard = [&output, &diag](Eigen::Index begin,
+                                          Eigen::Index end) {
+      for (Eigen::Index batch = begin; batch < end; ++batch) {
+        for (Eigen::Index col = 0; col < diag.dimension(1); ++col) {
           output(batch, col, col) = diag(batch, col);
         }
       }
     };
     auto thread_pool =
         context->device()->tensorflow_cpu_worker_threads()->workers;
-    int64 cost_per_batch = 10 * output.dimension(1);  // Heuristic.
+    Eigen::Index cost_per_batch = 10 * output.dimension(1);  // Heuristic.
     thread_pool->ParallelFor(output.dimension(0), cost_per_batch,
                              std::move(compute_shard));
   }

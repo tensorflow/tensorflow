@@ -16,8 +16,10 @@ limitations under the License.
 #include <unistd.h>
 
 #include "absl/base/casts.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_event.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -31,10 +33,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -115,7 +114,7 @@ GpuExecutor::~GpuExecutor() {
 }
 bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
   const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
-  mutex_lock lock{in_memory_modules_mu_};
+  absl::MutexLock lock{&in_memory_modules_mu_};
   return UnloadGpuBinary(gpu_binary);
 }
 
@@ -210,9 +209,9 @@ static string GetBinaryDir(bool strip_exe) {
   if (strip_exe) {
     // The exe is the last component of the path, so remove one component.
     string ret = exe_path;
-    std::vector<string> components = port::Split(exe_path, '/');
+    std::vector<string> components = absl::StrSplit(exe_path, '/');
     components.pop_back();
-    return port::Join(components, "/");
+    return absl::StrJoin(components, "/");
   }
   return exe_path;
 }
@@ -236,7 +235,7 @@ bool GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     kernelname = &spec.cuda_cubin_in_memory().kernelname();
 
     const char* hsaco = spec.cuda_cubin_in_memory().bytes();
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
@@ -294,7 +293,7 @@ bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   // whether we've done an occupancy check on this kernel before isn't free
   // (because we have to synchronize), so we only do this at -v 2+.
   if (VLOG_IS_ON(2)) {
-    mutex_lock lock(launched_kernels_mu_);
+    absl::MutexLock lock(&launched_kernels_mu_);
     if (!launched_kernels_.count(hipfunc)) {
       VlogOccupancyInfo(kernel, thread_dims, block_dims);
       // TODO(rspringer): Remove elements from launched_kernels_...if we ever
@@ -366,7 +365,7 @@ bool GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
   hipModule_t hip_module = nullptr;
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
-    mutex_lock lock{in_memory_modules_mu_};
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (!LoadModuleFromHsaco(
             reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
             &hip_module)) {
@@ -765,8 +764,8 @@ bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
 bool GpuExecutor::GetSymbol(const string& symbol_name,
                             ModuleHandle module_handle, void** mem,
                             size_t* bytes) {
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{disk_modules_mu_};
+  {  // give limited scope to lock
+    absl::MutexLock lock{&disk_modules_mu_};
     for (auto& it : disk_modules_) {
       if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
                                      reinterpret_cast<hipDeviceptr_t*>(mem),
@@ -776,8 +775,8 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
     }
   }
 
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{in_memory_modules_mu_};
+  {  // give limited scope to lock
+    absl::MutexLock lock{&in_memory_modules_mu_};
     for (auto& it : in_memory_modules_) {
       if (GpuDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
                                      reinterpret_cast<hipDeviceptr_t*>(mem),
@@ -787,8 +786,8 @@ bool GpuExecutor::GetSymbol(const string& symbol_name,
     }
   }
 
-  {  // give limited scope to mutex_lock
-    mutex_lock lock{in_memory_modules_mu_};
+  {  // give limited scope to lock
+    absl::MutexLock lock{&in_memory_modules_mu_};
     if (static_cast<bool>(module_handle)) {
       auto it = gpu_binary_to_module_.find(module_handle.id());
       CHECK(it != gpu_binary_to_module_.end());
@@ -818,7 +817,7 @@ bool FillBlockDimLimit(GpuDeviceHandle device, BlockDim* block_dim_limit) {
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  if (!GpuDriver::GetGridLimits(&x, &y, &z, device_)) {
+  if (!GpuDriver::GetGridLimits(&x, &y, &z, device)) {
     return false;
   }
 
@@ -869,7 +868,7 @@ static int TryToReadNumaNode(const string& pci_bus_id, int device_ordinal) {
 }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
-CreateDeviceDescriptionInternal(int device_ordinal) {
+GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   auto status = GpuDriver::GetDevice(device_ordinal, &device);
   if (!status.ok()) {
@@ -898,7 +897,7 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
     string pci_bus_id = GpuDriver::GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
-    pci_bus_id = port::Lowercase(pci_bus_id);
+    pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
     builder.set_pci_bus_id(pci_bus_id);
 
     // Read the NUMA node corresponding to the PCI bus ID out of sysfs.
@@ -934,7 +933,7 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
 
   {
     BlockDim block_dim_limit;
-    FillBlockDimLimit(&block_dim_limit);
+    FillBlockDimLimit(device, &block_dim_limit);
     builder.set_block_dim_limit(block_dim_limit);
   }
 
@@ -968,11 +967,6 @@ CreateDeviceDescriptionInternal(int device_ordinal) {
   builder.set_registers_per_core_limit(64 * 1024);
 
   return builder.Build();
-}
-
-port::StatusOr<std::unique_ptr<DeviceDescription>>
-GpuExecutor::CreateDeviceDescription() const {
-  return CreateDeviceDescriptionInternal(device_ordinal_);
 }
 
 }  // namespace gpu
