@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
@@ -68,6 +69,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -265,6 +267,14 @@ DirectSession::DirectSession(const SessionOptions& options,
                                true /* owned */);
   } else {
     thread_pools_.emplace_back(GlobalThreadPool(options), false /* owned */);
+    // Run locally if environment value of TF_NUM_INTEROP_THREADS is negative
+    // and config.inter_op_parallelism_threads is unspecified or negative.
+    static const int env_num_threads = NumInterOpThreadsFromEnvironment();
+    if (options_.config.inter_op_parallelism_threads() < 0 ||
+        (options_.config.inter_op_parallelism_threads() == 0 &&
+         env_num_threads < 0)) {
+      run_in_caller_thread_ = true;
+    }
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
@@ -434,8 +444,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
   const uint64 start_time_usecs = options_.env->NowMicros();
-  string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
-  tracing::ScopedActivity activity(session_id_meta);
+  profiler::TraceMe activity(
+      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
+      profiler::TraceMeLevel::kInfo);
 
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
@@ -564,6 +575,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       run_options.inter_op_thread_pool() >= 0
           ? thread_pools_[run_options.inter_op_thread_pool()].first
           : nullptr;
+  if (run_in_caller_thread_) {
+    pool = nullptr;
+  }
 
   if (pool == nullptr) {
     // We allow using the caller thread only when having a single executor
@@ -1247,6 +1261,11 @@ Status DirectSession::CreateExecutors(
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;
+    };
+    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+      *r = new IntraProcessRendezvous(device_mgr);
+      return Status::OK();
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,

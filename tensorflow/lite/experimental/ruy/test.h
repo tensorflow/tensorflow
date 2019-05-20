@@ -31,6 +31,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/ruy/pmu.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "tensorflow/lite/experimental/ruy/ruy_advanced.h"
 #include "tensorflow/lite/experimental/ruy/time.h"
 
 #ifdef RUY_TEST_EXTERNAL_PATHS
@@ -38,8 +39,8 @@ limitations under the License.
 #define EIGEN_USE_CUSTOM_THREAD_POOL
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/lapack/blas.h"
 #include "public/gemmlowp.h"
+#include "third_party/lapack/blas.h"
 #endif
 
 #ifdef GEMMLOWP_PROFILING
@@ -297,17 +298,13 @@ void MakeRandomVector(RandomRange range, int size, std::vector<Scalar>* dst) {
   }
 }
 
-enum class LayoutStyle { kPackedLinear, kLinear, kBlocked };
+enum class LayoutStyle { kPackedLinear, kLinear };
 
-void MakeLayout(int rows, int cols, int kernel_rows, int kernel_cols,
-                Order order, Order kernel_order, LayoutStyle layout_style,
+void MakeLayout(int rows, int cols, Order order, LayoutStyle layout_style,
                 Layout* layout) {
   layout->rows = rows;
   layout->cols = cols;
   layout->order = order;
-  layout->kernel.order = kernel_order;
-  layout->kernel.rows = kernel_rows;
-  layout->kernel.cols = kernel_cols;
 
   const int packed_stride = order == Order::kColMajor ? rows : cols;
 
@@ -322,6 +319,9 @@ void MakeLayout(int rows, int cols, int kernel_rows, int kernel_cols,
 
 template <typename Scalar>
 struct StorageMatrix {
+  StorageMatrix() = default;
+  StorageMatrix(const StorageMatrix&) = delete;
+  void operator=(const StorageMatrix&) = delete;
   std::vector<Scalar> data;
   Matrix<Scalar> matrix;
 };
@@ -340,12 +340,10 @@ void VerifyConsistentFields(const StorageMatrix<Scalar>& storage_matrix) {
 }
 
 template <typename Scalar>
-void MakeRandom(int rows, int cols, int kernel_rows, int kernel_cols,
-                Order order, Order kernel_order, Scalar zero_point,
+void MakeRandom(int rows, int cols, Order order, Scalar zero_point,
                 LayoutStyle layout_style, RandomRange range,
                 StorageMatrix<Scalar>* storage_matrix) {
-  MakeLayout(rows, cols, kernel_rows, kernel_cols, order, kernel_order,
-             layout_style, &storage_matrix->matrix.layout);
+  MakeLayout(rows, cols, order, layout_style, &storage_matrix->matrix.layout);
   storage_matrix->matrix.zero_point = zero_point;
   UniformRandomDistribution<Scalar> data_dist(range);
   MakeRandomVector(&data_dist, FlatSize(storage_matrix->matrix.layout),
@@ -356,6 +354,8 @@ void MakeRandom(int rows, int cols, int kernel_rows, int kernel_cols,
 
 template <typename Scalar>
 struct TestResult {
+  void operator=(const TestResult&) = delete;
+  void operator=(const TestResult&&) = delete;
   StorageMatrix<Scalar> storage_matrix;
   Path path = Path::kNone;
   Tuning tuning = Tuning::kAuto;
@@ -367,6 +367,14 @@ struct TestResult {
   float mispred_rate;
   float frontend_stall_rate;
   float backend_stall_rate;
+
+  // Per-path data for pre-packing.
+  // This is not used by external paths or by Path::kReference.
+  Allocator allocator;
+  PrepackedMatrix prepacked_lhs;
+  PrepackedMatrix prepacked_rhs;
+  bool use_prepacked_lhs = false;
+  bool use_prepacked_rhs = false;
 };
 
 template <typename Scalar>
@@ -395,6 +403,7 @@ struct TestSet final {
   using AccumScalar = typename SpecType::AccumScalar;
   using DstScalar = typename SpecType::DstScalar;
   using Spec = SpecType;
+  using TestResultType = TestResult<DstScalar>;
 
   void Run() {
     MakeZeroPoints();
@@ -402,6 +411,7 @@ struct TestSet final {
     MakeSpec();
     MakeOtherParams();
     MakeResultPaths();
+    MakePrepackedMatrices();
     Eval();
     Verify();
   }
@@ -411,13 +421,16 @@ struct TestSet final {
   void MakeLhsRhs();
   void MakeSpec();
   void MakeResultPaths();
+  void MakePrepackedMatrices();
   void MakeOtherParams();
   void EvalAndVerify();
   void Eval();
   void Verify();
 
-  void EvalResult(TestResult<DstScalar>* result);
-  void Benchmark(TestResult<DstScalar>* result);
+  void EvalResult(TestResultType* result);
+  void EvalRuy(TestResultType* result);
+  void DoMul(TestResultType* result);
+  void Benchmark(TestResultType* result);
   void VerifyTestResults() const;
   void VerifyNonTrivial() const;
 
@@ -429,6 +442,7 @@ struct TestSet final {
     kHasSpec,
     kHasOtherParams,
     kHasResultPaths,
+    kHasPrepackedMatrices,
     kEvaluated,
     kFinal
   };
@@ -443,13 +457,8 @@ struct TestSet final {
   int rows = 0;
   int cols = 0;
   int depth = 0;
-  int kernel_rows = 1;
-  int kernel_cols = 1;
-  int kernel_depth = 1;
   Order lhs_order = Order::kRowMajor;
   Order rhs_order = Order::kColMajor;
-  Order lhs_kernel_order = Order::kRowMajor;
-  Order rhs_kernel_order = Order::kColMajor;
   Order dst_order = Order::kColMajor;
   LayoutStyle layout_style = LayoutStyle::kPackedLinear;
   ExpectedOutcome expected_outcome = ExpectedOutcome::kSuccess;
@@ -466,7 +475,7 @@ struct TestSet final {
   StorageMatrix<RhsScalar> rhs;
   Spec spec;
   std::vector<AccumScalar> bias_data;
-  std::vector<TestResult<DstScalar>> results;
+  std::vector<std::unique_ptr<TestResultType>> results;
 
   std::vector<Path> paths;
   std::vector<ExternalPath> external_paths;
@@ -474,6 +483,8 @@ struct TestSet final {
   bool benchmark = false;
   bool perchannel = false;
   int max_num_threads = 0;
+  bool benchmark_prepack_lhs = false;
+  bool benchmark_prepack_rhs = false;
 };
 
 Context& GlobalContext() {
@@ -490,13 +501,40 @@ Context& GlobalContext() {
 #endif
 #endif  // defined(__has_feature)
 
-template <typename LhsScalar, typename RhsScalar, typename DstScalar,
-          typename Spec>
-void EvalRuy(Path path, Tuning tuning, const Matrix<LhsScalar>& lhs,
-             const Matrix<RhsScalar>& rhs, const Spec& spec,
-             Matrix<DstScalar>* dst, ExpectedOutcome expected_outcome,
-             bool benchmark, int max_num_threads) {
-  GlobalContext().explicit_tuning = tuning;
+template <typename LhsScalar, typename RhsScalar, typename SpecType>
+void TestSet<LhsScalar, RhsScalar, SpecType>::DoMul(TestResultType* result) {
+  Context* context = &GlobalContext();
+
+  if (!result->use_prepacked_lhs && !result->use_prepacked_rhs) {
+    Mul<kAllPaths>(lhs.matrix, rhs.matrix, spec, context,
+                   &result->storage_matrix.matrix);
+    return;
+  }
+
+  // If we prepacked an input matrix, null out its data pointer to check
+  // that we don't access any data through it.
+  Matrix<LhsScalar> null_data_lhs = lhs.matrix;
+  Matrix<RhsScalar> null_data_rhs = rhs.matrix;
+  if (result->use_prepacked_lhs) {
+    null_data_lhs.data = nullptr;
+  }
+  if (result->use_prepacked_rhs) {
+    null_data_rhs.data = nullptr;
+  }
+
+  // Do the multiplication with pre-packed matrices.
+  PrepackedMatrix* prepacked_lhs_ptr =
+      result->use_prepacked_lhs ? &result->prepacked_lhs : nullptr;
+  PrepackedMatrix* prepacked_rhs_ptr =
+      result->use_prepacked_rhs ? &result->prepacked_rhs : nullptr;
+  MulWithPrepacked<kAllPaths>(null_data_lhs, null_data_rhs, spec, context,
+                              &result->storage_matrix.matrix, prepacked_lhs_ptr,
+                              prepacked_rhs_ptr);
+}
+
+template <typename LhsScalar, typename RhsScalar, typename SpecType>
+void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
+  GlobalContext().explicit_tuning = result->tuning;
   if (max_num_threads) {
     GlobalContext().max_num_threads = max_num_threads;
   } else if (benchmark) {
@@ -504,15 +542,15 @@ void EvalRuy(Path path, Tuning tuning, const Matrix<LhsScalar>& lhs,
   } else {
     GlobalContext().max_num_threads = 1 + global_random_engine()() % 8;
   }
-  GlobalContext().SetRuntimeEnabledPaths(path);
+  GlobalContext().SetRuntimeEnabledPaths(result->path);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
-    Mul<kAllPaths>(lhs, rhs, spec, &GlobalContext(), dst);
-    RUY_CHECK(GlobalContext().last_taken_path == path);
+    DoMul(result);
+    RUY_CHECK(GlobalContext().last_taken_path == result->path);
   } else if (expected_outcome == ExpectedOutcome::kDeath) {
     // TODO(benoitjacob) TSan and ASan seem to be breaking ASSERT_DEATH.
     // Report a bug?
 #if (!defined NDEBUG) && (!defined RUY_ASAN) && (!defined RUY_TSAN)
-    ASSERT_DEATH(Mul<kAllPaths>(lhs, rhs, spec, &GlobalContext(), dst), "");
+    ASSERT_DEATH(DoMul(result), "");
 #endif
   } else {
     RUY_CHECK(false);
@@ -526,7 +564,6 @@ void EvalRuy(Path path, Tuning tuning, const Matrix<LhsScalar>& lhs,
 template <typename Scalar, gemmlowp::MapOrder tOrder>
 void WrapGemmlowp(const Matrix<Scalar>& src,
                   gemmlowp::MatrixMap<const Scalar, tOrder>* dst) {
-  RUY_CHECK(IsLinear(src.layout));
   RUY_CHECK(src.layout.order == (tOrder == gemmlowp::MapOrder::ColMajor
                                      ? Order::kColMajor
                                      : Order::kRowMajor));
@@ -537,7 +574,6 @@ void WrapGemmlowp(const Matrix<Scalar>& src,
 template <typename Scalar, gemmlowp::MapOrder tOrder>
 void WrapGemmlowpMutable(Matrix<Scalar>* src,
                          gemmlowp::MatrixMap<Scalar, tOrder>* dst) {
-  RUY_CHECK(IsLinear(src->layout));
   RUY_CHECK(src->layout.order == (tOrder == gemmlowp::MapOrder::ColMajor
                                       ? Order::kColMajor
                                       : Order::kRowMajor));
@@ -706,9 +742,6 @@ template <Order LhsOrder, Order RhsOrder, Order DstOrder, typename LhsScalar,
           typename RhsScalar, typename DstScalar, typename Spec>
 void EvalEigen(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
                const Spec& spec, int max_num_threads, Matrix<DstScalar>* dst) {
-  RUY_CHECK(IsLinear(lhs.layout));
-  RUY_CHECK(IsLinear(rhs.layout));
-  RUY_CHECK(IsLinear(dst->layout));
   RUY_CHECK_EQ(lhs.zero_point, 0);
   RUY_CHECK_EQ(rhs.zero_point, 0);
   RUY_CHECK_EQ(dst->zero_point, 0);
@@ -802,9 +835,9 @@ void EvalEigenTensor(const Matrix<Scalar>& lhs, const Matrix<Scalar>& rhs,
   RUY_CHECK_EQ(spec.multiplier_exponent, 0);
 
   // Eigen::TensorMap only supports packed layouts
-  RUY_CHECK(IsPackedLinear(lhs.layout));
-  RUY_CHECK(IsPackedLinear(rhs.layout));
-  RUY_CHECK(IsPackedLinear(dst->layout));
+  RUY_CHECK(IsPacked(lhs.layout));
+  RUY_CHECK(IsPacked(rhs.layout));
+  RUY_CHECK(IsPacked(dst->layout));
 
   using TensorLhsType =
       Eigen::TensorMap<Eigen::Tensor<const Scalar, 2, Eigen::ColMajor>>;
@@ -1210,9 +1243,9 @@ struct ErrorAnalysis {
 template <typename TestSetType>
 void AnalyzeTestError(const TestSetType& test_set, int first_bad_result_index,
                       ErrorAnalysis* error_analysis) {
-  const auto& good_matrix = test_set.results[0].storage_matrix.matrix;
+  const auto& good_matrix = test_set.results[0]->storage_matrix.matrix;
   const auto& bad_matrix =
-      test_set.results[first_bad_result_index].storage_matrix.matrix;
+      test_set.results[first_bad_result_index]->storage_matrix.matrix;
   GetMatrixStats(good_matrix, &error_analysis->stats_good);
   GetMatrixStats(bad_matrix, &error_analysis->stats_bad);
   bool found_first_error = false;
@@ -1412,11 +1445,14 @@ void MakeSpecClampFields(const Matrix<LhsScalar>& lhs,
   spec_unclamped.multiplier_exponent_perchannel =
       spec->multiplier_exponent_perchannel;
   Mul<Path::kReference>(lhs, rhs, spec_unclamped, &context, &unclamped_dst);
-  std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
-  const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
-  RUY_CHECK_LT(clamp_count, size);
-  spec->clamp_min = unclamped_dst_data[clamp_count];
-  spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
+  // If dst is std::int32_t, no need to set the clamp min/max.
+  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) {
+    std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
+    const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
+    RUY_CHECK_LT(clamp_count, size);
+    spec->clamp_min = unclamped_dst_data[clamp_count];
+    spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
+  }
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
@@ -1425,7 +1461,12 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
   if (!use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
-    MakeRandomScalar(RandomRange::kReasonableDstZeroPoint, &dst_zero_point);
+    // If destination is std::int32_t, no dst_zero_point is necessary.
+    if (std::is_same<DstScalar, std::int32_t>::value) {
+      dst_zero_point = 0;
+    } else {
+      MakeRandomScalar(RandomRange::kReasonableDstZeroPoint, &dst_zero_point);
+    }
   }
   life_stage = LifeStage::kHasZeroPoints;
 }
@@ -1433,11 +1474,9 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
   RUY_CHECK(life_stage == LifeStage::kHasZeroPoints);
-  MakeRandom(rows, depth, kernel_rows, kernel_depth, lhs_order,
-             lhs_kernel_order, lhs_zero_point, layout_style,
+  MakeRandom(rows, depth, lhs_order, lhs_zero_point, layout_style,
              RandomRange::kAvoidMinValue, &lhs);
-  MakeRandom(depth, cols, kernel_depth, kernel_cols, rhs_order,
-             rhs_kernel_order, rhs_zero_point, layout_style,
+  MakeRandom(depth, cols, rhs_order, rhs_zero_point, layout_style,
              RandomRange::kGeneral, &rhs);
   life_stage = LifeStage::kHasLhsRhs;
 }
@@ -1509,6 +1548,55 @@ std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
+void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
+  RUY_CHECK(life_stage == LifeStage::kHasResultPaths);
+
+  // Prepacked matrices are Path-dependent, so create them for each test result.
+  for (auto& result : results) {
+    // If this result uses an external path, then skip this entirely.
+    if (result->path == Path::kNone) {
+      continue;
+    }
+    // Pre-packing doesn't make sense for Path::kReference.
+    // TODO(silvasean): Make Path::kReference an ExternalPath?
+    if (result->path == Path::kReference) {
+      continue;
+    }
+
+    // Determine whether we should create/use prepacked matrices.
+    if (benchmark) {
+      // For benchmarking, do as requested.
+      result->use_prepacked_lhs = benchmark_prepack_lhs;
+      result->use_prepacked_rhs = benchmark_prepack_rhs;
+    } else {
+      // When testing, randomly pre-pack sometimes. But don't do it too often.
+      result->use_prepacked_lhs = (global_random_engine()() & 7) == 0;
+      result->use_prepacked_rhs = (global_random_engine()() & 7) == 0;
+    }
+
+    // Create the pre-packed matrices.
+    PrepackedMatrix* prepacked_lhs_ptr =
+        result->use_prepacked_lhs ? &result->prepacked_lhs : nullptr;
+    PrepackedMatrix* prepacked_rhs_ptr =
+        result->use_prepacked_rhs ? &result->prepacked_rhs : nullptr;
+    auto alloc_fn = [&result](std::size_t num_bytes) {
+      return result->allocator.AllocateBytes(num_bytes);
+    };
+    // Use a dst with a null data pointer to check that the pre-packing
+    // invocation doesn't write into it.
+    Matrix<DstScalar> null_data_dst = result->storage_matrix.matrix;
+    null_data_dst.data = nullptr;
+    GlobalContext().SetRuntimeEnabledPaths(result->path);
+    PrePackForMul<kAllPaths>(lhs.matrix, rhs.matrix, spec, &GlobalContext(),
+                             &null_data_dst, prepacked_lhs_ptr,
+                             prepacked_rhs_ptr, alloc_fn);
+    RUY_CHECK(GlobalContext().last_taken_path == result->path);
+  }
+
+  life_stage = LifeStage::kHasPrepackedMatrices;
+}
+
+template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
   RUY_CHECK(life_stage == LifeStage::kHasOtherParams);
 
@@ -1525,14 +1613,14 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
   // to allow specifying e.g. ffff to mean 'all paths' regardless of whether all
   // those bits exist as actual paths.
   paths_bitfield = paths_bitfield & kAllPaths;
+  RUY_CHECK(paths_bitfield != Path::kNone);
   paths = PathsBitfieldAsVector(paths_bitfield);
-
-  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
 
 #ifdef RUY_TEST_EXTERNAL_PATHS
 
-  if (!getenv("NOEXT") && IsLinear(lhs.matrix.layout) &&
-      IsLinear(rhs.matrix.layout)) {
+  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
+
+  if (!getenv("NOEXT")) {
     if (SupportsGemmlowp<TestSetType>::kValue) {
 #ifdef GEMMLOWP_SSE4
       const bool gemmlowp_supported = !spec.multiplier_fixedpoint_perchannel;
@@ -1565,21 +1653,21 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
 
   for (Path path : paths) {
     for (Tuning tuning : EnumerateTuningsForPath(path, benchmark)) {
-      results.emplace_back();
-      TestResult<DstScalar>& result = results.back();
+      results.emplace_back(new TestResultType);
+      TestResultType& result = *results.back();
       result.path = path;
       result.tuning = tuning;
-      MakeRandom(rows, cols, 1, 1, dst_order, dst_order, dst_zero_point,
-                 layout_style, RandomRange::kGeneral, &result.storage_matrix);
+      MakeRandom(rows, cols, dst_order, dst_zero_point, layout_style,
+                 RandomRange::kGeneral, &result.storage_matrix);
     }
   }
 
   for (ExternalPath external_path : external_paths) {
-    results.emplace_back();
-    TestResult<DstScalar>& result = results.back();
+    results.emplace_back(new TestResultType);
+    TestResultType& result = *results.back();
     result.external_path = external_path;
-    MakeRandom(rows, cols, 1, 1, dst_order, dst_order, dst_zero_point,
-               layout_style, RandomRange::kGeneral, &result.storage_matrix);
+    MakeRandom(rows, cols, dst_order, dst_zero_point, layout_style,
+               RandomRange::kGeneral, &result.storage_matrix);
   }
 
   life_stage = LifeStage::kHasResultPaths;
@@ -1591,9 +1679,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::EvalResult(
   RUY_CHECK(result->path != Path::kNone ||
             result->external_path != ExternalPath::kNone);
   if (result->path != Path::kNone) {
-    EvalRuy(result->path, result->tuning, lhs.matrix, rhs.matrix, spec,
-            &result->storage_matrix.matrix, expected_outcome, benchmark,
-            max_num_threads);
+    EvalRuy(result);
   } else {
 #ifdef RUY_TEST_EXTERNAL_PATHS
     using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
@@ -1656,16 +1742,35 @@ int StorageSize(const Matrix<Scalar>& matrix) {
   return sizeof(Scalar) * FlatSize(matrix.layout);
 }
 
-template <typename Scalar>
-void MakeColdData(int num_copies, const Matrix<Scalar>& matrix,
-                  std::vector<Scalar>* cold_data) {
-  const int flatsize = FlatSize(matrix.layout);
-  cold_data->resize(num_copies * flatsize);
-  for (int i = 0; i < num_copies; i++) {
-    memcpy(cold_data->data() + i * flatsize, matrix.data.get(),
-           sizeof(Scalar) * flatsize);
+// Helper that replicates a buffer and gives out pointers to the replicas.
+// This is useful when one wants to traverse data so that it is cold in cache.
+// By having a sufficiently large value of num_repeats, one can ensure that the
+// working set covered by the replicas is greater than the cache size.
+template <typename T>
+class RepeatedBuffer {
+ public:
+  RepeatedBuffer() = default;
+  void Init(const T* elems, std::size_t num_elems, int num_repeats) {
+    buffers_.clear();
+    allocator_.FreeAll();
+    for (int i = 0; i < num_repeats; i++) {
+      T* p;
+      allocator_.Allocate(num_elems, &p);
+      memcpy(p, elems, num_elems * sizeof(T));
+      buffers_.push_back(p);
+    }
   }
-}
+  T* Next() {
+    T* ret = buffers_[current_];
+    current_ = (current_ + 1) % buffers_.size();
+    return ret;
+  }
+
+ private:
+  Allocator allocator_;
+  std::vector<T*> buffers_;
+  int current_ = 0;
+};
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
@@ -1673,13 +1778,19 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
   using DstScalar = typename SpecType::DstScalar;
 
   const bool cold = getenv("RUY_BENCHMARK_COLD");
-  const LhsScalar* orig_lhs_data = nullptr;
-  const RhsScalar* orig_rhs_data = nullptr;
-  DstScalar* orig_dst_data = nullptr;
-  std::vector<LhsScalar> cold_lhs_data;
-  std::vector<RhsScalar> cold_rhs_data;
-  std::vector<DstScalar> cold_dst_data;
+  LhsScalar* orig_lhs_data = lhs.matrix.data.get();
+  RhsScalar* orig_rhs_data = rhs.matrix.data.get();
+  DstScalar* orig_dst_data = result->storage_matrix.matrix.data.get();
+  void* orig_prepacked_lhs_data = result->prepacked_lhs.data;
+  void* orig_prepacked_rhs_data = result->prepacked_rhs.data;
+
   int num_matmul_sets = 0;
+
+  RepeatedBuffer<LhsScalar> cold_lhs;
+  RepeatedBuffer<RhsScalar> cold_rhs;
+  RepeatedBuffer<DstScalar> cold_dst;
+  RepeatedBuffer<char> cold_prepacked_lhs;
+  RepeatedBuffer<char> cold_prepacked_rhs;
 
   if (cold) {
     const int kWorkingSetSize = 100 << 20;
@@ -1689,14 +1800,21 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
     num_matmul_sets =
         (kWorkingSetSize + each_matmul_set_size - 1) / each_matmul_set_size;
 
-    MakeColdData(num_matmul_sets, lhs.matrix, &cold_lhs_data);
-    MakeColdData(num_matmul_sets, rhs.matrix, &cold_rhs_data);
-    MakeColdData(num_matmul_sets, result->storage_matrix.matrix,
-                 &cold_dst_data);
-
-    orig_lhs_data = lhs.matrix.data.get();
-    orig_rhs_data = rhs.matrix.data.get();
-    orig_dst_data = result->storage_matrix.matrix.data.get();
+    cold_lhs.Init(lhs.matrix.data.get(), FlatSize(lhs.matrix.layout),
+                  num_matmul_sets);
+    cold_rhs.Init(rhs.matrix.data.get(), FlatSize(rhs.matrix.layout),
+                  num_matmul_sets);
+    cold_dst.Init(result->storage_matrix.matrix.data.get(),
+                  FlatSize(result->storage_matrix.matrix.layout),
+                  num_matmul_sets);
+    if (benchmark_prepack_lhs) {
+      cold_prepacked_lhs.Init(static_cast<char*>(result->prepacked_lhs.data),
+                              result->prepacked_lhs.data_size, num_matmul_sets);
+    }
+    if (benchmark_prepack_rhs) {
+      cold_prepacked_rhs.Init(static_cast<char*>(result->prepacked_rhs.data),
+                              result->prepacked_rhs.data_size, num_matmul_sets);
+    }
   }
   int kRepeats = 4;
   const double kBenchmarkMinSecs = 0.5;
@@ -1715,7 +1833,6 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
 #endif
 
   double latency = std::numeric_limits<double>::infinity();
-  int data_index = 0;
   const bool record_pmu = getenv("RUY_BENCHMARK_PMU");
   for (int repeat = 0; repeat < kRepeats; repeat++) {
     PmuEvents pmu_events;
@@ -1729,16 +1846,14 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
     while (ToSeconds(t - time_start) < kBenchmarkMinSecs) {
       for (int i = 0; i < iters_at_a_time; i++) {
         if (cold) {
-          lhs.matrix.data =
-              cold_lhs_data.data() + data_index * FlatSize(lhs.matrix.layout);
-          rhs.matrix.data =
-              cold_rhs_data.data() + data_index * FlatSize(rhs.matrix.layout);
-          result->storage_matrix.matrix.data =
-              cold_dst_data.data() +
-              data_index * FlatSize(result->storage_matrix.matrix.layout);
-          data_index++;
-          if (data_index == num_matmul_sets) {
-            data_index = 0;
+          lhs.matrix.data = cold_lhs.Next();
+          rhs.matrix.data = cold_rhs.Next();
+          result->storage_matrix.matrix.data = cold_dst.Next();
+          if (benchmark_prepack_lhs) {
+            result->prepacked_lhs.data = cold_prepacked_lhs.Next();
+          }
+          if (benchmark_prepack_rhs) {
+            result->prepacked_rhs.data = cold_prepacked_rhs.Next();
           }
         }
         EvalResult(result);
@@ -1774,19 +1889,21 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
     lhs.matrix.data = orig_lhs_data;
     rhs.matrix.data = orig_rhs_data;
     memcpy(orig_dst_data, result->storage_matrix.matrix.data.get(),
-           sizeof(DstScalar) * FlatSize(result->storage_matrix.matrix.layout));
+           StorageSize(result->storage_matrix.matrix));
     result->storage_matrix.matrix.data = orig_dst_data;
+    result->prepacked_lhs.data = orig_prepacked_lhs_data;
+    result->prepacked_rhs.data = orig_prepacked_rhs_data;
   }
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Eval() {
-  RUY_CHECK(life_stage == LifeStage::kHasResultPaths);
+  RUY_CHECK(life_stage == LifeStage::kHasPrepackedMatrices);
   for (auto& result : results) {
     if (benchmark) {
-      Benchmark(&result);
+      Benchmark(result.get());
     } else {
-      EvalResult(&result);
+      EvalResult(result.get());
     }
   }
   life_stage = LifeStage::kEvaluated;
@@ -1814,16 +1931,16 @@ template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyTestResults() const {
   const int depth = lhs.matrix.layout.cols;
   for (int i = 0; i < results.size() - 1; i++) {
-    if (!Agree(results[i], results[i + 1], depth)) {
+    if (!Agree(*results[i], *results[i + 1], depth)) {
       std::string paths_in_agreement;
-      paths_in_agreement.append(PathName(results[0]));
+      paths_in_agreement.append(PathName(*results[0]));
       for (int j = 1; j <= i; j++) {
         paths_in_agreement.append(", ");
-        paths_in_agreement.append(PathName(results[j]));
+        paths_in_agreement.append(PathName(*results[j]));
       }
       ErrorAnalysis error_analysis;
       AnalyzeTestError(*this, i + 1, &error_analysis);
-      std::cerr << "Error: path (" << PathName(results[i + 1])
+      std::cerr << "Error: path (" << PathName(*results[i + 1])
                 << ") disagrees with the other paths (" << paths_in_agreement
                 << "), which agree with each other." << std::endl;
       std::cerr << "Shape: rows = " << rows << ", cols = " << cols
@@ -1852,12 +1969,12 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyTestResults() const {
       std::cerr << "Bad value : " << error_analysis.first_error_bad_value
                 << std::endl;
       std::cerr << "Region of Good result matrix around first error:\n\n"
-                << DumpRegion(results[0].storage_matrix.matrix,
+                << DumpRegion(results[0]->storage_matrix.matrix,
                               error_analysis.row_of_first_error,
                               error_analysis.col_of_first_error)
                 << std::endl;
       std::cerr << "Region of Bad result matrix around first error:\n\n"
-                << DumpRegion(results[i + 1].storage_matrix.matrix,
+                << DumpRegion(results[i + 1]->storage_matrix.matrix,
                               error_analysis.row_of_first_error,
                               error_analysis.col_of_first_error)
                 << std::endl;
@@ -1871,12 +1988,12 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
   if (getenv("QUICK_BENCHMARK")) {
     return;
   }
-  if (results.front().path != Path::kReference) {
+  if (results.front()->path != Path::kReference) {
     return;
   }
   Context context;
   context.SetRuntimeEnabledPaths(Path::kReference);
-  const auto& dst_storage = results.front().storage_matrix;
+  const auto& dst_storage = results.front()->storage_matrix;
   const Matrix<DstScalar>& dst = dst_storage.matrix;
   Matrix<DstScalar> unclamped_dst;
   unclamped_dst.layout = dst.layout;
@@ -1918,8 +2035,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Verify() {
 }
 
 template <typename TestSetType>
-void TestPackedLinearRCC(int rows, int depth, int cols,
-                         ExpectedOutcome expected_outcome) {
+void TestRCC(int rows, int depth, int cols, ExpectedOutcome expected_outcome) {
   TestSetType test_set;
   test_set.rows = rows;
   test_set.depth = depth;
@@ -1933,9 +2049,23 @@ void TestPackedLinearRCC(int rows, int depth, int cols,
 }
 
 template <typename TestSetType>
-void TestPackedLinearRCC(int rows, int depth, int cols) {
-  TestPackedLinearRCC<TestSetType>(rows, depth, cols,
-                                   ExpectedOutcome::kSuccess);
+void TestRCC(int rows, int depth, int cols) {
+  TestRCC<TestSetType>(rows, depth, cols, ExpectedOutcome::kSuccess);
+}
+
+template <typename TestSetType>
+void TestNonRCC(int rows, int depth, int cols,
+                ExpectedOutcome expected_outcome) {
+  TestSetType test_set;
+  test_set.rows = rows;
+  test_set.depth = depth;
+  test_set.cols = cols;
+  test_set.lhs_order = Order::kColMajor;
+  test_set.rhs_order = Order::kColMajor;
+  test_set.dst_order = Order::kColMajor;
+  test_set.layout_style = LayoutStyle::kPackedLinear;
+  test_set.expected_outcome = expected_outcome;
+  test_set.Run();
 }
 
 template <typename TestSetType>
@@ -1965,50 +2095,6 @@ template <typename TestSetType>
 void TestLinearAllOrders(int rows, int depth, int cols) {
   TestLinearAllOrders<TestSetType>(rows, depth, cols,
                                    ExpectedOutcome::kSuccess);
-}
-
-template <typename TestSetType>
-void TestNonLinearAllOrders(int rows, int depth, int cols, int kernel_rows,
-                            int kernel_depth, int kernel_cols,
-                            ExpectedOutcome expected_outcome) {
-  const std::vector<Order> orders{Order::kColMajor, Order::kRowMajor};
-
-  for (Order lhs_order : orders) {
-    for (Order rhs_order : orders) {
-      for (Order dst_order : orders) {
-        for (Order lhs_kernel_order : orders) {
-          for (Order rhs_kernel_order : orders) {
-            TestSetType test_set;
-            test_set.rows = rows;
-            test_set.depth = depth;
-            test_set.cols = cols;
-            test_set.kernel_rows = kernel_rows;
-            test_set.kernel_depth = kernel_depth;
-            test_set.kernel_cols = kernel_cols;
-            test_set.lhs_order = lhs_order;
-            test_set.rhs_order = rhs_order;
-            test_set.lhs_kernel_order = lhs_kernel_order;
-            test_set.rhs_kernel_order = rhs_kernel_order;
-            test_set.dst_order = dst_order;
-            test_set.layout_style = LayoutStyle::kLinear;
-            test_set.expected_outcome = expected_outcome;
-            test_set.Run();
-          }
-        }
-      }
-    }
-  }
-}
-
-template <typename TestSetType>
-void TestNonLinearAllOrders(int rows, int depth, int cols, int kernel_rows,
-                            int kernel_depth, int kernel_cols) {
-  RUY_CHECK_EQ(rows % kernel_rows, 0);
-  RUY_CHECK_EQ(depth % kernel_depth, 0);
-  RUY_CHECK_EQ(cols % kernel_cols, 0);
-  TestNonLinearAllOrders<TestSetType>(rows, depth, cols, kernel_rows,
-                                      kernel_depth, kernel_cols,
-                                      ExpectedOutcome::kSuccess);
 }
 
 }  // namespace ruy

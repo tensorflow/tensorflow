@@ -22,25 +22,23 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-// using ::testing::Eq;  // Optional ::testing aliases. Remove if unused.
-// using ::testing::Test;
 using ::testing::ElementsAre;
 
 TEST(Model, EmptyRecords) {
   ObjectsAssignment assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors({}, MemoryStrategy::NAIVE, &assignment).ok());
-  ASSERT_TRUE(assignment.object_ids.empty());
-  ASSERT_TRUE(assignment.object_sizes.empty());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
   ASSERT_TRUE(
       AssignObjectsToTensors({}, MemoryStrategy::GREEDY, &assignment).ok());
-  ASSERT_TRUE(assignment.object_ids.empty());
-  ASSERT_TRUE(assignment.object_sizes.empty());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
   ASSERT_TRUE(
       AssignObjectsToTensors({}, MemoryStrategy::MINCOSTFLOW, &assignment)
           .ok());
-  ASSERT_TRUE(assignment.object_ids.empty());
-  ASSERT_TRUE(assignment.object_sizes.empty());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
 }
 
 TEST(Model, OneRecord) {

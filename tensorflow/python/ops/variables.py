@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import enum  # pylint: disable=g-bad-import-order
 import functools
 import os
@@ -85,9 +86,9 @@ class VariableSynchronization(enum.Enum):
 class VariableAggregationV2(enum.Enum):
   """Indicates how a distributed variable will be aggregated.
 
-  `tf.contrib.distribute.DistributionStrategy` distributes a model by making
-  multiple copies (called "replicas") acting data-parallel on different elements
-  of the input batch. When performing some variable-update operation, say
+  `tf.distribute.Strategy` distributes a model by making multiple copies
+  (called "replicas") acting data-parallel on different elements of the input
+  batch. When performing some variable-update operation, say
   `var.assign_add(x)`, in a model, we need to resolve how to combine the
   different values for `x` computed in the different replicas.
 
@@ -191,7 +192,8 @@ class VariableMetaclass(type):
                         constraint=None,
                         use_resource=None,
                         synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE):
+                        aggregation=VariableAggregation.NONE,
+                        shape=None):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -214,7 +216,8 @@ class VariableMetaclass(type):
         constraint=constraint,
         use_resource=use_resource,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
 
   def _variable_v2_call(cls,
                         initial_value=None,
@@ -227,7 +230,8 @@ class VariableMetaclass(type):
                         import_scope=None,
                         constraint=None,
                         synchronization=VariableSynchronization.AUTO,
-                        aggregation=VariableAggregation.NONE):
+                        aggregation=VariableAggregation.NONE,
+                        shape=None):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -247,7 +251,8 @@ class VariableMetaclass(type):
         import_scope=import_scope,
         constraint=constraint,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
 
   def __call__(cls, *args, **kwargs):
     if cls is VariableV1:
@@ -387,7 +392,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
                import_scope=None,
                constraint=None,
                synchronization=VariableSynchronization.AUTO,
-               aggregation=VariableAggregation.NONE):
+               aggregation=VariableAggregation.NONE,
+               shape=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -443,6 +449,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -670,7 +680,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -687,7 +697,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -734,7 +744,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -836,7 +846,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -887,7 +897,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -1363,7 +1373,8 @@ class VariableV1(Variable):
                constraint=None,
                use_resource=None,
                synchronization=VariableSynchronization.AUTO,
-               aggregation=VariableAggregation.NONE):
+               aggregation=VariableAggregation.NONE,
+               shape=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -1418,6 +1429,10 @@ class VariableV1(Variable):
       use_resource: whether to use resource variables.
       synchronization: unused
       aggregation: unused
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -1446,7 +1461,8 @@ class RefVariable(VariableV1):
                import_scope=None,
                constraint=None,
                synchronization=None,
-               aggregation=None):
+               aggregation=None,
+               shape=None):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -1507,6 +1523,10 @@ class RefVariable(VariableV1):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
@@ -1534,7 +1554,8 @@ class RefVariable(VariableV1):
           expected_shape=expected_shape,
           constraint=constraint,
           synchronization=synchronization,
-          aggregation=aggregation)
+          aggregation=aggregation,
+          shape=shape)
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -1556,7 +1577,8 @@ class RefVariable(VariableV1):
                       expected_shape=None,
                       constraint=None,
                       synchronization=None,
-                      aggregation=None):
+                      aggregation=None,
+                      shape=None):
     """Creates a new variable from arguments.
 
     Args:
@@ -1602,6 +1624,10 @@ class RefVariable(VariableV1):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -1659,8 +1685,9 @@ class RefVariable(VariableV1):
             with ops.name_scope("Initializer"), ops.device(None):
               self._initial_value = ops.convert_to_tensor(
                   initial_value(), name="initial_value", dtype=dtype)
-              shape = (self._initial_value.get_shape()
-                       if validate_shape else tensor_shape.unknown_shape())
+              if shape is None:
+                shape = (self._initial_value.get_shape()
+                         if validate_shape else tensor_shape.unknown_shape())
             self._variable = state_ops.variable_op_v2(
                 shape,
                 self._initial_value.dtype.base_dtype,
@@ -1678,9 +1705,10 @@ class RefVariable(VariableV1):
                 "construct, such as a loop or conditional. When creating a "
                 "variable inside a loop or conditional, use a lambda as the "
                 "initializer." % name)
-          # pylint: enable=protected-access
-          shape = (self._initial_value.get_shape()
-                   if validate_shape else tensor_shape.unknown_shape())
+          if shape is None:
+            # pylint: enable=protected-access
+            shape = (self._initial_value.get_shape()
+                     if validate_shape else tensor_shape.unknown_shape())
           # In this case, the variable op can't be created until after the
           # initial_value has been converted to a Tensor with a known type.
           self._variable = state_ops.variable_op_v2(
@@ -1993,7 +2021,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2017,7 +2045,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2071,7 +2099,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2176,7 +2204,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -2228,7 +2256,7 @@ class RefVariable(VariableV1):
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered assignment has completed.
 
     Raises:
       ValueError: if `sparse_delta` is not an `IndexedSlices`.
@@ -3138,3 +3166,14 @@ def report_uninitialized_variables(var_list=None,
 ops.register_tensor_conversion_function(
     PartitionedVariable,
     PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access
+
+
+class AbstractVariableMetaclass(VariableMetaclass, abc.ABCMeta):
+  """Metaclass combining `VariableMetaclass` and `abc.ABCMeta`."""
+  pass
+
+
+@six.add_metaclass(AbstractVariableMetaclass)
+class AbstractVariable(Variable):
+  """`Variable`, but abstract."""
+  pass

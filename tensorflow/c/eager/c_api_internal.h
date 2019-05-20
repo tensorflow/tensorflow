@@ -36,14 +36,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
-#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/distributed_runtime/remote_device.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
-#include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
-#include "tensorflow/core/distributed_runtime/server_lib.h"
-#include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -70,13 +62,16 @@ struct TFE_Context {
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
               tensorflow::Rendezvous* rendezvous,
               const tensorflow::CustomKernelCreator* custom_kernel_creator)
-      : context(opts,
-                static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                    default_policy),
-                async, device_mgr, device_mgr_owned, rendezvous,
-                custom_kernel_creator) {}
+      : context(new tensorflow::EagerContext(
+            opts,
+            static_cast<tensorflow::ContextDevicePlacementPolicy>(
+                default_policy),
+            async, device_mgr, device_mgr_owned, rendezvous,
+            custom_kernel_creator)) {}
 
-  tensorflow::EagerContext context;
+  ~TFE_Context() { context->Unref(); }
+
+  tensorflow::EagerContext* context;
 };
 
 struct TFE_TensorHandle {
@@ -116,7 +111,7 @@ struct TFE_Op {
   TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
          const tensorflow::AttrTypeMap* t,
          TFE_OpInferenceContext* inference_ctx)
-      : operation(&ctx->context, op, is_function, t),
+      : operation(ctx->context, op, is_function, t),
         inference_ctx(inference_ctx) {}
 
   tensorflow::EagerOperation operation;

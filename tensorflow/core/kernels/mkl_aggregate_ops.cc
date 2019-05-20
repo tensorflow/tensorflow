@@ -90,7 +90,7 @@ class MklAddNOp : public OpKernel {
     MklDnnShape output_mkl_shape;
     Tensor* dst_tensor = nullptr;
 
-    T sum = 0;
+    T sum = static_cast<T>(0);
     for (int src_idx = 0; src_idx < num_inputs; ++src_idx) {
       const Tensor& src_tensor = MklGetInput(ctx, src_idx);
       T* src_i = const_cast<T*>(src_tensor.flat<T>().data());
@@ -249,6 +249,7 @@ class MklAddNOp : public OpKernel {
                           MklAddNOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 }  // namespace tensorflow
 #endif  // INTEL_MKL

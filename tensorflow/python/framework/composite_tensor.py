@@ -65,7 +65,7 @@ class CompositeTensor(object):
       A nested structure of metadata that can be used to reconstruct this
       composite tensor (along with the tensors returned by `_to_components`).
     """
-    return ()
+    return None
 
   @abc.abstractmethod
   def _from_components(cls, components, metadata):  # pylint: disable=no-self-argument
@@ -100,9 +100,9 @@ class CompositeTensor(object):
   @abc.abstractproperty
   def _is_graph_tensor(self):
     """Returns True if this tensor's components belong to a TF graph."""
-    raise NotImplementedError("CompositeTensor._is_symbolic_tensor")
+    raise NotImplementedError("CompositeTensor._is_graph_tensor")
 
-  def consumers(self):
+  def _consumers(self):
     """Returns a list of `Operation`s that consume this `CompositeTensor`.
 
     Returns:

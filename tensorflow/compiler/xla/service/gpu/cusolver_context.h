@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <complex>
 
-#include "cuda/include/cublas_v2.h"
-#include "cuda/include/cusolverDn.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"

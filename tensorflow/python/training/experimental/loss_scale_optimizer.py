@@ -119,8 +119,8 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
 
     grads = [g for g, _ in grads_and_vars]
     variables = [v for _, v in grads_and_vars]
-    scaled_grads = self._scale_grads(grads)
-    return list(zip(scaled_grads, variables))
+    unscaled_grads = self._unscale_grads(grads)
+    return list(zip(unscaled_grads, variables))
 
   def _scale_loss(self, loss):
     loss_scale = self._loss_scale()
@@ -128,7 +128,7 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
       return lambda: loss() * loss_scale
     return loss * loss_scale
 
-  def _scale_grads(self, grads):
+  def _unscale_grads(self, grads):
     loss_scale = self._loss_scale()
     loss_scale_reciprical = 1 / loss_scale
     return [
@@ -171,6 +171,7 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
       return self._optimizer.apply_gradients(grads_and_vars, global_step, name)
 
     replica_context = distribution_strategy_context.get_replica_context()
+    grads_and_vars = tuple(grads_and_vars)
 
     # TODO(nluehr) cleanup GraphKeys.TRAIN_OP
     return replica_context.merge_call(

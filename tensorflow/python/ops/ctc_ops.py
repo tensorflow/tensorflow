@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -26,6 +28,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
@@ -783,11 +786,7 @@ def ctc_loss_dense(labels,
       unique_y, unique_idx = unique
       args.extend([unique_y, unique_idx])
 
-    # TODO(tombagby): Update to tfe.defun
-    @function.Defun(
-        *[x.dtype for x in args],
-        python_grad_func=_ctc_loss_grad,
-        shape_func=_ctc_loss_shape)
+    @custom_gradient.custom_gradient
     def compute_ctc_loss(logits_t, labels_t, label_length_t, logit_length_t,
                          *unique_t):
       """Compute CTC loss."""
@@ -802,9 +801,15 @@ def ctc_loss_dense(labels,
           logit_length=logit_length_t)
       if unique_t:
         kwargs["unique"] = unique_t
-      return ctc_loss_and_grad(**kwargs)
+      result = ctc_loss_and_grad(**kwargs)
+      def grad(grad_loss):
+        grad = [array_ops.reshape(grad_loss, [1, -1, 1]) * result[1]]
+        grad += [None] * (len(args) - len(grad))
+        return grad
 
-    return compute_ctc_loss(*args)[0]
+      return result[0], grad
+
+    return compute_ctc_loss(*args)
 
 
 @tf_export("nn.collapse_repeated")
@@ -812,17 +817,18 @@ def collapse_repeated(labels, seq_length, name=None):
   """Merge repeated labels into single labels.
 
   Args:
-    labels: Tensor of shape (batch, max value in seq_length)
-    seq_length: Tensor of shape (batch), sequence length of each batch element.
+    labels: Tensor of shape [batch, max value in seq_length]
+    seq_length: Tensor of shape [batch], sequence length of each batch element.
     name: A name for this `Op`. Defaults to "collapse_repeated_labels".
 
   Returns:
-    tuple of Tensor of shape (batch, max_seq_length) with repeated labels
-    collapsed and padded to max_seq_length, eg:
-        [[A, A, B, B, A],
-         [A, B, C, D, E]] => [[A, B, A, 0, 0],
-                              [A, B, C, D, E]]
-    and int tensor of shape [batch] with new sequence lengths.
+    A tuple `(collapsed_labels, new_seq_length)` where
+
+    collapsed_labels: Tensor of shape [batch, max_seq_length] with repeated
+    labels collapsed and padded to max_seq_length, eg:
+    `[[A, A, B, B, A], [A, B, C, D, E]] => [[A, B, A, 0, 0], [A, B, C, D, E]]`
+
+    new_seq_length: int tensor of shape [batch] with new sequence lengths.
   """
 
   with ops.name_scope(name, "collapse_repeated_labels", [labels, seq_length]):
@@ -1108,14 +1114,12 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
     loop_dtypes = [dtypes.int32, dtypes.int32] + accum_dtypes + accum_dtypes
 
   # TODO(tombagby): Update to tfe.defun
-  @function.Defun(*loop_dtypes)
   def cond(i, num_elems, *args):
     del args
     return i >= 0 if reverse else i < num_elems
 
   # The loop *args are [output tensors] + [accumulator tensors] which must
   # be paired. Each output corresponds to one accumulator.
-  @function.Defun(*loop_dtypes)
   def body(i, num_elems, *args):
     """Loop body."""
     i.set_shape([])
@@ -1157,8 +1161,15 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       if x.dtype.base_dtype in (dtypes.int32, dtypes.int64)
   ]
 
-  # TODO(tombagby): Update to while_v2.
-  loop_results = functional_ops.While(loop_in, cond, body, hostmem=hostmem)
+  if context.executing_eagerly():
+    loop_results = loop_in
+    while cond(*loop_results):
+      loop_results = body(*loop_results)
+  else:
+    # TODO(tombagby): Update to while_v2.
+    cond = function.Defun(*loop_dtypes)(cond)
+    body = function.Defun(*loop_dtypes)(body)
+    loop_results = functional_ops.While(loop_in, cond, body, hostmem=hostmem)
   out = loop_results[2:num_accums + 2]
   return pack(out)
 

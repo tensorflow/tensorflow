@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -38,12 +40,21 @@ class NcclAllReduceThunk : public Thunk {
   // error.
   static bool NcclIsEnabled();
 
+  // Gets the set of devices that have a NCCL channel open.  This is primarily
+  // for testing.
+  //
+  // (Indeed, because the NCCL channels are a global variable, in the real
+  // world, the value returned here is stale as soon as you read it, so it's not
+  // clear how you *could* use it for anything other than tests.)
+  static absl::flat_hash_set<int> DevicesWithOpenNcclChannels();
+
   // TODO(b/125951860): Plumb more datatypes / reduction operators. Initial
   // implementation is simply F32 summation.
   NcclAllReduceThunk(int64 replica_count, int64 element_count,
                      const BufferAllocation::Slice& source_buffer,
                      const BufferAllocation::Slice& destination_buffer,
                      const HloInstruction* all_reduce);
+  ~NcclAllReduceThunk() override;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
                          se::Stream* stream,
@@ -54,6 +65,10 @@ class NcclAllReduceThunk : public Thunk {
   const int64 element_count_;
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
+
+  tensorflow::mutex mu_;
+  // Set of GPUs that ExecuteOnStream has been called on.
+  absl::flat_hash_set<int> devices_seen_ GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

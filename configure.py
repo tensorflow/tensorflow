@@ -456,8 +456,8 @@ def check_bazel_version(min_version, max_version):
   """Check installed bazel version is between min_version and max_version.
 
   Args:
-    min_version: string for minimum bazel version.
-    max_version: string for maximum bazel version.
+    min_version: string for minimum bazel version (must exist!).
+    max_version: string for maximum bazel version (must exist!).
 
   Returns:
     The bazel version detected.
@@ -1039,10 +1039,8 @@ def set_other_cuda_vars(environ_cp):
   # If CUDA is enabled, always use GPU during build and test.
   if environ_cp.get('TF_CUDA_CLANG') == '1':
     write_to_bazelrc('build --config=cuda_clang')
-    write_to_bazelrc('test --config=cuda_clang')
   else:
     write_to_bazelrc('build --config=cuda')
-    write_to_bazelrc('test --config=cuda')
 
 
 def set_host_cxx_compiler(environ_cp):
@@ -1261,7 +1259,8 @@ def set_windows_build_flags(environ_cp):
   write_to_bazelrc('build --copt=-w --host_copt=-w')
   # Fix winsock2.h conflicts
   write_to_bazelrc(
-      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN')
+      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN '
+      '--copt=-DNOGDI --host_copt=-DNOGDI')
   # Output more verbose information when something goes wrong
   write_to_bazelrc('build --verbose_failures')
   # The host and target platforms are the same in Windows build. So we don't
@@ -1294,9 +1293,6 @@ def configure_ios():
   """
   if not is_macos():
     return
-  if _TF_CURRENT_BAZEL_VERSION is None or _TF_CURRENT_BAZEL_VERSION < 23000:
-    print(
-        'Building Bazel rules on Apple platforms requires Bazel 0.23 or later.')
   for filepath in APPLE_BAZEL_FILES:
     existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
     renamed_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath)
@@ -1387,7 +1383,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  current_bazel_version = check_bazel_version('0.24.1', '0.25.0')
+  current_bazel_version = check_bazel_version('0.24.1', '0.25.2')
   _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
@@ -1497,7 +1493,6 @@ def main():
       else:
         # Use downloaded LLD for linking.
         write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
-        write_to_bazelrc('test:cuda_clang --config=download_clang_use_lld')
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
@@ -1510,7 +1505,6 @@ def main():
     set_tf_download_clang(environ_cp)
     if environ_cp.get('TF_DOWNLOAD_CLANG') == '1':
       write_to_bazelrc('build --config=download_clang')
-      write_to_bazelrc('test --config=download_clang')
 
   # SYCL / ROCm / CUDA are mutually exclusive.
   # At most 1 GPU platform can be configured.
@@ -1550,12 +1544,6 @@ def main():
   set_action_env_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False)
   if environ_cp.get('TF_CONFIGURE_IOS') == '1':
     configure_ios()
-  else:
-    # TODO(pcloudy): Remove BAZEL_USE_CPP_ONLY_TOOLCHAIN after Bazel is upgraded
-    # to 0.24.0.
-    # For working around https://github.com/bazelbuild/bazel/issues/7607
-    if is_macos():
-      write_to_bazelrc('build --action_env=BAZEL_USE_CPP_ONLY_TOOLCHAIN=1')
 
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See .bazelrc for more '

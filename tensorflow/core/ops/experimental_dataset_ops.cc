@@ -364,6 +364,19 @@ REGISTER_OP("ExperimentalSlidingWindowDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("SnapshotDataset")
+    .Input("input_dataset: variant")
+    .Input("path: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // snapshot_path should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("ExperimentalSqlDataset")
     .Input("driver_name: string")
     .Input("data_source_name: string")

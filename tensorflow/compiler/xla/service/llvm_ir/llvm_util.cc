@@ -194,7 +194,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
-    case OPAQUE:
+    case OPAQUE_TYPE:
       return llvm::Type::getInt8PtrTy(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs

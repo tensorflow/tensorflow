@@ -23,13 +23,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/rng.h"
@@ -210,7 +211,7 @@ class StreamExecutor {
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,
   // such as Stream::ThenMemcpy.
-  void *HostMemoryAllocate(uint64 bytes);
+  void *HostMemoryAllocate(uint64 size);
 
   // Deallocates a region of host memory allocated by HostMemoryAllocate().
   void HostMemoryDeallocate(void *location);
@@ -476,6 +477,18 @@ class StreamExecutor {
   // Return allocator statistics.
   absl::optional<AllocatorStats> GetAllocatorStats();
 
+  // Return an allocator which delegates to this stream executor for memory
+  // allocation.
+  //
+  // Creates the allocator object on the first access, as the device ordinal
+  // of this stream_executor is not set in constructor.
+  StreamExecutorMemoryAllocator *GetAllocator() {
+    if (!allocator_.has_value()) {
+      allocator_.emplace(this);
+    }
+    return &allocator_.value();
+  }
+
  private:
   template <typename BeginCallT, typename CompleteCallT,
             typename ReturnT, typename... BeginArgsT>
@@ -569,23 +582,23 @@ class StreamExecutor {
   // Requests the current status of the event from the underlying platform.
   Event::Status PollForEventStatus(Event *event);
 
-  // Allocates stream resources on the underlying platform for subject and
-  // initializes its internals.
-  bool AllocateStream(Stream *subject);
+  // Allocates stream resources on the underlying platform and initializes its
+  // internals.
+  bool AllocateStream(Stream *stream);
 
   // Deallocates stream resources on the underlying platform.
-  void DeallocateStream(Stream *subject);
+  void DeallocateStream(Stream *stream);
 
   // Causes dependent to not begin execution until other has finished its
   // last-enqueued work.
   bool CreateStreamDependency(Stream *dependent, Stream *other);
 
-  // Allocates timer resources on the underlying platform for subject and
-  // initializes its internals.
-  bool AllocateTimer(Timer *subject);
+  // Allocates timer resources on the underlying platform and initializes its
+  // internals.
+  bool AllocateTimer(Timer *timer);
 
   // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer *subject);
+  void DeallocateTimer(Timer *timer);
 
   // Records a start event for an interval timer.
   bool StartTimer(Stream *stream, Timer *timer);
@@ -607,7 +620,7 @@ class StreamExecutor {
   // Adds an AllocRecord for 'opaque' of size 'bytes' to the record map, for
   // leak checking. NULL buffer pointers and buffer sizes of 0 will not be
   // tracked.
-  void CreateAllocRecord(void *opaque, uint64 size);
+  void CreateAllocRecord(void *opaque, uint64 bytes);
 
   // Removes the AllocRecord keyed by 'opaque' from the record map. NULL
   // pointers will not be erased (as they're not tracked, per above).
@@ -619,13 +632,13 @@ class StreamExecutor {
   void SubmitTrace(TraceCallT trace_call, ArgsT&&... args);
 
   // Reader/writer lock for class-static StreamExecutor members.
-  static mutex static_mu_;
+  static absl::Mutex static_mu_;
 
   // Reader/writer lock for mutable data structures on this StreamExecutor.
   //
   // Mutable so that caching functions (like DeviceDescription, AsBlas, etc.)
   // can acquire the lock on their first (mutating) call as well.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Reference to the platform that created this executor.
   const Platform *platform_;
@@ -706,6 +719,8 @@ class StreamExecutor {
   // limit.
   int64 memory_limit_bytes_;
 
+  absl::optional<StreamExecutorMemoryAllocator> allocator_;
+
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
 
@@ -766,13 +781,11 @@ inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
 }
 
 template <typename ElemT>
-ScopedDeviceMemory<ElemT>::ScopedDeviceMemory()
-    : wrapped_(DeviceMemoryBase()), parent_(nullptr) {}
-
-template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor *parent,
                                               DeviceMemoryBase value)
-    : wrapped_(value), parent_(parent) {}
+    : wrapped_(value),
+      device_ordinal_(parent->device_ordinal()),
+      allocator_(parent->GetAllocator()) {}
 
 template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
@@ -782,34 +795,9 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     std::vector<ElemT> local(values);
     if (!parent->SynchronousMemcpy(ptr(), const_cast<const ElemT *>(&local[0]),
                                    ptr()->size())) {
-      Reset(nullptr);
+      Free();
     }
   }
-}
-
-template <typename ElemT>
-ScopedDeviceMemory<ElemT>::~ScopedDeviceMemory() {
-  if (wrapped_ == nullptr) return;
-  DCHECK(parent_ != nullptr);
-  parent_->Deallocate(&wrapped_);
-}
-
-template <typename ElemT>
-void ScopedDeviceMemory<ElemT>::Reset(DeviceMemory<ElemT> updated) {
-  if (wrapped_ != nullptr) {
-    DCHECK(parent_ != nullptr);
-    parent_->Deallocate(&wrapped_);
-  }
-  wrapped_ = updated;
-}
-
-template <typename ElemT>
-void ScopedDeviceMemory<ElemT>::Reset(std::nullptr_t) {
-  if (wrapped_ != nullptr) {
-    DCHECK(parent_ != nullptr);
-    parent_->Deallocate(&wrapped_);
-  }
-  wrapped_ = DeviceMemory<ElemT>{};
 }
 
 template <typename T>

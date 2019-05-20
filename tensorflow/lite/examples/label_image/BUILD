@@ -30,6 +30,7 @@ cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
     ],
 )
 

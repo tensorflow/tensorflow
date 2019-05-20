@@ -89,11 +89,6 @@ class CopyInsertion : public HloModulePass {
   //
   Status AddSpecialCaseCopies(HloModule* module);
 
-  // Verifies that no HLO values have interfering live ranges using the given
-  // ordering.
-  Status VerifyNoLiveRangeInterference(const HloOrdering& ordering,
-                                       HloModule* module);
-
  protected:
   // Override which requires the caller to pass in a call graph.
   virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,

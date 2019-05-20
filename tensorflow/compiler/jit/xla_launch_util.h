@@ -23,14 +23,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace tensorflow {
 class XlaAllocator;
@@ -108,11 +107,11 @@ Status LockVariables(absl::Span<VariableInfo> variables)
 // Adapter class that wraps a Tensorflow allocator as an XLA allocator.
 // Assumes that the Tensorflow allocator permits asynchronous deallocation:
 // see comment on `AllowsAsynchronousDeallocation()`.
-class XlaAllocator : public xla::DeviceMemoryAllocator {
+class XlaAllocator : public se::DeviceMemoryAllocator {
  public:
   XlaAllocator(const se::Platform* platform, Allocator* wrapped);
   ~XlaAllocator() override;
-  xla::StatusOr<xla::OwningDeviceMemory> Allocate(
+  xla::StatusOr<se::OwningDeviceMemory> Allocate(
       int device_ordinal, uint64 size, bool retry_on_failure) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
 
@@ -129,6 +128,50 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   Allocator* wrapped_;
 };
 
+// Adapter class that wraps per-device TF allocators as an XLA allocator.
+// Assumes that the Tensorflow allocator permits asynchronous deallocation;
+// see comment on `AllowsAsynchronousDeallocation()`.
+class MultiDeviceAdapter : public se::DeviceMemoryAllocator {
+ public:
+  MultiDeviceAdapter(
+      const se::Platform* platform,
+      std::vector<std::unique_ptr<tensorflow::Allocator>> tf_allocators)
+      : DeviceMemoryAllocator(platform),
+        tf_allocators_(std::move(tf_allocators)) {
+    for (const auto& tf_allocator : tf_allocators_) {
+      per_device_allocators_.emplace_back(platform, tf_allocator.get());
+    }
+  }
+
+  xla::StatusOr<se::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64 size, bool retry_on_failure) override {
+    CHECK_LT(device_ordinal, per_device_allocators_.size());
+    return per_device_allocators_[device_ordinal].Allocate(device_ordinal, size,
+                                                           retry_on_failure);
+  }
+
+  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override {
+    CHECK_LT(device_ordinal, per_device_allocators_.size());
+    return per_device_allocators_[device_ordinal].Deallocate(device_ordinal,
+                                                             mem);
+  }
+
+  // The Tensorflow BFC allocator used on GPU allows host-side deallocation
+  // before GPU execution takes place. Tensorflow uses the ordering of the main
+  // compute stream to enforce a happens-before relationship between a memory
+  // allocation and code that reuses the same memory. If Tensorflow adds
+  // support for multiple GPU streams or allocators with different ordering
+  // requirements, this code may need to change.
+  // (This attribute has no effect on CPU.)
+  bool AllowsAsynchronousDeallocation() const override { return true; }
+
+ private:
+  std::vector<tensorflow::XlaAllocator> per_device_allocators_;
+  // The wrapped TF allocators backing per_device_allocators_ (XlaAllocator does
+  // not take ownership of its underlying Allocator).
+  std::vector<std::unique_ptr<tensorflow::Allocator>> tf_allocators_;
+};
+
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.
 class XlaComputationLaunchContext {
@@ -142,7 +185,7 @@ class XlaComputationLaunchContext {
   // because we track inter-stream dependencies through events inside XlaTensor
   // objects.
   XlaComputationLaunchContext(xla::LocalClient* client,
-                              xla::DeviceMemoryAllocator* xla_allocator,
+                              se::DeviceMemoryAllocator* xla_allocator,
                               bool allocate_xla_tensors,
                               bool use_multiple_streams);
 
@@ -186,7 +229,7 @@ class XlaComputationLaunchContext {
 
  private:
   xla::LocalClient* client_;
-  xla::DeviceMemoryAllocator* xla_allocator_;
+  se::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
   bool use_multiple_streams_;
   std::vector<std::unique_ptr<xla::ShapedBuffer>> arg_buffers_;

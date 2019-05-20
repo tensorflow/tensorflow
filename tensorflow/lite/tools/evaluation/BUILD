@@ -39,18 +39,29 @@ cc_library(
     hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/core:tflite_portable_logging",
-    ],
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:gl_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
-    data = ["testdata/labels.txt"],
+    data = [
+        "testdata/empty.txt",
+        "testdata/labels.txt",
+    ],
     linkopts = tflite_linkopts(),
     linkstatic = 1,
     deps = [
         ":utils",
+        "//tensorflow/lite:context",
         "@com_google_googletest//:gtest_main",
     ],
 )

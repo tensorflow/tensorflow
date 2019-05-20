@@ -1528,6 +1528,10 @@ def _log_prob(self, x):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
 
+  def test_contrib_layers_layer_norm_deprecation(self):
+    _, report, _, _ = self._upgrade("tf.contrib.layers.layer_norm")
+    self.assertIn("`tf.contrib.layers.layer_norm` has been deprecated", report)
+
   def test_contrib_rnn_deprecation(self):
     _, report, _, _ = self._upgrade("tf.contrib.rnn")
     self.assertIn("tf.contrib.rnn.* has been deprecated", report)
@@ -1960,6 +1964,25 @@ def _log_prob(self, x):
     _, report, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
     self.assertIn("tf.contrib.distribute.* have been migrated", report)
+
+  def test_decode_raw(self):
+    text = "tf.io.decode_raw(bytes=[1,2,3], output_dtype=tf.int32)"
+    expected_text = (
+        "tf.io.decode_raw(input_bytes=[1,2,3], output_dtype=tf.int32)")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def test_load_variable(self):
+    text = "tf.contrib.framework.load_variable('a')"
+    expected_text = (
+        "tf.train.load_variable('a')")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    text = "tf.contrib.framework.load_variable(checkpoint_dir='a')"
+    expected_text = (
+        "tf.train.load_variable(ckpt_dir_or_file='a')")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

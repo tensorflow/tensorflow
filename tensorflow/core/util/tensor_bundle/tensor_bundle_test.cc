@@ -166,10 +166,10 @@ template <typename T>
 void TestBasic() {
   {
     BundleWriter writer(Env::Default(), Prefix("foo"));
-    TF_EXPECT_OK(writer.Add("foo_003", Constant_2x3<T>(3)));
-    TF_EXPECT_OK(writer.Add("foo_000", Constant_2x3<T>(0)));
-    TF_EXPECT_OK(writer.Add("foo_002", Constant_2x3<T>(2)));
-    TF_EXPECT_OK(writer.Add("foo_001", Constant_2x3<T>(1)));
+    TF_EXPECT_OK(writer.Add("foo_003", Constant_2x3(T(3))));
+    TF_EXPECT_OK(writer.Add("foo_000", Constant_2x3(T(0))));
+    TF_EXPECT_OK(writer.Add("foo_002", Constant_2x3(T(2))));
+    TF_EXPECT_OK(writer.Add("foo_001", Constant_2x3(T(1))));
     TF_ASSERT_OK(writer.Finish());
   }
   {
@@ -178,28 +178,28 @@ void TestBasic() {
     EXPECT_EQ(
         AllTensorKeys(&reader),
         std::vector<string>({"foo_000", "foo_001", "foo_002", "foo_003"}));
-    Expect<T>(&reader, "foo_000", Constant_2x3<T>(0));
-    Expect<T>(&reader, "foo_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
+    Expect<T>(&reader, "foo_000", Constant_2x3(T(0)));
+    Expect<T>(&reader, "foo_001", Constant_2x3(T(1)));
+    Expect<T>(&reader, "foo_002", Constant_2x3(T(2)));
+    Expect<T>(&reader, "foo_003", Constant_2x3(T(3)));
   }
   {
     BundleReader reader(Env::Default(), Prefix("foo"));
     TF_ASSERT_OK(reader.status());
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3(T(3)));
     EXPECT_TRUE(reader.Valid());
     reader.Next();
     EXPECT_FALSE(reader.Valid());
   }
   {
     BundleWriter writer(Env::Default(), Prefix("bar"));
-    TF_EXPECT_OK(writer.Add("bar_003", Constant_2x3<T>(3)));
-    TF_EXPECT_OK(writer.Add("bar_000", Constant_2x3<T>(0)));
-    TF_EXPECT_OK(writer.Add("bar_002", Constant_2x3<T>(2)));
-    TF_EXPECT_OK(writer.Add("bar_001", Constant_2x3<T>(1)));
+    TF_EXPECT_OK(writer.Add("bar_003", Constant_2x3(T(3))));
+    TF_EXPECT_OK(writer.Add("bar_000", Constant_2x3(T(0))));
+    TF_EXPECT_OK(writer.Add("bar_002", Constant_2x3(T(2))));
+    TF_EXPECT_OK(writer.Add("bar_001", Constant_2x3(T(1))));
     TF_ASSERT_OK(writer.Finish());
   }
   {
@@ -208,18 +208,18 @@ void TestBasic() {
     EXPECT_EQ(
         AllTensorKeys(&reader),
         std::vector<string>({"bar_000", "bar_001", "bar_002", "bar_003"}));
-    Expect<T>(&reader, "bar_003", Constant_2x3<T>(3));
-    Expect<T>(&reader, "bar_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
+    Expect<T>(&reader, "bar_003", Constant_2x3(T(3)));
+    Expect<T>(&reader, "bar_002", Constant_2x3(T(2)));
+    Expect<T>(&reader, "bar_001", Constant_2x3(T(1)));
+    Expect<T>(&reader, "bar_000", Constant_2x3(T(0)));
   }
   {
     BundleReader reader(Env::Default(), Prefix("bar"));
     TF_ASSERT_OK(reader.status());
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3(T(3)));
     EXPECT_TRUE(reader.Valid());
     reader.Next();
     EXPECT_FALSE(reader.Valid());
@@ -233,26 +233,26 @@ void TestBasic() {
         AllTensorKeys(&reader),
         std::vector<string>({"bar_000", "bar_001", "bar_002", "bar_003",
                              "foo_000", "foo_001", "foo_002", "foo_003"}));
-    Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
-    Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "bar_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "bar_003", Constant_2x3<T>(3));
-    Expect<T>(&reader, "foo_000", Constant_2x3<T>(0));
-    Expect<T>(&reader, "foo_001", Constant_2x3<T>(1));
-    Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
-    Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
+    Expect<T>(&reader, "bar_000", Constant_2x3(T(0)));
+    Expect<T>(&reader, "bar_001", Constant_2x3(T(1)));
+    Expect<T>(&reader, "bar_002", Constant_2x3(T(2)));
+    Expect<T>(&reader, "bar_003", Constant_2x3(T(3)));
+    Expect<T>(&reader, "foo_000", Constant_2x3(T(0)));
+    Expect<T>(&reader, "foo_001", Constant_2x3(T(1)));
+    Expect<T>(&reader, "foo_002", Constant_2x3(T(2)));
+    Expect<T>(&reader, "foo_003", Constant_2x3(T(3)));
   }
   {
     BundleReader reader(Env::Default(), Prefix("merged"));
     TF_ASSERT_OK(reader.status());
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
-    ExpectNext<T>(&reader, Constant_2x3<T>(0));
-    ExpectNext<T>(&reader, Constant_2x3<T>(1));
-    ExpectNext<T>(&reader, Constant_2x3<T>(2));
-    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3(T(3)));
+    ExpectNext<T>(&reader, Constant_2x3(T(0)));
+    ExpectNext<T>(&reader, Constant_2x3(T(1)));
+    ExpectNext<T>(&reader, Constant_2x3(T(2)));
+    ExpectNext<T>(&reader, Constant_2x3(T(3)));
     EXPECT_TRUE(reader.Valid());
     reader.Next();
     EXPECT_FALSE(reader.Valid());
@@ -263,20 +263,20 @@ template <typename T>
 void TestNonStandardShapes() {
   {
     BundleWriter writer(Env::Default(), Prefix("nonstandard"));
-    TF_EXPECT_OK(writer.Add("scalar", Constant<T>(0, TensorShape())));
+    TF_EXPECT_OK(writer.Add("scalar", Constant(T(0), TensorShape())));
     TF_EXPECT_OK(
-        writer.Add("non_standard0", Constant<T>(0, TensorShape({0, 1618}))));
+        writer.Add("non_standard0", Constant(T(0), TensorShape({0, 1618}))));
     TF_EXPECT_OK(
-        writer.Add("non_standard1", Constant<T>(0, TensorShape({16, 0, 18}))));
+        writer.Add("non_standard1", Constant(T(0), TensorShape({16, 0, 18}))));
     TF_ASSERT_OK(writer.Finish());
   }
   {
     BundleReader reader(Env::Default(), Prefix("nonstandard"));
     TF_ASSERT_OK(reader.status());
-    Expect<T>(&reader, "scalar", Constant<T>(0, TensorShape()));
-    Expect<T>(&reader, "non_standard0", Constant<T>(0, TensorShape({0, 1618})));
+    Expect<T>(&reader, "scalar", Constant(T(0), TensorShape()));
+    Expect<T>(&reader, "non_standard0", Constant(T(0), TensorShape({0, 1618})));
     Expect<T>(&reader, "non_standard1",
-              Constant<T>(0, TensorShape({16, 0, 18})));
+              Constant(T(0), TensorShape({16, 0, 18})));
   }
 }
 
@@ -318,6 +318,7 @@ TEST(TensorBundleTest, Basic) {
   TestBasic<qint32>();
   TestBasic<quint8>();
   TestBasic<qint8>();
+  TestBasic<bfloat16>();
 }
 
 TEST(TensorBundleTest, PartitionedVariables) {
@@ -461,6 +462,7 @@ TEST(TensorBundleTest, NonStandardShapes) {
   TestNonStandardShapes<qint32>();
   TestNonStandardShapes<quint8>();
   TestNonStandardShapes<qint8>();
+  TestNonStandardShapes<bfloat16>();
 }
 
 TEST(TensorBundleTest, StringTensorsOldFormat) {

@@ -38,6 +38,12 @@ struct XlaAutoJitFlag {
   int32 optimization_level_general;
 };
 
+// Sets the xla_auto_jit_flag based on the given flag sting. Supported syntax
+// is:
+// <number>: sets general and single_gpu setting to the provided number.
+// single-gpu(<number>): sets the single_gpu setting to the provided number.
+bool SetXlaAutoJitFlagFromFlagString(const string& value);
+
 // Flags associated with the XLA bridge's mark_for_compilation_pass module.
 struct MarkForCompilationPassFlags {
   XlaAutoJitFlag xla_auto_jit_flag;
@@ -111,7 +117,7 @@ struct IntroduceFloatingPointJitterPassFlags {
 // parses TF_XLA_FLAGS for all of them.  Those functions which return a pointer
 // always return the same pointer.
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
-const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags();
+BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
 

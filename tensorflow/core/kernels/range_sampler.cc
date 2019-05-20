@@ -70,7 +70,7 @@ static float ExpectedCountHelper(float p, int batch_size, int num_tries) {
     return p * batch_size;
   }
   // numerically stable version of (1 - (1-p)^num_tries)
-  return -expm1(num_tries * std::log1p(-p));
+  return -std::expm1(num_tries * std::log1p(-p));
 }
 
 }  // namespace
