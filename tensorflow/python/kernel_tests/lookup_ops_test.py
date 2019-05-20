@@ -28,6 +28,7 @@ from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -271,7 +272,7 @@ class StaticHashTableTest(BaseLookupTableTest):
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
   @test_util.run_v1_only("Sessions not available in TF2.0")
-  def testMultipleSessions(self):
+  def DISABLE_testMultipleSessions(self):
     # Start a server
     server = server_lib.Server({"local0": ["localhost:0"]},
                                protocol="grpc",
@@ -296,8 +297,29 @@ class StaticHashTableTest(BaseLookupTableTest):
     # Init the table in the second session and verify that we do not get a
     # "Table already initialized" error.
     with session2:
-      table.initializer.run()
+      self.initialize_table(table)
       self.assertAllEqual(3, self.evaluate(table.size()))
+
+  @test_util.run_v2_only
+  def testImportedHashTable(self):
+    g = ops.Graph()
+    with g.as_default():
+      t = lookup_ops.StaticHashTable(
+          lookup_ops.KeyValueTensorInitializer(["a"], [1]),
+          2)
+      init_op = t._init_op
+      op = t.lookup(ops.convert_to_tensor(["a"]))
+      meta_graph = saver.export_meta_graph()
+
+    def f():
+      saver.import_meta_graph(meta_graph)
+      return ops.get_default_graph().get_tensor_by_name(op.name)
+
+    wrapped = wrap_function.wrap_function(f, [])
+    pruned_init_fn = wrapped.prune(
+        (), [wrapped.graph.get_operation_by_name(init_op.name)])
+    self.evaluate(pruned_init_fn())
+    self.assertAllEqual([1], wrapped())
 
   def testStaticHashTableInt32String(self):
     default_val = "n/a"
