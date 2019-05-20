@@ -3,6 +3,7 @@ add_llvm_library(MLIRLinalg
   IR/LinalgOps.cpp
   IR/LinalgTypes.cpp
   Transforms/LowerToLLVMDialect.cpp
+  Transforms/LowerToLoops.cpp
   Transforms/Tiling.cpp
   Utils/Utils.cpp
 
