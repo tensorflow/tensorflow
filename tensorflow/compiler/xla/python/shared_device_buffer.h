@@ -51,6 +51,9 @@ namespace xla {
 class BufferDefinitionEvent {
  public:
   // Creates a new definition event whose event has not yet been triggered.
+  static StatusOr<std::shared_ptr<BufferDefinitionEvent>> Create(
+      se::StreamExecutor* executor);
+
   explicit BufferDefinitionEvent(se::StreamExecutor* executor);
 
   // Records the definition event on the tail of 'stream'.

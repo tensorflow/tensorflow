@@ -716,6 +716,31 @@ py_library(
 )
 
 tf_py_test(
+    name = "unbatch_test",
+    size = "medium",
+    srcs = ["unbatch_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
+    ],
+)
+
+tf_py_test(
     name = "window_test",
     size = "medium",
     srcs = ["window_test.py"],

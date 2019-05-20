@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -39,40 +38,6 @@ using se::dnn::DimIndex;
 using se::dnn::FilterDescriptor;
 using se::dnn::FilterLayout;
 using se::dnn::ProfileResult;
-
-struct CudnnConvParams {
-  // Here are the fields related to cuDNN's fused convolution. The result thus
-  // is defined as:
-  //   activation(conv_result_scale * conv(x, w) +
-  //       side_input_scale * side_input + broadcast(bias))
-  //
-  // The most common fused conv is conv forward + relu/identity, for example.
-  //
-  // bias_buf is a single-dimensional array, with the length equal to the number
-  // of output features. It'll be broadcasted to the output shape in order to be
-  // added to the final results.
-  //
-  // side_input_buf, if valid, must have the same shape as the output buffer.
-  struct FusionParams {
-    se::dnn::ActivationMode mode;
-    double side_input_scale;
-    se::DeviceMemoryBase bias_buf;
-    se::DeviceMemoryBase side_input_buf;  // nullable
-  };
-
-  CudnnConvKind kind;
-  se::dnn::BatchDescriptor input_descriptor;
-  se::dnn::FilterDescriptor filter_descriptor;
-  se::dnn::BatchDescriptor output_descriptor;
-  se::DeviceMemoryBase input_buf;
-  se::DeviceMemoryBase filter_buf;
-  se::DeviceMemoryBase output_buf;
-  se::dnn::ConvolutionDescriptor conv_desc;
-  se::dnn::AlgorithmConfig algorithm;
-  double conv_result_scale;
-
-  absl::optional<FusionParams> fusion;
-};
 
 // A StreamExecutor ScratchAllocator that wraps a single XLA allocation,
 // returning it (in its entirety) the first time Allocate() is called.
@@ -199,6 +164,8 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
   }
   return Status::OK();
 }
+
+}  // anonymous namespace
 
 StatusOr<CudnnConvParams> GetCudnnConvParams(
     const HloCustomCallInstruction* conv,
@@ -386,8 +353,6 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 
   return params;
 }
-
-}  // anonymous namespace
 
 Status RunCudnnConv(const HloCustomCallInstruction* conv,
                     absl::Span<se::DeviceMemoryBase> operand_buffers,

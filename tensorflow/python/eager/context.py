@@ -335,6 +335,10 @@ class Context(object):
     self._execution_mode = execution_mode
     self._server_def = server_def
     self._collective_ops_server_def = None
+    self._collective_leader = None
+    self._collective_scoped_allocator_enabled_ops = None
+    self._collective_use_nccl_communication = None
+    self._collective_device_filters = None
 
     self._device_lock = threading.Lock()
     self._physical_devices = None
@@ -466,9 +470,7 @@ class Context(object):
       self._initialize_logical_devices()
 
   def enable_collective_ops(self, server_def):
-    """Enable collective ops with an appropriate server_def.
-
-    If previously enabled, this cannot be re-enabled.
+    """Enable distributed collective ops with an appropriate server_def.
 
     Args:
       server_def: A tensorflow::ServerDef proto. Enables execution on remote
@@ -476,18 +478,58 @@ class Context(object):
 
     Raises:
       ValueError: if server_def is None.
+      RuntimeError: if this method is not called at program startup.
     """
     if not server_def:
       raise ValueError("server_def is None.")
-    if not self._context_handle:
-      self._collective_ops_server_def = server_def
-    else:
-      server_def_str = server_def.SerializeToString()
-      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
-                                                server_def_str)
 
-      self._clear_caches()
-      self._initialize_logical_devices()
+    if self._context_handle is not None:
+      raise RuntimeError("Collective ops must be enabled at program startup")
+
+    self._collective_ops_server_def = server_def
+
+  def configure_collective_ops(
+      self,
+      collective_leader="",
+      scoped_allocator_enabled_ops=("CollectiveReduce",),
+      use_nccl_communication=False,
+      device_filters=None):
+    """Configure collective ops.
+
+      Collective group leader is necessary for collective ops to run, other
+      configurations are mainly for the purpose of performance.
+
+    Args:
+      collective_leader: a device string for collective leader, e.g.
+        "/job:worker/replica:0/task:"; empty string means local execution of
+          collective ops.
+      scoped_allocator_enabled_ops: a tuple or a list of op names for scoped
+        allocator to run with.
+      use_nccl_communication: whether to use nccl communication for collective
+        ops.
+      device_filters: a tuple or a list of device strings. If set, corresponding
+        task can only see the devices filtered by these device filters.
+
+    Raises:
+      RuntimeError: if this method is not called at program startup.
+    """
+    if self._collective_leader is not None:
+      if (self._collective_leader != collective_leader or
+          self._collective_scoped_allocator_enabled_ops !=
+          scoped_allocator_enabled_ops or
+          self._collective_use_nccl_communication != use_nccl_communication or
+          self._collective_device_filters != device_filters):
+        raise ValueError("Collective ops are already configured.")
+      else:
+        return
+
+    if self._context_handle is not None:
+      raise RuntimeError("Collective ops must be configured at program startup")
+
+    self._collective_leader = collective_leader
+    self._collective_scoped_allocator_enabled_ops = scoped_allocator_enabled_ops
+    self._collective_use_nccl_communication = use_nccl_communication
+    self._collective_device_filters = device_filters
 
   @property
   def _handle(self):
@@ -746,6 +788,23 @@ class Context(object):
     # Configure gpu_options
     gpu_options = self._compute_gpu_options()
     config.gpu_options.MergeFrom(gpu_options)
+
+    # Configure collective ops
+    if self._collective_leader:
+      config.experimental.collective_group_leader = self._collective_leader
+    if self._collective_scoped_allocator_enabled_ops:
+      rewrite_options = config.graph_options.rewrite_options
+      rewrite_options.scoped_allocator_optimization = (
+          rewriter_config_pb2.RewriterConfig.ON)
+      del rewrite_options.scoped_allocator_opts.enable_op[:]
+      for op in self._collective_scoped_allocator_enabled_ops:
+        rewrite_options.scoped_allocator_opts.enable_op.append(op)
+    if self._collective_use_nccl_communication:
+      config.experimental.collective_nccl = True
+    if self._collective_device_filters:
+      del config.device_filters[:]
+      for f in self._collective_device_filters:
+        config.device_filters.append(f)
 
     return config
 

@@ -29,6 +29,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -873,6 +874,27 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       with self.assertRaisesRegexp(RuntimeError,
                                    '`add_loss` in a control flow branch'):
         layer = MyLayer()(keras.Input((3,)))
+
+  @keras_parameterized.run_all_keras_modes
+  def test_conditional_callable_losses(self):
+    model = keras.Sequential([
+        keras.layers.Dense(
+            1, kernel_regularizer=keras.regularizers.l2(1e-4), input_shape=(1,))
+    ])
+
+    def assert_graph(t):
+      if not context.executing_eagerly():
+        self.assertEqual(t.graph, ops.get_default_graph())
+
+    @def_function.function
+    def get_losses(t):
+      if t < 0:
+        return math_ops.reduce_sum(model.losses) * t
+      else:
+        return math_ops.reduce_sum(model.losses)
+
+    assert_graph(get_losses(constant_op.constant(2.)))
+    assert_graph(get_losses(constant_op.constant(0.5)))
 
   @parameterized.named_parameters(('eager', True),
                                   ('symbolic', False))

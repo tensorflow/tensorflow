@@ -481,6 +481,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       logical_device = colocate_with.logical_device
 
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
+      initial_value = None
       value_list = []
       for i, d in enumerate(devices):
         with ops.device(d):
@@ -492,15 +493,21 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
-            def initial_value_fn(device=d):
-              if context.executing_eagerly() or ops.inside_function():
-                return array_ops.identity(value_list[0].value())
-              else:
-                with ops.device(device):
-                  return array_ops.identity(value_list[0].initial_value)
+            def initial_value_fn():
+              return array_ops.identity(initial_value)
+
             kwargs["initial_value"] = initial_value_fn
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
+          if i == 0:
+            # To avoid incorrectly nested device scopes, we exit out of
+            # existing control flow scopes and function building graphs.
+            # TODO(b/132997073): Remove initialization scope once nested
+            # device scope issue has been fixed.
+            with ops.init_scope():
+              initial_value = (
+                  v.value() if ops.executing_eagerly_outside_functions() else
+                  v.initial_value)
           assert not isinstance(v, values.TPUMirroredVariable)
           value_list.append(v)
       return value_list
