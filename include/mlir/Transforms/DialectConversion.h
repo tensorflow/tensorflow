@@ -38,7 +38,7 @@ class Value;
 
 // Private implementation class.
 namespace impl {
-class FunctionConversion;
+class FunctionConverter;
 }
 
 /// Base class for the dialect op conversion patterns.  Specific conversions
@@ -126,7 +126,7 @@ private:
 ///
 /// If the conversion fails, the module is not modified.
 class DialectConversion {
-  friend class impl::FunctionConversion;
+  friend class impl::FunctionConverter;
 
 public:
   virtual ~DialectConversion() = default;

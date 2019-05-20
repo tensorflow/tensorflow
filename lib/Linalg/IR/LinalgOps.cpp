@@ -324,7 +324,7 @@ ViewOp mlir::linalg::SliceOp::getBaseViewOp() {
 }
 
 ViewType mlir::linalg::SliceOp::getBaseViewType() {
-  return getBaseViewOp().getType().cast<ViewType>();
+  return getOperand(0)->getType().cast<ViewType>();
 }
 
 SmallVector<Value *, 8> mlir::linalg::SliceOp::getRanges() {
