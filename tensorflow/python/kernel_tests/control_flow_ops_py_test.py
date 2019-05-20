@@ -4337,6 +4337,34 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(st1.values, st3.values)
     self.assertAllEqual(st1.dense_shape, st3.dense_shape)
 
+  def _buildWhileWithShapeInvariants(self, shape_invariants):
+    r = constant_op.constant([1, 2])
+
+    def cond(_):
+      return False
+
+    def body(_):
+      return constant_op.constant([1])
+
+    return control_flow_ops.while_loop(
+        cond, body, [r], shape_invariants=shape_invariants)
+
+  def testWhileOutputShapeWithShapeInvariantsUnknownRank(self):
+    @def_function.function
+    def runTest():
+      while_output = self._buildWhileWithShapeInvariants(
+          [tensor_shape.TensorShape(None)])
+      self.assertIsNone(while_output.shape.rank)
+    runTest()
+
+  def testWhileOutputShapeWithShapeInvariantsPartialShape(self):
+    @def_function.function
+    def runTest():
+      while_output = self._buildWhileWithShapeInvariants(
+          [tensor_shape.TensorShape([None])])
+      self.assertAllEqual(while_output.shape.as_list(), [None])
+    runTest()
+
 
 class ControlFlowContextCheckTest(test.TestCase):
 
