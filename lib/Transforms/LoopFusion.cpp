@@ -801,8 +801,9 @@ static int64_t getComputeCost(
     Operation *forInst, LoopNestStats *stats,
     llvm::SmallDenseMap<Operation *, uint64_t, 8> *tripCountOverrideMap,
     DenseMap<Operation *, int64_t> *computeCostMap) {
-  // 'opCount' is the total number operations in one iteration of 'forOp' body
-  int64_t opCount = stats->opCountMap[forInst];
+  // 'opCount' is the total number operations in one iteration of 'forOp' body,
+  // minus terminator op which is a no-op.
+  int64_t opCount = stats->opCountMap[forInst] - 1;
   if (stats->loopMap.count(forInst) > 0) {
     for (auto childForOp : stats->loopMap[forInst]) {
       opCount += getComputeCost(childForOp.getOperation(), stats,
