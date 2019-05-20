@@ -138,7 +138,6 @@ Value *mlir::extractRangePart(Value *range, RangePart part) {
   }
   llvm_unreachable("need operations to extract range parts");
 }
-
 // Folding eagerly is necessary to abide by affine.for static step requirement.
 // We must propagate constants on the steps as aggressively as possible.
 // Returns nullptr if folding is not trivially feasible.
@@ -172,6 +171,7 @@ SmallVector<Value *, 4> mlir::applyMapToRangePart(FuncBuilder *b, Location loc,
                                                   RangePart part,
                                                   FunctionConstants &state) {
   SmallVector<Value *, 4> rangeParts(ranges.size());
+
   llvm::transform(ranges, rangeParts.begin(),
                   [&](Value *range) { return extractRangePart(range, part); });
 

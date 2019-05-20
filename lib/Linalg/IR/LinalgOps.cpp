@@ -632,7 +632,6 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
                                      AffineMap::get(3, 0, {i, j}, {})};
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
 }
-
 // Ideally this should all be Tablegen'd but there is no good story for op
 // expansion directly in MLIR for now.
 void mlir::linalg::emitScalarImplementation(

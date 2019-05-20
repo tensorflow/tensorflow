@@ -539,7 +539,7 @@ public:
     // Compute and insert view sizes (max - min along the range).
     int numIndexings = llvm::size(viewOp.getIndexings());
     Value *runningStride = constant(int64Ty, IntegerAttr::get(indexTy, 1));
-    for (int i = 0; i < numIndexings; ++i) {
+    for (int i = numIndexings - 1; i >= 0; --i) {
       // Update stride.
       Value *rangeDescriptor = operands[1 + i];
       Value *step = extractvalue(int64Ty, rangeDescriptor, pos(2));
@@ -550,9 +550,8 @@ public:
       Value *max = extractvalue(int64Ty, rangeDescriptor, pos(1));
       Value *size = sub(max, min);
       desc = insertvalue(viewDescriptorTy, desc, size, pos({2, i}));
-      ++i;
       // Update stride for the next dimension.
-      if (i < numIndexings - 1)
+      if (i > 0)
         runningStride = mul(runningStride, max);
     }
 
