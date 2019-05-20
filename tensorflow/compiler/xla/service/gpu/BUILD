@@ -637,6 +637,7 @@ cc_library(
     hdrs = ["cusolver_context.h"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cublas_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
