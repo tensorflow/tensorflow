@@ -6090,6 +6090,7 @@ filegroup(
         "in_topk_op.h",
         "initializable_lookup_table.cc",
         "logging_ops.cc",
+        "logging_ops.h",
         "lookup_table_init_op.cc",
         "lookup_table_op.cc",
         "lookup_util.cc",

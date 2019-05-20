@@ -600,7 +600,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "logging_ops_test",
     size = "small",
     srcs = ["logging_ops_test.py"],
@@ -613,6 +613,7 @@ tf_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
