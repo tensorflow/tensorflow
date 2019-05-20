@@ -479,7 +479,15 @@ class StreamExecutor {
 
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
-  StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
+  //
+  // Creates the allocator object on the first access, as the device ordinal
+  // of this stream_executor is not set in constructor.
+  StreamExecutorMemoryAllocator *GetAllocator() {
+    if (!allocator_.has_value()) {
+      allocator_.emplace(this);
+    }
+    return &allocator_.value();
+  }
 
  private:
   template <typename BeginCallT, typename CompleteCallT,
@@ -711,7 +719,7 @@ class StreamExecutor {
   // limit.
   int64 memory_limit_bytes_;
 
-  StreamExecutorMemoryAllocator allocator_;
+  absl::optional<StreamExecutorMemoryAllocator> allocator_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };

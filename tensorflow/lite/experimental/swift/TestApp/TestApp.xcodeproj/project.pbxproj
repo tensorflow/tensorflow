@@ -20,11 +20,11 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		4A1E2B9D227C8B51006C23E2 /* multi_add.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = multi_add.bin; path = ../../../../../testdata/multi_add.bin; sourceTree = "<group>"; };
-		4A1E2B9E227C8B52006C23E2 /* add_quantized.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = add_quantized.bin; path = ../../../../../testdata/add_quantized.bin; sourceTree = "<group>"; };
-		4A1E2B9F227C8B52006C23E2 /* add.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = add.bin; path = ../../../../../testdata/add.bin; sourceTree = "<group>"; };
+		4A1E2B9D227C8B51006C23E2 /* multi_add.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = multi_add.bin; path = ../../../../testdata/multi_add.bin; sourceTree = "<group>"; };
+		4A1E2B9E227C8B52006C23E2 /* add_quantized.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = add_quantized.bin; path = ../../../../testdata/add_quantized.bin; sourceTree = "<group>"; };
+		4A1E2B9F227C8B52006C23E2 /* add.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = add.bin; path = ../../../../testdata/add.bin; sourceTree = "<group>"; };
 		4A7304B321500B8300C90B21 /* Data+TensorFlowLite.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Data+TensorFlowLite.swift"; sourceTree = "<group>"; };
-		4AA72B6F2146ED64006C3AEF /* TensorFlowLiteApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TensorFlowLiteApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4AA72B6F2146ED64006C3AEF /* TestApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TestApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4AA72B722146ED64006C3AEF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		4AA72B742146ED64006C3AEF /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		4AA72B772146ED64006C3AEF /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -48,7 +48,7 @@
 		4AA72B662146ED64006C3AEF = {
 			isa = PBXGroup;
 			children = (
-				4AA72B712146ED64006C3AEF /* TensorFlowLiteApp */,
+				4AA72B712146ED64006C3AEF /* TestApp */,
 				4AA72B702146ED64006C3AEF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -56,12 +56,12 @@
 		4AA72B702146ED64006C3AEF /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				4AA72B6F2146ED64006C3AEF /* TensorFlowLiteApp.app */,
+				4AA72B6F2146ED64006C3AEF /* TestApp.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		4AA72B712146ED64006C3AEF /* TensorFlowLiteApp */ = {
+		4AA72B712146ED64006C3AEF /* TestApp */ = {
 			isa = PBXGroup;
 			children = (
 				4AA72B722146ED64006C3AEF /* AppDelegate.swift */,
@@ -76,15 +76,15 @@
 				4A1E2B9F227C8B52006C23E2 /* add.bin */,
 				4A1E2B9D227C8B51006C23E2 /* multi_add.bin */,
 			);
-			path = TensorFlowLiteApp;
+			path = TestApp;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		4AA72B6E2146ED64006C3AEF /* TensorFlowLiteApp */ = {
+		4AA72B6E2146ED64006C3AEF /* TestApp */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 4AA72B812146ED66006C3AEF /* Build configuration list for PBXNativeTarget "TensorFlowLiteApp" */;
+			buildConfigurationList = 4AA72B812146ED66006C3AEF /* Build configuration list for PBXNativeTarget "TestApp" */;
 			buildPhases = (
 				4AA72B6B2146ED64006C3AEF /* Sources */,
 				4AA72B6C2146ED64006C3AEF /* Frameworks */,
@@ -94,9 +94,9 @@
 			);
 			dependencies = (
 			);
-			name = TensorFlowLiteApp;
-			productName = TensorFlowLiteApp;
-			productReference = 4AA72B6F2146ED64006C3AEF /* TensorFlowLiteApp.app */;
+			name = TestApp;
+			productName = TestApp;
+			productReference = 4AA72B6F2146ED64006C3AEF /* TestApp.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -115,7 +115,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 4AA72B6A2146ED64006C3AEF /* Build configuration list for PBXProject "TensorFlowLiteApp" */;
+			buildConfigurationList = 4AA72B6A2146ED64006C3AEF /* Build configuration list for PBXProject "TestApp" */;
 			compatibilityVersion = "Xcode 9.3";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -128,7 +128,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				4AA72B6E2146ED64006C3AEF /* TensorFlowLiteApp */,
+				4AA72B6E2146ED64006C3AEF /* TestApp */,
 			);
 		};
 /* End PBXProject section */
@@ -302,12 +302,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				INFOPLIST_FILE = TensorFlowLiteApp/Info.plist;
+				INFOPLIST_FILE = TestApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.tensorflow.lite.swift.TensorFlowLite;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tensorflow.lite.swift.TestApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -319,12 +319,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				INFOPLIST_FILE = TensorFlowLiteApp/Info.plist;
+				INFOPLIST_FILE = TestApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.tensorflow.lite.swift.TensorFlowLite;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tensorflow.lite.swift.TestApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -334,7 +334,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		4AA72B6A2146ED64006C3AEF /* Build configuration list for PBXProject "TensorFlowLiteApp" */ = {
+		4AA72B6A2146ED64006C3AEF /* Build configuration list for PBXProject "TestApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				4AA72B7F2146ED66006C3AEF /* Debug */,
@@ -343,7 +343,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		4AA72B812146ED66006C3AEF /* Build configuration list for PBXNativeTarget "TensorFlowLiteApp" */ = {
+		4AA72B812146ED66006C3AEF /* Build configuration list for PBXNativeTarget "TestApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				4AA72B822146ED66006C3AEF /* Debug */,

@@ -1293,9 +1293,6 @@ def configure_ios():
   """
   if not is_macos():
     return
-  if _TF_CURRENT_BAZEL_VERSION is None or _TF_CURRENT_BAZEL_VERSION < 23000:
-    print(
-        'Building Bazel rules on Apple platforms requires Bazel 0.23 or later.')
   for filepath in APPLE_BAZEL_FILES:
     existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
     renamed_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath)

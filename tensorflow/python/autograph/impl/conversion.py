@@ -677,8 +677,7 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
-  if context.program.options.uses(converter.Feature.LOGICAL_EXPRESSIONS):
-    node = converter.apply_(node, context, logical_expressions)
+  node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.

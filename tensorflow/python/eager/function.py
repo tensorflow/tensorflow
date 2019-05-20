@@ -1273,6 +1273,7 @@ class Function(object):
                attributes=None,
                autograph=True,
                autograph_options=None,
+               experimental_relax_shapes=False,
                capture_by_value=None):
     """Initializes a `Function`.
 
@@ -1290,6 +1291,8 @@ class Function(object):
       autograph_options: Experimental knobs to control behavior
         `when autograph=True`. See https://www.tensorflow.org/guide/autograph
         for more information.
+      experimental_relax_shapes: When true, argument shapes may be relaxed to
+        avoid unecessary retracing.
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
@@ -1304,6 +1307,7 @@ class Function(object):
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
+    self._experimental_relax_shapes = experimental_relax_shapes
     self._function_cache = FunctionCache()
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
@@ -1552,6 +1556,41 @@ class Function(object):
 
     return graph_function
 
+  def _define_function_with_shape_relaxation(self, args, kwargs):
+    """Define a function, relaxing arg shapes to avoid unecessary retracing."""
+
+    rank_only_cache_key = self._cache_key(
+        args, kwargs, include_tensor_ranks_only=True)
+
+    arg_shapes = _flat_shape_list(args, kwargs)
+    relaxed_arg_shapes = self._function_cache.arg_relaxed_shapes.get(
+        rank_only_cache_key, None)
+    relaxed_arg_function = self._function_cache.arg_relaxed.get(
+        rank_only_cache_key, None)
+
+    if (relaxed_arg_function is not None
+        and _compatible_shapes(flat_relaxed=relaxed_arg_shapes,
+                               flat_to_check=arg_shapes)):
+      return relaxed_arg_function, args, kwargs
+
+    if relaxed_arg_shapes is None:
+      relaxed_arg_shapes = arg_shapes
+    else:
+      if len(arg_shapes) != len(relaxed_arg_shapes):
+        raise RuntimeError("Expected arg_shapes len to match "
+                           "relaxed_arg_shapes len: %d vs. %d"
+                           % (len(arg_shapes), len(relaxed_arg_shapes)))
+      relaxed_arg_shapes = [
+          _common_shape(x, y) for (x, y) in zip(
+              arg_shapes, relaxed_arg_shapes)]
+    self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
+        relaxed_arg_shapes)
+    graph_function = self._create_graph_function(
+        args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
+    self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
+
+    return graph_function, args, kwargs
+
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
 
@@ -1598,47 +1637,20 @@ class Function(object):
                    kwargs)
 
       call_context_key = cache_key.replace(input_signature=None)
+      # Build a function with shape relaxation retracing if:
+      # 1. shape relaxation is explicitly enabled
+      # and 2. there's no provided input signature
+      # and 3. there's been a cache miss for this calling context
+      if (self._experimental_relax_shapes
+          and self.input_signature is None
+          and call_context_key in self._function_cache.missed):
+        return self._define_function_with_shape_relaxation(args, kwargs)
 
-      # If there's a provided input signature, or
-      # there's no cache miss for this calling context so far, go ahead and
-      # build the function and bypass shape relaxation retracing.
-      if (self.input_signature is not None
-          or call_context_key not in self._function_cache.missed):
-        self._function_cache.missed.add(call_context_key)
+      self._function_cache.missed.add(call_context_key)
+      graph_function = self._function_cache.primary.get(cache_key, None)
+      if graph_function is None:
         graph_function = self._create_graph_function(args, kwargs)
         self._function_cache.primary[cache_key] = graph_function
-        return graph_function, args, kwargs
-
-      rank_only_cache_key = self._cache_key(
-          args, kwargs, include_tensor_ranks_only=True)
-
-      arg_shapes = _flat_shape_list(args, kwargs)
-      relaxed_arg_shapes = self._function_cache.arg_relaxed_shapes.get(
-          rank_only_cache_key, None)
-      relaxed_arg_function = self._function_cache.arg_relaxed.get(
-          rank_only_cache_key, None)
-
-      if (relaxed_arg_function is not None
-          and _compatible_shapes(flat_relaxed=relaxed_arg_shapes,
-                                 flat_to_check=arg_shapes)):
-        return relaxed_arg_function, args, kwargs
-
-      if relaxed_arg_shapes is None:
-        relaxed_arg_shapes = arg_shapes
-      else:
-        if len(arg_shapes) != len(relaxed_arg_shapes):
-          raise RuntimeError("Expected arg_shapes len to match "
-                             "relaxed_arg_shapes len: %d vs. %d"
-                             % (len(arg_shapes), len(relaxed_arg_shapes)))
-        relaxed_arg_shapes = [
-            _common_shape(x, y) for (x, y) in zip(
-                arg_shapes, relaxed_arg_shapes)]
-      self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
-          relaxed_arg_shapes)
-      graph_function = self._create_graph_function(
-          args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
-      self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
-
       return graph_function, args, kwargs
 
 
@@ -1678,7 +1690,8 @@ def validate_signature(signature):
 def defun(func=None,
           input_signature=None,
           autograph=True,
-          experimental_autograph_options=None):
+          experimental_autograph_options=None,
+          experimental_relax_shapes=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") compiles a Python function
@@ -1995,7 +2008,8 @@ def defun(func=None,
     experimental_autograph_options: Experimental knobs (in the form of a tuple
       of tensorflow.autograph.Feature values) to control behavior when
       autograph=True.
-
+    experimental_relax_shapes: When true, argument shapes may be relaxed to
+      avoid unecessary retracing.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -2011,14 +2025,16 @@ def defun(func=None,
       func=func,
       input_signature=input_signature,
       autograph=autograph,
-      experimental_autograph_options=experimental_autograph_options)
+      experimental_autograph_options=experimental_autograph_options,
+      experimental_relax_shapes=experimental_relax_shapes)
 
 
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
                           autograph=True,
-                          experimental_autograph_options=None):
+                          experimental_autograph_options=None,
+                          experimental_relax_shapes=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -2038,6 +2054,7 @@ def defun_with_attributes(func=None,
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
+    experimental_relax_shapes: same as defun()'s experimental_relax_shapes
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -2063,7 +2080,8 @@ def defun_with_attributes(func=None,
             input_signature=input_signature,
             attributes=attributes,
             autograph=autograph,
-            autograph_options=experimental_autograph_options))
+            autograph_options=experimental_autograph_options,
+            experimental_relax_shapes=experimental_relax_shapes))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:

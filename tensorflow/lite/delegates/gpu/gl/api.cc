@@ -20,6 +20,7 @@ limitations under the License.
 #include <deque>
 #include <mutex>  // NOLINT
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -382,6 +383,7 @@ bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
 }  // namespace
 
 Status Compile(const CompilationOptions& options, const GraphFloat32& model,
+               const std::unordered_set<int>& tflite_graph_io,
                const NodeShader& node_shader,
                const WorkgroupsCalculator& workgroup_calculator,
                std::unique_ptr<CompiledModel>* compiled_model) {
@@ -393,9 +395,10 @@ Status Compile(const CompilationOptions& options, const GraphFloat32& model,
   auto compiled_model_impl = absl::make_unique<CompiledModelImpl>(gpu_info);
   compiled_model_impl->set_dynamic_batch(options.dynamic_batch);
   auto compiler = NewCompiler(&node_shader, &gpu_info, options);
-  RETURN_IF_ERROR(compiler->Compile(model, [&](ShaderCode code) -> Status {
-    return compiled_model_impl->Add(workgroup_calculator, std::move(code));
-  }));
+  RETURN_IF_ERROR(
+      compiler->Compile(model, tflite_graph_io, [&](ShaderCode code) -> Status {
+        return compiled_model_impl->Add(workgroup_calculator, std::move(code));
+      }));
   *compiled_model = std::move(compiled_model_impl);
   return OkStatus();
 }

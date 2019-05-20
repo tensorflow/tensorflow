@@ -181,11 +181,11 @@ CreateBFCAllocator(se::Platform* platform, LocalClient* client,
   std::vector<std::unique_ptr<tensorflow::Allocator>> allocators;
   for (se::StreamExecutor* executor : client->backend().stream_executors()) {
     int device_ordinal = executor->device_ordinal();
-    tensorflow::GPUMemAllocator* sub_allocator =
-        new tensorflow::GPUMemAllocator(
-            executor, tensorflow::PlatformGpuId(device_ordinal),
-            /*use_unified_memory=*/false, /*alloc_visitors=*/{},
-            /*free_visitors=*/{});
+    auto sub_allocator = absl::make_unique<tensorflow::GPUMemAllocator>(
+        executor, tensorflow::PlatformGpuId(device_ordinal),
+        /*use_unified_memory=*/false,
+        /*alloc_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>(),
+        /*free_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>());
 
     int64 free_memory;
     int64 total_memory;
@@ -198,10 +198,10 @@ CreateBFCAllocator(se::Platform* platform, LocalClient* client,
               << total_memory << " bytes on device " << device_ordinal
               << " for BFCAllocator.";
 
-    tensorflow::BFCAllocator* gpu_bfc_allocator = new tensorflow::BFCAllocator(
-        sub_allocator, allocator_memory, /*allow_growth=*/false,
+    auto gpu_bfc_allocator = absl::make_unique<tensorflow::BFCAllocator>(
+        sub_allocator.release(), allocator_memory, /*allow_growth=*/false,
         absl::StrCat("GPU_", device_ordinal, "_bfc"));
-    allocators.emplace_back(gpu_bfc_allocator);
+    allocators.emplace_back(std::move(gpu_bfc_allocator));
   }
   return absl::make_unique<tensorflow::MultiDeviceAdapter>(
       platform, std::move(allocators));
@@ -250,8 +250,7 @@ PyLocalClient::PyLocalClient(
     allocator_ = client_->backend().memory_allocator();
   }
   devices_.reserve(client->device_count());
-  // TODO(phawkins): enable multistream mode on GPU too.
-  bool use_multiple_streams = (platform_name == "tpu");
+  bool use_multiple_streams = (platform_name_ != "cpu");
   bool synchronous_deallocation = !use_multiple_streams;
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
@@ -315,8 +314,9 @@ static StatusOr<PyLocalBuffer> TransferHostToDeviceAsync(
   }
   std::shared_ptr<BufferDefinitionEvent> definition_event;
   if (device.use_multiple_streams()) {
-    definition_event = std::make_shared<BufferDefinitionEvent>(
-        device.host_to_device_stream()->parent());
+    TF_ASSIGN_OR_RETURN(definition_event,
+                        BufferDefinitionEvent::Create(
+                            device.host_to_device_stream()->parent()));
     definition_event->RecordOnStream(device.host_to_device_stream());
   }
   std::shared_ptr<PySharedDeviceBuffer> device_buffer =
@@ -439,8 +439,9 @@ PyLocalBuffer::FromPythonValues(
   const Device& device = client->device(device_ordinal);
   std::shared_ptr<BufferDefinitionEvent> definition_event;
   if (device.use_multiple_streams()) {
-    definition_event = std::make_shared<BufferDefinitionEvent>(
-        device.host_to_device_stream()->parent());
+    TF_ASSIGN_OR_RETURN(definition_event,
+                        BufferDefinitionEvent::Create(
+                            device.host_to_device_stream()->parent()));
   }
   TF_ASSIGN_OR_RETURN(std::shared_ptr<PySharedDeviceBuffer> tuple_buffer,
                       PySharedDeviceBuffer::MakeTuple(
@@ -603,8 +604,9 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
 
   std::shared_ptr<BufferDefinitionEvent> definition_event;
   if (device.use_multiple_streams()) {
-    definition_event = std::make_shared<BufferDefinitionEvent>(
-        device.compute_stream()->parent());
+    TF_ASSIGN_OR_RETURN(
+        definition_event,
+        BufferDefinitionEvent::Create(device.compute_stream()->parent()));
     definition_event->RecordOnStream(device.compute_stream());
   }
   Shape on_host_shape = result_buffer.ValueOrDie().on_host_shape();
@@ -621,8 +623,8 @@ StatusOr<PyLocalBuffer> PyLocalExecutable::ExecuteHelper(
     buffers.push_back(out_buffer);
     device.ThenReleaseOnWorkerThread(device.compute_stream(),
                                      std::move(buffers));
-    device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
   }
+  device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
   return PyLocalBuffer(on_host_shape, std::move(out_buffer), client_);
 }
 

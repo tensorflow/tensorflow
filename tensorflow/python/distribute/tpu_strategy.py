@@ -21,6 +21,8 @@ from __future__ import print_function
 import collections
 import copy
 
+import numpy as np
+
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -34,10 +36,12 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.tpu import tpu
@@ -185,7 +189,9 @@ def _tpu_run(strategy, fn, args, kwargs):
     maximum_shapes = []
     flattened_list = nest.flatten(replicate_inputs[0])
     for input_tensor in flattened_list:
-      maximum_shapes.append(input_tensor.get_shape())
+      maximum_shape = input_tensor.get_shape() if tensor_util.is_tensor(
+          input_tensor) else tensor_shape.TensorShape(np.shape(input_tensor))
+      maximum_shapes.append(maximum_shape)
     maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
                                            maximum_shapes)
   else:
@@ -475,6 +481,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       logical_device = colocate_with.logical_device
 
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
+      initial_value = None
       value_list = []
       for i, d in enumerate(devices):
         with ops.device(d):
@@ -486,15 +493,21 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
-            def initial_value_fn(device=d):
-              if context.executing_eagerly() or ops.inside_function():
-                return array_ops.identity(value_list[0].value())
-              else:
-                with ops.device(device):
-                  return array_ops.identity(value_list[0].initial_value)
+            def initial_value_fn():
+              return array_ops.identity(initial_value)
+
             kwargs["initial_value"] = initial_value_fn
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
+          if i == 0:
+            # To avoid incorrectly nested device scopes, we exit out of
+            # existing control flow scopes and function building graphs.
+            # TODO(b/132997073): Remove initialization scope once nested
+            # device scope issue has been fixed.
+            with ops.init_scope():
+              initial_value = (
+                  v.value() if ops.executing_eagerly_outside_functions() else
+                  v.initial_value)
           assert not isinstance(v, values.TPUMirroredVariable)
           value_list.append(v)
       return value_list
@@ -542,7 +555,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return output
 
   def _update(self, var, fn, args, kwargs, group):
-    assert isinstance(var, values.TPUMirroredVariable)
+    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
+        var, resource_variable_ops.ResourceVariable)
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if group:
         return fn(var, *args, **kwargs)
@@ -562,7 +576,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return values.update_regroup(self, self._device_map, updates, group)
 
   def read_var(self, var):
-    assert isinstance(var, values.TPUMirroredVariable)
+    assert isinstance(var, values.TPUMirroredVariable) or isinstance(
+        var, resource_variable_ops.ResourceVariable)
     return var.read_value()
 
   def _local_results(self, val):

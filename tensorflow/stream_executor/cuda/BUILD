@@ -96,6 +96,24 @@ cc_library(
 )
 
 cc_library(
+    name = "ptxas_utils",
+    srcs = if_cuda_is_configured(["ptxas_utils.cc"]),
+    hdrs = if_cuda_is_configured(["ptxas_utils.h"]),
+    deps = if_cuda_is_configured([
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        ":cuda_driver",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "//tensorflow/core:cuda_libdevice_path",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
+    ]) + ["@com_google_absl//absl/container:flat_hash_map"],
+)
+
+cc_library(
     name = "cuda_driver",
     srcs = if_cuda_is_configured(["cuda_driver.cc"]),
     hdrs = if_cuda_is_configured(["cuda_driver.h"]),

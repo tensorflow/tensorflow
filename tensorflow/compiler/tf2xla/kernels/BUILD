@@ -195,6 +195,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:training_ops",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )

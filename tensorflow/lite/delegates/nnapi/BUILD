@@ -22,6 +22,7 @@ cc_library(
     hdrs = ["nnapi_delegate.h"],
     deps = [
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",

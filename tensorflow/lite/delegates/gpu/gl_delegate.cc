@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <EGL/egl.h>
@@ -161,6 +162,8 @@ class Delegate {
       tensors_[value->id] = {value->tensor.shape, 0};
     }
 
+    std::unordered_set<int> tflite_graph_io;
+
     // Prepare graph inputs.
     //
     // Note that graph.inputs() cannot be used directly, as the notion of
@@ -173,6 +176,7 @@ class Delegate {
         if (tensor->allocation_type == TfLiteAllocationType::kTfLiteMmapRo) {
           continue;
         }
+        tflite_graph_io.insert(tensor_index);
         const auto* input = find_value(tensor_index);
         if (!input || tensor->type != TfLiteType::kTfLiteFloat32) {
           return NotFoundError("Input tensor is not found in the graph.");
@@ -210,6 +214,7 @@ class Delegate {
       for (int i = 0; i < delegate_params->output_tensors->size; ++i) {
         const int tensor_index = delegate_params->output_tensors->data[i];
         auto* tensor = context->tensors + tensor_index;
+        tflite_graph_io.insert(tensor_index);
         const auto* output = find_value(tensor_index);
         if (!output || tensor->type != TfLiteType::kTfLiteFloat32) {
           return NotFoundError("Output tensor is not found in the graph.");
@@ -257,7 +262,7 @@ class Delegate {
     auto workgroups_calculator =
         BestEffortWorkgroupsCalculator(options_.metadata, gpu_info);
     std::unique_ptr<CompiledModel> compiled_model;
-    RETURN_IF_ERROR(Compile(compile_options, graph, *shaders,
+    RETURN_IF_ERROR(Compile(compile_options, graph, tflite_graph_io, *shaders,
                             *workgroups_calculator, &compiled_model));
 
     // Create inference context.

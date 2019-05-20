@@ -152,7 +152,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun
+    @function.defun(experimental_relax_shapes=True)
     def func(a):
       if a._shape_tuple()[0] is None:
         unknown_dim[0] = True
@@ -184,7 +184,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun
+    @function.defun(experimental_relax_shapes=True)
     def func(a_, b_=None):
       del a_  # Only used to check which cache is used.
       self.assertEqual(b_[0]._shape_tuple(), ())
@@ -223,7 +223,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testFunctionRelaxationLosesInnerDimWithKerasLayer(self):
     layer = keras.layers.Dense(1)
-    fn = def_function.function()(layer)
+    fn = def_function.function(experimental_relax_shapes=True)(layer)
 
     with self.captureWritesToStream(sys.stderr) as printed:
       fn(array_ops.ones((3, 2)))
@@ -247,14 +247,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # The inner function will go through shape relaxation because the shapes it
     # receives will be [1], [2], [3], ...
-    @def_function.function
+    @def_function.function(experimental_relax_shapes=True)
     def bar(x_shape):
       got_shape[0] = x_shape._shape_tuple()
       return x_shape
 
     # The outer function will not go through shape relaxation because the shapes
     # it receives will be [1], [[1]], [[[1]]], ...
-    @def_function.function
+    @def_function.function(experimental_relax_shapes=True)
     def foo(ones):
       return bar(array_ops.shape(ones))
 
@@ -1405,13 +1405,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined(t)
     self.assertLen(total_function_cache(defined), 2)
 
-  def testCacheTensorUnknownShapesCollision(self):
+  def testCacheTensorUnknownShapesCollisionRelaxedShapes(self):
 
     def func(t):
       return t + t
 
     with context.graph_mode(), self.cached_session():
-      defined = function.defun(func)
+      defined = function.defun(func, experimental_relax_shapes=True)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)

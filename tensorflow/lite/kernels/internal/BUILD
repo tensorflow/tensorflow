@@ -385,6 +385,7 @@ cc_library(
         ":types",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
+        "//third_party/eigen3",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
@@ -421,6 +422,7 @@ cc_library(
         ":legacy_types",
         ":tensor",
         ":types",
+        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
@@ -667,7 +669,25 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "//tensorflow/lite/experimental/ruy:context",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "depthwiseconv_per_channel_quantized_test",
+    srcs = [
+        "depthwiseconv_per_channel_quantized_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
         "@com_google_googletest//:gtest_main",
     ],
 )

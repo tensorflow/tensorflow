@@ -248,7 +248,8 @@ class Function(object):
                name,
                input_signature=None,
                autograph=True,
-               experimental_autograph_options=None):
+               experimental_autograph_options=None,
+               experimental_relax_shapes=False):
     """Initializes a `Function`.
 
     Args:
@@ -262,6 +263,9 @@ class Function(object):
       experimental_autograph_options: optional tuple of
         tensorflow.autograph.Feature values. Allows enabling additional
         conversion options when autograph is set to True.
+      experimental_relax_shapes: When true, argument shapes may be relaxed to
+        avoid unecessary retracing.
+
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -272,6 +276,7 @@ class Function(object):
         python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
+    self.experimental_relax_shapes = experimental_relax_shapes
     self._created_variables = None
     self._stateful_fn = None
     self._stateless_fn = None
@@ -308,12 +313,12 @@ class Function(object):
 
   def _defun(self, fn):
     """Returns a defun generated from the input function."""
-    # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
         fn,
         input_signature=self.input_signature,
         autograph=self._autograph,
-        experimental_autograph_options=self._experimental_autograph_options)
+        experimental_autograph_options=self._experimental_autograph_options,
+        experimental_relax_shapes=self.experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -720,7 +725,8 @@ class Function(object):
 def function(func=None,
              input_signature=None,
              autograph=True,
-             experimental_autograph_options=None):
+             experimental_autograph_options=None,
+             experimental_relax_shapes=False):
   """Creates a callable TensorFlow graph from a Python function.
 
   `function` constructs a callable that executes a TensorFlow graph
@@ -975,6 +981,8 @@ def function(func=None,
     experimental_autograph_options: Experimental knobs (in the form of a tuple
       of tensorflow.autograph.Feature values) to control behavior when
       autograph=True.
+    experimental_relax_shapes: When true, argument shapes may be relaxed to
+      avoid unecessary retracing.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -1001,7 +1009,8 @@ def function(func=None,
             name,
             input_signature=input_signature,
             autograph=autograph,
-            experimental_autograph_options=experimental_autograph_options))
+            experimental_autograph_options=experimental_autograph_options,
+            experimental_relax_shapes=experimental_relax_shapes))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

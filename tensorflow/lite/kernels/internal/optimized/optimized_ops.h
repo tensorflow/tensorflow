@@ -1205,6 +1205,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  uint8* output_data, const RuntimeShape& im2col_shape,
                  uint8* im2col_data, CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("Conv/8bit");
+
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;

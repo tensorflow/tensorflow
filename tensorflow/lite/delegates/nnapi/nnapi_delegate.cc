@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 #ifdef __ANDROID__
@@ -298,6 +299,10 @@ class NNAPIOpBuilder {
         operand_mapping_(tensor_mapping),
         dequantize_mapping_(dequantize_mapping),
         nn_model_(nn_model) {}
+
+  TfLiteStatus AddScalarBoolOperand(bool value) {
+    return AddScalarOperand<bool>(value, ANEURALNETWORKS_BOOL);
+  }
 
   TfLiteStatus AddScalarInt32Operand(int32_t value) {
     return AddScalarOperand<int32_t>(value, ANEURALNETWORKS_INT32);
@@ -664,10 +669,34 @@ class NNAPIDelegateKernel {
           }
           auto builtin =
               reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
-          if (builtin->dilation_width_factor != 1 ||
-              builtin->dilation_height_factor != 1 || node->inputs->size != 3) {
-            // NNAPI does not support dilated Conv2D.
+          if (node->inputs->size != 3) {
+            // TODO(b/132950584): Add support for Conv2D with omitted bias
             return nullptr;
+          }
+          // NNAPI supports dilated Conv2D since NNAPI 1.2.
+          if (builtin->dilation_width_factor != 1 ||
+              builtin->dilation_height_factor != 1) {
+            if (android_sdk_version < kMinSdkVersionForNNAPI12) {
+              return nullptr;
+            }
+            return [](const NNAPIOpMappingArgs& mapping_args)
+                       -> ANeuralNetworksOperationType {
+              auto builtin = reinterpret_cast<TfLiteConvParams*>(
+                  mapping_args.node->builtin_data);
+              mapping_args.builder->AddScalarInt32Operand(builtin->padding);
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->stride_width);
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->stride_height);
+              mapping_args.builder->AddScalarInt32Operand(builtin->activation);
+              mapping_args.builder->AddScalarBoolOperand(
+                  false);  // Use NHWC format
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->dilation_width_factor);
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->dilation_height_factor);
+              return ANEURALNETWORKS_CONV_2D;
+            };
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
@@ -1556,6 +1585,8 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
   if (options.accelerator_name) {
     delegate_data_.accelerator_name = options.accelerator_name;
   }
+  TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                       "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
   data_ = &delegate_data_;
 }
@@ -1628,6 +1659,11 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   }
   // First element in vector must be the number of actual nodes.
   supported_nodes[0] = supported_nodes.size() - 1;
+
+  // If there are no delegated nodes, short-circuit node replacement.
+  if (!supported_nodes[0]) {
+    return kTfLiteOk;
+  }
 
   // NN API Delegate Registration (the pseudo kernel that will invoke NN
   // API node sub sets)

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -283,6 +284,16 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // Ignore empty node replacement sets.
+  if (!nodes_to_replace->size) {
+    return kTfLiteOk;
+  }
+
+  TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+             "Replacing %d node(s) with delegate (%s) node.",
+             nodes_to_replace->size,
+             registration.custom_name ? registration.custom_name : "unknown");
+
   // Annotate the registration as DELEGATE op.
   registration.builtin_code = BuiltinOperator_DELEGATE;
 
