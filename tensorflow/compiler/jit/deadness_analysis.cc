@@ -958,7 +958,7 @@ Status GetFullFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
 // If the node is inside some frames, get the name of the outermost non-empty
 // frame.  Otherwise, get an empty frame name.
 Status GetRootFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
-                    absl::string_view frame) {
+                    string* frame) {
   int depth = 0;
   const ControlFlowInfo* cfi_iter = &cfi_infos[n->id()];
   while (!cfi_iter->parent_frame->IsSource()) {
@@ -972,7 +972,7 @@ Status GetRootFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
     }
   }
 
-  frame = cfi_iter->frame_name;
+  *frame = cfi_iter->frame_name;
   return Status::OK();
 }
 
@@ -1057,8 +1057,7 @@ Status GetFrameBasedTopologicalOrder(const Graph* g,
         // other frames.
         string frame_name = cf_infos[ready_exits.front()->id()].frame_name;
         CHECK_EQ(ready_exits.size(), num_exits[frame_name]);
-        ready.insert(ready.end(), ready_exits.begin(),
-                     ready_exits.end());
+        ready.insert(ready.end(), ready_exits.begin(), ready_exits.end());
         ready_exits.clear();
       } else {
         // Otherwise, try moving nodes from ready_enters to `ready`.
@@ -1067,8 +1066,7 @@ Status GetFrameBasedTopologicalOrder(const Graph* g,
           string frame_name = iter->first;
           const std::vector<Node*>& ready_enters = iter->second;
           if (ready_enters.size() == num_enters[frame_name]) {
-            ready.insert(ready.end(), ready_enters.begin(),
-                         ready_enters.end());
+            ready.insert(ready.end(), ready_enters.begin(), ready_enters.end());
             ready_enters_per_frame.erase(iter);
             break;
           }
@@ -1257,27 +1255,29 @@ Status DeadnessAnalysisImpl::Populate(bool force_pessimistic) {
       GetFrameBasedTopologicalOrder(&graph_, control_flow_info_, &topo));
 
   size_t frame_start = 0;
-  for (size_t i = 0; i < topo.size(); ++i) {
-    // Collect nodes until we see a node who has a different root frame.
-    if (i != topo.size() - 1) {
-      absl::string_view i_frame_name, next_frame_name;
-      TF_RETURN_IF_ERROR(GetRootFrame(topo[i], control_flow_info_,
-                                      i_frame_name));
-      TF_RETURN_IF_ERROR(GetRootFrame(topo[i + 1], control_flow_info_,
-                                      next_frame_name));
-      if (i_frame_name == next_frame_name) {
-        continue;
+  while (frame_start < topo.size()) {
+    // Batching nodes who have the same root frame.
+    string cur_frame_name;
+    TF_RETURN_IF_ERROR(
+        GetRootFrame(topo[frame_start], control_flow_info_, &cur_frame_name));
+    size_t frame_end = frame_start;
+    for (size_t i = frame_start + 1; i < topo.size(); ++i) {
+      string i_frame_name;
+      TF_RETURN_IF_ERROR(
+          GetRootFrame(topo[i], control_flow_info_, &i_frame_name));
+      if (i_frame_name == cur_frame_name) {
+        frame_end = i;
+      } else {
+        break;
       }
     }
-
-    string frame_name = control_flow_info_[topo[i]->id()].frame_name;
     absl::Span<Node*> sub_topo(topo.data() + frame_start,
-                               /*length=*/i - frame_start + 1);
-    frame_start = i + 1;
+                               /*length=*/frame_end - frame_start + 1);
+    frame_start = frame_end + 1;
 
     // First, try the optimistic mode.
     bool success = false;
-    if (!force_pessimistic && !frame_name.empty()) {
+    if (!force_pessimistic && !cur_frame_name.empty()) {
       TF_RETURN_IF_ERROR(
           PopulateFrame(sub_topo, /*use_optimistic_mode=*/true, &success));
     }
@@ -1287,7 +1287,7 @@ Status DeadnessAnalysisImpl::Populate(bool force_pessimistic) {
       TF_RETURN_IF_ERROR(
           PopulateFrame(sub_topo, /*use_optimistic_mode=*/false, nullptr));
     }
-    VLOG(2) << "Done populating frame " << frame_name << " using the "
+    VLOG(2) << "Done populating frame " << cur_frame_name << " using the "
             << (success ? "optimistic" : "pessimistic") << " mode.";
   }
 
