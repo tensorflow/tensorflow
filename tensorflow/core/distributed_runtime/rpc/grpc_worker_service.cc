@@ -442,6 +442,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      const RecvTensorRequest* request,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
+  VLOG(1) << "GrpcRecvTensorAsync req: " << request->DebugString();
   const int64 request_id = request->request_id();
   const int64 step_id = request->step_id();
 

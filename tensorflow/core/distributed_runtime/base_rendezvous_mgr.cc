@@ -321,6 +321,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
         [this, parsed, done](
             const Status& status, const Rendezvous::Args& send_args,
             const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
+          VLOG(2) << "RemoteRendezvous Finished Recv " << this << " "
+                  << parsed.FullKey();
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
                                            is_dead](const Status& s) {
