@@ -91,6 +91,23 @@ FunctionDef IsZero() {
       });
 }
 
+FunctionDef IsZeroV2() {
+  const Tensor kZero = test::AsScalar<int64>(0);
+  return FDH::Define(
+      // Name
+      "IsZeroV2",
+      // Args
+      {"x: int64"},
+      // Return values
+      {"equal: bool"},
+      // Attr def
+      {},
+      {
+          {{"zero"}, "Const", {}, {{"value", kZero}, {"dtype", DT_INT64}}},
+          {{"equal"}, "Equal", {"x", "zero"}, {{"T", DT_INT64}}},
+      });
+}
+
 FunctionDef RandomUniform() {
   const Tensor kZero = test::AsScalar<int64>(0);
 
@@ -565,6 +582,45 @@ FunctionDef RandomUniformLess() {
          {"end_mask", 0},
          {"new_axis_mask", 0},
          {"shrink_axis_mask", 0}}}});
+}
+
+FunctionDef MakeFilterDataset() {
+  return FDH::Define(
+      // Name
+      "FilterDataset",
+      // Args
+      {"input_dataset:variant"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"predicate: func", "Targuments: list(type) >= 0",
+       "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "FilterDataset",
+        {"input_dataset"},
+        {{"predicate", "$predicate"},
+         {"Targuments", "$Targuments"},
+         {"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeRangeDataset() {
+  return FDH::Define(
+      // Name
+      "MakeRangeDataset",
+      // Args
+      {"start:int64", "stop:int64", "step:int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "RangeDataset",
+        {"start", "stop", "step"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
 }
 
 FunctionDef MakeTensorSliceDataset() {

@@ -102,6 +102,9 @@ FunctionDef NonZero();
 // x: T -> bool.
 FunctionDef IsZero();
 
+// x: int64 -> bool.
+FunctionDef IsZeroV2();
+
 // x: T -> int64
 FunctionDef RandomUniform();
 
@@ -134,6 +137,12 @@ FunctionDef XYXLessThanOrEqualToN(int64 N);
 
 // x: T -> bool
 FunctionDef RandomUniformLess();
+
+// input_dataset:variant -> y: FilterDatasetOp::Dataset
+FunctionDef MakeFilterDataset();
+
+// start:int64, stop:int64, step:int64 -> y: RangeDatasetOp::Dataset
+FunctionDef MakeRangeDataset();
 
 // x:T -> y: TensorSliceDatasetOp::Dataset
 FunctionDef MakeTensorSliceDataset();
