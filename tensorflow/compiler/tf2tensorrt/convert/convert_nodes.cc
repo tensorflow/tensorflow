@@ -1978,11 +1978,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     padding = {{0, 0}, {0, 0}};
   }
 
-  // TensorRT 5.1 added support for asymmetric padding. Due to a bug in 5.1.2,
-  // we can only use asymmetric padding in convolutions with 5.1.3+.
+  // Handle asymmetric padding. TensorRT 5.1 added support for asymmetric
+  // padding via setPrePadding and setPostPadding. Due to a bug in 5.1.2, we can
+  // only use asymmetric padding in convolutions with 5.1.3+. But in 5.1.3, we
+  // will always use setPaddingMode for simplicity.
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
-    // Handle asymmetric padding.
     auto pad_layer = params->converter->network()->addPadding(
         *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
@@ -2804,7 +2805,6 @@ Status ConvertPool(OpConverterParams* params) {
                                                         layer->getOutput(0));
 
   layer->setStride(stride);
-// TensorRT 5.1.3 added support for padding modes.
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
   // VALID padding is the default TRT behavior.
   if (attrs.get<string>("padding") == "SAME") {
