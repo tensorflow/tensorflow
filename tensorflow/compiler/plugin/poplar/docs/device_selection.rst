@@ -116,6 +116,8 @@ point control register.
 
 See the documentation in :ref:`api-section` for more details.
 
+.. _env-var-section:
+
 TF_POPLAR_FLAGS environment variable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -143,6 +145,12 @@ location.
 
 ``--executable_cache_path`` enables the Poplar executable cache. See below.
 
+``--dump_schedule_as_dot`` creates a file containing the scheduled HLO graph as
+a graphviz DOT file.
+
+``--fallback_scheduler`` uses the standard TensorFlow scheduler, instead of
+the GraphCore specific one.
+
 The options can be used at the same time by treating them as command line
 switches, eg. ``--executable_cache_path=/tmp/cache --force_replicated_mode``
 
@@ -169,6 +177,12 @@ metadata and the Poplar executable.
 The cache does not manage the files within the directory. It is the
 responsibility of the user to delete files.  No index is kept of the
 files, so they can be deleted without risk.
+
+Supported operations
+~~~~~~~~~~~~~~~~~~~~
+
+The Poplar SDK is distributed with another file containing a list of all
+TensorFlow operations which are supported by the IPU.
 
 Unsupported operations
 ~~~~~~~~~~~~~~~~~~~~~~

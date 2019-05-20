@@ -142,8 +142,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
           'GradientDescent/update_vs/batch_normalization_2/',
           'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4',
           'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
-          'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4',
-          'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo'
+          'gradients/vs/conv1/Conv2D_grad/Conv2DBackpropFilter/fusion*/Conv_4x4',
+          'gradients/vs/conv1/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo'
       ]
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))

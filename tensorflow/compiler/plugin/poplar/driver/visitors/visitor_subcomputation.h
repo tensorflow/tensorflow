@@ -82,6 +82,7 @@ class SubComputationVisitor : public DeferredAllocationVisitor {
   TensorInputDescription has_allocation_target_;
 };
 
+// Similar to SubComputationVisitor, but the inputs are used inplace.
 class InplaceSubComputationVisitor : public SubComputationVisitor {
  public:
   InplaceSubComputationVisitor(CompilerResources& res, const ArgVectors& inputs,

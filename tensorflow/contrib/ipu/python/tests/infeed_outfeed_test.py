@@ -604,7 +604,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-        next_feed_id(), outfeed_all=False)
+        next_feed_id(), outfeed_mode=ipu_outfeed_queue.IPUOutfeedMode.LAST)
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -713,7 +713,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-        next_feed_id(), outfeed_all=False)
+        next_feed_id(), outfeed_mode=ipu_outfeed_queue.IPUOutfeedMode.LAST)
 
     def body(v, im1, im2):
       v = v + im1 + im2
@@ -794,7 +794,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, next_feed_id())
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(
-        next_feed_id(), outfeed_all=False)
+        next_feed_id(), outfeed_mode=ipu_outfeed_queue.IPUOutfeedMode.LAST)
 
     def my_net(iters):
       def body(loss, x):

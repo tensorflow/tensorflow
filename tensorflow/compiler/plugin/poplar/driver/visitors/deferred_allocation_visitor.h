@@ -55,23 +55,42 @@ class DeferredAllocationVisitor : public FullVisitor {
   // should be called by HandleParameter and HandleInfeed. If it's allocating a
   // deferred input then it also makes sure to set the outputs of all
   // instructions between the input tuple and inst to this allocation.
-  Status AllocateInput(const HloInstruction* inst, int64 flat_tuple_index,
+  Status AllocateInput(const HloInstruction* inst, const int64 flat_tuple_index,
                        const Shape& shape);
 
   // Called by AllocateInput when allocating an input for an infeed.
   StatusOr<poplar::Tensor> PostProcessInfeedAllocation(
-      const HloInstruction* inst, int64 flat_tuple_index,
+      const HloInstruction* inst, const int64 flat_tuple_index,
       poplar::Tensor tensor);
 
   // Called by AllocateInput when allocating an input for a paramter.
   virtual StatusOr<poplar::Tensor> PostProcessParameterAllocation(
-      const HloInstruction* inst, int64 flat_tuple_index,
+      const HloInstruction* inst, const int64 flat_tuple_index,
       poplar::Tensor tensor) = 0;
 
-  bool DeferAllocation(const HloInstruction* inst, int64 flat_tuple_index);
+  // Returns true if the passed parameter can be deferred.
+  bool CanDeferAllocation(const HloInstruction* inst,
+                          const int64 flat_tuple_index);
+
+  // Marks the passed parameter as deferred allocation.
+  void DeferAllocation(const HloInstruction* inst,
+                       const int64 flat_tuple_index);
 
  private:
-  bool IsDeferredAllocation(const HloInstruction* inst, int64 flat_tuple_index);
+  // Returns true if the passed parameter is in the deferred allocation path
+  // between tensor source and its actual allocation.
+  bool IsInDeferredAllocationPath(const HloInstruction* inst,
+                                  const int64 flat_tuple_index);
+
+  // Returns true if this is the deferred tensor allocation.
+  bool IsDeferredAllocation(const HloInstruction* inst,
+                            const int64 flat_tuple_index);
+
+  // Stores all the tensors in the path between tensor source and its actual
+  // allocation.
+  absl::flat_hash_set<TensorSource> instructions_in_deferred_allocation_paths;
+  // Stores the locations where deferred tensors are allocated.
+  absl::flat_hash_set<TensorSource> deferred_allocation_sources;
 
   poplar::program::Sequence merged_infeed_sequence;
 };

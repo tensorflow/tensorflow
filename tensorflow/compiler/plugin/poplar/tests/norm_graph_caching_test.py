@@ -267,7 +267,6 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
           '__seed*',
           'host-exchange-local-copy-',
           'Copy_',
-          'Copy.',
           'vs/conv1/Conv2D/convolution.*/Conv_1x1',
           'vs/batch_normalization/FusedBatchNorm/batch-norm-training.*/',
           'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
@@ -278,7 +277,6 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
           'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/Conv_4x4/Convolve',
           'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/fusion.*/AddTo',
       ]
-
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testGroupNormalizeInference(self):

@@ -32,7 +32,13 @@ namespace poplarplugin {
 struct CompilerAnnotations;
 
 using TensorSource = std::pair<const HloInstruction*, int64>;
-using DeferredAllocations = absl::flat_hash_set<TensorSource>;
+using TensorsWithLayouts = absl::flat_hash_set<TensorSource>;
+
+using DeferredAllocationInfo = absl::flat_hash_map<TensorSource, TensorSource>;
+// For each computation, a map which stores information about which parameter
+// input tensor to the computation is being deferred.
+using DeferredAllocations =
+    absl::flat_hash_map<const HloComputation*, DeferredAllocationInfo>;
 using DeferredAllocationsPath = std::vector<TensorSource>;
 
 struct TensorTarget {
@@ -93,6 +99,9 @@ struct TensorTarget {
 
 using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
 
+TensorsWithLayouts GetAllLayoutsInPath(const TensorSource& source,
+                                       const TensorTarget& tensor_target);
+
 /**
  * This class finds all instructions that explicitly add tensors to the
  * graph.  For each one of them, it locates the downstream consumers of that
@@ -115,11 +124,15 @@ class AllocationFinder : public HloModulePass {
   // Should return true when target 'a' should be used over 'b'
   bool CompareTargets(const TensorTarget& a, const TensorTarget& b);
 
+  void AddTensorTarget(const TensorSource& source,
+                       const TensorTarget& tensor_target);
+
   std::set<HloInstruction*> visited;
   std::vector<const HloInstruction*> path;
 
   const CompilerAnnotations& annotations;
   TensorAllocationMap& tensor_allocation_map;
+  TensorsWithLayouts& tensors_with_layout;
 };
 
 }  // namespace poplarplugin

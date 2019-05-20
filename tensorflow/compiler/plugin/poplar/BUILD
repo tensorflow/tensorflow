@@ -133,7 +133,8 @@ cc_library(
         "driver/tools/single_hlo_matcher.cc",
         "driver/tools/util.cc",
         "driver/tools/while_loop_util.cc",
-        "driver/schedulers/sync_list_scheduler.cc",
+        "driver/schedulers/look_ahead_scheduler.cc",
+        "driver/schedulers/sync_list_scheduler.cc"
     ],
     hdrs = [
         "driver/compiler_annotations.h",
@@ -188,7 +189,9 @@ cc_library(
         "driver/tools/single_hlo_matcher.h",
         "driver/tools/util.h",
         "driver/tools/while_loop_util.h",
-        "driver/schedulers/sync_list_scheduler.h",
+        "driver/schedulers/look_ahead_scheduler.h",
+        "driver/schedulers/sync_list_scheduler.h"
+
     ],
     deps = [
         ":common",
@@ -585,6 +588,19 @@ tf_cc_test(
 tf_cc_test(
     name = "conversions_test",
     srcs = ["tests/conversions_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "allreduce_lookahead_scheduler_test",
+    srcs = ["tests/allreduce_lookahead_scheduler_test.cc"],
     extra_copts = [
         "-fexceptions",
     ],

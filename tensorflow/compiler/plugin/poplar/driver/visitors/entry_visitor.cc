@@ -30,18 +30,20 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
   // marked as deferred.
   std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
   for (int64 i = 0; i < shapes.size(); i++) {
-    if (!DeferAllocation(inst, i)) {
-      TF_RETURN_IF_ERROR(AllocateInput(inst, i, shapes[i]));
-    } else {
+    if (CanDeferAllocation(inst, i)) {
       VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
               << i << ".";
+      DeferAllocation(inst, i);
+    } else {
+      TF_RETURN_IF_ERROR(AllocateInput(inst, i, shapes[i]));
     }
   }
   return Status::OK();
 }
 
 StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
-    const HloInstruction* inst, int64 flat_tuple_index, poplar::Tensor tensor) {
+    const HloInstruction* inst, const int64 flat_tuple_index,
+    poplar::Tensor tensor) {
   const auto& in_info = resources_.annotations.input_output_aliasing_map
                             .GetEntryInputInfos()[inst->parameter_number()];
 

@@ -60,6 +60,12 @@ struct PoplarXlaFlags {
 
   // Stores all the values as a string.
   std::string as_string;
+
+  // Dump the schedule graph as a dot to VLOG.
+  bool dump_schedule_as_dot;
+
+  // Use the fallback scheduler instead of the default one.
+  bool fallback_scheduler;
 };
 
 // Getters for flags structs defined above.  The first call to any of these
