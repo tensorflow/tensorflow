@@ -20,6 +20,7 @@
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
@@ -69,6 +70,9 @@ void DiagnosticArgument::print(raw_ostream &os) const {
     break;
   case DiagnosticArgumentKind::Integer:
     os << getAsInteger();
+    break;
+  case DiagnosticArgumentKind::Operation:
+    os << getAsOperation();
     break;
   case DiagnosticArgumentKind::String:
     os << getAsString();
