@@ -32,7 +32,7 @@
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 
-#include "Test.h"
+#include "APITest.h"
 
 #include "llvm/Support/raw_ostream.h"
 
