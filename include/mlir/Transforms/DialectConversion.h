@@ -36,23 +36,17 @@ class Operation;
 class Type;
 class Value;
 
-// Private implementation class.
-namespace impl {
-class FunctionConverter;
-}
-
-/// Base class for the dialect op conversion patterns.  Specific conversions
-/// must derive this class and implement least one `rewrite` method. Optionally
-/// they can also override `PatternMatch match(Operation *)` to match more
-/// specific operations than the `rootName` provided in the constructor.
+/// Base class for the dialect conversion patterns that require type changes.
+/// Specific conversions must derive this class and implement least one
+/// `rewrite` method.
 /// NOTE: These conversion patterns can only be used with the DialectConversion
 /// class.
-class DialectOpConversion : public RewritePattern {
+class DialectConversionPattern : public RewritePattern {
 public:
-  /// Construct an DialectOpConversion.  `rootName` must correspond to the
+  /// Construct an DialectConversionPattern.  `rootName` must correspond to the
   /// canonical name of the first operation matched by the pattern.
-  DialectOpConversion(StringRef rootName, PatternBenefit benefit,
-                      MLIRContext *ctx)
+  DialectConversionPattern(StringRef rootName, PatternBenefit benefit,
+                           MLIRContext *ctx)
       : RewritePattern(rootName, benefit, ctx) {}
 
   /// Hook for derived classes to implement matching. Dialect conversion
@@ -65,10 +59,10 @@ public:
   /// Hook for derived classes to implement rewriting. `op` is the (first)
   /// operation matched by the pattern, `operands` is a list of rewritten values
   /// that are passed to this operation, `rewriter` can be used to emit the new
-  /// operations. This function must be reimplemented if the DialectOpConversion
-  /// ever needs to replace an operation that does not have successors. This
-  /// function should not fail. If some specific cases of the operation are not
-  /// supported, these cases should not be matched.
+  /// operations. This function must be reimplemented if the
+  /// DialectConversionPattern ever needs to replace an operation that does not
+  /// have successors. This function should not fail. If some specific cases of
+  /// the operation are not supported, these cases should not be matched.
   virtual void rewrite(Operation *op, ArrayRef<Value *> operands,
                        PatternRewriter &rewriter) const {
     llvm_unreachable("unimplemented rewrite");
@@ -80,7 +74,7 @@ public:
   /// of (potentially rewritten) successor blocks, `operands` is a list of lists
   /// of rewritten values passed to each of the successors, co-indexed with
   /// `destinations`, `rewriter` can be used to emit the new operations. It must
-  /// be reimplemented if the DialectOpConversion ever needs to replace a
+  /// be reimplemented if the DialectConversionPattern ever needs to replace a
   /// terminator operation that has successors. This function should not fail
   /// the pass. If some specific cases of the operation are not supported,
   /// these cases should not be matched.
@@ -126,8 +120,6 @@ private:
 ///
 /// If the conversion fails, the module is not modified.
 class DialectConversion {
-  friend class impl::FunctionConverter;
-
 public:
   virtual ~DialectConversion() = default;
 
@@ -135,7 +127,6 @@ public:
   LLVM_NODISCARD
   LogicalResult convert(Module *m);
 
-protected:
   /// Derived classes must implement this hook to produce a set of conversion
   /// patterns to apply.  They may use `mlirContext` to obtain registered
   /// dialects or operations.  This will be called in the beginning of the

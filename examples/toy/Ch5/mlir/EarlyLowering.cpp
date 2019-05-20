@@ -77,14 +77,14 @@ Value *memRefTypeCast(FuncBuilder &builder, Value *val) {
 
 /// Lower toy.mul to Linalg `matmul`.
 ///
-/// This class inherit from `DialectOpConversion` and override `rewrite`,
+/// This class inherit from `DialectConversionPattern` and override `rewrite`,
 /// similarly to the PatternRewriter introduced in the previous chapter.
 /// It will be called by the DialectConversion framework (see `LateLowering`
 /// class below).
-class MulOpConversion : public DialectOpConversion {
+class MulOpConversion : public DialectConversionPattern {
 public:
   explicit MulOpConversion(MLIRContext *context)
-      : DialectOpConversion(toy::MulOp::getOperationName(), 1, context) {}
+      : DialectConversionPattern(toy::MulOp::getOperationName(), 1, context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {

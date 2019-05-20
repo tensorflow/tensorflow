@@ -195,7 +195,7 @@ static Type getMemRefElementPtrType(MemRefType t, LLVMLowering &lowering) {
 
 LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
                                LLVMLowering &lowering_)
-    : DialectOpConversion(rootOpName, /*benefit=*/1, context),
+    : DialectConversionPattern(rootOpName, /*benefit=*/1, context),
       lowering(lowering_) {}
 
 namespace {

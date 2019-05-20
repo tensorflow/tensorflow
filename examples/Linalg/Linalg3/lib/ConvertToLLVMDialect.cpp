@@ -52,10 +52,10 @@ namespace {
 // Common functionality for Linalg LoadOp and StoreOp conversion to the
 // LLVM IR Dialect.
 template <typename Op>
-class LoadStoreOpConversion : public DialectOpConversion {
+class LoadStoreOpConversion : public DialectConversionPattern {
 public:
   explicit LoadStoreOpConversion(MLIRContext *context)
-      : DialectOpConversion(Op::getOperationName(), 1, context) {}
+      : DialectConversionPattern(Op::getOperationName(), 1, context) {}
   using Base = LoadStoreOpConversion<Op>;
 
   // Compute the pointer to an element of the buffer underlying the view given

@@ -212,11 +212,11 @@ offset, the min/max values or the strides. Their static (constant) dimensions
 are available directly in the type signature.
 
 An operation conversion is defined as special pattern by inheriting from
-`mlir::DialectOpConversion` and by reimplementing the matching and the rewriting
-functions:
+`mlir::DialectConversionPattern` and by reimplementing the matching and the
+rewriting functions:
 
 ```c++
-class ViewOpConversion : public DialectOpConversion {
+class ViewOpConversion : public DialectConversionPattern {
 public:
   // A conversion constructor, may take arbtirary operands but must be able
   // to obtain an MLIRContext from them to call the parent constructor.
@@ -237,15 +237,15 @@ public:
 }
 ```
 
-The `DialectOpConversion` constructor takes, in addition to the context, the
-name of the main operation to be matched and the "benefit" of a match. These
+The `DialectConversionPattern` constructor takes, in addition to the context,
+the name of the main operation to be matched and the "benefit" of a match. These
 operands are intended to be useful for defining an optimization problem across
 multiple possible conversions but are currently ignored by the conversion
 framework.
 
 ```c++
 ViewOpConversion::ViewOpConversion(MLIRContext *context)
-      : DialectOpConversion(linalg::ViewOp::getOperationName(), 1, context) {}
+      : DialectConversionPattern(linalg::ViewOp::getOperationName(), 1, context) {}
 ```
 
 The matching function can be used, for example, to apply different conversions
@@ -621,7 +621,7 @@ class Lowering : public DialectConversion {
 protected:
   // Produce a set of operation conversion patterns.  This is called once per
   // conversion.
-  llvm::DenseSet<DialectOpConversion *>
+  llvm::DenseSet<DialectConversionPattern *>
   initConverter(MLIRContext *context) override {
     allocator.Reset();
     // Call a helper function provided by MLIR to build a set of operation

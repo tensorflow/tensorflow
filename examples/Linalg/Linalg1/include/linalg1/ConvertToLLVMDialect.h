@@ -25,7 +25,7 @@
 
 namespace mlir {
 class DialectConversion;
-class DialectOpConversion;
+class DialectConversionPattern;
 class MLIRContext;
 class Module;
 class RewritePattern;

@@ -142,10 +142,11 @@ static ArrayAttr makePositionAttr(FuncBuilder &builder,
 }
 
 // RangeOp creates a new range descriptor.
-class RangeOpConversion : public DialectOpConversion {
+class RangeOpConversion : public DialectConversionPattern {
 public:
   explicit RangeOpConversion(MLIRContext *context)
-      : DialectOpConversion(linalg::RangeOp::getOperationName(), 1, context) {}
+      : DialectConversionPattern(linalg::RangeOp::getOperationName(), 1,
+                                 context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
@@ -168,10 +169,11 @@ public:
   }
 };
 
-class ViewOpConversion : public DialectOpConversion {
+class ViewOpConversion : public DialectConversionPattern {
 public:
   explicit ViewOpConversion(MLIRContext *context)
-      : DialectOpConversion(linalg::ViewOp::getOperationName(), 1, context) {}
+      : DialectConversionPattern(linalg::ViewOp::getOperationName(), 1,
+                                 context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
@@ -294,10 +296,11 @@ public:
   }
 };
 
-class SliceOpConversion : public DialectOpConversion {
+class SliceOpConversion : public DialectConversionPattern {
 public:
   explicit SliceOpConversion(MLIRContext *context)
-      : DialectOpConversion(linalg::SliceOp::getOperationName(), 1, context) {}
+      : DialectConversionPattern(linalg::SliceOp::getOperationName(), 1,
+                                 context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
@@ -387,10 +390,10 @@ public:
 
 // When converting the "some_consumer" operation, don't emit anything and
 // effectively drop it.
-class DropConsumer : public DialectOpConversion {
+class DropConsumer : public DialectConversionPattern {
 public:
   explicit DropConsumer(MLIRContext *context)
-      : DialectOpConversion("some_consumer", 1, context) {}
+      : DialectConversionPattern("some_consumer", 1, context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {

@@ -25,6 +25,9 @@
 using namespace mlir;
 using namespace mlir::impl;
 
+//===----------------------------------------------------------------------===//
+// ProducerGenerator
+//===----------------------------------------------------------------------===//
 namespace {
 /// This class provides a simple interface for generating fake producers during
 /// the conversion process. These fake producers are used when replacing the
@@ -87,8 +90,12 @@ struct ProducerGenerator {
   UnknownLoc loc;
 };
 
-/// This class implements a pattern rewriter for DialectOpConversion patterns.
-/// It automatically performs remapping of replaced operation values.
+//===----------------------------------------------------------------------===//
+// DialectConversionRewriter
+//===----------------------------------------------------------------------===//
+
+/// This class implements a pattern rewriter for DialectConversionPattern
+/// patterns. It automatically performs remapping of replaced operation values.
 struct DialectConversionRewriter final : public PatternRewriter {
   DialectConversionRewriter(Function *fn)
       : PatternRewriter(fn), tempGenerator(fn->getContext()) {}
@@ -130,13 +137,17 @@ struct DialectConversionRewriter final : public PatternRewriter {
 };
 } // end anonymous namespace
 
+//===----------------------------------------------------------------------===//
+// DialectConversionPattern
+//===----------------------------------------------------------------------===//
+
 /// Rewrite the IR rooted at the specified operation with the result of
 /// this pattern, generating any new operations with the specified
 /// builder.  If an unexpected error is encountered (an internal
 /// compiler error), it is emitted through the normal MLIR diagnostic
 /// hooks and the IR is left in a valid state.
-void DialectOpConversion::rewrite(Operation *op,
-                                  PatternRewriter &rewriter) const {
+void DialectConversionPattern::rewrite(Operation *op,
+                                       PatternRewriter &rewriter) const {
   SmallVector<Value *, 4> operands;
   auto &dialectRewriter = static_cast<DialectConversionRewriter &>(rewriter);
   dialectRewriter.lookupValues(op->getOperands(), operands);
@@ -168,8 +179,10 @@ void DialectOpConversion::rewrite(Operation *op,
           destinations, operandsPerDestination, rewriter);
 }
 
-namespace mlir {
-namespace impl {
+//===----------------------------------------------------------------------===//
+// FunctionConverter
+//===----------------------------------------------------------------------===//
+namespace {
 // Implementation detail class of the DialectConversion utility.  Performs
 // function-by-function conversions by creating new functions, filling them in
 // with converted blocks, updating the function attributes, and replacing the
@@ -211,8 +224,7 @@ public:
   /// The matcher to use when converting operations.
   RewritePatternMatcher &matcher;
 };
-} // end namespace impl
-} // end namespace mlir
+} // end anonymous namespace
 
 LogicalResult
 FunctionConverter::convertArgument(DialectConversionRewriter &rewriter,
@@ -325,6 +337,10 @@ Function *FunctionConverter::convertFunction(Function *f) {
   }
   return newFunc;
 }
+
+//===----------------------------------------------------------------------===//
+// DialectConversion
+//===----------------------------------------------------------------------===//
 
 // Create a function type with arguments and results converted, and argument
 // attributes passed through.

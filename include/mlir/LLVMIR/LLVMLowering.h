@@ -131,7 +131,7 @@ private:
 /// Base class for operation conversions targeting the LLVM IR dialect. Provides
 /// conversion patterns with an access to the containing LLVMLowering for the
 /// purpose of type conversions.
-class LLVMOpLowering : public DialectOpConversion {
+class LLVMOpLowering : public DialectConversionPattern {
 public:
   LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
                  LLVMLowering &lowering);
