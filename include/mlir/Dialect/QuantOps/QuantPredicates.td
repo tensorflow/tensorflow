@@ -27,7 +27,7 @@
 //===----------------------------------------------------------------------===//
 
 class quant_TypedPrimitiveOrContainer<Type etype> :
-    Type<AnyOf<[etype.predicate,
+    Type<Or<[etype.predicate,
                 Tensor<etype>.predicate,
                 Vector<etype>.predicate]>,
          "primitive/tensor/vector of " # etype.description>;
@@ -39,13 +39,13 @@ def quant_QuantizedType :
 // A primitive type that can represent a real value. This is either a
 // floating point value or a quantized type.
 def quant_RealPrimitiveType :
-    Type<AnyOf<[Float.predicate, quant_QuantizedType.predicate]>,
+    Type<Or<[Float.predicate, quant_QuantizedType.predicate]>,
     "real valued primitive (float or quantized type)">;
 
 // A primitive type that can represent a storage value. This is either an
 // integer or quantized type.
 def quant_StoragePrimitiveType :
-    Type<AnyOf<[Integer.predicate, quant_QuantizedType.predicate]>,
+    Type<Or<[Integer.predicate, quant_QuantizedType.predicate]>,
     "quantized storage primitive (integer or quantized type)">;
 
 // A primitive or container of RealPrimitiveType.
@@ -58,7 +58,7 @@ def quant_StorageValueType :
 
 // Either a real valued or storage primitive or container type.
 def quant_RealOrStorageValueType :
-    Type<AnyOf<[quant_RealValueType.predicate,
+    Type<Or<[quant_RealValueType.predicate,
                 quant_StorageValueType.predicate]>>;
 
 // An implementation of UniformQuantizedType.

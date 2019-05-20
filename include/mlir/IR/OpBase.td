@@ -96,11 +96,11 @@ class CombinedPred<PredCombinerKind k, list<Pred> c> : Pred {
 
 // A predicate that holds if all of its children hold.  Always holds for zero
 // children.
-class AllOf<list<Pred> children> : CombinedPred<PredCombinerAnd, children>;
+class And<list<Pred> children> : CombinedPred<PredCombinerAnd, children>;
 
 // A predicate that holds if any of its children hold.  Never holds for zero
 // children.
-class AnyOf<list<Pred> children> : CombinedPred<PredCombinerOr, children>;
+class Or<list<Pred> children> : CombinedPred<PredCombinerOr, children>;
 
 // A predicate that holds if its child does not.
 class Neg<Pred child> : CombinedPred<PredCombinerNot, [child]>;
@@ -267,7 +267,7 @@ def NoneType : Type<CPred<"$_self.isa<NoneType>()">, "none type">;
 // Any type from the given list
 class AnyTypeOf<list<Type> allowedTypes, string description = ""> : Type<
     // Satisfy any of the allowed type's condition
-    AnyOf<!foreach(allowedtype, allowedTypes, allowedtype.predicate)>,
+    Or<!foreach(allowedtype, allowedTypes, allowedtype.predicate)>,
     !if(!eq(description, ""),
         // Join all allowed types' descriptions with " or " as the description
         // if not provided during template specialization
@@ -326,7 +326,7 @@ class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
                     string descr> :
     // First, check the container predicate.  Then, substitute the extracted
     // element into the element type checker.
-    Type<AllOf<[containerPred,
+    Type<And<[containerPred,
                 SubstLeaves<"$_self", !cast<string>(elementTypeCall),
                 etype.predicate>]>,
          descr # " of " # etype.description # " values"> {
@@ -359,7 +359,7 @@ class AnyTensorOf<list<Type> allowedTypes, string elementDescription = ""> :
 
 // TODO(b/130807343) Fix description to contain element information.
 class StaticShapeTensor<Type t>
-    : Type<AllOf<[ Tensor<t>.predicate, HasStaticShapePred ]>,
+    : Type<And<[ Tensor<t>.predicate, HasStaticShapePred ]>,
            "statically shaped tensor">;
 
 def AnyStaticShapeTensor : StaticShapeTensor<AnyType>;
@@ -384,7 +384,7 @@ def Tuple : Type<IsTupleTypePred, "tuple">;
 // ContainerType because tuples do not always have a single element type that
 // could be retrieved with elementTypeCall.
 class TypedTuple<Type t> :
-    Type<AllOf<[
+    Type<And<[
         Tuple.predicate,
         Concat<
             [{
@@ -423,12 +423,12 @@ def F64MemRef  : MemRef<F64>;
 
 // Type constraint for integer-like types: integers, indices, vectors of
 // integers, tensors of integers.
-def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
+def IntegerLike : TypeConstraint<Or<[Integer.predicate, Index.predicate,
         Vector<Integer>.predicate, Tensor<Integer>.predicate]>,
     "integer-like">;
 
 // Type constraint for float-like types: floats, vectors or tensors thereof.
-def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
+def FloatLike : TypeConstraint<Or<[Float.predicate,
         Vector<Float>.predicate, Tensor<Float>.predicate]>,
     "floating-point-like">;
 
@@ -531,7 +531,7 @@ def BoolAttr : Attr<CPred<"$_self.isa<BoolAttr>()">, "bool attribute"> {
 // Base class for integer attributes of fixed width.
 class IntegerAttrBase<I attrValType, string descr> :
     TypedAttrBase<attrValType, "IntegerAttr",
-              AllOf<[CPred<"$_self.isa<IntegerAttr>()">,
+              And<[CPred<"$_self.isa<IntegerAttr>()">,
                      CPred<"$_self.cast<IntegerAttr>().getType()."
                            "isInteger(" # attrValType.bitwidth # ")">]>,
               descr> {
@@ -550,7 +550,7 @@ def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
 // Base class for float attributes of fixed width.
 class FloatAttrBase<F attrValType, string descr> :
     TypedAttrBase<attrValType, "FloatAttr",
-              AllOf<[CPred<"$_self.isa<FloatAttr>()">,
+              And<[CPred<"$_self.isa<FloatAttr>()">,
                      CPred<"$_self.cast<FloatAttr>().getType().isF" #
                            attrValType.bitwidth # "()">]>,
               descr> {
@@ -583,8 +583,8 @@ class EnumAttrCase<string sym> : StringBasedAttr<
 // on the string: only the symbols of the allowed cases are permitted as the
 // string value.
 class EnumAttr<string name, string description, list<EnumAttrCase> cases> :
-    StringBasedAttr<AllOf<[StrAttr.predicate,
-                           AnyOf<!foreach(case, cases, case.predicate)>]>,
+    StringBasedAttr<And<[StrAttr.predicate,
+                           Or<!foreach(case, cases, case.predicate)>]>,
                     description> {
   // The C++ enum class name
   string className = name;
@@ -616,7 +616,7 @@ def ArrayAttr : ArrayAttrBase<CPred<"$_self.isa<ArrayAttr>()">,
 // Base class for array attributes whose elements are of the same kind.
 // `element` specifies the element attribute kind stored in this array.
 class TypedArrayAttrBase<Attr element, string description>: ArrayAttrBase<
-    AllOf<[
+    And<[
       // Guranatee this is an ArrayAttr first
       CPred<"$_self.isa<ArrayAttr>()">,
       // Guarantee all elements satisfy the constraints from `element`
@@ -658,7 +658,7 @@ def FunctionAttr : Attr<CPred<"$_self.isa<FunctionAttr>()">,
 //   def IntTypeAttr : TypeAttrBase<"IntegerType", "integer type attribute">
 // defines a type attribute containing an integer type.
 class TypeAttrBase<string retType, string description> :
-    Attr<AllOf<[
+    Attr<And<[
       CPred<"$_self.isa<TypeAttr>()">,
       CPred<"$_self.cast<TypeAttr>().getValue().isa<" # retType # ">()">]>,
     description> {
@@ -703,7 +703,7 @@ class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
 // `constraints`. This allows to compose complex constraints out of a series
 // of more primitive ones.
 class Confined<Attr attr, list<AttrConstraint> constraints> : Attr<
-    AllOf<!listconcat([attr.predicate],
+    And<!listconcat([attr.predicate],
                       !foreach(pred, constraints, pred.predicate))>,
     !foldl(/*init*/attr.description, /*list*/constraints,
            prev, cur, prev # " " # cur.description)> {
@@ -718,7 +718,7 @@ class Confined<Attr attr, list<AttrConstraint> constraints> : Attr<
 // An AttrConstraint that holds if all attr constraints specified in
 // 'constraints' hold.
 class AllAttrConstraintsOf<list<AttrConstraint> constraints> : AttrConstraint<
-    AllOf<!listconcat([!head(constraints).predicate],
+    And<!listconcat([!head(constraints).predicate],
                       !foreach(pred, !tail(constraints), pred.predicate))>,
     !foldl(/*init*/!head(constraints).description, /*list*/!tail(constraints),
            prev, cur, prev # " and " # cur.description)> {
@@ -733,7 +733,7 @@ class ArrayMinCount<int n> : AttrConstraint<
     "with at least " # n # " elements">;
 
 class IntArrayNthElemEq<int index, int value> : AttrConstraint<
-    AllOf<[
+    And<[
       CPred<"$_self.cast<ArrayAttr>().size() > " # index>,
       CPred<"$_self.cast<ArrayAttr>().getValue()[" # index # "]"
         ".cast<IntegerAttr>().getInt() == " # value>
@@ -741,7 +741,7 @@ class IntArrayNthElemEq<int index, int value> : AttrConstraint<
     "whose " # index # "-th element must be " # value>;
 
 class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
-    AllOf<[
+    And<[
       CPred<"$_self.cast<ArrayAttr>().size() > " # index>,
       CPred<"$_self.cast<ArrayAttr>().getValue()[" # index # "]"
         ".cast<IntegerAttr>().getInt() >= " # min>
@@ -938,7 +938,7 @@ class Results<dag rets> {
 //===----------------------------------------------------------------------===//
 
 // Type Constraint operand `idx`'s Element type is `type`.
-class TCopVTEtIs<int idx, Type type> : AllOf<[
+class TCopVTEtIs<int idx, Type type> : And<[
    CPred<"$_op.getNumOperands() > " # idx>,
    SubstLeaves<"$_self",  "$_op.getOperand(" # idx # ")->getType()",
      IsShapedTypePred>,
@@ -950,7 +950,7 @@ class TCopVTEtIs<int idx, Type type> : AllOf<[
 // elemental type.
 // Type Constraint operand `i`'s Element type is Same As operand `j`'s Element
 // type.
-class TCopVTEtIsSameAs<int i, int j> : AllOf<[
+class TCopVTEtIsSameAs<int i, int j> : And<[
     CPred<"$_op.getNumOperands() > std::max(" # i # "," # j # ")">,
     SubstLeaves<"$_self",  "$_op.getOperand(" # i # ")->getType()",
       IsShapedTypePred>,
@@ -965,7 +965,7 @@ class TCopVTEtIsSameAs<int i, int j> : AllOf<[
 // elemental type.
 // Type Constraint result`i`'s Element type is Same As Operand `j`'s Element
 // type.
-class TCresVTEtIsSameAsOp<int i, int j> : AllOf<[
+class TCresVTEtIsSameAsOp<int i, int j> : And<[
     CPred<"$_op.getNumResults() > " # i>,
     CPred<"$_op.getNumOperands() > " # j>,
     SubstLeaves<"$_self",  "$_op.getResult(" # i # ")->getType()",

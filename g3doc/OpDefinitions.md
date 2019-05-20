@@ -488,10 +488,10 @@ descriptive name. Predicates, modeled with the `Pred` class, are the workhorse
 for composing constraints. The predicate for a constraint is typically built up
 in a nested manner, using the two categories of predicates:
 
-1. `CPred`: the primitive leaf predicate.
-2. Compound predicate: a predicate composed from child predicates using
-   predicate combiners (conjunction: `AllOf`, disjunction: `AnyOf`, negation:
-   `Neg`, substitution: `SubstLeaves`, concatenation: `Concat`).
+1.  `CPred`: the primitive leaf predicate.
+2.  Compound predicate: a predicate composed from child predicates using
+    predicate combiners (conjunction: `And`, disjunction: `Or`, negation: `Neg`,
+    substitution: `SubstLeaves`, concatenation: `Concat`).
 
 `CPred` is the basis for composing more complex predicates. It is the "atom"
 predicate from the perspective of TableGen and the "interface" between
@@ -535,9 +535,9 @@ constraint that an attribute `attr` is an 32-bit or 64-bit integer, you can
 write it as
 
 ```tablegen
-AllOf<[
+And<[
   CPred<"$_self.isa<IntegerAttr>()">,
-  AnyOf<[
+  Or<[
     CPred<"$_self.cast<IntegerAttr>().getType().isInteger(32)">,
     CPred<"$_self.cast<IntegerAttr>().getType().isInteger(64)">
   ]>
@@ -547,8 +547,8 @@ AllOf<[
 (Note that the above is just to show with a familiar example how you can use
 `CPred` and predicate combiners to write complicated predicates. For integer
 attributes specifically, [`OpBase.td`][OpBase] already defines `I32Attr` and
-`I64Attr`. So you can actually reuse them to write it as
-`AnyOf<[I32Attr.predicate, I64Attr.predicate]>`.)
+`I64Attr`. So you can actually reuse them to write it as `Or<[I32Attr.predicate,
+I64Attr.predicate]>`.)
 
 TODO: Build up a library of reusable primitive constraints
 

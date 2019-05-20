@@ -18,9 +18,9 @@ def OpA : NS_Op<"op_for_CPred_containing_multiple_same_placeholder", []> {
 // CHECK-LABEL: OpA::verify
 // CHECK: if (!((this->getOperation()->getOperand(0)->getType().isInteger(32) || this->getOperation()->getOperand(0)->getType().isF32())))
 
-def OpB : NS_Op<"op_for_AllOf_PredOpTrait", [
-		PredOpTrait<"both first and second holds",
-							  AllOf<[CPred<"first">, CPred<"second">]>>]> {
+def OpB : NS_Op<"op_for_And_PredOpTrait", [
+    PredOpTrait<"both first and second holds",
+                And<[CPred<"first">, CPred<"second">]>>]> {
 }
 
 // CHECK-LABEL: OpB::verify
