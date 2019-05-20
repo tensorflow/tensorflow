@@ -410,6 +410,10 @@ public:
   /// This function is used by the internals of the Function class to null out
   /// attributes referring to functions that are about to be deleted.
   static void dropFunctionReference(Function *value);
+
+  /// This function is used by the internals of the Function class to update the
+  /// type of the function attribute for 'value'.
+  static void resetType(Function *value);
 };
 
 /// A base attribute that represents a reference to a vector or tensor constant.

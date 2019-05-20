@@ -303,6 +303,12 @@ void FunctionAttr::dropFunctionReference(Function *value) {
                                         StandardAttributes::Function, value);
 }
 
+/// This function is used by the internals of the Function class to update the
+/// type of the attribute for 'value'.
+void FunctionAttr::resetType(Function *value) {
+  FunctionAttr::get(value).getImpl()->resetType();
+}
+
 Function *FunctionAttr::getValue() const { return getImpl()->value; }
 
 FunctionType FunctionAttr::getType() const {

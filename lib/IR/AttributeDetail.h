@@ -318,6 +318,9 @@ struct FunctionAttributeStorage : public AttributeStorage {
     value = nullptr;
   }
 
+  /// Reset the type of this attribute to the type of the held function.
+  void resetType() { setType(value->getType()); }
+
   Function *value;
 };
 

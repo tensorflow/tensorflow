@@ -72,6 +72,7 @@ public:
   void setType(FunctionType newType) {
     type = newType;
     argAttrs.resize(type.getNumInputs());
+    FunctionAttr::resetType(this);
   }
 
   MLIRContext *getContext();
