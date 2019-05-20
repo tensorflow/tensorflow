@@ -4,20 +4,20 @@ op {
   in_arg {
     name: "a"
     description: <<END
-Must be a two-dimensional tensor.
+A matrix to be multiplied and must be a two-dimensional tensor of type `quint8`.
 END
   }
   in_arg {
     name: "b"
     description: <<END
-Must be a two-dimensional tensor.
+A matrix to be multiplied and must be a two-dimensional tensor of type `qint8`.
 END
   }
   in_arg {
     name: "bias"
     description: <<END
-A 1D bias tensor with size matching with inner dimension of `b`
-(after being transposed if `transposed_b` is non-zero).
+A 1D bias tensor with size matching with inner dimension of `b` (after being
+transposed if `transposed_b` is non-zero).
 END
   }
   in_arg {
@@ -58,15 +58,11 @@ END
   }
   attr {
     name: "transpose_a"
-    description: <<END
-If true, `a` is transposed before multiplication.
-END
+    description: "If true, `a` is transposed before multiplication."
   }
   attr {
     name: "transpose_b"
-    description: <<END
-If true, `b` is transposed before multiplication.
-END
+    description: "If true, `b` is transposed before multiplication."
   }
   attr {
     name: "input_quant_mode"
@@ -74,13 +70,16 @@ END
 Input data quantization mode. Either MIN_FIRST(default) or SCALED.
 END
   }
-  summary: "Perform a quantized matrix multiplication of  `a` by the matrix `b` with biasadd and relu fusion."
+  summary: <<END
+Perform a quantized matrix multiplication of  `a` by the matrix `b` with bias
+add and relu fusion.
+END
   description: <<END
-The inputs must be two-dimensional matrices and 1D bias vector.
-And the inner dimension of `a` (after being transposed if `transpose_a` is
-non-zero) must match the outer dimension of `b` (after being transposed
-if `transposed_b` is non-zero). Then do broadcast add operation with bias values
-on the matrix mulplication result. The bias size must match inner dimension of `b`.
-Then do relu activation to get non-negative result.
+The inputs must be two-dimensional matrices and 1D bias vector. And the inner
+dimension of `a` (after being transposed if `transpose_a` is non-zero) must
+match the outer dimension of `b` (after being transposed if `transposed_b` is
+non-zero). Then do broadcast add operation with bias values on the matrix
+mulplication result. The bias size must match inner dimension of `b`. Then do
+relu activation to get non-negative result.
 END
 }

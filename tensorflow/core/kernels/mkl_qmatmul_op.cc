@@ -24,60 +24,63 @@ limitations under the License.
 // When input is quantized to uint8 via MIN_FIRST, bias need compensation.
 // The detailed algorithm is illustrated as below:
 //
-// A𝑓32 is original fp32 activation tensor
-// Min(A𝑓32) is minimal scalar value of A𝑓32
-// Max(A𝑓32) is maximum scalar value of A𝑓32
-// MaxAbs(A𝑓32) is absolute maximum scalar value of A𝑓32
-// Qa is the quantizaiton scale of activation
-// Au8 is the quantized unsigned int8 activation tensor
-// With SCALE quantization, Qa and Au8 can be calculated as below
-//    Qa = 255/MaxAbs(A𝑓32)
-//    Au8 = || QaA𝑓32 ||
+// A𝑓32 is the original fp32 activation 2D tensor.
+// Min(A𝑓32) is the minimum scalar value of A𝑓32.
+// Max(A𝑓32) is the maximum scalar value of A𝑓32.
+// MaxAbs(A𝑓32) is the maximum absolute scalar value of A𝑓32.
+// Qa is the quantization scale for activation.
+// Au8 is the quantized unsigned int8 activation tensor.
+// With SCALE quantization, Qa and Au8 can be calculated as below:
+//    Qa = 255.0 / MaxAbs(A𝑓32)
+//    Au8 = round(Qa * A𝑓32).
 // With MIN_FIRST quantization, Q'a and A'u8 can be calculated as below:
-//    Q'a = 255/(Max(A𝑓32)–Min(A𝑓32))
-//    A'u8 = || Qa(A𝑓32–Min(A𝑓32)*1) ||
-//      where 1 is a vector of all 1s, which is used to do broadcast operation
-//      || . || mean the round function to nearest integer
+//    Q'a = 255.0 / (Max(A𝑓32) – Min(A𝑓32))
+//    A'u8 = round(Q'a * (A𝑓32 – Min(A𝑓32) * ones(A𝑓32))),
+// where, ones(.) is a tensor of all 1s with the same shape of its argument and
+// round(.) rounds a number to its nearest integer.
 //
-// W𝑓32 is original fp32 weight tensor
-// MaxAbs(W𝑓32) is absolute maximum scalar value of W𝑓32
-// Qw is the quantizaiton scale of weight
-// Ws8 is the quantized signed int8 weight tensor
-// Qw and Ws8 can be calculated as below
-//    Qw = 127/MaxAbs(W𝑓32)
-//    Ws8 = || QwW𝑓32 ||
+// W𝑓32 is the original fp32 2D weight tensor.
+// MaxAbs(W𝑓32) is the maximum absolute scalar value of W𝑓32.
+// Qw is the quantization scale of weight.
+// Ws8 is the quantized signed int8 weight tensor.
+// Qw and Ws8 can be calculated as below:
+//    Qw = 127.0 / MaxAbs(W𝑓32)
+//    Ws8 = round(Qw * W𝑓32).
 //
-// B𝑓32 is original fp32 bias tensor
-// Bs32 is converted 32bit integer bias tensor
-// With SCALE quantization of activation, Bs32 is calucated as below:
-//      Bs32 = QaQwB𝑓32
-// With MIN_FIRST quantization of activation
-//    B'𝑓32 is the fp32 bias tensor with compensation
-//    B's32 is the coverted 32bit integer bias tensor
-//    B'𝑓32 and B's32 can be calculated as below:
-//      B'𝑓32 = B𝑓32+Min(A𝑓32)W𝑓32*1
-//      B's32 = Q'aQwB𝑓32+Q'aMin(A𝑓32) Ws8*1, where Q'aQw is the multiply of
-//              Q'a and Qw, also is called output quantize scale
+// B𝑓32 is the original fp32 1D bias tensor matching the innermost dim of W𝑓32.
+// With SCALE quantization of activation, the scaled bias, Bs32, is calculated
+// as below:
+//      Bs32 = Qa * Qw * B𝑓32.
+// With MIN_FIRST quantization of activation, the scaled bias tensor with
+// compensation, B's32, is calculated as below:
+//      B's32 = Q'a * Qw * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1 * W𝑓32
+// where, 1 denotes a row vector matching the outermost dim of W𝑓32.
 //
-// With Au8, Ws8 and B's32 inputs, the QuantizedMatMulWithBias op calculate
-// 32bit integer output as below:
+// The QuantizedMatMulWithBias op calculates 32bit integer output as below:
+//  - with SCALE activation quantizaiton:
+//    Xs32 = Au8 * Ws8 + 1' * Bs32
+//         = Qa * Qw * A𝑓32 * W𝑓32  + Qa * Qw * 1' * B𝑓32
+//         = Qa * Qw * (A𝑓32 * W𝑓32 + 1' * B𝑓32) = Qa * Qw * X𝑓32,
+//    where, 1' denotes a column vector matching the outermost dim of A𝑓32 and
+//    X𝑓32 represents the output of original fp32 MatMul with BiasAdd fusion.
 //
-// With MIN_FIRST activation quantization
-//    Xs32 = Ws8A'u8+B's32
-//         = QaQwW𝑓32(A𝑓32–Min(A𝑓32)1)+QaMin(A𝑓32)Ws8*1+QaQwB𝑓32
-//         = QaQw(W𝑓32A𝑓32+B𝑓32) = QaQwX𝑓32
-// With SCALE activation quantizaiton
-//    Xs32 = Ws8Au8+Bs32
-//         = QaQwW𝑓32A𝑓32+QaQwB𝑓32
-//         = QaQw(W𝑓32A𝑓32+B𝑓32) = QaQwX𝑓32
+//  - with MIN_FIRST activation quantization:
+//    Xs32 = A'u8 * Ws8 + 1' * B's32
+//         = Q'a * (A𝑓32 - Min(A𝑓32) * ones(A𝑓32)) * Qw * W𝑓32 +
+//           Q'a * Qw * 1' * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1' * 1 * W𝑓32
+//         = Q'a * Qw * (A𝑓32 * W𝑓32 + 1' * B𝑓32)
+//         = Q'a * Qw * X𝑓32.
+//    Note that 1' * 1 = ones(A𝑓32).
 //
-// QuantizedMatMulWithBiasAndRelu op does the same calucation as above except
+// The QuantizedMatMulWithBiasAndRelu op does the same calucation as above
+// except
 // adding relu function for the 32bit integer output.
-// QuantizedMatMulWithBiasAndReluAndRequantize op do one more requantize
+//
+// TQuantizedMatMulWithBiasAndReluAndRequantize op do one more requantize
 // calculation based on above. The requantize scale Qr is calulated from
 // offline calibration.
-//    Qr = 255/MaxAbs(X𝑓32)
-//    Xu8 = QrXs32
+//    Qr = 255 / MaxAbs(X𝑓32)
+//    Xu8 = Qr * Xs32
 //
 // More information of this implmentation can be referred from
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
@@ -127,8 +130,12 @@ struct MklDnnMatMulFwdParams {
         bias_dims(bias_dims),
         dst_dims(dst_dims) {}
 };
-// With quantization, input, weight, and output can have different types
-// so we use differnt template parameters for each type
+// With quantization, input, weight, bias, and output can have different types.
+// So we use different template parameters for each type.
+// TODO(intel-tf): The template type "T" is currently used to match the
+// templatized class MklPrimitiveFactory (tensorflow/core/util/mkl_util.h).
+// In future, with the removal of "T" from MklPrimitiveFactory, this class
+// needs to drop "T".
 template <typename T, typename Tinput, typename Tweight, typename Tbias,
           typename Toutput>
 class MklDnnMatMulFwdPrimitive : public MklPrimitive {
@@ -137,7 +144,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
       const MklDnnMatMulFwdParams& matmulFwdParams)
       : cpu_engine_(engine::cpu, 0) {
     context_.fwd_stream.reset(new stream(stream::kind::eager));
-    // create matmul primitive
+    // Create matmul primitive
     if (context_.matmul_fwd == nullptr) {
       Setup(matmulFwdParams);
     }
@@ -145,11 +152,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
   ~MklDnnMatMulFwdPrimitive() {}
 
-  // inner-product forward execute with bias
-  //   src_data:    input data buffer of src
-  //   weight_data: input data buffer of weight
-  //   bias_data:   input data buffer of bias
-  //   dst_data:    output data buffer of dst
+  // Inner-product forward execute with bias:
+  //  - src_data: input data buffer of src
+  //  - weight_data: input data buffer of weight
+  //  - bias_data: input data buffer of bias
+  //  - dst_data: output data buffer of dst
   void Execute(const Tinput* src_data, const Tweight* weight_data,
                const Tbias* bias_data, Toutput* dst_data) {
     context_.src_mem->set_data_handle(
@@ -161,7 +168,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
     context_.fwd_stream->submit(context_.fwd_primitives);
 
-    // after execution, set data handle back
+    // After execution, set data handle back
     context_.src_mem->set_data_handle(DummyData);
     context_.weight_mem->set_data_handle(DummyData);
     context_.bias_mem->set_data_handle(DummyData);
@@ -178,7 +185,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for inner-product Fwd op
   struct MklDnnMatMulFwdContext {
-    // expected memory format for this primitive instance
+    // Expected memory format for this primitive instance
     memory::format src_fmt;
     memory::format weight_fmt;
 
@@ -188,17 +195,17 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::memory> bias_mem;
     std::shared_ptr<mkldnn::memory> dst_mem;
 
-    // desc & primitive desc
+    // Descriptor and primitive-descriptor for forward inner-product
     std::shared_ptr<mkldnn::inner_product_forward::desc> fwd_desc;
+    std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> fwd_pd;
 
-    // memory desc
+    // Memory descriptors
     std::shared_ptr<mkldnn::memory::desc> src_md;
     std::shared_ptr<mkldnn::memory::desc> weight_md;
     std::shared_ptr<mkldnn::memory::desc> bias_md;
     std::shared_ptr<mkldnn::memory::desc> dst_md;
 
-    // inner-product primitive
-    std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> fwd_pd;
+    // Inner-product primitive
     std::shared_ptr<mkldnn::primitive> matmul_fwd;
 
     std::shared_ptr<mkldnn::stream> fwd_stream;
@@ -221,7 +228,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   };
 
   void Setup(const MklDnnMatMulFwdParams& matmul_fwd_params) {
-    // create memory descriptors for inner-product data with no specified format
+    // Create memory descriptors for inner-product data with no specified format
     context_.src_md.reset(new memory::desc({matmul_fwd_params.src_dims},
                                            MklDnnType<Tinput>(),
                                            memory::format::any));
@@ -237,7 +244,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_md.reset(new memory::desc({matmul_fwd_params.bias_dims},
                                             MklDnnType<Tbias>(),
                                             memory::format::any));
-    // create an inner-product
+    // Create an inner-product
     context_.fwd_desc.reset(new inner_product_forward::desc(
         prop_kind::forward_inference, *context_.src_md, *context_.weight_md,
         *context_.bias_md, *context_.dst_md));
@@ -276,27 +283,27 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           *context_.fwd_desc, cpu_engine_));
     }
 
-    // store the expected memory format
+    // Store the expected memory format
     context_.src_fmt = static_cast<mkldnn::memory::format>(
         context_.fwd_pd.get()->src_primitive_desc().desc().data.format);
 
     context_.weight_fmt = static_cast<mkldnn::memory::format>(
         context_.fwd_pd.get()->weights_primitive_desc().desc().data.format);
 
-    // create memory primitive based on dummy data
+    // Create memory primitive based on dummy data
     context_.src_mem.reset(
         new memory(context_.fwd_pd.get()->src_primitive_desc(), DummyData));
     context_.weight_mem.reset(
         new memory(context_.fwd_pd.get()->weights_primitive_desc(), DummyData));
     context_.dst_mem.reset(
         new memory(context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
+    context_.bias_mem.reset(new memory({{{matmul_fwd_params.bias_dims},
+                                         MklDnnType<Tbias>(),
+                                         memory::format::x},
+                                        cpu_engine_},
+                                       DummyData));
 
-    context_.bias_mem.reset(new memory(
-        {{{matmul_fwd_params.bias_dims}, MklDnnType<T>(), memory::format::x},
-         cpu_engine_},
-        DummyData));
-
-    // create inner-product primitive
+    // Create inner-product primitive
     context_.matmul_fwd.reset(new inner_product_forward(
         *context_.fwd_pd, *context_.src_mem, *context_.weight_mem,
         *context_.bias_mem, *context_.dst_mem));
@@ -417,7 +424,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
   }
 
   float* GetCompBiasBuffer(int size) {
-    if (!comp_bias_) {
+    if (comp_bias_ == nullptr) {
       comp_bias_ = new float[size];
     }
     return comp_bias_;
@@ -445,8 +452,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       GetMklShape(context, kInputIndexSrc, &src_mkl_shape);
       GetMklShape(context, kInputIndexWeight, &weight_mkl_shape);
       OP_REQUIRES(context, weight_mkl_shape.IsMklTensor() == false,
-                  errors::InvalidArgument("weight should not be in "
-                                          "Mkl Layout"));
+                  errors::InvalidArgument("Weight should not be in "
+                                          "MKL Layout"));
 
       MklDnnData<Tinput> src(&cpu_engine_);
       MklDnnData<Tweight> weight(&cpu_engine_);
@@ -454,7 +461,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       memory::dims src_dims, weight_dims;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
-      // Get shapes of input tensors in MKL-DNN order
+      // Get shapes of input tensors in MKLDNN order
       auto src_tf_shape = src_mkl_shape.IsMklTensor()
                               ? src_mkl_shape.GetTfShape()
                               : src_tensor.shape();
@@ -467,7 +474,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       dst_dims_mkl_order = {static_cast<int>(src_tf_shape.dim_size(0)),
                             static_cast<int>(weight_tf_shape.dim_size(1))};
 
-      // weight dims need to be reversed to create inner-product forward
+      // Weight dims need to be reversed to create inner-product forward
       // descriptor
       weight_dims = {static_cast<int>(weight_tf_shape.dim_size(1)),
                      static_cast<int>(weight_tf_shape.dim_size(0))};
@@ -479,8 +486,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       auto input_output_fmt = memory::format::nc;
 
       // If input is in MKL layout, then simply take input layout; otherwise,
-      // construct input Tf layout. For TF layout, although input shape
-      // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
+      // construct input TF layout. For TF layout, although input shape
+      // (src_dims) required is in MKLDNN order, the layout is Tensorflow's
       // layout depending on data format.
       auto src_md =
           src_mkl_shape.IsMklTensor()
@@ -488,8 +495,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
               : memory::desc(src_dims, MklDnnType<Tinput>(), input_output_fmt);
       src.SetUsrMem(src_md, &src_tensor);
 
-      // Although weight shape (weight_dims) required is in MKL-DNN order,
-      // the layout is Tensorflow's layout.
+      // Although weight shape (weight_dims) required is in MKLDNN order,
+      // the layout is TensorFlow's layout.
       auto weight_md = weight_mkl_shape.IsMklTensor()
                            ? weight_mkl_shape.GetMklLayout()
                            : memory::desc(weight_dims, MklDnnType<Tweight>(),
@@ -498,16 +505,15 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
 
       MklDnnMatMulFwdPrimitive<float, Tinput, Tweight, Tbias, Toutput>*
           matmul_fwd = nullptr;
-      memory::dims bias_dims = {};
-      bias_dims = {static_cast<int>(bias_tensor.dim_size(0))};
+      memory::dims bias_dims = {static_cast<int>(bias_tensor.dim_size(0))};
 
       MklDnnMatMulFwdParams matmul_fwd_dims(src_dims, weight_dims, bias_dims,
                                             dst_dims_mkl_order);
 
-      // Extend the basic parameters for data types and fusions
+      // Extend the basic parameters for data types and fusions.
       this->ExtendMklDnnMatMulFwdParams(context, matmul_fwd_dims);
 
-      // get a MatMul fwd from primitive pool
+      // Get a MatMul fwd from primitive pool.
       matmul_fwd =
           MklDnnMatMulFwdPrimitiveFactory<float, Tinput, Tweight, Tbias,
                                           Toutput>::Get(matmul_fwd_dims, 0);
@@ -521,7 +527,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       Toutput* dst_data =
           reinterpret_cast<Toutput*>(dst_tensor->flat<Toutput>().data());
 
-      // check if src and weight data need to be reordered.
+      // Check if src and weight data need to be reordered.
       Tinput* src_data = nullptr;
       if (src_md.data.format != matmul_fwd->GetSrcMemoryFormat()) {
         src.SetUsrMem(src_md, &src_tensor);
@@ -543,7 +549,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
             const_cast<Tweight*>(weight_tensor.flat<Tweight>().data()));
       }
 
-      // execute inner-product
+      // Execute inner-product
       Tbias* bias_data = this->GetBiasHandle(context, matmul_fwd_pd,
                                              bias_tensor, weight_tensor);
       matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data);
@@ -567,7 +573,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
       // This is the case the inner-product and requantization are fused.
-      // min_freezed_output and max_freezed_output are the actual range
+      // "min_freezed_output" and "max_freezed_output" are the actual range
       // for the output
       min_output_value = context->input(7).flat<float>()(0);
       max_output_value = context->input(8).flat<float>()(0);
@@ -599,8 +605,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
     params.dtypes.append(typeid(Tbias).name());
     params.dtypes.append(typeid(Toutput).name());
 
-    // When the output type is quint8, the output data is requantized
-    // into quint8. A post_op "output_scale" is added to do the conversion.
+    // When the output type is quint8, the output data is requantized into
+    // quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
       const float min_input = context->input(3).flat<float>()(0);
@@ -631,14 +637,11 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
     }
   }
 
-  // This function handles bias conversion and compensation
-  // for MIN_FIRST and SCALE mode
-  // If input is quantized via MIN_FIRST
-  //  Bs32=QaQwB𝑓32 + QaMin(A𝑓32) Ws8*1
-  // If input is quantized via SCALE
-  //  Bs32=QaQwB𝑓32
-  //    where QaQw is the multiply of Qa and Qw,
-  //      also is called output quantize scale
+  // This function handles bias conversion and compensation for MIN_FIRST and
+  // SCALE mode. If input is quantized via MIN_FIRST,
+  //   Bs32 = Qa * Qw * B𝑓32 + Qa * Min(A𝑓32) Ws8 * 1.
+  // If input is quantized via SCALE,
+  //   Bs32 = Qa * Qw * B𝑓32.
   Tbias* GetBiasHandle(
       OpKernelContext* context,
       std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
@@ -658,9 +661,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
 
       std::vector<mkldnn::primitive> net;
       float out_scale;
-      // If the bias is float and input quantize is MIN_FIRST
-      // bias has to be compensated with
-      // Bs32=QaQwB𝑓32 + QaMin(A𝑓32) Ws8*1
+      // If the bias is float and input quantize is MIN_FIRST bias has to be
+      // compensated with Bs32 = Qa * Qw * B𝑓32 + Qa * Min(A𝑓32) Ws8 * 1.
       if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
         int k = weight_tensor.dim_size(0);
         int n = weight_tensor.dim_size(1);
@@ -691,9 +693,8 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
         return reinterpret_cast<Tbias*>(comp_bias_);
 
       } else {
-        // If the bias is float and input quantize is SCALE
-        // bias has to be compensated with
-        // Bs32=QaQwBf32
+        // If the bias is float and input quantize is SCALE, bias has to be
+        // compensated with Bs32 = Qa * Qw * Bf32.
         out_scale = 255.0 * 127.0 /
                     (std::max(std::abs(max_input), std::abs(min_input)) *
                      std::max(std::abs(max_weight), std::abs(min_weight)));
@@ -749,7 +750,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
 
-  // buffer to save the compensated bias
+  // Buffer to save the compensated bias
   float* comp_bias_ = nullptr;
 
   const int kInputIndexSrc = 0, kInputIndexWeight = 1, kInputIndexBias = 2;
@@ -779,7 +780,6 @@ class MklDnnQuantizedMatMulReluOp
   }
 };
 
-// kernel registration
 // Register NoOp kernel for QuantizedMatMulWithBias to get a python interface.
 // This kernel will be replaced by an MKL kernel during graph
 // optimization pass.
@@ -810,8 +810,8 @@ REGISTER_KERNEL_BUILDER(
     MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, qint32, qint32>);
 
 // Register NoOp kernel for QuantizedMatMulWithBiasAndRelu to get a python
-// interface.
-// This kernel will be replaced by an MKL kernel during graph-optimization pass.
+// interface. This kernel will be replaced by an MKL kernel during
+// graph-optimization pass.
 REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRelu")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T1")
@@ -820,8 +820,8 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRelu")
                         NoOp);
 
 // Register NoOp kernel for QuantizedIPWithBiasAndReluAndRequantize
-// to get a python interface.
-// This kernel will be replaced by an MKL kernel during graph-optimization pass.
+// to get a python interface. This kernel will be replaced by an MKL kernel
+// during graph-optimization pass.
 REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndReluAndRequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T1")
