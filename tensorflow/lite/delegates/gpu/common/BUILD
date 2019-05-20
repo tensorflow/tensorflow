@@ -19,6 +19,11 @@ cc_library(
 )
 
 cc_library(
+    name = "access_type",
+    hdrs = ["access_type.h"],
+)
+
+cc_library(
     name = "data_type",
     srcs = ["data_type.cc"],
     hdrs = ["data_type.h"],

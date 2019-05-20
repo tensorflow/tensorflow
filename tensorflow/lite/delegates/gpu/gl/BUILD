@@ -306,6 +306,7 @@ cc_library(
     name = "object",
     hdrs = ["object.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",

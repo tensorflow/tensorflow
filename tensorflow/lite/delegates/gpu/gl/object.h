@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/variant.h"
+#include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -31,12 +32,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace gl {
-
-enum class AccessType {
-  READ,
-  WRITE,
-  READ_WRITE,
-};
 
 using ObjectData = std::vector<uint8_t>;
 
