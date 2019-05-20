@@ -47,7 +47,7 @@ def BufferSizeOp :
   let description = [{
     The "linalg.buffer_size" operation takes a linalg.buffer and returns an
     "index". For example:
-    
+
        %0 = linalg.buffer_size %arg0 : !linalg.buffer<f32>
   }];
   // Fully specified by traits.

@@ -32,6 +32,8 @@ class ModulePassBase;
 namespace linalg {
 FunctionPassBase *createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
 
+FunctionPassBase *createLowerLinalgToLoopsPass();
+
 ModulePassBase *createLowerLinalgToLLVMPass();
 } // namespace linalg
 } // namespace mlir

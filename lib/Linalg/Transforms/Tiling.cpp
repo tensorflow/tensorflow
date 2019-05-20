@@ -47,74 +47,6 @@ static llvm::cl::list<unsigned>
                 llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated,
                 llvm::cl::cat(clOptionsCategory));
 
-namespace {
-class PerFunctionState {
-public:
-  PerFunctionState(Function &f) : f(f) {}
-
-  Value *getOrCreate(int64_t v) {
-    auto it = map.find(v);
-    if (it != map.end())
-      return it->second;
-    FuncBuilder builder(f);
-    edsc::ScopedContext s(builder, f.getLoc());
-    return map.insert(std::make_pair(v, edsc::intrinsics::constant_index(v)))
-        .first->getSecond();
-  }
-
-private:
-  Function &f;
-  SmallDenseMap<int64_t, Value *> map;
-};
-} // namespace
-
-// Folding eagerly is necessary to abide by affine.for static step requirement.
-// We must propagate constants on the steps as aggressively as possible.
-// Returns nullptr if folding is not trivially feasible.
-static Value *tryFold(AffineMap map, ArrayRef<Value *> operands,
-                      PerFunctionState &state) {
-  assert(map.getNumResults() == 1 && "single result map expected");
-  auto expr = map.getResult(0);
-  if (auto dim = expr.dyn_cast<AffineDimExpr>())
-    return operands[dim.getPosition()];
-  if (auto sym = expr.dyn_cast<AffineSymbolExpr>())
-    return operands[map.getNumDims() + sym.getPosition()];
-  if (auto cst = expr.dyn_cast<AffineConstantExpr>())
-    return state.getOrCreate(cst.getValue());
-  return nullptr;
-}
-
-static Value *emitOrFoldComposedAffineApply(FuncBuilder *b, Location loc,
-                                            AffineMap map,
-                                            ArrayRef<Value *> operandsRef,
-                                            PerFunctionState &state) {
-  SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
-  fullyComposeAffineMapAndOperands(&map, &operands);
-  if (auto *v = tryFold(map, operands, state))
-    return v;
-  return b->create<AffineApplyOp>(loc, map, operands);
-}
-
-static SmallVector<Value *, 4> applyMapToRangePart(FuncBuilder *b, Location loc,
-                                                   AffineMap map,
-                                                   ArrayRef<Value *> ranges,
-                                                   RangePart part,
-                                                   PerFunctionState &state) {
-  SmallVector<Value *, 4> rangeParts(ranges.size());
-  transform(llvm::make_range(ranges.begin(), ranges.end()), rangeParts.begin(),
-            [&](Value *range) { return extractRangePart(range, part); });
-
-  SmallVector<Value *, 4> res;
-  res.reserve(map.getNumResults());
-  unsigned numDims = map.getNumDims();
-  for (auto expr : map.getResults()) {
-    AffineMap map = AffineMap::get(numDims, 0, expr, {});
-    res.push_back(
-        emitOrFoldComposedAffineApply(b, loc, map, rangeParts, state));
-  }
-  return res;
-}
-
 static bool isZero(Value *v) {
   return isa_and_nonnull<ConstantIndexOp>(v->getDefiningOp()) &&
          cast<ConstantIndexOp>(v->getDefiningOp()).getValue() == 0;
@@ -146,7 +78,7 @@ static AffineMap nonZeroMap(ArrayRef<Value *> tileSizes) {
 static SmallVector<Value *, 4>
 makeTiledLoopRanges(FuncBuilder *b, Location loc, AffineMap map,
                     ArrayRef<Value *> allOpRanges, ArrayRef<Value *> tileSizes,
-                    PerFunctionState &state) {
+                    FunctionConstants &state) {
   assert(tileSizes.size() == map.getNumResults());
   // Tile sizes are in loop order by construction, apply `map` to
   // get mins/maxes/steps in loop order.
@@ -176,7 +108,7 @@ makeTiledLoopRanges(FuncBuilder *b, Location loc, AffineMap map,
     // clang-format off
     // Steps must be constant for now to abide by affine.for semantics.
     auto *newStep =
-        state.getOrCreate(
+        state.getOrCreateIndex(
             cast<ConstantIndexOp>(step->getDefiningOp()).getValue() *
             cast<ConstantIndexOp>(tileSize->getDefiningOp()).getValue());
     res.push_back(b->create<RangeOp>(loc, mins[idx], maxes[idx], newStep));
@@ -189,7 +121,7 @@ static SmallVector<Value *, 4> makeTiledViews(FuncBuilder *b, Location loc,
                                               Operation *op,
                                               ArrayRef<Value *> ivs,
                                               ArrayRef<Value *> tileSizes,
-                                              PerFunctionState &state) {
+                                              FunctionConstants &state) {
   assert(ivs.size() == static_cast<size_t>(llvm::count_if(
                            llvm::make_range(tileSizes.begin(), tileSizes.end()),
                            [](Value *v) { return !isZero(v); })) &&
@@ -250,7 +182,7 @@ static SmallVector<Value *, 4> makeTiledViews(FuncBuilder *b, Location loc,
 }
 
 static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
-                                  PerFunctionState &state) {
+                                  FunctionConstants &state) {
   // Enforce the convention that "tiling by zero" skips tiling a particular
   // dimension. This convention is significantly simpler to handle instead of
   // adjusting affine maps to account for missing dimensions.
@@ -288,7 +220,7 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
 }
 
 static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
-                                  PerFunctionState &state) {
+                                  FunctionConstants &state) {
   if (tileSizes.empty())
     return failure();
 
@@ -306,11 +238,11 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
   SmallVector<Value *, 8> tileSizeValues;
   tileSizeValues.reserve(tileSizes.size());
   for (auto ts : tileSizes)
-    tileSizeValues.push_back(state.getOrCreate(ts));
+    tileSizeValues.push_back(state.getOrCreateIndex(ts));
   // Pad tile sizes with zero values to enforce our convention.
   if (tileSizeValues.size() < nLoops) {
     for (unsigned i = tileSizeValues.size(); i < nLoops; ++i)
-      tileSizeValues.push_back(state.getOrCreate(0));
+      tileSizeValues.push_back(state.getOrCreateIndex(0));
   }
 
   return tileLinalgOp(op, tileSizeValues, state);
@@ -318,14 +250,14 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
 
 // TODO(ntv) expose as a primitive for other passes.
 static LogicalResult tileLinalgOp(Operation *op, ArrayRef<int64_t> tileSizes,
-                                  PerFunctionState &state) {
+                                  FunctionConstants &state) {
   if (auto linalgOp = dyn_cast<LinalgOp>(op))
     return tileLinalgOp(linalgOp, tileSizes, state);
   return failure();
 }
 
 static void tileLinalgOps(Function &f, ArrayRef<int64_t> tileSizes) {
-  PerFunctionState state(f);
+  FunctionConstants state(f);
   f.walk([tileSizes, &state](Operation *op) {
     if (succeeded(tileLinalgOp(op, tileSizes, state)))
       op->erase();

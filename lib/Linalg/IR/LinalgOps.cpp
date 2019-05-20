@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Linalg/IR/LinalgOps.h"
+#include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -30,6 +31,8 @@
 #include "mlir/Support/STLExtras.h"
 
 using namespace mlir;
+using namespace mlir::edsc;
+using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 
 //////////////////////////////////////////////////////////////////////////////
@@ -594,6 +597,7 @@ static ParseResult parseLinalgLibraryOp(OpAsmParser *parser,
 }
 
 namespace mlir {
+namespace linalg {
 
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgOps.cpp.inc"
@@ -601,6 +605,7 @@ namespace mlir {
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgLibraryOps.cpp.inc"
 
+} // namespace linalg
 } // namespace mlir
 
 // Ideally this should all be Tablegen'd but there is no good story for
@@ -621,9 +626,53 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
                                      AffineMap::get(2, 0, {j}, {}),
                                      AffineMap::get(2, 0, {i}, {})};
   if (isa<MatmulOp>(op))
-    //   A(i, r_j) * B(r_j) -> C(i)
+    //   A(i, r_k) * B(r_k, j) -> C(i, j)
     return SmallVector<AffineMap, 4>{AffineMap::get(3, 0, {i, k}, {}),
                                      AffineMap::get(3, 0, {k, j}, {}),
                                      AffineMap::get(3, 0, {i, j}, {})};
+  llvm_unreachable("Missing loopToOperandRangesMaps for op");
+}
+
+// Ideally this should all be Tablegen'd but there is no good story for op
+// expansion directly in MLIR for now.
+void mlir::linalg::emitScalarImplementation(
+    llvm::ArrayRef<Value *> parallelIvs, llvm::ArrayRef<Value *> reductionIvs,
+    LinalgOp &linalgOp) {
+  using linalg_load = ValueBuilder<linalg::LoadOp>;
+  using linalg_store = OperationBuilder<linalg::StoreOp>;
+  using IndexedValue = TemplatedIndexedValue<linalg_load, linalg_store>;
+  assert(reductionIvs.size() == 1);
+  auto innermostLoop = getForInductionVarOwner(reductionIvs.back());
+  auto *body = innermostLoop.getBody();
+  using edsc::op::operator+;
+  using edsc::op::operator*;
+  using edsc::op::operator==;
+  using edsc::intrinsics::select;
+
+  // account for affine.terminator in loop.
+  FuncBuilder b(body, std::prev(body->end(), 1));
+  ScopedContext scope(b, innermostLoop.getLoc());
+  auto *op = linalgOp.getOperation();
+  if (isa<DotOp>(op)) {
+    IndexHandle r_i(reductionIvs[0]);
+    IndexedValue A(op->getOperand(0)), B(op->getOperand(1)),
+        C(op->getOperand(2));
+    C() = C() + A(r_i) * B(r_i);
+    return;
+  }
+  if (isa<MatvecOp>(op)) {
+    IndexHandle i(parallelIvs[0]), r_j(reductionIvs[0]);
+    IndexedValue A(op->getOperand(0)), B(op->getOperand(1)),
+        C(op->getOperand(2));
+    C(i) = C(i) + A(i, r_j) * B(r_j);
+    return;
+  }
+  if (isa<MatmulOp>(op)) {
+    IndexHandle i(parallelIvs[0]), j(parallelIvs[1]), r_k(reductionIvs[0]);
+    IndexedValue A(op->getOperand(0)), B(op->getOperand(1)),
+        C(op->getOperand(2));
+    C(i, j) = C(i, j) + A(i, r_k) * B(r_k, j);
+    return;
+  }
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
 }

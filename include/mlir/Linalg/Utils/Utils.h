@@ -42,6 +42,18 @@ private:
 
 } // namespace edsc
 
+/// Helper class to memoize the creation of redundant constants within a given
+/// function.
+class FunctionConstants {
+public:
+  FunctionConstants(Function &f) : f(f) {}
+  Value *getOrCreateIndex(int64_t v);
+
+private:
+  Function &f;
+  llvm::SmallDenseMap<int64_t, Value *> map;
+};
+
 /// Abstracts away the extraction of values of RangeType from the actual op
 /// implementation. For each operand of `op`:
 ///   1. If it is of RangeType, appends it to the result.
@@ -77,6 +89,13 @@ Value *createOrReturnView(FuncBuilder *b, Location loc,
 enum class RangePart { Min = 0, Max, Step };
 Value *extractRangePart(Value *range, RangePart part);
 
+/// Returns the values obtained by applying `map` to the list of range parts
+/// extracted from `ranges`.
+SmallVector<Value *, 4> applyMapToRangePart(FuncBuilder *b, Location loc,
+                                            AffineMap map,
+                                            ArrayRef<Value *> ranges,
+                                            RangePart part,
+                                            FunctionConstants &state);
 } // namespace mlir
 
 #endif // MLIR_LINALG_UTILS_H_

@@ -138,3 +138,63 @@ Value *mlir::extractRangePart(Value *range, RangePart part) {
   }
   llvm_unreachable("need operations to extract range parts");
 }
+
+// Folding eagerly is necessary to abide by affine.for static step requirement.
+// We must propagate constants on the steps as aggressively as possible.
+// Returns nullptr if folding is not trivially feasible.
+static Value *tryFold(AffineMap map, ArrayRef<Value *> operands,
+                      FunctionConstants &state) {
+  assert(map.getNumResults() == 1 && "single result map expected");
+  auto expr = map.getResult(0);
+  if (auto dim = expr.dyn_cast<AffineDimExpr>())
+    return operands[dim.getPosition()];
+  if (auto sym = expr.dyn_cast<AffineSymbolExpr>())
+    return operands[map.getNumDims() + sym.getPosition()];
+  if (auto cst = expr.dyn_cast<AffineConstantExpr>())
+    return state.getOrCreateIndex(cst.getValue());
+  return nullptr;
+}
+
+static Value *emitOrFoldComposedAffineApply(FuncBuilder *b, Location loc,
+                                            AffineMap map,
+                                            ArrayRef<Value *> operandsRef,
+                                            FunctionConstants &state) {
+  SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
+  fullyComposeAffineMapAndOperands(&map, &operands);
+  if (auto *v = tryFold(map, operands, state))
+    return v;
+  return b->create<AffineApplyOp>(loc, map, operands);
+}
+
+SmallVector<Value *, 4> mlir::applyMapToRangePart(FuncBuilder *b, Location loc,
+                                                  AffineMap map,
+                                                  ArrayRef<Value *> ranges,
+                                                  RangePart part,
+                                                  FunctionConstants &state) {
+  SmallVector<Value *, 4> rangeParts(ranges.size());
+  llvm::transform(ranges, rangeParts.begin(),
+                  [&](Value *range) { return extractRangePart(range, part); });
+
+  SmallVector<Value *, 4> res;
+  res.reserve(map.getNumResults());
+  unsigned numDims = map.getNumDims();
+  // For each `expr` in `map`, applies the `expr` to the values extracted from
+  // ranges. If the resulting application can be folded into a Value*, the
+  // folding occurs eagerly. Otherwise, an affine.apply operation is emitted.
+  for (auto expr : map.getResults()) {
+    AffineMap map = AffineMap::get(numDims, 0, expr, {});
+    res.push_back(
+        emitOrFoldComposedAffineApply(b, loc, map, rangeParts, state));
+  }
+  return res;
+}
+
+Value *FunctionConstants::getOrCreateIndex(int64_t v) {
+  auto it = map.find(v);
+  if (it != map.end())
+    return it->second;
+  FuncBuilder builder(f);
+  edsc::ScopedContext s(builder, f.getLoc());
+  return map.insert(std::make_pair(v, edsc::intrinsics::constant_index(v)))
+      .first->getSecond();
+}
