@@ -271,7 +271,7 @@ class AnyTypeOf<list<Type> allowedTypes, string description = ""> : Type<
     !if(!eq(description, ""),
         // Join all allowed types' descriptions with " or " as the description
         // if not provided during template specialization
-        !foldl(/*init*/"", /*list*/allowedTypes, prev, cur,
+        !foldl(!head(allowedTypes).description, !tail(allowedTypes), prev, cur,
                prev # " or " # cur.description),
         // Otherwise use the provided one
         description)>;
