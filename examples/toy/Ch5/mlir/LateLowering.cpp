@@ -109,12 +109,13 @@ public:
     IndexedValue iRes(result), iLHS(lhs), iRHS(rhs);
     IndexHandle i, j, M(vRes.ub(0));
     if (vRes.rank() == 1) {
-      LoopNestBuilder({&i}, {zero}, {M}, {1})({iRes(i) = iLHS(i) + iRHS(i)});
+      LoopNestBuilder({&i}, {zero}, {M},
+                      {1})([&] { iRes(i) = iLHS(i) + iRHS(i); });
     } else {
       assert(vRes.rank() == 2 && "only rank 1 and 2 are supported right now");
       IndexHandle N(vRes.ub(1));
       LoopNestBuilder({&i, &j}, {zero, zero}, {M, N},
-                      {1, 1})({iRes(i, j) = iLHS(i, j) + iRHS(i, j)});
+                      {1, 1})([&] { iRes(i, j) = iLHS(i, j) + iRHS(i, j); });
     }
 
     // Return the newly allocated buffer, with a type.cast to preserve the
@@ -156,23 +157,23 @@ public:
     ValueHandle fmtEol(getConstantCharBuffer(rewriter, loc, "\n"));
     if (vOp.rank() == 1) {
       // clang-format off
-      LoopBuilder(&i, zero, M, 1)({
+      LoopBuilder(&i, zero, M, 1)([&]{
         llvmCall(retTy,
                  rewriter.getFunctionAttr(printfFunc),
-                 {fmtCst, iOp(i)})
+                 {fmtCst, iOp(i)});
       });
       llvmCall(retTy, rewriter.getFunctionAttr(printfFunc), {fmtEol});
       // clang-format on
     } else {
       IndexHandle N(vOp.ub(1));
       // clang-format off
-      LoopBuilder(&i, zero, M, 1)({
-        LoopBuilder(&j, zero, N, 1)({
+      LoopBuilder(&i, zero, M, 1)([&]{
+        LoopBuilder(&j, zero, N, 1)([&]{
           llvmCall(retTy,
                    rewriter.getFunctionAttr(printfFunc),
-                   {fmtCst, iOp(i, j)})
-        }),
-        llvmCall(retTy, rewriter.getFunctionAttr(printfFunc), {fmtEol})
+                   {fmtCst, iOp(i, j)});
+        });
+        llvmCall(retTy, rewriter.getFunctionAttr(printfFunc), {fmtEol});
       });
       // clang-format on
     }
@@ -295,8 +296,8 @@ public:
     IndexedValue iRes(result), iOperand(operand);
     IndexHandle i, j, M(vRes.ub(0)), N(vRes.ub(1));
     // clang-format off
-    LoopNestBuilder({&i, &j}, {zero, zero}, {M, N}, {1, 1})({
-      iRes(i, j) = iOperand(j, i)
+    LoopNestBuilder({&i, &j}, {zero, zero}, {M, N}, {1, 1})([&]{
+      iRes(i, j) = iOperand(j, i);
     });
     // clang-format on
 

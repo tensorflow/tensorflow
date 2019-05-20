@@ -59,7 +59,9 @@ mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
           ivs, SmallVector<ValueHandle, 4>(ranges.begin(), ranges.end())) {}
 
 ValueHandle LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
-    ArrayRef<CapturableHandle> stmts) {
+    std::function<void(void)> fun) {
+  if (fun)
+    fun();
   for (auto &lit : reverse(loops)) {
     lit({});
   }

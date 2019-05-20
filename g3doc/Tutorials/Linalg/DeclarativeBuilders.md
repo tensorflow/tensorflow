@@ -53,15 +53,15 @@ structured loop nests.
               f13(constant_float(llvm::APFloat(13.0f), f32Type)),
               i7(constant_int(7, 32)),
               i13(constant_int(13, 32));
-  LoopBuilder(&i, lb, ub, 3)({
-      lb * index_t(3) + ub,
-      lb + index_t(3),
-      LoopBuilder(&j, lb, ub, 2)({
+  LoopBuilder(&i, lb, ub, 3)([&]{
+      lb * index_t(3) + ub;
+      lb + index_t(3);
+      LoopBuilder(&j, lb, ub, 2)([&]{
           ceilDiv(index_t(31) * floorDiv(i + j * index_t(3), index_t(32)),
-                  index_t(32)),
-          ((f7 + f13) / f7) % f13 - f7 * f13,
-          ((i7 + i13) / i7) % i13 - i7 * i13,
-      }),
+                  index_t(32));
+          ((f7 + f13) / f7) % f13 - f7 * f13;
+          ((i7 + i13) / i7) % i13 - i7 * i13;
+      });
   });
 ```
 
@@ -86,9 +86,10 @@ def AddOp : Op<"x.add">,
     auto ivs = IndexHandle::makeIndexHandles(view_A.rank());
     auto pivs = IndexHandle::makePIndexHandles(ivs);
     IndexedValue A(arg_A), B(arg_B), C(arg_C);
-    LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())({
-      C(ivs) = A(ivs) + B(ivs)
-    });
+    LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())(
+      [&]{
+        C(ivs) = A(ivs) + B(ivs)
+      });
   }];
 }
 ```

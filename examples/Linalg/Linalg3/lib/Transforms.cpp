@@ -177,18 +177,15 @@ writeContractionAsLoops(ContractionOp contraction) {
   // clang-format off
   using linalg::common::LoopNestRangeBuilder;
   ArrayRef<Value *> ranges(loopRanges);
-  LoopNestRangeBuilder(pivs, ranges.take_front(pivs.size()))({
-    LoopNestRangeBuilder(rivs, ranges.take_back(rivs.size()))({
-      [&contraction, &parallelIvs, &reductionIvs]() {
+  LoopNestRangeBuilder(pivs, ranges.take_front(pivs.size()))([&]{
+    LoopNestRangeBuilder(rivs, ranges.take_back(rivs.size()))(
+      [&contraction, &parallelIvs, &reductionIvs] {
         SmallVector<mlir::Value *, 4> parallel(
             parallelIvs.begin(), parallelIvs.end());
         SmallVector<mlir::Value *, 4> reduction(
             reductionIvs.begin(), reductionIvs.end());
         contraction.emitScalarImplementation(parallel, reduction);
-        /// NestedBuilders expect handles, we thus return an IndexHandle.
-        return IndexHandle();
-      }()
-    })
+      });
   });
   // clang-format on
 

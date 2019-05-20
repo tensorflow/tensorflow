@@ -112,15 +112,12 @@ void linalg::MatvecOp::writeAsFinerGrainTensorContraction() {
   ScopedContext scope(builder, op->getLoc());
   IndexHandle i;
   using linalg::common::LoopNestRangeBuilder;
-  LoopNestRangeBuilder(&i, ValueHandle(indexingPosPair.first))({
+  LoopNestRangeBuilder(&i, ValueHandle(indexingPosPair.first))(
     [&i, &vA, &vB, &vC]() {
       ValueHandle sliceA = slice(vA, i, 0);
       ValueHandle sliceC = slice(vC, i, 0);
       dot(sliceA, vB, sliceC);
-      /// NestedBuilders expect handles, we thus return an IndexHandle.
-      return IndexHandle();
-    }()
-  });
+    });
   // clang-format on
 }
 
@@ -188,14 +185,11 @@ void linalg::MatmulOp::writeAsFinerGrainTensorContraction() {
   FuncBuilder builder(op);
   ScopedContext scope(builder, op->getLoc());
   IndexHandle j;
-  LoopNestRangeBuilder(&j, ValueHandle(indexingPosPair.first))({
+  LoopNestRangeBuilder(&j, ValueHandle(indexingPosPair.first))(
     [&j, &vA, &vB, &vC]() {
       ValueHandle sliceB = slice(vB, j, 1);
       ValueHandle sliceC = slice(vC, j, 1);
       matvec(vA, sliceB, sliceC);
-      /// NestedBuilders expect handles, we thus return an IndexHandle.
-      return IndexHandle();
-    }()
   });
   // clang-format on
 }

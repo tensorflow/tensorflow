@@ -158,16 +158,13 @@ writeContractionAsTiledViews(TensorContractionBase<ConcreteOp> &contraction,
   using linalg::common::LoopNestRangeBuilder;
   auto ranges = makeGenericLoopRanges(operandRangesToLoopsMap(contraction),
                                       getRanges(contraction), tileSizes);
-  linalg::common::LoopNestRangeBuilder(pivs, ranges)({
+  linalg::common::LoopNestRangeBuilder(pivs, ranges)(
     [&contraction, &tileSizes, &ivs]() {
       SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
       auto views = makeTiledViews(contraction, ivValues, tileSizes);
       ScopedContext::getBuilder()->create<ConcreteOp>(
           ScopedContext::getLocation(), views);
-      /// NestedBuilders expect handles, we thus return an IndexHandle.
-      return IndexHandle();
-    }()
-  });
+    });
   // clang-format on
 
   SmallVector<mlir::AffineForOp, 8> res;

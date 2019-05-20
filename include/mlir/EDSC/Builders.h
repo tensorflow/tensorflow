@@ -169,12 +169,9 @@ public:
   LoopBuilder &operator=(LoopBuilder &&) = default;
 
   /// The only purpose of this operator is to serve as a sequence point so that
-  /// the evaluation of `stmts` (which build IR snippets in a scoped fashion) is
-  /// sequenced strictly after the constructor of LoopBuilder.
-  /// In order to be admissible in a nested ArrayRef<ValueHandle>, operator()
-  /// returns a ValueHandle::null() that cannot be captured.
-  // TODO(ntv): when loops return escaping ssa-values, this should be adapted.
-  ValueHandle operator()(ArrayRef<CapturableHandle> stmts);
+  /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
+  /// scoped within a LoopBuilder.
+  ValueHandle operator()(std::function<void(void)> fun = nullptr);
 };
 
 /// Explicit nested LoopBuilder. Offers a compressed multi-loop builder to avoid
@@ -184,15 +181,16 @@ public:
 /// Usage:
 ///
 /// ```c++
-///    LoopNestBuilder({&i, &j, &k}, {lb, lb, lb}, {ub, ub, ub}, {1, 1, 1})({
-///      ...
-///    });
+///    LoopNestBuilder({&i, &j, &k}, {lb, lb, lb}, {ub, ub, ub}, {1, 1, 1})(
+///      [&](){
+///        ...
+///      });
 /// ```
 ///
 /// ```c++
-///    LoopNestBuilder({&i}, {lb}, {ub}, {1})({
-///      LoopNestBuilder({&j}, {lb}, {ub}, {1})({
-///        LoopNestBuilder({&k}, {lb}, {ub}, {1})({
+///    LoopNestBuilder({&i}, {lb}, {ub}, {1})([&](){
+///      LoopNestBuilder({&j}, {lb}, {ub}, {1})([&](){
+///        LoopNestBuilder({&k}, {lb}, {ub}, {1})([&](){
 ///          ...
 ///        }),
 ///      }),
@@ -203,8 +201,7 @@ public:
   LoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
                   ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
 
-  // TODO(ntv): when loops return escaping ssa-values, this should be adapted.
-  ValueHandle operator()(ArrayRef<CapturableHandle> stmts);
+  ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
   SmallVector<LoopBuilder, 4> loops;
@@ -235,9 +232,9 @@ public:
   BlockBuilder(BlockHandle *bh, ArrayRef<ValueHandle *> args);
 
   /// The only purpose of this operator is to serve as a sequence point so that
-  /// the evaluation of `stmts` (which build IR snippets in a scoped fashion) is
-  /// sequenced strictly after the constructor of BlockBuilder.
-  void operator()(ArrayRef<CapturableHandle> stmts);
+  /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
+  /// scoped within a BlockBuilder.
+  void operator()(std::function<void(void)> fun = nullptr);
 
 private:
   BlockBuilder(BlockBuilder &) = delete;

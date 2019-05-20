@@ -110,6 +110,10 @@ ParseResult mlir::linalg::BufferDeallocOp::parse(OpAsmParser *parser,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ForOp.
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
 // LoadOp.
 ////////////////////////////////////////////////////////////////////////////////
 void mlir::linalg::LoadOp::build(Builder *b, OperationState *result,
@@ -632,6 +636,7 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
                                      AffineMap::get(3, 0, {i, j}, {})};
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
 }
+
 // Ideally this should all be Tablegen'd but there is no good story for op
 // expansion directly in MLIR for now.
 void mlir::linalg::emitScalarImplementation(
@@ -641,7 +646,7 @@ void mlir::linalg::emitScalarImplementation(
   using linalg_store = OperationBuilder<linalg::StoreOp>;
   using IndexedValue = TemplatedIndexedValue<linalg_load, linalg_store>;
   assert(reductionIvs.size() == 1);
-  auto innermostLoop = getForInductionVarOwner(reductionIvs.back());
+  auto innermostLoop = mlir::getForInductionVarOwner(reductionIvs.back());
   auto *body = innermostLoop.getBody();
   using edsc::op::operator+;
   using edsc::op::operator*;

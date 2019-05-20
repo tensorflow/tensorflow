@@ -107,8 +107,7 @@ public:
                        llvm::ArrayRef<mlir::edsc::ValueHandle> indexings);
   LoopNestRangeBuilder(llvm::ArrayRef<mlir::edsc::ValueHandle *> ivs,
                        llvm::ArrayRef<mlir::Value *> indexings);
-  mlir::edsc::ValueHandle
-  operator()(llvm::ArrayRef<mlir::edsc::CapturableHandle> stmts);
+  mlir::edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
   llvm::SmallVector<mlir::edsc::LoopBuilder, 4> loops;

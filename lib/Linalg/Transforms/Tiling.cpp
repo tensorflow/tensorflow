@@ -202,7 +202,7 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
 
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
   auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
-  LoopNestRangeBuilder(pivs, loopRanges)({[&op, &tileSizes, &ivs, &state]() {
+  LoopNestRangeBuilder(pivs, loopRanges)([&op, &tileSizes, &ivs, &state] {
     auto *b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
     SmallVector<Value *, 4> ivValues(ivs.begin(), ivs.end());
@@ -214,7 +214,7 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
     op.create(*b, loc, views);
     /// NestedBuilders expect handles, we thus return an IndexHandle.
     return IndexHandle();
-  }()});
+  });
 
   return success();
 }

@@ -184,8 +184,7 @@ mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
   enter(body, /*prev=*/1);
 }
 
-ValueHandle
-mlir::edsc::LoopBuilder::operator()(ArrayRef<CapturableHandle> stmts) {
+ValueHandle mlir::edsc::LoopBuilder::operator()(std::function<void(void)> fun) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   /// The particular use case concerns nested blocks:
@@ -204,6 +203,8 @@ mlir::edsc::LoopBuilder::operator()(ArrayRef<CapturableHandle> stmts) {
   ///      }),
   ///    });
   /// ```
+  if (fun)
+    fun();
   exit();
   return ValueHandle::null();
 }
@@ -222,14 +223,16 @@ mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
 }
 
 ValueHandle
-mlir::edsc::LoopNestBuilder::operator()(ArrayRef<CapturableHandle> stmts) {
+mlir::edsc::LoopNestBuilder::operator()(std::function<void(void)> fun) {
+  if (fun)
+    fun();
   // Iterate on the calling operator() on all the loops in the nest.
   // The iteration order is from innermost to outermost because enter/exit needs
   // to be asymmetric (i.e. enter() occurs on LoopBuilder construction, exit()
   // occurs on calling operator()). The asymmetry is required for properly
   // nesting imperfectly nested regions (see LoopBuilder::operator()).
   for (auto lit = loops.rbegin(), eit = loops.rend(); lit != eit; ++lit) {
-    (*lit)({});
+    (*lit)();
   }
   return ValueHandle::null();
 }
@@ -258,9 +261,11 @@ mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle *bh,
 
 /// Only serves as an ordering point between entering nested block and creating
 /// stmts.
-void mlir::edsc::BlockBuilder::operator()(ArrayRef<CapturableHandle> stmts) {
+void mlir::edsc::BlockBuilder::operator()(std::function<void(void)> fun) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
+  if (fun)
+    fun();
   exit();
 }
 

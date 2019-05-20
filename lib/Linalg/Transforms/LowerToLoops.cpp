@@ -76,19 +76,16 @@ static void emitLinalgOpAsLoops(LinalgOp &linalgOp, FunctionConstants &state) {
 
   // clang-format off
   ArrayRef<Value *> ranges(loopRanges);
-  LoopNestRangeBuilder(pivs, ranges.take_front(pivs.size()))({
-    LoopNestRangeBuilder(rivs, ranges.take_back(rivs.size()))({
-      [&linalgOp, &parallelIvs, &reductionIvs]() {
+  LoopNestRangeBuilder(pivs, ranges.take_front(pivs.size()))([&] {
+    LoopNestRangeBuilder(rivs, ranges.take_back(rivs.size()))(
+        [&linalgOp, &parallelIvs, &reductionIvs] {
         SmallVector<mlir::Value *, 4> parallel(
             parallelIvs.begin(), parallelIvs.end());
         SmallVector<mlir::Value *, 4> reduction(
             reductionIvs.begin(), reductionIvs.end());
-        emitScalarImplementation(parallel, reduction, linalgOp);
-        /// NestedBuilders expect handles, we thus return an IndexHandle.
-        return IndexHandle();
-      }()
-    })
-  });
+        mlir::linalg::emitScalarImplementation(parallel, reduction, linalgOp);
+      });
+    });
   // clang-format on
 }
 
@@ -101,11 +98,9 @@ struct LowerLinalgToLoopsPass : public FunctionPass<LowerLinalgToLoopsPass> {
 void LowerLinalgToLoopsPass::runOnFunction() {
   auto &f = getFunction();
   FunctionConstants state(f);
-  f.walk([&state](Operation *op) {
-    if (auto linalgOp = dyn_cast<LinalgOp>(op)) {
-      emitLinalgOpAsLoops(linalgOp, state);
-      op->erase();
-    }
+  f.walk<LinalgOp>([&state](LinalgOp linalgOp) {
+    emitLinalgOpAsLoops(linalgOp, state);
+    linalgOp.getOperation()->erase();
   });
 }
 

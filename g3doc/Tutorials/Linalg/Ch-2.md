@@ -95,4 +95,4 @@ The
 demonstrates how to construct some simple IR snippets that pass through the
 verifier checks. The example demonstrate how to allocate three memref buffers
 from `index` function arguments and use those buffers as backing data structures
-for views that get passed to
+for views that get passed to `dot`, `matvec` and `matmul` operations.

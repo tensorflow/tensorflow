@@ -59,7 +59,9 @@ linalg::common::LoopNestRangeBuilder::LoopNestRangeBuilder(
                                     indexings.begin(), indexings.end())) {}
 
 ValueHandle linalg::common::LoopNestRangeBuilder::operator()(
-    llvm::ArrayRef<CapturableHandle> stmts) {
+    std::function<void(void)> fun) {
+  if (fun)
+    fun();
   for (auto &lit : llvm::reverse(loops)) {
     lit({});
   }

@@ -70,15 +70,15 @@ TEST_FUNC(builder_dynamic_for_func_args) {
   ValueHandle f13(constant_float(llvm::APFloat(13.0f), f32Type));
   ValueHandle i7(constant_int(7, 32));
   ValueHandle i13(constant_int(13, 32));
-  LoopBuilder(&i, lb, ub, 3)({
-      lb * index_t(3) + ub,
-      lb + index_t(3),
-      LoopBuilder(&j, lb, ub, 2)({
-          ceilDiv(index_t(31) * floorDiv(i + j * index_t(3), index_t(32)),
-                  index_t(32)),
-          ((f7 + f13) / f7) % f13 - f7 * f13,
-          ((i7 + i13) / i7) % i13 - i7 * i13,
-      }),
+  LoopBuilder(&i, lb, ub, 3)([&] {
+    lb *index_t(3) + ub;
+    lb + index_t(3);
+    LoopBuilder(&j, lb, ub, 2)([&] {
+      ceilDiv(index_t(31) * floorDiv(i + j * index_t(3), index_t(32)),
+              index_t(32));
+      ((f7 + f13) / f7) % f13 - f7 *f13;
+      ((i7 + i13) / i7) % i13 - i7 *i13;
+    });
   });
 
   // clang-format off
@@ -117,7 +117,7 @@ TEST_FUNC(builder_dynamic_for) {
   ScopedContext scope(builder, f->getLoc());
   ValueHandle i(indexType), a(f->getArgument(0)), b(f->getArgument(1)),
       c(f->getArgument(2)), d(f->getArgument(3));
-  LoopBuilder(&i, a - b, c + d, 2)({});
+  LoopBuilder(&i, a - b, c + d, 2)();
 
   // clang-format off
   // CHECK-LABEL: func @builder_dynamic_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
@@ -140,7 +140,7 @@ TEST_FUNC(builder_max_min_for) {
   ScopedContext scope(builder, f->getLoc());
   ValueHandle i(indexType), lb1(f->getArgument(0)), lb2(f->getArgument(1)),
       ub1(f->getArgument(2)), ub2(f->getArgument(3));
-  LoopBuilder(&i, {lb1, lb2}, {ub1, ub2}, 1)({});
+  LoopBuilder(&i, {lb1, lb2}, {ub1, ub2}, 1)();
   ret();
 
   // clang-format off
@@ -165,24 +165,20 @@ TEST_FUNC(builder_blocks) {
       arg4(c1.getType()), r(c1.getType());
 
   BlockHandle b1, b2, functionBlock(&f->front());
-  BlockBuilder(&b1, {&arg1, &arg2})({
+  BlockBuilder(&b1, {&arg1, &arg2})(
       // b2 has not yet been constructed, need to come back later.
       // This is a byproduct of non-structured control-flow.
-  });
-  BlockBuilder(&b2, {&arg3, &arg4})({
-      br(b1, {arg3, arg4}),
-  });
+  );
+  BlockBuilder(&b2, {&arg3, &arg4})([&] { br(b1, {arg3, arg4}); });
   // The insertion point within the toplevel function is now past b2, we will
   // need to get back the entry block.
   // This is what happens with unstructured control-flow..
-  BlockBuilder(b1, Append())({
-      r = arg1 + arg2,
-      br(b2, {arg1, r}),
+  BlockBuilder(b1, Append())([&] {
+    r = arg1 + arg2;
+    br(b2, {arg1, r});
   });
   // Get back to entry block and add a branch into b1
-  BlockBuilder(functionBlock, Append())({
-      br(b1, {c1, c2}),
-  });
+  BlockBuilder(functionBlock, Append())([&] { br(b1, {c1, c2}); });
 
   // clang-format off
   // CHECK-LABEL: @builder_blocks
@@ -218,13 +214,13 @@ TEST_FUNC(builder_blocks_eager) {
     // Build a new block for b1 eagerly.
     br(&b1, {&arg1, &arg2}, {c1, c2});
     // Construct a new block b2 explicitly with a branch into b1.
-    BlockBuilder(&b2, {&arg3, &arg4})({
-        br(b1, {arg3, arg4}),
+    BlockBuilder(&b2, {&arg3, &arg4})([&]{
+        br(b1, {arg3, arg4});
     });
     /// And come back to append into b1 once b2 exists.
-    BlockBuilder(b1, Append())({
-        r = arg1 + arg2,
-        br(b2, {arg1, r}),
+    BlockBuilder(b1, Append())([&]{
+        r = arg1 + arg2;
+        br(b2, {arg1, r});
     });
   }
 
@@ -257,15 +253,11 @@ TEST_FUNC(builder_cond_branch) {
   ValueHandle arg1(c32.getType()), arg2(c64.getType()), arg3(c32.getType());
 
   BlockHandle b1, b2, functionBlock(&f->front());
-  BlockBuilder(&b1, {&arg1})({
-      ret(),
-  });
-  BlockBuilder(&b2, {&arg2, &arg3})({
-      ret(),
-  });
+  BlockBuilder(&b1, {&arg1})([&] { ret(); });
+  BlockBuilder(&b2, {&arg2, &arg3})([&] { ret(); });
   // Get back to entry block and add a conditional branch
-  BlockBuilder(functionBlock, Append())({
-      cond_br(funcArg, b1, {c32}, b2, {c64, c42}),
+  BlockBuilder(functionBlock, Append())([&] {
+    cond_br(funcArg, b1, {c32}, b2, {c64, c42});
   });
 
   // clang-format off
@@ -300,11 +292,11 @@ TEST_FUNC(builder_cond_branch_eager) {
   // clang-format off
   BlockHandle b1, b2;
   cond_br(funcArg, &b1, {&arg1}, {c32}, &b2, {&arg2, &arg3}, {c64, c42});
-  BlockBuilder(b1, Append())({
-      ret(),
+  BlockBuilder(b1, Append())([]{
+      ret();
   });
-  BlockBuilder(b2, Append())({
-      ret(),
+  BlockBuilder(b2, Append())([]{
+      ret();
   });
 
   // CHECK-LABEL: @builder_cond_branch_eager
@@ -344,13 +336,13 @@ TEST_FUNC(builder_helpers) {
   lb2 = vA.lb(2);
   ub2 = vA.ub(2);
   step2 = vA.step(2);
-  LoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})({
-    LoopBuilder(&k1, lb2, ub2, step2)({
-      C(i, j, k1) = f7 + A(i, j, k1) + B(i, j, k1),
-    }),
-    LoopBuilder(&k2, lb2, ub2, step2)({
-      C(i, j, k2) += A(i, j, k2) + B(i, j, k2),
-    }),
+  LoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})([&]{
+    LoopBuilder(&k1, lb2, ub2, step2)([&]{
+      C(i, j, k1) = f7 + A(i, j, k1) + B(i, j, k1);
+    });
+    LoopBuilder(&k2, lb2, ub2, step2)([&]{
+      C(i, j, k2) += A(i, j, k2) + B(i, j, k2);
+    });
   });
 
   // CHECK-LABEL: @builder_helpers
@@ -392,14 +384,14 @@ TEST_FUNC(custom_ops) {
   OperationHandle ih0, ih2;
   IndexHandle m, n, M(f->getArgument(0)), N(f->getArgument(1));
   IndexHandle ten(index_t(10)), twenty(index_t(20));
-  LoopNestBuilder({&m, &n}, {M, N}, {M + ten, N + twenty}, {1, 1})({
-    vh = MY_CUSTOM_OP({m, m + n}, {indexType}, {}),
-    ih0 = MY_CUSTOM_OP_0({m, m + n}, {}),
-    ih2 = MY_CUSTOM_OP_2({m, m + n}, {indexType, indexType}),
+  LoopNestBuilder({&m, &n}, {M, N}, {M + ten, N + twenty}, {1, 1})([&]{
+    vh = MY_CUSTOM_OP({m, m + n}, {indexType}, {});
+    ih0 = MY_CUSTOM_OP_0({m, m + n}, {});
+    ih2 = MY_CUSTOM_OP_2({m, m + n}, {indexType, indexType});
     // These captures are verbose for now, can improve when used in practice.
-    vh20 = ValueHandle(ih2.getOperation()->getResult(0)),
-    vh21 = ValueHandle(ih2.getOperation()->getResult(1)),
-    MY_CUSTOM_OP({vh20, vh21}, {indexType}, {}),
+    vh20 = ValueHandle(ih2.getOperation()->getResult(0));
+    vh21 = ValueHandle(ih2.getOperation()->getResult(1));
+    MY_CUSTOM_OP({vh20, vh21}, {indexType}, {});
   });
 
   // CHECK-LABEL: @custom_ops
@@ -425,8 +417,8 @@ TEST_FUNC(insertion_in_block) {
   BlockHandle b1;
   // clang-format off
   ValueHandle::create<ConstantIntOp>(0, 32);
-  BlockBuilder(&b1, {})({
-    ValueHandle::create<ConstantIntOp>(1, 32)
+  BlockBuilder(&b1, {})([]{
+    ValueHandle::create<ConstantIntOp>(1, 32);
   });
   ValueHandle::create<ConstantIntOp>(2, 32);
   // CHECK-LABEL: @insertion_in_block
@@ -453,12 +445,12 @@ TEST_FUNC(select_op) {
   MemRefView vA(f->getArgument(0));
   IndexedValue A(f->getArgument(0));
   IndexHandle i, j;
-  LoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})({
+  LoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})([&]{
     // This test exercises IndexedValue::operator Value*.
     // Without it, one must force conversion to ValueHandle as such:
     //   edsc::intrinsics::select(
     //      i == zero, ValueHandle(A(zero, zero)), ValueHandle(ValueA(i, j)))
-    edsc::intrinsics::select(i == zero, *A(zero, zero), *A(i, j))
+    edsc::intrinsics::select(i == zero, *A(zero, zero), *A(i, j));
   });
 
   // CHECK-LABEL: @select_op
@@ -491,13 +483,13 @@ TEST_FUNC(tile_2d) {
   IndexHandle i, j, k1, k2, M(vC.ub(0)), N(vC.ub(1)), O(vC.ub(2));
 
   // clang-format off
-  LoopNestBuilder({&i, &j}, {zero, zero}, {M, N}, {1, 1})({
-    LoopNestBuilder(&k1, zero, O, 1)({
-      C(i, j, k1) = A(i, j, k1) + B(i, j, k1)
-    }),
-    LoopNestBuilder(&k2, zero, O, 1)({
-      C(i, j, k2) = A(i, j, k2) + B(i, j, k2)
-    }),
+  LoopNestBuilder({&i, &j}, {zero, zero}, {M, N}, {1, 1})([&]{
+    LoopNestBuilder(&k1, zero, O, 1)([&]{
+      C(i, j, k1) = A(i, j, k1) + B(i, j, k1);
+    });
+    LoopNestBuilder(&k2, zero, O, 1)([&]{
+      C(i, j, k2) = A(i, j, k2) + B(i, j, k2);
+    });
   });
   // clang-format on
 
@@ -566,8 +558,8 @@ TEST_FUNC(vectorize_2d) {
 
   // clang-format off
   IndexHandle i, j, k;
-  LoopNestBuilder({&i, &j, &k}, {zero, zero, zero}, {M, N, P}, {1, 1, 1})({
-    C(i, j, k) = A(i, j, k) + B(i, j, k)
+  LoopNestBuilder({&i, &j, &k}, {zero, zero, zero}, {M, N, P}, {1, 1, 1})([&]{
+    C(i, j, k) = A(i, j, k) + B(i, j, k);
   });
   ret();
 

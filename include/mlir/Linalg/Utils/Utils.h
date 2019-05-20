@@ -34,7 +34,7 @@ public:
                        llvm::ArrayRef<edsc::ValueHandle> ranges);
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
                        llvm::ArrayRef<Value *> ranges);
-  edsc::ValueHandle operator()(llvm::ArrayRef<edsc::CapturableHandle> stmts);
+  edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
   llvm::SmallVector<edsc::LoopBuilder, 4> loops;

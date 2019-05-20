@@ -52,7 +52,7 @@ OperationHandle mlir::edsc::intrinsics::br(BlockHandle *bh,
                                            ArrayRef<ValueHandle> operands) {
   assert(!*bh && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(captures, operands);
-  BlockBuilder(bh, captures)({/* no body */});
+  BlockBuilder(bh, captures)(/* no body */);
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
   return OperationHandle::create<BranchOp>(bh->getBlock(), ops);
 }
@@ -77,8 +77,8 @@ OperationHandle mlir::edsc::intrinsics::cond_br(
   assert(!*falseBranch && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(trueCaptures, trueOperands);
   enforceEmptyCapturesMatchOperands(falseCaptures, falseOperands);
-  BlockBuilder(trueBranch, trueCaptures)({/* no body */});
-  BlockBuilder(falseBranch, falseCaptures)({/* no body */});
+  BlockBuilder(trueBranch, trueCaptures)(/* no body */);
+  BlockBuilder(falseBranch, falseCaptures)(/* no body */);
   SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
   SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
   return OperationHandle::create<CondBranchOp>(
