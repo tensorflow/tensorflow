@@ -1197,6 +1197,24 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(
     }
   }
 
+  // BatchNormGrad has two "reserved" outputs, we do not know what is output
+  // from them, so check to make sure they are not connected. If they are
+  // we cannot fuse the node
+  if (is_eligible) {
+    for (const Edge* e : norm_grad->out_edges()) {
+      if (!e->IsControlEdge() && (e->src_output() > 2)) {
+        VLOG(kVlogLevel) << "\tSkipping Fusion : "
+                         << "BatchNormGrad reserved output node (idx = "
+                         << e->src_output()
+                         << " ) has a connection : " << e->dst()->id() << ", "
+                         << e->dst()->name();
+        VLOG(kVlogLevel) << "===========";
+        is_eligible = false;
+        break;
+      }
+    }
+  }
+
   // Next check if the datatype(s) are supported
   if (is_eligible) {
     is_eligible = false;
