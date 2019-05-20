@@ -173,6 +173,8 @@ class AttrSlice {
   AttrValueMap::const_iterator begin() const { return attrs_->begin(); }
   AttrValueMap::const_iterator end() const { return attrs_->end(); }
 
+  string DebugString() const;
+
  private:
   const NodeDef* ndef_;
   const AttrValueMap* attrs_;

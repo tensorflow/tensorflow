@@ -28,6 +28,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -48,6 +49,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
@@ -328,7 +330,7 @@ class Model(network.Network):
           masks=self._prepare_output_masks())
 
       # Prepare sample weight modes. List with the same length as model outputs.
-      self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
+      training_utils.prepare_sample_weight_modes(
           self._training_endpoints, sample_weight_mode)
 
       # Creates the model loss and weighted metrics sub-graphs.
@@ -479,8 +481,11 @@ class Model(network.Network):
             The model is not trained for a number of iterations
             given by `epochs`, but merely until the epoch
             of index `epochs` is reached.
-        verbose: Integer. 0, 1, or 2. Verbosity mode.
+        verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = progress bar, 2 = one line per epoch.
+            Note that the progress bar is not particularly useful when
+            logged to a file, so verbose=2 is recommended when not running
+            interactively (eg, in a production environment).
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during training.
             See `tf.keras.callbacks`.
@@ -590,6 +595,7 @@ class Model(network.Network):
       epochs = kwargs.pop('nb_epoch')
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
+    self._assert_compile_was_called()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
@@ -860,6 +866,8 @@ class Model(network.Network):
         ValueError: in case of invalid arguments.
     """
     _keras_api_gauge.get_cell('evaluate').set(True)
+    self._assert_compile_was_called()
+
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if K.in_multi_worker_mode():
@@ -1131,6 +1139,7 @@ class Model(network.Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
+    self._assert_compile_was_called()
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
     # calls `train_on_batch` on each replica.
@@ -1211,6 +1220,7 @@ class Model(network.Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
+    self._assert_compile_was_called()
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError('`test_on_batch` is not supported for models '
@@ -1617,7 +1627,7 @@ class Model(network.Network):
                        'with a LossScaleOptimizer.')
 
     # Prepare sample weight modes. List with the same length as model outputs.
-    self._sample_weight_modes = training_utils.prepare_sample_weight_modes(
+    training_utils.prepare_sample_weight_modes(
         self._training_endpoints, sample_weight_mode)
     # Prepare sample weights.
     self._prepare_sample_weights()
@@ -1645,32 +1655,30 @@ class Model(network.Network):
       sample_weights: List of sample weights of the same length as model outputs
         or None.
     """
-    if not getattr(self, '_sample_weight_modes', []):
+    if not self._is_compiled:
       return
-    for i in range(len(self._sample_weight_modes)):
-      sample_weight = sample_weights[i] if sample_weights else None
-      if self._sample_weight_modes[i] == 'temporal':
-        # If sample weight mode for output i is 'temporal', do nothing.
+    if not sample_weights:
+      sample_weights = [None] * len(self._training_endpoints)
+    for endpoint, sample_weight in zip(self._training_endpoints,
+                                       sample_weights):
+      if endpoint.sample_weight_mode == 'temporal':
+        # If sample weight mode for endpoint is 'temporal', do nothing.
         continue
-      if self._sample_weight_modes[i] is None and sample_weight is not None:
+      if endpoint.sample_weight_mode is None and sample_weight is not None:
         # Set sample weight mode to be 'samplewise' for output i if sample
         # weight mode was not set before and sample weight inputs are given.
-        self._sample_weight_modes[i] = 'samplewise'
-      elif (self._sample_weight_modes[i] == 'samplewise' and
+        endpoint.sample_weight_mode = 'samplewise'
+      elif (endpoint.sample_weight_mode == 'samplewise' and
             sample_weight is None):
         # Reset sample weight mode to None for output i if sample weight mode
         # was set to 'samplewise' but there is no sample weight input.
-        self._sample_weight_modes[i] = None
+        endpoint.sample_weight_mode = None
 
   def _recompile_weights_loss_and_weighted_metrics(self):
-    recompile = False
-    for i, mode in enumerate(self._sample_weight_modes):
-      if ((mode is not None and self.sample_weights[i] is None) or
-          (mode is None and self.sample_weights[i] is not None)):
-        # If there is a mismatch between sample weight mode and the placeholders
-        # created, then recompile the sub-graphs that depend on sample weights.
-        recompile = True
-        break
+    if not self._is_compiled:
+      return False
+    recompile = any([e.sample_weights_mismatch()
+                     for e in self._training_endpoints])
 
     if recompile:
       self._compile_weights_loss_and_weighted_metrics()
@@ -1735,8 +1743,7 @@ class Model(network.Network):
                       'run_eagerly = True.')
     total_loss = None
     with K.name_scope('loss'):
-      for endpoint, sample_weight, mask in zip(self._training_endpoints,
-                                               self.sample_weights, masks):
+      for endpoint, mask in zip(self._training_endpoints, masks):
         if endpoint.should_skip_target():
           continue
         y_true = endpoint.training_target.target
@@ -1744,6 +1751,7 @@ class Model(network.Network):
         loss_fn = endpoint.loss_fn
         loss_weight = endpoint.loss_weight
         loss_name = endpoint.loss_name()
+        sample_weight = endpoint.sample_weight
 
         with K.name_scope(loss_name):
           if mask is not None:
@@ -1774,9 +1782,6 @@ class Model(network.Network):
             # Compute the stateless loss value.
             output_loss = losses_utils.reduce_weighted_loss(
                 weighted_losses, reduction=loss_reduction)
-            if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
-              output_loss = losses_utils.scale_loss_for_distribution(
-                  output_loss)
           else:
             # Compute the stateless loss value for a custom loss class.
             # Here we assume that the class takes care of loss reduction
@@ -1784,8 +1789,6 @@ class Model(network.Network):
             # differentiate between use case where a custom optimizer
             # expects a vector loss value vs unreduced per-sample loss value.
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
-            # For custom losses we assume reduction was mean.
-            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor for the loss.
@@ -1796,6 +1799,13 @@ class Model(network.Network):
                   output_loss,
                   strategy=self._distribution_strategy))
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
+
+        # Scale output loss for distribution. For custom losses we assume
+        # reduction was mean.
+        if (getattr(loss_fn, 'reduction',
+                    losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
+            losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if total_loss is None:
           total_loss = loss_weight * output_loss
@@ -1943,16 +1953,8 @@ class Model(network.Network):
   def _prepare_sample_weights(self):
     """Sets sample weight attribute on the model."""
     # List with the same length as model outputs.
-    self.sample_weights = []
-    for endpoint, sample_weight_mode in zip(self._training_endpoints,
-                                            self._sample_weight_modes):
-      self.sample_weights.append(
-          training_utils.get_output_sample_weight(endpoint, sample_weight_mode))
-
-    # Filtering just the placeholders from the above list.
-    self._feed_sample_weights = [
-        s for s in self.sample_weights if s is not None
-    ]
+    for endpoint in self._training_endpoints:
+      endpoint.populate_sample_weight()
 
   def _cache_output_metric_attributes(self, metrics, weighted_metrics):
     """Caches metric name and function attributes for every model output."""
@@ -2199,8 +2201,6 @@ class Model(network.Network):
     metrics_tensors = [
         self._all_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
-    if not self._is_compiled:
-      raise RuntimeError('You must compile your model before using it.')
     self._check_trainable_weights_consistency()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
@@ -2237,8 +2237,6 @@ class Model(network.Network):
     metrics_tensors = [
         self._all_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
-    if not self._is_compiled:
-      raise RuntimeError('You must compile your model before using it.')
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # test function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.
@@ -2293,7 +2291,7 @@ class Model(network.Network):
                                           batch_size=None,
                                           validation_split=0,
                                           shuffle=False,
-                                          repeat=False,
+                                          epochs=1,
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
@@ -2313,8 +2311,8 @@ class Model(network.Network):
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
       shuffle: Boolean whether to shuffle the training data before each epoch.
-      repeat: Boolean whether to repeat the numpy training data when converting
-        to training dataset.
+      epochs: Integer epochs. If > 1, repeat the numpy training data epochs
+        times when converting to training dataset.
       allow_partial_batch: Boolean whether to enforce that all batches have the
         same size.
 
@@ -2389,8 +2387,8 @@ class Model(network.Network):
           # numbers introduce more memory usage based on the size of each
           # sample.
           ds = ds.shuffle(max(1024, batch_size * 8))
-        if repeat:
-          ds = ds.repeat()
+        if epochs > 1:
+          ds = ds.repeat(epochs)
 
         # We need to use the drop_remainder argument to get a known static
         # input shape which is required for TPUs.
@@ -2563,13 +2561,9 @@ class Model(network.Network):
       y_input = y
       dict_inputs = isinstance(self.inputs, dict)
 
-    if y_input is not None:
-      if not self.optimizer:
-        raise RuntimeError('You must compile a model before '
-                           'training/testing. '
-                           'Use `model.compile(optimizer, loss)`.')
-      if not self._is_compiled:
-        # On-the-fly compilation of the model.
+    if not self._is_compiled and self.optimizer:
+      # On-the-fly compilation of the model.
+      if y_input is not None:
         # We need to use `y` to set the model targets.
         if training_utils.has_tensors(y_input):
           y_input = training_utils.cast_if_floating_dtype(y_input)
@@ -2590,31 +2584,34 @@ class Model(network.Network):
                              'You passed: y=' + str(y))
           all_inputs.append(y_input)
 
-        # Typecheck that all inputs are *either* value *or* symbolic.
-        # TODO(fchollet): this check could be removed in Eager mode?
-        if any(tensor_util.is_tensor(v) for v in all_inputs):
-          if not all(tensor_util.is_tensor(v) for v in all_inputs):
-            raise ValueError('Do not pass inputs that mix Numpy arrays and '
-                             'TensorFlow tensors. '
-                             'You passed: x=' + str(x) + '; y=' + str(y))
+      # Typecheck that all inputs are *either* value *or* symbolic.
+      # TODO(fchollet): this check could be removed in Eager mode?
+      if any(tensor_util.is_tensor(v) for v in all_inputs):
+        if not all(tensor_util.is_tensor(v) for v in all_inputs):
+          raise ValueError('Do not pass inputs that mix Numpy arrays and '
+                           'TensorFlow tensors. '
+                           'You passed: x=' + str(x) + '; y=' + str(y))
 
-        if is_dataset or context.executing_eagerly():
-          target_tensors = None
-        else:
-          # Handle target tensors if any passed.
+      if is_dataset or context.executing_eagerly():
+        target_tensors = None
+      else:
+        # Handle target tensors if any passed.
+        if y_input is not None:
           if not isinstance(y_input, (list, tuple)):
             y_input = [y_input]
           target_tensors = [v for v in y_input if _is_symbolic_tensor(v)]
-        is_compile_called = True
-        self.compile(
-            optimizer=self.optimizer,
-            loss=self.loss,
-            metrics=self._compile_metrics,
-            weighted_metrics=self._compile_weighted_metrics,
-            loss_weights=self.loss_weights,
-            target_tensors=target_tensors,
-            run_eagerly=self.run_eagerly,
-            cloning=self._cloning)
+        else:
+          target_tensors = None
+      is_compile_called = True
+      self.compile(
+          optimizer=self.optimizer,
+          loss=self.loss,
+          metrics=self._compile_metrics,
+          weighted_metrics=self._compile_weighted_metrics,
+          loss_weights=self.loss_weights,
+          target_tensors=target_tensors,
+          run_eagerly=self.run_eagerly,
+          cloning=self._cloning)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors
     # by invoking build and compile on the model respectively, we do not have to
@@ -2890,6 +2887,19 @@ class Model(network.Network):
       ]
     return None
 
+  @property
+  def sample_weights(self):
+    return [e.sample_weight for e in self._training_endpoints]
+
+  @property
+  def _sample_weight_modes(self):
+    return [e.sample_weight_mode for e in self._training_endpoints]
+
+  @property
+  def _feed_sample_weights(self):
+    return [e.sample_weight for e in self._training_endpoints
+            if e.sample_weight is not None]
+
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
@@ -2915,6 +2925,16 @@ class Model(network.Network):
       # at, so return '_ckpt_saved_epoch' plus one.
       return int(self._ckpt_saved_epoch) + 1
     return initial_epoch
+
+  def _assert_compile_was_called(self):
+    # Checks whether `compile` has been called. If it has been called,
+    # then the optimizer is set. This is different from whether the
+    # model is compiled
+    # (i.e. whether the model is built and its inputs/outputs are set).
+    if not self.optimizer:
+      raise RuntimeError('You must compile your model before '
+                         'training/testing. '
+                         'Use `model.compile(optimizer, loss)`.')
 
 
 class DistributedCallbackModel(Model):
@@ -2973,7 +2993,9 @@ class _TrainingEndpoint(object):
                loss_fn,
                loss_weight=None,
                training_target=None,
-               output_loss_metric=None):
+               output_loss_metric=None,
+               sample_weight=None,
+               sample_weight_mode=None):
     """Initialize the _TrainingEndpoint.
 
     Note that the output and output_name should be stable as long as the model
@@ -2987,6 +3009,10 @@ class _TrainingEndpoint(object):
       loss_weight: float, the weights for the loss.
       training_target: the _TrainingTarget for the model.
       output_loss_metric: the metric object for the loss function.
+      sample_weight: the weights for how a sample is weighted during metric and
+        loss calculation. Could be None.
+      sample_weight_mode: string, 'temporal', 'samplewise' or None. The mode for
+        how the sample_weight is populated.
     """
     self._output = output
     self._output_name = output_name
@@ -2994,6 +3020,8 @@ class _TrainingEndpoint(object):
     self._loss_weight = loss_weight
     self._training_target = training_target
     self._output_loss_metric = output_loss_metric
+    self._sample_weight = sample_weight
+    self._sample_weight_mode = sample_weight_mode
 
   @property
   def output(self):
@@ -3085,6 +3113,22 @@ class _TrainingEndpoint(object):
   def output_loss_metric(self, value):
     self._output_loss_metric = value
 
+  @property
+  def sample_weight(self):
+    return self._sample_weight
+
+  @sample_weight.setter
+  def sample_weight(self, value):
+    self._sample_weight = value
+
+  @property
+  def sample_weight_mode(self):
+    return self._sample_weight_mode
+
+  @sample_weight_mode.setter
+  def sample_weight_mode(self, value):
+    self._sample_weight_mode = value
+
   def should_skip_target(self):
     return self._loss_fn is None
 
@@ -3127,6 +3171,35 @@ class _TrainingEndpoint(object):
       return None
     else:
       return self.shape
+
+  def sample_weights_mismatch(self):
+    """Check if the sample weight and the mode match or not."""
+    # If there is a mismatch between sample weight mode and the placeholders
+    # created, then recompile the sub-graphs that depend on sample weights.
+    return (
+        (self.sample_weight_mode is not None and self.sample_weight is None) or
+        (self.sample_weight_mode is None and self.sample_weight is not None))
+
+  def populate_sample_weight(self):
+    """Populate the sample weight and based on the sample weight mode."""
+    if (self.should_skip_target_weights() or
+        self.sample_weight_mode is None or context.executing_eagerly()):
+      self._sample_weight = None
+      return
+
+    assert self.sample_weight_mode in ['temporal', 'samplewise']
+    if self.sample_weight_mode == 'temporal':
+      default_value = [[1.]]
+      shape = [None, None]
+    else:
+      # self.sample_weight_mode == 'samplewise'
+      default_value = [1.]
+      shape = [None]
+
+    self._sample_weight = array_ops.placeholder_with_default(
+        constant_op.constant(default_value, dtype=K.floatx()),
+        shape=shape,
+        name=self.output_name + '_sample_weights')
 
 
 class _TrainingTarget(object):

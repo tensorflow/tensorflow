@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #if GOOGLE_CUDA
@@ -1654,6 +1655,16 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
               << description->pci_bus_id();
 #endif
   }
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  // Try to dlopen GPU libraries if they are supposed to be dynamically loaded.
+  auto handle_or = se::internal::DsoLoader::MaybeTryDlopenGPULibraries();
+  if (!handle_or.ok()) {
+    LOG(WARNING) << "Cannot dlopen some GPU libraries. Skipping registering "
+                    "GPU devices...";
+    return Status::OK();
+  }
+#endif
 
 #if GOOGLE_CUDA
   auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();

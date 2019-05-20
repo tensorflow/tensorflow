@@ -13,9 +13,9 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",  # @unused
     "tf_cc_binary",
     "tf_cc_test",
-    "py_test",
 )
 
 [gen_zip_test(

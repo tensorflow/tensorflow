@@ -144,8 +144,13 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
                    const GpuDeviceArrayStruct<IntType>& output_scan,
                    bool fixed_size, int split_size,
                    typename TTypes<T, 2>::Matrix* output) {
+<<<<<<< HEAD
   auto config = GetGpu2DLaunchConfig(output->dimension(1),
                                       output->dimension(0), gpu_device);
+=======
+  auto config = GetGpu2DLaunchConfig(output->dimension(1), output->dimension(0),
+                                     gpu_device);
+>>>>>>> upstream/master
 
   if (fixed_size) {
     TF_CHECK_OK(GpuLaunchKernel((concat_fixed_kernel<T, IntType>),

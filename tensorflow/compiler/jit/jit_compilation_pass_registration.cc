@@ -39,10 +39,6 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 25,
 // third_party/tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc
 // FunctionalizeControlFlowPass: 27
 //
-// from
-// third_party/tensorflow/compiler/tf2xla/rearrange_function_argument_pass_registration.cc
-// RearrangeFunctionArgumentPass: 28
-//
 // This pass looks at the graph and all associated FunctionDefs, and turns
 // traditional control flow structure (Switch/Merge/etc.) into functional
 // control flow structure (XlaIf/XlaWhile). Following passes must

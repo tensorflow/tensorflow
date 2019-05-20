@@ -128,6 +128,7 @@ const NnApi LoadNnApi() {
 
   nnapi.nnapi_exists = libneuralnetworks != nullptr;
 
+  // API 27 (NN 1.0) methods.
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksMemory_createFromFd);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksMemory_free);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_create);
@@ -143,8 +144,6 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksModel_addOperation);
   LOAD_FUNCTION(libneuralnetworks,
                 ANeuralNetworksModel_identifyInputsAndOutputs);
-  LOAD_FUNCTION(libneuralnetworks,
-                ANeuralNetworksModel_relaxComputationFloat32toFloat16);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_create);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_free);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksCompilation_setPreference);
@@ -164,6 +163,12 @@ const NnApi LoadNnApi() {
 #else
   nnapi.ASharedMemory_create = ASharedMemory_create;
 #endif  // __ANDROID__
+
+  // API 28 (NN 1.1) methods.
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksModel_relaxComputationFloat32toFloat16);
+
+  // API 29 (NN 1.2) methods.
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworks_getDeviceCount);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworks_getDevice);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksDevice_getName);

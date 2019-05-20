@@ -410,6 +410,16 @@ absl::Span<const int32> GraphCycles::Predecessors(int32 node) const {
   return rep_->nodes_[node]->in.GetSequence();
 }
 
+std::vector<int32> GraphCycles::SuccessorsCopy(int32 node) const {
+  absl::Span<const int32> successors = Successors(node);
+  return std::vector<int32>(successors.begin(), successors.end());
+}
+
+std::vector<int32> GraphCycles::PredecessorsCopy(int32 node) const {
+  absl::Span<const int32> predecessors = Predecessors(node);
+  return std::vector<int32>(predecessors.begin(), predecessors.end());
+}
+
 namespace {
 void SortInPostOrder(absl::Span<Node* const> nodes,
                      std::vector<int32>* to_sort) {

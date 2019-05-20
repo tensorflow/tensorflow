@@ -234,13 +234,13 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
     # tests if an exception is raised if a two dimensional
     # input is used, i.e. the images have shape [height, width]
     with self.cached_session(use_gpu=True):
-      # 2-D input without batch dimension.
-      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2])
+      # 1-D input without batch dimension.
+      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([2])
 
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
 
       # this is the error message we expect the function to raise
-      err_msg = "A grayscale image must be at least three-dimensional"
+      err_msg = "A grayscale image must be at least two-dimensional"
       with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
@@ -4553,11 +4553,11 @@ class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
         [0.2, 0.0, 1.0],
     ]
     scores_np = [0.7, 0.9, 0.1]
-    max_ouput_size_np = 3
+    max_output_size_np = 3
 
     overlaps = constant_op.constant(overlaps_np)
     scores = constant_op.constant(scores_np)
-    max_output_size = constant_op.constant(max_ouput_size_np)
+    max_output_size = constant_op.constant(max_output_size_np)
     overlap_threshold = 0.6
     score_threshold = 0.4
 

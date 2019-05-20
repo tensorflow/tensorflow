@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
+
+#include <cmath>
+#include <cstdint>
+
 #include "absl/memory/memory.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-
-#include <cmath>
-#include <cstdint>
 
 namespace tflite {
 namespace optimize {
@@ -193,6 +195,42 @@ TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
 
   // Update the tensor type.
   tensor->type = TensorType_INT8;
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
+  if (model == nullptr || tensor == nullptr) {
+    return kTfLiteError;
+  }
+
+  BufferT* buffer = model->buffers[tensor->buffer].get();
+  if (buffer == nullptr) {
+    return kTfLiteError;
+  }
+
+  uint64_t num_elements;
+  TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
+
+  // Copy single byte buffer data to float vector to guard against misalignment.
+  std::vector<float> float_vector(num_elements);
+  uint8_t* first = buffer->data.data();
+  std::copy(first, first + buffer->data.size(),
+            reinterpret_cast<uint8_t*>(float_vector.data()));
+
+  // Transform float data to float16.
+  std::vector<Eigen::half> quantized_buffer;
+  quantized_buffer.resize(num_elements);
+  std::transform(
+      float_vector.begin(), float_vector.end(), quantized_buffer.begin(),
+      [](float a) { return Eigen::half_impl::float_to_half_rtne(a); });
+
+  char* half_buffer = reinterpret_cast<char*>(quantized_buffer.data());
+  model->buffers[tensor->buffer]->data.assign(
+      half_buffer, half_buffer + sizeof(Eigen::half) * num_elements);
+
+  // Update the tensor type.
+  tensor->type = TensorType_FLOAT16;
 
   return kTfLiteOk;
 }

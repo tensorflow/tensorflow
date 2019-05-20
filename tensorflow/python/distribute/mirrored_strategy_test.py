@@ -1061,7 +1061,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       with self.assertRaisesRegexp(
           ValueError, "You must specify an aggregation method to update a "
-                      "MirroredVariable in Replica Context."):
+                      "MirroredVariable in Replica Context. You can do so by"):
         self.evaluate(distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(model_fn)))
 

@@ -38,10 +38,17 @@ namespace functor {
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
       Gpu3DLaunchConfig config, Index indices_width, Index bound,              \
+<<<<<<< HEAD
       const T begin, const Index* indices, const T* input, T* out) {           \
     GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {                \
       GPU_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {              \
         GPU_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {            \
+=======
+      const T begin, const Index *indices, const T *input, T *out) {           \
+    CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {               \
+      CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {             \
+        CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {           \
+>>>>>>> upstream/master
           Index outidx = x * config.virtual_thread_count.y *                   \
                              config.virtual_thread_count.z +                   \
                          y * config.virtual_thread_count.z + z;                \

@@ -54,7 +54,7 @@ namespace tensorflow {
 class RecursiveCompilabilityChecker {
  public:
   // Aggregates information about what kinds of ops are allowed.
-  struct OperationFilter {
+  struct OperationFilter {  // TODO(lzr): Add AllowEverything() helper.
     // Whether resource variable ops are allowed are allowed in callees.  We do
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model

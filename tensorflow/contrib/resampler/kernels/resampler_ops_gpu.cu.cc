@@ -119,8 +119,13 @@ struct Resampler2DFunctor<GPUDevice, T> {
     const int output_data_size =
         batch_size * num_sampling_points * data_channels;
     ::tensorflow::GpuLaunchConfig config =
+<<<<<<< HEAD
         GetGpuLaunchConfig(output_data_size, d);
      TF_CHECK_OK(GpuLaunchKernel(
+=======
+        ::tensorflow::GetGpuLaunchConfig(output_data_size, d);
+    TF_CHECK_OK(CudaLaunchKernel(
+>>>>>>> upstream/master
         Resampler2DKernel<T>, config.block_count, config.thread_per_block, 0,
         d.stream(), data, warp, output, batch_size, data_height, data_width,
         data_channels, num_sampling_points));
@@ -253,21 +258,35 @@ struct ResamplerGrad2DFunctor<GPUDevice, T> {
     const int grad_data_size =
         batch_size * data_height * data_width * data_channels;
 
+<<<<<<< HEAD
     GpuLaunchConfig config =
        GetGpuLaunchConfig(grad_warp_size, d);
      TF_CHECK_OK(GpuLaunchKernel(
+=======
+    ::tensorflow::GpuLaunchConfig config =
+        ::tensorflow::GetGpuLaunchConfig(grad_warp_size, d);
+    TF_CHECK_OK(::tensorflow::CudaLaunchKernel(
+>>>>>>> upstream/master
         SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         grad_warp_size, grad_warp));
 
     config = ::tensorflow::GetGpuLaunchConfig(grad_data_size, d);
+<<<<<<< HEAD
     TF_CHECK_OK(GpuLaunchKernel(
+=======
+    TF_CHECK_OK(::tensorflow::CudaLaunchKernel(
+>>>>>>> upstream/master
         SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         grad_data_size, grad_data));
 
     const int resampler_output_size =
         batch_size * num_sampling_points * data_channels;
     config = ::tensorflow::GetGpuLaunchConfig(resampler_output_size, d);
+<<<<<<< HEAD
     TF_CHECK_OK(GpuLaunchKernel(ResamplerGrad2DKernel<T>, config.block_count,
+=======
+    TF_CHECK_OK(CudaLaunchKernel(ResamplerGrad2DKernel<T>, config.block_count,
+>>>>>>> upstream/master
                                  config.thread_per_block, 0, d.stream(), data,
                                  warp, grad_output, grad_data, grad_warp,
                                  batch_size, data_height, data_width,

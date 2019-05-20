@@ -26,6 +26,7 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -2488,6 +2489,15 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
     int32 val = input_data[i];
     float result = static_cast<float>(scale * (val - zero_point));
     output_data[i] = result;
+  }
+}
+
+inline void Dequantize(const RuntimeShape& input_shape,
+                       const Eigen::half* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    output_data[i] = Eigen::half_impl::half_to_float(input_data[i]);
   }
 }
 

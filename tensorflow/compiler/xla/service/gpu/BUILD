@@ -580,7 +580,6 @@ cc_library(
         ":gpu_constants",
         ":partition_assignment",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -590,7 +589,13 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_executor_headers",
+<<<<<<< HEAD
         "//tensorflow/stream_executor:device_memory_allocator",
+=======
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+>>>>>>> upstream/master
     ],
 )
 
@@ -1035,6 +1040,11 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
+<<<<<<< HEAD
+=======
+        "//tensorflow/stream_executor/cuda:cuda_diagnostics",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+>>>>>>> upstream/master
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1224,6 +1234,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:kernel_spec",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

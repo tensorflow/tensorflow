@@ -132,7 +132,8 @@ class ParameterServerExtended(CoreParameterServerExtended):
         container_strategy, cluster_resolver=cluster_resolver)
 
   def _make_dataset_iterator(self, dataset):
-    return input_lib.DatasetIterator(dataset, self._input_workers)
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._container_strategy())
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

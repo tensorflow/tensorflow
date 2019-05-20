@@ -17,14 +17,14 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_GPU_CUDA_ALIAS_H_
 
 // Several forwarding macros are defined in this file to serve for backward
-// compatibility usage as we migrating from Cuda prefixed function to Gpu
-// prefixed functions. Both Cuda and ROCm can unify under the new Gpu prefix
-// naming scheme. In the migration period, we provide equivalent Cuda* and Gpu*
-// function. Over time, all Cuda* functions will be deprecated.
+// compatibility usage as we migrating from CUDA prefixed function to GPU
+// prefixed functions. Both Cuda and ROCm can unify under the new GPU prefix
+// naming scheme. In the migration period, we provide equivalent CUDA* and GPU*
+// function. Over time, all CUDA* functions will be deprecated.
 
 namespace tensorflow {
 
-// CREATE_CUDA_HOST_FUNCTION_ALIAS forward the host function to its Cuda Alias.
+// CREATE_CUDA_HOST_FUNCTION_ALIAS forward the host function to its CUDA Alias.
 #ifndef TENSORFLOW_USE_ROCM
 #define CREATE_CUDA_HOST_FUNCTION_ALIAS(func, cuda_alias) \
   template <typename... Args>                             \
@@ -36,7 +36,7 @@ namespace tensorflow {
 #define CREATE_CUDA_HOST_FUNCTION_ALIAS(func, cuda_alias)
 #endif
 
-// CREATE_CUDA_DEVICE_FUNCTION_ALIAS forward the device function to its Cuda
+// CREATE_CUDA_DEVICE_FUNCTION_ALIAS forward the device function to its CUDA
 // Alias.
 #ifndef TENSORFLOW_USE_ROCM
 #define CREATE_CUDA_DEVICE_FUNCTION_ALIAS(func, cuda_alias) \
@@ -49,7 +49,7 @@ namespace tensorflow {
 #define CREATE_CUDA_DEVICE_FUNCTION_ALIAS(func, cuda_alias)
 #endif
 
-// CREATE_CUDA_TYPE_ALIAS forward the type to its Cuda Alias.
+// CREATE_CUDA_TYPE_ALIAS forward the type to its CUDA Alias.
 #ifndef TENSORFLOW_USE_ROCM
 #define CREATE_CUDA_TYPE_ALIAS(type, cuda_alias) using cuda_alias = type;
 #else

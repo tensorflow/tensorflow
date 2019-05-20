@@ -50,6 +50,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
@@ -513,6 +514,7 @@ class Network(base_layer.Layer):
     return weights
 
   @property
+  @tracking.cached_per_instance
   def _should_compute_mask(self):
     return self._is_graph_network and super(Network, self)._should_compute_mask
 
@@ -1528,7 +1530,7 @@ class Network(base_layer.Layer):
                          ' (missing previous layer metadata).')
       # Check that x is an input tensor.
       # pylint: disable=protected-access
-      layer, _, _ = x._keras_history
+      layer = x._keras_history.layer
       if len(layer._inbound_nodes) > 1 or (
           layer._inbound_nodes and layer._inbound_nodes[0].inbound_layers):
         cls_name = self.__class__.__name__
@@ -1545,7 +1547,7 @@ class Network(base_layer.Layer):
 
     # Check compatibility of batch sizes of Input Layers.
     input_batch_sizes = [
-        training_utils.get_static_batch_size(x._keras_history[0])
+        training_utils.get_static_batch_size(x._keras_history.layer)
         for x in self.inputs
     ]
     consistent_batch_size = None

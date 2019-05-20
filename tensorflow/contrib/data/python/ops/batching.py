@@ -219,7 +219,7 @@ def assert_element_shape(expected_shapes):
     output_shapes = _merge_output_shapes(
         dataset_ops.get_legacy_output_shapes(dataset), expected_shapes)
     # pylint: disable=protected-access
-    return batching._RestructuredDataset(
+    return dataset_ops._RestructuredDataset(
         dataset.map(_check_shape),
         dataset_ops.get_legacy_output_types(dataset),
         output_shapes=output_shapes,

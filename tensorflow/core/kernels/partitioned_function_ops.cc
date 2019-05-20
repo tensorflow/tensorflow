@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -245,6 +246,13 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
+  profiler::TraceMe trace_me(
+      [&] {
+        return absl::StrCat(
+            "PartitionedCallOp #parent_step_id=", ctx->step_id(),
+            ",function_step_id=", run_opts.step_id, "#");
+      },
+      /*level=*/2);
   lib->Run(run_opts, handle, inputs, rets,
            [rets, rendez, done, ctx, func_name,
             step_container](const Status& status) {

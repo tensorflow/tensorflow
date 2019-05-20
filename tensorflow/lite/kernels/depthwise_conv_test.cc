@@ -299,69 +299,9 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationRelu6Test) {
                              }));
 }
 
-TEST_P(DepthwiseConvolutionOpTest, ActivationTanhTest) {
+void StrideTest(TfLiteRegistration* registration, int num_thread) {
   DepthwiseConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
-      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
-      Padding_VALID,
-      /*stride_width*/ 1,
-      /*stride_height*/ 1,
-      /*ActivationFunctionType*/ ActivationFunctionType_TANH);
-
-  m.SetInput({
-      1, 2, 7, 8,    // column 1
-      3, 4, 9, 10,   // column 2
-      5, 6, 11, 12,  // column 3
-  });
-  m.SetFilter({
-      1, 2, 3, 4,        //
-      -9, 10, -11, 12,   //
-      5, 6, 7, 8,        //
-      13, -14, 15, -16,  //
-  });
-  m.SetBias({1, 2, 3, 4});
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 71, -34, 99, -20,  //
-                                 91, -26, 127, -4,  //
-                             }));
-}
-
-TEST_P(DepthwiseConvolutionOpTest, ActivationSignTest) {
-  DepthwiseConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
-      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
-      Padding_VALID,
-      /*stride_width*/ 1,
-      /*stride_height*/ 1,
-      /*ActivationFunctionType*/ ActivationFunctionType_SIGN_BIT);
-
-  m.SetInput({
-      1, 2, 7, 8,    // column 1
-      3, 4, 9, 10,   // column 2
-      5, 6, 10, 11,  // column 3
-  });
-  m.SetFilter({
-      1, 2, 3, 4,        //
-      -9, 10, -11, 12,   //
-      5, 6, 7, 8,        //
-      13, -14, 15, -16,  //
-  });
-  m.SetBias({1, 2, 3, 4});
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 71, -34, 99, -20,  //
-                                 78, -12, 112, 12,  //
-                             }));
-}
-
-TEST_P(DepthwiseConvolutionOpTest, StrideTest) {
-  DepthwiseConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      registration, {TensorType_FLOAT32, {1, 3, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
       Padding_VALID,
       /*stride_width*/ 2,
@@ -388,9 +328,17 @@ TEST_P(DepthwiseConvolutionOpTest, StrideTest) {
                              }));
 }
 
-TEST_P(DepthwiseConvolutionOpTest, PaddingTest) {
+TEST_P(DepthwiseConvolutionOpTest, StrideTest) {
+  StrideTest(GetRegistration(), /*num_thread=*/1);
+}
+
+TEST_P(DepthwiseConvolutionOpTest, MultithreadStrideTest) {
+  StrideTest(GetRegistration(), /*num_thread=*/4);
+}
+
+void PaddingTest(TfLiteRegistration* registration, int num_thread) {
   DepthwiseConvolutionOpModel m(
-      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      registration, {TensorType_FLOAT32, {1, 3, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
       Padding_SAME,
       /*stride_width*/ 2,
@@ -418,8 +366,16 @@ TEST_P(DepthwiseConvolutionOpTest, PaddingTest) {
                              }));
 }
 
-TEST_P(DepthwiseConvolutionOpTest, SimpleTest) {
-  DepthwiseConvolutionOpModel m(GetRegistration(),
+TEST_P(DepthwiseConvolutionOpTest, PaddingTest) {
+  PaddingTest(GetRegistration(), /*num_thread=*/1);
+}
+
+TEST_P(DepthwiseConvolutionOpTest, MultithreadPaddingTest) {
+  PaddingTest(GetRegistration(), /*num_thread=*/4);
+}
+
+void SimpleTest(TfLiteRegistration* registration, int num_thread) {
+  DepthwiseConvolutionOpModel m(registration,
                                 {TensorType_FLOAT32, {1, 3, 2, 2}},
                                 {TensorType_FLOAT32, {1, 2, 2, 4}},
                                 {TensorType_FLOAT32, {}}, Padding_VALID);
@@ -445,7 +401,16 @@ TEST_P(DepthwiseConvolutionOpTest, SimpleTest) {
                              }));
 }
 
-TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
+TEST_P(DepthwiseConvolutionOpTest, SimpleTest) {
+  SimpleTest(GetRegistration(), /*num_thread=*/1);
+}
+
+TEST_P(DepthwiseConvolutionOpTest, MultithreadSimpleTest) {
+  SimpleTest(GetRegistration(), /*num_thread=*/4);
+}
+
+void SimpleDilatedTestPaddingValid(TfLiteRegistration* registration,
+                                   int num_thread) {
   const int depth = 1;
   const int image_width = 9;
   const int image_height = 9;
@@ -454,7 +419,7 @@ TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
   const int filter_count = 1;
   const int dilation_factor = 3;
   DepthwiseConvolutionOpModel m(
-      GetRegistration(),
+      registration,
       {TensorType_FLOAT32,
        {image_batch_count, image_height, image_width, depth}},
       {TensorType_FLOAT32, {depth, filter_size, filter_size, filter_count}},
@@ -498,7 +463,16 @@ TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
 
-TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
+TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
+  SimpleDilatedTestPaddingValid(GetRegistration(), /*num_thread=*/1);
+}
+
+TEST_P(DepthwiseConvolutionOpTest, MultithreadSimpleDilatedTestPaddingValid) {
+  SimpleDilatedTestPaddingValid(GetRegistration(), /*num_thread=*/4);
+}
+
+void SimpleDilatedTestPaddingSame(TfLiteRegistration* registration,
+                                  int num_thread) {
   const int depth = 1;
   const int image_width = 3;
   const int image_height = 3;
@@ -507,7 +481,7 @@ TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
   const int filter_count = 1;
   const int dilation_factor = 2;
   DepthwiseConvolutionOpModel m(
-      GetRegistration(),
+      registration,
       {TensorType_FLOAT32,
        {image_batch_count, image_height, image_width, depth}},
       {TensorType_FLOAT32, {depth, filter_size, filter_size, filter_count}},
@@ -524,6 +498,7 @@ TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
   m.SetFilter({1, 2, 3, 4});
   // No bias for this test.
   m.SetBias({0});
+  m.SetNumThreads(num_thread);
   m.Invoke();
 
   // Output:
@@ -531,6 +506,133 @@ TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
   // | 6 |10 | 4 |
   // | 2 | 3 | 1 |
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 7, 3, 6, 10, 4, 2, 3, 1}));
+}
+
+TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
+  SimpleDilatedTestPaddingSame(GetRegistration(), /*num_thread=*/1);
+}
+
+TEST_P(DepthwiseConvolutionOpTest, MultithreadSimpleDilatedTestPaddingSame) {
+  SimpleDilatedTestPaddingSame(GetRegistration(), /*num_thread=*/4);
+}
+
+void BatchPaddingValidTest(TfLiteRegistration* registration, int num_thread) {
+  const int input_batch = 2;
+  const int input_width = 3;
+  const int input_height = 3;
+  const int input_depth = 4;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 4;
+  DepthwiseConvolutionOpModel m(
+      registration,
+      {TensorType_FLOAT32,
+       {input_batch, input_height, input_width, input_depth}},
+      {TensorType_FLOAT32,
+       {filter_batch, filter_size, filter_size, filter_depth}},
+      {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  // clang-format off
+  m.SetInput({
+      // array of 3 x 24 => [2, 3, 3, 4]
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0,
+      1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0
+  });
+
+  m.SetFilter({
+      // array of 9 x 4 => [1, 3, 3, 4]
+      1, 2, 3, 4,
+      1, 2, 3, 4,
+      1, 2, 3, 4,
+      1, 2, 3, 4,
+      1, 2, 3, 4,
+      1, 2, 3, 4,
+      1, 2, 3, 4,
+      1, 2, 3, 4,
+      1, 2, 3, 4
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0, 0, 0, 0});
+  m.SetNumThreads(num_thread);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({
+        9, 18, 0, 0,
+        9, 18, 0, 0
+      }));
+  // clang-format on
+}
+
+TEST_P(DepthwiseConvolutionOpTest, BatchPaddingValidTest) {
+  BatchPaddingValidTest(GetRegistration(), /*num_thread=*/1);
+}
+
+TEST_P(DepthwiseConvolutionOpTest, MultithreadBatchPaddingValidTest) {
+  BatchPaddingValidTest(GetRegistration(), /*num_thread=*/4);
+}
+
+void BatchPaddingSameTest(TfLiteRegistration* registration, int num_thread) {
+  const int input_batch = 4;
+  const int input_width = 2;
+  const int input_height = 2;
+  const int input_depth = 1;
+  const int filter_batch = 1;
+  const int filter_size = 3;
+  const int filter_depth = 1;
+  DepthwiseConvolutionOpModel m(
+      registration,
+      {TensorType_FLOAT32,
+       {input_batch, input_height, input_width, input_depth}},
+      {TensorType_FLOAT32,
+       {filter_batch, filter_size, filter_size, filter_depth}},
+      {TensorType_FLOAT32, {}}, Padding_SAME);
+
+  // clang-format off
+  m.SetInput({
+      // array of 4 x 4 => [4, 2, 2, 1]
+      1, 1, 1, 1,
+      0, 0, 0, 0,
+      1, 1, 2, 2,
+      2, 2, 2, 2
+  });
+
+  m.SetFilter({
+      // array of 3 x 3 => [1, 3, 3, 1]
+      1, 1, 1,
+      0, 2, 0,
+      1, 1, 1
+  });
+  // clang-format on
+
+  // No bias for this test.
+  m.SetBias({0});
+  m.SetNumThreads(num_thread);
+  m.Invoke();
+
+  // clang-format off
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({
+        4, 4, 4, 4,
+        0, 0, 0, 0,
+        6, 6, 6, 6,
+        8, 8, 8, 8
+      }));
+  // clang-format on
+}
+
+TEST_P(DepthwiseConvolutionOpTest, BatchPaddingSameTest) {
+  BatchPaddingSameTest(GetRegistration(), /*num_thread=*/1);
+}
+
+TEST_P(DepthwiseConvolutionOpTest, MultithreadBatchPaddingSameTest) {
+  BatchPaddingSameTest(GetRegistration(), /*num_thread=*/4);
 }
 
 class QuantizedDepthwiseConvolutionOpModel
@@ -948,7 +1050,7 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowValidPaddingTest) {
   // through DepthwiseConvGeneral with other configs.
   const int input_batch = 1;
   const int input_width = 3;
-  const int input_height = 3;
+  const int input_height = 5;
   const int input_depth = 8;
   const int filter_batch = 1;
   const int filter_size = 3;
@@ -968,7 +1070,13 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowValidPaddingTest) {
 
   // clang-format off
   m.SetInput({
-    // array of 9 x 8 => [1, 3, 3, 8]
+    // array of 15 x 8 => [1, 5, 3, 8]
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
+      1, 1, 0, 0,  1, 1, 0, 0,
       1, 1, 0, 0,  1, 1, 0, 0,
       1, 1, 0, 0,  1, 1, 0, 0,
       1, 1, 0, 0,  1, 1, 0, 0,
@@ -1003,6 +1111,8 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest, MultithreadOnRowValidPaddingTest) {
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray({
+        9, 18, 0, 0, 46, 55, 0, 0,
+        9, 18, 0, 0, 46, 55, 0, 0,
         9, 18, 0, 0, 46, 55, 0, 0
       }));
   // clang-format on
@@ -1673,7 +1783,6 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
 
   // Invoke and verify output.
   m.Invoke();
-  printf("\n");
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 36, 54, 0, 0})));
 }

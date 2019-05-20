@@ -1109,25 +1109,26 @@ class ModelCheckpoint(Callback):
     n_file_with_latest_mod_time = 0
     file_path_with_largest_file_name = None
 
-    for file_name in os.listdir(dir_name):
-      # Only consider if `file_name` matches the pattern.
-      if re.match(base_name_regex, file_name):
-        file_path = os.path.join(dir_name, file_name)
-        mod_time = os.path.getmtime(file_path)
-        if (file_path_with_largest_file_name is None or
-            file_path > file_path_with_largest_file_name):
-          file_path_with_largest_file_name = file_path
-        if mod_time > latest_mod_time:
-          latest_mod_time = mod_time
-          file_path_with_latest_mod_time = file_path
-          # In the case a file with later modified time is found, reset
-          # the counter for the number of files with latest modified time.
-          n_file_with_latest_mod_time = 1
-        elif mod_time == latest_mod_time:
-          # In the case a file has modified time tied with the most recent,
-          # increment the counter for the number of files with latest modified
-          # time by 1.
-          n_file_with_latest_mod_time += 1
+    if os.path.exists(dir_name):
+      for file_name in os.listdir(dir_name):
+        # Only consider if `file_name` matches the pattern.
+        if re.match(base_name_regex, file_name):
+          file_path = os.path.join(dir_name, file_name)
+          mod_time = os.path.getmtime(file_path)
+          if (file_path_with_largest_file_name is None or
+              file_path > file_path_with_largest_file_name):
+            file_path_with_largest_file_name = file_path
+          if mod_time > latest_mod_time:
+            latest_mod_time = mod_time
+            file_path_with_latest_mod_time = file_path
+            # In the case a file with later modified time is found, reset
+            # the counter for the number of files with latest modified time.
+            n_file_with_latest_mod_time = 1
+          elif mod_time == latest_mod_time:
+            # In the case a file has modified time tied with the most recent,
+            # increment the counter for the number of files with latest modified
+            # time by 1.
+            n_file_with_latest_mod_time += 1
 
     if n_file_with_latest_mod_time == 1:
       # Return the sole file that has most recent modified time.

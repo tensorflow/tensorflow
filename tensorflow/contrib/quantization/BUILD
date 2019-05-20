@@ -9,8 +9,8 @@ package(default_visibility = ["//visibility:public"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_gen_op_wrapper_py",
     "tf_custom_op_library",
+    "tf_gen_op_wrapper_py",  # @unused
 )
 
 py_library(

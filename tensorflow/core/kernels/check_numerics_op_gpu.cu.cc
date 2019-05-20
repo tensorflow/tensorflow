@@ -25,6 +25,10 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+<<<<<<< HEAD
+=======
+#include "tensorflow/core/util/gpu_launch_config.h"
+>>>>>>> upstream/master
 
 namespace tensorflow {
 

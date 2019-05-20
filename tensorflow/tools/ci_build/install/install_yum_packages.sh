@@ -40,8 +40,6 @@ yum install -y  atlas-devel \
                 perl-core \
                 python27 \
                 readline-devel \
-                rh-python35 \
-                rh-python36 \
                 sqlite-devel \
                 wget \
                 xz-devel \

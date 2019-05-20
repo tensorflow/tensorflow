@@ -29,6 +29,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.tracking import data_structures
@@ -87,11 +88,13 @@ class VariableHolder(object):
     return wrapped
 
 
-def _get_tensor_from_tensor_info(tensor_info, graph):
+def _get_element_from_tensor_info(tensor_info, graph):
   """Simplified copy of the deprecated `get_tensor_from_tensor_info`."""
   encoding = tensor_info.WhichOneof("encoding")
   if encoding == "name":
-    return graph.get_tensor_by_name(tensor_info.name)
+    # We may get operations here in some cases. TensorInfo is a bit of a
+    # misnomer if so.
+    return graph.as_graph_element(tensor_info.name)
   elif encoding == "coo_sparse":
     return sparse_tensor.SparseTensor(
         graph.get_tensor_by_name(tensor_info.coo_sparse.indices_tensor_name),
@@ -259,9 +262,12 @@ class WrappedFunction(function.ConcreteFunction):
         return f
       elif isinstance(f, meta_graph_pb2.TensorInfo):
         tensor_infos.append(f)
-        f_tensor = _get_tensor_from_tensor_info(f, self._func_graph)
-        tensor_fetches.append(f_tensor)
-        return f_tensor
+        decoded = _get_element_from_tensor_info(f, self._func_graph)
+        if tensor_util.is_tensor(decoded):
+          tensor_fetches.append(decoded)
+        else:
+          operation_fetches.append(decoded)
+        return decoded
       elif isinstance(f, ops.Tensor):
         tensor_fetches.append(f)
         return f
@@ -291,8 +297,9 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_graph.inputs.extend(pruned_graph.captures.values())
     for ti in tensor_infos:
       if ti.WhichOneof("encoding") == "name":  # Dense tensors only
-        t = pruned_graph.get_tensor_by_name(ti.name)
-        t.set_shape(tensor_shape.TensorShape(ti.tensor_shape))
+        t = pruned_graph.as_graph_element(ti.name)
+        if tensor_util.is_tensor(t):
+          t.set_shape(tensor_shape.TensorShape(ti.tensor_shape))
     # pylint: disable=protected-access
     for f in self.graph._functions.values():
       pruned_graph._add_function(f)

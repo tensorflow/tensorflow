@@ -905,6 +905,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],

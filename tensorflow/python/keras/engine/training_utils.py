@@ -31,7 +31,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -1033,36 +1032,12 @@ def cast_if_floating_to_model_input_dtypes(x, model):
   return nest.map_structure(cast_single_tensor, x, input_dtypes)
 
 
-def get_output_sample_weight(training_endpoint, sample_weight_mode):
-  """Returns the sample weight and weight mode for a single output."""
-  if (training_endpoint.should_skip_target_weights() or
-      sample_weight_mode is None or context.executing_eagerly()):
-    return None
-
-  assert sample_weight_mode in ['temporal', 'samplewise']
-  if sample_weight_mode == 'temporal':
-    default_value = [[1.]]
-    shape = [None, None]
-  elif sample_weight_mode == 'samplewise':
-    default_value = [1.]
-    shape = [None]
-
-  weight = array_ops.placeholder_with_default(
-      constant_op.constant(default_value, dtype=K.floatx()),
-      shape=shape,
-      name=training_endpoint.output_name + '_sample_weights')
-  return weight
-
-
 def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
   """Prepares sample weight modes for the model.
 
   Args:
     training_endpoints: List of model _TrainingEndpoints.
     sample_weight_mode: sample weight mode user input passed from compile API.
-
-  Returns:
-    List of sample weight modes (one for each output).
 
   Raises:
     ValueError: In case of invalid `sample_weight_mode` input.
@@ -1073,35 +1048,28 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
         'sample_weight_mode', sample_weight_mode,
         [e.output_name for e in training_endpoints])
 
-    sample_weight_modes = []
     for end_point in training_endpoints:
-      if end_point.should_skip_target_weights():
-        sample_weight_modes.append(None)
-      elif end_point.output_name not in sample_weight_mode:
-        raise ValueError('Output ' + end_point.output_name +
-                         'missing from `_sample_weight_modes` dictionary')
-      else:
-        sample_weight_modes.append(
-            sample_weight_mode.get(end_point.output_name))
-    return sample_weight_modes
-
-  if isinstance(sample_weight_mode, (list, tuple)):
+      if not end_point.should_skip_target_weights():
+        if end_point.output_name not in sample_weight_mode:
+          raise ValueError('Output ' + end_point.output_name +
+                           'missing from `_sample_weight_modes` dictionary')
+        else:
+          end_point.sample_weight_mode = sample_weight_mode.get(
+              end_point.output_name)
+  elif isinstance(sample_weight_mode, (list, tuple)):
     if len(sample_weight_mode) != len(training_endpoints):
       raise ValueError('When passing a list as sample_weight_mode, '
                        'it should have one entry per model output. '
                        'The model has ' + str(len(training_endpoints)) +
                        ' outputs, but you passed ' +
                        str(len(sample_weight_mode)) + '_sample_weight_modes.')
-
-    return [
-        None if endpoint.should_skip_target_weights() else mode
-        for mode, endpoint in zip(sample_weight_mode, training_endpoints)
-    ]
-
-  return [
-      None if endpoint.should_skip_target_weights() else sample_weight_mode
-      for endpoint in training_endpoints
-  ]
+    for mode, endpoint in zip(sample_weight_mode, training_endpoints):
+      if not endpoint.should_skip_target_weights():
+        endpoint.sample_weight_mode = mode
+  else:
+    for endpoint in training_endpoints:
+      if not endpoint.should_skip_target_weights():
+        endpoint.sample_weight_mode = sample_weight_mode
 
 
 def prepare_loss_functions(loss, output_names):

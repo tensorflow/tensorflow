@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 

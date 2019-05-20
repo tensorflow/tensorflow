@@ -116,28 +116,6 @@ size_t TF_DataTypeSize(TF_DataType dt) {
 
 // --------------------------------------------------------------------------
 
-TF_Status* TF_NewStatus() { return new TF_Status; }
-
-void TF_DeleteStatus(TF_Status* s) { delete s; }
-
-void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
-  if (code == TF_OK) {
-    s->status = Status::OK();
-    return;
-  }
-  s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
-}
-
-TF_Code TF_GetCode(const TF_Status* s) {
-  return static_cast<TF_Code>(s->status.code());
-}
-
-const char* TF_Message(const TF_Status* s) {
-  return s->status.error_message().c_str();
-}
-
-// --------------------------------------------------------------------------
-
 namespace {
 class TF_ManagedBuffer : public TensorBuffer {
  public:

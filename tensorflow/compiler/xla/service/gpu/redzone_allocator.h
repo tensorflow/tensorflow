@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 namespace gpu {
@@ -64,8 +63,27 @@ class RedzoneAllocator : public se::ScratchAllocator {
   StatusOr<se::DeviceMemory<uint8>> AllocateBytes(se::Stream* stream,
                                                   int64 byte_size) override;
 
+  // Non-empty redzone check status implies that there was a write into a
+  // redzone, with a string communicating the location of the write.
+  struct RedzoneCheckStatus {
+    std::string redzone_failure_msg;
+
+    static RedzoneCheckStatus OK() { return {}; }
+
+    static RedzoneCheckStatus WithFailureMsg(std::string msg) { return {msg}; }
+
+    bool ok() { return redzone_failure_msg.empty(); }
+  };
+
   // Determines whether redzones around all allocated buffers are unmodified.
-  Status CheckRedzones(se::Stream* stream) const;
+  //
+  // Returns:
+  //
+  //  - RedzoneCheckStatus::OK() if everything went well.
+  //  - RedzoneCheckStatus with a non-empty error message iff a write into a
+  //    redzone has been detected.
+  //  - A stream error, if loading or launching the kernel has failed.
+  StatusOr<RedzoneCheckStatus> CheckRedzones(se::Stream* stream) const;
 
  private:
   const int device_ordinal_;

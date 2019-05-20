@@ -655,11 +655,19 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
         in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
         init));
 
+<<<<<<< HEAD
     dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
     dim3 num_threads(128, 1, 1);
      TF_CHECK_OK(GpuLaunchKernel((CleanupSegments<T*,OUT_T,Op>), new_grid_dim, num_threads, 0, cu_stream,
         ((T*)temp_storage.flat<int8_t>().data()), out, extent_x, extent_y,
         grid_dim.y, op, init));
+=======
+    dim3 new_grid_dim((grid_dim.y * extent_y + 31) / 32, 1, 1);
+    TF_CHECK_OK(CudaLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
+                                 block_dim, 0, cu_stream,
+                                 (T*)temp_storage.flat<int8_t>().data(), out,
+                                 extent_x, extent_y, grid_dim.y, op, init));
+>>>>>>> upstream/master
   }
 }
 

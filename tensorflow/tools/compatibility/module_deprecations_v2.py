@@ -25,9 +25,8 @@ _CONTRIB_WARNING = (
     ast_edits.ERROR,
     "<function name> cannot be converted automatically. tf.contrib will not"
     " be distributed with TensorFlow 2.0, please consider an alternative in"
-    " non-contrib TensorFlow, a community-maintained repository, or fork "
-    "the required code."
-)
+    " non-contrib TensorFlow, a community-maintained repository such as "
+    "tensorflow/addons, or fork the required code.")
 
 _FLAGS_WARNING = (
     ast_edits.ERROR,

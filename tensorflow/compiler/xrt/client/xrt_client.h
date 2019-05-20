@@ -71,7 +71,7 @@ class XrtBuffer {
   // tensors and vice-versa for TF interoperability.
 
   XrtBuffer() = default;
-  XrtBuffer(XrtTensorHandle handle, xla::Shape shape);
+  XrtBuffer(XrtTensorHandle handle, int xrt_device_ordinal, xla::Shape shape);
   ~XrtBuffer();  // Calls Delete().
 
   // A buffer reference is moveable but not copyable.
@@ -81,11 +81,13 @@ class XrtBuffer {
   XrtBuffer& operator=(XrtBuffer&&) = default;
 
   const XrtTensorHandle& handle() const { return handle_; }
+  int xrt_device_ordinal() const { return xrt_device_ordinal_; }
   const xla::Shape& shape() const { return shape_; }
 
  private:
   // Tensor that contains the XRT allocation ID.
   XrtTensorHandle handle_;
+  int xrt_device_ordinal_;
   xla::Shape shape_;
 };
 

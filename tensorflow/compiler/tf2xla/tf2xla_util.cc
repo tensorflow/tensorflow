@@ -786,4 +786,144 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
   }
   return Status::OK();
 }
+
+Status RewriteTensorListWithConstElement(Graph* g,
+                                         FunctionLibraryDefinition* fld) {
+  for (Node* n : g->nodes()) {
+    if (n->type_string() != "EmptyTensorList") {
+      continue;
+    }
+
+    // Find the forward While op.
+    std::vector<const Edge*> fwd_while_edges;
+    for (const Edge* e : n->out_edges()) {
+      if (!e->IsControlEdge() && e->dst()->type_string() == "While") {
+        fwd_while_edges.push_back(e);
+      }
+    }
+    if (fwd_while_edges.size() != 1) {
+      // No forward While op found, or multiple forward While ops.
+      continue;
+    }
+
+    // Find the backward While op.
+    Node* fwd_while = fwd_while_edges[0]->dst();
+    int fwd_while_dst_input = fwd_while_edges[0]->dst_input();
+    std::vector<const Edge*> bwd_while_edges;
+    for (const Edge* e : fwd_while->out_edges()) {
+      if (e->src_output() == fwd_while_dst_input &&
+          e->dst()->type_string() == "While") {
+        bwd_while_edges.push_back(e);
+      }
+    }
+    if (bwd_while_edges.size() != 1) {
+      // No backward While op found, or multiple backward While ops.
+      continue;
+    }
+
+    Node* bwd_while = bwd_while_edges[0]->dst();
+    int bwd_while_dst_input = bwd_while_edges[0]->dst_input();
+
+    // Look into forward While body function and check if TensorListPushBack op
+    // has a Const input.
+    NameAttrList fwd_body_attr;
+    TF_CHECK_OK(GetNodeAttr(fwd_while->def(), "body", &fwd_body_attr));
+    const FunctionDef* fwd_body = fld->Find(fwd_body_attr.name());
+    if (!fwd_body) {
+      return errors::InvalidArgument("Cannot find function ",
+                                     fwd_body_attr.name(), " for While node ",
+                                     fwd_while->DebugString());
+    }
+    std::unique_ptr<FunctionBody> fwd_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(
+        *fwd_body, AttrSlice(&fwd_body_attr.attr()), fld, &fwd_fbody));
+
+    // Find the TensorListPushBack node; it's one of fwd_arg's successors.
+    Node* fwd_arg = fwd_fbody->arg_nodes[fwd_while_dst_input];
+    std::vector<Node*> tl_push_nodes;
+    for (const Edge* out_edge : fwd_arg->out_edges()) {
+      if (out_edge->dst()->type_string() == "TensorListPushBack") {
+        tl_push_nodes.push_back(out_edge->dst());
+      }
+    }
+    if (tl_push_nodes.size() != 1) {
+      // No TensorListPushBack found, or multiple TensorListPushBack.
+      continue;
+    }
+
+    // Get input for the TensorListPushBack node.
+    Node* input_node;
+    TF_CHECK_OK(tl_push_nodes[0]->input_node(1, &input_node));
+    if (input_node->type_string() != "Const") {
+      // Input for the TensorList is not Const node.
+      continue;
+    }
+
+    NodeDef const_input_nodedef = input_node->def();
+
+    // Rewrite backward While body function, replace usages of
+    // TensorListPopBack with a Const node.
+    NameAttrList bwd_body_attr;
+    TF_CHECK_OK(GetNodeAttr(bwd_while->def(), "body", &bwd_body_attr));
+    const FunctionDef* bwd_body = fld->Find(bwd_body_attr.name());
+    if (!bwd_body) {
+      return errors::InvalidArgument("Cannot find function ",
+                                     bwd_body_attr.name(), " for While node ",
+                                     bwd_while->DebugString());
+    }
+    std::unique_ptr<FunctionBody> bwd_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(
+        *bwd_body, AttrSlice(&bwd_body_attr.attr()), fld, &bwd_fbody));
+
+    // Find the TensorListPopBack node; it's one of bwd_arg's successors.
+    Node* bwd_arg = bwd_fbody->arg_nodes[bwd_while_dst_input];
+    std::vector<Node*> tl_pop_nodes;
+    for (const Edge* out_edge : bwd_arg->out_edges()) {
+      if (out_edge->dst()->type_string() == "TensorListPopBack") {
+        tl_pop_nodes.push_back(out_edge->dst());
+      }
+    }
+    if (tl_pop_nodes.size() != 1) {
+      // No TensorListPopBack found, or multiple TensorListPopBack.
+      continue;
+    }
+
+    // Replace TensorListPopBack usages with Const node.
+    std::vector<const Edge*> edges_to_replace;
+    for (const Edge* e : tl_pop_nodes[0]->out_edges()) {
+      if (e->src_output() == 1) {
+        edges_to_replace.push_back(e);
+      }
+    }
+    if (edges_to_replace.empty()) {
+      continue;
+    }
+    Status s;
+    const_input_nodedef.set_name(
+        bwd_fbody->graph->NewName(const_input_nodedef.name()));
+    Node* const_node = bwd_fbody->graph->AddNode(const_input_nodedef, &s);
+    TF_RETURN_IF_ERROR(s);
+    for (const Edge* e : edges_to_replace) {
+      Node* dst = e->dst();
+      int dst_input = e->dst_input();
+      bwd_fbody->graph->RemoveEdge(e);
+      bwd_fbody->graph->AddEdge(const_node, 0, dst, dst_input);
+    }
+
+    // Add rewritten backward While body function.
+    FunctionDef new_fdef;
+    string new_name = fld->UniqueFunctionName(
+        absl::StrCat(bwd_body_attr.name(), "_tl_rewrite_"));
+    TF_RETURN_IF_ERROR(
+        GraphToFunctionDef(*bwd_fbody->graph, new_name, &new_fdef));
+    TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef));
+
+    // Change backward While op to use the new body function.
+    bwd_body_attr.set_name(new_name);
+    bwd_while->ClearAttr("body");
+    bwd_while->AddAttr("body", bwd_body_attr);
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

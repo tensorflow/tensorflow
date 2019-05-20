@@ -19,9 +19,10 @@ from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import smart_cond
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale as loss_scale_module
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -112,6 +113,13 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
     self._optimizer = opt
     self._loss_scale = loss_scale_module.get(loss_scale)
+    for weight in loss_scale_module.get_loss_scale_weights(self._loss_scale):
+      # We cannot call `track_variable` in the LossScale class itself, because a
+      # file outside of Keras cannot depend on a Keras file. Calling it here
+      # instead is OK, because a variable only needs to be tracked if used with
+      # a Keras class, and the only way to use LossScale with a Keras class is
+      # through the LossScaleOptimizer.
+      backend.track_variable(weight)
     self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 
