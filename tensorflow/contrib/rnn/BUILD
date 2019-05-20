@@ -12,12 +12,12 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_custom_op_library",
     "tf_cc_test",
-    "tf_py_test",
+    "tf_custom_op_library",
     "tf_gen_op_libs",
-    "tf_kernel_library",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
+    "tf_py_test",
 )
 
 cc_library(

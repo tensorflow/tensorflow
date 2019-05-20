@@ -11,10 +11,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_binary_additional_srcs",
     "tf_cc_binary",
+    "tf_cc_test",
     "tf_copts",
     "tf_custom_op_library",
     "tf_java_test",
-    "tf_cc_test",
 )
 
 java_library(
