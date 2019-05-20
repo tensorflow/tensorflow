@@ -46,7 +46,7 @@ StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
   CHECK_EQ(conditional->opcode(), HloOpcode::kConditional);
   // Do not remove conditionals that contain side-effecting instructions or
   // have control predecessors/successors in either true/false computation.
-  if (!conditional->parent()->IsRemovable(conditional) ||
+  if (!conditional->parent()->IsSafelyRemovable(conditional) ||
       conditional->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove conditional as it is not removable or "
                "has side effect: "
