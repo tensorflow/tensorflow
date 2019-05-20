@@ -45,7 +45,7 @@ func @view3d(%arg0: !linalg.buffer<f32>, %arg1: !linalg.range, %arg2: !linalg.ra
   return
 }
 // CHECK-LABEL: func @view3d(%arg0: !llvm<"{ float*, i64 }">, %arg1: !llvm<"{ i64, i64, i64 }">, %arg2: !llvm<"{ i64, i64, i64 }">, %arg3: !llvm<"{ i64, i64, i64 }">) {
-//  CHECK-NEXT:   %5 = llvm.constant(1 : index) : !llvm.i64
+//       CHECK:   %5 = llvm.constant(1 : index) : !llvm.i64
 //  CHECK-NEXT:   %6 = llvm.extractvalue %arg3[2] : !llvm<"{ i64, i64, i64 }">
 //  CHECK-NEXT:   %7 = llvm.mul %5, %6 : !llvm.i64
 //  CHECK-NEXT:   %8 = llvm.insertvalue %7, %4[3, 2] : !llvm<"{ float*, i64, [3 x i64], [3 x i64] }">
