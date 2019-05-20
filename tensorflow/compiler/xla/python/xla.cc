@@ -299,7 +299,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
       .def("is_deleted", [](const PyLocalBuffer& buffer) {
-        return buffer.device_buffer() == nullptr;
+        return buffer.DeviceBuffer() == nullptr;
       });
 
   py::class_<PyLocalExecutable>(m, "LocalExecutable")
