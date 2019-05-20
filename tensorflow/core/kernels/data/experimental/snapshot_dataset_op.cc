@@ -38,8 +38,6 @@ enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
 const uint64 kReaderBufferSize = 8 * 1024 * 1024;  // 8 MB
 
-const char* kCompressionType = io::compression::kGzip;
-
 const uint64 kOneDayInMicroseconds = 24L * 60L * 60L * 1e6L;
 
 const uint64 kNumElementsPerShard = 10000;
@@ -117,6 +115,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("reader_path_prefix", &reader_path_prefix_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("writer_path_prefix", &writer_path_prefix_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("compression", &compression_));
+
+    OP_REQUIRES(
+        ctx,
+        compression_ == io::compression::kNone ||
+            compression_ == io::compression::kGzip,
+        errors::InvalidArgument("compression must be either '' or 'GZIP'."));
   }
 
  protected:
@@ -138,18 +148,24 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     string graph_fingerprint = strings::StrCat(
         strings::Hex(Fingerprint64(graph_def_serialized), strings::kZeroPad16));
 
-    *output = new Dataset(ctx, input, path, graph_fingerprint);
+    *output =
+        new Dataset(ctx, input, path, graph_fingerprint, reader_path_prefix_,
+                    writer_path_prefix_, compression_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input, const string& path,
-            const string& graph_fingerprint)
+            const string& graph_fingerprint, const string& reader_path_prefix,
+            const string& writer_path_prefix, const string& compression)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dir_(path),
-          graph_fingerprint_(graph_fingerprint) {
+          graph_fingerprint_(graph_fingerprint),
+          reader_path_prefix_(reader_path_prefix),
+          writer_path_prefix_(writer_path_prefix),
+          compression_(compression) {
       input_->Ref();
     }
 
@@ -179,9 +195,30 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                               Node** output) const override {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+
       Node* path = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(dir_, &path));
-      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, path}, output));
+
+      AttrValue compression_attr;
+      b->BuildAttrValue(compression_, &compression_attr);
+
+      AttrValue reader_path_prefix_attr;
+      b->BuildAttrValue(reader_path_prefix_, &reader_path_prefix_attr);
+
+      AttrValue writer_path_prefix_attr;
+      b->BuildAttrValue(writer_path_prefix_, &writer_path_prefix_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this,
+          /*inputs=*/
+          {std::make_pair(0, input_graph_node), std::make_pair(1, path)},
+          /*list_inputs=*/
+          {},
+          /*attrs=*/
+          {{"compression", compression_attr},
+           {"reader_path_prefix", reader_path_prefix_attr},
+           {"writer_path_prefix", writer_path_prefix_attr}},
+          output));
       return Status::OK();
     }
 
@@ -254,7 +291,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
 
           run_id_ = metadata_.run_id();
-          run_dir_ = absl::StrCat(fingerprint_dir_, "/", run_id_);
+          run_dir_ = absl::StrCat(dataset()->reader_path_prefix_,
+                                  fingerprint_dir_, "/", run_id_);
           return Status::OK();
         }
 
@@ -284,7 +322,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 snapshot_data_filename, &current_read_file_));
             auto reader_options =
                 io::RecordReaderOptions::CreateRecordReaderOptions(
-                    kCompressionType);
+                    dataset()->compression_);
             reader_options.buffer_size = kReaderBufferSize;
 
             current_reader_ = absl::make_unique<io::SequentialRecordReader>(
@@ -348,7 +386,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           run_id_ = strings::StrCat(
               strings::Hex(random::New64(), strings::kZeroPad4));
-          run_dir_ = absl::StrCat(fingerprint_dir_, "/", run_id_);
+          run_dir_ = absl::StrCat(dataset()->writer_path_prefix_,
+                                  fingerprint_dir_, "/", run_id_);
 
           TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(run_dir_));
 
@@ -406,7 +445,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
             auto writer_options =
                 io::RecordWriterOptions::CreateRecordWriterOptions(
-                    kCompressionType);
+                    dataset()->compression_);
 
             TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(
                 snapshot_data_filename, &current_write_file_));
@@ -473,11 +512,19 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* const input_;
     const string dir_;
     const string graph_fingerprint_;
+
+    const string reader_path_prefix_;
+    const string writer_path_prefix_;
+    const string compression_;
   };
 
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+
+  string reader_path_prefix_;
+  string writer_path_prefix_;
+  string compression_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),

@@ -3474,7 +3474,7 @@ tf_module {
   }
   member_method {
     name: "SnapshotDataset"
-    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "Softmax"
