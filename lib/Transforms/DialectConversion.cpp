@@ -90,6 +90,8 @@ struct ProducerGenerator {
   UnknownLoc loc;
 };
 
+constexpr StringLiteral ProducerGenerator::kProducerName;
+
 //===----------------------------------------------------------------------===//
 // DialectConversionRewriter
 //===----------------------------------------------------------------------===//
