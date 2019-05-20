@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import copy
+import weakref
 
 import numpy as np
 
@@ -32,6 +33,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -154,67 +156,8 @@ class TPUStrategy(distribute_lib.Strategy):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
-    return _tpu_run(self, fn, args, kwargs)
+    return self.extended.tpu_run(fn, args, kwargs)
 
-
-def _tpu_run(strategy, fn, args, kwargs):
-  """Common implementation of TPUStrategy.experimental_run_v2."""
-  if context.executing_eagerly() and not ops.inside_function():
-    raise NotImplementedError(
-        "Eager mode not supported in TPUStrategy outside TF functions.")
-
-  if kwargs is None:
-    kwargs = {}
-
-  # Used to re-structure flattened output tensors from `tpu.replicate()`
-  # into a structured format.
-  result = [[]]
-
-  def replicated_fn(replica_id, replica_args, replica_kwargs):
-    """Wraps user function to provide replica ID and `Tensor` inputs."""
-    with _TPUReplicaContext(strategy, replica_id_in_sync_group=replica_id):
-      result[0] = fn(*replica_args, **replica_kwargs)
-    return result[0]
-
-  replicate_inputs = []  # By replica.
-  for i in range(strategy.num_replicas_in_sync):
-    replicate_inputs.append(
-        [constant_op.constant(i, dtype=dtypes.int32),
-         values.select_replica(i, args),
-         values.select_replica(i, kwargs)])
-
-  # Construct and pass `maximum_shapes` so that we could support dynamic
-  # shapes using dynamic padder.
-  if replicate_inputs:
-    maximum_shapes = []
-    flattened_list = nest.flatten(replicate_inputs[0])
-    for input_tensor in flattened_list:
-      maximum_shape = input_tensor.get_shape() if tensor_util.is_tensor(
-          input_tensor) else tensor_shape.TensorShape(np.shape(input_tensor))
-      maximum_shapes.append(maximum_shape)
-    maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
-                                           maximum_shapes)
-  else:
-    maximum_shapes = None
-
-  with strategy.scope():
-    replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs,
-                                      maximum_shapes=maximum_shapes)
-
-  # Remove all no ops that may have been added during 'tpu.replicate()'
-  if isinstance(result[0], list):
-    result[0] = [
-        output for output in result[0] if tensor_util.is_tensor(output)
-    ]
-
-  # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
-  replicate_outputs = [
-      nest.pack_sequence_as(result[0], nest.flatten(replica_output))
-      for replica_output in replicate_outputs
-  ]
-
-  device_map = strategy.extended._device_map  # pylint: disable=protected-access
-  return values.regroup(device_map, replicate_outputs)
 
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
@@ -252,7 +195,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
   # This implementation runs a single step. It does not use infeed or outfeed.
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
-    return _tpu_run(self, fn, args, kwargs)
+    return self.extended.tpu_run(fn, args, kwargs)
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
@@ -274,6 +217,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       # not specified.
       steps_per_run = 1
 
+    self._tpu_function_cache = weakref.WeakKeyDictionary()
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     self._device_assignment = device_assignment
@@ -699,6 +643,81 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       Boolean.
     """
     return True
+
+  def tpu_run(self, fn, args, kwargs):
+    func = self._tpu_function_creator(fn)
+    return func(args, kwargs)
+
+  def _tpu_function_creator(self, fn):
+    if fn in self._tpu_function_cache:
+      return self._tpu_function_cache[fn]
+
+    strategy = self._container_strategy()
+
+    def tpu_function(args, kwargs):
+      """TF Function used to replicate the user computation."""
+      if kwargs is None:
+        kwargs = {}
+
+      # Used to re-structure flattened output tensors from `tpu.replicate()`
+      # into a structured format.
+      result = [[]]
+
+      def replicated_fn(replica_id, replica_args, replica_kwargs):
+        """Wraps user function to provide replica ID and `Tensor` inputs."""
+        with _TPUReplicaContext(strategy, replica_id_in_sync_group=replica_id):
+          result[0] = fn(*replica_args, **replica_kwargs)
+        return result[0]
+
+      replicate_inputs = []  # By replica.
+      for i in range(strategy.num_replicas_in_sync):
+        replicate_inputs.append(
+            [constant_op.constant(i, dtype=dtypes.int32),
+             values.select_replica(i, args),
+             values.select_replica(i, kwargs)])
+
+      # Construct and pass `maximum_shapes` so that we could support dynamic
+      # shapes using dynamic padder.
+      if replicate_inputs:
+        maximum_shapes = []
+        flattened_list = nest.flatten(replicate_inputs[0])
+        for input_tensor in flattened_list:
+          if tensor_util.is_tensor(input_tensor):
+            maximum_shape = input_tensor.get_shape()
+          else:
+            maximum_shape = tensor_shape.TensorShape(np.shape(input_tensor))
+          maximum_shapes.append(maximum_shape)
+        maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
+                                               maximum_shapes)
+      else:
+        maximum_shapes = None
+
+      with strategy.scope():
+        replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs,
+                                          maximum_shapes=maximum_shapes)
+
+      # Remove all no ops that may have been added during 'tpu.replicate()'
+      if isinstance(result[0], list):
+        result[0] = [
+            output for output in result[0] if tensor_util.is_tensor(output)
+        ]
+
+      # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
+      if result[0] is None:
+        replicate_outputs = [None] * len(replicate_outputs)
+      else:
+        replicate_outputs = [
+            nest.pack_sequence_as(result[0], nest.flatten(replica_output))
+            for replica_output in replicate_outputs
+        ]
+      device_map = self._device_map  # pylint: disable=protected-access
+      return values.regroup(device_map, replicate_outputs)
+
+    if context.executing_eagerly():
+      tpu_function = def_function.function(tpu_function)
+
+    self._tpu_function_cache[fn] = tpu_function
+    return tpu_function
 
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
