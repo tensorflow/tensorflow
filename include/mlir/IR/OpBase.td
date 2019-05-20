@@ -276,19 +276,16 @@ class AnyTypeOf<list<Type> allowedTypes, string description = ""> : Type<
         // Otherwise use the provided one
         description)>;
 
-
 // Integer types.
-class IntegerBase<CPred pred, string descr> : Type<pred, descr>;
-
 // Any integer type irrespective of its width.
-def Integer : IntegerBase<CPred<"$_self.isa<IntegerType>()">, "integer">;
+def Integer : Type<CPred<"$_self.isa<IntegerType>()">, "integer">;
 
 // Index type.
-def Index : IntegerBase<CPred<"$_self.isa<IndexType>()">, "index">;
+def Index : Type<CPred<"$_self.isa<IndexType>()">, "index">;
 
 // Integer type of a specific width.
 class I<int width>
-    : IntegerBase<CPred<"$_self.isInteger(" # width # ")">,
+    : Type<CPred<"$_self.isInteger(" # width # ")">,
                   width # "-bit integer">,
       BuildableType<"getIntegerType(" # width # ")"> {
   int bitwidth = width;
@@ -300,14 +297,13 @@ def I32 : I<32>;
 def I64 : I<64>;
 
 // Floating point types.
-class FloatBase<CPred pred, string descr> : Type<pred, descr>;
 
 // Any float type irrespective of its width.
-def Float : FloatBase<CPred<"$_self.isa<FloatType>()">, "floating-point">;
+def Float : Type<CPred<"$_self.isa<FloatType>()">, "floating-point">;
 
 // Float type of a specific width.
 class F<int width>
-    : FloatBase<CPred<"$_self.isF" # width # "()">,
+    : Type<CPred<"$_self.isF" # width # "()">,
                 width # "-bit float">,
       BuildableType<"getF" # width # "Type()"> {
   int bitwidth = width;
