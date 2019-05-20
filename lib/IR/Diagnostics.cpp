@@ -123,6 +123,14 @@ Diagnostic &Diagnostic::operator<<(Identifier val) {
   return *this;
 }
 
+/// Stream in an OperationName.
+Diagnostic &Diagnostic::operator<<(OperationName val) {
+  // An OperationName is stored in the context, so we don't need to worry about
+  // the lifetime of its data.
+  arguments.push_back(DiagnosticArgument(val.getStringRef()));
+  return *this;
+}
+
 /// Outputs this diagnostic to a stream.
 void Diagnostic::print(raw_ostream &os) const {
   for (auto &arg : getArguments())

@@ -38,6 +38,7 @@ class Identifier;
 struct LogicalResult;
 class MLIRContext;
 class Operation;
+class OperationName;
 class Type;
 
 namespace detail {
@@ -233,6 +234,9 @@ public:
 
   /// Stream in an Identifier.
   Diagnostic &operator<<(Identifier val);
+
+  /// Stream in an OperationName.
+  Diagnostic &operator<<(OperationName val);
 
   /// Stream in a range.
   template <typename T> Diagnostic &operator<<(llvm::iterator_range<T> range) {

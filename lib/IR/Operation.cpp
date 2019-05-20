@@ -549,7 +549,7 @@ LogicalResult Operation::fold(ArrayRef<Attribute> operands,
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
 InFlightDiagnostic Operation::emitOpError(const Twine &message) {
-  return emitError() << "'" << getName().getStringRef() << "' op " << message;
+  return emitError() << "'" << getName() << "' op " << message;
 }
 
 //===----------------------------------------------------------------------===//

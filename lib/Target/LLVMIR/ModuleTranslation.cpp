@@ -210,8 +210,7 @@ bool ModuleTranslation::convertOperation(Operation &opInst,
     return false;
   }
 
-  opInst.emitError("unsupported or non-LLVM operation: " +
-                   opInst.getName().getStringRef());
+  opInst.emitError("unsupported or non-LLVM operation: ") << opInst.getName();
   return true;
 }
 
