@@ -233,6 +233,7 @@ class NoUpdateSpec(APIChangeSpec):
     self.function_warnings = {}
     self.change_to_function = {}
     self.module_deprecations = {}
+    self.function_transformers = {}
     self.import_renames = {}
 
 

@@ -2072,19 +2072,20 @@ def _log_prob(self, x):
     self.assertEmpty(errors)
 
   def test_api_spec_reset_between_files(self):
-    old_symbol = "tf.conj(a)"
-    new_symbol = "tf.math.conj(a)"
+    for old_symbol, new_symbol in [
+        ("tf.conj(a)", "tf.math.conj(a)"),
+        ("tf.to_int32(x)", "tf.cast(x, dtype=tf.int32)")]:
 
-    ## Test that the api spec is reset in between files:
-    import_header = "import tensorflow.compat.v2 as tf\n"
-    text_a = import_header + old_symbol
-    expected_text_a = import_header + old_symbol
-    text_b = old_symbol
-    expected_text_b = new_symbol
-    results = self._upgrade_multiple([text_a, text_b])
-    result_a, result_b = results[0], results[1]
-    self.assertEqual(result_a[3], expected_text_a)
-    self.assertEqual(result_b[3], expected_text_b)
+      ## Test that the api spec is reset in between files:
+      import_header = "import tensorflow.compat.v2 as tf\n"
+      text_a = import_header + old_symbol
+      expected_text_a = import_header + old_symbol
+      text_b = old_symbol
+      expected_text_b = new_symbol
+      results = self._upgrade_multiple([text_a, text_b])
+      result_a, result_b = results[0], results[1]
+      self.assertEqual(result_a[3], expected_text_a)
+      self.assertEqual(result_b[3], expected_text_b)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

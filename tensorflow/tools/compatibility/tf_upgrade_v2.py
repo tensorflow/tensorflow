@@ -1519,6 +1519,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
       self.function_warnings = {}
       self.change_to_function = {}
       self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+      self.function_transformers = {}
       self.import_renames = {}
     return visitor.log, visitor.warnings_and_errors
 
