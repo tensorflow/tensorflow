@@ -160,6 +160,81 @@ new_http_archive() that offers some additional features. It also helps
 ensure best practices are followed.
 """
 
+def _tf_http_debian_package(ctx):
+    if ("file:///" not in ctx.attr.urls[0] and
+        ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
+        (len(ctx.attr.urls) < 2 and
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list()))):
+        fail("tf_http_debian_package(urls) must have redundant URLs. The " +
+             "mirror.tensorflow.org URL must be present and it must come first. " +
+             "Even if you don't have permission to mirror the file, please " +
+             "put the correctly formatted mirror URL there anyway, because " +
+             "someone will come along shortly thereafter and mirror the file.")
+
+    use_syslib = _use_system_lib(ctx, ctx.attr.name)
+    if not use_syslib:
+        ctx.download(
+            ctx.attr.urls,
+            "package.deb",
+            ctx.attr.sha256,
+        )
+        cmd = _wrap_bash_cmd(ctx, ["ar", "-x", ctx.path("package.deb")])
+        _execute_and_check_ret_code(ctx, cmd)
+        cmd = _wrap_bash_cmd(ctx, ["tar", "-xf", ctx.path("data.tar.xz")])
+        _execute_and_check_ret_code(ctx, cmd)
+        if ctx.attr.strip_prefix:
+            # This is equivalent to "mv %s/* .", but wildcards don't work.
+            cmd = _wrap_bash_cmd(ctx, ["find", ctx.path(ctx.attr.strip_prefix),
+                                       "-mindepth", "1", "-maxdepth", "1", "-exec",
+                                       "mv", "-t", ".", "--", "{}", "+"])
+            _execute_and_check_ret_code(ctx, cmd)
+            cmd = _wrap_bash_cmd(ctx, ["rmdir", ctx.path(ctx.attr.strip_prefix)])
+            _execute_and_check_ret_code(ctx, cmd)
+        if ctx.attr.delete:
+            _apply_delete(ctx, ctx.attr.delete)
+        if ctx.attr.patch_file != None:
+            _apply_patch(ctx, ctx.attr.patch_file)
+
+    if use_syslib and ctx.attr.system_build_file != None:
+        # Use BUILD.bazel to avoid conflict with third party projects with
+        # BUILD or build (directory) underneath.
+        ctx.template("BUILD.bazel", ctx.attr.system_build_file, {
+            "%prefix%": ".." if _repos_are_siblings() else "external",
+        }, False)
+
+    elif ctx.attr.build_file != None:
+        # Use BUILD.bazel to avoid conflict with third party projects with
+        # BUILD or build (directory) underneath.
+        ctx.template("BUILD.bazel", ctx.attr.build_file, {
+            "%prefix%": ".." if _repos_are_siblings() else "external",
+        }, False)
+
+    if use_syslib:
+        for internal_src, external_dest in ctx.attr.system_link_files.items():
+            ctx.symlink(Label(internal_src), ctx.path(external_dest))
+
+tf_http_debian_package = repository_rule(
+    implementation = _tf_http_debian_package,
+    attrs = {
+        "sha256": attr.string(mandatory = False),
+        "urls": attr.string_list(mandatory = True, allow_empty = False),
+        "strip_prefix": attr.string(),
+        "delete": attr.string_list(),
+        "patch_file": attr.label(),
+        "build_file": attr.label(),
+        "system_build_file": attr.label(),
+        "system_link_files": attr.string_dict(),
+    },
+    environ = [
+        "TF_SYSTEM_LIBS",
+    ],
+)
+"""Downloads and creates Bazel repos for dependencies packaged as Debian archives.
+
+This is a special version of tf_http_archive specifically for extracting
+.deb archives.
+"""
+
 def _third_party_http_archive(ctx):
     if ("mirror.tensorflow.org" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and

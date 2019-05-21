@@ -12,7 +12,7 @@ load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_http_debian_package")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -783,6 +783,17 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVlabs/cub/archive/1.8.0.zip",
             "https://github.com/NVlabs/cub/archive/1.8.0.zip",
+        ],
+    )
+
+    tf_http_debian_package(
+        name = "nvtx_archive",
+        build_file = clean_dep("//third_party:nvtx.BUILD"),
+        sha256 = "8b59a91e1de5015024dc4cbe9d21805f4eebeed8fbe1db944b10a316e609f27e",
+        strip_prefix = "usr/local/cuda-10.1/targets/x86_64-linux/include",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-nvtx-10-1_10.1.243-1_amd64.deb",
+            "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-nvtx-10-1_10.1.243-1_amd64.deb",
         ],
     )
 
