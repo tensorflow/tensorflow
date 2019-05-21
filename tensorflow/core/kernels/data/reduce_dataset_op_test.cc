@@ -108,7 +108,7 @@ TestCase TestCase2() {
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0})},
           /*output_dtypes*/ {DT_INT64, DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({})}};
+          /*output_shapes*/ {PartialTensorShape({}), PartialTensorShape({})}};
 }
 
 // Test case 3: the input dataset has no outputs, so the reduce dataset just
@@ -127,7 +127,7 @@ TestCase TestCase3() {
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3})},
           /*output_dtypes*/ {DT_INT64, DT_INT64},
-          /*output_shapes*/ {PartialTensorShape({})}};
+          /*output_shapes*/ {PartialTensorShape({}), PartialTensorShape({})}};
 }
 
 class ParameterizedReduceDatasetOpTest
