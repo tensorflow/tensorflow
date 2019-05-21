@@ -474,7 +474,7 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
                       GetConvolutionParameters(target, 0, 1));
 
   auto name = StrCat(debug_name, "_input");
-  poplar::OptionFlags opts;
+  poplar::OptionFlags opts = resources.default_conv_options;
   opts.set("pass",
            ConvClassificationTypeToString(target, resources.annotations));
 
@@ -490,7 +490,7 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
                       GetConvolutionParameters(target, 0, 1));
 
   auto name = StrCat(debug_name, "_weights");
-  poplar::OptionFlags opts;
+  poplar::OptionFlags opts = resources.default_conv_options;
   opts.set("pass",
            ConvClassificationTypeToString(target, resources.annotations));
 
