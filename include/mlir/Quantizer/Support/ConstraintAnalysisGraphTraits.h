@@ -28,7 +28,7 @@
 namespace llvm {
 
 template <>
-struct llvm::GraphTraits<const mlir::quantizer::CAGNode *> {
+struct GraphTraits<const mlir::quantizer::CAGNode *> {
   using NodeRef = const mlir::quantizer::CAGNode *;
 
   static NodeRef getEntryNode(NodeRef node) { return node; }
@@ -40,7 +40,7 @@ struct llvm::GraphTraits<const mlir::quantizer::CAGNode *> {
 };
 
 template <>
-struct llvm::GraphTraits<const mlir::quantizer::CAGSlice *>
+struct GraphTraits<const mlir::quantizer::CAGSlice *>
     : public llvm::GraphTraits<const mlir::quantizer::CAGNode *> {
   using nodes_iterator = mlir::quantizer::CAGSlice::const_iterator;
   static mlir::quantizer::CAGSlice::const_iterator

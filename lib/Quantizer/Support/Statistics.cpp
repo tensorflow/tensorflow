@@ -88,7 +88,7 @@ static bool getElementsStatistics(ElementsAttr attr,
 bool AttributeTensorStatistics::get(TensorAxisStatistics &stats) const {
   if (FloatAttr floatAttr = attr.dyn_cast<FloatAttr>()) {
     double value = floatAttr.getValueAsDouble();
-    stats = TensorAxisStatistics{1, value, value, value, 0};
+    stats = TensorAxisStatistics(1, value, value, value, 0);
     return true;
   } else if (auto eltAttr = attr.dyn_cast<ElementsAttr>()) {
     return getElementsStatistics(eltAttr, stats);

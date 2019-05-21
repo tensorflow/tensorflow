@@ -26,6 +26,7 @@ set(LIBS
   MLIRNVVMIR
   MLIRParser
   MLIRPass
+  MLIRQuantizerTransforms
   MLIRQuantOps
   MLIRStandardOps
   MLIRTransforms

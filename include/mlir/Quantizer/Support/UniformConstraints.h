@@ -34,7 +34,7 @@ class CAGSlice;
 /// Factory methods for adding CAG constraints of various kinds suitable
 /// for solving for uniform quantization.
 class UniformConstraintsBuilder {
- public:
+public:
   UniformConstraintsBuilder(CAGSlice &slice) : slice(slice) {}
 
   /// Adds a coupling constraint between two nodes, effectively treating
@@ -59,11 +59,11 @@ class UniformConstraintsBuilder {
   /// as the originating node.
   void propagateExplicitScale(CAGAnchorNode *from, CAGAnchorNode *to);
 
- private:
+private:
   CAGSlice &slice;
 };
 
-}  // namespace quantizer
-}  // namespace mlir
+} // namespace quantizer
+} // namespace mlir
 
-#endif  // MLIR_QUANTIZER_SUPPORT_UNIFORMCONSTRAINTS_H
+#endif // MLIR_QUANTIZER_SUPPORT_UNIFORMCONSTRAINTS_H

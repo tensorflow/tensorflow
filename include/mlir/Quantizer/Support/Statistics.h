@@ -36,6 +36,11 @@ struct TensorAxisStatistics {
   double mean = 0;
   double variance = 0;
 
+  TensorAxisStatistics() {}
+  TensorAxisStatistics(int64_t sampleSize, double minValue, double maxValue,
+                       double mean, double variance)
+      : sampleSize(sampleSize), minValue(minValue), maxValue(maxValue),
+        mean(mean), variance(variance) {}
   void clear() { *this = TensorAxisStatistics(); }
 };
 
