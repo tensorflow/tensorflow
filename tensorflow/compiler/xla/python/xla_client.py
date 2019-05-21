@@ -108,16 +108,14 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
-    if compile_options.argument_layouts:
-      argument_layouts = compile_options.argument_layouts
-    else:
-      argument_layouts = c_computation.GetProgramShape().parameter_shapes()
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
-    return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
-                                        options, self.client)
+    return _xla.LocalExecutable.Compile(c_computation,
+                                        compile_options.argument_layouts,
+                                        options, self.client,
+                                        compile_options.device_assignment)
 
 
 def _cpu_backend_factory():
@@ -419,6 +417,27 @@ def transfer_from_outfeed(shape, device_ordinal=0):
       shape.with_major_to_minor_layout_if_absent(), device_ordinal)
 
 
+DeviceAssignment = _xla.DeviceAssignment
+DeviceAssignment.__doc__ = """
+A DeviceAssignment is a C++ object with the following signature.
+
+def create(assignment):
+  '''Builds a device assignment.
+
+   Args:
+     assignment: a 2D numpy array of device ordinal integers, indexed by
+       [replica][computation_in_replica].
+   Returns:
+     A device assignment.
+  '''
+
+def replica_count():
+  '''Returns the number of replicas.'''
+def computation_count():
+  '''Returns the number of computations per replica.'''
+"""
+
+
 class CompileOptions(object):
   """Python object for XLA compile options.
 
@@ -436,6 +455,7 @@ class CompileOptions(object):
     self.num_replicas = 1
     self.argument_layouts = None
     self.result_layout = None
+    self.device_assignment = None
 
 
 class Computation(object):

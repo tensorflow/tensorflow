@@ -246,7 +246,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   // Device assignments
   py::class_<DeviceAssignment>(m, "DeviceAssignment")
-      .def_static("Create",
+      .def_static("create",
                   [](py::array_t<int> array) -> StatusOr<DeviceAssignment> {
                     if (array.ndim() != 2) {
                       return InvalidArgument(
