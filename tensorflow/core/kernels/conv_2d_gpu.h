@@ -504,15 +504,15 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
     const Dimension<NDIMS - 2> padding_left_dim(padding_left);
 
     if (format == FORMAT_NHWC) {
-      TF_CHECK_OK(GpuLaunchKernel((PadInputCustomKernelNHWC<T, NDIMS>),
-          dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-              config.virtual_thread_count, in.data(), input_dims, out.data(),
-              output_dims, padding_left_dim));
+      TF_CHECK_OK(GpuLaunchKernel(
+          PadInputCustomKernelNHWC<T, NDIMS>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
     } else if (format == FORMAT_NCHW) {
-      TF_CHECK_OK(GpuLaunchKernel((PadInputCustomKernelNCHW<T, NDIMS>),
-          dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-              config.virtual_thread_count, in.data(), input_dims, out.data(),
-              output_dims, padding_left_dim));
+      TF_CHECK_OK(GpuLaunchKernel(
+          PadInputCustomKernelNCHW<T, NDIMS>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
     } else {
       LOG(FATAL) << "Invalid data format: " << format;
     }
@@ -621,15 +621,17 @@ void LaunchBatchNarrowMatrixTransposeKernel(
     const T* input, const Dimension<3>& input_dims, T* output) {
   constexpr int NumThreads = TileLongSide;
   if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
-    TF_CHECK_OK(GpuLaunchKernel((SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
-                                          TileLongSide, TileShortSide>),
-        dim3(total_tiles_count), dim3(NumThreads), 0, d.stream(),
-        input, input_dims, output));
+    TF_CHECK_OK(GpuLaunchKernel(
+        SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
+                                              TileShortSide>,
+        total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
+        output));
   } else {
-    TF_CHECK_OK(GpuLaunchKernel((SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
-                                          TileShortSide, TileLongSide>),
-        dim3(total_tiles_count), dim3(NumThreads), 0, d.stream(),
-        input, input_dims, output));
+    TF_CHECK_OK(GpuLaunchKernel(
+        SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
+                                              TileLongSide>,
+        total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
+        output));
   }
 }
 
@@ -930,10 +932,11 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
 
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
-    TF_CHECK_OK(GpuLaunchKernel((SwapDimension1And2InTensor3UsingTiles<T, kNumThreads,
-                                          kTileSize, kTileSize, conjugate>),
-        dim3(total_tiles_count), dim3(kNumThreads), 0, d.stream(),
-        input, input_dims, output));
+    TF_CHECK_OK(GpuLaunchKernel(
+        SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize,
+                                              kTileSize, conjugate>,
+        total_tiles_count, kNumThreads, 0, d.stream(), input, input_dims,
+        output));
 
   } else if (narrow_matrix) {
     SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(

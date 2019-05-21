@@ -200,10 +200,11 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const Index input_inner_dim_size = data_size / input_outer_dim_size;
     config = GetGpuLaunchConfig(data_size, d);
 
-    TF_CHECK_OK(GpuLaunchKernel((UnsortedSegmentCustomKernel<T, Index, ReductionF>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        input_outer_dim_size, input_inner_dim_size, num_segments,
-        segment_ids.data(), data, output.data()));
+    TF_CHECK_OK(
+        GpuLaunchKernel(UnsortedSegmentCustomKernel<T, Index, ReductionF>,
+                        config.block_count, config.thread_per_block, 0,
+                        d.stream(), input_outer_dim_size, input_inner_dim_size,
+                        num_segments, segment_ids.data(), data, output.data()));
   }
 };
 

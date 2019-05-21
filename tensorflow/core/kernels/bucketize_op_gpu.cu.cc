@@ -101,17 +101,16 @@ struct BucketizeFunctor<GPUDevice, T> {
     const int32 kMaxSharedMemBytes = 16384;
     if (shared_mem_size < d.sharedMemPerBlock() &&
         shared_mem_size < kMaxSharedMemBytes) {
-      TF_CHECK_OK(GpuLaunchKernel((BucketizeCustomKernel<T, true>),
-          dim3(config.block_count), dim3(config.thread_per_block),
-          shared_mem_size, d.stream(),
-          input.size(), input.data(), boundaries_vector.size(),
-          boundaries_array.data(), output.data()));
+      TF_CHECK_OK(GpuLaunchKernel(BucketizeCustomKernel<T, true>,
+                                  config.block_count, config.thread_per_block,
+                                  shared_mem_size, d.stream(), input.size(),
+                                  input.data(), boundaries_vector.size(),
+                                  boundaries_array.data(), output.data()));
     } else {
-      TF_CHECK_OK(GpuLaunchKernel((BucketizeCustomKernel<T, false>),
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          d.stream(),
-          input.size(), input.data(), boundaries_vector.size(),
-          boundaries_array.data(), output.data()));
+      TF_CHECK_OK(GpuLaunchKernel(
+          BucketizeCustomKernel<T, false>, config.block_count,
+          config.thread_per_block, 0, d.stream(), input.size(), input.data(),
+          boundaries_vector.size(), boundaries_array.data(), output.data()));
     }
     return Status::OK();
   }

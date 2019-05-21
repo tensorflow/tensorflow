@@ -93,16 +93,16 @@ struct GatherFunctor<GPUDevice, T, Index> {
     GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
     if (is_axis_zero) {
       // clang-format off
-      TF_CHECK_OK(GpuLaunchKernel((GatherOpKernel<T, Index, true>),
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
+      TF_CHECK_OK(GpuLaunchKernel(GatherOpKernel<T, Index, true>,
+          config.block_count, config.thread_per_block, 0,
           d.stream(),
           params.data(), indices.data(), out.data(), gather_dim_size,
           indices_size, slice_size, out_size));
       // clang-format on
     } else {
       // clang-format off
-      TF_CHECK_OK(GpuLaunchKernel((GatherOpKernel<T, Index, false>),
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
+      TF_CHECK_OK(GpuLaunchKernel(GatherOpKernel<T, Index, false>,
+          config.block_count, config.thread_per_block, 0,
           d.stream(),
           params.data(), indices.data(), out.data(), gather_dim_size,
           indices_size, slice_size, out_size));

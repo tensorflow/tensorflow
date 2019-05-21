@@ -280,17 +280,17 @@ struct ResizeBilinear<GPUDevice, T> {
 
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     if (half_pixel_centers) {
-      TF_CHECK_OK(GpuLaunchKernel(ResizeBilinearKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        config.virtual_thread_count, images.data(), height_scale,
-        width_scale, batch, in_height, in_width, channels, out_height,
-        out_width, output.data()));
+      TF_CHECK_OK(GpuLaunchKernel(
+          ResizeBilinearKernel<T>, config.block_count, config.thread_per_block,
+          0, d.stream(), config.virtual_thread_count, images.data(),
+          height_scale, width_scale, batch, in_height, in_width, channels,
+          out_height, out_width, output.data()));
     } else {
-      TF_CHECK_OK(GpuLaunchKernel(LegacyResizeBilinearKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        config.virtual_thread_count, images.data(), height_scale,
-        width_scale, batch, in_height, in_width, channels, out_height,
-        out_width, output.data()));
+      TF_CHECK_OK(GpuLaunchKernel(
+          LegacyResizeBilinearKernel<T>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          images.data(), height_scale, width_scale, batch, in_height, in_width,
+          channels, out_height, out_width, output.data()));
     }
   }
 };
