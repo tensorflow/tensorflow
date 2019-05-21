@@ -445,7 +445,7 @@ def flip_up_down(image):
       of shape `[height, width, channels]`.
 
   Returns:
-    A tensor of the same type and shape as `image`.
+    A `Tensor` of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -467,7 +467,7 @@ def _flip(image, flip_index, scope_name):
     scope_name: string, scope name.
 
   Returns:
-    A tensor of the same type and shape as `image`.
+    A `Tensor` of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -557,8 +557,7 @@ def _rot90_4D(images, k, name_scope):
     name_scope: A valid TensorFlow name scope.
 
   Returns:
-    A 4-D tensor of the same type and shape as `images`.
-
+    A 4-D `Tensor` of the same type and shape as `images`.
   """
 
   def _rot90():
@@ -1505,7 +1504,7 @@ def per_image_standardization(image):
 
     # Apply a minimum normalization that protects us against uniform images.
     stddev = math_ops.reduce_std(image, axis=[-1, -2, -3], keepdims=True)
-    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
+    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, image.dtype))
     adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 
     image -= image_mean
@@ -2070,7 +2069,7 @@ def is_jpeg(contents, name=None):
      is_jpeg is susceptible to false positives.
   """
   # Normal JPEGs start with \xff\xd8\xff\xe0
-  # JPEG with EXIF stats with \xff\xd8\xff\xe1
+  # JPEG with EXIF starts with \xff\xd8\xff\xe1
   # Use \xff\xd8\xff to cover both.
   with ops.name_scope(name, 'is_jpeg'):
     substr = string_ops.substr(contents, 0, 3)
@@ -2446,8 +2445,7 @@ def sample_distorted_bounding_box(image_size,
   original image. The output is returned as 3 tensors: `begin`, `size` and
   `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
   image. The latter may be supplied to `tf.image.draw_bounding_boxes` to
-  visualize
-  what the bounding box looks like.
+  visualize what the bounding box looks like.
 
   Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
   The
@@ -2473,7 +2471,7 @@ def sample_distorted_bounding_box(image_size,
   ```
 
   Note that if no bounding box information is available, setting
-  `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+  `use_image_if_no_bounding_boxes = True` will assume there is a single implicit
   bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
   false and no bounding boxes are supplied, an error is raised.
 
