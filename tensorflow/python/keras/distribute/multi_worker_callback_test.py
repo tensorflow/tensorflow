@@ -33,6 +33,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
@@ -293,6 +294,32 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
                   save_weights_only=True,
                   load_weights_on_restart=True)
           ])
+
+  @staticmethod
+  def callableForTestReduceLROnPlateau(model, test_obj, train_ds, num_epoch,
+                                       steps, strategy, saving_filepath):
+
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='loss',
+            factor=0.1,
+            min_delta=1,
+            patience=1,
+            cooldown=5,
+            verbose=1)
+    ]
+
+    # It is expected that the learning rate would drop by `factor` within
+    # 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.0001, atol=1e-8)
+
+    # It is expected that the learning rate would drop by another `factor`
+    # within 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.00001, atol=1e-8)
 
   class PreemptionAtBatchBoundarySimulatingCallback(callbacks.Callback):
     """Callback to simulate preemtion at batch boundary."""
@@ -559,6 +586,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       callableForTestModelRestoreCallback.__func__)
   test_unmatched_model_file = generate_callback_test_function(
       callableForTestUnmatchedModelFile.__func__)
+  test_reduce_lr_on_plateau = generate_callback_test_function(
+      callableForTestReduceLROnPlateau.__func__)
 
 
 if __name__ == '__main__':
