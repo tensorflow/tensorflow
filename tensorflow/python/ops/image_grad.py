@@ -195,4 +195,4 @@ def _ROIAlignGrad(op, grad):
   else:
     grad0 = None
   # gradient wrt rois is 0
-  return [grad0, None]
+  return [grad0, None, None, None, None, None, None]
