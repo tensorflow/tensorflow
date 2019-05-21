@@ -123,7 +123,6 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
     }
-    options.config_proto.mutable_experimental()->set_executor_type("eager");
     grappler::GrapplerItem::OptimizationOptions optimization_options;
 
     // Tensorflow 2.0 in eager mode with automatic control dependencies will
@@ -132,6 +131,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
     // and current function implementation does not prune stateful and dataset
     // ops, we rely on Grappler to do the correct graph pruning.
     optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+    optimization_options.is_eager_mode = true;
 
     // All the nested function calls will be executed and optimized via
     // PartitionedCallOp, there is no need to optimize functions now.

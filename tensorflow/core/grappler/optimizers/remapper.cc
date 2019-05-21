@@ -1097,7 +1097,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     if (invalidated_nodes.count(&node) > 0) continue;
 
 #ifdef INTEL_MKL
-    if (item.executor_type.compare("eager") != 0) {
+    if (!item.optimization_options().is_eager_mode) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
       if (FindContractionWithBiasAndAddActivation(
               ctx, &node, &contract_with_bias_and_add_activation)) {
