@@ -2214,10 +2214,9 @@ class Model(network.Network):
 
       with K.get_graph().as_default():
         with K.name_scope('training'):
-          with K.name_scope(self.optimizer.__class__.__name__):
-            # Training updates
-            updates = self.optimizer.get_updates(
-                params=self._collected_trainable_weights, loss=self.total_loss)
+          # Training updates
+          updates = self.optimizer.get_updates(
+              params=self._collected_trainable_weights, loss=self.total_loss)
       # Unconditional updates
       updates += self.get_updates_for(None)
       # Conditional updates relevant to this model
