@@ -178,7 +178,7 @@ def _ROIAlignGrad(op, grad):
   allowed_types = [dtypes.float32]
   if op.inputs[0].dtype in allowed_types:
     # pylint: disable=protected-access
-    grad0 = gen_roi_align_op.roi_align_v2_grad(
+    grad0 = gen_roi_align_op.roi_align_grad(
         grad, original_input, rois,
         sampling_ratio,
         spatial_scale,
