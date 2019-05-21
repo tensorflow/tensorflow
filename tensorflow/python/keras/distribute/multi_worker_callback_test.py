@@ -321,6 +321,28 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     test_obj.assertAllClose(
         float(K.get_value(model.optimizer.lr)), 0.00001, atol=1e-8)
 
+  @staticmethod
+  def callableForTestEarlyStopping(model, test_obj, train_ds, num_epoch, steps,
+                                   strategy, saving_filepath):
+
+    class EpochCounterCallback(callbacks.Callback):
+
+      def on_epoch_begin(self, epoch, logs):
+        self.last_epoch = epoch
+
+    epoch_counter_cbk = EpochCounterCallback()
+    cbks = [
+        callbacks.EarlyStopping(
+            monitor='loss', min_delta=0.05, patience=1, verbose=1),
+        epoch_counter_cbk
+    ]
+
+    # Empirically, it is expected that `model.fit()` would terminate around the
+    # 22th epoch. Asserting that it should have been stopped before the 50th
+    # epoch to avoid flakiness and be more predictable.
+    model.fit(x=train_ds, epochs=100, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertLess(epoch_counter_cbk.last_epoch, 50)
+
   class PreemptionAtBatchBoundarySimulatingCallback(callbacks.Callback):
     """Callback to simulate preemtion at batch boundary."""
 
@@ -588,6 +610,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       callableForTestUnmatchedModelFile.__func__)
   test_reduce_lr_on_plateau = generate_callback_test_function(
       callableForTestReduceLROnPlateau.__func__)
+  test_early_stopping = generate_callback_test_function(
+      callableForTestEarlyStopping.__func__)
 
 
 if __name__ == '__main__':
