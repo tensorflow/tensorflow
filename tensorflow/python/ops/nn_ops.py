@@ -2168,9 +2168,9 @@ def conv2d_transpose_v2(
     input: A 4-D `Tensor` of type `float` and shape `[batch, height, width,
       in_channels]` for `NHWC` data format or `[batch, in_channels, height,
       width]` for `NCHW` data format.
-    filters: A 4-D `Tensor` with the same type as `value` and shape `[height,
+    filters: A 4-D `Tensor` with the same type as `input` and shape `[height,
       width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
-      must match that of `value`.
+      must match that of `input`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
@@ -2192,7 +2192,7 @@ def conv2d_transpose_v2(
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, or if
