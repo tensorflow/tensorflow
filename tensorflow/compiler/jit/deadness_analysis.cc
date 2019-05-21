@@ -958,7 +958,7 @@ Status GetFullFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
 // If the node is inside some frames, get the name of the outermost non-empty
 // frame.  Otherwise, get an empty frame name.
 Status GetRootFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
-                    string* frame) {
+                    absl::string_view* frame) {
   int depth = 0;
   const ControlFlowInfo* cfi_iter = &cfi_infos[n->id()];
   while (!cfi_iter->parent_frame->IsSource()) {
@@ -1257,12 +1257,12 @@ Status DeadnessAnalysisImpl::Populate(bool force_pessimistic) {
   size_t frame_start = 0;
   while (frame_start < topo.size()) {
     // Batching nodes who have the same root frame.
-    string cur_frame_name;
+    absl::string_view cur_frame_name;
     TF_RETURN_IF_ERROR(
         GetRootFrame(topo[frame_start], control_flow_info_, &cur_frame_name));
     size_t frame_end = frame_start;
     for (size_t i = frame_start + 1; i < topo.size(); ++i) {
-      string i_frame_name;
+      absl::string_view i_frame_name;
       TF_RETURN_IF_ERROR(
           GetRootFrame(topo[i], control_flow_info_, &i_frame_name));
       if (i_frame_name == cur_frame_name) {
