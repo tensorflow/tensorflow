@@ -66,6 +66,10 @@ struct PoplarXlaFlags {
 
   // Use the fallback scheduler instead of the default one.
   bool fallback_scheduler;
+
+  // TODO T8856 - remove this flag.
+  // Indicates whether to add the copies before the all reduce.
+  bool add_all_reduce_copies;
 };
 
 // Getters for flags structs defined above.  The first call to any of these

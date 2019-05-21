@@ -62,7 +62,10 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
       {"executable_cache_path", "Path to the executable cache. (path)"},
       {"dump_schedule_as_dot", "Dumps the scheduler graph as a dot file."},
       {"fallback_scheduler",
-       "Use the sync list scheduler rather than the default one."}};
+       "Use the sync list scheduler rather than the default one."},
+      {"add_all_reduce_copies",
+       "EXPERIMENTAL Adds extra copies before performing an all reduce "
+       "operation - can improve compiler performance."}};
   return flag_usage;
 }
 
@@ -108,6 +111,10 @@ void AllocateAndParseFlags() {
   // Use the fallback scheduler instead of the default one.
   poplar_xla_flags->fallback_scheduler = false;
 
+  // TODO T8856 - remove this flag.
+  // Indicates whether to add the copies before the all reduce.
+  poplar_xla_flags->add_all_reduce_copies = false;
+
   auto flag_usage = GetFlagUsage();
 
   std::vector<Flag> flag_list = {
@@ -125,6 +132,7 @@ void AllocateAndParseFlags() {
     ADD_FLAG(executable_cache_path)
     ADD_FLAG(dump_schedule_as_dot)
     ADD_FLAG(fallback_scheduler)
+    ADD_FLAG(add_all_reduce_copies)
 
 // clang-format on
 #undef ADD_FLAG
