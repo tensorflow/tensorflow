@@ -147,7 +147,7 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // and device name and does no lookups in the worker->device_mgr.
 static bool IsLocalDevice(const StringPiece worker_name,
                           const StringPiece device_name) {
-  return str_util::StartsWith(device_name, worker_name);
+  return absl::StartsWith(device_name, worker_name);
 }
 
 Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {

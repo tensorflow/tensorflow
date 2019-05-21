@@ -46,11 +46,11 @@ TEST(ServerLibTest, NewServerNoFactoriesAccept) {
   std::unique_ptr<ServerInterface> server;
   Status s = NewServer(server_def, &server);
   ASSERT_NE(s, Status::OK());
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.error_message(),
       "No server factory registered for the given ServerDef"));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "The available server factories are: ["));
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "The available server factories are: ["));
 }
 
 }  // namespace tensorflow

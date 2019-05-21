@@ -543,10 +543,10 @@ Status RegisterSegmentFunctionToFunctionLibrary(Graph* graph,
   std::map<string, Node*> io_nodes;
   int num_inputs = 0;
   for (auto n : sgraph.op_nodes()) {
-    if (str_util::StartsWith(n->name(), kInputPHName)) {
+    if (absl::StartsWith(n->name(), kInputPHName)) {
       num_inputs++;
       io_nodes.insert({n->name(), n});
-    } else if (str_util::StartsWith(n->name(), kOutputPHName)) {
+    } else if (absl::StartsWith(n->name(), kOutputPHName)) {
       io_nodes.insert({n->name(), n});
     }
   }

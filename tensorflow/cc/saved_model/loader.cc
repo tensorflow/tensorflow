@@ -308,7 +308,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
   const Status status = LoadSavedModelInternal(session_options, run_options,
                                                export_dir, tags, bundle);
   auto log_and_count = [&](const string& status_str) {
-    LOG(INFO) << "SavedModel load for tags { " << str_util::Join(tags, " ")
+    LOG(INFO) << "SavedModel load for tags { " << absl::StrJoin(tags, " ")
               << " }; Status: " << status_str << ". Took "
               << GetLatencyMicroseconds(start_microseconds) << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);

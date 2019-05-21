@@ -580,8 +580,8 @@ class NodeProcessor : public GraphProcessor {
     string device;
     string not_used;
     if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
-        str_util::StrContains(str_util::Lowercase(device),
-                              str_util::Lowercase(DEVICE_GPU))) {
+        absl::StrContains(absl::AsciiStrToLower(device),
+                          absl::AsciiStrToLower(DEVICE_GPU))) {
       return true;
     }
     return false;

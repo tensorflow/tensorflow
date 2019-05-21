@@ -579,9 +579,9 @@ TEST_F(OpKernelBuilderTest, BuilderTypeListAttr) {
                                             {"T|list(type)|[DT_FLOAT]"}));
 
   ExpectFailure("BuildTypeListAttr", DEVICE_CPU, {}, error::INVALID_ARGUMENT);
-  EXPECT_TRUE(str_util::StrContains(
-      GetKernelClassName("BuildTypeListAttr", DEVICE_CPU, {}),
-      "Invalid argument: "));
+  EXPECT_TRUE(
+      absl::StrContains(GetKernelClassName("BuildTypeListAttr", DEVICE_CPU, {}),
+                        "Invalid argument: "));
 
   ExpectFailure("BuildTypeListAttr", DEVICE_CPU, {"T|int|7"},
                 error::INVALID_ARGUMENT);
@@ -598,7 +598,7 @@ TEST_F(OpKernelBuilderTest, DuplicateKernel) {
   PrioritizedDeviceTypeVector devs;
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       status.error_message(), "Multiple OpKernel registrations match NodeDef"));
 
   ExpectFailure("DuplicateKernel", DEVICE_CPU, {}, error::INVALID_ARGUMENT);
@@ -618,7 +618,7 @@ TEST_F(OpKernelBuilderTest, DuplicateKernelForT) {
   PrioritizedDeviceTypeVector devs;
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       status.error_message(), "Multiple OpKernel registrations match NodeDef"));
 
   ExpectFailure("DuplicateKernelForT", DEVICE_CPU, {"T|type|DT_FLOAT"},
@@ -640,9 +640,9 @@ TEST_F(OpKernelBuilderTest, BadConstraint) {
   Status status = SupportedDeviceTypesForNode(DeviceTypes(), ndef, &devs);
   ASSERT_FALSE(status.ok());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(),
-                            "OpKernel 'BadConstraint' has constraint on attr "
-                            "'T' not in NodeDef"));
+      absl::StrContains(status.error_message(),
+                        "OpKernel 'BadConstraint' has constraint on attr "
+                        "'T' not in NodeDef"));
 
   ExpectFailure("BadConstraint", DEVICE_CPU, {"dtype|type|DT_FLOAT"},
                 error::INVALID_ARGUMENT);

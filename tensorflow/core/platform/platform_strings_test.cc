@@ -61,7 +61,7 @@ static bool GetValue(const string_vec &str, const std::string &macro_name,
                      std::string *pvalue) {
   std::string nam_eq = macro_name + "=";
   int i = 0;
-  while (i != str.size() && !tensorflow::str_util::StartsWith(str[i], nam_eq)) {
+  while (i != str.size() && !absl::StartsWith(str[i], nam_eq)) {
     i++;
   }
   bool found = (i != str.size());

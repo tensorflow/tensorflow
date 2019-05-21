@@ -64,7 +64,7 @@ TEST_F(ReaderTest, NoTagMatch) {
   Status st = ReadMetaGraphDefFromSavedModel(export_dir, {"missing-tag"},
                                              &meta_graph_def);
   EXPECT_FALSE(st.ok());
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       st.error_message(),
       "Could not find meta graph def matching supplied tags: { missing-tag }"))
       << st.error_message();
@@ -78,7 +78,7 @@ TEST_F(ReaderTest, NoTagMatchMultiple) {
   Status st = ReadMetaGraphDefFromSavedModel(
       export_dir, {kSavedModelTagServe, "missing-tag"}, &meta_graph_def);
   EXPECT_FALSE(st.ok());
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       st.error_message(),
       "Could not find meta graph def matching supplied tags: "))
       << st.error_message();

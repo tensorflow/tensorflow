@@ -143,7 +143,7 @@ string ResourceMgr::DebugString() const {
         line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
   }
   std::sort(text.begin(), text.end());
-  return str_util::Join(text, "\n");
+  return absl::StrJoin(text, "\n");
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,

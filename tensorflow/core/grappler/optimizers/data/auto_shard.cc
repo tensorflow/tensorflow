@@ -209,7 +209,7 @@ bool ReaderOpInFunction(const NodeDef& node,
     NodeDef node_in_func = func->node_def(i);
     if (IsDatasetNodeOfType(node_in_func, kReaderDatasetOps) &&
         node_in_func.input_size() > 0 &&
-        str_util::StartsWith(node_in_func.input(0), "args_0")) {
+        absl::StartsWith(node_in_func.input(0), "args_0")) {
       return true;
     }
     if (IsDatasetNodeOfType(func->node_def(i), kFuncDatasetOps) &&
