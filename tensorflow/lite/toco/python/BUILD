@@ -77,9 +77,6 @@ tf_py_test(
         "//tensorflow/lite/toco:model_flags_proto_py",
         "//tensorflow/lite/toco:toco_flags_proto_py",
     ],
-    data = [
-        ":toco_from_protos.par",
-    ],
     tags = [
         "no_oss",
         "no_pip",
