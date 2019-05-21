@@ -303,7 +303,7 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
 }
 
 Function *LaunchFuncOp::kernel() {
-  return this->getAttr(getKernelAttrName()).dyn_cast<FunctionAttr>().getValue();
+  return this->getAttr(getKernelAttrName()).cast<FunctionAttr>().getValue();
 }
 
 unsigned LaunchFuncOp::getNumKernelOperands() {
@@ -324,20 +324,20 @@ LogicalResult LaunchFuncOp::verify() {
   Function *kernelFunc = this->kernel();
   if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
           GPUDialect::getKernelFuncAttrName())) {
-    return emitError("kernel function is missing the '" +
-                     GPUDialect::getKernelFuncAttrName() + "' attribute");
+    return emitError("kernel function is missing the '")
+           << GPUDialect::getKernelFuncAttrName() << "' attribute";
   }
   unsigned numKernelFuncArgs = kernelFunc->getNumArguments();
   if (getNumKernelOperands() != numKernelFuncArgs) {
-    return emitOpError("got " + Twine(getNumKernelOperands()) +
-                       " kernel operands but expected " +
-                       Twine(numKernelFuncArgs));
+    return emitOpError("got ")
+           << getNumKernelOperands() << " kernel operands but expected "
+           << numKernelFuncArgs;
   }
   for (unsigned i = 0; i < numKernelFuncArgs; ++i) {
     if (getKernelOperand(i)->getType() !=
         kernelFunc->getArgument(i)->getType()) {
-      return emitOpError("type of function argument " + Twine(i) +
-                         " does not match");
+      return emitOpError("type of function argument ")
+             << i << " does not match";
     }
   }
   return success();
