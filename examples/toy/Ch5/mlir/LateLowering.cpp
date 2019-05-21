@@ -337,7 +337,7 @@ protected:
   /// Convert a Toy type, this gets called for block and region arguments, and
   /// attributes.
   Type convertType(Type t) override {
-    if (auto array = t.cast<toy::ToyArrayType>())
+    if (auto array = t.dyn_cast<toy::ToyArrayType>())
       return array.toMemref();
     return t;
   }
