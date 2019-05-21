@@ -168,18 +168,20 @@ def _ROIAlignGrad(op, grad):
   """
   original_input = op.inputs[0]
   rois = op.inputs[1]
-  sampling_ratio=op.inputs[2]
-  spatial_scale=op.inputs[3]
-  min_level=op.inputs[4]
-  max_level=op.inputs[5]
-  canonical_scale=op.inputs[6]
-  canonical_level=op.inputs[7]
+  sampling_ratio = op.inputs[2]
+  spatial_scale = op.inputs[3]
+  min_level = op.inputs[4]
+  max_level = op.inputs[5]
+  canonical_scale = op.inputs[6]
+  canonical_level = op.inputs[7]
   #allowed_types = [dtypes.float16, dtypes.float32, dtypes.float64]
   allowed_types = [dtypes.float32]
   if op.inputs[0].dtype in allowed_types:
     # pylint: disable=protected-access
     grad0 = gen_roi_align_op.roi_align_grad(
-        grad, original_input, rois,
+        grad,
+        original_input,
+        rois,
         sampling_ratio,
         spatial_scale,
         min_level,
@@ -188,7 +190,7 @@ def _ROIAlignGrad(op, grad):
         canonical_level,
         pooled_height=op.get_attr("pooled_height"),
         pooled_width=op.get_attr("pooled_width"),
-        )
+    )
     # pylint: enable=protected-access
   else:
     grad0 = None
