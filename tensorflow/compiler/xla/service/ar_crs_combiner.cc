@@ -68,29 +68,31 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
            Match(c->root_instruction(), m::Add(m::Parameter(), m::Parameter()));
   };
 
-  if (!instruction->IsCrossModuleAllReduce() ||
-      !computation_is_addition(instruction->called_computations()[0]) ||
-      instruction->user_count() != 1) {
-    return absl::nullopt;
-  }
-  auto next = instruction->users()[0];
-  int64 distance = 1;
-  while (!next->IsCrossReplicaAllReduce()) {
-    if (can_ar_move_past_instruction(next)) {
-      next = next->users()[0];
-    } else {
-      return absl::nullopt;
+  // We only support combining cross-partition all-reduce where each replica
+  // belongs to its own group, since the later cross-replica all-reduce combines
+  // along the replica dimension.
+  if (instruction->IsCrossModuleAllReduce() &&
+      instruction->replica_groups().size() == num_replicas_ &&
+      computation_is_addition(instruction->called_computations()[0]) &&
+      instruction->user_count() == 1) {
+    auto next = instruction->users()[0];
+    int64 distance = 1;
+    while (!next->IsCrossReplicaAllReduce()) {
+      if (can_ar_move_past_instruction(next)) {
+        next = next->users()[0];
+      } else {
+        return absl::nullopt;
+      }
+      ++distance;
     }
-    ++distance;
+    if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
+        computation_is_addition(next->called_computations()[0])) {
+      ArCrsPair pair(instruction, next, distance);
+      VLOG(2) << "ArCrsPair matching pattern: " << pair.ToString();
+      return pair;
+    }
   }
-  if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
-      computation_is_addition(next->called_computations()[0])) {
-    ArCrsPair pair(instruction, next, distance);
-    VLOG(2) << "ArCrsPair matching pattern: " << pair.ToString();
-    return pair;
-  } else {
-    return absl::nullopt;
-  }
+  return absl::nullopt;
 }
 
 absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
@@ -238,7 +240,7 @@ bool ArCrsCombiner::TupleElementsComputeSameValue(
 /* static */
 bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
                                                      HloInstruction* i2) {
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1);
   auto module = i1->parent()->parent();
   CHECK_EQ(module, i2->parent()->parent());
   combiner.call_graph_ = CallGraph::Build(module);

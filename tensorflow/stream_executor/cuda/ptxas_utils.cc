@@ -199,10 +199,10 @@ port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
   string stderr_output;
   int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
-  LOG(INFO) << stderr_output;
   if (exit_status != 0) {
-    return port::InternalError(absl::StrFormat(
-        "ptxas exited with non-zero error code %d", exit_status));
+    return port::InternalError(
+        absl::StrFormat("ptxas exited with non-zero error code %d, output: %s",
+                        exit_status, stderr_output));
   }
 
   // Read in the result of compilation and return it as a byte vector.

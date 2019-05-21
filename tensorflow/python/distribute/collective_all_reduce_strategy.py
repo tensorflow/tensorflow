@@ -123,10 +123,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._num_workers = 1
 
     if ops.executing_eagerly_outside_functions():
-      context.context().configure_collective_ops(
-          scoped_allocator_enabled_ops=("CollectiveReduce",),
-          use_nccl_communication=(self._communication == cross_device_ops_lib
-                                  .CollectiveCommunication.NCCL))
+      try:
+        context.context().configure_collective_ops(
+            scoped_allocator_enabled_ops=("CollectiveReduce",),
+            use_nccl_communication=(self._communication == cross_device_ops_lib
+                                    .CollectiveCommunication.NCCL))
+      except RuntimeError:
+        logging.warning("Collective ops is not configured at program startup. "
+                        "Some performance features may not be enabled.")
       self._collective_ops_configured = True
 
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in

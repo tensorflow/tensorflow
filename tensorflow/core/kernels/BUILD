@@ -3115,7 +3115,6 @@ cc_library(
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
-        ":einsum_op",
         ":lu_op",
         ":matrix_exponential_op",
         ":matrix_inverse_op",
@@ -3311,21 +3310,6 @@ tf_kernel_library(
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ],
-)
-
-tf_kernel_library(
-    name = "einsum_op",
-    prefix = "einsum_op",
-    deps = [
-        ":batch_matmul_op",
-        ":reduction_ops",
-        ":transpose_functor",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -6106,6 +6090,7 @@ filegroup(
         "in_topk_op.h",
         "initializable_lookup_table.cc",
         "logging_ops.cc",
+        "logging_ops.h",
         "lookup_table_init_op.cc",
         "lookup_table_op.cc",
         "lookup_util.cc",

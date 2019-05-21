@@ -1,5 +1,9 @@
 # Description:
 #   Tensorflow builder compatibility checker.
+load(
+    "//tensorflow:tensorflow.bzl",
+    "py_test",
+)
 
 licenses(["notice"])  # Apache 2.0
 

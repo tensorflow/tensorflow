@@ -500,10 +500,15 @@ class SymbolicSupportTest(test.TestCase):
 
     try:
       _ = TypeErrorLayer()(inputs)
-    except TypeError:
-      tb = traceback.extract_tb(sys.exc_info()[2])
-      last_entry = tb[-1]
-      function_name = last_entry[2]
+    except TypeError as e:
+      if hasattr(e, 'ag_error_metadata'):
+        self.assertIn('easily_identifiable_name', str(e))
+        # See ErrorMetadataBase in autograph/pyct/errors.py
+        function_name = e.ag_error_metadata.translated_stack[-1].function_name
+      else:
+        tb = traceback.extract_tb(sys.exc_info()[2])
+        last_entry = tb[-1]
+        function_name = last_entry[2]
       self.assertEqual(function_name, 'easily_identifiable_name')
 
   @test_util.run_in_graph_and_eager_modes

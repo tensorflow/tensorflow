@@ -200,6 +200,7 @@ cc_library(
         "//tensorflow/core/kernels:host_constant_op",
         "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:logging_ops",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:queue_op",
         "//tensorflow/core/kernels:resource_variable_ops",

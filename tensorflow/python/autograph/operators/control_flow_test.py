@@ -24,7 +24,6 @@ import sys
 import six
 
 from tensorflow.python.autograph.operators import control_flow
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -196,7 +195,7 @@ class WhileLoopTest(test.TestCase):
   def test_python_infinite_loop(self):
     if __debug__:
       with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
-        with self.assertRaisesRegexp(errors.ExecutionError, 'iteration limit'):
+        with self.assertRaisesRegexp(ValueError, 'iteration limit'):
           control_flow.while_stmt(
               test=lambda _: True,
               body=lambda i: (i + 1,),

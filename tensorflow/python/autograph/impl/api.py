@@ -26,9 +26,13 @@ import os
 import pdb
 import re
 import sys
+import traceback
 import textwrap
-
 from enum import Enum
+
+# pylint:disable=g-bad-import-order
+import six
+# pylint:enable=g-bad-import-order
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
@@ -37,6 +41,7 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -46,17 +51,69 @@ def is_autograph_strict_conversion_mode():
   return int(os.environ.get('AUTOGRAPH_STRICT_CONVERSION', '0')) > 0
 
 
-# TODO(mdan): Properly document the type hints.
-# TODO(mdan): Reduce the type hint information to (module, type).
-# (currently we require (module + class name, type))
+# TODO(mdan): Export this symbol.
+class AutoGraphError(Exception):
+  """Base class for all AutoGraph exceptions."""
+  pass
+
+
+class ConversionError(AutoGraphError):
+  """Raised during the conversion process."""
+  pass
+
+
+class StagingError(AutoGraphError):
+  """Raised during the staging (i.e. Python execution) of converted code."""
+  pass
+
+
+class _ErrorMetadata(errors.ErrorMetadataBase):
+  """AutoGraph-specific error metadata. See base class."""
+
+  def create_exception(self, preferred_type):
+    if preferred_type == errors_impl.OpError:
+      # Best-effort unpacking of OpError exceptions.
+      # TODO(mdan): Use a mechanism that is more future-proof.
+      t = type(self.cause)
+      init_argspec = tf_inspect.getfullargspec(t.__init__)
+      message = self.get_message()
+      init_args = tuple(init_argspec.argspec)
+      # At the time of this writing, TF errors either take 3 or 4 arguments,
+      # with the fourth being error_code.
+      if init_args == ('self', 'node_def', 'op', 'message', 'error_code'):
+        return t(
+            node_def=self.cause.node_def,
+            op=self.cause.op,
+            message=message,
+            error_code=self.error_code)
+      elif init_args == ('self', 'node_def', 'op', 'message'):
+        if 'error_code' in init_argspec.kwonlyargs:
+          return t(
+              node_def=self.cause.node_def,
+              op=self.cause.op,
+              message=message,
+              errro_code=self.error_code)
+        else:
+          return t(
+              node_def=self.cause.node_def, op=self.cause.op, message=message)
+
+    elif preferred_type in (AutoGraphError, ConversionError, StagingError):
+      return preferred_type(self.get_message())
+
+    exc = super(_ErrorMetadata, self).create_exception(preferred_type)
+    if exc is not None:
+      return exc
+
+    # Note: While changing an error's message property to change the message it
+    # displays will probably work a lot of times, there is no standard way in
+    # Python to do that. The safest way is therefore to create a new exception.
+    # For user defined exceptions, we could define an interface that allowed
+    # them to work under this mechanism.
+    return StagingError(self.get_message())
 
 
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
-# TODO(znado): Make an alias so can write Verbosity directly without needing
-# to write converter.
-def convert(
-    recursive=False,
-    optional_features=None):
+def convert(recursive=False, optional_features=None):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -81,13 +138,20 @@ def convert(
 
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
-      return converted_call(
-          f, None,
-          converter.ConversionOptions(
-              recursive=recursive,
-              force_conversion=True,
-              optional_features=optional_features,
-          ), args, kwargs)
+      """Wrapper that calls the converted version of f."""
+      try:
+        return converted_call(
+            f, None,
+            converter.ConversionOptions(
+                recursive=recursive,
+                force_conversion=True,
+                optional_features=optional_features,
+            ), args, kwargs)
+      except Exception as e:  # pylint:disable=broad-except
+        if hasattr(e, 'ag_error_metadata'):
+          raise e.ag_error_metadata.to_exception(type(e))
+        else:
+          raise
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -104,10 +168,10 @@ class RunMode(Enum):
 
   Attributes:
    * GRAPH: Call this function directly, as-is. This is suitable for functions
-       that were already designed for TF graphs and contain ops.
+     that were already designed for TF graphs and contain ops.
    * PY_FUNC: Wrap this function into a py_func op. This is suitable for code
-       that will only run correctly in Python, for example code that renders
-       to the display, reads keyboard input, etc.
+     that will only run correctly in Python, for example code that renders to
+     the display, reads keyboard input, etc.
   """
   GRAPH = 1
   PY_FUNC = 2
@@ -163,15 +227,38 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   return decorator
 
 
+def _attach_metadata(e, f, converted):
+  """Augments an error with the metadata necessary for rewrite."""
+  if hasattr(e, 'ag_pass_through'):
+    return
+
+  metadata = getattr(e, 'ag_error_metadata', None)
+  source_map = f.ag_source_map if converted else {}
+
+  if metadata is None:
+    logging.log(
+        1, 'Caught error in %s (converted=%s)', f, converted, exc_info=True)
+    message = '{}: {}'.format(e.__class__.__name__, e)
+  else:
+    message = None
+
+  cause_tb = traceback.extract_tb(sys.exc_info()[2])[1:]
+  e.ag_error_metadata = _ErrorMetadata(cause_tb, metadata, message, source_map)
+
+
 def _call_unconverted(f, args, kwargs):
   """Calls the original function without converting with AutoGraph."""
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
 
-  if kwargs is not None:
-    return f(*args, **kwargs)
-  else:
-    return f(*args)
+  try:
+    if kwargs is not None:
+      return f(*args, **kwargs)
+    else:
+      return f(*args)
+  except Exception as e:  # pylint:disable=broad-except
+    _attach_metadata(e, f, False)
+    raise
 
 
 def _is_known_loaded_type(f, module_name, entity_name):
@@ -224,9 +311,8 @@ def converted_call(f, owner, options, args, kwargs):
     else:
       composite_desc = ''
 
-    logging.log(1,
-                'Converted call: %s %s\n    args: %s\n    kwargs: %s\n',
-                f, composite_desc, args, kwargs)
+    logging.log(1, 'Converted call: %s %s\n    args: %s\n    kwargs: %s\n', f,
+                composite_desc, args, kwargs)
 
   if inspect_utils.isbuiltin(f):
     if kwargs:
@@ -264,8 +350,8 @@ def converted_call(f, owner, options, args, kwargs):
 
   # Custom ops and kernels are also permanently whitelisted.
   # See tensorflow.framework.load_library.
-  if (hasattr(f, '__module__')
-      and hasattr(f.__module__, '_IS_TENSORFLOW_PLUGIN')):
+  if (hasattr(f, '__module__') and
+      hasattr(f.__module__, '_IS_TENSORFLOW_PLUGIN')):
     logging.log(2, 'Permanently whitelisted: %s: TensorFlow plugin', f)
     return _call_unconverted(f, args, kwargs)
 
@@ -324,15 +410,14 @@ def converted_call(f, owner, options, args, kwargs):
 
     if not tf_inspect.isclass(target_entity):
       if not hasattr(target_entity, '__code__'):
-        logging.log(
-            2, 'Permanently whitelisted: %s: native binding', target_entity)
+        logging.log(2, 'Permanently whitelisted: %s: native binding',
+                    target_entity)
         return _call_unconverted(f, args, kwargs)
       elif (hasattr(target_entity.__code__, 'co_filename') and
             target_entity.__code__.co_filename == '<string>'):
         # TODO(mdan): __globals__['txt'] might work in Py3.
-        logging.log(
-            2, 'Permanently whitelisted: %s: dynamic code (exec?)',
-            target_entity)
+        logging.log(2, 'Permanently whitelisted: %s: dynamic code (exec?)',
+                    target_entity)
         return _call_unconverted(f, args, kwargs)
 
     converted_f = to_graph(
@@ -343,33 +428,29 @@ def converted_call(f, owner, options, args, kwargs):
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
                   converted_f.__defaults__)
+      if six.PY3:
+        logging.log(2, 'KW defaults of %s : %s',
+                    converted_f, converted_f.__kwdefaults__)
+
       if kwargs is not None:
-        callargs = tf_inspect.getcallargs(
-            converted_f, *effective_args, **kwargs)
+        callargs = tf_inspect.getcallargs(converted_f, *effective_args,
+                                          **kwargs)
       else:
         callargs = tf_inspect.getcallargs(converted_f, *effective_args)
+
       formatted_callargs = '\n'.join(
           '    {}: {}'.format(k, v) for k, v in callargs.items())
       logging.log(2, 'Calling %s with\n%s\n', converted_f, formatted_callargs)
 
-  # TODO(mdan): Reduce this list.
-  except (errors.AutoGraphError, AssertionError, AttributeError, IndexError,
-          KeyError, NameError, NotImplementedError, SyntaxError, TypeError,
-          ValueError, IOError) as e:
-
+  except Exception as e:  # pylint:disable=broad-except
     logging.log(1, 'Error transforming entity %s', target_entity, exc_info=True)
-
     if is_autograph_strict_conversion_mode():
       raise
-
     logging.warn(
         'Entity %s could not be transformed and will be executed as-is.'
-        ' Some features (e.g. tensor-dependent conditionals and loops) may not'
-        ' work as expected.'
-        ' Error details can be found in the logs when running with the env'
-        ' variable AUTOGRAPH_VERBOSITY >= 1. Please report this to the'
-        ' AutoGraph team. Cause: %s', target_entity, e)
-
+        ' Please report this to the AutgoGraph team. When filing the bug, set'
+        ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
+        ' attach the full output. Cause: %s', target_entity, e)
     return _call_unconverted(f, args, kwargs)
 
   try:
@@ -377,20 +458,15 @@ def converted_call(f, owner, options, args, kwargs):
       result = converted_f(*effective_args, **kwargs)
     else:
       result = converted_f(*effective_args)
-  except errors.StagingError as e:
-    target_origin = errors.extract_origin_info(converted_f)
-    raise errors.StagingError((target_origin,) + e.user_trace, e.original_error)
-  except errors.AutoGraphError as e:
-    target_origin = errors.extract_origin_info(converted_f)
-    raise errors.StagingError((target_origin,), e)
+  except Exception as e:
+    _attach_metadata(e, converted_f, True)
+    raise
 
   return result
 
 
 @tf_export('autograph.to_graph', v1=[])
-def to_graph(entity,
-             recursive=True,
-             experimental_optional_features=None):
+def to_graph(entity, recursive=True, experimental_optional_features=None):
   """Converts a Python entity into a TensorFlow graph.
 
   Also see: `tf.autograph.to_code`, `tf.function`.
@@ -435,11 +511,11 @@ def to_graph(entity,
 
   Args:
     entity: Python callable or class to convert.
-    recursive: Whether to recursively convert any functions that the
-      converted function may call.
+    recursive: Whether to recursively convert any functions that the converted
+      function may call.
     experimental_optional_features: `None`, a tuple of, or a single
-      `tf.autograph.experimental.Feature` value. Controls the use of
-      optional features in the conversion process.
+      `tf.autograph.experimental.Feature` value. Controls the use of optional
+      features in the conversion process.
 
   Returns:
     Same as `entity`, the converted Python function or class.
@@ -455,7 +531,9 @@ def to_graph(entity,
         autograph_module=tf_inspect.getmodule(to_graph))
     return conversion.convert(entity, program_ctx)
   except (ValueError, AttributeError, KeyError, NameError, AssertionError) as e:
-    errors.report_internal_error(entity, e)
+    logging.error(1, 'Error converting %s', entity, exc_info=True)
+    raise ConversionError('converting {}: {}: {}'.format(
+        entity, e.__class__.__name__, str(e)))
 
 
 @tf_export(v1=['autograph.to_graph'])
@@ -568,9 +646,7 @@ def to_code_v1(entity,
 
 
 @tf_export('autograph.to_code', v1=[])
-def to_code(entity,
-            recursive=True,
-            experimental_optional_features=None):
+def to_code(entity, recursive=True, experimental_optional_features=None):
   """Similar to `to_graph`, but returns Python source code as a string.
 
   Also see: `tf.autograph.to_graph`.
@@ -580,11 +656,11 @@ def to_code(entity,
 
   Args:
     entity: Python callable or class to convert.
-    recursive: Whether to recursively convert any functions that the
-      converted function may call.
+    recursive: Whether to recursively convert any functions that the converted
+      function may call.
     experimental_optional_features: `None`, a tuple of, or a single
-      `tf.autograph.experimental.Feature` value. Controls the use of
-      optional features in the conversion process.
+      `tf.autograph.experimental.Feature` value. Controls the use of optional
+      features in the conversion process.
 
   Returns:
     The converted code as string.
