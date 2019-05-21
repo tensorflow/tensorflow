@@ -171,7 +171,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     fn = saving_utils.trace_model_call(
         model, [tensor_spec.TensorSpec(shape=[None, 5], dtype=dtypes.float32)])
     signature_outputs = fn(inputs)
-    expected_outputs = {'output_1': model(inputs)}
+    expected_outputs = {model.output_names[0]: model(inputs)}
     self._assert_all_close(expected_outputs, signature_outputs)
 
   @test_util.run_in_graph_and_eager_modes

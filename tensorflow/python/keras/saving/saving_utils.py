@@ -104,7 +104,7 @@ def trace_model_call(model, input_signature=None):
     # When given a single input, Keras models will call the model on the tensor
     # rather than a list consisting of the single tensor.
     inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs))
+    outputs_list = nest.flatten(model(inputs=inputs))
     try:
       output_names = model.output_names
     except AttributeError:
