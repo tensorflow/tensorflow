@@ -35,8 +35,9 @@ namespace linalg {
 template <unsigned NInputs, unsigned NOutputs> class NInputsAndOutputs {
 public:
   template <typename ConcreteType>
-  class Impl : public OpTrait::detail::MultiOperandTraitBase<
-                   ConcreteType, NInputsAndOutputs<NInputs, NOutputs>::Impl> {
+  class Impl
+      : public OpTrait::TraitBase<ConcreteType,
+                                  NInputsAndOutputs<NInputs, NOutputs>::Impl> {
   public:
     static unsigned getNumInputs() { return NInputs; }
     static unsigned getNumOutputs() { return NOutputs; }
