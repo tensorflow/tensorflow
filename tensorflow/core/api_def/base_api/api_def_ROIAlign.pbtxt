@@ -1,16 +1,60 @@
 op {
   graph_op_name: "ROIAlign"
   summary: "      This op implements Region of Interest(RoI) align op as documented in arXiv:1703.06870."
+  in_arg {
+    name: "input"
+    description: "A 5D float tensor from feature layers of the layout [Batch, Level, Channel, Height, Width]."
+  }
+  in_arg {
+    name: "rois"
+    description: "A 3D float tensor for describing region of interest boxes and has layout [Batch, K, 4] for K RoIs."
+  }
+  in_arg {
+    name: "sampling_ratio"
+    description: "An int scalar, subsampling in each pooled cell. Should be 1.0 unless you have a reason to change it."
+  }
+  in_arg {
+    name: "spatial_scale"
+    description: "A Float scalar, scaling factor of the input. Should be 1.0 unless you have a reason to change it."
+  }
+  in_arg {
+    name: "min_level"
+    description: "An int scalar, minimum level in FPN tree. Should be 2 unless you have a reason to change it."
+  }
+  in_arg {
+    name: "max_level"
+    description: "An int scalar, maximum level in FPN tree. Should be 5 unless you have a reason to change it."
+  }
+  in_arg {
+    name: "canonical_scale"
+    description: "A float scalar, canonical scale used to assign boxes to FPN levels. Should be 224.0 unless you have a reason to change it."
+  }
+  in_arg {
+    name: "canonical_level"
+    description: "An int scalar, canonical level corresponding to canonical scale. Should be 4 unless you have a reason to change it."
+  }
+  out_arg {
+    name: "output"
+    description: "A 5D tensor  of [Batch, K, Channel, Pooled Height, Pooled Width] for K RoIs."
+  }
+  attr {
+    name: "pooled_height"
+    description: "An int scalar, height of the pooled window. "
+  }
+  attr {
+    name: "pooled_width"
+    description: "An int scalar, width of the pooled window. "
+  }
   description: <<END
       In short, it creates an pooled_height x pooled_width image from a given RoI using bilinear interpolation.
       `input`: is a 5D tensor from feature layers of the layout [Batch, Level, Channel, Height, Width]
       `rois`: is a 3D tensor for describing region of interest boxes and has layout [Batch, Roi Id, 4].
         last 4 elements define the corners of the roi box and is of the form  [y1, x1, y2, x2]
-      `output`: is 5D tensor  of [Batch, Roi Id, Channel, Pooled Height, Pooled Width]
-      `pooled_height` and `pooled_width` are the height and width of pooled window
-      `min_level` and `max_level` defines minimum and maximum levels in FPN pyramid
+      `output`: is 5D tensor  of [Batch, K, Channel, pooled_height, pooled_width] for K input RoIs
+      `pooled_height` and `pooled_width` are the height and width of pooled window. Typically 7x7 or 14x14
+      `min_level` and `max_level` defines minimum and maximum levels in FPN pyramid, typically 2 and 5
       `canonical_scale` and `canonical_level` are parameters for assingning roi boxes to corresponding
-        FPN level
+        FPN level. Defaults in the paper are 224.0 and 4 respectively
       `spatial_scale` is the scaling factor for the roi boxes.
 END
 }

@@ -1901,12 +1901,8 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "roi_align"
-    argspec: "args=[\'input\', \'rois\', \'spatial_scale\', \'pooled_height\', \'pooled_width\', \'sampling_ratio\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'debug\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'1\', \'-1\', \'2\', \'5\', \'224\', \'4\', \'False\', \'None\'], "
-  }
-  member_method {
     name: "roi_align_grad"
-    argspec: "args=[\'grads\', \'input\', \'rois\', \'spatial_scale\', \'pooled_height\', \'pooled_width\', \'sampling_ratio\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'debug\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'1\', \'-1\', \'2\', \'5\', \'224\', \'4\', \'False\', \'None\'], "
+    argspec: "args=[\'grads\', \'input\', \'rois\', \'sampling_ratio\', \'spatial_scale\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'pooled_height\', \'pooled_width\', \'name\'], varargs=None, keywords=None, defaults=[\'7\', \'7\', \'None\'], "
   }
   member_method {
     name: "roll"

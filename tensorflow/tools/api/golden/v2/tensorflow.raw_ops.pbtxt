@@ -2662,11 +2662,11 @@ tf_module {
   }
   member_method {
     name: "ROIAlign"
-    argspec: "args=[\'input\', \'rois\', \'spatial_scale\', \'pooled_height\', \'pooled_width\', \'sampling_ratio\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'debug\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'1\', \'-1\', \'2\', \'5\', \'224\', \'4\', \'False\', \'None\'], "
+    argspec: "args=[\'input\', \'rois\', \'sampling_ratio\', \'spatial_scale\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'pooled_height\', \'pooled_width\', \'name\'], varargs=None, keywords=None, defaults=[\'7\', \'7\', \'None\'], "
   }
   member_method {
     name: "ROIAlignGrad"
-    argspec: "args=[\'grads\', \'input\', \'rois\', \'spatial_scale\', \'pooled_height\', \'pooled_width\', \'sampling_ratio\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'debug\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'1\', \'-1\', \'2\', \'5\', \'224\', \'4\', \'False\', \'None\'], "
+    argspec: "args=[\'grads\', \'input\', \'rois\', \'sampling_ratio\', \'spatial_scale\', \'min_level\', \'max_level\', \'canonical_scale\', \'canonical_level\', \'pooled_height\', \'pooled_width\', \'name\'], varargs=None, keywords=None, defaults=[\'7\', \'7\', \'None\'], "
   }
   member_method {
     name: "RaggedGather"

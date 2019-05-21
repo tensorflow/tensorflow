@@ -51,7 +51,7 @@ template <typename T>
 EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T bilinear_interpolate(
     const T* bottom_data, const int height, const int width, T y, T x,
     const int index, /* index for debug only*/ const T* lower_bound = nullptr,
-    const T* upper_bound = nullptr, int chann = -1, bool debug = false) {
+    const T* upper_bound = nullptr, int chann = -1) {
   // deal with cases that inverse elements are out of feature map boundary
   if (y < -1.0 || y > height || x < -1.0 || x > width) {
     // empty
@@ -87,15 +87,6 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T bilinear_interpolate(
   T v2 = bottom_data[y_low * width + x_high];
   T v3 = bottom_data[y_high * width + x_low];
   T v4 = bottom_data[y_high * width + x_high];
-  // if (debug && chann >= 0 && chann < 4) {
-  //   int diff = bottom_data - lower_bound;
-  //   printf(
-  //       " BI y=%f x=%f yl=%d yh=%d xl=%d xh=%d w=%d h=%d lx=%f ly=%f v1=%f
-  //       v2=%f v3=%f v4=%f c=%d index=%d " "offset%d %d %d %d\n", y, x, y_low,
-  //       y_high, x_low, x_high, width, height, lx,ly, v1,v2,v3,v4 ,chann,
-  //       index, diff + y_low * width + x_low, diff + y_low * width + x_high,
-  //       diff + y_high * width + x_low, diff + y_high * width + x_high);
-  // }
   T w1 = hy * hx, w2 = hy * lx, w3 = ly * hx, w4 = ly * lx;
 
   T val = (w1 * v1 + w2 * v2 + w3 * v3 + w4 * v4);
@@ -108,7 +99,7 @@ EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC void bilinear_interpolate_gradient(
     const int height, const int width, T y, T x, T& w1, T& w2, T& w3, T& w4,
     int& x_low, int& x_high, int& y_low, int& y_high,
     const int index /* index for debug only*/, const int level = -1,
-    int chann = -1, bool debug = false) {
+    int chann = -1) {
   // deal with cases that inverse elements are out of feature map boundary
   if (y < -1.0 || y > height || x < -1.0 || x > width) {
     // empty
@@ -160,8 +151,8 @@ __global__ void Boxes2ScaledBoxesAndLevels(const CudaLaunchConfig config,
                                            const T* boxes, int min_level,
                                            int max_level, float canonical_scale,
                                            int canonical_level, int* levels,
-                                           T* scaled_boxes, bool is_bw = false,
-                                           bool debug = false) {
+                                           T* scaled_boxes,
+                                           bool is_bw = false) {
   CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
     const T* box = boxes + i * 4;
     T* scaled_box = scaled_boxes + i * 4;
@@ -193,8 +184,7 @@ __global__ void RoIAlignForward(
     const T spatial_scale, const int num_levels, const int channels,
     const int height, const int width, const int n_rois,
     const int pooled_height, const int pooled_width, const int sampling_ratio,
-    const T* scaled_roi_boxes, const int32* levels, int roi_cols, T* top_data,
-    bool debug = false) {
+    const T* scaled_roi_boxes, const int32* levels, int roi_cols, T* top_data) {
   CUDA_AXIS_KERNEL_LOOP(image_index, nthreads.virtual_thread_count.y, Y) {
     CUDA_AXIS_KERNEL_LOOP(index, nthreads.virtual_thread_count.x, X) {
       // CUDA_1D_KERNEL_LOOP(index, nthreads.virtual_thread_count) {
@@ -266,7 +256,7 @@ __global__ void RoIAlignBackwardFeature(
     const int pooled_height, const int pooled_width, const int sampling_ratio,
     const int roi_cols, const T* input_rois,
     int32* levels,  // scaled rois,  levels
-    T* output_grads /* input_grad */, bool debug = false) {
+    T* output_grads /* input_grad */) {
   CUDA_AXIS_KERNEL_LOOP(image_index, nthreads.virtual_thread_count.y, Y) {
     CUDA_AXIS_KERNEL_LOOP(index, nthreads.virtual_thread_count.x, X) {
       // (n, c, ph, pw) is an element in the pooled output
@@ -322,7 +312,7 @@ __global__ void RoIAlignBackwardFeature(
 
           bilinear_interpolate_gradient(level_height, level_width, y, x, w1, w2,
                                         w3, w4, x_low, x_high, y_low, y_high,
-                                        index, level, c, debug);
+                                        index, level, c);
 
           T g1 = inp_grads_this_bin * w1 / count;
           T g2 = inp_grads_this_bin * w2 / count;
@@ -350,24 +340,11 @@ class ROIAlignOp : public tensorflow::OpKernel {
  public:
   explicit ROIAlignOp(tensorflow::OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("spatial_scale", &spatial_scale_));
     OP_REQUIRES_OK(context, context->GetAttr("pooled_height", &pooled_height_));
     OP_REQUIRES_OK(context, context->GetAttr("pooled_width", &pooled_width_));
-    OP_REQUIRES_OK(context, context->GetAttr("min_level", &min_level_));
-    OP_REQUIRES_OK(context, context->GetAttr("max_level", &max_level_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("canonical_scale", &canonical_scale_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("canonical_level", &canonical_level_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("sampling_ratio", &sampling_ratio_));
-    OP_REQUIRES_OK(context, context->GetAttr("debug", &debug_));
 
-    is_nhwc_ = false;
-    CHECK_GT(spatial_scale_, 0);
     CHECK_GT(pooled_height_, 0);
     CHECK_GT(pooled_width_, 0);
-    CHECK_GE(sampling_ratio_, 0);
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
@@ -383,6 +360,21 @@ class ROIAlignOp : public tensorflow::OpKernel {
     const int64 width = X.dim_size(4);
     const int64 roi_cols = RoIs.dim_size(2);  // should be 4
     const int64 n_rois = RoIs.dim_size(1);    // num_rois,
+    // Converting all attributes to input as per review request.
+    int sampling_ratio;
+    float spatial_scale;
+    int min_level;
+    int max_level;
+    float canonical_scale;
+    int canonical_level;
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 2, &sampling_ratio));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 3, &spatial_scale));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 4, &min_level));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 5, &max_level));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 6, &canonical_scale));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 7, &canonical_level));
+    CHECK_GT(spatial_scale, 0);
+    CHECK_GE(sampling_ratio, 0);
     std::vector<int64> shape = {batch, n_rois, channels, pooled_height_,
                                 pooled_width_};  // N,K,C,H,W
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(shape, &output_shape));
@@ -403,21 +395,21 @@ class ROIAlignOp : public tensorflow::OpKernel {
                                 DataType::DT_INT32,
                                 TensorShape({batch, n_rois, 1}), &levels));
     CudaLaunchConfig config1D = GetCudaLaunchConfig(batch * n_rois, d);
-    VLOG(1) << "Before boxes cudaconfig numelts= "
+    VLOG(2) << "Before boxes cudaconfig numelts= "
             << config1D.virtual_thread_count << " " << name() << " block "
             << config1D.block_count << " threads=" << config1D.thread_per_block;
     Boxes2ScaledBoxesAndLevels<float>
         <<<config1D.block_count, config1D.thread_per_block, 0, d.stream()>>>(
-            config1D, RoIs.flat<float>().data(), min_level_, max_level_,
-            canonical_scale_, canonical_level_, (levels).flat<int32>().data(),
-            (scaled_boxes).flat<float>().data(), false, debug_);
-    // d.synchronize();
-    VLOG(1) << "after boxes scaled_shape" << scaled_boxes.shape()
+            config1D, RoIs.flat<float>().data(), min_level, max_level,
+            canonical_scale, canonical_level, (levels).flat<int32>().data(),
+            (scaled_boxes).flat<float>().data(), false);
+
+    VLOG(2) << "after boxes scaled_shape" << scaled_boxes.shape()
             << " levels.shape" << levels.shape() << " input shape "
             << X.shape();
     Cuda2DLaunchConfig config = GetCuda2DLaunchConfig(
         n_rois * channels * pooled_height_ * pooled_width_, batch, d);
-    VLOG(1) << "before RoiAlign forward " << name() << " X " << X.shape()
+    VLOG(2) << "before RoiAlign forward " << name() << " X " << X.shape()
             << " boxes= " << scaled_boxes.shape()
             << " levels=" << levels.shape() << " output shape=" << Y->shape()
             << " block ( " << config.block_count.x << ","
@@ -430,54 +422,41 @@ class ROIAlignOp : public tensorflow::OpKernel {
             << config.virtual_thread_count.z << ")";
     RoIAlignForward<float>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            config, X.flat<float>().data(), spatial_scale_, num_levels,
-            channels, height, width, n_rois, pooled_height_, pooled_width_,
-            sampling_ratio_, (scaled_boxes).flat<float>().data(),
-            (levels).flat<int32>().data(), roi_cols, (*Y).flat<float>().data(),
-            debug_);
-    // d.synchronize();
-    VLOG(1) << "after RoiAlign forward, X= " << X.shape().DebugString()
+            config, X.flat<float>().data(), spatial_scale, num_levels, channels,
+            height, width, n_rois, pooled_height_, pooled_width_,
+            sampling_ratio, (scaled_boxes).flat<float>().data(),
+            (levels).flat<int32>().data(), roi_cols, (*Y).flat<float>().data());
+
+    VLOG(2) << "after RoiAlign forward, X= " << X.shape().DebugString()
             << " scaled_boxes=" << scaled_boxes.shape()
             << " pooled_width=" << pooled_width_ << " output=" << Y->shape();
-    // CHECK_EQ(cudaGetLastError(), CUDA_SUCCESS);
   }
 
  private:
-  float spatial_scale_;
+  template <typename T>
+  Status CheckAndSetInput(OpKernelContext* ctx, int input, T* result) {
+    if (!TensorShapeUtils::IsScalar(ctx->input(input).shape())) {
+      return errors::InvalidArgument("Input should be a Scalar");
+    }
+    if (ctx->input(input).dtype() != DataTypeToEnum<T>::v()) {
+      return errors::InvalidArgument("Input should be a " +
+                                     DataTypeString(ctx->input(input).dtype()));
+    }
+    *result = ctx->input(input).scalar<T>()();
+    return Status::OK();
+  }
   int pooled_height_;
   int pooled_width_;
-  int sampling_ratio_;
-  int min_level_;
-  int max_level_;
-  float canonical_scale_;
-  int canonical_level_;
-  bool is_nhwc_;
-  bool debug_;
 };
 
 class ROIAlignOpGrad : public tensorflow::OpKernel {
  public:
   explicit ROIAlignOpGrad(tensorflow::OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("spatial_scale", &spatial_scale_));
     OP_REQUIRES_OK(context, context->GetAttr("pooled_height", &pooled_height_));
     OP_REQUIRES_OK(context, context->GetAttr("pooled_width", &pooled_width_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("sampling_ratio", &sampling_ratio_));
-    OP_REQUIRES_OK(context, context->GetAttr("min_level", &min_level_));
-    OP_REQUIRES_OK(context, context->GetAttr("max_level", &max_level_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("canonical_scale", &canonical_scale_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("canonical_level", &canonical_level_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("sampling_ratio", &sampling_ratio_));
-    OP_REQUIRES_OK(context, context->GetAttr("debug", &debug_));
-    is_nhwc_ = false;
-    CHECK_GT(spatial_scale_, 0);
     CHECK_GT(pooled_height_, 0);
     CHECK_GT(pooled_width_, 0);
-    CHECK_GE(sampling_ratio_, 0);
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {
@@ -495,6 +474,22 @@ class ROIAlignOpGrad : public tensorflow::OpKernel {
     const int64 width = features.dim_size(4);
     const int64 roi_cols = RoIs.dim_size(2);
     const int64 n_rois = RoIs.dim_size(1);
+    // Converting all attributes to input as per review request.
+    int sampling_ratio;
+    float spatial_scale;
+    int min_level;
+    int max_level;
+    float canonical_scale;
+    int canonical_level;
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 3, &sampling_ratio));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 4, &spatial_scale));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 5, &min_level));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 6, &max_level));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 7, &canonical_scale));
+    OP_REQUIRES_OK(context, CheckAndSetInput(context, 8, &canonical_level));
+    CHECK_GT(spatial_scale, 0);
+    CHECK_GE(sampling_ratio, 0);
+
     Tensor levels;
     Tensor scaled_boxes;
     OP_REQUIRES_OK(context, context->allocate_temp(RoIs.dtype(), RoIs.shape(),
@@ -507,17 +502,16 @@ class ROIAlignOpGrad : public tensorflow::OpKernel {
             << config1D.virtual_thread_count << " " << name();
     Boxes2ScaledBoxesAndLevels<float>
         <<<config1D.block_count, config1D.thread_per_block, 0, d.stream()>>>(
-            config1D, RoIs.flat<float>().data(), min_level_, max_level_,
-            canonical_scale_, canonical_level_, (levels).flat<int32>().data(),
-            (scaled_boxes).flat<float>().data(), true, debug_);
-    // d.synchronize();
-    VLOG(1) << "after boxes scaled_shape" << scaled_boxes.shape()
+            config1D, RoIs.flat<float>().data(), min_level, max_level,
+            canonical_scale, canonical_level, (levels).flat<int32>().data(),
+            (scaled_boxes).flat<float>().data(), true);
+
+    VLOG(2) << "after boxes scaled_shape" << scaled_boxes.shape()
             << " levels.shape" << levels.shape();
-    // CHECK_EQ(cudaGetLastError(), CUDA_SUCCESS);
 
     Cuda2DLaunchConfig config = GetCuda2DLaunchConfig(
         n_rois * channels * pooled_height_ * pooled_width_, batch, d);
-    VLOG(1) << "before RoiAlign Backward " << name()
+    VLOG(2) << "before RoiAlign Backward " << name()
             << " grads=" << grads.shape() << " features=" << features.shape()
             << " RoIs" << RoIs.shape() << " block ( " << config.block_count.x
             << "," << config.block_count.y << "," << config.block_count.z
@@ -534,31 +528,33 @@ class ROIAlignOpGrad : public tensorflow::OpKernel {
 
     RoIAlignBackwardFeature<float>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            config, grads.flat<float>().data(), spatial_scale_, num_levels,
+            config, grads.flat<float>().data(), spatial_scale, num_levels,
             channels, height, width, n_rois, pooled_height_, pooled_width_,
-            sampling_ratio_, roi_cols, (scaled_boxes).flat<float>().data(),
-            (levels).flat<int32>().data(), (*output).flat<float>().data(),
-            debug_);
-    // d.synchronize();
-    VLOG(1) << "after RoiAlign Backward, X.shape() "
+            sampling_ratio, roi_cols, (scaled_boxes).flat<float>().data(),
+            (levels).flat<int32>().data(), (*output).flat<float>().data());
+
+    VLOG(2) << "after RoiAlign Backward, X.shape() "
             << features.shape().DebugString()
             << " scaled_boxes=" << scaled_boxes.shape()
             << " pooled_width=" << pooled_width_
             << "output shape=" << output->shape();
-    // CHECK_EQ(cudaGetLastError(), CUDA_SUCCESS);
   }
 
  private:
-  float spatial_scale_;
+  template <typename T>
+  Status CheckAndSetInput(OpKernelContext* ctx, int input, T* result) {
+    if (!TensorShapeUtils::IsScalar(ctx->input(input).shape())) {
+      return errors::InvalidArgument("Input should be a Scalar");
+    }
+    if (ctx->input(input).dtype() != DataTypeToEnum<T>::v()) {
+      return errors::InvalidArgument("Input should be a " +
+                                     DataTypeString(ctx->input(input).dtype()));
+    }
+    *result = ctx->input(input).scalar<T>()();
+    return Status::OK();
+  }
   int pooled_height_;
   int pooled_width_;
-  int sampling_ratio_;
-  int min_level_;
-  int max_level_;
-  float canonical_scale_;
-  int canonical_level_;
-  bool is_nhwc_;
-  bool debug_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ROIAlign").Device(tensorflow::DEVICE_GPU),
