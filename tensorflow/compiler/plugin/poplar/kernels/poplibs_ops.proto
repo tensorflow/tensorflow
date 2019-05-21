@@ -33,6 +33,8 @@ message PoplibsOp {
     IpuInterCopy = 21;
     Dropout = 22;
     OneHot = 23;
+    ReplicationFactor = 24;
+    ReplicationNormalise = 25;
   }
   required Op op = 2;
 }

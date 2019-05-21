@@ -19,37 +19,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow import cast
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
 from tensorflow.contrib.ipu.python import popops_cross_replica_sum
+from tensorflow.compiler.plugin.poplar.ops import gen_poputil_ops
 
 
 class CrossReplicaOptimizer(optimizer.Optimizer):
   """An optimizer that averages gradients across IPU replicas."""
 
-  def __init__(self,
-               opt,
-               reduction=losses.Reduction.SUM,
-               name="CrossReplicaOptimizer"):
+  def __init__(self, opt, name="CrossReplicaOptimizer"):
     """Construct a new cross-replica optimizer.
 
     Args:
       opt: An existing `Optimizer` to encapsulate.
-      reduction: The reduction to apply to the shard losses.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "CrossReplicaOptimizer".
-
-    Raises:
-      ValueError: If reduction is not a valid cross-replica reduction.
     """
-    if reduction not in (losses.Reduction.SUM):
-      raise ValueError("Unsupported reduction: %s." % reduction)
 
     super(CrossReplicaOptimizer, self).__init__(False, name)
     self._opt = opt
-    self._reduction = reduction
 
   def compute_gradients(self, loss, var_list=None, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
@@ -101,7 +93,8 @@ class CrossReplicaOptimizer(optimizer.Optimizer):
       else:
         with ops.colocate_with(grad):
           summed_grads_and_vars.append(
-              (popops_cross_replica_sum.cross_replica_sum(grad), var))
+              (gen_poputil_ops.ipu_replication_normalise(
+                  popops_cross_replica_sum.cross_replica_sum(grad)), var))
     return self._opt.apply_gradients(summed_grads_and_vars, global_step, name)
 
   def get_slot(self, *args, **kwargs):

@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/norm_input_recomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_gather_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_scatter_expander.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/replication_factor_to_constant.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/root_token_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/sharding_pass.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/while_loop_condition_simplify.h"
@@ -487,6 +488,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<CustomOpReplacer>();
+    pipeline.AddPass<ReplicationFactorToConstant>(resources.replication_factor);
     pipeline.AddPass<HloComputationNameUniquify>();
     pipeline.AddPass<CholeskyExpander>();
     pipeline.AddPass<TriangularSolveExpander>();
