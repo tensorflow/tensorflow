@@ -149,7 +149,7 @@ AffineExprMatcher::AffineExprMatcher(AffineExprKind k, AffineExprMatcher a,
 
 SDBMExprKind SDBMExpr::getKind() const { return impl->getKind(); }
 
-MLIRContext *SDBMExpr::getContext() const { return impl->getContext(); }
+MLIRContext *SDBMExpr::getContext() const { return impl->context; }
 
 void SDBMExpr::print(raw_ostream &os) const {
   struct Printer : public SDBMVisitor<Printer> {
@@ -222,6 +222,22 @@ SDBMExpr SDBMExpr::operator-() { return SDBMNegator().visit(*this); }
 //===----------------------------------------------------------------------===//
 // SDBMSumExpr
 //===----------------------------------------------------------------------===//
+
+SDBMSumExpr SDBMSumExpr::get(SDBMVaryingExpr lhs, SDBMConstantExpr rhs) {
+  assert(lhs && "expected SDBM variable expression");
+  assert(rhs && "expected SDBM constant");
+
+  // If LHS of a sum is another sum, fold the constant RHS parts.
+  if (auto lhsSum = lhs.dyn_cast<SDBMSumExpr>()) {
+    lhs = lhsSum.getLHS();
+    rhs = SDBMConstantExpr::get(rhs.getContext(),
+                                rhs.getValue() + lhsSum.getRHS().getValue());
+  }
+
+  StorageUniquer &uniquer = lhs.getContext()->getSDBMUniquer();
+  return uniquer.get<detail::SDBMBinaryExprStorage>(
+      /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Add), lhs, rhs);
+}
 
 SDBMVaryingExpr SDBMSumExpr::getLHS() const {
   return static_cast<ImplType *>(impl)->lhs;
@@ -396,6 +412,15 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
 // SDBMDiffExpr
 //===----------------------------------------------------------------------===//
 
+SDBMDiffExpr SDBMDiffExpr::get(SDBMPositiveExpr lhs, SDBMPositiveExpr rhs) {
+  assert(lhs && "expected SDBM dimension");
+  assert(rhs && "expected SDBM dimension");
+
+  StorageUniquer &uniquer = lhs.getContext()->getSDBMUniquer();
+  return uniquer.get<detail::SDBMDiffExprStorage>(
+      /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Diff), lhs, rhs);
+}
+
 SDBMPositiveExpr SDBMDiffExpr::getLHS() const {
   return static_cast<ImplType *>(impl)->lhs;
 }
@@ -407,6 +432,19 @@ SDBMPositiveExpr SDBMDiffExpr::getRHS() const {
 //===----------------------------------------------------------------------===//
 // SDBMStripeExpr
 //===----------------------------------------------------------------------===//
+
+SDBMStripeExpr SDBMStripeExpr::get(SDBMPositiveExpr var,
+                                   SDBMConstantExpr stripeFactor) {
+  assert(var && "expected SDBM variable expression");
+  assert(stripeFactor && "expected non-null stripe factor");
+  if (stripeFactor.getValue() <= 0)
+    llvm::report_fatal_error("non-positive stripe factor");
+
+  StorageUniquer &uniquer = var.getContext()->getSDBMUniquer();
+  return uniquer.get<detail::SDBMBinaryExprStorage>(
+      /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Stripe), var,
+      stripeFactor);
+}
 
 SDBMPositiveExpr SDBMStripeExpr::getVar() const {
   if (SDBMVaryingExpr lhs = static_cast<ImplType *>(impl)->lhs)
@@ -427,8 +465,52 @@ unsigned SDBMInputExpr::getPosition() const {
 }
 
 //===----------------------------------------------------------------------===//
+// SDBMDimExpr
+//===----------------------------------------------------------------------===//
+
+SDBMDimExpr SDBMDimExpr::get(MLIRContext *context, unsigned position) {
+  assert(context && "expected non-null context");
+
+  auto assignCtx = [context](detail::SDBMPositiveExprStorage *storage) {
+    storage->context = context;
+  };
+
+  StorageUniquer &uniquer = context->getSDBMUniquer();
+  return uniquer.get<detail::SDBMPositiveExprStorage>(
+      assignCtx, static_cast<unsigned>(SDBMExprKind::DimId), position);
+}
+
+//===----------------------------------------------------------------------===//
+// SDBMSymbolExpr
+//===----------------------------------------------------------------------===//
+
+SDBMSymbolExpr SDBMSymbolExpr::get(MLIRContext *context, unsigned position) {
+  assert(context && "expected non-null context");
+
+  auto assignCtx = [context](detail::SDBMPositiveExprStorage *storage) {
+    storage->context = context;
+  };
+
+  StorageUniquer &uniquer = context->getSDBMUniquer();
+  return uniquer.get<detail::SDBMPositiveExprStorage>(
+      assignCtx, static_cast<unsigned>(SDBMExprKind::SymbolId), position);
+}
+
+//===----------------------------------------------------------------------===//
 // SDBMConstantExpr
 //===----------------------------------------------------------------------===//
+
+SDBMConstantExpr SDBMConstantExpr::get(MLIRContext *context, int64_t value) {
+  assert(context && "expected non-null context");
+
+  auto assignCtx = [context](detail::SDBMConstantExprStorage *storage) {
+    storage->context = context;
+  };
+
+  StorageUniquer &uniquer = context->getSDBMUniquer();
+  return uniquer.get<detail::SDBMConstantExprStorage>(
+      assignCtx, static_cast<unsigned>(SDBMExprKind::Constant), value);
+}
 
 int64_t SDBMConstantExpr::getValue() const {
   return static_cast<ImplType *>(impl)->constant;
@@ -437,6 +519,14 @@ int64_t SDBMConstantExpr::getValue() const {
 //===----------------------------------------------------------------------===//
 // SDBMNegExpr
 //===----------------------------------------------------------------------===//
+
+SDBMNegExpr SDBMNegExpr::get(SDBMPositiveExpr var) {
+  assert(var && "expected non-null SDBM variable expression");
+
+  StorageUniquer &uniquer = var.getContext()->getSDBMUniquer();
+  return uniquer.get<detail::SDBMNegExprStorage>(
+      /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Neg), var);
+}
 
 SDBMPositiveExpr SDBMNegExpr::getVar() const {
   return static_cast<ImplType *>(impl)->dim;

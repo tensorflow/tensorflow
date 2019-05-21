@@ -93,6 +93,10 @@ public:
   /// instances. This should not be used directly.
   StorageUniquer &getAttributeUniquer();
 
+  /// Returns the storage uniquer used for constructing SDBM expressions, which
+  /// are not attributes by themselves. This should not be used directly.
+  StorageUniquer &getSDBMUniquer();
+
 private:
   const std::unique_ptr<MLIRContextImpl> impl;
 

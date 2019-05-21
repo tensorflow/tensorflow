@@ -26,55 +26,108 @@
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SDBMExpr.h"
-#include "llvm/ADT/PointerIntPair.h"
+#include "mlir/Support/StorageUniquer.h"
 
 namespace mlir {
 namespace detail {
 
-struct SDBMExprStorage {
-  SDBMExprStorage(SDBMExprKind kind, MLIRContext *context)
-      : contextAndKind(context, kind) {}
+// Base storage class for SDBMExpr.
+struct SDBMExprStorage : public StorageUniquer::BaseStorage {
+  SDBMExprKind getKind() {
+    return static_cast<SDBMExprKind>(BaseStorage::getKind());
+  }
 
-  SDBMExprKind getKind() { return contextAndKind.getInt(); }
-
-  MLIRContext *getContext() { return contextAndKind.getPointer(); }
-
-  // This needs to know the layout of MLIRContext so the relevant file is
-  // included.
-  llvm::PointerIntPair<MLIRContext *, 3, SDBMExprKind> contextAndKind;
+  MLIRContext *context;
 };
 
+// Storage class for SDBM sum and stripe expressions.
 struct SDBMBinaryExprStorage : public SDBMExprStorage {
-  SDBMBinaryExprStorage(SDBMExprKind kind, MLIRContext *context,
-                        SDBMVaryingExpr left, SDBMConstantExpr right)
-      : SDBMExprStorage(kind, context), lhs(left), rhs(right) {}
+  using KeyTy = std::pair<SDBMVaryingExpr, SDBMConstantExpr>;
+
+  bool operator==(const KeyTy &key) const {
+    return std::get<0>(key) == lhs && std::get<1>(key) == rhs;
+  }
+
+  static SDBMBinaryExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<SDBMBinaryExprStorage>();
+    result->lhs = std::get<0>(key);
+    result->rhs = std::get<1>(key);
+    result->context = result->lhs.getContext();
+    return result;
+  }
+
   SDBMVaryingExpr lhs;
   SDBMConstantExpr rhs;
 };
 
+// Storage class for SDBM difference expressions.
 struct SDBMDiffExprStorage : public SDBMExprStorage {
-  SDBMDiffExprStorage(MLIRContext *context, SDBMPositiveExpr left,
-                      SDBMPositiveExpr right)
-      : SDBMExprStorage(SDBMExprKind::Diff, context), lhs(left), rhs(right) {}
+  using KeyTy = std::pair<SDBMPositiveExpr, SDBMPositiveExpr>;
+
+  bool operator==(const KeyTy &key) const {
+    return std::get<0>(key) == lhs && std::get<1>(key) == rhs;
+  }
+
+  static SDBMDiffExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<SDBMDiffExprStorage>();
+    result->lhs = std::get<0>(key);
+    result->rhs = std::get<1>(key);
+    result->context = result->lhs.getContext();
+    return result;
+  }
+
   SDBMPositiveExpr lhs;
   SDBMPositiveExpr rhs;
 };
 
+// Storage class for SDBM constant expressions.
 struct SDBMConstantExprStorage : public SDBMExprStorage {
-  SDBMConstantExprStorage(MLIRContext *context, int64_t value)
-      : SDBMExprStorage(SDBMExprKind::Constant, context), constant(value) {}
+  using KeyTy = int64_t;
+
+  bool operator==(const KeyTy &key) const { return constant == key; }
+
+  static SDBMConstantExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<SDBMConstantExprStorage>();
+    result->constant = key;
+    return result;
+  }
+
   int64_t constant;
 };
 
+// Storage class for SDBM dimension and symbol expressions.
 struct SDBMPositiveExprStorage : public SDBMExprStorage {
-  SDBMPositiveExprStorage(SDBMExprKind kind, MLIRContext *context, unsigned pos)
-      : SDBMExprStorage(kind, context), position(pos) {}
+  using KeyTy = unsigned;
+
+  bool operator==(const KeyTy &key) const { return position == key; }
+
+  static SDBMPositiveExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<SDBMPositiveExprStorage>();
+    result->position = key;
+    return result;
+  }
+
   unsigned position;
 };
 
+// Storage class for SDBM negation expressions.
 struct SDBMNegExprStorage : public SDBMExprStorage {
-  SDBMNegExprStorage(SDBMPositiveExpr expr)
-      : SDBMExprStorage(SDBMExprKind::Neg, expr.getContext()), dim(expr) {}
+  using KeyTy = SDBMPositiveExpr;
+
+  bool operator==(const KeyTy &key) const { return key == dim; }
+
+  static SDBMNegExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<SDBMNegExprStorage>();
+    result->dim = key;
+    result->context = key.getContext();
+    return result;
+  }
+
   SDBMPositiveExpr dim;
 };
 

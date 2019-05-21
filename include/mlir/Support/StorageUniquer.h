@@ -50,7 +50,7 @@ struct StorageUniquerImpl;
 ///    - Provide a method, 'bool operator==(const KeyTy &) const', to
 ///      compare the storage instance against an instance of the key type.
 ///
-///    - Provide a construction method:
+///    - Provide a static construction method:
 ///        'DerivedStorage *construct(StorageAllocator &, const KeyTy &key)'
 ///      that builds a unique instance of the derived storage. The arguments to
 ///      this function are an allocator to store any uniqued data and the key
