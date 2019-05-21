@@ -82,6 +82,9 @@ public:
   /// Returns the diagnostic engine for this context.
   DiagnosticEngine &getDiagEngine();
 
+  /// Returns the storage uniquer used for creating affine constructs.
+  StorageUniquer &getAffineUniquer();
+
   /// Returns the storage uniquer used for constructing type storage instances.
   /// This should not be used directly.
   StorageUniquer &getTypeUniquer();

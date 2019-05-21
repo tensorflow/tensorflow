@@ -35,9 +35,9 @@ struct StorageUniquerImpl;
 ///
 /// For non-parametric storage classes, i.e. those that are solely uniqued by
 /// their kind, nothing else is needed. Instances of these classes can be
-/// queried with 'getSimple'.
+/// created by calling `get` without trailing arguments.
 ///
-/// Otherwise, the parametric storage classes may be queried with 'getComplex',
+/// Otherwise, the parametric storage classes may be created with `get`,
 /// and must respect the following:
 ///    - Define a type alias, KeyTy, to a type that uniquely identifies the
 ///      instance of the storage class within its kind.

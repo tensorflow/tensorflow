@@ -189,7 +189,7 @@ public:
 /// A symbolic identifier appearing in an affine expression.
 class AffineSymbolExpr : public AffineExpr {
 public:
-  using ImplType = detail::AffineSymbolExprStorage;
+  using ImplType = detail::AffineDimExprStorage;
   /* implicit */ AffineSymbolExpr(AffineExpr::ImplType *ptr);
   unsigned getPosition() const;
 };

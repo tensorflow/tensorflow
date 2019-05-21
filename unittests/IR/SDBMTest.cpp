@@ -321,8 +321,8 @@ TEST(SDBMExpr, MatchStripeMulPattern) {
   // pattern (x floordiv B) * B == x # B.
   auto cst = getAffineConstantExpr(42, ctx());
   auto dim = getAffineDimExpr(0, ctx());
-  auto floor = getAffineBinaryOpExpr(AffineExprKind::FloorDiv, dim, cst);
-  auto mul = getAffineBinaryOpExpr(AffineExprKind::Mul, cst, floor);
+  auto floor = dim.floorDiv(cst);
+  auto mul = cst * floor;
   Optional<SDBMExpr> converted = SDBMStripeExpr::tryConvertAffineExpr(mul);
   ASSERT_TRUE(converted.hasValue());
   EXPECT_TRUE(converted->isa<SDBMStripeExpr>());
@@ -331,10 +331,10 @@ TEST(SDBMExpr, MatchStripeMulPattern) {
 TEST(SDBMExpr, NonSDBM) {
   auto d0 = getAffineDimExpr(0, ctx());
   auto d1 = getAffineDimExpr(1, ctx());
-  auto sum = getAffineBinaryOpExpr(AffineExprKind::Add, d0, d1);
+  auto sum = d0 + d1;
   auto c2 = getAffineConstantExpr(2, ctx());
-  auto prod = getAffineBinaryOpExpr(AffineExprKind::Mul, d0, c2);
-  auto ceildiv = getAffineBinaryOpExpr(AffineExprKind::CeilDiv, d1, c2);
+  auto prod = d0 * c2;
+  auto ceildiv = d1.ceilDiv(c2);
 
   // The following are not valid SDBM expressions:
   // - a sum of two variables

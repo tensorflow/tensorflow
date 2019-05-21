@@ -25,7 +25,7 @@
 
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "llvm/ADT/PointerIntPair.h"
+#include "mlir/Support/StorageUniquer.h"
 
 namespace mlir {
 
@@ -34,42 +34,61 @@ class MLIRContext;
 namespace detail {
 
 /// Base storage class appearing in an affine expression.
-struct AffineExprStorage {
-  AffineExprStorage(AffineExprKind kind, MLIRContext *context)
-      : contextAndKind(context, kind) {}
-  llvm::PointerIntPair<MLIRContext *, 3, AffineExprKind> contextAndKind;
+struct AffineExprStorage : public StorageUniquer::BaseStorage {
+  MLIRContext *context;
 };
 
 /// A binary operation appearing in an affine expression.
 struct AffineBinaryOpExprStorage : public AffineExprStorage {
-  AffineBinaryOpExprStorage(AffineExprStorage base, AffineExpr lhs,
-                            AffineExpr rhs)
-      : AffineExprStorage(base), lhs(lhs), rhs(rhs) {}
-  static AffineExpr get(AffineExprKind kind, AffineExpr lhs, AffineExpr rhs);
+  using KeyTy = std::pair<AffineExpr, AffineExpr>;
+
+  bool operator==(const KeyTy &key) const {
+    return key.first == lhs && key.second == rhs;
+  }
+
+  static AffineBinaryOpExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<AffineBinaryOpExprStorage>();
+    result->lhs = key.first;
+    result->rhs = key.second;
+    result->context = result->lhs.getContext();
+    return result;
+  }
+
   AffineExpr lhs;
   AffineExpr rhs;
 };
 
-/// A dimensional identifier appearing in an affine expression.
+/// A dimensional or symbolic identifier appearing in an affine expression.
 struct AffineDimExprStorage : public AffineExprStorage {
-  AffineDimExprStorage(AffineExprStorage base, unsigned position)
-      : AffineExprStorage(base), position(position) {}
-  /// Position of this identifier in the argument list.
-  unsigned position;
-};
+  using KeyTy = unsigned;
 
-/// A symbolic identifier appearing in an affine expression.
-struct AffineSymbolExprStorage : public AffineExprStorage {
-  AffineSymbolExprStorage(AffineExprStorage base, unsigned position)
-      : AffineExprStorage(base), position(position) {}
-  /// Position of this identifier in the symbol list.
+  bool operator==(const KeyTy &key) const { return position == key; }
+
+  static AffineDimExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<AffineDimExprStorage>();
+    result->position = key;
+    return result;
+  }
+
+  /// Position of this identifier in the argument list.
   unsigned position;
 };
 
 /// An integer constant appearing in affine expression.
 struct AffineConstantExprStorage : public AffineExprStorage {
-  AffineConstantExprStorage(AffineExprStorage base, int64_t constant)
-      : AffineExprStorage(base), constant(constant) {}
+  using KeyTy = int64_t;
+
+  bool operator==(const KeyTy &key) const { return constant == key; }
+
+  static AffineConstantExprStorage *
+  construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    auto *result = allocator.allocate<AffineConstantExprStorage>();
+    result->constant = key;
+    return result;
+  }
+
   // The constant.
   int64_t constant;
 };
