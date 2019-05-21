@@ -23,20 +23,43 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 Status RaggedTensorToSparseShapeFn(InferenceContext* c);
+Status RaggedTensorToVariantShapeFn(InferenceContext* c);
+Status RaggedTensorFromVariantShapeFn(InferenceContext* c);
 
 //==============================================================================
 // Registered Ops
 //==============================================================================
 
 REGISTER_OP("RaggedTensorToSparse")
-    .Input("rt_nested_splits: RAGGED_RANK * int64")
+    .Input("rt_nested_splits: RAGGED_RANK * Tsplits")
     .Input("rt_dense_values: T")
     .Output("sparse_indices: int64")
     .Output("sparse_values: T")
     .Output("sparse_dense_shape: int64")
     .Attr("RAGGED_RANK: int >= 1")
     .Attr("T: type")
+    .Attr("Tsplits: {int32, int64} = DT_INT64")
     .SetShapeFn(RaggedTensorToSparseShapeFn);
+
+REGISTER_OP("RaggedTensorToVariant")
+    .Input("rt_nested_splits: RAGGED_RANK * Tsplits")
+    .Input("rt_dense_values: Tvalues")
+    .Output("encoded_ragged: variant")
+    .Attr("RAGGED_RANK: int >= 1")
+    .Attr("Tvalues: type")
+    .Attr("Tsplits: {int32, int64}")
+    .Attr("batched_input: bool")
+    .SetShapeFn(RaggedTensorToVariantShapeFn);
+
+REGISTER_OP("RaggedTensorFromVariant")
+    .Input("encoded_ragged: variant")
+    .Output("output_nested_splits: output_ragged_rank * Tsplits")
+    .Output("output_dense_values: Tvalues")
+    .Attr("input_ragged_rank: int >= -1")
+    .Attr("output_ragged_rank: int >= 1")
+    .Attr("Tvalues: type")
+    .Attr("Tsplits: {int32, int64}")
+    .SetShapeFn(RaggedTensorFromVariantShapeFn);
 
 //==============================================================================
 // Shape Functions
@@ -68,6 +91,48 @@ Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
   c->set_output(1, c->Vector(num_values));              // values
   c->set_output(2, c->Vector(dense_dims));              // dense_shape
 
+  return Status::OK();
+}
+
+Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
+  int64 num_splits;
+  TF_RETURN_IF_ERROR(c->GetAttr<int64>("RAGGED_RANK", &num_splits));
+  bool batched;
+  TF_RETURN_IF_ERROR(c->GetAttr<bool>("batched_input", &batched));
+  shape_inference::ShapeHandle rt_dense_values = c->input(num_splits);
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(rt_dense_values, 1, &rt_dense_values));
+  for (int64 i = 0; i < num_splits; ++i) {
+    shape_inference::ShapeHandle splits = c->input(i);
+    TF_RETURN_IF_ERROR(c->WithRank(splits, 1, &splits));
+  }
+  if (batched) {
+    auto num_first_splits = c->Dim(c->input(0), 0);
+    shape_inference::DimensionHandle num_rows;
+    TF_RETURN_IF_ERROR(c->Subtract(num_first_splits, 1, &num_rows));
+    c->set_output(0, c->Vector(num_rows));
+  } else {
+    c->set_output(0, c->Scalar());
+  }
+  return Status::OK();
+}
+
+Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
+  int64 input_ragged_rank;
+  TF_RETURN_IF_ERROR(
+      c->GetAttr<int64>("input_ragged_rank", &input_ragged_rank));
+  int64 output_ragged_rank;
+  TF_RETURN_IF_ERROR(
+      c->GetAttr<int64>("output_ragged_rank", &output_ragged_rank));
+  shape_inference::ShapeHandle encoded_ragged = c->input(0);
+  if (c->RankKnown(encoded_ragged) && input_ragged_rank >= 0) {
+    shape_inference::ShapeHandle unused;
+    TF_RETURN_IF_ERROR(c->WithRank(
+        encoded_ragged, output_ragged_rank - input_ragged_rank, &unused));
+  }
+  for (int64 i = 0; i < output_ragged_rank; i++) {
+    c->set_output(i, c->UnknownShapeOfRank(1));
+  }
+  c->set_output(output_ragged_rank, c->UnknownShape());
   return Status::OK();
 }
 

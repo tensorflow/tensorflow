@@ -46,6 +46,7 @@ py_test(
     name = "layers_test",
     size = "small",
     srcs = ["python/layers/layers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers",
@@ -115,6 +116,7 @@ py_test(
     name = "pruning_utils_test",
     size = "medium",
     srcs = ["python/pruning_utils_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":pruning_utils",
@@ -127,6 +129,7 @@ py_test(
     name = "pruning_test",
     size = "small",
     srcs = ["python/pruning_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":pruning",
@@ -138,6 +141,7 @@ py_test(
     name = "rnn_cells_test",
     size = "small",
     srcs = ["python/layers/rnn_cells_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":pruning",
@@ -150,7 +154,11 @@ py_test(
     name = "strip_pruning_vars_test",
     size = "small",
     srcs = ["python/strip_pruning_vars_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",  # b/132443370
+    ],
     deps = [
         ":layers",
         ":pruning",
@@ -163,6 +171,7 @@ py_test(
 py_binary(
     name = "strip_pruning_vars",
     srcs = ["python/strip_pruning_vars.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [

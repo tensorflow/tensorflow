@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 

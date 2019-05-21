@@ -1113,16 +1113,13 @@ TEST_F(ShapeInferenceTest, BroadcastScalar) {
   }
 }
 
-// scalar <dot> vector: error
+// scalar <dot> vector: ok
 TEST_F(ShapeInferenceTest, ScalarDotVector) {
   DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(1);
-  dot_dnums.add_rhs_contracting_dimensions(0);
   auto inferred_status =
       ShapeInference::InferDotOpShape(f32_, vector_32_, dot_dnums);
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("Dot only supports rank"));
+  EXPECT_TRUE(inferred_status.ok());
+  EXPECT_EQ(inferred_status.ValueOrDie(), vector_32_);
 }
 
 // 3D <dot> 2D: error

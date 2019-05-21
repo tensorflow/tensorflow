@@ -28,7 +28,7 @@ The binary takes the following parameters:
     `mobilenet_labels.txt` where each label is in the same order as the output
     1001 dimension tensor.
 
-*   `output_path`: `string` \
+*   `output_file_path`: `string` \
     This is the path to the output file. The output is a CSV file that has
     top-10 accuracies in each row. Each line of output file is the cumulative
     accuracy after processing images in a sorted order. So first line is

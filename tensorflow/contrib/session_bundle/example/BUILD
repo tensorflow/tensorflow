@@ -15,6 +15,7 @@ py_binary(
     srcs = [
         "export_half_plus_two.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

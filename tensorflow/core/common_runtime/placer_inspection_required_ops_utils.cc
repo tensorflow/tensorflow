@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -93,6 +94,54 @@ Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
         "\" in function library: ", flib_def.ToProto().DebugString());
   }
   return Status::OK();
+}
+
+FunctionStack::FunctionStack(const string& function_name)
+    : current_function_name_(function_name) {}
+
+FunctionStack FunctionStack::Push(const Node* node_in_current_function,
+                                  const string& new_current_function) const {
+  FunctionStack new_stack(new_current_function);
+  new_stack.frames_ = frames_;
+  new_stack.frames_.emplace_back(current_function_name_,
+                                 node_in_current_function);
+  return new_stack;
+}
+
+bool FunctionStack::HasFunction(const string& function_name) const {
+  if (current_function_name_ == function_name) {
+    return true;
+  }
+  for (const Frame& frame : frames_) {
+    if (frame.function_name == function_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+string FunctionStack::FormatForError() const {
+  std::vector<string> msgs;
+  for (int i = 0; i < frames_.size(); ++i) {
+    if (frames_[i].function_name.empty()) {
+      // Empty function body should only happen at the top level, i.e. i = 0.
+      // All internal frames should have valid function names.
+      msgs.push_back(absl::StrCat("Graph contains node ",
+                                  FormatNodeForError(*frames_[i].node)));
+
+    } else {
+      msgs.push_back(absl::StrCat(
+          "Function ", errors::FormatFunctionForError(frames_[i].function_name),
+          " contains node ", FormatNodeForError(*frames_[i].node)));
+    }
+    const string& fname = (i + 1 < frames_.size())
+                              ? frames_[i + 1].function_name
+                              : current_function_name_;
+    msgs.push_back(absl::StrCat("Node ", FormatNodeForError(*frames_[i].node),
+                                " calls function ",
+                                errors::FormatFunctionForError(fname)));
+  }
+  return absl::StrJoin(msgs, "\n  ");
 }
 
 namespace {

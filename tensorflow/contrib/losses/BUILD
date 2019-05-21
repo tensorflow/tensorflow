@@ -39,6 +39,7 @@ py_library(
 py_test(
     name = "loss_ops_test",
     srcs = glob(["python/losses/loss_ops_test.py"]),
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":losses_py",
@@ -86,6 +87,7 @@ py_test(
     srcs = [
         "python/metric_learning/metric_loss_ops_test.py",
     ],
+    python_version = "PY2",
     shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [

@@ -984,7 +984,7 @@ struct scalar_atan2_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
 #if GOOGLE_CUDA
-    return ::atan2(y, x);
+    return std::atan2(y, x);
 #else
     return std::atan2(y, x);
 #endif
@@ -1206,6 +1206,18 @@ struct BatchSelectFunctor {
                   TTypes<bool>::ConstVec cond_vec,
                   typename TTypes<T>::ConstMatrix then_flat_outer_dims,
                   typename TTypes<T>::ConstMatrix else_flat_outer_dims);
+};
+
+template <typename Device, typename T, int NDIMS>
+struct BCastSelectFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<T, NDIMS>::Tensor output_tensor,
+                  typename TTypes<bool, NDIMS>::ConstTensor cond_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor then_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor else_tensor,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> cond_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> then_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> else_bcast);
 };
 
 }  // end namespace functor

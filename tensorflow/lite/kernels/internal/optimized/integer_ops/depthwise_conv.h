@@ -15,9 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 
-#include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -1888,7 +1891,31 @@ inline void DepthwiseConvWithRounding(
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
-  // TODO(renjieliu): Optimize for 3x3 filter case.
+// Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
+// Jetson TX-2. This compiler does not support the offsetof() macro.
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+
+  // Call kernel optimized for depthwise convolutions using 3x3 filters if
+  // parameters are supported.
+  if (optimized_ops::depthwise_conv::Fast3x3FilterKernelSupported<
+          optimized_ops::depthwise_conv::QuantizationType::kPerChannelInt8>(
+          input_shape, filter_shape, stride_width, stride_height,
+          dilation_width_factor, dilation_height_factor, pad_width, pad_height,
+          depth_multiplier, output_shape, 0, output_shift)) {
+    gemmlowp::ScopedProfilingLabel specialized_label(
+        "DepthwiseConvInt8/8bit/3x3");
+    optimized_ops::depthwise_conv::DepthwiseConv3x3FilterPerChannel<
+        DepthwiseConvOutputRounding::kUpward>(
+        params, output_multiplier, output_shift, input_shape, input_data,
+        filter_shape, filter_data, bias_shape, bias_data, output_shape,
+        output_data, thread_start, thread_end, thread_dim);
+    return;
+  }
+#endif
 
   gemmlowp::ScopedProfilingLabel specialized_label(
       "DepthwiseConvInt8/8bit/General");
@@ -1912,7 +1939,7 @@ inline void DepthwiseConvImpl(
 }
 
 template <typename T, typename TS>
-struct DepthwiseConvWorkerTask : public gemmlowp::Task {
+struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
   DepthwiseConvWorkerTask(const DepthwiseParams& params,
                           const int32* output_multiplier,
                           const int32* output_shift,
@@ -1981,9 +2008,8 @@ inline void DepthwiseConvPerChannel(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    gemmlowp::GemmContext* gemmlowp_context = nullptr) {
+    CpuBackendContext* cpu_backend_context) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8");
-
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -2003,8 +2029,7 @@ inline void DepthwiseConvPerChannel(
     thread_count = thread_count_row;
   }
 
-  const int max_threads =
-      gemmlowp_context ? gemmlowp_context->max_num_threads() : 1;
+  const int max_threads = cpu_backend_context->max_num_threads();
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
@@ -2013,18 +2038,22 @@ inline void DepthwiseConvPerChannel(
                       bias_data, output_shape, output_data, /*thread_start=*/0,
                       /*thread_end=*/output_rows, /*thread_dim=*/1);
   } else {
-    std::vector<gemmlowp::Task*> tasks(thread_count);
+    std::vector<DepthwiseConvWorkerTask<int8, int32>> tasks;
+    // TODO(b/131746020) don't create new heap allocations every time.
+    // At least we make it a single heap allocation by using reserve().
+    tasks.reserve(thread_count);
     int thread_start = 0;
     for (int i = 0; i < thread_count; ++i) {
       int thread_end =
           thread_start + (thread_dim_size - thread_start) / (thread_count - i);
-      tasks[i] = new DepthwiseConvWorkerTask<int8, int32>(
-          params, output_multiplier, output_shift, input_shape, input_data,
-          filter_shape, filter_data, bias_shape, bias_data, output_shape,
-          output_data, thread_start, thread_end, thread_dim);
+      tasks.emplace_back(params, output_multiplier, output_shift, input_shape,
+                         input_data, filter_shape, filter_data, bias_shape,
+                         bias_data, output_shape, output_data, thread_start,
+                         thread_end, thread_dim);
       thread_start = thread_end;
     }
-    gemmlowp_context->workers_pool()->Execute(tasks);
+    cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
+                                    cpu_backend_context);
   }
 }
 

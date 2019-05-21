@@ -40,6 +40,15 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
       self.evaluate(dataset._variant_tensor)
 
+  @parameterized.parameters(*[(buffer_size, slack_period)
+                              for buffer_size in (-1, None, 0, 5)
+                              for slack_period in (1, 8)])
+  def testPrefetchWithSlack(self, buffer_size, slack_period):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset_ops.PrefetchDataset(
+        dataset, buffer_size, slack_period=slack_period)
+    self.assertDatasetProduces(dataset, expected_output=range(100))
+
 
 if __name__ == "__main__":
   test.main()

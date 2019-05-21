@@ -558,7 +558,9 @@ class OptimizerTest(test.TestCase):
     loss = lambda: losses.mean_squared_error(model(x), y)
     var_list = lambda: model.trainable_weights
 
-    self.assertLen(var_list(), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      var_list()
     train_op = opt.minimize(loss, var_list)
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
@@ -681,10 +683,10 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_tf.set_weights(model_k_v2.get_weights())
 
-      opt_k_v1 = optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+      opt_k_v1 = optimizers.SGD(momentum=0.9, nesterov=True)
       opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
       opt_tf = momentum.MomentumOptimizer(
-          learning_rate=0.001, momentum=0.9, use_nesterov=True)
+          learning_rate=0.01, momentum=0.9, use_nesterov=True)
 
       model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
       model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])

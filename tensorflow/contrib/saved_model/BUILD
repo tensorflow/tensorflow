@@ -69,6 +69,7 @@ py_test(
     name = "reader_test",
     size = "small",
     srcs = ["python/saved_model/reader_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],

@@ -22,6 +22,9 @@ namespace monitoring {
 // Starts exporting metrics through a platform-specific monitoring API (if
 // provided). For builds using "tensorflow/core/platform/default", this is
 // currently a no-op. This function is idempotent.
+//
+// The TensorFlow runtime will call this the first time a new session is created
+// using the NewSession() method or an Eager Context is created.
 void StartExporter();
 
 // Manually invokes a one time metrics export through a platform-specific

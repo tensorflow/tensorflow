@@ -11,6 +11,7 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 load(
@@ -60,16 +61,16 @@ COMMON_PIP_DEPS = [
     ":included_headers",
     "//tensorflow:tensorflow_py",
     "//tensorflow/examples/saved_model/integration_tests:mnist_util",
-    "//tensorflow/examples/saved_model/integration_tests:util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
     "//tensorflow/python/autograph/core:test_lib",
-    "//tensorflow/python/autograph/pyct/testing:test_modules",
+    "//tensorflow/python/autograph/pyct/testing",
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
+    "//tensorflow/python/distribute:distribute_test_lib_pip",
     "//tensorflow/python:loss_scale",
     "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
@@ -85,6 +86,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
+    "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
@@ -250,6 +252,8 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
+    ]) + if_rocm([
+        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
 

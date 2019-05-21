@@ -562,11 +562,11 @@ REGISTER_OP("XlaEinsum")
             lhs_rhs_split[1], "'", " with size: ", lhs_rhs_split[1].size()));
       }
 
-      for (const char& c : lhs_rhs_split[0]) {
-        left_map[c] = context->Dim(input_a, left_map.size());
+      for (int i = 0; i < lhs_rhs_split[0].size(); ++i) {
+        left_map[lhs_rhs_split[0][i]] = context->Dim(input_a, i);
       }
-      for (const char& c : lhs_rhs_split[1]) {
-        right_map[c] = context->Dim(input_b, right_map.size());
+      for (int i = 0; i < lhs_rhs_split[1].size(); ++i) {
+        right_map[lhs_rhs_split[1][i]] = context->Dim(input_b, i);
       }
 
       for (const char& c : equation_split[1]) {

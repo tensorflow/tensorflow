@@ -193,6 +193,9 @@ class DeviceNameUtils {
                                           string* host_device_name);
 };
 
+std::ostream& operator<<(std::ostream& os,
+                         const DeviceNameUtils::ParsedName& x);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_

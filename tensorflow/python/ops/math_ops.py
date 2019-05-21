@@ -1059,12 +1059,12 @@ def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
   NOTE: Prefer using the Tensor division operator or tf.divide which obey Python
-  division operator semantics.
+  3 division operator semantics.
 
-  This function divides `x` and `y`, forcing Python 2.7 semantics. That is,
-  if one of `x` or `y` is a float, then the result will be a float.
-  Otherwise, the output will be an integer type. Flooring semantics are used
-  for integer division.
+  This function divides `x` and `y`, forcing Python 2 semantics. That is, if `x`
+  and `y` are both integers then the result will be an integer. This is in
+  contrast to Python 3, where division with `/` is always a float while division
+  with `//` is always an integer.
 
   Args:
     x: `Tensor` numerator of real numeric type.
@@ -1209,7 +1209,29 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
-  """x ^ y = (x | y) & ~(x & y)."""
+  """Logical XOR function.
+
+  x ^ y = (x | y) & ~(x & y)
+
+  Inputs are tensor and if the tensors contains more than one element, an
+  element-wise logical XOR is computed.
+
+  Usage:
+
+  ```python
+  x = tf.constant([False, False, True, True], dtype = tf.bool)
+  y = tf.constant([False, True, False, True], dtype = tf.bool)
+  z = tf.logical_xor(x, y, name="LogicalXor")
+  #  here z = [False  True  True False]
+  ```
+
+  Args:
+      x: A `Tensor` type bool.
+      y: A `Tensor` of type bool.
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
   # TODO(alemi) Make this a cwise op if people end up relying on it.
   return gen_math_ops.logical_and(
       gen_math_ops.logical_or(x, y),
@@ -2434,6 +2456,7 @@ def trace(x, name=None):
 
 
 @tf_export("linalg.matmul", "matmul")
+@dispatch.add_dispatch_support
 def matmul(a,
            b,
            transpose_a=False,
@@ -2562,7 +2585,7 @@ def matmul(a,
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
-    if fwd_compat.forward_compatible(2019, 4, 18):
+    if fwd_compat.forward_compatible(2019, 4, 25):
       output_may_have_non_empty_batch_shape = (
           (a_shape is None or len(a_shape) > 2) or
           (b_shape is None or len(b_shape) > 2))

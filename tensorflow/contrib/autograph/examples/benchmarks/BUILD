@@ -17,6 +17,7 @@ py_test(
     name = "cartpole_benchmark",
     size = "enormous",
     srcs = ["cartpole_benchmark.py"],
+    python_version = "PY2",
     tags = [
         "local",
         "manual",

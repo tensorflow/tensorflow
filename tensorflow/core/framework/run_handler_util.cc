@@ -40,9 +40,9 @@ void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,
     // `min_threads_per_request` constraint.
     // Note: We subtract a small epsilon (0.00001) to prevent ceil(..) from
     // rounding weights like 4.0 to 5.
-    int demand =
-        std::max(min_threads_per_request,
-                 static_cast<int>(ceil(weight * demand_factor - 0.00001f)));
+    int demand = std::max(
+        min_threads_per_request,
+        static_cast<int>(std::ceil(weight * demand_factor - 0.00001f)));
     // For the quantized range [start, end); compute the floor of real start,
     // and expand downwards from there with length `demand` and adjust for
     // boundary conditions.
@@ -54,4 +54,25 @@ void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,
     last_cumulative_weight = cumulative_weight;
   }
 }
+
+void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
+                                  std::vector<std::uint_fast32_t>* start_vec,
+                                  std::vector<std::uint_fast32_t>* end_vec) {
+  int steal_domain_size = std::min(min_threads_per_domain, num_threads);
+  unsigned steal_start = 0, steal_end = steal_domain_size;
+  for (int i = 0; i < num_threads; ++i) {
+    if (i >= steal_end) {
+      if (steal_end + steal_domain_size < num_threads) {
+        steal_start = steal_end;
+        steal_end += steal_domain_size;
+      } else {
+        steal_end = num_threads;
+        steal_start = steal_end - steal_domain_size;
+      }
+    }
+    start_vec->at(i) = steal_start;
+    end_vec->at(i) = steal_end;
+  }
+}
+
 }  // namespace tensorflow
