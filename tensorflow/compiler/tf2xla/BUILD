@@ -32,6 +32,7 @@ load(
     "if_cuda_is_configured",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
+load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 cc_library(
     name = "tf2xla_supported_ops_lib",
@@ -65,6 +66,19 @@ xla_proto_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+# A proto library that is minimal in size and dependencies for platforms like Android.
+tf_portable_proto_library(
+    name = "portable_tf2xla_proto",
+    config_string = "allow_all:true",
+    header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
+    portable_deps = ["//tensorflow/core:android_proto_lib"],
+    proto_deps = [
+        ":tf2xla_proto",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 xla_py_proto_library(
