@@ -19,6 +19,7 @@
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/SDBM/SDBM.h"
+#include "mlir/SDBM/SDBMDialect.h"
 #include "mlir/SDBM/SDBMExpr.h"
 
 #include "llvm/Support/raw_ostream.h"
@@ -32,9 +33,19 @@ static MLIRContext *ctx() {
   return &context;
 }
 
-static SDBMExpr dim(unsigned pos) { return SDBMDimExpr::get(ctx(), pos); }
+static SDBMDialect *dialect() {
+  static thread_local SDBMDialect *d = nullptr;
+  if (!d) {
+    d = ctx()->getRegisteredDialect<SDBMDialect>();
+  }
+  return d;
+}
 
-static SDBMExpr symb(unsigned pos) { return SDBMSymbolExpr::get(ctx(), pos); }
+static SDBMExpr dim(unsigned pos) { return SDBMDimExpr::get(dialect(), pos); }
+
+static SDBMExpr symb(unsigned pos) {
+  return SDBMSymbolExpr::get(dialect(), pos);
+}
 
 namespace {
 
@@ -129,7 +140,7 @@ TEST_FUNC(SDBM_StripeTightening) {
   auto sdbm = SDBM::get({tight}, {s - dim(0), s - dim(1) + 42});
 
   SmallVector<SDBMExpr, 4> eqs, ineqs;
-  sdbm.getSDBMExpressions(ctx(), ineqs, eqs);
+  sdbm.getSDBMExpressions(dialect(), ineqs, eqs);
   // CHECK-DAG: d0 - s0 # 3 + -2
   // CHECK-DAG: d1 - d0 + -42
   // CHEKC-DAG: d0 - s0 # 3 # 5

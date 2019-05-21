@@ -29,6 +29,7 @@
 namespace mlir {
 
 class MLIRContext;
+class SDBMDialect;
 class SDBMExpr;
 class SDBMPositiveExpr;
 
@@ -110,7 +111,7 @@ public:
   static SDBM get(ArrayRef<SDBMExpr> inequalities,
                   ArrayRef<SDBMExpr> equalities);
 
-  void getSDBMExpressions(MLIRContext *context,
+  void getSDBMExpressions(SDBMDialect *dialect,
                           SmallVectorImpl<SDBMExpr> &inequalities,
                           SmallVectorImpl<SDBMExpr> &equalities);
 
@@ -129,15 +130,14 @@ private:
   /// and at(col,row) of the DBM.  Depending on the values being finite and
   /// being subsumed by stripe expressions, this may or may not add elements to
   /// the lists of equalities and inequalities.
-  void convertDBMElement(MLIRContext *context, unsigned row, unsigned col,
-                         SDBMPositiveExpr rowExpr, SDBMPositiveExpr colExpr,
+  void convertDBMElement(unsigned row, unsigned col, SDBMPositiveExpr rowExpr,
+                         SDBMPositiveExpr colExpr,
                          SmallVectorImpl<SDBMExpr> &inequalities,
                          SmallVectorImpl<SDBMExpr> &equalities);
 
   /// Populate `inequalities` based on the value at(pos,pos) of the DBM. Only
   /// adds new inequalities if the inequality is not trivially true.
-  void convertDBMDiagonalElement(MLIRContext *context, unsigned pos,
-                                 SDBMPositiveExpr expr,
+  void convertDBMDiagonalElement(unsigned pos, SDBMPositiveExpr expr,
                                  SmallVectorImpl<SDBMExpr> &inequalities);
 
   /// Get the total number of elements in the matrix.

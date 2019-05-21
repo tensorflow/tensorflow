@@ -18,6 +18,7 @@
 #include "mlir/SDBM/SDBM.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/SDBM/SDBMDialect.h"
 #include "mlir/SDBM/SDBMExpr.h"
 #include "gtest/gtest.h"
 
@@ -30,9 +31,19 @@ static MLIRContext *ctx() {
   return &context;
 }
 
-static SDBMExpr dim(unsigned pos) { return SDBMDimExpr::get(ctx(), pos); }
+static SDBMDialect *dialect() {
+  static thread_local SDBMDialect *d = nullptr;
+  if (!d) {
+    d = ctx()->getRegisteredDialect<SDBMDialect>();
+  }
+  return d;
+}
 
-static SDBMExpr symb(unsigned pos) { return SDBMSymbolExpr::get(ctx(), pos); }
+static SDBMExpr dim(unsigned pos) { return SDBMDimExpr::get(dialect(), pos); }
+
+static SDBMExpr symb(unsigned pos) {
+  return SDBMSymbolExpr::get(dialect(), pos);
+}
 
 namespace {
 
@@ -47,7 +58,7 @@ TEST(SDBMOperators, Add) {
 }
 
 TEST(SDBMOperators, AddFolding) {
-  auto constant = SDBMConstantExpr::get(ctx(), 2) + 42;
+  auto constant = SDBMConstantExpr::get(dialect(), 2) + 42;
   auto constantExpr = constant.dyn_cast<SDBMConstantExpr>();
   ASSERT_TRUE(constantExpr);
   EXPECT_EQ(constantExpr.getValue(), 44);
@@ -57,13 +68,13 @@ TEST(SDBMOperators, AddFolding) {
   ASSERT_TRUE(sumExpr);
   EXPECT_EQ(sumExpr.getRHS().getValue(), 42);
 
-  expr = dim(0) + SDBMNegExpr::get(SDBMDimExpr::get(ctx(), 1));
+  expr = dim(0) + SDBMNegExpr::get(SDBMDimExpr::get(dialect(), 1));
   auto diffExpr = expr.dyn_cast<SDBMDiffExpr>();
   ASSERT_TRUE(diffExpr);
   EXPECT_EQ(diffExpr.getLHS(), dim(0));
   EXPECT_EQ(diffExpr.getRHS(), dim(1));
 
-  auto inverted = SDBMNegExpr::get(SDBMDimExpr::get(ctx(), 1)) + dim(0);
+  auto inverted = SDBMNegExpr::get(SDBMDimExpr::get(dialect(), 1)) + dim(0);
   EXPECT_EQ(inverted, expr);
 }
 
@@ -76,7 +87,7 @@ TEST(SDBMOperators, Diff) {
 }
 
 TEST(SDBMOperators, DiffFolding) {
-  auto constant = SDBMConstantExpr::get(ctx(), 10) - 3;
+  auto constant = SDBMConstantExpr::get(dialect(), 10) - 3;
   auto constantExpr = constant.dyn_cast<SDBMConstantExpr>();
   ASSERT_TRUE(constantExpr);
   EXPECT_EQ(constantExpr.getValue(), 7);
@@ -118,13 +129,13 @@ TEST(SDBM, RoundTripEqs) {
   auto s = stripe(stripe(symb(0), 3), 5);
   auto sdbm = SDBM::get(llvm::None, {s - dim(0), s - dim(1) + 42});
   SmallVector<SDBMExpr, 4> eqs, ineqs;
-  sdbm.getSDBMExpressions(ctx(), ineqs, eqs);
+  sdbm.getSDBMExpressions(dialect(), ineqs, eqs);
   ASSERT_TRUE(ineqs.empty());
 
   // Do the second round-trip.
   auto sdbm2 = SDBM::get(llvm::None, eqs);
   SmallVector<SDBMExpr, 4> eqs2, ineqs2;
-  sdbm2.getSDBMExpressions(ctx(), ineqs2, eqs2);
+  sdbm2.getSDBMExpressions(dialect(), ineqs2, eqs2);
   ASSERT_EQ(eqs.size(), eqs2.size());
 
   // Convert that the sets of equalities are equal, their order is not relevant.
@@ -136,11 +147,11 @@ TEST(SDBM, RoundTripEqs) {
 
 TEST(SDBMExpr, Constant) {
   // We can create consants and query them.
-  auto expr = SDBMConstantExpr::get(ctx(), 42);
+  auto expr = SDBMConstantExpr::get(dialect(), 42);
   EXPECT_EQ(expr.getValue(), 42);
 
   // Two separately created constants with identical values are trivially equal.
-  auto expr2 = SDBMConstantExpr::get(ctx(), 42);
+  auto expr2 = SDBMConstantExpr::get(dialect(), 42);
   EXPECT_EQ(expr, expr2);
 
   // Hierarchy is okay.
@@ -150,12 +161,12 @@ TEST(SDBMExpr, Constant) {
 
 TEST(SDBMExpr, Dim) {
   // We can create dimension expressions and query them.
-  auto expr = SDBMDimExpr::get(ctx(), 0);
+  auto expr = SDBMDimExpr::get(dialect(), 0);
   EXPECT_EQ(expr.getPosition(), 0u);
 
   // Two separately created dimensions with the same position are trivially
   // equal.
-  auto expr2 = SDBMDimExpr::get(ctx(), 0);
+  auto expr2 = SDBMDimExpr::get(dialect(), 0);
   EXPECT_EQ(expr, expr2);
 
   // Hierarchy is okay.
@@ -166,18 +177,18 @@ TEST(SDBMExpr, Dim) {
   EXPECT_TRUE(generic.isa<SDBMVaryingExpr>());
 
   // Dimensions are not Symbols.
-  auto symbol = SDBMSymbolExpr::get(ctx(), 0);
+  auto symbol = SDBMSymbolExpr::get(dialect(), 0);
   EXPECT_NE(expr, symbol);
   EXPECT_FALSE(expr.isa<SDBMSymbolExpr>());
 }
 
 TEST(SDBMExpr, Symbol) {
   // We can create symbol expressions and query them.
-  auto expr = SDBMSymbolExpr::get(ctx(), 0);
+  auto expr = SDBMSymbolExpr::get(dialect(), 0);
   EXPECT_EQ(expr.getPosition(), 0u);
 
   // Two separately created symbols with the same position are trivially equal.
-  auto expr2 = SDBMSymbolExpr::get(ctx(), 0);
+  auto expr2 = SDBMSymbolExpr::get(dialect(), 0);
   EXPECT_EQ(expr, expr2);
 
   // Hierarchy is okay.
@@ -188,15 +199,15 @@ TEST(SDBMExpr, Symbol) {
   EXPECT_TRUE(generic.isa<SDBMVaryingExpr>());
 
   // Dimensions are not Symbols.
-  auto symbol = SDBMDimExpr::get(ctx(), 0);
+  auto symbol = SDBMDimExpr::get(dialect(), 0);
   EXPECT_NE(expr, symbol);
   EXPECT_FALSE(expr.isa<SDBMDimExpr>());
 }
 
 TEST(SDBMExpr, Stripe) {
-  auto cst2 = SDBMConstantExpr::get(ctx(), 2);
-  auto cst0 = SDBMConstantExpr::get(ctx(), 0);
-  auto var = SDBMSymbolExpr::get(ctx(), 0);
+  auto cst2 = SDBMConstantExpr::get(dialect(), 2);
+  auto cst0 = SDBMConstantExpr::get(dialect(), 0);
+  auto var = SDBMSymbolExpr::get(dialect(), 0);
 
   // We can create stripe expressions and query them.
   auto expr = SDBMStripeExpr::get(var, cst2);
@@ -205,11 +216,11 @@ TEST(SDBMExpr, Stripe) {
 
   // Two separately created stripe expressions with the same LHS and RHS are
   // trivially equal.
-  auto expr2 = SDBMStripeExpr::get(SDBMSymbolExpr::get(ctx(), 0), cst2);
+  auto expr2 = SDBMStripeExpr::get(SDBMSymbolExpr::get(dialect(), 0), cst2);
   EXPECT_EQ(expr, expr2);
 
   // Stripes can be nested.
-  SDBMStripeExpr::get(expr, SDBMConstantExpr::get(ctx(), 4));
+  SDBMStripeExpr::get(expr, SDBMConstantExpr::get(dialect(), 4));
 
   // Non-positive stripe factors are not allowed.
   EXPECT_DEATH(SDBMStripeExpr::get(var, cst0), "non-positive");
@@ -222,8 +233,8 @@ TEST(SDBMExpr, Stripe) {
 }
 
 TEST(SDBMExpr, Neg) {
-  auto cst2 = SDBMConstantExpr::get(ctx(), 2);
-  auto var = SDBMSymbolExpr::get(ctx(), 0);
+  auto cst2 = SDBMConstantExpr::get(dialect(), 2);
+  auto var = SDBMSymbolExpr::get(dialect(), 0);
   auto stripe = SDBMStripeExpr::get(var, cst2);
 
   // We can create negation expressions and query them.
@@ -242,8 +253,8 @@ TEST(SDBMExpr, Neg) {
 }
 
 TEST(SDBMExpr, Sum) {
-  auto cst2 = SDBMConstantExpr::get(ctx(), 2);
-  auto var = SDBMSymbolExpr::get(ctx(), 0);
+  auto cst2 = SDBMConstantExpr::get(dialect(), 2);
+  auto var = SDBMSymbolExpr::get(dialect(), 0);
   auto stripe = SDBMStripeExpr::get(var, cst2);
 
   // We can create sum expressions and query them.
@@ -264,8 +275,8 @@ TEST(SDBMExpr, Sum) {
 }
 
 TEST(SDBMExpr, Diff) {
-  auto cst2 = SDBMConstantExpr::get(ctx(), 2);
-  auto var = SDBMSymbolExpr::get(ctx(), 0);
+  auto cst2 = SDBMConstantExpr::get(dialect(), 2);
+  auto var = SDBMSymbolExpr::get(dialect(), 0);
   auto stripe = SDBMStripeExpr::get(var, cst2);
 
   // We can create sum expressions and query them.
@@ -287,8 +298,8 @@ TEST(SDBMExpr, Diff) {
 
 TEST(SDBMExpr, AffineRoundTrip) {
   // Build an expression (s0 - s0 # 2)
-  auto cst2 = SDBMConstantExpr::get(ctx(), 2);
-  auto var = SDBMSymbolExpr::get(ctx(), 0);
+  auto cst2 = SDBMConstantExpr::get(dialect(), 2);
+  auto var = SDBMSymbolExpr::get(dialect(), 0);
   auto stripe = SDBMStripeExpr::get(var, cst2);
   auto expr = SDBMDiffExpr::get(var, stripe);
 
@@ -301,7 +312,7 @@ TEST(SDBMExpr, AffineRoundTrip) {
 
   // Check that (s0 # 2 # 5) can be converted to AffineExpr, i.e. stripe
   // detection supports nested expressions.
-  auto cst5 = SDBMConstantExpr::get(ctx(), 5);
+  auto cst5 = SDBMConstantExpr::get(dialect(), 5);
   auto outerStripe = SDBMStripeExpr::get(stripe, cst5);
   roundtripped = SDBMExpr::tryConvertAffineExpr(outerStripe.getAsAffineExpr());
   ASSERT_TRUE(roundtripped.hasValue());

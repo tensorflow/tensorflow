@@ -25,6 +25,7 @@
 #include "SDBMExprDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
+#include "mlir/SDBM/SDBMDialect.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -149,7 +150,11 @@ AffineExprMatcher::AffineExprMatcher(AffineExprKind k, AffineExprMatcher a,
 
 SDBMExprKind SDBMExpr::getKind() const { return impl->getKind(); }
 
-MLIRContext *SDBMExpr::getContext() const { return impl->context; }
+MLIRContext *SDBMExpr::getContext() const {
+  return impl->dialect->getContext();
+}
+
+SDBMDialect *SDBMExpr::getDialect() const { return impl->dialect; }
 
 void SDBMExpr::print(raw_ostream &os) const {
   struct Printer : public SDBMVisitor<Printer> {
@@ -202,7 +207,7 @@ struct SDBMNegator : public SDBMVisitor<SDBMNegator, SDBMExpr> {
   SDBMExpr visitNeg(SDBMNegExpr expr) { return expr.getVar(); }
   // The value of the constant is negated.
   SDBMExpr visitConstant(SDBMConstantExpr expr) {
-    return SDBMConstantExpr::get(expr.getContext(), -expr.getValue());
+    return SDBMConstantExpr::get(expr.getDialect(), -expr.getValue());
   }
   // Both terms of the sum are negated recursively.
   SDBMExpr visitSum(SDBMSumExpr expr) {
@@ -230,11 +235,11 @@ SDBMSumExpr SDBMSumExpr::get(SDBMVaryingExpr lhs, SDBMConstantExpr rhs) {
   // If LHS of a sum is another sum, fold the constant RHS parts.
   if (auto lhsSum = lhs.dyn_cast<SDBMSumExpr>()) {
     lhs = lhsSum.getLHS();
-    rhs = SDBMConstantExpr::get(rhs.getContext(),
+    rhs = SDBMConstantExpr::get(rhs.getDialect(),
                                 rhs.getValue() + lhsSum.getRHS().getValue());
   }
 
-  StorageUniquer &uniquer = lhs.getContext()->getSDBMUniquer();
+  StorageUniquer &uniquer = lhs.getDialect()->getUniquer();
   return uniquer.get<detail::SDBMBinaryExprStorage>(
       /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Add), lhs, rhs);
 }
@@ -346,7 +351,7 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
             // TODO(ntv): return varConverted.stripe(C.getConstantValue());
             return SDBMStripeExpr::get(
                 varConverted,
-                SDBMConstantExpr::get(varConverted.getContext(),
+                SDBMConstantExpr::get(dialect,
                                       C.getMatchedConstantValue().getValue()));
         }
       }
@@ -393,15 +398,18 @@ Optional<SDBMExpr> SDBMExpr::tryConvertAffineExpr(AffineExpr affine) {
 
     // Dimensions, symbols and constants are converted trivially.
     SDBMExpr visitConstantExpr(AffineConstantExpr expr) {
-      return SDBMConstantExpr::get(expr.getContext(), expr.getValue());
+      return SDBMConstantExpr::get(dialect, expr.getValue());
     }
     SDBMExpr visitDimExpr(AffineDimExpr expr) {
-      return SDBMDimExpr::get(expr.getContext(), expr.getPosition());
+      return SDBMDimExpr::get(dialect, expr.getPosition());
     }
     SDBMExpr visitSymbolExpr(AffineSymbolExpr expr) {
-      return SDBMSymbolExpr::get(expr.getContext(), expr.getPosition());
+      return SDBMSymbolExpr::get(dialect, expr.getPosition());
     }
+
+    SDBMDialect *dialect;
   } converter;
+  converter.dialect = affine.getContext()->getRegisteredDialect<SDBMDialect>();
 
   if (auto result = converter.visit(affine))
     return result;
@@ -416,7 +424,7 @@ SDBMDiffExpr SDBMDiffExpr::get(SDBMPositiveExpr lhs, SDBMPositiveExpr rhs) {
   assert(lhs && "expected SDBM dimension");
   assert(rhs && "expected SDBM dimension");
 
-  StorageUniquer &uniquer = lhs.getContext()->getSDBMUniquer();
+  StorageUniquer &uniquer = lhs.getDialect()->getUniquer();
   return uniquer.get<detail::SDBMDiffExprStorage>(
       /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Diff), lhs, rhs);
 }
@@ -440,7 +448,7 @@ SDBMStripeExpr SDBMStripeExpr::get(SDBMPositiveExpr var,
   if (stripeFactor.getValue() <= 0)
     llvm::report_fatal_error("non-positive stripe factor");
 
-  StorageUniquer &uniquer = var.getContext()->getSDBMUniquer();
+  StorageUniquer &uniquer = var.getDialect()->getUniquer();
   return uniquer.get<detail::SDBMBinaryExprStorage>(
       /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Stripe), var,
       stripeFactor);
@@ -468,46 +476,46 @@ unsigned SDBMInputExpr::getPosition() const {
 // SDBMDimExpr
 //===----------------------------------------------------------------------===//
 
-SDBMDimExpr SDBMDimExpr::get(MLIRContext *context, unsigned position) {
-  assert(context && "expected non-null context");
+SDBMDimExpr SDBMDimExpr::get(SDBMDialect *dialect, unsigned position) {
+  assert(dialect && "expected non-null dialect");
 
-  auto assignCtx = [context](detail::SDBMPositiveExprStorage *storage) {
-    storage->context = context;
+  auto assignDialect = [dialect](detail::SDBMPositiveExprStorage *storage) {
+    storage->dialect = dialect;
   };
 
-  StorageUniquer &uniquer = context->getSDBMUniquer();
+  StorageUniquer &uniquer = dialect->getUniquer();
   return uniquer.get<detail::SDBMPositiveExprStorage>(
-      assignCtx, static_cast<unsigned>(SDBMExprKind::DimId), position);
+      assignDialect, static_cast<unsigned>(SDBMExprKind::DimId), position);
 }
 
 //===----------------------------------------------------------------------===//
 // SDBMSymbolExpr
 //===----------------------------------------------------------------------===//
 
-SDBMSymbolExpr SDBMSymbolExpr::get(MLIRContext *context, unsigned position) {
-  assert(context && "expected non-null context");
+SDBMSymbolExpr SDBMSymbolExpr::get(SDBMDialect *dialect, unsigned position) {
+  assert(dialect && "expected non-null dialect");
 
-  auto assignCtx = [context](detail::SDBMPositiveExprStorage *storage) {
-    storage->context = context;
+  auto assignDialect = [dialect](detail::SDBMPositiveExprStorage *storage) {
+    storage->dialect = dialect;
   };
 
-  StorageUniquer &uniquer = context->getSDBMUniquer();
+  StorageUniquer &uniquer = dialect->getUniquer();
   return uniquer.get<detail::SDBMPositiveExprStorage>(
-      assignCtx, static_cast<unsigned>(SDBMExprKind::SymbolId), position);
+      assignDialect, static_cast<unsigned>(SDBMExprKind::SymbolId), position);
 }
 
 //===----------------------------------------------------------------------===//
 // SDBMConstantExpr
 //===----------------------------------------------------------------------===//
 
-SDBMConstantExpr SDBMConstantExpr::get(MLIRContext *context, int64_t value) {
-  assert(context && "expected non-null context");
+SDBMConstantExpr SDBMConstantExpr::get(SDBMDialect *dialect, int64_t value) {
+  assert(dialect && "expected non-null dialect");
 
-  auto assignCtx = [context](detail::SDBMConstantExprStorage *storage) {
-    storage->context = context;
+  auto assignCtx = [dialect](detail::SDBMConstantExprStorage *storage) {
+    storage->dialect = dialect;
   };
 
-  StorageUniquer &uniquer = context->getSDBMUniquer();
+  StorageUniquer &uniquer = dialect->getUniquer();
   return uniquer.get<detail::SDBMConstantExprStorage>(
       assignCtx, static_cast<unsigned>(SDBMExprKind::Constant), value);
 }
@@ -523,7 +531,7 @@ int64_t SDBMConstantExpr::getValue() const {
 SDBMNegExpr SDBMNegExpr::get(SDBMPositiveExpr var) {
   assert(var && "expected non-null SDBM variable expression");
 
-  StorageUniquer &uniquer = var.getContext()->getSDBMUniquer();
+  StorageUniquer &uniquer = var.getDialect()->getUniquer();
   return uniquer.get<detail::SDBMNegExprStorage>(
       /*initFn=*/{}, static_cast<unsigned>(SDBMExprKind::Neg), var);
 }
@@ -567,7 +575,7 @@ SDBMExpr operator+(SDBMExpr lhs, SDBMExpr rhs) {
 
   // Constant-fold if LHS is a constant.
   if (lhsConstant)
-    return SDBMConstantExpr::get(lhs.getContext(), lhsConstant.getValue() +
+    return SDBMConstantExpr::get(lhs.getDialect(), lhsConstant.getValue() +
                                                        rhsConstant.getValue());
 
   // Fold x + 0 == x.
@@ -581,7 +589,7 @@ SDBMExpr operator+(SDBMExpr lhs, SDBMExpr rhs) {
 SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs) {
   // Fold x - x == 0.
   if (lhs == rhs)
-    return SDBMConstantExpr::get(lhs.getContext(), 0);
+    return SDBMConstantExpr::get(lhs.getDialect(), 0);
 
   // LHS and RHS may be constants.
   auto lhsConstant = lhs.dyn_cast<SDBMConstantExpr>();
@@ -589,7 +597,7 @@ SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs) {
 
   // Constant fold if both LHS and RHS are constants.
   if (lhsConstant && rhsConstant)
-    return SDBMConstantExpr::get(lhs.getContext(), lhsConstant.getValue() -
+    return SDBMConstantExpr::get(lhs.getDialect(), lhsConstant.getValue() -
                                                        rhsConstant.getValue());
 
   // Replace a difference with a sum with a negated value if one of LHS and RHS

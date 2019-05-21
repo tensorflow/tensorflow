@@ -16,19 +16,20 @@
 // =============================================================================
 //
 // This holds implementation details of SDBMExpr, in particular underlying
-// storage types.  MLIRContext.cpp needs to know the storage layout for
-// allocation and unique'ing purposes.
+// storage types.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef MLIR_IR_SDBMEXPRDETAIL_H
 #define MLIR_IR_SDBMEXPRDETAIL_H
 
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/SDBM/SDBMExpr.h"
 #include "mlir/Support/StorageUniquer.h"
 
 namespace mlir {
+
+class SDBMDialect;
+
 namespace detail {
 
 // Base storage class for SDBMExpr.
@@ -37,7 +38,7 @@ struct SDBMExprStorage : public StorageUniquer::BaseStorage {
     return static_cast<SDBMExprKind>(BaseStorage::getKind());
   }
 
-  MLIRContext *context;
+  SDBMDialect *dialect;
 };
 
 // Storage class for SDBM sum and stripe expressions.
@@ -53,7 +54,7 @@ struct SDBMBinaryExprStorage : public SDBMExprStorage {
     auto *result = allocator.allocate<SDBMBinaryExprStorage>();
     result->lhs = std::get<0>(key);
     result->rhs = std::get<1>(key);
-    result->context = result->lhs.getContext();
+    result->dialect = result->lhs.getDialect();
     return result;
   }
 
@@ -74,7 +75,7 @@ struct SDBMDiffExprStorage : public SDBMExprStorage {
     auto *result = allocator.allocate<SDBMDiffExprStorage>();
     result->lhs = std::get<0>(key);
     result->rhs = std::get<1>(key);
-    result->context = result->lhs.getContext();
+    result->dialect = result->lhs.getDialect();
     return result;
   }
 
@@ -124,7 +125,7 @@ struct SDBMNegExprStorage : public SDBMExprStorage {
   construct(StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
     auto *result = allocator.allocate<SDBMNegExprStorage>();
     result->dim = key;
-    result->context = key.getContext();
+    result->dialect = key.getDialect();
     return result;
   }
 

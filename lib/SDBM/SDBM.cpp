@@ -353,7 +353,7 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
 // If one of the expressions is derived from another using a stripe operation,
 // check if the inequalities induced by the stripe operation subsume the
 // inequalities defined in the DBM and if so, elide these inequalities.
-void SDBM::convertDBMElement(MLIRContext *context, unsigned row, unsigned col,
+void SDBM::convertDBMElement(unsigned row, unsigned col,
                              SDBMPositiveExpr rowExpr, SDBMPositiveExpr colExpr,
                              SmallVectorImpl<SDBMExpr> &inequalities,
                              SmallVectorImpl<SDBMExpr> &equalities) {
@@ -417,18 +417,17 @@ void SDBM::convertDBMElement(MLIRContext *context, unsigned row, unsigned col,
 // to -C <= 0.  Only construct the inequalities when C is negative, which
 // are trivially false but necessary for the returned system of inequalities
 // to indicate that the set it defines is empty.
-void SDBM::convertDBMDiagonalElement(MLIRContext *context, unsigned pos,
-                                     SDBMPositiveExpr expr,
+void SDBM::convertDBMDiagonalElement(unsigned pos, SDBMPositiveExpr expr,
                                      SmallVectorImpl<SDBMExpr> &inequalities) {
   auto selfDifference = at(pos, pos);
   if (selfDifference.isFinite() && selfDifference < 0) {
     auto selfDifferenceValueExpr =
-        SDBMConstantExpr::get(context, -selfDifference.getValue());
+        SDBMConstantExpr::get(expr.getDialect(), -selfDifference.getValue());
     inequalities.push_back(selfDifferenceValueExpr);
   }
 }
 
-void SDBM::getSDBMExpressions(MLIRContext *context,
+void SDBM::getSDBMExpressions(SDBMDialect *dialect,
                               SmallVectorImpl<SDBMExpr> &inequalities,
                               SmallVectorImpl<SDBMExpr> &equalities) {
   using ops_assertions::operator-;
@@ -436,10 +435,10 @@ void SDBM::getSDBMExpressions(MLIRContext *context,
 
   // Helper function that creates an SDBMInputExpr given the linearized position
   // of variable in the DBM.
-  auto getInput = [context, this](unsigned matrixPos) -> SDBMInputExpr {
+  auto getInput = [dialect, this](unsigned matrixPos) -> SDBMInputExpr {
     if (matrixPos < numDims)
-      return SDBMDimExpr::get(context, matrixPos);
-    return SDBMSymbolExpr::get(context, matrixPos - numDims);
+      return SDBMDimExpr::get(dialect, matrixPos);
+    return SDBMSymbolExpr::get(dialect, matrixPos - numDims);
   };
 
   // The top-left value corresponds to inequality 0 <= C.  If C is negative, the
@@ -449,7 +448,7 @@ void SDBM::getSDBMExpressions(MLIRContext *context,
   auto difference = at(0, 0);
   if (difference.isFinite() && difference < 0) {
     inequalities.push_back(
-        SDBMConstantExpr::get(context, -difference.getValue()));
+        SDBMConstantExpr::get(dialect, -difference.getValue()));
   }
 
   // Traverse the segment of the matrix that involves non-temporary variables.
@@ -470,12 +469,12 @@ void SDBM::getSDBMExpressions(MLIRContext *context,
     }
 
     // Introduce trivially false inequalities if required by diagonal elements.
-    convertDBMDiagonalElement(context, 1 + i, inputExpr, inequalities);
+    convertDBMDiagonalElement(1 + i, inputExpr, inequalities);
 
     // Introduce equalities or inequalities between non-temporary variables.
     for (unsigned j = 0; j < i; ++j) {
-      convertDBMElement(context, 1 + i, 1 + j, getInput(i), getInput(j),
-                        inequalities, equalities);
+      convertDBMElement(1 + i, 1 + j, getInput(i), getInput(j), inequalities,
+                        equalities);
     }
   }
 
@@ -495,21 +494,20 @@ void SDBM::getSDBMExpressions(MLIRContext *context,
     // Mixed constraints involving one temporary (j) and one non-temporary (i)
     // variable.
     for (unsigned j = 0; j < numTrueVariables; ++j) {
-      convertDBMElement(context, i, 1 + j,
-                        stripeToPoint[i].cast<SDBMStripeExpr>(), getInput(j),
-                        inequalities, equalities);
+      convertDBMElement(i, 1 + j, stripeToPoint[i].cast<SDBMStripeExpr>(),
+                        getInput(j), inequalities, equalities);
     }
 
     // Constraints involving only temporary variables.
     for (unsigned j = 1 + numTrueVariables; j < i; ++j) {
-      convertDBMElement(context, i, j, stripeToPoint[i].cast<SDBMStripeExpr>(),
+      convertDBMElement(i, j, stripeToPoint[i].cast<SDBMStripeExpr>(),
                         stripeToPoint[j].cast<SDBMStripeExpr>(), inequalities,
                         equalities);
     }
 
     // Introduce trivially false inequalities if required by diagonal elements.
-    convertDBMDiagonalElement(
-        context, i, stripeToPoint[i].cast<SDBMStripeExpr>(), inequalities);
+    convertDBMDiagonalElement(i, stripeToPoint[i].cast<SDBMStripeExpr>(),
+                              inequalities);
   }
 }
 

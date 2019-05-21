@@ -44,6 +44,7 @@ struct SDBMNegExprStorage;
 } // namespace detail
 
 class SDBMConstantExpr;
+class SDBMDialect;
 class SDBMDimExpr;
 class SDBMSymbolExpr;
 
@@ -118,6 +119,9 @@ public:
   /// Returns the MLIR context in which this expression lives.
   MLIRContext *getContext() const;
 
+  /// Returns the SDBM dialect instance.
+  SDBMDialect *getDialect() const;
+
   /// Convert the SDBM expression into an Affine expression.  This always
   /// succeeds because SDBM are a subset of affine.
   AffineExpr getAsAffineExpr() const;
@@ -140,8 +144,9 @@ public:
 
   using SDBMExpr::SDBMExpr;
 
-  /// Obtain or create a constant expression unique'ed in the given context.
-  static SDBMConstantExpr get(MLIRContext *context, int64_t value);
+  /// Obtain or create a constant expression unique'ed in the given dialect
+  /// (which belongs to a context).
+  static SDBMConstantExpr get(SDBMDialect *dialect, int64_t value);
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::Constant;
@@ -265,8 +270,9 @@ public:
   using ImplType = detail::SDBMPositiveExprStorage;
   using SDBMInputExpr::SDBMInputExpr;
 
-  /// Obtain or create a dimension expression unique'ed in the given context.
-  static SDBMDimExpr get(MLIRContext *context, unsigned position);
+  /// Obtain or create a dimension expression unique'ed in the given dialect
+  /// (which belongs to a context).
+  static SDBMDimExpr get(SDBMDialect *dialect, unsigned position);
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::DimId;
@@ -280,8 +286,9 @@ public:
   using ImplType = detail::SDBMPositiveExprStorage;
   using SDBMInputExpr::SDBMInputExpr;
 
-  /// Obtain or create a symbol expression unique'ed in the given context.
-  static SDBMSymbolExpr get(MLIRContext *context, unsigned position);
+  /// Obtain or create a symbol expression unique'ed in the given dialect (which
+  /// belongs to a context).
+  static SDBMSymbolExpr get(SDBMDialect *dialect, unsigned position);
 
   static bool isClassFor(const SDBMExpr &expr) {
     return expr.getKind() == SDBMExprKind::SymbolId;
@@ -414,27 +421,27 @@ namespace ops_assertions {
 /// simultaneously.
 SDBMExpr operator+(SDBMExpr lhs, SDBMExpr rhs);
 inline SDBMExpr operator+(SDBMExpr lhs, int64_t rhs) {
-  return lhs + SDBMConstantExpr::get(lhs.getContext(), rhs);
+  return lhs + SDBMConstantExpr::get(lhs.getDialect(), rhs);
 }
 inline SDBMExpr operator+(int64_t lhs, SDBMExpr rhs) {
-  return SDBMConstantExpr::get(rhs.getContext(), lhs) + rhs;
+  return SDBMConstantExpr::get(rhs.getDialect(), lhs) + rhs;
 }
 
 /// Subtract an SDBM expression from another SDBM expression.  Both expressions
 /// must not be difference expressions.
 SDBMExpr operator-(SDBMExpr lhs, SDBMExpr rhs);
 inline SDBMExpr operator-(SDBMExpr lhs, int64_t rhs) {
-  return lhs - SDBMConstantExpr::get(lhs.getContext(), rhs);
+  return lhs - SDBMConstantExpr::get(lhs.getDialect(), rhs);
 }
 inline SDBMExpr operator-(int64_t lhs, SDBMExpr rhs) {
-  return SDBMConstantExpr::get(rhs.getContext(), lhs) - rhs;
+  return SDBMConstantExpr::get(rhs.getDialect(), lhs) - rhs;
 }
 
 /// Construct a stripe expression from a positive expression and a positive
 /// constant stripe factor.
 SDBMExpr stripe(SDBMExpr expr, SDBMExpr factor);
 inline SDBMExpr stripe(SDBMExpr expr, int64_t factor) {
-  return stripe(expr, SDBMConstantExpr::get(expr.getContext(), factor));
+  return stripe(expr, SDBMConstantExpr::get(expr.getDialect(), factor));
 }
 } // namespace ops_assertions
 

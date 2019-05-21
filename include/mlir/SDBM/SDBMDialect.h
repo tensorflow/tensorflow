@@ -19,6 +19,7 @@
 #define MLIR_SDBM_SDBMDIALECT_H
 
 #include "mlir/IR/Dialect.h"
+#include "mlir/Support/StorageUniquer.h"
 
 namespace mlir {
 class MLIRContext;
@@ -28,6 +29,12 @@ public:
   SDBMDialect(MLIRContext *context) : Dialect(getDialectNamespace(), context) {}
 
   static StringRef getDialectNamespace() { return "sdbm"; }
+
+  /// Get the uniquer for SDBM expressions. This should not be used directly.
+  StorageUniquer &getUniquer() { return uniquer; }
+
+private:
+  StorageUniquer uniquer;
 };
 } // namespace mlir
 
