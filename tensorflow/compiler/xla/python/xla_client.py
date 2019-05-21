@@ -143,7 +143,7 @@ def _gpu_backend_factory():
     config.memory_fraction = float(memory_fraction)
 
   client = _xla.LocalClient.Get(
-      platform='gpu', xla_platform_id='CUDA', asynchronous=False,
+      platform='gpu', xla_platform_id='CUDA', asynchronous=True,
       allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
