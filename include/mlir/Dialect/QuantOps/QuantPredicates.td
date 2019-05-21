@@ -28,8 +28,8 @@
 
 class quant_TypedPrimitiveOrContainer<Type etype> :
     Type<Or<[etype.predicate,
-                Tensor<etype>.predicate,
-                Vector<etype>.predicate]>,
+                TensorOf<[etype]>.predicate,
+                VectorOf<[etype]>.predicate]>,
          "primitive/tensor/vector of " # etype.description>;
 
 // An implementation of QuantizedType.

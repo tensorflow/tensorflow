@@ -112,7 +112,7 @@ def OpJ: NS_Op<"op_for_TCopVTEtAreSameAt", [
 // CHECK:   return emitOpError("failed to verify that operands indexed at 0, 2, 3 should all have the same type");
 
 def OpK : NS_Op<"op_for_AnyTensorOf", []> {
-  let arguments = (ins AnyTensorOf<[F32, I32]>:$x);
+  let arguments = (ins TensorOf<[F32, I32]>:$x);
 }
 
 // CHECK-LABEL: OpK::verify

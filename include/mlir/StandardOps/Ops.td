@@ -146,7 +146,7 @@ def AllocOp : Std_Op<"alloc"> {
   }];
 
   let arguments = (ins Variadic<Index>:$value);
-  let results = (outs MemRef<AnyType>);
+  let results = (outs AnyMemRef);
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, MemRefType memrefType", [{
@@ -303,7 +303,7 @@ def DeallocOp : Std_Op<"dealloc"> {
       dealloc %0 : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
   }];
 
-  let arguments = (ins MemRef<AnyType>:$memref);
+  let arguments = (ins AnyMemRef:$memref);
 
   let hasCanonicalizer = 1;
 }
@@ -318,7 +318,7 @@ def DimOp : Std_Op<"dim", [NoSideEffect]> {
       %1 = dim %0, 2 : tensor<?x?x?xf32>
   }];
 
-  let arguments = (ins AnyTypeOf<[MemRef<AnyType>, AnyTensor],
+  let arguments = (ins AnyTypeOf<[AnyMemRef, AnyTensor],
                                  "any tensor or memref type">:$memrefOrTensor,
                        APIntAttr:$index);
   let results = (outs Index);
@@ -410,8 +410,8 @@ def MemRefCastOp : CastOp<"memref_cast"> {
        %3 = memref_cast %1 : memref<4xf32> to memref<?xf32>
   }];
 
-  let arguments = (ins MemRef<AnyType>);
-  let results = (outs MemRef<AnyType>);
+  let arguments = (ins AnyMemRef);
+  let results = (outs AnyMemRef);
 
   let extraClassDeclaration = [{
     /// Return true if `a` and `b` are valid operand and result pairs for

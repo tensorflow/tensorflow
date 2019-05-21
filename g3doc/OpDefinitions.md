@@ -450,7 +450,7 @@ the entity's declaration place as described in
 
 To help modelling constraints of common types, a set of `TypeConstraint`s are
 created; they are the `Type` subclass hierarchy. It includes `F32` for the
-constraints of being a float, `TypedTensor<F32>` for the constraints of being
+constraints of being a float, `TensorOf<[F32]>` for the constraints of being
 a float tensor, and so on.
 
 Similarly, a set of `AttrConstraint`s are created for helping modelling
