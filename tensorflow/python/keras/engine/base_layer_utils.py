@@ -465,6 +465,43 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
                                  (control_flow_util_v2.CondBranchFuncGraph,
                                   control_flow_util_v2.WhileCondFuncGraph,
                                   control_flow_util_v2.WhileBodyFuncGraph)))):
+    if method == 'activity_regularizer':
+      bad_example = """
+      class TestModel(tf.keras.Model):
+
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense = tf.keras.layers.Dense(2, activity_regularizer='l2')
+
+        def call(self, x, training=None):
+          if training:
+            return self.dense(x)
+          else:
+            return self.dense(x)
+      """
+      correct_example = """
+      class TestModel(tf.keras.Model):
+
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense = tf.keras.layers.Dense(2, activity_regularizer='l2')
+
+        def call(self, x, training=None):
+          return self.dense(x)
+      """
+      raise RuntimeError(
+          'You are using a layer with `activity_regularizer` in a control flow '
+          'branch, e.g.:\n{bad_example}\nThis is currently not supported. '
+          'Please move your call to the layer with `activity_regularizer` out '
+          'of the control flow branch, e.g.:\n{correct_example}\n'
+          'You can also resolve this by marking your outer model/layer dynamic'
+          ' (eager-only) by passing `dynamic=True` to the layer constructor. '
+          'Any kind of control flow is supported with dynamic layers. '
+          'Note that using `dynamic=True` requires you to implement static '
+          'shape inference in the `compute_output_shape(input_shape)` '
+          'method.'.format(
+              bad_example=bad_example, correct_example=correct_example))
+
     if method == 'add_metric':
       bad_example = """
       def call(self, inputs, training=None):

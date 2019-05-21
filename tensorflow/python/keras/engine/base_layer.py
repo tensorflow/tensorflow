@@ -1626,6 +1626,8 @@ class Layer(module.Module):
               array_ops.shape(output)[0], activity_loss.dtype)
           # Make activity regularization strength batch-agnostic.
           mean_activity_loss = activity_loss / batch_size
+          base_layer_utils.check_graph_consistency(
+              mean_activity_loss, method='activity_regularizer')
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
