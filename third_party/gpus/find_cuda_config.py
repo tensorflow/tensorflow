@@ -384,6 +384,9 @@ def _find_tensorrt_config(base_paths, required_version):
         _get_header_version(path, name)
         for name in ("NV_TENSORRT_MAJOR", "NV_TENSORRT_MINOR",
                      "NV_TENSORRT_PATCH"))
+    # `version` is a generator object, so we convert it to a list before using
+    # it (muitiple times below).
+    version = list(version)
     if not all(version):
       return None  # Versions not found, make _matches_version returns False.
     return ".".join(version)
