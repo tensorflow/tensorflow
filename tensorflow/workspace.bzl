@@ -230,12 +230,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "png_archive",
         build_file = clean_dep("//third_party:png.BUILD"),
         patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
-        sha256 = "6d59d6a154ccbb772ec11772cb8f8beb0d382b61e7ccc62435bf7311c9f4b210",
-        strip_prefix = "libpng-1.6.35",
+        sha256 = "ca74a0dace179a8422187671aee97dd3892b53e168627145271cad5b5ac81307",
+        strip_prefix = "libpng-1.6.37",
         system_build_file = clean_dep("//third_party/systemlibs:png.BUILD"),
         urls = [
-            "http://mirror.tensorflow.org/github.com/glennrp/libpng/archive/v1.6.35.tar.gz",
-            "https://github.com/glennrp/libpng/archive/v1.6.35.tar.gz",
+            "http://mirror.tensorflow.org/github.com/glennrp/libpng/archive/v1.6.37.tar.gz",
+            "https://github.com/glennrp/libpng/archive/v1.6.37.tar.gz",
         ],
     )
 
