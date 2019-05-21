@@ -1478,7 +1478,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
   LLVM_DEBUG(dump());
 
   // Record computed/detected identifiers.
-  SmallVector<AffineExpr, 8> memo(getNumIds(), AffineExpr::Null());
+  SmallVector<AffineExpr, 8> memo(getNumIds());
   // Initialize dimensional and symbolic identifiers.
   for (unsigned i = num, e = getNumDimIds(); i < e; i++)
     memo[i] = getAffineDimExpr(i - num, context);
@@ -1565,7 +1565,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
 
   // Set the lower and upper bound maps for all the identifiers that were
   // computed as affine expressions of the rest as the "detected expr" and
-  // "detected expr + 1" respectively; set the undetected ones to Null().
+  // "detected expr + 1" respectively; set the undetected ones to null.
   Optional<FlatAffineConstraints> tmpClone;
   for (unsigned pos = 0; pos < num; pos++) {
     unsigned numMapDims = getNumDimIds() - num;

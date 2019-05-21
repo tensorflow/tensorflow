@@ -71,7 +71,7 @@ enum class AffineExprKind {
 /// Base type for affine expression.
 /// AffineExpr's are immutable value types with intuitive operators to
 /// operate on chainable, lightweight compositions.
-/// An AffineExpr is a POD interface to the underlying storage type pointer.
+/// An AffineExpr is an interface to the underlying storage type pointer.
 class AffineExpr {
 public:
   using ImplType = detail::AffineExprStorage;
@@ -85,8 +85,6 @@ public:
     expr = other.expr;
     return *this;
   }
-
-  static AffineExpr Null() { return AffineExpr(nullptr); }
 
   bool operator==(AffineExpr other) const { return expr == other.expr; }
   bool operator!=(AffineExpr other) const { return !(*this == other); }
