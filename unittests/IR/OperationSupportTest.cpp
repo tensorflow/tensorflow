@@ -50,11 +50,11 @@ TEST(OperandStorageTest, NonResizable) {
 
   // The same number of operands is okay.
   user->setOperands(operand);
-  EXPECT_EQ(user->getNumOperands(), 1);
+  EXPECT_EQ(user->getNumOperands(), 1u);
 
   // Removing is okay.
   user->setOperands(llvm::None);
-  EXPECT_EQ(user->getNumOperands(), 0);
+  EXPECT_EQ(user->getNumOperands(), 0u);
 
   // Destroy the operations.
   user->destroy();
@@ -99,15 +99,15 @@ TEST(OperandStorageTest, Resizable) {
 
   // The same number of operands is okay.
   user->setOperands(operand);
-  EXPECT_EQ(user->getNumOperands(), 1);
+  EXPECT_EQ(user->getNumOperands(), 1u);
 
   // Removing is okay.
   user->setOperands(llvm::None);
-  EXPECT_EQ(user->getNumOperands(), 0);
+  EXPECT_EQ(user->getNumOperands(), 0u);
 
   // Adding more operands is okay.
   user->setOperands({operand, operand, operand});
-  EXPECT_EQ(user->getNumOperands(), 3);
+  EXPECT_EQ(user->getNumOperands(), 3u);
 
   // Destroy the operations.
   user->destroy();
