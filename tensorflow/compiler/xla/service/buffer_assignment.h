@@ -250,8 +250,8 @@ class BufferAllocation {
   // for this allocation. The point of peak memory usage is the point at which
   // the total size of all live logical buffers is maximal. If peak memory is
   // reached at multiple points, the set of logical buffers live at the earliest
-  // maximal point is returned. The vector is stabily sorted by
-  // LogicalBuffer::Index.
+  // maximal point is returned. The vector is stably sorted by
+  // BufferValue::Index.
   const std::vector<const BufferValue*>& PeakMemoryLogicalBuffers() const {
     return peak_buffers_;
   }
