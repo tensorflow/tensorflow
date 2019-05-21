@@ -434,8 +434,12 @@ private:
     return *getTrailingObjects<detail::OperandStorage>();
   }
 
-  // Provide a 'getParent' method for ilist_node_with_parent methods.
-  Block *getParent() { return getBlock(); }
+  /// Provide a 'getParent' method for ilist_node_with_parent methods.
+  /// We mark it as const function because ilist_node_with_parent specifically
+  /// requires a 'getParent() const' method. Once ilist_node removes this
+  /// constraint, we should drop the const to fit the rest of the MLIR const
+  /// model.
+  Block *getParent() const { return block; }
 
   /// The operation block that containts this operation.
   Block *block = nullptr;
