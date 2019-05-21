@@ -206,13 +206,25 @@ class TestAstEdits(test_util.TensorFlowTestCase):
     """Test that we get the expected result if renaming kw2 to kw3."""
     text = "f(a, b, kw1=c, kw2=d)\n"
     expected = "f(a, b, kw1=c, kw3=d)\n"
-    _, new_text = self._upgrade(RenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(RenameKeywordSpec(), text)
     self.assertEqual(new_text, expected)
+    self.assertNotIn("Manual check required", report)
 
     # No keywords specified, no reordering, so we should get input as output
     text = "f(a, b, c, d)\n"
-    _, new_text = self._upgrade(RenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(RenameKeywordSpec(), text)
     self.assertEqual(new_text, text)
+    self.assertNotIn("Manual check required", report)
+
+    # Positional *args passed in that we cannot inspect, should warn
+    text = "f(a, *args)\n"
+    (_, report, _), _ = self._upgrade(RenameKeywordSpec(), text)
+    self.assertNotIn("Manual check required", report)
+
+    # **kwargs passed in that we cannot inspect, should warn
+    text = "f(a, b, kw1=c, **kwargs)\n"
+    (_, report, _), _ = self._upgrade(RenameKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
 
   def testKeywordReorderWithParens(self):
     """Test that we get the expected result if there are parens around args."""
@@ -240,8 +252,9 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw2=d)\n",
         "f(a=a, b=b, kw2=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(ReorderKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
 
     # Keywords are reordered, so we should reorder arguments too
     text = "f(a, b, c, d)\n"
@@ -250,8 +263,19 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw2=d)\n",
         "f(a=a, b=b, kw2=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(ReorderKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
+
+    # Positional *args passed in that we cannot inspect, should warn
+    text = "f(a, b, *args)\n"
+    (_, report, _), _ = self._upgrade(ReorderKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
+
+    # **kwargs passed in that we cannot inspect, should warn
+    text = "f(a, b, kw1=c, **kwargs)\n"
+    (_, report, _), _ = self._upgrade(ReorderKeywordSpec(), text)
+    self.assertNotIn("Manual check required", report)
 
   def testKeywordReorderAndRename(self):
     """Test that we get the expected result if kw2 is renamed and moved."""
@@ -261,8 +285,10 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw3=d)\n",
         "f(a=a, b=b, kw3=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(
+        ReorderAndRenameKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
 
     # Keywords are reordered, so we should reorder arguments too
     text = "f(a, b, c, d)\n"
@@ -271,8 +297,20 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw3=d)\n",
         "f(a=a, b=b, kw3=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(
+        ReorderAndRenameKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
+
+    # Positional *args passed in that we cannot inspect, should warn
+    text = "f(a, *args, kw1=c)\n"
+    (_, report, _), _ = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
+
+    # **kwargs passed in that we cannot inspect, should warn
+    text = "f(a, b, kw1=c, **kwargs)\n"
+    (_, report, _), _ = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
 
   def testRemoveDeprecatedKeywordAlias(self):
     """Test that we get the expected result if a keyword alias is removed."""

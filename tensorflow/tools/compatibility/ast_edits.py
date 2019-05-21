@@ -106,6 +106,70 @@ def get_arg_value(node, arg_name, arg_pos=None):
   return (False, None)
 
 
+def uses_star_args_in_call(node):
+  """Check if an ast.Call node uses arbitrary-length positional *args.
+
+  This function works with the AST call node format of Python3.5+
+  as well as the different AST format of earlier versions of Python.
+
+  Args:
+    node: The ast.Call node to check arg values for.
+
+  Returns:
+    True if the node uses starred variadic positional args or keyword args.
+    False if it does not.
+  """
+  if sys.version_info[:2] >= (3, 5):
+    # Check for an *args usage in python 3.5+
+    for arg in node.args:
+      if isinstance(arg, ast.Starred):
+        return True
+  else:
+    if node.starargs:
+      return True
+  return False
+
+
+def uses_star_kwargs_in_call(node):
+  """Check if an ast.Call node uses arbitrary-length **kwargs.
+
+  This function works with the AST call node format of Python3.5+
+  as well as the different AST format of earlier versions of Python.
+
+  Args:
+    node: The ast.Call node to check arg values for.
+
+  Returns:
+    True if the node uses starred variadic positional args or keyword args.
+    False if it does not.
+  """
+  if sys.version_info[:2] >= (3, 5):
+    # Check for a **kwarg usage in python 3.5+
+    for keyword in node.keywords:
+      if keyword.arg is None:
+        return True
+  else:
+    if node.kwargs:
+      return True
+  return False
+
+
+def uses_star_args_or_kwargs_in_call(node):
+  """Check if an ast.Call node uses arbitrary-length *args or **kwargs.
+
+  This function works with the AST call node format of Python3.5+
+  as well as the different AST format of earlier versions of Python.
+
+  Args:
+    node: The ast.Call node to check arg values for.
+
+  Returns:
+    True if the node uses starred variadic positional args or keyword args.
+    False if it does not.
+  """
+  return uses_star_args_in_call(node) or uses_star_kwargs_in_call(node)
+
+
 def excluded_from_module_rename(module, import_rename_spec):
   """Check if this module import should not be renamed.
 
@@ -335,14 +399,19 @@ class _PastaEditVisitor(ast.NodeVisitor):
     arg_warnings = self._get_applicable_dict("function_arg_warnings",
                                              full_name, name)
 
+    variadic_args = uses_star_args_or_kwargs_in_call(node)
+
     for (kwarg, arg), (level, warning) in sorted(arg_warnings.items()):
-      present, _ = get_arg_value(node, kwarg, arg)
+      present, _ = get_arg_value(node, kwarg, arg) or variadic_args
       if present:
         warned = True
         warning_message = warning.replace("<function name>", full_name or name)
+        template = "%s called with %s argument, requires manual check: %s"
+        if variadic_args:
+          template = ("%s called with *args or **kwargs that may include %s, "
+                      "requires manual check: %s")
         self.add_log(level, node.lineno, node.col_offset,
-                     "%s called with %s argument requires manual check: %s" %
-                     (full_name or name, kwarg, warning_message))
+                     template % (full_name or name, kwarg, warning_message))
 
     return warned
 
@@ -381,6 +450,13 @@ class _PastaEditVisitor(ast.NodeVisitor):
     function_reorders = self._api_change_spec.function_reorders
 
     if full_name in function_reorders:
+      if uses_star_args_in_call(node):
+        self.add_log(WARNING, node.lineno, node.col_offset,
+                     "(Manual check required) upgrading %s may require "
+                     "re-ordering the call arguments, but it was passed "
+                     "variable-length positional *args. The upgrade "
+                     "script cannot handle these automatically." % full_name)
+
       reordered = function_reorders[full_name]
       new_keywords = []
       idx = 0
@@ -408,6 +484,13 @@ class _PastaEditVisitor(ast.NodeVisitor):
     if not renamed_keywords:
       return False
 
+    if uses_star_kwargs_in_call(node):
+      self.add_log(WARNING, node.lineno, node.col_offset,
+                   "(Manual check required) upgrading %s may require "
+                   "renaming or removing call arguments, but it was passed "
+                   "variable-length *args or **kwargs. The upgrade "
+                   "script cannot handle these automatically." %
+                   (full_name or name))
     modified = False
     new_keywords = []
     for keyword in node.keywords:
@@ -474,6 +557,15 @@ class _PastaEditVisitor(ast.NodeVisitor):
                                                 full_name, name)
 
     parent = self._stack[-2]
+
+    if transformers:
+      if uses_star_args_or_kwargs_in_call(node):
+        self.add_log(WARNING, node.lineno, node.col_offset,
+                     "(Manual check required) upgrading %s may require "
+                     "modifying call arguments, but it was passed "
+                     "variable-length *args or **kwargs. The upgrade "
+                     "script cannot handle these automatically." %
+                     (full_name or name))
 
     for transformer in transformers:
       logs = []
