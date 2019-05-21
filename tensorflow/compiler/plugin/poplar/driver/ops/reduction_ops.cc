@@ -15,6 +15,7 @@
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
+#include <poplar/TensorCloneMethod.hpp>
 #include <popnn/Pooling.hpp>
 #include <popnn/PoolingDef.hpp>
 #include <popops/Cast.hpp>
@@ -950,7 +951,9 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
       auto t = poplar::concat(flat_tensors);
       if (tensorflow::GetPoplarXlaFlags().add_all_reduce_copies) {
         // TODO T8856 - remove this flag.
-        auto t_cloned = res.replicated_graph->clone(t);
+        auto t_cloned = res.replicated_graph->clone(
+            t, GetDebugName(inst) + "/Copy",
+            poplar::TensorCloneMethod::CREATE_NEW_ORDER);
         seq.add(poplar::program::Copy(t, t_cloned));
         t = t_cloned;
       }
