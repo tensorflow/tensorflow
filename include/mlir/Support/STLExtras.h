@@ -64,11 +64,16 @@ inline void interleave(const Container &c, UnaryFunctor each_fn,
   interleave(c.begin(), c.end(), each_fn, between_fn);
 }
 
+template <typename Container, typename UnaryFunctor, typename raw_ostream,
+          typename T = detail::ValueOfRange<Container>>
+inline void interleaveComma(const Container &c, raw_ostream &os,
+                            UnaryFunctor each_fn) {
+  interleave(c.begin(), c.end(), each_fn, [&] { os << ", "; });
+}
 template <typename Container, typename raw_ostream,
           typename T = detail::ValueOfRange<Container>>
 inline void interleaveComma(const Container &c, raw_ostream &os) {
-  interleave(
-      c.begin(), c.end(), [&](const T &a) { os << a; }, [&] { os << ", "; });
+  interleaveComma(c, os, [&](const T &a) { os << a; });
 }
 
 /// A special type used to provide an address for a given class that can act as
