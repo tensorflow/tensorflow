@@ -763,14 +763,21 @@ class _EagerTensorBase(Tensor):
 
   # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  # TODO(slebedev): avoid redundant copy in all of the following methods.
   def __int__(self):
     return int(self.numpy())
+
+  def __long__(self):
+    return long(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
 
   def __index__(self):
-    return int(self.numpy())
+    maybe_arr = self.numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
 
   def __array__(self, dtype=None):
     return np.asarray(self.numpy(), dtype=dtype)
