@@ -40,7 +40,7 @@ __global__ void TridiagonalMatMulKernel(int batch_size, int m, int n,
                                         const Scalar* subdiag,
                                         const Scalar* rhs, Scalar* product) {
   for (int i : CudaGridRangeX(batch_size * m * n)) {
-    int row_id = i / n;
+    int row_id = i / n;:wchar_t
     Scalar result = maindiag[row_id] * rhs[i];
     if (row_id % m != 0) {
       result = result + subdiag[row_id] * rhs[i - n];
@@ -77,11 +77,7 @@ class TridiagonalMatMulOpGpu : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, rhs.shape(), &output));
 
     const Eigen::GpuDevice& device = context->eigen_device<Eigen::GpuDevice>();
-<<<<<<< HEAD
-    CudaLaunchConfig cfg = GetGpuLaunchConfig(1, device);
-=======
-    CudaLaunchConfig cfg = GetCudaLaunchConfig(1, device);
->>>>>>> upstream/master
+    GpuLaunchConfig cfg = GetGpuLaunchConfig(1, device);
     TF_CHECK_OK(GpuLaunchKernel(
         TridiagonalMatMulKernel<Scalar>, cfg.block_count, cfg.thread_per_block,
         0, device.stream(), batch_size, m, n, superdiag.flat<Scalar>().data(),
@@ -99,5 +95,5 @@ REGISTER_LINALG_OP_GPU("TridiagonalMatMul", (TridiagonalMatMulOpGpu<complex64>),
 REGISTER_LINALG_OP_GPU("TridiagonalMatMul",
                        (TridiagonalMatMulOpGpu<complex128>), complex128);
 }  // namespace tensorflow
-
+#TODO: enable this op on ROCm path
 #endif  // GOOGLE_CUDA

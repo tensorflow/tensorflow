@@ -82,120 +82,8 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
   auto output_buf = se::DeviceMemory<T>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
-<<<<<<< HEAD
-  if (algorithm.algorithm().has_value()){
-    VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm()->algo_id();
-    VLOG(3) << "tensor_ops_enabled: "
-          << algorithm.algorithm()->tensor_ops_enabled();
-  }
-  VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
-  VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
-  VLOG(3) << "filter shape: " << ShapeUtil::HumanStringWithLayout(filter_shape);
-  VLOG(3) << "Output shape: " << ShapeUtil::HumanStringWithLayout(output_shape);
-  VLOG(3) << "Window: { " << window.ShortDebugString() << " }";
-  VLOG(3) << "Dim nums: { " << dnums.ShortDebugString() << " }";
-
-  const int num_dimensions = window.dimensions_size();
-  CHECK_LE(num_dimensions, 3);
-  CHECK_GE(num_dimensions, 1);
-  // cuDNN does not support 1D convolutions. We therefore express 1D
-  // convolutions as 2D convolutions where the first spatial dimension is 1.
-  // This matches the behavior of TF (see definition of conv1d in
-  // tensorflow/python/ops/nn_ops.py).
-  const int effective_num_dimensions = std::max(2, num_dimensions);
-
-  CHECK_EQ(primitive_util::NativeToPrimitiveType<T>(),
-           output_shape.element_type())
-      << ShapeUtil::HumanString(output_shape);
-
-  // If one dimension is reversed, we need to have all dimensions reversed (so
-  // we're doing convolution not cross correlation).
-  const bool dims_reversed = window.dimensions()[0].window_reversal();
-
-  CHECK_EQ(num_dimensions, dnums.input_spatial_dimensions_size());
-  CHECK_EQ(num_dimensions, dnums.kernel_spatial_dimensions_size());
-  CHECK_EQ(num_dimensions, dnums.output_spatial_dimensions_size());
-  for (const WindowDimension& dim : window.dimensions()) {
-    CHECK_EQ(dims_reversed, dim.window_reversal());
-    CHECK_EQ(dim.padding_low(), dim.padding_high());
-    CHECK_EQ(dim.base_dilation(), 1)
-        << "cudnn does not support base dilation; it "
-           "must be made explicit with a kPad";
-    CHECK_EQ(dim.window_dilation(), 1)
-        << "XLA does not support window dilation (although cudnn does); it "
-           "must be made explicit with a kPad";
-  }
-
-  // cuDNN's convolution APIs support the BDYX layout for activations/output and
-  // the OIYX layout for weights.
-  DataLayout input_dl;
-  FilterLayout filter_dl;
-  DataLayout output_dl;
-
-  TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
-                      XlaConvLayoutsToStreamExecutorLayouts(
-                          dnums, input_shape.layout(), filter_shape.layout(),
-                          output_shape.layout()));
-
-  BatchDescriptor input_descriptor(effective_num_dimensions);
-  input_descriptor.set_layout(input_dl)
-      .set_feature_map_count(
-          input_shape.dimensions(dnums.input_feature_dimension()))
-      .set_count(input_shape.dimensions(dnums.input_batch_dimension()));
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    // Note that the dimensions are reversed. The same holds below.
-    input_descriptor.set_spatial_dim(
-        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-        input_shape.dimensions(dnums.input_spatial_dimensions(dim)));
-  }
-
-  FilterDescriptor filter_descriptor(effective_num_dimensions);
-  filter_descriptor.set_layout(filter_dl)
-      .set_input_feature_map_count(
-          filter_shape.dimensions(dnums.kernel_input_feature_dimension()))
-      .set_output_feature_map_count(
-          filter_shape.dimensions(dnums.kernel_output_feature_dimension()));
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    filter_descriptor.set_spatial_dim(
-        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-        filter_shape.dimensions(dnums.kernel_spatial_dimensions(dim)));
-  }
-
-  ConvolutionDescriptor convolution_descriptor(effective_num_dimensions);
-  convolution_descriptor.set_group_count(feature_group_count);
-  convolution_descriptor.set_convolution_not_crosscorr(dims_reversed);
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    convolution_descriptor
-        .set_zero_padding(
-            static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-            window.dimensions(dim).padding_low())
-        .set_filter_stride(
-            static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-            window.dimensions(dim).stride());
-  }
-
-  BatchDescriptor output_descriptor(effective_num_dimensions);
-  output_descriptor.set_layout(output_dl)
-      .set_feature_map_count(
-          output_shape.dimensions(dnums.output_feature_dimension()))
-      .set_count(output_shape.dimensions(dnums.output_batch_dimension()));
-  for (int dim = 0; dim < num_dimensions; ++dim) {
-    output_descriptor.set_spatial_dim(
-        static_cast<DimIndex>(effective_num_dimensions - dim - 1),
-        output_shape.dimensions(dnums.output_spatial_dimensions(dim)));
-  }
-
-  // Add a singleton dimension in the 1D convolution case.
-  if (num_dimensions == 1) {
-    input_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    output_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    filter_descriptor.set_spatial_dim(static_cast<DimIndex>(0), 1);
-    convolution_descriptor.set_zero_padding(static_cast<DimIndex>(0), 0)
-        .set_filter_stride(static_cast<DimIndex>(0), 1);
-=======
   if (options.algo_override) {
     algorithm = AlgorithmConfig(*options.algo_override);
->>>>>>> upstream/master
   }
 
   switch (params.kind) {
@@ -287,21 +175,6 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       conv->backend_config<CudnnConvBackendConfig>());
-<<<<<<< HEAD
-  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(conv));
-  const auto& lhs_shape = conv->operand(0)->shape();
-  const auto& rhs_shape = conv->operand(1)->shape();
-  const auto& conv_result_shape = conv->shape().tuple_shapes(0);
-
-  params.kind = kind;
-  params.window = &conv->window();
-  params.dnums = &conv->convolution_dimension_numbers();
-  params.feature_group_count = conv->feature_group_count();
-  params.algorithm = se::dnn::AlgorithmConfig(
-      se::dnn::AlgorithmDesc(backend_config.algorithm(),
-                             backend_config.tensor_ops_enabled()),
-      backend_config.scratch_size());
-=======
   TF_ASSIGN_OR_RETURN(params.kind, GetCudnnConvKind(conv));
   const Shape* input_shape;
   const Shape* filter_shape;
@@ -309,7 +182,6 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 
   params.algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
       backend_config.algorithm(), backend_config.tensor_ops_enabled()));
->>>>>>> upstream/master
   params.conv_result_scale = backend_config.conv_result_scale();
 
   switch (params.kind) {
@@ -500,7 +372,6 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
   TF_ASSIGN_OR_RETURN(CudnnConvParams params,
                       GetCudnnConvParams(conv, operand_buffers, result_buffer));
 
-<<<<<<< HEAD
   if (options.first_call_from_algorithm_picker) {
     // in ROCm mode, the first call to run the convolution needs to trigger the
     // code that calls miopenFind* API. That triggger is implicit, it is based
@@ -513,8 +384,6 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
     params.algorithm = AlgorithmConfig(*options.algo_override);
   }
 
-=======
->>>>>>> upstream/master
   PrimitiveType output_primitive_type =
       conv->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {

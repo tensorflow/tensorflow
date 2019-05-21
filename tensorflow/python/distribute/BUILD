@@ -937,14 +937,11 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-<<<<<<< HEAD
         # Failure due to Rccl Op does not support eager mode, should remove when
         # PR400 is submitted
         "no_rocm",
         "no_cuda",
         "no_pip",  # b/131691139
-=======
->>>>>>> upstream/master
         "no_windows_gpu",  # TODO(b/130551176)
     ],
 )

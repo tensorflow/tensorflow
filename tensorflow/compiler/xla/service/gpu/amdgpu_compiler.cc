@@ -436,7 +436,6 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
           BufferSizeBytesFunction(),
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allow_input_output_aliasing=*/false,
           /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
   // include headers, so no need for us to print them ourselves.
@@ -444,8 +443,8 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
   VLOG(3) << "*** HLO After Optimization";
   XLA_VLOG_LINES(3, module->ToString());
-#if 0
 
+#if 0
   const string xla_dump_optimized_hlo_proto_to =
       module->config().debug_options().xla_dump_hlo_as_text();
   if (!xla_dump_optimized__hlo_proto_to.empty()) {

@@ -17,11 +17,14 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
+#if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
+#endif // GOOGLE_CUDA
+
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,7 +49,7 @@ struct FusedBatchNorm;
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using se::DeviceMemory;
 using se::ScratchAllocator;
 using se::Stream;
@@ -163,7 +166,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
 // to make the non-GPU operations compatible with GPU ones.
 class ScratchAllocator {
  public:
-  virtual ~ScratchAllocator() {}
+  virtual ~ScratchAllocator() {};
 };
 
 template <typename T>
@@ -187,7 +190,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   OpKernelContext* context_;  // not owned
   int output_index_;
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <bool IsSame, typename Y, typename X, typename T>
 struct CastIfNecessary {
@@ -983,22 +986,6 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOp<CPUDevice, float, float>);
 
-<<<<<<< HEAD
-// ROCM TODO: enable half type support
-//REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
-//                            .Device(DEVICE_CPU)
-//                            .TypeConstraint<Eigen::half>("T")
-//                            .TypeConstraint<float>("U"),
-//                        FusedBatchNormOp<CPUDevice, Eigen::half, float>);
-//
-//REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV2")
-//                            .Device(DEVICE_CPU)
-//                            .TypeConstraint<Eigen::half>("T")
-//                            .TypeConstraint<float>("U"),
-//                        FusedBatchNormGradOp<CPUDevice, Eigen::half, float>);
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV2")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<Eigen::half>("T")
@@ -1035,8 +1022,7 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<CPUDevice, Eigen::half, float>);
 
-#if GOOGLE_CUDA
->>>>>>> upstream/master
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("FusedBatchNorm").Device(DEVICE_GPU).TypeConstraint<float>("T"),

@@ -216,7 +216,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
       DeviceMemory<float>* saved_inv_var, bool is_training,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) override;
+      std::function<void()> inv_var_to_var);
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<Eigen::half>& x,
@@ -229,7 +229,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
       DeviceMemory<float>* saved_inv_var, bool is_training,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) override;
+      std::function<void()> inv_var_to_var);
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
@@ -238,7 +238,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) override;
+      DeviceMemory<float>* offset_backprop);
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
@@ -248,7 +248,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
       DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) override;
+      DeviceMemory<float>* offset_backprop);
 
   port::Status DoConvolve(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

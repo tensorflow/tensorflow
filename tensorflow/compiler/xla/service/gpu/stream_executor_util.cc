@@ -225,13 +225,14 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   }
   return Status::OK();
 }
-
+#if GOOGLE_CUDA
 se::cuda::PtxCompilationOptions PtxOptsFromConfig(
     const HloModuleConfig& hlo_module_config) {
   return se::cuda::PtxCompilationOptions(
       hlo_module_config.debug_options().xla_gpu_disable_ptxas_optimizations(),
       hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
 }
+#endif // GOOGLE_CUDA
 
 }  // namespace gpu
 }  // namespace xla

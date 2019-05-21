@@ -444,19 +444,14 @@ struct LaunchLRNGrad;
 
 template <typename T>
 struct LaunchLRNGrad<CPUDevice, T> {
-<<<<<<< HEAD
   LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta,
                 TensorFormat data_format)
-      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta),
-        data_format_(data_format) {}
-=======
-  LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta)
       : depth_radius_(depth_radius),
         bias_(bias),
         alpha_(alpha),
         beta_(beta),
-        alpha_beta_2_(T(-2) * alpha * beta) {}
->>>>>>> upstream/master
+        alpha_beta_2_(T(-2) * alpha * beta),
+        data_format_(data_format) {}
 
   void launch(OpKernelContext* context, OpKernel* kernel,
               const Tensor& in_grads, const Tensor& in_image,
@@ -525,11 +520,8 @@ struct LaunchLRNGrad<CPUDevice, T> {
   T bias_;
   T alpha_;
   T beta_;
-<<<<<<< HEAD
   TensorFormat data_format_;
-=======
   T alpha_beta_2_;
->>>>>>> upstream/master
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

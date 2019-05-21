@@ -62,23 +62,14 @@ using gpuError_t = hipError_t;
 #endif
 
 namespace tensorflow {
-<<<<<<< HEAD
 // Launches a GPU kernel through GpuLaunchKernel in Cuda environment, or
-=======
-// Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
->>>>>>> upstream/master
 // hipLaunchKernel in ROCm environment with the given arguments.
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
 template <typename... Ts, typename... Args>
 Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
-<<<<<<< HEAD
-                        size_t shared_memory_size_bytes, gpuStream_t stream,
-                        Args... arguments) {
-=======
                        size_t shared_memory_size_bytes, gpuStream_t stream,
                        Args... arguments) {
->>>>>>> upstream/master
   static_assert(detail::NoneIsReference<Ts...>(),
                 "Kernels with reference arguments have undefined behaviour.");
 #if GOOGLE_CUDA
@@ -98,17 +89,11 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   return Status::OK();
 }
 
-<<<<<<< HEAD
-// Perfect forwarding to make GpuLaunchKernel available to both ROCm and Cuda builds
-template <typename... Args>
-auto CudaLaunchKernel(Args&&... args) -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
-=======
 // Perfect forwarding to make CudaLaunchKernel available to both ROCm and CUDA
 // builds
 template <typename... Args>
 auto CudaLaunchKernel(Args&&... args)
     -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
->>>>>>> upstream/master
   return GpuLaunchKernel(std::forward<Args>(args)...);
 }
 
@@ -152,13 +137,8 @@ __host__ __device__ inline double tf_max(double x, double y) {
 // ROCM TODO re-enable them after adding fp16 support logic
 #if GOOGLE_CUDA
 __device__ inline Eigen::half GpuShuffleSync(unsigned mask, Eigen::half value,
-<<<<<<< HEAD
-                                              int src_lane,
-                                              int width = warpSize) {
-=======
                                              int src_lane,
                                              int width = warpSize) {
->>>>>>> upstream/master
   return Eigen::half(
       GpuShuffleSync(mask, static_cast<uint16>(value), src_lane, width));
 }
@@ -169,32 +149,21 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleUpSync(
   return Eigen::half(
       GpuShuffleUpSync(mask, static_cast<uint16>(value), delta, width));
 }
-<<<<<<< HEAD
-CREATE_CUDA_HOST_FUNCTION_ALIAS(GpuShuffleUpSync, CudaShuffleUpSync);
-=======
 // Aliased in gpu_device_functions.h
->>>>>>> upstream/master
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleDownSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
       GpuShuffleDownSync(mask, static_cast<uint16>(value), delta, width));
 }
-<<<<<<< HEAD
-CREATE_CUDA_HOST_FUNCTION_ALIAS(GpuShuffleDownSync, CudaShuffleDownSync);
-=======
 // Aliased in gpu_device_functions.h
->>>>>>> upstream/master
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
     unsigned mask, Eigen::half value, int lane_mask, int width = warpSize) {
   return Eigen::half(
       GpuShuffleXorSync(mask, static_cast<uint16>(value), lane_mask, width));
 }
-<<<<<<< HEAD
-=======
 // Aliased in gpu_device_functions.h
->>>>>>> upstream/master
 #endif
 
 namespace gpu_helper {

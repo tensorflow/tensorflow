@@ -277,26 +277,9 @@ cuda_py_test(
 cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
-<<<<<<< HEAD
-    additional_deps = [":multi_worker_test_main_lib"],
-    shard_count = 32,
-    tags = [
-        "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        # TODO(b/124344198): Add "multi_and_single_gpu",
-	"no_rocm",  # needs support for "NcclAllReduce" op
-    ],
-)
-
-py_library(
-    name = "multi_worker_test_main_lib",
-    srcs = ["multi_worker_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-=======
     additional_deps = [
         ":multi_worker_testing_utils",
         "@absl_py//absl/testing:parameterized",
->>>>>>> upstream/master
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",

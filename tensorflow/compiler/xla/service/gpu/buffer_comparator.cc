@@ -362,18 +362,16 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   se::DeviceMemory<ElementT> lhs_typed(lhs);
   se::DeviceMemory<ElementT> rhs_typed(rhs);
   uint64 buffer_size = lhs_typed.ElementCount();
-
+#if 0
   TF_ASSIGN_OR_RETURN(absl::Span<const uint8> compiled_ptx,
                       se::cuda::CompilePtxOrGetCached(
                           executor->device_ordinal(), buffer_compare_ptx,
                           PtxOptsFromConfig(config)));
-
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT<ElementT>> comparison_kernel,
       (CreateTypedKernel<se::DeviceMemory<ElementT>, se::DeviceMemory<ElementT>,
                          float, uint64, se::DeviceMemory<uint64>>(
           kernel_name, buffer_compare_ptx, compiled_ptx, executor)));
-
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, executor->GetDeviceDescription());
 
@@ -387,6 +385,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   stream->ThenMemcpy(&result, *out_param, sizeof(result));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return result == 0;
+#endif 
 }
 
 // Host side comparison code that does the same thing, but reports some of the
