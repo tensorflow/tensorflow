@@ -16,8 +16,8 @@ include (ExternalProject)
 include (GNUInstallDirs)
 
 set(png_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/png_archive)
-set(png_URL https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.6.35.tar.gz)
-set(png_HASH SHA256=6d59d6a154ccbb772ec11772cb8f8beb0d382b61e7ccc62435bf7311c9f4b210)
+set(png_URL https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.6.37.tar.gz)
+set(png_HASH SHA256=ca74a0dace179a8422187671aee97dd3892b53e168627145271cad5b5ac81307)
 set(png_BUILD ${CMAKE_BINARY_DIR}/png/src/png)
 set(png_INSTALL ${CMAKE_BINARY_DIR}/png/install)
 
