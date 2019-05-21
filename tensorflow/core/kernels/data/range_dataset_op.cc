@@ -25,6 +25,11 @@ namespace data {
 // description of the following op.
 
 constexpr char RangeDatasetOp::kDatasetType[];
+constexpr char RangeDatasetOp::kStart[];
+constexpr char RangeDatasetOp::kStop[];
+constexpr char RangeDatasetOp::kStep[];
+constexpr char RangeDatasetOp::kOutputTypes[];
+constexpr char RangeDatasetOp::kOutputShapes[];
 
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
@@ -132,13 +137,13 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64 start;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "start", &start));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStart, &start));
 
   int64 stop;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "stop", &stop));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStop, &stop));
 
   int64 step;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "step", &step));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kStep, &step));
   OP_REQUIRES(ctx, step != 0,
               errors::InvalidArgument("step must be a non-zero integer."));
 

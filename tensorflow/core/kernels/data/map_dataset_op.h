@@ -29,17 +29,25 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
                            std::vector<Tensor>, std::vector<Tensor>*)>;
 
   static constexpr char kDatasetType[] = "Map";
+  static constexpr char kInputDataset[] = "input_dataset";
+  static constexpr char kOtherArguments[] = "other_arguments";
+  static constexpr char kF[] = "f";
+  static constexpr char kTarguments[] = "Targuments";
+  static constexpr char kOutputTypes[] = "output_types";
+  static constexpr char kOutputShapes[] = "output_shapes";
+  static constexpr char kUseInterOpParallelism[] = "use_inter_op_parallelism";
+  static constexpr char kPreserveCardinality[] = "preserve_cardinality";
 
   explicit MapDatasetOp(OpKernelConstruction* ctx) : UnaryDatasetOpKernel(ctx) {
     FunctionMetadata::Params params;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseInterOpParallelism,
                                      &params.use_inter_op_parallelism));
     OP_REQUIRES_OK(ctx,
-                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+                   FunctionMetadata::Create(ctx, kF, params, &func_metadata_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr(kPreserveCardinality, &preserve_cardinality_));
   }
 
  protected:

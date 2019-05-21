@@ -42,10 +42,10 @@ class PrefetchDatasetOpTest : public DatasetOpsTestBase {
       std::unique_ptr<OpKernel> *op_kernel) {
     NodeDef node_def = test::function::NDef(
         kNodeName, name_utils::OpName(PrefetchDatasetOp::kDatasetType),
-        {"input_dataset", "buffer_size"},
-        {{"output_types", output_types},
-         {"output_shapes", output_shapes},
-         {"slack_period", 0}});
+        {PrefetchDatasetOp::kInputDataset, PrefetchDatasetOp::kBufferSize},
+        {{PrefetchDatasetOp::kOutputTypes, output_types},
+         {PrefetchDatasetOp::kOutputShapes, output_shapes},
+         {PrefetchDatasetOp::kSlackPeriod, 0}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }

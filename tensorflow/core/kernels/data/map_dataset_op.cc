@@ -28,6 +28,14 @@ namespace data {
 // description of the following op.
 
 constexpr char MapDatasetOp::kDatasetType[];
+constexpr char MapDatasetOp::kInputDataset[];
+constexpr char MapDatasetOp::kOtherArguments[];
+constexpr char MapDatasetOp::kF[];
+constexpr char MapDatasetOp::kTarguments[];
+constexpr char MapDatasetOp::kOutputTypes[];
+constexpr char MapDatasetOp::kOutputShapes[];
+constexpr char MapDatasetOp::kUseInterOpParallelism[];
+constexpr char MapDatasetOp::kPreserveCardinality[];
 
 class MapDatasetOp::Dataset : public DatasetBase {
  public:
@@ -96,11 +104,10 @@ class MapDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
         {std::make_pair(1, other_arguments)},         // Tensor list inputs.
-        {std::make_pair("f", f_attr),
-         std::make_pair("Targuments", other_arguments_types_attr),
-         std::make_pair("use_inter_op_parallelism",
-                        use_inter_op_parallelism_attr),
-         std::make_pair("preserve_cardinality",
+        {std::make_pair(kF, f_attr),
+         std::make_pair(kTarguments, other_arguments_types_attr),
+         std::make_pair(kUseInterOpParallelism, use_inter_op_parallelism_attr),
+         std::make_pair(kPreserveCardinality,
                         preserve_cardinality_attr)},  // Attrs
         output));
     return Status::OK();
@@ -186,9 +193,9 @@ class MapDatasetOp::Dataset : public DatasetBase {
 void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                DatasetBase** output) {
   std::unique_ptr<CapturedFunction> captured_func;
-  OP_REQUIRES_OK(
-      ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
-                                    &captured_func));
+  OP_REQUIRES_OK(ctx,
+                 CapturedFunction::Create(ctx, func_metadata_, kOtherArguments,
+                                          &captured_func));
 
   *output = new Dataset(ctx, input, std::move(captured_func), output_types_,
                         output_shapes_, preserve_cardinality_);

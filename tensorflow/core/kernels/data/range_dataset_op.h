@@ -24,6 +24,11 @@ namespace data {
 class RangeDatasetOp : public DatasetOpKernel {
  public:
   static constexpr char kDatasetType[] = "Range";
+  static constexpr char kStart[] = "start";
+  static constexpr char kStop[] = "stop";
+  static constexpr char kStep[] = "step";
+  static constexpr char kOutputTypes[] = "output_types";
+  static constexpr char kOutputShapes[] = "output_shapes";
 
   explicit RangeDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 

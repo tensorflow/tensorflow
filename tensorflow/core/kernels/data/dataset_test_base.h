@@ -95,8 +95,9 @@ class DatasetOpsTestBase : public ::testing::Test {
     std::vector<PartialTensorShape> shapes({{}});
     NodeDef node_def = test::function::NDef(
         node_name, name_utils::OpName(RangeDatasetOp::kDatasetType),
-        {"start", "stop", "step"},
-        {{"output_types", dtypes}, {"output_shapes", shapes}});
+        {RangeDatasetOp::kStart, RangeDatasetOp::kStop, RangeDatasetOp::kStep},
+        {{RangeDatasetOp::kOutputTypes, dtypes},
+         {RangeDatasetOp::kOutputShapes, shapes}});
 
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, range_op_kernel));
     return Status::OK();

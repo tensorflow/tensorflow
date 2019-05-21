@@ -35,6 +35,11 @@ namespace data {
 // Determines the fraction of slack time by which to delay prefetching of data.
 constexpr double kSleepFactor = 0.2;
 constexpr char PrefetchDatasetOp::kDatasetType[];
+constexpr char PrefetchDatasetOp::kInputDataset[];
+constexpr char PrefetchDatasetOp::kBufferSize[];
+constexpr char PrefetchDatasetOp::kOutputTypes[];
+constexpr char PrefetchDatasetOp::kOutputShapes[];
+constexpr char PrefetchDatasetOp::kSlackPeriod[];
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
@@ -81,7 +86,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(slack_period_, &slack_period_attr);
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, buffer_size},
-        {std::make_pair("slack_period", slack_period_attr)}, output));
+        {std::make_pair(kSlackPeriod, slack_period_attr)}, output));
     return Status::OK();
   }
 
@@ -176,7 +181,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name("buffer_size"), buffer_.size()));
+          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
         auto& buffer_element = buffer_[i];
         TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
@@ -203,7 +208,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       size_t buffer_size;
       {
         int64 temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("buffer_size"), &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBufferSize), &temp));
         buffer_size = static_cast<size_t>(temp);
       }
       for (size_t i = 0; i < buffer_size; i++) {
@@ -429,7 +434,7 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
   int64 buffer_size;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
+                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx,
               buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
               errors::InvalidArgument("buffer_size must be >= 0 or set "
