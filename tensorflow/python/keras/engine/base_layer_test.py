@@ -413,6 +413,39 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer.trainable = True
     self.assertListEqual(layer.trainable_weights, [layer.w])
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_passing_initial_weights_values(self):
+    kernel_value = np.random.random((10, 2))
+    layer_with_weights = keras.layers.Dense(
+        2, use_bias=False, weights=[kernel_value])
+
+    model = testing_utils.get_model_from_layers([layer_with_weights],
+                                                input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    inputs = np.random.random((3, 10))
+    out = model.predict(inputs)
+    self.assertAllClose(model.layers[-1].get_weights()[0], kernel_value)
+    self.assertAllClose(out, np.dot(inputs, kernel_value))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_set_weights_and_get_weights(self):
+    layer = keras.layers.Dense(2)
+    layer.build((None, 10))
+    kernel = np.random.random((10, 2))
+    bias = np.random.random((2,))
+    layer.set_weights([kernel, bias])
+    weights = layer.get_weights()
+    self.assertEqual(len(weights), 2)
+    self.assertAllClose(weights[0], kernel)
+    self.assertAllClose(weights[1], bias)
+    with self.assertRaisesRegexp(
+        ValueError, 'but the layer was expecting 2 weights'):
+      layer.set_weights([1, 2, 3])
+    with self.assertRaisesRegexp(
+        ValueError, 'not compatible with provided weight shape'):
+      layer.set_weights([kernel.T, bias])
+
 
 class SymbolicSupportTest(test.TestCase):
 

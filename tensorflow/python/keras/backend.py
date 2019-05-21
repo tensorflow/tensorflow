@@ -3023,7 +3023,8 @@ def set_value(x, value):
   """
   value = np.asarray(value, dtype=dtype(x))
   if ops.executing_eagerly_outside_functions():
-    x.assign(value)
+    with ops.init_scope():
+      x.assign(value)
   else:
     with get_graph().as_default():
       tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
@@ -3047,8 +3048,9 @@ def batch_set_value(tuples):
           `value` should be a Numpy array.
   """
   if ops.executing_eagerly_outside_functions():
-    for x, value in tuples:
-      x.assign(np.asarray(value, dtype=dtype(x)))
+    with ops.init_scope():
+      for x, value in tuples:
+        x.assign(np.asarray(value, dtype=dtype(x)))
   else:
     with get_graph().as_default():
       if tuples:
