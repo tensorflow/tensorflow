@@ -842,7 +842,6 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops_gen",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -1065,7 +1064,7 @@ tf_xla_py_test(
     name = "scatter_nd_op_test",
     size = "medium",
     srcs = ["scatter_nd_op_test.py"],
-    tags = ["optonly", "no_rocm"],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1304,5 +1303,4 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
     ],
-    tags = ["no_rocm"],
 )
