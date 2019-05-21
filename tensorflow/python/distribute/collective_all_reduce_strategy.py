@@ -168,6 +168,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # Save the num_gpus_per_worker and rpc_layer for configure method.
     self._num_gpus_per_worker = num_gpus
     self._rpc_layer = cluster_resolver.rpc_layer
+    self._warn_nccl_no_gpu()
 
     logging.info("CollectiveAllReduceStrategy with local_devices = %r",
                  local_devices)
@@ -262,6 +263,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # Save the num_gpus_per_worker and rpc_layer for configure method.
     self._num_gpus_per_worker = num_gpus
     self._rpc_layer = cluster_resolver.rpc_layer
+    self._warn_nccl_no_gpu()
 
     logging.info(
         "Multi-worker CollectiveAllReduceStrategy with cluster_spec = %r, "
@@ -452,9 +454,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
 
-    if ((self._communication ==
-         cross_device_ops_lib.CollectiveCommunication.NCCL) and
-        self._num_gpus_per_worker > 0):
+    if self._communication == cross_device_ops_lib.CollectiveCommunication.NCCL:
       updated_config.experimental.collective_nccl = True
 
     if not self._cluster_spec:
@@ -498,6 +498,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           reduce_op, self._device_map, value, destinations)
     return self._get_cross_device_ops().reduce(
         reduce_op, value, destinations=destinations)
+
+  def _warn_nccl_no_gpu(self):
+    if ((self._communication ==
+         cross_device_ops_lib.CollectiveCommunication.NCCL) and
+        self._num_gpus_per_worker == 0):
+      logging.warning("Enabled NCCL communication but no GPUs detected/"
+                      "specified.")
 
   @property
   def experimental_between_graph(self):
