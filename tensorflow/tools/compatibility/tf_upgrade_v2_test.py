@@ -123,6 +123,18 @@ class TestUpgrade(test_util.TensorFlowTestCase, parameterized.TestCase):
                                      "test_out.py", out_file))
     return count, report, errors, out_file.getvalue()
 
+  def _upgrade_multiple(self, old_file_texts):
+    upgrader = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+    results = []
+    for old_file_text in old_file_texts:
+      in_file = six.StringIO(old_file_text)
+      out_file = six.StringIO()
+      count, report, errors = (
+          upgrader.process_opened_file("test.py", in_file,
+                                       "test_out.py", out_file))
+      results.append([count, report, errors, out_file.getvalue()])
+    return results
+
   def testParseError(self):
     _, report, unused_errors, unused_new_text = self._upgrade(
         "import tensorflow as tf\na + \n")
@@ -1983,6 +1995,96 @@ def _log_prob(self, x):
         "tf.train.load_variable(ckpt_dir_or_file='a')")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def test_import_analysis(self):
+    old_symbol = "tf.conj(a)"
+    new_symbol = "tf.math.conj(a)"
+
+    # We upgrade the base un-versioned tensorflow aliased as tf
+    import_header = "import tensorflow as tf\n"
+    text = import_header + old_symbol
+    expected_text = import_header + new_symbol
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    import_header = ("import tensorflow as tf\n"
+                     "import tensorflow.compat.v1 as tf_v1\n"
+                     "import tensorflow.compat.v2 as tf_v2\n")
+    text = import_header + old_symbol
+    expected_text = import_header + new_symbol
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    # We don't handle unaliased tensorflow imports currently,
+    # So the upgrade script show log errors
+    import_header = "import tensorflow\n"
+    text = import_header + old_symbol
+    expected_text = import_header + old_symbol
+    _, _, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertIn("unaliased `import tensorflow`", "\n".join(errors))
+
+    # Upgrading explicitly-versioned tf code is unsafe, but we don't
+    # need to throw errors when we detect explicitly-versioned tf.
+    import_header = "import tensorflow.compat.v1 as tf\n"
+    text = import_header + old_symbol
+    expected_text = import_header + old_symbol
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertIn("`tensorflow.compat.v1` was directly imported as `tf`",
+                  report)
+    self.assertEmpty(errors)
+
+    import_header = "from tensorflow.compat import v1 as tf\n"
+    text = import_header + old_symbol
+    expected_text = import_header + old_symbol
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertIn("`tensorflow.compat.v1` was directly imported as `tf`",
+                  report)
+    self.assertEmpty(errors)
+
+    import_header = "from tensorflow.compat import v1 as tf, v2 as tf2\n"
+    text = import_header + old_symbol
+    expected_text = import_header + old_symbol
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertIn("`tensorflow.compat.v1` was directly imported as `tf`",
+                  report)
+    self.assertEmpty(errors)
+
+    import_header = "import tensorflow.compat.v2 as tf\n"
+    text = import_header + old_symbol
+    expected_text = import_header + old_symbol
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertIn("`tensorflow.compat.v2` was directly imported as `tf`",
+                  report)
+    self.assertEmpty(errors)
+
+    import_header = "from tensorflow.compat import v1 as tf1, v2 as tf\n"
+    text = import_header + old_symbol
+    expected_text = import_header + old_symbol
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertIn("`tensorflow.compat.v2` was directly imported as `tf`",
+                  report)
+    self.assertEmpty(errors)
+
+  def test_api_spec_reset_between_files(self):
+    old_symbol = "tf.conj(a)"
+    new_symbol = "tf.math.conj(a)"
+
+    ## Test that the api spec is reset in between files:
+    import_header = "import tensorflow.compat.v2 as tf\n"
+    text_a = import_header + old_symbol
+    expected_text_a = import_header + old_symbol
+    text_b = old_symbol
+    expected_text_b = new_symbol
+    results = self._upgrade_multiple([text_a, text_b])
+    result_a, result_b = results[0], results[1]
+    self.assertEqual(result_a[3], expected_text_a)
+    self.assertEqual(result_b[3], expected_text_b)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

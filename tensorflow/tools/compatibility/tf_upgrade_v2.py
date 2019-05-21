@@ -34,7 +34,35 @@ from tensorflow.tools.compatibility import reorders_v2
 # pylint: disable=g-explicit-bool-comparison,g-bool-id-comparison
 
 
-class TFAPIChangeSpec(ast_edits.APIChangeSpec):
+class UnaliasedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self):
+    self.log_level = ast_edits.ERROR
+    self.log_message = ("The tf_upgrade_v2 script detected an unaliased "
+                        "`import tensorflow`. The script can only run when "
+                        "importing with `import tensorflow as tf`.")
+
+
+class VersionedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self, version):
+    self.log_level = ast_edits.INFO
+    self.log_message = ("Not upgrading symbols because `tensorflow." + version
+                        + "` was directly imported as `tf`.")
+
+
+class TFAPIImportAnalysisSpec(ast_edits.APIAnalysisSpec):
+
+  def __init__(self):
+    self.symbols_to_detect = {}
+    self.imports_to_detect = {
+        ("tensorflow", None): UnaliasedTFImport(),
+        ("tensorflow.compat.v1", "tf"): VersionedTFImport("compat.v1"),
+        ("tensorflow.compat.v2", "tf"): VersionedTFImport("compat.v2"),
+    }
+
+
+class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
   """List of maps that describe what changed in the API."""
 
   def __init__(self):
@@ -481,6 +509,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Add additional renames not in renames_v2.py to all_renames_v2.py.
     self.symbol_renames = all_renames_v2.symbol_renames
 
+    self.import_renames = {}
+
     # Variables that should be changed to functions.
     self.change_to_function = {}
 
@@ -771,7 +801,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "extended.call_for_each_replica->experimental_run_v2, "
         "reduce requires an axis argument, "
         "unwrap->experimental_local_results "
-        "experimental_initialize and experimenta_finalize no longer needed ")
+        "experimental_initialize and experimental_finalize no longer needed ")
 
     contrib_mirrored_strategy_warning = (
         ast_edits.ERROR,
@@ -1473,6 +1503,27 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
     self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+
+  def preprocess(self, root_node):
+    visitor = ast_edits.PastaAnalyzeVisitor(TFAPIImportAnalysisSpec())
+    visitor.visit(root_node)
+    detections = set(visitor.results)
+    # If we have detected the presence of imports of specific TF versions,
+    # We want to modify the update spec to check only module deprecations
+    # and skip all other conversions.
+    if detections:
+      self.function_handle = {}
+      self.function_reorders = {}
+      self.function_keyword_renames = {}
+      self.symbol_renames = {}
+      self.function_warnings = {}
+      self.change_to_function = {}
+      self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+      self.import_renames = {}
+    return visitor.log, visitor.warnings_and_errors
+
+  def clear_preprocessing(self):
+    self.__init__()
 
 
 def _is_ast_str(node):

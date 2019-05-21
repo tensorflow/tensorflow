@@ -146,6 +146,31 @@ class APIChangeSpec(object):
   For an example, see `TFAPIChangeSpec`.
   """
 
+  def preprocess(self, root_node):  # pylint: disable=unused-argument
+    """Preprocess a parse tree. Return any produced logs and errors."""
+    return [], []
+
+  def clear_preprocessing(self):
+    """Restore this APIChangeSpec to before it preprocessed a file.
+
+    This is needed if preprocessing a file changed any rewriting rules.
+    """
+    pass
+
+
+class NoUpdateSpec(APIChangeSpec):
+  """A specification of an API change which doesn't change anything."""
+
+  def __init__(self):
+    self.function_handle = {}
+    self.function_reorders = {}
+    self.function_keyword_renames = {}
+    self.symbol_renames = {}
+    self.function_warnings = {}
+    self.change_to_function = {}
+    self.module_deprecations = {}
+    self.import_renames = {}
+
 
 class _PastaEditVisitor(ast.NodeVisitor):
   """AST Visitor that processes function calls.
@@ -618,6 +643,112 @@ class _PastaEditVisitor(ast.NodeVisitor):
     self.generic_visit(node)
 
 
+class AnalysisResult(object):
+  """This class represents an analysis result and how it should be logged.
+
+  This class must provide the following fields:
+
+  * `log_level`: The log level to which this detection should be logged
+  * `log_message`: The message that should be logged for this detection
+
+  For an example, see `VersionedTFImport`.
+  """
+
+
+class APIAnalysisSpec(object):
+  """This class defines how `AnalysisResult`s should be generated.
+
+  It specifies how to map imports and symbols to `AnalysisResult`s.
+
+  This class must provide the following fields:
+
+  * `symbols_to_detect`: maps function names to `AnalysisResult`s
+  * `imports_to_detect`: maps imports represented as (full module name, alias)
+    tuples to `AnalysisResult`s
+    notifications)
+
+  For an example, see `TFAPIImportAnalysisSpec`.
+  """
+
+
+class PastaAnalyzeVisitor(_PastaEditVisitor):
+  """AST Visitor that looks for specific API usage without editing anything.
+
+  This is used before any rewriting is done to detect if any symbols are used
+  that require changing imports or disabling rewriting altogether.
+  """
+
+  def __init__(self, api_analysis_spec):
+    super(PastaAnalyzeVisitor, self).__init__(NoUpdateSpec())
+    self._api_analysis_spec = api_analysis_spec
+    self._results = []   # Holds AnalysisResult objects
+
+  @property
+  def results(self):
+    return self._results
+
+  def add_result(self, analysis_result):
+    self._results.append(analysis_result)
+
+  def visit_Attribute(self, node):  # pylint: disable=invalid-name
+    """Handle bare Attributes i.e. [tf.foo, tf.bar]."""
+    full_name = self._get_full_name(node)
+    if full_name:
+      detection = self._api_analysis_spec.symbols_to_detect.get(full_name, None)
+      if detection:
+        self.add_result(detection)
+        self.add_log(
+            detection.log_level, node.lineno, node.col_offset,
+            detection.log_message)
+
+    self.generic_visit(node)
+
+  def visit_Import(self, node):  # pylint: disable=invalid-name
+    """Handle visiting an import node in the AST.
+
+    Args:
+      node: Current Node
+    """
+    for import_alias in node.names:
+      # Detect based on full import name and alias)
+      full_import = (import_alias.name, import_alias.asname)
+      detection = (self._api_analysis_spec
+                   .imports_to_detect.get(full_import, None))
+      if detection:
+        self.add_result(detection)
+        self.add_log(
+            detection.log_level, node.lineno, node.col_offset,
+            detection.log_message)
+
+    self.generic_visit(node)
+
+  def visit_ImportFrom(self, node):  # pylint: disable=invalid-name
+    """Handle visiting an import-from node in the AST.
+
+    Args:
+      node: Current Node
+    """
+    if not node.module:
+      self.generic_visit(node)
+      return
+
+    from_import = node.module
+
+    for import_alias in node.names:
+      # Detect based on full import name(to & as)
+      full_module_name = "%s.%s" % (from_import, import_alias.name)
+      full_import = (full_module_name, import_alias.asname)
+      detection = (self._api_analysis_spec
+                   .imports_to_detect.get(full_import, None))
+      if detection:
+        self.add_result(detection)
+        self.add_log(
+            detection.log_level, node.lineno, node.col_offset,
+            detection.log_message)
+
+    self.generic_visit(node)
+
+
 class ASTCodeUpgrader(object):
   """Handles upgrading a set of Python files using a given API change spec."""
 
@@ -663,12 +794,18 @@ class ASTCodeUpgrader(object):
       log = ["ERROR: Failed to parse.\n" + traceback.format_exc()]
       return 0, "", log, []
 
+    preprocess_logs, preprocess_errors = self._api_change_spec.preprocess(t)
+
     visitor = _PastaEditVisitor(self._api_change_spec)
     visitor.visit(t)
 
-    logs = [self.format_log(log, None) for log in visitor.log]
+    self._api_change_spec.clear_preprocessing()
+
+    logs = [self.format_log(log, None) for log in (preprocess_logs +
+                                                   visitor.log)]
     errors = [self.format_log(error, in_filename)
-              for error in visitor.warnings_and_errors]
+              for error in (preprocess_errors +
+                            visitor.warnings_and_errors)]
     return 1, pasta.dump(t), logs, errors
 
   def _format_log(self, log, in_filename, out_filename):
