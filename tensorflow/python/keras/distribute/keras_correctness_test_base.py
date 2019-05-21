@@ -434,6 +434,13 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            is_stateful_model=False,
                            partial_last_batch=None,
                            training_epochs=2):
+    # These tests pass in Google's internal build, but certain combinations
+    # fail in some of our open source builds. This next line is automatically
+    # rewritten by our conversion script.
+    in_tf_open_source = True
+    if (use_validation_data and not context.executing_eagerly() and
+        in_tf_open_source and distribution.num_replicas_in_sync > 1):
+      self.skipTest('Test broken; see b/129793413 and b/117920141')
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
       self.skip_unsupported_test_configuration(distribution)
