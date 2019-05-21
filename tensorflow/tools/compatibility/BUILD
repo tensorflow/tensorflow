@@ -237,6 +237,7 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 exports_files(
