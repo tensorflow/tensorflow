@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/SDBM.h"
-#include "mlir/IR/SDBMExpr.h"
+#include "mlir/SDBM/SDBM.h"
+#include "mlir/SDBM/SDBMExpr.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SetVector.h"

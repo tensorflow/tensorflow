@@ -25,7 +25,7 @@
 #define MLIR_IR_SDBMEXPRDETAIL_H
 
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/SDBMExpr.h"
+#include "mlir/SDBM/SDBMExpr.h"
 #include "mlir/Support/StorageUniquer.h"
 
 namespace mlir {

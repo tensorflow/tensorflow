@@ -21,7 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/SDBMExpr.h"
+#include "mlir/SDBM/SDBMExpr.h"
 #include "SDBMExprDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"

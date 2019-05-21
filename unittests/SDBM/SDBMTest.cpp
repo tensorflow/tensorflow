@@ -15,10 +15,10 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/SDBM.h"
+#include "mlir/SDBM/SDBM.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/SDBMExpr.h"
+#include "mlir/SDBM/SDBMExpr.h"
 #include "gtest/gtest.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -151,7 +151,7 @@ TEST(SDBMExpr, Constant) {
 TEST(SDBMExpr, Dim) {
   // We can create dimension expressions and query them.
   auto expr = SDBMDimExpr::get(ctx(), 0);
-  EXPECT_EQ(expr.getPosition(), 0);
+  EXPECT_EQ(expr.getPosition(), 0u);
 
   // Two separately created dimensions with the same position are trivially
   // equal.
@@ -174,7 +174,7 @@ TEST(SDBMExpr, Dim) {
 TEST(SDBMExpr, Symbol) {
   // We can create symbol expressions and query them.
   auto expr = SDBMSymbolExpr::get(ctx(), 0);
-  EXPECT_EQ(expr.getPosition(), 0);
+  EXPECT_EQ(expr.getPosition(), 0u);
 
   // Two separately created symbols with the same position are trivially equal.
   auto expr2 = SDBMSymbolExpr::get(ctx(), 0);

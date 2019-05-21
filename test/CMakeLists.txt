@@ -1,5 +1,6 @@
-add_subdirectory(mlir-cpu-runner)
 add_subdirectory(EDSC)
+add_subdirectory(mlir-cpu-runner)
+add_subdirectory(SDBM)
 
 llvm_canonicalize_cmake_booleans(
   LLVM_BUILD_EXAMPLES
@@ -27,6 +28,7 @@ set(MLIR_TEST_DEPENDS
   MLIRUnitTests
   mlir-cpu-runner
   mlir-opt
+  mlir-sdbm-api-test
   mlir-tblgen
   mlir-translate
   sdot

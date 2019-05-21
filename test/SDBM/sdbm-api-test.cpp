@@ -15,11 +15,11 @@
 // limitations under the License.
 // =============================================================================
 
-// RUN: %p/sdbm-api-test | FileCheck %s
+// RUN: mlir-sdbm-api-test | FileCheck %s
 
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/SDBM.h"
-#include "mlir/IR/SDBMExpr.h"
+#include "mlir/SDBM/SDBM.h"
+#include "mlir/SDBM/SDBMExpr.h"
 
 #include "llvm/Support/raw_ostream.h"
 
