@@ -148,6 +148,9 @@ location.
 ``--dump_schedule_as_dot`` creates a file containing the scheduled HLO graph as
 a graphviz DOT file.
 
+``--tensor_map_file_path`` will cause a JSON file containing the tile mapping
+of all tensors to be written to this directory.
+
 ``--fallback_scheduler`` uses the standard TensorFlow scheduler, instead of
 the GraphCore specific one.
 

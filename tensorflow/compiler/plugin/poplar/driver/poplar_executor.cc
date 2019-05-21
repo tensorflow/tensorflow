@@ -800,12 +800,11 @@ tensorflow::IpuTraceEvent PoplarExecutor::NewTraceEvent() {
   return evt;
 }
 
-void PoplarExecutor::AddCompileBeginEventRecord(const std::string& module_name,
-                                                const std::string& xla_graph) {
+void PoplarExecutor::AddCompileBeginEventRecord(
+    const std::string& module_name) {
   auto evt = NewTraceEvent();
   evt.set_type(tensorflow::IpuTraceEvent::COMPILE_BEGIN);
   evt.mutable_compile_begin()->set_module_name(std::move(module_name));
-  evt.mutable_compile_begin()->set_xla_graph(std::move(xla_graph));
 
   reports_.push_back(evt);
 };

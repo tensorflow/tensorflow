@@ -569,12 +569,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   HloComputation* entry = module->entry_computation();
 
   if (poplarExecutor->IpuTraceEventsEnabled()) {
-    std::string dot_graph;
-    auto status = SerializeComputationToGraphDef(*entry);
-    if (status.ok()) {
-      dot_graph = status.ValueOrDie();
-    }
-    poplarExecutor->AddCompileBeginEventRecord(module->name(), dot_graph);
+    poplarExecutor->AddCompileBeginEventRecord(module->name());
   }
 
   // Set layout if there isn't one
@@ -667,10 +662,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       try {
         VLOG(1) << "Compile engine " << module->name();
 
-        // Generate this JSON early so that the VLOG trace can contain the
-        // output whether the engine compilation completes or not.
-        map_json = GetTensorMappingJson(GetReplicatedGraph(resources),
-                                        resources.tensor_maps);
+        map_json =
+            GetTensorMappingJson(module->name(), GetReplicatedGraph(resources),
+                                 resources.tensor_maps);
 
         auto& opts = poplarExecutor->GetOptionsFlags();
         auto progress_logging = [](int progress, int total) {

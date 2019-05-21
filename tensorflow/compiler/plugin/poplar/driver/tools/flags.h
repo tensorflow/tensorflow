@@ -58,6 +58,9 @@ struct PoplarXlaFlags {
   // Path to the executable cache.
   std::string executable_cache_path;
 
+  // Path for the tensormap files
+  std::string tensor_map_file_path;
+
   // Stores all the values as a string.
   std::string as_string;
 

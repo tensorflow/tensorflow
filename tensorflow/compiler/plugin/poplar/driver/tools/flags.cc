@@ -61,6 +61,7 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
        "(path)"},
       {"executable_cache_path", "Path to the executable cache. (path)"},
       {"dump_schedule_as_dot", "Dumps the scheduler graph as a dot file."},
+      {"tensor_map_file_path", "Directory for tensor map dump files."},
       {"fallback_scheduler",
        "Use the sync list scheduler rather than the default one."},
       {"add_all_reduce_copies",
@@ -105,6 +106,9 @@ void AllocateAndParseFlags() {
   // Path to the executable cache.
   poplar_xla_flags->executable_cache_path = "";
 
+  // Path for tensormap files
+  poplar_xla_flags->tensor_map_file_path = "";
+
   // Dump the schedule graph as a dot to VLOG.
   poplar_xla_flags->dump_schedule_as_dot = false;
 
@@ -131,6 +135,7 @@ void AllocateAndParseFlags() {
     ADD_FLAG(save_vertex_graph)
     ADD_FLAG(executable_cache_path)
     ADD_FLAG(dump_schedule_as_dot)
+    ADD_FLAG(tensor_map_file_path)
     ADD_FLAG(fallback_scheduler)
     ADD_FLAG(add_all_reduce_copies)
 
