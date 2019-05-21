@@ -53,9 +53,9 @@ void FusionAddRelu(OpKernelContext* ctx, const float* in0, const float* in1,
                    float* out, unsigned N) {
   GPUDevice d = ctx->eigen_device<GPUDevice>();
   GpuLaunchConfig config = GetGpuLaunchConfig(N, d);
-  TF_CHECK_OK(GpuLaunchKernel(AddReluKernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, d.stream(),
-                    config.virtual_thread_count, in0, in1, out));
+  TF_CHECK_OK(GpuLaunchKernel(AddReluKernel, config.block_count,
+                              config.thread_per_block, 0, d.stream(),
+                              config.virtual_thread_count, in0, in1, out));
 }
 
 __global__ void AddReluHalfKernel(int nthreads, const half2* in0, const half2* in1,
@@ -75,9 +75,9 @@ void FusionAddRelu(OpKernelContext* ctx, const Eigen::half* in0,
 
   GPUDevice d = ctx->eigen_device<GPUDevice>();
   GpuLaunchConfig config = GetGpuLaunchConfig(h_N, d);
-  TF_CHECK_OK(GpuLaunchKernel(AddReluHalfKernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, d.stream(),
-                    config.virtual_thread_count, h_in0, h_in1, h_out));
+  TF_CHECK_OK(GpuLaunchKernel(
+      AddReluHalfKernel, config.block_count, config.thread_per_block, 0,
+      d.stream(), config.virtual_thread_count, h_in0, h_in1, h_out));
 }
 
 //-------------------------------------------------------------------
@@ -93,9 +93,9 @@ void FusionAddReluBcast(OpKernelContext* ctx, const float* in0,
                         const float* in1, float* out, unsigned N, unsigned M) {
   GPUDevice d = ctx->eigen_device<GPUDevice>();
   GpuLaunchConfig config = GetGpuLaunchConfig(N, d);
-  TF_CHECK_OK(GpuLaunchKernel(AddReluKernelBcast, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, d.stream(),
-                    config.virtual_thread_count, M, in0, in1, out));
+  TF_CHECK_OK(GpuLaunchKernel(AddReluKernelBcast, config.block_count,
+                              config.thread_per_block, 0, d.stream(),
+                              config.virtual_thread_count, M, in0, in1, out));
 }
 
 __global__ void AddReluKernelBcastHalf(int nthreads, unsigned M, const half2* in0,
@@ -117,9 +117,9 @@ void FusionAddReluBcast(OpKernelContext* ctx, const Eigen::half* in0,
 
   GPUDevice d = ctx->eigen_device<GPUDevice>();
   GpuLaunchConfig config = GetGpuLaunchConfig(h_N, d);
-  TF_CHECK_OK(GpuLaunchKernel(AddReluKernelBcastHalf, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, d.stream(),
-                    config.virtual_thread_count, h_M, h_in0, h_in1, h_out));
+  TF_CHECK_OK(GpuLaunchKernel(
+      AddReluKernelBcastHalf, config.block_count, config.thread_per_block, 0,
+      d.stream(), config.virtual_thread_count, h_M, h_in0, h_in1, h_out));
 }
 
 //-------------------------------------------------------------------
@@ -137,9 +137,9 @@ void FusionAddNReluGrad(OpKernelContext* ctx, const float* in0,
                         unsigned N) {
   GPUDevice d = ctx->eigen_device<GPUDevice>();
   GpuLaunchConfig config = GetGpuLaunchConfig(N, d);
-  TF_CHECK_OK(GpuLaunchKernel(AddNReluGradKernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, d.stream(),
-                    config.virtual_thread_count, in0, in1, in2, out));
+  TF_CHECK_OK(GpuLaunchKernel(AddNReluGradKernel, config.block_count,
+                              config.thread_per_block, 0, d.stream(),
+                              config.virtual_thread_count, in0, in1, in2, out));
 }
 
 __global__ void AddNReluGradHalfKernel(int nthreads, const half2* in0,
@@ -162,9 +162,9 @@ void FusionAddNReluGrad(OpKernelContext* ctx, const Eigen::half* in0,
 
   GPUDevice d = ctx->eigen_device<GPUDevice>();
   GpuLaunchConfig config = GetGpuLaunchConfig(h_N, d);
-  TF_CHECK_OK(GpuLaunchKernel(AddNReluGradHalfKernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, d.stream(),
-                    config.virtual_thread_count, h_in0, h_in1, h_in2, h_out));
+  TF_CHECK_OK(GpuLaunchKernel(
+      AddNReluGradHalfKernel, config.block_count, config.thread_per_block, 0,
+      d.stream(), config.virtual_thread_count, h_in0, h_in1, h_in2, h_out));
 }
 
 //-------------------------------------------------------------------
