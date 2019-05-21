@@ -1316,28 +1316,19 @@ def _SelectGradV2(op, grad):
   y = op.inputs[2]
   zeros = array_ops.zeros([], dtype=grad.dtype.base_dtype)
   gx = array_ops.where_v2(c, grad, zeros)
-  gx_shape = array_ops.shape(gx)
   x_shape = array_ops.shape(x)
-  rankdiff_x = array_ops.rank(gx) - array_ops.rank(x)
+  output_shape = array_ops.shape(op.outputs[0])
   # Reduce away broadcasted leading dims.
-  gx = math_ops.reduce_sum(gx, axis=math_ops.range(rankdiff_x))
-  # Reduce but keep x's 1-valued dims which were broadcast.
-  axis = array_ops.where_v2(gx_shape[rankdiff_x:] > x_shape)
-  # tf.where returns 2D so squeeze.
-  axis = array_ops.squeeze(axis)
-  gx = math_ops.reduce_sum(gx, keepdims=True, axis=axis)
+  reduce_x, _ = gen_array_ops.broadcast_gradient_args(x_shape, output_shape)
+  gx = math_ops.reduce_sum(gx, keepdims=True, axis=reduce_x)
+  gx = array_ops.reshape(gx, x_shape)
 
   gy = array_ops.where_v2(c, zeros, grad)
-  gy_shape = array_ops.shape(gy)
   y_shape = array_ops.shape(y)
-  rankdiff_y = array_ops.rank(gy) - array_ops.rank(y)
   # Reduce away broadcasted leading dims.
-  gy = math_ops.reduce_sum(gy, axis=math_ops.range(rankdiff_y))
-  # Reduce but keep y's 1-valued dims which were broadcast.
-  axis = array_ops.where_v2(gy_shape[rankdiff_y:] > y_shape)
-  # tf.where returns 2D so squeeze.
-  axis = array_ops.squeeze(axis)
-  gy = math_ops.reduce_sum(gy, keepdims=True, axis=axis)
+  reduce_y, _ = gen_array_ops.broadcast_gradient_args(y_shape, output_shape)
+  gy = math_ops.reduce_sum(gy, keepdims=True, axis=reduce_y)
+  gy = array_ops.reshape(gy, y_shape)
 
   return (None, gx, gy)
 
