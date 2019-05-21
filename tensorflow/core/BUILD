@@ -3774,6 +3774,7 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+        "@com_google_absl//absl/synchronization",
         "@zlib_archive//:zlib",
     ],
 )
