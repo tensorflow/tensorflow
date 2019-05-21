@@ -25,6 +25,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -666,4 +667,131 @@ void SourceMgrDiagnosticVerifierHandler::process(FileLineColLoc loc,
     emitDiagnostic(loc, "unexpected " + getDiagKindStr(kind) + ": " + msg,
                    DiagnosticSeverity::Error);
   impl->status = failure();
+}
+
+//===----------------------------------------------------------------------===//
+// SourceMgrDiagnosticVerifierHandler
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace detail {
+struct ParallelDiagnosticHandlerImpl : public llvm::PrettyStackTraceEntry {
+  struct ThreadDiagnostic {
+    ThreadDiagnostic(size_t id, Diagnostic diag)
+        : id(id), diag(std::move(diag)) {}
+    bool operator<(const ThreadDiagnostic &rhs) const { return id < rhs.id; }
+
+    /// The id for this diagnostic, this is used for ordering.
+    /// Note: This id corresponds to the ordered position of the current element
+    ///       being processed by a given thread.
+    size_t id;
+
+    /// The diagnostic.
+    Diagnostic diag;
+  };
+
+  ParallelDiagnosticHandlerImpl(MLIRContext *ctx)
+      : prevHandler(ctx->getDiagEngine().getHandler()), context(ctx) {
+    ctx->getDiagEngine().setHandler([this](Diagnostic diag) {
+      uint64_t tid = llvm::get_threadid();
+      llvm::sys::SmartScopedLock<true> lock(mutex);
+      assert(threadToOrderID.count(tid) &&
+             "current thread does not have a valid orderID");
+
+      // Append a new diagnostic.
+      diagnostics.emplace_back(threadToOrderID[tid], std::move(diag));
+    });
+  }
+
+  ~ParallelDiagnosticHandlerImpl() {
+    // Restore the previous diagnostic handler.
+    context->getDiagEngine().setHandler(prevHandler);
+
+    // Early exit if there are no diagnostics, this is the common case.
+    if (diagnostics.empty())
+      return;
+
+    // Emit the diagnostics back to the context.
+    emitDiagnostics([&](Diagnostic diag) {
+      return context->getDiagEngine().emit(std::move(diag));
+    });
+  }
+
+  /// Utility method to emit any held diagnostics.
+  void emitDiagnostics(std::function<void(Diagnostic)> emitFn) {
+    // Stable sort all of the diagnostics that were emitted. This creates a
+    // deterministic ordering for the diagnostics based upon which order id they
+    // were emitted for.
+    std::stable_sort(diagnostics.begin(), diagnostics.end());
+
+    // Emit each diagnostic to the context again.
+    for (ThreadDiagnostic &diag : diagnostics)
+      emitFn(std::move(diag.diag));
+  }
+
+  /// Set the order id for the current thread.
+  void setOrderIDForThread(size_t orderID) {
+    uint64_t tid = llvm::get_threadid();
+    llvm::sys::SmartScopedLock<true> lock(mutex);
+    threadToOrderID[tid] = orderID;
+  }
+
+  /// Dump the current diagnostics that were inflight.
+  void print(raw_ostream &os) const override {
+    // Early exit if there are no diagnostics, this is the common case.
+    if (diagnostics.empty())
+      return;
+
+    os << "In-Flight Diagnostics:\n";
+    const_cast<ParallelDiagnosticHandlerImpl *>(this)->emitDiagnostics(
+        [&](Diagnostic diag) {
+          os.indent(4);
+
+          // Print each diagnostic with the format:
+          //   "<location>: <kind>: <msg>"
+          if (!diag.getLocation().isa<UnknownLoc>())
+            os << diag.getLocation() << ": ";
+          switch (diag.getSeverity()) {
+          case DiagnosticSeverity::Error:
+            os << "error: ";
+            break;
+          case DiagnosticSeverity::Warning:
+            os << "warning: ";
+            break;
+          case DiagnosticSeverity::Note:
+            os << "note: ";
+            break;
+          case DiagnosticSeverity::Remark:
+            os << "remark: ";
+            break;
+          }
+          os << diag << '\n';
+        });
+  }
+
+  /// The previous context diagnostic handler.
+  DiagnosticEngine::HandlerTy prevHandler;
+
+  /// A smart mutex to lock access to the internal state.
+  llvm::sys::SmartMutex<true> mutex;
+
+  /// A mapping between the thread id and the current order id.
+  DenseMap<uint64_t, size_t> threadToOrderID;
+
+  /// An unordered list of diagnostics that were emitted.
+  std::vector<ThreadDiagnostic> diagnostics;
+
+  /// The context to emit the diagnostics to.
+  MLIRContext *context;
+};
+} // end namespace detail
+} // end namespace mlir
+
+ParallelDiagnosticHandler::ParallelDiagnosticHandler(MLIRContext *ctx)
+    : impl(new ParallelDiagnosticHandlerImpl(ctx)) {}
+ParallelDiagnosticHandler::~ParallelDiagnosticHandler() {}
+
+/// Set the order id for the current thread.
+void ParallelDiagnosticHandler::setOrderIDForThread(size_t orderID) {
+  impl->setOrderIDForThread(orderID);
 }

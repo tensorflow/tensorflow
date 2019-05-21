@@ -27,7 +27,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Parallel.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Threading.h"
 
 using namespace mlir;
@@ -177,129 +176,6 @@ void ModuleToFunctionPassAdaptor::runOnModule() {
   }
 }
 
-namespace {
-/// A utility class to ensure that diagnostics are emitted in a deterministic
-/// order when executing a pipeline asynchronously with
-/// ModuleToFunctionPassAdaptorParallel.
-struct ParallelDiagnosticHandler {
-  struct ThreadDiagnostic {
-    ThreadDiagnostic(size_t id, Diagnostic diag)
-        : id(id), diag(std::move(diag)) {}
-    bool operator<(const ThreadDiagnostic &rhs) const { return id < rhs.id; }
-
-    /// The function id for this diagnostic, this is used for ordering.
-    /// Note: This id corresponds to the ordered position of the current
-    ///       function within its parent module.
-    size_t id;
-
-    /// The diagnostic.
-    Diagnostic diag;
-  };
-
-  ParallelDiagnosticHandler(MLIRContext &ctx)
-      : prevHandler(ctx.getDiagEngine().getHandler()), context(ctx) {
-    ctx.getDiagEngine().setHandler([this](Diagnostic diag) {
-      uint64_t tid = llvm::get_threadid();
-      llvm::sys::SmartScopedLock<true> lock(mutex);
-
-      // Append a new diagnostic.
-      diagnostics.emplace_back(threadToFuncID[tid], std::move(diag));
-    });
-  }
-
-  ~ParallelDiagnosticHandler() {
-    // Restore the previous diagnostic handler.
-    context.getDiagEngine().setHandler(prevHandler);
-
-    // Early exit if there are no diagnostics, this is the common case.
-    if (diagnostics.empty())
-      return;
-
-    // Emit the diagnostics back to the context.
-    emitDiagnostics([&](Diagnostic diag) {
-      return context.getDiagEngine().emit(std::move(diag));
-    });
-  }
-
-  /// Utility method to emit any held diagnostics.
-  void emitDiagnostics(std::function<void(Diagnostic)> emitFn) {
-    // Stable sort all of the diagnostics that were emitted. This creates a
-    // deterministic ordering for the diagnostics based upon which function they
-    // were emitted for.
-    std::stable_sort(diagnostics.begin(), diagnostics.end());
-
-    // Emit each diagnostic to the context again.
-    for (ThreadDiagnostic &diag : diagnostics)
-      emitFn(std::move(diag.diag));
-  }
-
-  /// Set the function id for the current thread.
-  void setFuncIDForThread(size_t funcID) {
-    uint64_t tid = llvm::get_threadid();
-    llvm::sys::SmartScopedLock<true> lock(mutex);
-    threadToFuncID[tid] = funcID;
-  }
-
-  /// The previous context diagnostic handler.
-  DiagnosticEngine::HandlerTy prevHandler;
-
-  /// A smart mutex to lock access to the internal state.
-  llvm::sys::SmartMutex<true> mutex;
-
-  /// A mapping between the thread id and the current function id.
-  DenseMap<uint64_t, size_t> threadToFuncID;
-
-  /// An unordered list of diagnostics that were emitted.
-  std::vector<ThreadDiagnostic> diagnostics;
-
-  /// The context to emit the diagnostics to.
-  MLIRContext &context;
-};
-
-/// A utility stack trace entry that dumps any dangling diagnostics held by a
-/// ParallelDiagnosticHandler in the event of a crash.
-struct PrettyStackTraceParallelDiagnosticEntry
-    : public llvm::PrettyStackTraceEntry {
-  PrettyStackTraceParallelDiagnosticEntry(
-      ParallelDiagnosticHandler &parallelHandler)
-      : parallelHandler(parallelHandler) {}
-
-  void print(raw_ostream &os) const override {
-    // Early exit if there are no diagnostics, this is the common case.
-    if (parallelHandler.diagnostics.empty())
-      return;
-
-    os << "In-Flight Diagnostics:\n";
-    parallelHandler.emitDiagnostics([&](Diagnostic diag) {
-      os.indent(4);
-
-      // Print each diagnostic with the format:
-      //   "<location>: <kind>: <msg>"
-      if (!diag.getLocation().isa<UnknownLoc>())
-        os << diag.getLocation() << ": ";
-      switch (diag.getSeverity()) {
-      case DiagnosticSeverity::Error:
-        os << "error: ";
-        break;
-      case DiagnosticSeverity::Warning:
-        os << "warning: ";
-        break;
-      case DiagnosticSeverity::Note:
-        os << "note: ";
-        break;
-      case DiagnosticSeverity::Remark:
-        os << "remark: ";
-        break;
-      }
-      os << diag << '\n';
-    });
-  }
-
-  // A reference to the parallel handler to dump on the event of a crash.
-  ParallelDiagnosticHandler &parallelHandler;
-};
-} // end anonymous namespace
-
 // Run the held function pipeline synchronously across the functions within
 // the module.
 void ModuleToFunctionPassAdaptorParallel::runOnModule() {
@@ -320,11 +196,7 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
 
   // A parallel diagnostic handler that provides deterministic diagnostic
   // ordering.
-  ParallelDiagnosticHandler diagHandler(getContext());
-
-  // A pretty stack entry to print any dangling diagnostics in the event of a
-  // crash.
-  PrettyStackTraceParallelDiagnosticEntry diagCrashEntry(diagHandler);
+  ParallelDiagnosticHandler diagHandler(&getContext());
 
   // An index for the current function/analysis manager pair.
   std::atomic<unsigned> funcIt(0);
@@ -343,7 +215,7 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
             break;
 
           // Set the function id for this thread in the diagnostic handler.
-          diagHandler.setFuncIDForThread(nextID);
+          diagHandler.setOrderIDForThread(nextID);
 
           // Run the executor over the current function.
           auto &it = funcAMPairs[nextID];

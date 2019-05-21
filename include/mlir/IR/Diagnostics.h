@@ -513,6 +513,39 @@ private:
   std::unique_ptr<detail::SourceMgrDiagnosticVerifierHandlerImpl> impl;
 };
 
+//===----------------------------------------------------------------------===//
+// ParallelDiagnosticHandler
+//===----------------------------------------------------------------------===//
+
+namespace detail {
+struct ParallelDiagnosticHandlerImpl;
+} // end namespace detail
+
+/// This class is a utility diagnostic handler for use when multi-threading some
+/// part of the compiler where diagnostics may be emitted. This handler ensures
+/// a deterministic ordering to the emitted diagnostics that mirrors that of a
+/// single-threaded compilation.
+class ParallelDiagnosticHandler {
+public:
+  ParallelDiagnosticHandler(MLIRContext *ctx);
+  ~ParallelDiagnosticHandler();
+
+  /// Set the order id for the current thread. This is required to be set by
+  /// each thread that will be emitting diagnostics to this handler. The orderID
+  /// corresponds to the order in which diagnostics would be emitted when
+  /// executing synchronously. For example, if we were processing a list
+  /// of operations [a, b, c] on a single-thread. Diagnostics emitted while
+  /// processing operation 'a' would be emitted before those for 'b' or 'c'.
+  /// This corresponds 1-1 with the 'orderID'. The thread that is processing 'a'
+  /// should set the orderID to '0'; the thread processing 'b' should set it to
+  /// '1'; and so on and so forth. This provides a way for the handler to
+  /// deterministically order the diagnostics that it receives given the thread
+  /// that it is receiving on.
+  void setOrderIDForThread(size_t orderID);
+
+private:
+  std::unique_ptr<detail::ParallelDiagnosticHandlerImpl> impl;
+};
 } // namespace mlir
 
 #endif

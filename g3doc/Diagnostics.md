@@ -249,3 +249,43 @@ SourceMgr sourceMgr;
 MLIRContext context;
 SourceMgrDiagnosticVerifierHandler sourceMgrHandler(sourceMgr, &context);
 ```
+
+### Parallel Diagnostic Handler
+
+MLIR is designed from the ground up to be multi-threaded. One important to thing
+to keep in mind when multi-threading is determinism. This means that the
+behavior seen when operating on multiple threads is the same as when operating
+on a single thread. For diagnostics, this means that the ordering of the
+diagnostics is the same regardless of the amount of threads being operated on.
+The ParallelDiagnosticHandler is introduced to solve this problem.
+
+After creating a handler of this type, the only remaining step is to ensure that
+each thread that will be emitting diagnostics to the handler sets a respective
+'orderID'. The orderID corresponds to the order in which diagnostics would be
+emitted when executing synchronously. For example, if we were processing a list
+of operations [a, b, c] on a single-thread. Diagnostics emitted while processing
+operation 'a' would be emitted before those for 'b' or 'c'. This corresponds 1-1
+with the 'orderID'. The thread that is processing 'a' should set the orderID to
+'0'; the thread processing 'b' should set it to '1'; and so on and so forth.
+This provides a way for the handler to deterministically order the diagnostics
+that it receives given the thread that it is receiving on.
+
+Note: This handler automatically saves and restores the current handler
+registered with the context.
+
+A simple example is shown below:
+
+```c++
+MLIRContext *context = ...;
+ParallelDiagnosticHandler handler(context);
+
+// Process a list of operations in parallel.
+std::vector<Operation *> opsToProcess = ...;
+llvm::for_each_n(llvm::parallel::par, 0, opsToProcess.size(),
+                 [&](size_t i) {
+  // Notify the handler that we are processing the i'th operation.
+  handler.setOrderIDForThread(i);
+  auto *op = opsToProcess[i];
+  ...
+});
+```
