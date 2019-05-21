@@ -45,5 +45,4 @@ tensorflow/contrib/makefile/compile_linux_protobuf.sh
 make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
   OPTFLAGS="-O3 -march=native" \
   HOST_CXXFLAGS="--std=c++11 -march=native" \
-  ADD_CFLAGS=-lrt \
   MAKEFILE_DIR=$SCRIPT_DIR

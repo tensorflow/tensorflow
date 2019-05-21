@@ -260,6 +260,7 @@ endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
 	LIBS += -ldl -lpthread
+	LDFLAGS += -lrt
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
