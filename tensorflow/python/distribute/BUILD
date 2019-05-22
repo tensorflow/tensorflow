@@ -217,6 +217,9 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -658,6 +661,9 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":mirrored_strategy",
         "//tensorflow/python:errors",
