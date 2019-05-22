@@ -85,6 +85,6 @@ void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in) {
 }  // end namespace internal
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_GPU_H_
