@@ -71,7 +71,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
-#include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -88,6 +87,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_mem_allocator.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace xla {
 
@@ -174,9 +174,8 @@ void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
       [this, callback]() { worker_thread_->Schedule(std::move(callback)); });
 }
 
-static StatusOr<std::unique_ptr<tensorflow::MultiDeviceAdapter>>
-CreateBFCAllocator(se::Platform* platform, LocalClient* client,
-                   double memory_fraction) {
+static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
+    se::Platform* platform, LocalClient* client, double memory_fraction) {
   CHECK_GT(client->backend().device_count(), 0);
   std::vector<std::unique_ptr<tensorflow::Allocator>> allocators;
   for (se::StreamExecutor* executor : client->backend().stream_executors()) {
@@ -203,8 +202,8 @@ CreateBFCAllocator(se::Platform* platform, LocalClient* client,
         absl::StrCat("GPU_", device_ordinal, "_bfc"));
     allocators.emplace_back(std::move(gpu_bfc_allocator));
   }
-  return absl::make_unique<tensorflow::MultiDeviceAdapter>(
-      platform, std::move(allocators));
+  return absl::make_unique<se::MultiDeviceAdapter>(platform,
+                                                   std::move(allocators));
 }
 
 StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(

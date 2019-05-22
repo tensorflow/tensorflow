@@ -258,10 +258,8 @@ cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
-    # TODO(skyewm): remove this once XlaAllocator is factored out.
     visibility = [
         ":internal",
-        "//tensorflow/compiler/xla/python:__pkg__",
     ],
     deps = [
         ":common",

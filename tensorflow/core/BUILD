@@ -1000,7 +1000,6 @@ cc_library(
     name = "allocator",
     srcs = [
         "framework/allocator.cc",
-        "framework/allocator_registry.cc",
         "framework/allocator_registry.h",
         "framework/numeric_types.h",
         "framework/tracking_allocator.cc",
@@ -1014,10 +1013,35 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "//third_party/eigen3",
+    ] + if_static(extra_deps = [":allocator_registry_impl"]),
+    alwayslink = 1,
+)
+
+# This target will be included in libtensorflow_framework.so via the
+# framework_internal_impl target.
+# All other dependencies on this target need to go through if_static guard,
+# as otherwise duplicate registration in the registry will cause crashes.
+cc_library(
+    name = "allocator_registry_impl",
+    srcs = [
+        "framework/allocator.h",
+        "framework/allocator_registry.cc",
+        "framework/allocator_registry.h",
+        "framework/cpu_allocator_impl.cc",
+        "framework/numeric_types.h",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+    ],
+    deps = [
+        ":lib",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -2873,6 +2897,7 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
             "framework/allocator.cc",
+            "framework/cpu_allocator_impl.cc",
             "framework/allocator_registry.cc",
             "framework/tracking_allocator.cc",
             "example/example_parser_configuration.*",
@@ -2906,6 +2931,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":allocator_registry_impl",
         ":allocator",
         ":feature_util",
         ":lib",
