@@ -19,11 +19,11 @@ public:
 
 private:
   struct Connection {
-    seastar::connected_socket _fd;
-    seastar::input_stream<char> _read_buf;
-    seastar::channel* _channel;
-    SeastarTagFactory* _tag_factory;
-    seastar::socket_address _addr;
+    seastar::connected_socket fd_;
+    seastar::input_stream<char> read_buf_;
+    seastar::channel* channel_;
+    SeastarTagFactory* tag_factory_;
+    seastar::socket_address addr_;
     Connection(seastar::connected_socket&& fd,
                seastar::channel* chan,
                SeastarTagFactory* tag_factory,

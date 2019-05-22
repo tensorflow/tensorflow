@@ -17,6 +17,9 @@ Use grpc+seastar you have to create .endpoint_map file in launch dir.
 127.0.0.1:42353=127.0.0.1:46068
 127.0.0.1:42354=127.0.0.1:47079
 
+grpc+seastar's Environment Variables:
+SEASTAR_CORE_NUMBER configure seastar threads' number, by default is 4.
+
 # Seastar-based RPC for TF Worker Service
 
 ## User API

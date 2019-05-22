@@ -11,25 +11,25 @@ SeastarClient::Connection::Connection(seastar::connected_socket&& fd,
                                       seastar::channel* chan,
                                       SeastarTagFactory* tag_factory,
                                       seastar::socket_address addr)
-  : _channel(chan),
-    _tag_factory(tag_factory),
-    _addr(addr) {
-  _fd = std::move(fd);
-  _fd.set_nodelay(true);
-  _read_buf = _fd.input();
-  _channel->init(seastar::engine().get_packet_queue(),
-                 std::move(_fd.output()));
+  : channel_(chan),
+    tag_factory_(tag_factory),
+    addr_(addr) {
+  fd_ = std::move(fd);
+  fd_.set_nodelay(true);
+  read_buf_ = fd_.input();
+  channel_->init(seastar::engine().get_packet_queue(),
+                 std::move(fd_.output()));
 }
 
 seastar::future<> SeastarClient::Connection::Read() {
-  return _read_buf.read_exactly(SeastarClientTag::HEADER_SIZE)
+  return read_buf_.read_exactly(SeastarClientTag::HEADER_SIZE)
       .then([this] (auto&& header) {
     if (header.size() == 0) {
       return seastar::make_ready_future();
     }
-    auto tag = _tag_factory->CreateSeastarClientTag(header);
+    auto tag = tag_factory_->CreateSeastarClientTag(header);
     if (tag->status_ != 0) {
-      return _read_buf.read_exactly(tag->resp_err_msg_len_)
+      return read_buf_.read_exactly(tag->resp_err_msg_len_)
           .then([this, tag] (auto&& err_msg) {
         std::string msg = std::string(err_msg.get(), tag->resp_err_msg_len_);
         if (tag->resp_err_msg_len_ == 0) {
@@ -45,7 +45,7 @@ seastar::future<> SeastarClient::Connection::Read() {
       // handle tensor response
       auto message_size = tag->GetResponseMessageSize();
       auto message_buffer = tag->GetResponseMessageBuffer();
-      return _read_buf.read_exactly(message_size)
+      return read_buf_.read_exactly(message_size)
           .then([this, tag, message_size, message_buffer] (auto&& message) {
         memcpy(message_buffer, message.get(), message.size());
         tag->ParseMessage();
@@ -55,11 +55,11 @@ seastar::future<> SeastarClient::Connection::Read() {
           tag->RecvRespDone(tensorflow::Status());
           return seastar::make_ready_future();
         }
-        return _read_buf.read_exactly(tensor_size)
+        return read_buf_.read_exactly(tensor_size)
             .then([this, tag, tensor_size, tensor_buffer] (auto&& tensor) {
           if (tensor.size() != tensor_size) {
             LOG(WARNING) << "Expected read size is:" << tensor_size
-                         << ", but real tensor size:"     << tensor.size();
+                         << ", but real tensor size:" << tensor.size();
             tag->RecvRespDone(Status(error::UNKNOWN,
                                      "Seastar Client: read invalid tensorbuf"));
             return seastar::make_ready_future();
@@ -78,7 +78,7 @@ seastar::future<> SeastarClient::Connection::Read() {
       }
 
       auto resp_body_buffer = tag->GetResponseBodyBuffer();
-      return _read_buf.read_exactly(resp_body_size)
+      return read_buf_.read_exactly(resp_body_size)
           .then([this, tag, resp_body_size, resp_body_buffer](auto&& body) {
         if (body.size() != resp_body_size) {
           LOG(WARNING) << "Expected read size is:" << resp_body_size
@@ -112,7 +112,7 @@ void SeastarClient::Connect(seastar::ipv4_addr server_addr,
                                tag_factory,
                                seastar::socket_address(server_addr));
 
-    seastar::do_until([conn] {return conn->_read_buf.eof(); }, [conn] {
+    seastar::do_until([conn] {return conn->read_buf_.eof(); }, [conn] {
       return conn->Read();
     }).then_wrapped([this, conn, s, chan] (auto&& f) {
       try {
