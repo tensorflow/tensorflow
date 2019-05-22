@@ -54,7 +54,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
   """
 
   def __init__(self,
-               learning_rate,
+               learning_rate=0.001,
                learning_rate_power=-0.5,
                initial_accumulator_value=0.1,
                l1_regularization_strength=0.0,
