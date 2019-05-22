@@ -670,7 +670,7 @@ void SourceMgrDiagnosticVerifierHandler::process(FileLineColLoc loc,
 }
 
 //===----------------------------------------------------------------------===//
-// SourceMgrDiagnosticVerifierHandler
+// ParallelDiagnosticHandler
 //===----------------------------------------------------------------------===//
 
 namespace mlir {
