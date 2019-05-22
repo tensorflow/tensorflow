@@ -482,8 +482,6 @@ TrtConversionParams = collections.namedtuple(
 
         # Whether to generate dynamic TRT ops which will build the TRT network
         # and engine at run time.
-        #
-        # TODO(laigd): In TF 2.0, this options should only affect INT8 mode.
         "is_dynamic_op",
 
         # Max number of cached TRT engines in dynamic TRT ops. If the number of
@@ -742,6 +740,11 @@ class TrtGraphConverter(GraphConverter):
 
     self._need_calibration = (
         precision_mode == TrtPrecisionMode.INT8 and use_calibration)
+    if self._need_calibration and not is_dynamic_op:
+      tf_logging.warn(
+          "INT8 precision mode with calibration is supported with "
+          "dynamic TRT ops only. Disregarding is_dynamic_op parameter.")
+      is_dynamic_op = True
 
     # TODO(laigd): consider provide a mechanism to remove the fallback path
     # after calibration is done.
@@ -907,10 +910,15 @@ class TrtGraphConverterV2(object):
       input_saved_model_signature_key: the key of the signature to optimize the
         graph for.
       conversion_params: a TrtConversionParams instance.
+
+    Raises:
+      ValueError: if the combination of the parameters is invalid.
     """
     assert context.executing_eagerly()
     _check_trt_version_compatibility()
+    _check_conversion_params(conversion_params)
 
+    self._conversion_params = conversion_params
     self._input_saved_model_dir = input_saved_model_dir
     self._input_saved_model_tags = (
         input_saved_model_tags or [tag_constants.SERVING])
@@ -921,8 +929,10 @@ class TrtGraphConverterV2(object):
     self._need_calibration = (
         conversion_params.precision_mode == TrtPrecisionMode.INT8 and
         conversion_params.use_calibration)
-    self._conversion_params = conversion_params
-    _check_conversion_params(self._conversion_params)
+    if (self._need_calibration and not conversion_params.is_dynamic_op):
+      raise ValueError("INT8 precision mode with calibration is not supported "
+                       "with static TensorRT ops. Set is_dynamic_op to True.")
+
     self._converted = False
 
   def _run_conversion(self, meta_graph_def):
