@@ -3446,8 +3446,16 @@ def gather(params,
   if compat.forward_compatible(2019, 6, 10):
     if axis is None:
       axis = batch_dims
-    return gen_array_ops.gather_v2(
-        params, indices, axis, batch_dims=batch_dims, name=name)
+    if axis != 0:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, batch_dims=batch_dims, name=name)
+    try:
+      # TODO(apassos) find a less bad way of detecting resource variables
+      # without introducing a circular dependency.
+      return params.sparse_read(indices, name=name)
+    except AttributeError:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, name=name)
 
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):
