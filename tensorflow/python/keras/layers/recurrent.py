@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -2122,7 +2123,13 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.implementation = implementation
-    self.state_size = [self.units, self.units]
+    # tuple(_ListWrapper) was silently dropping list content in at least 2.7.10,
+    # and fixed after 2.7.16. Converting the state_size to wrapper around
+    # NoDependency(), so that the base_layer.__setattr__ will not convert it to
+    # ListWrapper. Down the stream, self.states will be a list since it is
+    # generated from nest.map_structure with list, and tuple(list) will work
+    # properly.
+    self.state_size = data_structures.NoDependency([self.units, self.units])
     self.output_size = self.units
 
   @tf_utils.shape_type_conversion
