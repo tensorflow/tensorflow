@@ -1159,7 +1159,8 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
   // ready_enters_per_frame and ready_exits serve as a staging area to buffer
   // the ready enters/exits before they are moved to the `ready` queue for
   // controlling the start and end of a processing frame.
-  absl::flat_hash_map<string, std::vector<Node*>> ready_enters_per_frame;
+  absl::flat_hash_map<absl::string_view, std::vector<Node*>>
+      ready_enters_per_frame;
   // Exit nodes shall all be from the same frame, as we process a frame at a
   // time. So, one vector is enough.
   std::vector<Node*> ready_exits;
