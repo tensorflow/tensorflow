@@ -48,13 +48,15 @@ GraphDef SimpleTestGraph() {
 }
 
 template <typename T>
-class TypedGraphViewTest : public ::testing::Test {
- public:
-  const string type_as_string_ =
-      std::is_same<T, GraphView>::value ? "GraphView" : "MutableGraphView";
-};
+const string GetGraphViewTypeAsString() {
+  return std::is_same<T, class GraphView>::value ? "GraphView"
+                                                 : "MutableGraphView";
+}
 
 using GraphViewTypes = ::testing::Types<GraphView, MutableGraphView>;
+
+template <typename T>
+class TypedGraphViewTest : public ::testing::Test {};
 TYPED_TEST_SUITE(TypedGraphViewTest, GraphViewTypes);
 
 TYPED_TEST(TypedGraphViewTest, GraphWithDuplicateNodeNames) {
@@ -67,7 +69,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithDuplicateNodeNames) {
   EXPECT_EQ(s.error_message(),
             absl::Substitute(
                 "$0::$0 error: graph has multiple nodes with the name 'a'.",
-                this->type_as_string_));
+                GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GraphWithMissingFanins) {
@@ -78,7 +80,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithMissingFanins) {
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
             absl::Substitute("$0::$0 error: node 'a' has missing fanin 'b:3'.",
-                             this->type_as_string_));
+                             GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GraphWithSelfCycles) {
@@ -90,7 +92,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithSelfCycles) {
   EXPECT_EQ(
       s.error_message(),
       absl::Substitute("$0::$0 error: node 'a' has self cycle fanin 'a:4'.",
-                       this->type_as_string_));
+                       GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GraphWithMisorderedFanins) {
@@ -103,7 +105,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithMisorderedFanins) {
   EXPECT_EQ(s.error_message(),
             absl::Substitute("$0::$0 error: node 'a' has regular fanin 'b:4' "
                              "after controlling fanins.",
-                             this->type_as_string_));
+                             GetGraphViewTypeAsString<TypeParam>()));
 }
 
 TYPED_TEST(TypedGraphViewTest, GetNodeWithIndex) {
