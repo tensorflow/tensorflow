@@ -82,6 +82,10 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
       // We need to do this because older checkpoints only used uint32s and we
       // should still support them.
       const uint32 elem_size_uint32 = static_cast<uint32>(string_lengths[i]);
+      if (!port::kLittleEndian) {
+        // Checksum would have been computed on a little-endian value.
+        elem_size_uint32 = BYTE_SWAP_32(elem_size_uint32)
+      }
       *actual_crc32c = crc32c::Extend(
           *actual_crc32c, reinterpret_cast<const char*>(&elem_size_uint32),
           sizeof(uint32));
