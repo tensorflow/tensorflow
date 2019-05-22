@@ -178,6 +178,15 @@ public:
     assert(index < getNumArguments() && "invalid argument number");
     argAttrs[index].setAttrs(attributes);
   }
+  void setArgAttrs(unsigned index, NamedAttributeList attributes) {
+    assert(index < getNumArguments() && "invalid argument number");
+    argAttrs[index] = attributes;
+  }
+  void setAllArgAttrs(ArrayRef<NamedAttributeList> attributes) {
+    assert(attributes.size() == getNumArguments());
+    for (unsigned i = 0, e = attributes.size(); i != e; ++i)
+      argAttrs[i] = attributes[i];
+  }
 
   /// Return all argument attributes of this function.
   MutableArrayRef<NamedAttributeList> getAllArgAttrs() { return argAttrs; }

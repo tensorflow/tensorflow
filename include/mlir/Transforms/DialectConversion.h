@@ -86,10 +86,9 @@ public:
   }
 
   /// Rewrite the IR rooted at the specified operation with the result of
-  /// this pattern, generating any new operations with the specified
-  /// builder. If an unexpected error is encountered (an internal
-  /// compiler error), it is emitted through the normal MLIR diagnostic
-  /// hooks and the IR is left in a valid state.
+  /// this pattern. If an unexpected error is encountered (an internal compiler
+  /// error), it is emitted through the normal MLIR diagnostic hooks and the IR
+  /// is left in a valid state.
   void rewrite(Operation *op, PatternRewriter &rewriter) const final;
 
 private:
@@ -118,7 +117,9 @@ private:
 /// If any error happened during the conversion, the pass fails as soon as
 /// possible.
 ///
-/// If the conversion fails, the module is not modified.
+/// If conversion fails for a specific function, that functions remains
+/// unmodified. Otherwise, successfully converted functions will remain
+/// converted.
 class DialectConversion {
 public:
   virtual ~DialectConversion() = default;
