@@ -3098,9 +3098,12 @@ Status ConvertBinary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (inputs.size() != 2) {
-    return errors::InvalidArgument("Binary ops require two inputs, at ",
+    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
+                                   " inputs but expected 2, at ",
                                    node_def.name());
   }
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
   // Constant folding should have been done by TensorFlow
   if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
@@ -3109,8 +3112,6 @@ Status ConvertBinary(OpConverterParams* params) {
         "both input as constant at: ",
         node_def.name());
   }
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   const TRT_TensorOrWeights& operand_l = inputs.at(0);
   const TRT_TensorOrWeights& operand_r = inputs.at(1);
 
@@ -3148,8 +3149,6 @@ Status ConvertBinary(OpConverterParams* params) {
       params->converter->network()->addElementWise(*tensor_l, *tensor_r,
                                                    op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-
-  // Pass the output
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 }
