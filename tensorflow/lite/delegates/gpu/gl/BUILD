@@ -260,8 +260,10 @@ cc_library(
     srcs = ["gl_sync.cc"],
     hdrs = ["gl_sync.h"],
     deps = [
+        ":gl_buffer",
         ":gl_call",
         ":gl_errors",
+        ":gl_program",
         ":portable",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
