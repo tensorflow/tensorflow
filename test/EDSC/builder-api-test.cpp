@@ -83,24 +83,24 @@ TEST_FUNC(builder_dynamic_for_func_args) {
 
   // clang-format off
   // CHECK-LABEL: func @builder_dynamic_for_func_args(%arg0: index, %arg1: index) {
-  // CHECK:  affine.for %i0 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 3 {
-  // CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 * 3)()[%arg0]
-  // CHECK:  {{.*}} = affine.apply ()[s0, s1] -> (s1 + s0 * 3)()[%arg0, %arg1]
-  // CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 + 3)()[%arg0]
-  // CHECK:  affine.for %i1 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 2 {
-  // CHECK:    {{.*}} = affine.apply (d0, d1) -> ((d0 + d1 * 3) floordiv 32)(%i0, %i1)
-  // CHECK:    {{.*}} = affine.apply (d0, d1) -> (((d0 + d1 * 3) floordiv 32) * 31)(%i0, %i1)
-  // CHECK:    {{.*}} = affine.apply (d0, d1) -> ((((d0 + d1 * 3) floordiv 32) * 31) ceildiv 32)(%i0, %i1)
-  // CHECK:    [[rf1:%[0-9]+]] = addf {{.*}}, {{.*}} : f32
-  // CHECK:    [[rf2:%[0-9]+]] = divf [[rf1]], {{.*}} : f32
-  // CHECK:    [[rf3:%[0-9]+]] = remf [[rf2]], {{.*}} : f32
-  // CHECK:    [[rf4:%[0-9]+]] = mulf {{.*}}, {{.*}} : f32
-  // CHECK:    {{.*}} = subf [[rf3]], [[rf4]] : f32
-  // CHECK:    [[ri1:%[0-9]+]] = addi {{.*}}, {{.*}} : i32
-  // CHECK:    [[ri2:%[0-9]+]] = divis [[ri1]], {{.*}} : i32
-  // CHECK:    [[ri3:%[0-9]+]] = remis [[ri2]], {{.*}} : i32
-  // CHECK:    [[ri4:%[0-9]+]] = muli {{.*}}, {{.*}} : i32
-  // CHECK:    {{.*}} = subi [[ri3]], [[ri4]] : i32
+  //     CHECK:  affine.for %i0 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 3 {
+  //     CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 * 3)()[%arg0]
+  //     CHECK:  {{.*}} = affine.apply ()[s0, s1] -> (s1 + s0 * 3)()[%arg0, %arg1]
+  //     CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 + 3)()[%arg0]
+  //     CHECK:  affine.for %i1 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 2 {
+  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> ((d0 + d1 * 3) floordiv 32)(%i0, %i1)
+  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> (((d0 + d1 * 3) floordiv 32) * 31)(%i0, %i1)
+  //     CHECK:    {{.*}} = affine.apply (d0, d1) -> ((((d0 + d1 * 3) floordiv 32) * 31) ceildiv 32)(%i0, %i1)
+  // CHECK-DAG:    [[rf1:%[0-9]+]] = addf {{.*}}, {{.*}} : f32
+  // CHECK-DAG:    [[rf2:%[0-9]+]] = divf [[rf1]], {{.*}} : f32
+  // CHECK-DAG:    [[rf3:%[0-9]+]] = remf [[rf2]], {{.*}} : f32
+  // CHECK-DAG:    [[rf4:%[0-9]+]] = mulf {{.*}}, {{.*}} : f32
+  //     CHECK:    {{.*}} = subf [[rf3]], [[rf4]] : f32
+  // CHECK-DAG:    [[ri1:%[0-9]+]] = addi {{.*}}, {{.*}} : i32
+  // CHECK-DAG:    [[ri2:%[0-9]+]] = divis [[ri1]], {{.*}} : i32
+  // CHECK-DAG:    [[ri3:%[0-9]+]] = remis [[ri2]], {{.*}} : i32
+  // CHECK-DAG:    [[ri4:%[0-9]+]] = muli {{.*}}, {{.*}} : i32
+  //     CHECK:    {{.*}} = subi [[ri3]], [[ri4]] : i32
   // clang-format on
   f->print(llvm::outs());
 }
@@ -121,9 +121,9 @@ TEST_FUNC(builder_dynamic_for) {
 
   // clang-format off
   // CHECK-LABEL: func @builder_dynamic_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
-  // CHECK:        %0 = affine.apply ()[s0, s1] -> (s0 - s1)()[%arg0, %arg1]
-  // CHECK-NEXT:   %1 = affine.apply ()[s0, s1] -> (s0 + s1)()[%arg2, %arg3]
-  // CHECK-NEXT:   affine.for %i0 = (d0) -> (d0)(%0) to (d0) -> (d0)(%1) step 2 {
+  // CHECK-DAG:    [[r0:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 - s1)()[%arg0, %arg1]
+  // CHECK-DAG:    [[r1:%[0-9]+]] = affine.apply ()[s0, s1] -> (s0 + s1)()[%arg2, %arg3]
+  // CHECK-NEXT:   affine.for %i0 = (d0) -> (d0)([[r0]]) to (d0) -> (d0)([[r1]]) step 2 {
   // clang-format on
   f->print(llvm::outs());
 }
@@ -349,18 +349,18 @@ TEST_FUNC(builder_helpers) {
   //      CHECK:   affine.for %i0 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
   // CHECK-NEXT:     affine.for %i1 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
   // CHECK-NEXT:       affine.for %i2 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
-  // CHECK-NEXT:         [[a:%.*]] = load %arg0[%i0, %i1, %i2] : memref<?x?x?xf32>
-  // CHECK-NEXT:         [[b:%.*]] = addf {{.*}}, [[a]] : f32
-  // CHECK-NEXT:         [[c:%.*]] = load %arg1[%i0, %i1, %i2] : memref<?x?x?xf32>
-  // CHECK-NEXT:         [[d:%.*]] = addf [[b]], [[c]] : f32
+  //  CHECK-DAG:         [[a:%.*]] = load %arg0[%i0, %i1, %i2] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[b:%.*]] = addf {{.*}}, [[a]] : f32
+  //  CHECK-DAG:         [[c:%.*]] = load %arg1[%i0, %i1, %i2] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[d:%.*]] = addf [[b]], [[c]] : f32
   // CHECK-NEXT:         store [[d]], %arg2[%i0, %i1, %i2] : memref<?x?x?xf32>
   // CHECK-NEXT:       }
   // CHECK-NEXT:       affine.for %i3 = (d0) -> (d0)(%c0_1) to (d0) -> (d0)(%2) {
-  // CHECK-NEXT:         [[a:%.*]] = load %arg1[%i0, %i1, %i3] : memref<?x?x?xf32>
-  // CHECK-NEXT:         [[b:%.*]] = load %arg0[%i0, %i1, %i3] : memref<?x?x?xf32>
-  // CHECK-NEXT:         [[c:%.*]] = addf [[b]], [[a]] : f32
-  // CHECK-NEXT:         [[d:%.*]] = load %arg2[%i0, %i1, %i3] : memref<?x?x?xf32>
-  // CHECK-NEXT:         [[e:%.*]] = addf [[d]], [[c]] : f32
+  //  CHECK-DAG:         [[a:%.*]] = load %arg1[%i0, %i1, %i3] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[b:%.*]] = load %arg0[%i0, %i1, %i3] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[c:%.*]] = addf [[b]], [[a]] : f32
+  //  CHECK-DAG:         [[d:%.*]] = load %arg2[%i0, %i1, %i3] : memref<?x?x?xf32>
+  //  CHECK-DAG:         [[e:%.*]] = addf [[d]], [[c]] : f32
   // CHECK-NEXT:         store [[e]], %arg2[%i0, %i1, %i3] : memref<?x?x?xf32>
   // clang-format on
   f->print(llvm::outs());
@@ -456,9 +456,9 @@ TEST_FUNC(select_op) {
   // CHECK-LABEL: @select_op
   //      CHECK: affine.for %i0 = 0 to 1 {
   // CHECK-NEXT:   affine.for %i1 = 0 to 1 {
-  // CHECK-NEXT:     {{.*}} = cmpi "eq"
-  // CHECK-NEXT:     {{.*}} = load
-  // CHECK-NEXT:     {{.*}} = load
+  //  CHECK-DAG:     {{.*}} = cmpi "eq"
+  //  CHECK-DAG:     {{.*}} = load
+  //  CHECK-DAG:     {{.*}} = load
   // CHECK-NEXT:     {{.*}} = select
   // clang-format on
   f->print(llvm::outs());

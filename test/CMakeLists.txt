@@ -27,6 +27,7 @@ set(MLIR_TEST_DEPENDS
   FileCheck count not
   MLIRUnitTests
   mlir-cpu-runner
+  mlir-edsc-builder-api-test
   mlir-opt
   mlir-sdbm-api-test
   mlir-tblgen
