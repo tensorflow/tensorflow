@@ -1026,3 +1026,22 @@ distribute_py_test(
         "//tensorflow/python/keras:saving",
     ],
 )
+
+distribute_py_test(
+    name = "ctl_correctness_test",
+    srcs = ["ctl_correctness_test.py"],
+    main = "ctl_correctness_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:keras_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+    ],
+)
