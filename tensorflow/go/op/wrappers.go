@@ -5587,6 +5587,78 @@ func MapSize(scope *Scope, dtypes []tf.DataType, optional ...MapSizeAttr) (size 
 	return op.Output(0)
 }
 
+// MapUnstageNoKeyAttr is an optional argument to MapUnstageNoKey.
+type MapUnstageNoKeyAttr func(optionalAttr)
+
+// MapUnstageNoKeyCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapUnstageNoKeyCapacity(value int64) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// MapUnstageNoKeyMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapUnstageNoKeyMemoryLimit(value int64) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// MapUnstageNoKeyContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func MapUnstageNoKeyContainer(value string) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MapUnstageNoKeySharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func MapUnstageNoKeySharedName(value string) MapUnstageNoKeyAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op removes and returns a random (key, value)
+//
+// from the underlying container.   If the underlying container
+// does not contain elements, the op will block until it does.
+func MapUnstageNoKey(scope *Scope, indices tf.Output, dtypes []tf.DataType, optional ...MapUnstageNoKeyAttr) (key tf.Output, values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MapUnstageNoKey",
+		Input: []tf.Input{
+			indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	key = op.Output(idx)
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("MapUnstageNoKey", err)
+		return
+	}
+	return key, values
+}
+
 // MapUnstageAttr is an optional argument to MapUnstage.
 type MapUnstageAttr func(optionalAttr)
 
@@ -18535,76 +18607,348 @@ func ReduceJoin(scope *Scope, inputs tf.Output, reduction_indices tf.Output, opt
 	return op.Output(0)
 }
 
-// MapUnstageNoKeyAttr is an optional argument to MapUnstageNoKey.
-type MapUnstageNoKeyAttr func(optionalAttr)
+// MutableDenseHashTableV2Attr is an optional argument to MutableDenseHashTableV2.
+type MutableDenseHashTableV2Attr func(optionalAttr)
 
-// MapUnstageNoKeyCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
+// MutableDenseHashTableV2Container sets the optional container attribute to value.
 //
-// REQUIRES: value >= 0
-func MapUnstageNoKeyCapacity(value int64) MapUnstageNoKeyAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// MapUnstageNoKeyMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapUnstageNoKeyMemoryLimit(value int64) MapUnstageNoKeyAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// MapUnstageNoKeyContainer sets the optional container attribute to value.
+// value: If non-empty, this table is placed in the given container.
+// Otherwise, a default container is used.
 // If not specified, defaults to ""
-func MapUnstageNoKeyContainer(value string) MapUnstageNoKeyAttr {
+func MutableDenseHashTableV2Container(value string) MutableDenseHashTableV2Attr {
 	return func(m optionalAttr) {
 		m["container"] = value
 	}
 }
 
-// MapUnstageNoKeySharedName sets the optional shared_name attribute to value.
+// MutableDenseHashTableV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this table is shared under the given name across
+// multiple sessions.
 // If not specified, defaults to ""
-func MapUnstageNoKeySharedName(value string) MapUnstageNoKeyAttr {
+func MutableDenseHashTableV2SharedName(value string) MutableDenseHashTableV2Attr {
 	return func(m optionalAttr) {
 		m["shared_name"] = value
 	}
 }
 
-// Op removes and returns a random (key, value)
+// MutableDenseHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
+// If not specified, defaults to false
+func MutableDenseHashTableV2UseNodeNameSharing(value bool) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["use_node_name_sharing"] = value
+	}
+}
+
+// MutableDenseHashTableV2ValueShape sets the optional value_shape attribute to value.
 //
-// from the underlying container.   If the underlying container
-// does not contain elements, the op will block until it does.
-func MapUnstageNoKey(scope *Scope, indices tf.Output, dtypes []tf.DataType, optional ...MapUnstageNoKeyAttr) (key tf.Output, values []tf.Output) {
+// value: The shape of each value.
+// If not specified, defaults to <>
+func MutableDenseHashTableV2ValueShape(value tf.Shape) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["value_shape"] = value
+	}
+}
+
+// MutableDenseHashTableV2InitialNumBuckets sets the optional initial_num_buckets attribute to value.
+//
+// value: The initial number of hash table buckets. Must be a power
+// to 2.
+// If not specified, defaults to 131072
+func MutableDenseHashTableV2InitialNumBuckets(value int64) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["initial_num_buckets"] = value
+	}
+}
+
+// MutableDenseHashTableV2MaxLoadFactor sets the optional max_load_factor attribute to value.
+//
+// value: The maximum ratio between number of entries and number of
+// buckets before growing the table. Must be between 0 and 1.
+// If not specified, defaults to 0.8
+func MutableDenseHashTableV2MaxLoadFactor(value float32) MutableDenseHashTableV2Attr {
+	return func(m optionalAttr) {
+		m["max_load_factor"] = value
+	}
+}
+
+// Creates an empty hash table that uses tensors as the backing store.
+//
+// It uses "open addressing" with quadratic reprobing to resolve
+// collisions.
+//
+// This op creates a mutable hash table, specifying the type of its keys and
+// values. Each value must be a scalar. Data can be inserted into the table using
+// the insert operations. It does not support the initialization operation.
+//
+// Arguments:
+//	empty_key: The key used to represent empty key buckets internally. Must not
+// be used in insert or lookup operations.
+//
+//	value_dtype: Type of the table values.
+//
+// Returns Handle to a table.
+func MutableDenseHashTableV2(scope *Scope, empty_key tf.Output, deleted_key tf.Output, value_dtype tf.DataType, optional ...MutableDenseHashTableV2Attr) (table_handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
+	attrs := map[string]interface{}{"value_dtype": value_dtype}
 	for _, a := range optional {
 		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "MapUnstageNoKey",
+		Type: "MutableDenseHashTableV2",
 		Input: []tf.Input{
-			indices,
+			empty_key, deleted_key,
 		},
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the element-wise max of two SparseTensors.
+//
+// Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+//
+// Arguments:
+//	a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+// SparseTensor, in the canonical lexicographic ordering.
+//	a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
+//	a_shape: 1-D.  Shape of the input SparseTensor.
+//	b_indices: counterpart to `a_indices` for the other operand.
+//	b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
+//	b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
+//
+// Returns 2-D.  The indices of the output SparseTensor.1-D.  The values of the output SparseTensor.
+func SparseSparseMaximum(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf.Output, b_indices tf.Output, b_values tf.Output, b_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	var idx int
-	var err error
-	key = op.Output(idx)
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("MapUnstageNoKey", err)
+	opspec := tf.OpSpec{
+		Type: "SparseSparseMaximum",
+		Input: []tf.Input{
+			a_indices, a_values, a_shape, b_indices, b_values, b_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// TPUReplicateMetadataAttr is an optional argument to TPUReplicateMetadata.
+type TPUReplicateMetadataAttr func(optionalAttr)
+
+// TPUReplicateMetadataNumCoresPerReplica sets the optional num_cores_per_replica attribute to value.
+//
+// value: Number of cores per replica. Used for model parallelism.
+// If not specified, defaults to 1
+func TPUReplicateMetadataNumCoresPerReplica(value int64) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["num_cores_per_replica"] = value
+	}
+}
+
+// TPUReplicateMetadataTopology sets the optional topology attribute to value.
+//
+// value: TopologyProto indicating the topology of the TPU pod slice.
+// If not specified, defaults to ""
+func TPUReplicateMetadataTopology(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["topology"] = value
+	}
+}
+
+// TPUReplicateMetadataUseTpu sets the optional use_tpu attribute to value.
+//
+// value: Whether to place the computation on the TPU.
+// If not specified, defaults to true
+func TPUReplicateMetadataUseTpu(value bool) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["use_tpu"] = value
+	}
+}
+
+// TPUReplicateMetadataDeviceAssignment sets the optional device_assignment attribute to value.
+//
+// value: The assignment of devices for the computation.
+// If not specified, defaults to <>
+func TPUReplicateMetadataDeviceAssignment(value []int64) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["device_assignment"] = value
+	}
+}
+
+// TPUReplicateMetadataComputationShape sets the optional computation_shape attribute to value.
+//
+// value: DEPRECATED. Use num_cores_per_replica instead.
+// If not specified, defaults to <>
+func TPUReplicateMetadataComputationShape(value []int64) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["computation_shape"] = value
+	}
+}
+
+// TPUReplicateMetadataHostComputeCore sets the optional host_compute_core attribute to value.
+// If not specified, defaults to <>
+func TPUReplicateMetadataHostComputeCore(value []string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["host_compute_core"] = value
+	}
+}
+
+// TPUReplicateMetadataPaddingMap sets the optional padding_map attribute to value.
+// If not specified, defaults to <>
+func TPUReplicateMetadataPaddingMap(value []string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["padding_map"] = value
+	}
+}
+
+// TPUReplicateMetadataStepMarkerLocation sets the optional step_marker_location attribute to value.
+// If not specified, defaults to "STEP_MARK_AT_ENTRY"
+func TPUReplicateMetadataStepMarkerLocation(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["step_marker_location"] = value
+	}
+}
+
+// Metadata indicaitng how the TPU computation should be replicated.
+//
+// Arguments:
+//	num_replicas: Number of replicas of the computation
+//
+// Returns the created operation.
+func TPUReplicateMetadata(scope *Scope, num_replicas int64, optional ...TPUReplicateMetadataAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
 		return
 	}
-	return key, values
+	attrs := map[string]interface{}{"num_replicas": num_replicas}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUReplicateMetadata",
+
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Fast Fourier transform.
+//
+// Computes the 1-dimensional discrete Fourier transform over the inner-most
+// dimension of `input`.
+//
+// Arguments:
+//	input: A complex tensor.
+//
+// Returns A complex tensor of the same shape as `input`. The inner-most
+//   dimension of `input` is replaced with its 1D Fourier transform.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fft
+// @end_compatibility
+func FFT(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FFT",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MaxAttr is an optional argument to Max.
+type MaxAttr func(optionalAttr)
+
+// MaxKeepDims sets the optional keep_dims attribute to value.
+//
+// value: If true, retain reduced dimensions with length 1.
+// If not specified, defaults to false
+func MaxKeepDims(value bool) MaxAttr {
+	return func(m optionalAttr) {
+		m["keep_dims"] = value
+	}
+}
+
+// Computes the maximum of elements across dimensions of a tensor.
+//
+// Reduces `input` along the dimensions given in `axis`. Unless
+// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+// `axis`. If `keep_dims` is true, the reduced dimensions are
+// retained with length 1.
+//
+// Arguments:
+//	input: The tensor to reduce.
+//	axis: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
+//
+// Returns The reduced tensor.
+func Max(scope *Scope, input tf.Output, axis tf.Output, optional ...MaxAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Max",
+		Input: []tf.Input{
+			input, axis,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StatelessRandomUniformAttr is an optional argument to StatelessRandomUniform.
+type StatelessRandomUniformAttr func(optionalAttr)
+
+// StatelessRandomUniformDtype sets the optional dtype attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_FLOAT
+func StatelessRandomUniformDtype(value tf.DataType) StatelessRandomUniformAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Outputs deterministic pseudorandom random values from a uniform distribution.
+//
+// The generated values follow a uniform distribution in the range `[0, 1)`. The
+// lower bound 0 is included in the range, while the upper bound 1 is excluded.
+//
+// The outputs are a deterministic function of `shape` and `seed`.
+//
+// Arguments:
+//	shape: The shape of the output tensor.
+//	seed: 2 seeds (shape [2]).
+//
+// Returns Random values with specified shape.
+func StatelessRandomUniform(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessRandomUniformAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessRandomUniform",
+		Input: []tf.Input{
+			shape, seed,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // RetrieveTPUEmbeddingAdagradParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingAdagradParametersGradAccumDebug.
@@ -19346,250 +19690,6 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 		Input: []tf.Input{
 			alpha, sample,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the element-wise max of two SparseTensors.
-//
-// Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
-//
-// Arguments:
-//	a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
-// SparseTensor, in the canonical lexicographic ordering.
-//	a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
-//	a_shape: 1-D.  Shape of the input SparseTensor.
-//	b_indices: counterpart to `a_indices` for the other operand.
-//	b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
-//	b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
-//
-// Returns 2-D.  The indices of the output SparseTensor.1-D.  The values of the output SparseTensor.
-func SparseSparseMaximum(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf.Output, b_indices tf.Output, b_values tf.Output, b_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSparseMaximum",
-		Input: []tf.Input{
-			a_indices, a_values, a_shape, b_indices, b_values, b_shape,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// TPUReplicateMetadataAttr is an optional argument to TPUReplicateMetadata.
-type TPUReplicateMetadataAttr func(optionalAttr)
-
-// TPUReplicateMetadataNumCoresPerReplica sets the optional num_cores_per_replica attribute to value.
-//
-// value: Number of cores per replica. Used for model parallelism.
-// If not specified, defaults to 1
-func TPUReplicateMetadataNumCoresPerReplica(value int64) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["num_cores_per_replica"] = value
-	}
-}
-
-// TPUReplicateMetadataTopology sets the optional topology attribute to value.
-//
-// value: TopologyProto indicating the topology of the TPU pod slice.
-// If not specified, defaults to ""
-func TPUReplicateMetadataTopology(value string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["topology"] = value
-	}
-}
-
-// TPUReplicateMetadataUseTpu sets the optional use_tpu attribute to value.
-//
-// value: Whether to place the computation on the TPU.
-// If not specified, defaults to true
-func TPUReplicateMetadataUseTpu(value bool) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["use_tpu"] = value
-	}
-}
-
-// TPUReplicateMetadataDeviceAssignment sets the optional device_assignment attribute to value.
-//
-// value: The assignment of devices for the computation.
-// If not specified, defaults to <>
-func TPUReplicateMetadataDeviceAssignment(value []int64) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["device_assignment"] = value
-	}
-}
-
-// TPUReplicateMetadataComputationShape sets the optional computation_shape attribute to value.
-//
-// value: DEPRECATED. Use num_cores_per_replica instead.
-// If not specified, defaults to <>
-func TPUReplicateMetadataComputationShape(value []int64) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["computation_shape"] = value
-	}
-}
-
-// TPUReplicateMetadataHostComputeCore sets the optional host_compute_core attribute to value.
-// If not specified, defaults to <>
-func TPUReplicateMetadataHostComputeCore(value []string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["host_compute_core"] = value
-	}
-}
-
-// TPUReplicateMetadataPaddingMap sets the optional padding_map attribute to value.
-// If not specified, defaults to <>
-func TPUReplicateMetadataPaddingMap(value []string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["padding_map"] = value
-	}
-}
-
-// TPUReplicateMetadataStepMarkerLocation sets the optional step_marker_location attribute to value.
-// If not specified, defaults to "STEP_MARK_AT_ENTRY"
-func TPUReplicateMetadataStepMarkerLocation(value string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["step_marker_location"] = value
-	}
-}
-
-// Metadata indicaitng how the TPU computation should be replicated.
-//
-// Arguments:
-//	num_replicas: Number of replicas of the computation
-//
-// Returns the created operation.
-func TPUReplicateMetadata(scope *Scope, num_replicas int64, optional ...TPUReplicateMetadataAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_replicas": num_replicas}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TPUReplicateMetadata",
-
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Fast Fourier transform.
-//
-// Computes the 1-dimensional discrete Fourier transform over the inner-most
-// dimension of `input`.
-//
-// Arguments:
-//	input: A complex tensor.
-//
-// Returns A complex tensor of the same shape as `input`. The inner-most
-//   dimension of `input` is replaced with its 1D Fourier transform.
-//
-// @compatibility(numpy)
-// Equivalent to np.fft.fft
-// @end_compatibility
-func FFT(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "FFT",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MaxAttr is an optional argument to Max.
-type MaxAttr func(optionalAttr)
-
-// MaxKeepDims sets the optional keep_dims attribute to value.
-//
-// value: If true, retain reduced dimensions with length 1.
-// If not specified, defaults to false
-func MaxKeepDims(value bool) MaxAttr {
-	return func(m optionalAttr) {
-		m["keep_dims"] = value
-	}
-}
-
-// Computes the maximum of elements across dimensions of a tensor.
-//
-// Reduces `input` along the dimensions given in `axis`. Unless
-// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-// `axis`. If `keep_dims` is true, the reduced dimensions are
-// retained with length 1.
-//
-// Arguments:
-//	input: The tensor to reduce.
-//	axis: The dimensions to reduce. Must be in the range
-// `[-rank(input), rank(input))`.
-//
-// Returns The reduced tensor.
-func Max(scope *Scope, input tf.Output, axis tf.Output, optional ...MaxAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Max",
-		Input: []tf.Input{
-			input, axis,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StatelessRandomUniformAttr is an optional argument to StatelessRandomUniform.
-type StatelessRandomUniformAttr func(optionalAttr)
-
-// StatelessRandomUniformDtype sets the optional dtype attribute to value.
-//
-// value: The type of the output.
-// If not specified, defaults to DT_FLOAT
-func StatelessRandomUniformDtype(value tf.DataType) StatelessRandomUniformAttr {
-	return func(m optionalAttr) {
-		m["dtype"] = value
-	}
-}
-
-// Outputs deterministic pseudorandom random values from a uniform distribution.
-//
-// The generated values follow a uniform distribution in the range `[0, 1)`. The
-// lower bound 0 is included in the range, while the upper bound 1 is excluded.
-//
-// The outputs are a deterministic function of `shape` and `seed`.
-//
-// Arguments:
-//	shape: The shape of the output tensor.
-//	seed: 2 seeds (shape [2]).
-//
-// Returns Random values with specified shape.
-func StatelessRandomUniform(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessRandomUniformAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StatelessRandomUniform",
-		Input: []tf.Input{
-			shape, seed,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -34955,106 +35055,6 @@ func MutableHashTableOfTensorsV2(scope *Scope, key_dtype tf.DataType, value_dtyp
 	opspec := tf.OpSpec{
 		Type: "MutableHashTableOfTensorsV2",
 
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MutableDenseHashTableV2Attr is an optional argument to MutableDenseHashTableV2.
-type MutableDenseHashTableV2Attr func(optionalAttr)
-
-// MutableDenseHashTableV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this table is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func MutableDenseHashTableV2Container(value string) MutableDenseHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MutableDenseHashTableV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this table is shared under the given name across
-// multiple sessions.
-// If not specified, defaults to ""
-func MutableDenseHashTableV2SharedName(value string) MutableDenseHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// MutableDenseHashTableV2UseNodeNameSharing sets the optional use_node_name_sharing attribute to value.
-// If not specified, defaults to false
-func MutableDenseHashTableV2UseNodeNameSharing(value bool) MutableDenseHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["use_node_name_sharing"] = value
-	}
-}
-
-// MutableDenseHashTableV2ValueShape sets the optional value_shape attribute to value.
-//
-// value: The shape of each value.
-// If not specified, defaults to <>
-func MutableDenseHashTableV2ValueShape(value tf.Shape) MutableDenseHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["value_shape"] = value
-	}
-}
-
-// MutableDenseHashTableV2InitialNumBuckets sets the optional initial_num_buckets attribute to value.
-//
-// value: The initial number of hash table buckets. Must be a power
-// to 2.
-// If not specified, defaults to 131072
-func MutableDenseHashTableV2InitialNumBuckets(value int64) MutableDenseHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["initial_num_buckets"] = value
-	}
-}
-
-// MutableDenseHashTableV2MaxLoadFactor sets the optional max_load_factor attribute to value.
-//
-// value: The maximum ratio between number of entries and number of
-// buckets before growing the table. Must be between 0 and 1.
-// If not specified, defaults to 0.8
-func MutableDenseHashTableV2MaxLoadFactor(value float32) MutableDenseHashTableV2Attr {
-	return func(m optionalAttr) {
-		m["max_load_factor"] = value
-	}
-}
-
-// Creates an empty hash table that uses tensors as the backing store.
-//
-// It uses "open addressing" with quadratic reprobing to resolve
-// collisions.
-//
-// This op creates a mutable hash table, specifying the type of its keys and
-// values. Each value must be a scalar. Data can be inserted into the table using
-// the insert operations. It does not support the initialization operation.
-//
-// Arguments:
-//	empty_key: The key used to represent empty key buckets internally. Must not
-// be used in insert or lookup operations.
-//
-//	value_dtype: Type of the table values.
-//
-// Returns Handle to a table.
-func MutableDenseHashTableV2(scope *Scope, empty_key tf.Output, deleted_key tf.Output, value_dtype tf.DataType, optional ...MutableDenseHashTableV2Attr) (table_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"value_dtype": value_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MutableDenseHashTableV2",
-		Input: []tf.Input{
-			empty_key, deleted_key,
-		},
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
