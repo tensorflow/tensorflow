@@ -44,12 +44,12 @@ limitations under the License.
 // ------------------------------------------
 //
 // If we ignore cycles for a moment, computing predicates is fairly
-// straightforward.  We traverse the graph in RPO, mapping each node to a
-// predicate based on the predicates its inputs are mapped to.  For instance a
-// Merge(X, Y) node will be mapped to OR(PredicateFor(X), PredicateFor(Y)).
-// Roughtly speaking, we abstract interpret each node on the "liveness" domain,
-// where values in the domain represent if a tensor carries a dead signal or
-// not.
+// straightforward.  We traverse the graph in a topological order, mapping each
+// node to a predicate based on the predicates its inputs are mapped to.  For
+// instance a Merge(X, Y) node will be mapped to OR(PredicateFor(X),
+// PredicateFor(Y)).  Roughtly speaking, we abstractly interpret each node on
+// the "liveness" domain, where values in the domain represent if a tensor
+// carries a dead signal or not.
 //
 //
 // DEALING WITH CYCLES
@@ -1313,11 +1313,11 @@ Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
   // This an abstract interpretation over the deadness propagation semantics of
   // the graph executor.
   //
-  // We iterate over the graph twice, each time in RPO.  On the first iteration
-  // merge nodes with backedges are mapped to symbolic predicates.  On the
-  // second iteration we use the predicates assigned to the backedges in the
-  // previous iteration to infer a more precise predicate for the backedge merge
-  // nodes and all the nodes that transitively use it.
+  // We iterate over the graph twice, each time in a topological order.  On the
+  // first iteration merge nodes with backedges are mapped to symbolic
+  // predicates.  On the second iteration we use the predicates assigned to the
+  // backedges in the previous iteration to infer a more precise predicate for
+  // the backedge merge nodes and all the nodes that transitively use it.
   //
   // We don't track the output indices for should_revisit.  Instead, putting a
   // node in `should_revisit` denotes that the deadness flowing out from any
@@ -1374,6 +1374,10 @@ Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
         continue;
       }
       Node* merge = n;
+      // Note that here uses frame names instead of root frame names.  In the
+      // case of a nested while loop, each level of while loops can have merges
+      // with different predicate instances, while the merge nodes on the same
+      // level must have the same predicate instances.
       absl::string_view frame_name = control_flow_info_[merge->id()].frame_name;
       auto it = predicate_map_.find(TensorId(merge->name(), 0));
       Predicate* merge_pred = it->second;
