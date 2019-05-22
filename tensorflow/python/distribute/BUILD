@@ -612,9 +612,9 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:keras_lib",
         "//tensorflow/python:session",
         "//tensorflow/python:util",
-        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -665,6 +665,7 @@ distribute_py_test(
         "no_windows",
     ],
     deps = [
+        ":collective_all_reduce_strategy",
         ":mirrored_strategy",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
