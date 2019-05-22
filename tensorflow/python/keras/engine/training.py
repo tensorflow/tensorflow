@@ -32,6 +32,7 @@ from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
@@ -2570,7 +2571,9 @@ class Model(network.Network):
       # placeholders will be created to match the value shapes.
       is_build_called = True
       if is_dataset:
-        cast_inputs = nest.map_structure(lambda v: v.shape, x_input)
+        def create_tensor_spec(t):
+          return tensor_spec.TensorSpec(t.shape, t.dtype)
+        cast_inputs = nest.map_structure(create_tensor_spec, x_input)
       elif training_utils.has_tensors(x_input):
         cast_inputs = training_utils.cast_if_floating_dtype(x_input)
       else:
@@ -2771,7 +2774,7 @@ class Model(network.Network):
 
     Args:
       inputs: Single array, or list of arrays. The arrays could be placeholders,
-        Numpy arrays, data tensors, or TensorShapes.
+        Numpy arrays, data tensors, or TensorSpecs.
         - if placeholders: the model is built on top of these placeholders,
           and we expect Numpy data to be fed for them when calling `fit`/etc.
         - if Numpy data or TensorShapes: we create placeholders matching the

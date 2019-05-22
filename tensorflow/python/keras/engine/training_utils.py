@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
@@ -1477,9 +1478,9 @@ class ModelInputs(object):
         if dtype.is_floating:
           dtype = K.floatx()
         v = K.placeholder(shape=shape, name=k, dtype=dtype)
-      elif isinstance(v, tensor_shape.TensorShape):
-        shape = (None,) + tuple(v.as_list()[1:])
-        v = K.placeholder(shape=shape, name=k)
+      elif isinstance(v, tensor_spec.TensorSpec):
+        shape = (None,) + tuple(v.shape.as_list()[1:])
+        v = K.placeholder(shape=shape, name=k, dtype=v.dtype)
 
       self._flattened_inputs[i] = v
 
