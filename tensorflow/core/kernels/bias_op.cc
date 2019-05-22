@@ -441,7 +441,7 @@ class BiasAddParams {
   string ToString() const {
     // clang-format off
     return strings::StrCat(
-        "(", str_util::Join(in_shape_, ", "), "), ",
+        "(", absl::StrJoin(in_shape_, ", "), "), ",
         data_format_, ", ", dtype_, ", ", device_id_);
     // clang-format on
   }

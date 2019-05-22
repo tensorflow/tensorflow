@@ -1,8 +1,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",  # @unused
-    "tf_cc_test",  # @unused
     "py_test",
+    "tf_cc_test",  # @unused
+    "tf_copts",  # @unused
 )
 
 licenses(["notice"])  # Apache 2.0

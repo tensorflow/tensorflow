@@ -897,6 +897,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (is_async) {
     remote_node_id = op->EagerContext()->NextId();
   }
+  VLOG(4) << "Execute remote eager op: " << op->Name()
+          << " (is async?: " << is_async << ").";
 
   const tensorflow::uint64 id = remote_op->id();
   for (int i = 0; i < *num_retvals; i++) {

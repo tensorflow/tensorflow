@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
@@ -964,9 +965,9 @@ inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
 }
 inline string PrintOneElement(const string& a, bool print_v2) {
   if (print_v2) {
-    return "\"" + str_util::CEscape(a) + "\"";
+    return "\"" + absl::CEscape(a) + "\"";
   } else {
-    return str_util::CEscape(a);
+    return absl::CEscape(a);
   }
 }
 inline float PrintOneElement(const Eigen::half& h, bool print_v2) {

@@ -862,8 +862,11 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     const Platform *platform,
     absl::Span<StreamExecutor *const> stream_executors)
     : DeviceMemoryAllocator(platform) {
+  int device_ordinal = -1;
   for (StreamExecutor *executor : stream_executors) {
-    stream_executors_[executor->device_ordinal()] = executor;
+    // Stream executor `Init` method which sets the device ordinal
+    // might not be called yet.
+    stream_executors_[++device_ordinal] = executor;
   }
 }
 

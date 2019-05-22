@@ -1031,7 +1031,7 @@ class MklFusedConvOp
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
-                                        str_util::Join(fused_ops, ","), "]"));
+                                        absl::StrJoin(fused_ops, ","), "]"));
     }
 
     if (pad_enabled) {

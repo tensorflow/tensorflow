@@ -299,7 +299,7 @@ void VersionTest(const VersionDef& version, StringPiece expected_error) {
   BundleReader reader(Env::Default(), path);
   EXPECT_TRUE(errors::IsInvalidArgument(reader.status()));
   EXPECT_TRUE(
-      str_util::StartsWith(reader.status().error_message(), expected_error));
+      absl::StartsWith(reader.status().error_message(), expected_error));
 }
 
 }  // namespace
@@ -648,8 +648,7 @@ TEST(TensorBundleTest, Error) {
     BundleWriter writer(Env::Default(), Prefix("dup"));
     TF_EXPECT_OK(writer.Add("foo", Constant_2x3(1.f)));
     EXPECT_FALSE(writer.Add("foo", Constant_2x3(2.f)).ok());
-    EXPECT_TRUE(
-        str_util::StrContains(writer.status().ToString(), "duplicate key"));
+    EXPECT_TRUE(absl::StrContains(writer.status().ToString(), "duplicate key"));
     EXPECT_FALSE(writer.Finish().ok());
   }
   {  // Double finish
@@ -659,7 +658,7 @@ TEST(TensorBundleTest, Error) {
   }
   {  // Not found.
     BundleReader reader(Env::Default(), Prefix("nonexist"));
-    EXPECT_TRUE(str_util::StrContains(reader.status().ToString(), "Not found"));
+    EXPECT_TRUE(absl::StrContains(reader.status().ToString(), "Not found"));
   }
 }
 
@@ -690,7 +689,7 @@ TEST(TensorBundleTest, Checksum) {
     BundleReader reader(Env::Default(), Prefix(prefix));
     Status status = reader.Lookup(key, &val);
     EXPECT_TRUE(errors::IsDataLoss(status));
-    EXPECT_TRUE(str_util::StrContains(status.ToString(), expected_msg));
+    EXPECT_TRUE(absl::StrContains(status.ToString(), expected_msg));
   };
 
   // Corrupts a float tensor.
@@ -741,8 +740,8 @@ TEST(TensorBundleTest, Endianness) {
 
   BundleReader reader(Env::Default(), Prefix("end"));
   EXPECT_TRUE(errors::IsUnimplemented(reader.status()));
-  EXPECT_TRUE(str_util::StrContains(reader.status().ToString(),
-                                    "different endianness from the reader"));
+  EXPECT_TRUE(absl::StrContains(reader.status().ToString(),
+                                "different endianness from the reader"));
 }
 
 TEST(TensorBundleTest, TruncatedTensorContents) {

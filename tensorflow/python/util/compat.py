@@ -121,7 +121,7 @@ def as_str_any(value):
 
 @tf_export('compat.path_to_str')
 def path_to_str(path):
-  """Converts input which is a `PathLike` object to `str` type.
+  r"""Converts input which is a `PathLike` object to `str` type.
 
   Converts from any python constant representation of a `PathLike` object to
   a string. If the input is not a `PathLike` object, simply returns the input.
@@ -138,10 +138,10 @@ def path_to_str(path):
 
   Examples:
   ```python3
-  >>> tf.compat.path_to_str('C:\\XYZ\\tensorflow\\./.././tensorflow')
-  'C:\\XYZ\\tensorflow\\./.././tensorflow' # Windows OS
+  >>> tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
+  'C:\XYZ\tensorflow\./.././tensorflow' # Windows OS
   >>> tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
-  'C:\\XYZ\\tensorflow\\..\\tensorflow' # Windows OS
+  'C:\XYZ\tensorflow\..\tensorflow' # Windows OS
   >>> tf.compat.path_to_str(Path('./corpus'))
   'corpus' # Linux OS
   >>> tf.compat.path_to_str('./.././Corpus')

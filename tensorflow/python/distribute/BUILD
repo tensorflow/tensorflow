@@ -72,6 +72,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:kernels",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",

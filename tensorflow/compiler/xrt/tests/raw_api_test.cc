@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -232,6 +234,26 @@ xla::XlaComputation AddAndSubTuple() {
   auto sum = xla::Add(p0, p1);
   auto sub = xla::Sub(p0, p1);
   xla::Tuple(&builder, {sum, sub});
+  return builder.Build().ValueOrDie();
+}
+
+xla::XlaComputation BroadcastComputation(
+    const xla::Shape& shape, absl::Span<const xla::int64> dimensions) {
+  xla::XlaBuilder builder("BroadcastComputation");
+  auto p0 = xla::Parameter(&builder, 0, shape, "P0");
+  xla::Broadcast(p0, dimensions);
+  return builder.Build().ValueOrDie();
+}
+
+xla::XlaComputation IsEqualComputation(const xla::Shape& shape) {
+  xla::XlaBuilder builder("IsEqualComputation");
+  auto p0 = xla::Parameter(&builder, 0, shape, "P0");
+  auto p1 = xla::Parameter(&builder, 1, shape, "P1");
+  auto cmp =
+      xla::Ne(xla::Sub(p0, p1), xla::Zero(&builder, shape.element_type()));
+  auto icmp = xla::ConvertElementType(cmp, xla::S32);
+  xla::ReduceAll(icmp, xla::Zero(&builder, xla::S32),
+                 xla::CreateScalarAddComputation(xla::S32, &builder));
   return builder.Build().ValueOrDie();
 }
 
@@ -1485,6 +1507,95 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
     xla::LiteralProto response;
     EXPECT_TRUE(response.ParseFromString(outputs[j].scalar<string>()()));
     EXPECT_TRUE(CompareLiteralProtos(allocs[i].value(), response));
+  }
+}
+
+TEST(RawApiTest, TestDeviceMemorySwap) {
+  const xla::Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  // 100MB F32 tensor.
+  const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {5000, 5000});
+  const xla::int64 tensor_size = xla::ShapeUtil::ByteSizeOf(shape);
+  // On CPU we cannot trigger OOM/swap. For TPU and GPU we select 16GB as
+  // maximum memory.
+  xla::int64 device_memory_size = 8LL * 1024 * 1024 * 1024;
+  if (*xla_test_device_ptr == "TPU" || *xla_test_device_ptr == "XLA_GPU") {
+    device_memory_size = 16LL * 1024 * 1024 * 1024;
+  }
+
+  xrt::XLAAllocation p0;
+  *p0.mutable_value() = xla::LiteralUtil::CreateR0<float>(0.90434).ToProto();
+
+  // Create a computation which broadcasts a scalar to a big tensor.
+  xrt::XLAComputation c_bcast;
+  {
+    auto shapes = c_bcast.mutable_config()->mutable_program_shape();
+    *shapes->add_parameters() = scalar_shape.ToProto();
+    *shapes->mutable_result() = shape.ToProto();
+    StoreComputationSnapshot(
+        BroadcastComputation(scalar_shape, shape.dimensions()),
+        c_bcast.mutable_hlo_snapshot());
+  }
+
+  // Create a computation which compares two tensors.
+  xrt::XLAComputation c_equal;
+  {
+    auto shapes = c_equal.mutable_config()->mutable_program_shape();
+    *shapes->add_parameters() = shape.ToProto();
+    *shapes->add_parameters() = shape.ToProto();
+    *shapes->mutable_result() =
+        xla::ShapeUtil::MakeShape(xla::S32, {}).ToProto();
+    StoreComputationSnapshot(IsEqualComputation(shape),
+                             c_equal.mutable_hlo_snapshot());
+  }
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(false);
+  e.set_release_compilation_handle(false);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  ClientSession session(root);
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto bcast_computation =
+      ops::Const(root.WithDevice("/device:CPU:0"), c_bcast.SerializeAsString());
+  auto c_bcast_handle = ops::XRTCompile(root, bcast_computation);
+  auto equal_computation =
+      ops::Const(root.WithDevice("/device:CPU:0"), c_equal.SerializeAsString());
+  auto c_equal_handle = ops::XRTCompile(root, equal_computation);
+  auto p0_value =
+      ops::Const(root.WithDevice("/device:CPU:0"), p0.SerializeAsString());
+  auto p0_handle = ops::XRTAllocate(root, p0_value);
+  std::vector<Tensor> outputs;
+  std::vector<xla::int64> device_handles;
+
+  // Create more data the device can take using the broadcast computation.
+  xla::int64 num_tensors = 8 + device_memory_size / tensor_size;
+  for (xla::int64 i = 0; i < num_tensors; ++i) {
+    auto result = ops::XRTExecute(root, c_bcast_handle.handle, e_config,
+                                  {Output(p0_handle)});
+    TF_ASSERT_OK(root.status());
+    TF_EXPECT_OK(session.Run({result}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+    device_handles.push_back(outputs[0].scalar<int64>()());
+  }
+
+  // Trigger computations on XRT handles to verify the swap-out/swap-in logic,
+  // by comparing sequential couple of tensors.
+  auto zero_literal = xla::LiteralUtil::CreateR0<xla::int32>(0);
+  for (size_t i = 0; i + 1 < device_handles.size(); ++i) {
+    auto exec_op = ops::XRTExecute(
+        root, c_equal_handle.handle, e_config,
+        {Input(device_handles[i]), Input(device_handles[i + 1])});
+    auto read_back = ops::XRTReadLiteral(root, exec_op);
+
+    TF_ASSERT_OK(root.status());
+    TF_EXPECT_OK(session.Run({read_back}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+
+    xla::LiteralProto response;
+    EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+    auto literal = xla::Literal::CreateFromProto(response).ValueOrDie();
+    EXPECT_EQ(literal, zero_literal);
   }
 }
 

@@ -690,19 +690,21 @@ def func_graph_from_py_func(name,
         _, original_func = tf_decorator.unwrap(python_func)
 
         def wrapper(*args, **kwargs):
-          # Note: functions annotated with @tf.function should always be
-          # converted even though they would meet autograph's whitelisting
-          # criteria.
-          # If this assumption is ever broken, converted_call will need to
-          # handle the possibility of original_func still being a shim, e.g.
-          # bound to WeakrefSelf.
-          return autograph.converted_call(
-              original_func, None,
-              autograph.ConversionOptions(
-                  recursive=True,
-                  optional_features=autograph_options,
-                  force_conversion=True,
-              ), args, kwargs)
+          """Calls a converted version of original_func."""
+          # TODO(mdan): Push this block higher in tf.function's call stack.
+          try:
+            return autograph.converted_call(
+                original_func, None,
+                autograph.ConversionOptions(
+                    recursive=True,
+                    optional_features=autograph_options,
+                    force_conversion=True,
+                ), args, kwargs)
+          except Exception as e:  # pylint:disable=broad-except
+            if hasattr(e, "ag_error_metadata"):
+              raise e.ag_error_metadata.to_exception(type(e))
+            else:
+              raise
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.

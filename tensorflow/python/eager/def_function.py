@@ -506,7 +506,6 @@ class Function(object):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
     # Note: using defun here avoids an infinite recursion.
-    # Note: there is no reason not to autograph once the overhead is negligible.
     @function_lib.defun
     def initialize_variables():
       for v, init in initializer_map.items():

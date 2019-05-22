@@ -1071,7 +1071,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    data = [":grpc_tensorflow_server.par"],
     grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.

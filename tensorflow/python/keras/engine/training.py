@@ -28,6 +28,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -2214,10 +2215,9 @@ class Model(network.Network):
 
       with K.get_graph().as_default():
         with K.name_scope('training'):
-          with K.name_scope(self.optimizer.__class__.__name__):
-            # Training updates
-            updates = self.optimizer.get_updates(
-                params=self._collected_trainable_weights, loss=self.total_loss)
+          # Training updates
+          updates = self.optimizer.get_updates(
+              params=self._collected_trainable_weights, loss=self.total_loss)
       # Unconditional updates
       updates += self.get_updates_for(None)
       # Conditional updates relevant to this model
@@ -2516,6 +2516,7 @@ class Model(network.Network):
     # Whether this is a subclassed model that expects dictionary inputs
     # rather than list inputs (e.g. FeatureColumn-based models).
     dict_inputs = False
+
     if not self.inputs:
       # We need to use `x_input` to set the model inputs.
 
@@ -2527,8 +2528,10 @@ class Model(network.Network):
       else:
         x_input = x
         y_input = y
+
       # We type-check that `x_input` and `y_input` are either single arrays
-      # or lists of arrays.
+      # or lists of arrays, and extract a flat list of inputs from the passed
+      # structure.
       if isinstance(x_input, (list, tuple)):
         if not all(isinstance(v, np.ndarray) or
                    tensor_util.is_tensor(v) for v in x_input):
@@ -2546,6 +2549,22 @@ class Model(network.Network):
                            'array or a list of arrays. You passed: x=' + str(x))
         all_inputs.append(x_input)
 
+      # Now that we have a flat set of inputs, we make sure that none of them
+      # are CompositeTensors or CompositeTensorValues of any type (or scipy
+      # sparse arrays, which we treat as SparseTensor values). We cannot safely
+      # infer input data from an arbitrary composite tensor, so we don't try -
+      # users should explictly add composite tensor inputs to their subclassed
+      # models.
+      for input_tensor in all_inputs:
+        if (composite_tensor_utils.is_composite_or_composite_value(input_tensor)
+           ):
+          # TODO(b/132691975): Document subclass-model CT input handling.
+          raise ValueError(
+              'All implicitly derived inputs to subclassed Models must be '
+              'tf.Tensors (found %s). To add non-tf.Tensor inputs, please call '
+              'self._add_inputs(tf.keras.Input/SparseInput/RaggedInput (etc)) '
+              'in your subclassed Model object.' % (input_tensor,))
+
       # Build the model using the retrieved inputs (value or symbolic).
       # If values or generated from a dataset, then in symbolic-mode
       # placeholders will be created to match the value shapes.
@@ -2556,6 +2575,7 @@ class Model(network.Network):
         cast_inputs = training_utils.cast_if_floating_dtype(x_input)
       else:
         cast_inputs = x_input
+
       self._set_inputs(cast_inputs)
     else:
       y_input = y

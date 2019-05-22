@@ -959,7 +959,6 @@ tf_cuda_library(
         "util/guarded_philox_random.h",
         "util/mirror_pad_mode.h",
         "util/padding.h",
-        "util/einsum_op_util.h",
         "util/port.h",
         "util/ptr_util.h",
         "util/reffed_status_callback.h",
@@ -1085,6 +1084,7 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3775,6 +3775,8 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@zlib_archive//:zlib",
     ],
 )
@@ -3790,6 +3792,7 @@ tf_cc_test(
         ":protos_all_cc",
         ":test",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 

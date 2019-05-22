@@ -413,6 +413,39 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer.trainable = True
     self.assertListEqual(layer.trainable_weights, [layer.w])
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_passing_initial_weights_values(self):
+    kernel_value = np.random.random((10, 2))
+    layer_with_weights = keras.layers.Dense(
+        2, use_bias=False, weights=[kernel_value])
+
+    model = testing_utils.get_model_from_layers([layer_with_weights],
+                                                input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    inputs = np.random.random((3, 10))
+    out = model.predict(inputs)
+    self.assertAllClose(model.layers[-1].get_weights()[0], kernel_value)
+    self.assertAllClose(out, np.dot(inputs, kernel_value))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_set_weights_and_get_weights(self):
+    layer = keras.layers.Dense(2)
+    layer.build((None, 10))
+    kernel = np.random.random((10, 2))
+    bias = np.random.random((2,))
+    layer.set_weights([kernel, bias])
+    weights = layer.get_weights()
+    self.assertEqual(len(weights), 2)
+    self.assertAllClose(weights[0], kernel)
+    self.assertAllClose(weights[1], bias)
+    with self.assertRaisesRegexp(
+        ValueError, 'but the layer was expecting 2 weights'):
+      layer.set_weights([1, 2, 3])
+    with self.assertRaisesRegexp(
+        ValueError, 'not compatible with provided weight shape'):
+      layer.set_weights([kernel.T, bias])
+
 
 class SymbolicSupportTest(test.TestCase):
 
@@ -500,10 +533,15 @@ class SymbolicSupportTest(test.TestCase):
 
     try:
       _ = TypeErrorLayer()(inputs)
-    except TypeError:
-      tb = traceback.extract_tb(sys.exc_info()[2])
-      last_entry = tb[-1]
-      function_name = last_entry[2]
+    except TypeError as e:
+      if hasattr(e, 'ag_error_metadata'):
+        self.assertIn('easily_identifiable_name', str(e))
+        # See ErrorMetadataBase in autograph/pyct/errors.py
+        function_name = e.ag_error_metadata.translated_stack[-1].function_name
+      else:
+        tb = traceback.extract_tb(sys.exc_info()[2])
+        last_entry = tb[-1]
+        function_name = last_entry[2]
       self.assertEqual(function_name, 'easily_identifiable_name')
 
   @test_util.run_in_graph_and_eager_modes
@@ -928,6 +966,64 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       with self.assertRaisesRegexp(RuntimeError,
                                    '`add_metric` in a control flow branch'):
         layer = MyLayer()(keras.Input((3,)))
+
+  @parameterized.named_parameters(('eager', True), ('symbolic', False))
+  def test_conditional_activity_regularizer_in_call(self, eager):
+
+    class TestModel(keras.Model):
+
+      def __init__(self):
+        super(TestModel, self).__init__(name='test_model', dynamic=eager)
+        self.layer = keras.layers.Dense(2, activity_regularizer='l2')
+
+      def call(self, x, training=None):
+        if training:
+          return self.layer(x)
+        else:
+          return self.layer(x)
+
+    model = TestModel()
+    model.compile(loss='mse', optimizer='sgd')
+
+    x = np.ones(shape=(10, 1))
+    y = np.ones(shape=(10, 2))
+
+    if eager:
+      model.fit(x, y, epochs=2, batch_size=5)
+    else:
+      with self.assertRaisesRegexp(
+          RuntimeError, '`activity_regularizer` in a control flow branch'):
+        model.fit(x, y, epochs=2, batch_size=5)
+
+  @parameterized.named_parameters(('eager', True), ('symbolic', False))
+  def test_conditional_activity_regularizer_with_wrappers_in_call(self, eager):
+
+    class TestModel(keras.Model):
+
+      def __init__(self):
+        super(TestModel, self).__init__(name='test_model', dynamic=eager)
+        self.layer = keras.layers.TimeDistributed(
+            keras.layers.Dense(2, activity_regularizer='l2'),
+            input_shape=(3, 4))
+
+      def call(self, x, training=None):
+        if training:
+          return self.layer(x)
+        else:
+          return self.layer(x)
+
+    model = TestModel()
+    model.compile(loss='mse', optimizer='sgd')
+
+    x = np.ones(shape=(10, 3, 4))
+    y = np.ones(shape=(10, 3, 2))
+
+    if eager:
+      model.fit(x, y, epochs=2, batch_size=5)
+    else:
+      with self.assertRaisesRegexp(
+          RuntimeError, '`activity_regularizer` in a control flow branch'):
+        model.fit(x, y, epochs=2, batch_size=5)
 
 
 _LAYERS_TO_TEST = [

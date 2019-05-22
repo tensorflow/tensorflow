@@ -104,7 +104,7 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
       graph_def_version_(context->graph_def_version()),
-      is_internal_(str_util::StartsWith(type_string(), "_")),
+      is_internal_(absl::StartsWith(type_string(), "_")),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
@@ -1030,7 +1030,7 @@ static Status IsProbablySafeToLoad(const string& path) {
   }
   if (!missing_features.empty()) {
     string errmsg = "Missing CPU features: ";
-    errmsg.append(str_util::Join(missing_features, ", "));
+    errmsg.append(absl::StrJoin(missing_features, ", "));
     return Status(errors::Code::FAILED_PRECONDITION, errmsg);
   }
   return Status::OK();

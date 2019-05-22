@@ -52,29 +52,15 @@ from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import ast_edits
 
 
-class NoUpdateSpec(ast_edits.APIChangeSpec):
-  """A specification of an API change which doesn't change anything."""
-
-  def __init__(self):
-    self.function_handle = {}
-    self.function_reorders = {}
-    self.function_keyword_renames = {}
-    self.symbol_renames = {}
-    self.function_warnings = {}
-    self.change_to_function = {}
-    self.module_deprecations = {}
-    self.import_renames = {}
-
-
-class ModuleDeprecationSpec(NoUpdateSpec):
+class ModuleDeprecationSpec(ast_edits.NoUpdateSpec):
   """A specification which deprecates 'a.b'."""
 
   def __init__(self):
-    NoUpdateSpec.__init__(self)
+    ast_edits.NoUpdateSpec.__init__(self)
     self.module_deprecations.update({"a.b": (ast_edits.ERROR, "a.b is evil.")})
 
 
-class RenameKeywordSpec(NoUpdateSpec):
+class RenameKeywordSpec(ast_edits.NoUpdateSpec):
   """A specification where kw2 gets renamed to kw3.
 
   The new API is
@@ -84,14 +70,14 @@ class RenameKeywordSpec(NoUpdateSpec):
   """
 
   def __init__(self):
-    NoUpdateSpec.__init__(self)
+    ast_edits.NoUpdateSpec.__init__(self)
     self.update_renames()
 
   def update_renames(self):
     self.function_keyword_renames["f"] = {"kw2": "kw3"}
 
 
-class ReorderKeywordSpec(NoUpdateSpec):
+class ReorderKeywordSpec(ast_edits.NoUpdateSpec):
   """A specification where kw2 gets moved in front of kw1.
 
   The new API is
@@ -101,7 +87,7 @@ class ReorderKeywordSpec(NoUpdateSpec):
   """
 
   def __init__(self):
-    NoUpdateSpec.__init__(self)
+    ast_edits.NoUpdateSpec.__init__(self)
     self.update_reorders()
 
   def update_reorders(self):
@@ -125,7 +111,7 @@ class ReorderAndRenameKeywordSpec(ReorderKeywordSpec, RenameKeywordSpec):
     self.update_reorders()
 
 
-class RemoveDeprecatedAliasKeyword(NoUpdateSpec):
+class RemoveDeprecatedAliasKeyword(ast_edits.NoUpdateSpec):
   """A specification where kw1_alias is removed in g.
 
   The new API is
@@ -136,7 +122,7 @@ class RemoveDeprecatedAliasKeyword(NoUpdateSpec):
   """
 
   def __init__(self):
-    NoUpdateSpec.__init__(self)
+    ast_edits.NoUpdateSpec.__init__(self)
     self.function_keyword_renames["g"] = {"kw1_alias": "kw1"}
     self.function_keyword_renames["g2"] = {"kw1_alias": "kw1"}
 
@@ -158,7 +144,7 @@ class RemoveDeprecatedAliasAndReorderRest(RemoveDeprecatedAliasKeyword):
     self.function_reorders["g2"] = ["a", "b", "kw1", "c", "d"]
 
 
-class RemoveMultipleKeywordArguments(NoUpdateSpec):
+class RemoveMultipleKeywordArguments(ast_edits.NoUpdateSpec):
   """A specification where both keyword aliases are removed from h.
 
   The new API is
@@ -168,18 +154,18 @@ class RemoveMultipleKeywordArguments(NoUpdateSpec):
   """
 
   def __init__(self):
-    NoUpdateSpec.__init__(self)
+    ast_edits.NoUpdateSpec.__init__(self)
     self.function_keyword_renames["h"] = {
         "kw1_alias": "kw1",
         "kw2_alias": "kw2",
     }
 
 
-class RenameImports(NoUpdateSpec):
+class RenameImports(ast_edits.NoUpdateSpec):
   """Specification for renaming imports."""
 
   def __init__(self):
-    NoUpdateSpec.__init__(self)
+    ast_edits.NoUpdateSpec.__init__(self)
     self.import_renames = {
         "foo": ast_edits.ImportRename(
             "bar",
@@ -209,24 +195,36 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
   def testNoTransformIfNothingIsSupplied(self):
     text = "f(a, b, kw1=c, kw2=d)\n"
-    _, new_text = self._upgrade(NoUpdateSpec(), text)
+    _, new_text = self._upgrade(ast_edits.NoUpdateSpec(), text)
     self.assertEqual(new_text, text)
 
     text = "f(a, b, c, d)\n"
-    _, new_text = self._upgrade(NoUpdateSpec(), text)
+    _, new_text = self._upgrade(ast_edits.NoUpdateSpec(), text)
     self.assertEqual(new_text, text)
 
   def testKeywordRename(self):
     """Test that we get the expected result if renaming kw2 to kw3."""
     text = "f(a, b, kw1=c, kw2=d)\n"
     expected = "f(a, b, kw1=c, kw3=d)\n"
-    _, new_text = self._upgrade(RenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(RenameKeywordSpec(), text)
     self.assertEqual(new_text, expected)
+    self.assertNotIn("Manual check required", report)
 
     # No keywords specified, no reordering, so we should get input as output
     text = "f(a, b, c, d)\n"
-    _, new_text = self._upgrade(RenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(RenameKeywordSpec(), text)
     self.assertEqual(new_text, text)
+    self.assertNotIn("Manual check required", report)
+
+    # Positional *args passed in that we cannot inspect, should warn
+    text = "f(a, *args)\n"
+    (_, report, _), _ = self._upgrade(RenameKeywordSpec(), text)
+    self.assertNotIn("Manual check required", report)
+
+    # **kwargs passed in that we cannot inspect, should warn
+    text = "f(a, b, kw1=c, **kwargs)\n"
+    (_, report, _), _ = self._upgrade(RenameKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
 
   def testKeywordReorderWithParens(self):
     """Test that we get the expected result if there are parens around args."""
@@ -254,8 +252,9 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw2=d)\n",
         "f(a=a, b=b, kw2=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(ReorderKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
 
     # Keywords are reordered, so we should reorder arguments too
     text = "f(a, b, c, d)\n"
@@ -264,8 +263,19 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw2=d)\n",
         "f(a=a, b=b, kw2=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(ReorderKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
+
+    # Positional *args passed in that we cannot inspect, should warn
+    text = "f(a, b, *args)\n"
+    (_, report, _), _ = self._upgrade(ReorderKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
+
+    # **kwargs passed in that we cannot inspect, should warn
+    text = "f(a, b, kw1=c, **kwargs)\n"
+    (_, report, _), _ = self._upgrade(ReorderKeywordSpec(), text)
+    self.assertNotIn("Manual check required", report)
 
   def testKeywordReorderAndRename(self):
     """Test that we get the expected result if kw2 is renamed and moved."""
@@ -275,8 +285,10 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw3=d)\n",
         "f(a=a, b=b, kw3=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(
+        ReorderAndRenameKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
 
     # Keywords are reordered, so we should reorder arguments too
     text = "f(a, b, c, d)\n"
@@ -285,8 +297,20 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         "f(a=a, b=b, kw1=c, kw3=d)\n",
         "f(a=a, b=b, kw3=d, kw1=c)\n",
     ]
-    _, new_text = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    (_, report, _), new_text = self._upgrade(
+        ReorderAndRenameKeywordSpec(), text)
     self.assertIn(new_text, acceptable_outputs)
+    self.assertNotIn("Manual check required", report)
+
+    # Positional *args passed in that we cannot inspect, should warn
+    text = "f(a, *args, kw1=c)\n"
+    (_, report, _), _ = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
+
+    # **kwargs passed in that we cannot inspect, should warn
+    text = "f(a, b, kw1=c, **kwargs)\n"
+    (_, report, _), _ = self._upgrade(ReorderAndRenameKeywordSpec(), text)
+    self.assertIn("Manual check required", report)
 
   def testRemoveDeprecatedKeywordAlias(self):
     """Test that we get the expected result if a keyword alias is removed."""
@@ -447,11 +471,11 @@ class TestAstEdits(test_util.TensorFlowTestCase):
     self.assertIn(new_text, acceptable_outputs)
 
   def testUnrestrictedFunctionWarnings(self):
-    class FooWarningSpec(NoUpdateSpec):
+    class FooWarningSpec(ast_edits.NoUpdateSpec):
       """Usages of function attribute foo() prints out a warning."""
 
       def __init__(self):
-        NoUpdateSpec.__init__(self)
+        ast_edits.NoUpdateSpec.__init__(self)
         self.function_warnings = {"*.foo": (ast_edits.WARNING, "not good")}
 
     texts = ["object.foo()", "get_object().foo()",

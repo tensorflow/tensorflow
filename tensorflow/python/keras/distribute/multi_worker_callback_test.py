@@ -33,6 +33,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
@@ -293,6 +294,75 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
                   save_weights_only=True,
                   load_weights_on_restart=True)
           ])
+
+  @staticmethod
+  def callableForTestReduceLROnPlateau(model, test_obj, train_ds, num_epoch,
+                                       steps, strategy, saving_filepath):
+
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='loss',
+            factor=0.1,
+            min_delta=1,
+            patience=1,
+            cooldown=5,
+            verbose=1)
+    ]
+
+    # It is expected that the learning rate would drop by `factor` within
+    # 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.0001, atol=1e-8)
+
+    # It is expected that the learning rate would drop by another `factor`
+    # within 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.00001, atol=1e-8)
+
+  @staticmethod
+  def callableForTestEarlyStopping(model, test_obj, train_ds, num_epoch, steps,
+                                   strategy, saving_filepath):
+
+    class EpochCounterCallback(callbacks.Callback):
+
+      def on_epoch_begin(self, epoch, logs):
+        self.last_epoch = epoch
+
+    epoch_counter_cbk = EpochCounterCallback()
+    cbks = [
+        callbacks.EarlyStopping(
+            monitor='loss', min_delta=0.05, patience=1, verbose=1),
+        epoch_counter_cbk
+    ]
+
+    # Empirically, it is expected that `model.fit()` would terminate around the
+    # 22th epoch. Asserting that it should have been stopped before the 50th
+    # epoch to avoid flakiness and be more predictable.
+    model.fit(x=train_ds, epochs=100, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertLess(epoch_counter_cbk.last_epoch, 50)
+
+  @staticmethod
+  def callableForTestLearningRateScheduler(model, test_obj, train_ds, num_epoch,
+                                           steps, strategy, saving_filepath):
+
+    cbks = [
+        callbacks.LearningRateScheduler(
+            schedule=lambda x: 1. / (1. + x), verbose=1)
+    ]
+
+    # It is expected that with `epochs=2`, the learning rate would drop to
+    # 1 / (1 + 2) = 0.5.
+    model.fit(x=train_ds, epochs=2, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.5, atol=1e-8)
+
+    # It is expected that with `epochs=4`, the learning rate would drop to
+    # 1 / (1 + 4) = 0.25.
+    model.fit(x=train_ds, epochs=4, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.25, atol=1e-8)
 
   class PreemptionAtBatchBoundarySimulatingCallback(callbacks.Callback):
     """Callback to simulate preemtion at batch boundary."""
@@ -559,6 +629,12 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       callableForTestModelRestoreCallback.__func__)
   test_unmatched_model_file = generate_callback_test_function(
       callableForTestUnmatchedModelFile.__func__)
+  test_reduce_lr_on_plateau = generate_callback_test_function(
+      callableForTestReduceLROnPlateau.__func__)
+  test_early_stopping = generate_callback_test_function(
+      callableForTestEarlyStopping.__func__)
+  test_learning_rate_scheduler = generate_callback_test_function(
+      callableForTestLearningRateScheduler.__func__)
 
 
 if __name__ == '__main__':

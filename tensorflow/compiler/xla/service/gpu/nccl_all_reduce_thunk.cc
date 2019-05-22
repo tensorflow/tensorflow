@@ -40,6 +40,49 @@ namespace gpu {
 #if GOOGLE_CUDA
 namespace {
 
+// Functions to translate an ncclResult_t/cudaError_t to a Status object.  Used
+// by the macros below.
+Status TranslateStatus(ncclResult_t s, const char* file, int64 line,
+                       const char* expr) {
+  if (s == ncclSuccess) {
+    return Status::OK();
+  }
+  return tensorflow::errors::Internal(
+      absl::StrFormat("%s:%d: NCCL operation %s failed: %s", file, line, expr,
+                      ncclGetErrorString(s)));
+}
+
+Status TranslateStatus(cudaError_t s, const char* file, int64 line,
+                       const char* expr) {
+  if (s == cudaSuccess) {
+    return Status::OK();
+  }
+  return tensorflow::errors::Internal(
+      absl::StrFormat("%s:%d: CUDA operation %s failed: %s", file, line, expr,
+                      cudaGetErrorString(s)));
+}
+
+// Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both
+// NCCL and CUDA errors.)
+//
+// It's tempting to say these macros belong in an XLA header somewhere, but in
+// practice we don't do much direct-to-CUDA-API stuff outside of this file.
+#define XLA_CUDA_RETURN_IF_ERROR(expr)                                       \
+  do {                                                                       \
+    Status s = ::xla::gpu::TranslateStatus(expr, __FILE__, __LINE__, #expr); \
+    if (!s.ok()) {                                                           \
+      return s;                                                              \
+    }                                                                        \
+  } while (0)
+
+#define XLA_CUDA_WARN_IF_ERROR(expr)                                         \
+  do {                                                                       \
+    Status s = ::xla::gpu::TranslateStatus(expr, __FILE__, __LINE__, #expr); \
+    if (!s.ok()) {                                                           \
+      LOG(ERROR) << s.ToString();                                            \
+    }                                                                        \
+  } while (0)
+
 // GPU-replica-driving host threads (i.e. the threads that call
 // GpuExecutable::Execute) build up this structure to describe their
 // participating replica, and then call to
@@ -208,7 +251,7 @@ class GlobalRendezvousManager {
     ~Comm() {
       if (nccl_comm.has_value()) {
         VLOG(3) << absl::StreamFormat("Destroying comm %p", *nccl_comm);
-        ncclCommDestroy(*nccl_comm);
+        XLA_CUDA_WARN_IF_ERROR(ncclCommDestroy(*nccl_comm));
       }
     }
   };
@@ -368,14 +411,23 @@ Status GlobalRendezvousManager::ReinitializeNcclClique(
   VLOG(3) << absl::StreamFormat(
       "Initializing nccl comms for participant devices {%s}",
       absl::StrJoin(ordinals_vec, ", "));
-  ncclResult_t result = ncclCommInitAll(comm_vec.data(), comm_vec.size(),
-                                        /*devlist=*/ordinals_vec.data());
-  if (result != ncclSuccess) {
-    return InternalError(
-        "Failed to initialize NCCL communication channels for %d participants: "
-        "%s",
-        ordinals_vec.size(), ncclGetErrorString(result));
+
+  // Restore CUDA device after running this.  XLA shouldn't care, but maybe
+  // another consumer does.
+  int initial_cuda_device;
+  XLA_CUDA_RETURN_IF_ERROR(cudaGetDevice(&initial_cuda_device));
+  auto cuda_device_restorer = MakeCleanup(
+      [&] { XLA_CUDA_WARN_IF_ERROR(cudaSetDevice(initial_cuda_device)); });
+
+  ncclUniqueId nccl_id;
+  XLA_CUDA_RETURN_IF_ERROR(ncclGetUniqueId(&nccl_id));
+  XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+  for (int i = 0; i < ordinals_vec.size(); ++i) {
+    XLA_CUDA_RETURN_IF_ERROR(cudaSetDevice(ordinals_vec[i]));
+    XLA_CUDA_RETURN_IF_ERROR(
+        ncclCommInitRank(&comm_vec[i], ordinals_vec.size(), nccl_id, i));
   }
+  XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   for (int64 i = 0; i < ordinals_vec.size(); ++i) {
     VLOG(3) << absl::StreamFormat("Device ordinal %d assigned ncclComm %p",
@@ -400,14 +452,12 @@ Status GlobalRendezvousManager::DoAllReduce(ParticipantData participant,
       "datatype=ncclFloat, op=ncclSum, comm=%p, stream=%p)",
       send_buffer, recv_buffer, participant.element_count,
       static_cast<const void*>(comm), cu_stream);
-  ncclResult_t result = ncclAllReduce(send_buffer, recv_buffer,
-                                      /*count=*/participant.element_count,
-                                      /*datatype=*/ncclFloat,
-                                      /*op=*/ncclSum,
-                                      /*comm=*/comm,
-                                      /*stream=*/*cu_stream);
-  TF_RET_CHECK(ncclSuccess == result)
-      << "Failed to perform all-reduce: " << ncclGetErrorString(result);
+  XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
+                                         /*count=*/participant.element_count,
+                                         /*datatype=*/ncclFloat,
+                                         /*op=*/ncclSum,
+                                         /*comm=*/comm,
+                                         /*stream=*/*cu_stream));
 
   VLOG(3) << "Done performing all reduce for ordinal: "
           << participant.device_ordinal;

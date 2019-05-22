@@ -12,18 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_UTIL_EINSUM_OP_UTIL_H_
-#define TENSORFLOW_CORE_UTIL_EINSUM_OP_UTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
-// Parses and validates an einsum equation in explicit form.
-Status ParseEinsumEquation(const string& equation,
-                           gtl::InlinedVector<string, 2>* input_subscripts,
-                           string* output_subscript);
+class AssertOp : public OpKernel {
+ public:
+  explicit AssertOp(OpKernelConstruction* c);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  int32 summarize_ = 0;
+};
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_EINSUM_OP_UTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOGGING_OPS_H_

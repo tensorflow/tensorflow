@@ -680,14 +680,6 @@ class Layer(module.Module):
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, previous_mask)
 
-    if not context.executing_eagerly():
-      # Optionally load weight values specified at layer instantiation.
-      # TODO(fchollet): consider enabling this with eager execution too.
-      if (hasattr(self, '_initial_weights') and
-          self._initial_weights is not None):
-        self.set_weights(self._initial_weights)
-        del self._initial_weights
-
     return outputs
 
   @property
@@ -1111,10 +1103,10 @@ class Layer(module.Module):
     if not params:
       return
     weight_value_tuples = []
-    param_values = backend.batch_get_value(params)
-    for pv, p, w in zip(param_values, params, weights):
-      if pv.shape != w.shape:
-        raise ValueError('Layer weight shape ' + str(pv.shape) +
+    for p, w in zip(params, weights):
+      ref_shape = p.shape
+      if not ref_shape.is_compatible_with(w.shape):
+        raise ValueError('Layer weight shape ' + str(ref_shape) +
                          ' not compatible with '
                          'provided weight shape ' + str(w.shape))
       weight_value_tuples.append((p, w))
@@ -1631,6 +1623,8 @@ class Layer(module.Module):
               array_ops.shape(output)[0], activity_loss.dtype)
           # Make activity regularization strength batch-agnostic.
           mean_activity_loss = activity_loss / batch_size
+          base_layer_utils.check_graph_consistency(
+              mean_activity_loss, method='activity_regularizer')
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
@@ -1858,30 +1852,33 @@ class Layer(module.Module):
 
   def _maybe_build(self, inputs):
     # Check input assumptions set before layer building, e.g. input rank.
-    if self.built:
-      return
+    if not self.built:
+      input_spec.assert_input_compatibility(
+          self.input_spec, inputs, self.name)
+      input_list = nest.flatten(inputs)
+      if input_list and self._dtype is None:
+        try:
+          self._dtype = input_list[0].dtype.base_dtype.name
+        except AttributeError:
+          pass
+      input_shapes = None
+      if all(hasattr(x, 'shape') for x in input_list):
+        input_shapes = nest.map_structure(lambda x: x.shape, inputs)
+      # Only call `build` if the user has manually overridden the build method.
+      if not hasattr(self.build, '_is_default'):
+        # Any setup work performed only once should happen in an `init_scope`
+        # to avoid creating symbolic Tensors that will later pollute any eager
+        # operations.
+        with tf_utils.maybe_init_scope(self):
+          self.build(input_shapes)
+      # We must set self.built since user defined build functions are not
+      # constrained to set self.built.
+      self.built = True
 
-    input_spec.assert_input_compatibility(
-        self.input_spec, inputs, self.name)
-    input_list = nest.flatten(inputs)
-    if input_list and self._dtype is None:
-      try:
-        self._dtype = input_list[0].dtype.base_dtype.name
-      except AttributeError:
-        pass
-    input_shapes = None
-    if all(hasattr(x, 'shape') for x in input_list):
-      input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-    # Only call `build` if the user has manually overridden the build method.
-    if not hasattr(self.build, '_is_default'):
-      # Any setup work performed only once should happen in an `init_scope`
-      # to avoid creating symbolic Tensors that will later pollute any eager
-      # operations.
-      with tf_utils.maybe_init_scope(self):
-        self.build(input_shapes)
-    # We must set self.built since user defined build functions are not
-    # constrained to set self.built.
-    self.built = True
+    # Optionally load weight values specified at layer instantiation.
+    if getattr(self, '_initial_weights', None) is not None:
+      self.set_weights(self._initial_weights)
+      self._initial_weights = None
 
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)

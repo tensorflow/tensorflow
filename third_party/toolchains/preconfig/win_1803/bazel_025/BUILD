@@ -14,16 +14,12 @@
 
 # This becomes the BUILD file for @local_config_cc// under Windows.
 
-licenses(["restricted"])
-
 package(default_visibility = ["//visibility:public"])
+
+load(":cc_toolchain_config.bzl", "cc_toolchain_config")
 
 cc_library(
     name = "malloc",
-)
-
-cc_library(
-    name = "stl",
 )
 
 filegroup(
@@ -48,14 +44,22 @@ cc_toolchain_suite(
 cc_toolchain(
     name = "cc-compiler-x64_windows_msys",
     all_files = ":empty",
+    ar_files = ":empty",
+    as_files = ":empty",
     compiler_files = ":empty",
-    cpu = "local",
     dwp_files = ":empty",
     linker_files = ":empty",
     objcopy_files = ":empty",
     strip_files = ":empty",
     supports_param_files = 1,
+    toolchain_config = ":msys_x64",
     toolchain_identifier = "msys_x64",
+)
+
+cc_toolchain_config(
+    name = "msys_x64",
+    compiler = "msys-gcc",
+    cpu = "x64_windows",
 )
 
 toolchain(
@@ -76,14 +80,22 @@ toolchain(
 cc_toolchain(
     name = "cc-compiler-x64_windows_mingw",
     all_files = ":empty",
+    ar_files = ":empty",
+    as_files = ":empty",
     compiler_files = ":empty",
-    cpu = "x64_windows",
     dwp_files = ":empty",
     linker_files = ":empty",
     objcopy_files = ":empty",
     strip_files = ":empty",
     supports_param_files = 0,
+    toolchain_config = ":msys_x64_mingw",
     toolchain_identifier = "msys_x64_mingw",
+)
+
+cc_toolchain_config(
+    name = "msys_x64_mingw",
+    compiler = "mingw-gcc",
+    cpu = "x64_windows",
 )
 
 toolchain(
@@ -104,14 +116,22 @@ toolchain(
 cc_toolchain(
     name = "cc-compiler-x64_windows",
     all_files = ":empty",
+    ar_files = ":empty",
+    as_files = ":empty",
     compiler_files = ":empty",
-    cpu = "x64_windows",
     dwp_files = ":empty",
     linker_files = ":empty",
     objcopy_files = ":empty",
     strip_files = ":empty",
     supports_param_files = 1,
+    toolchain_config = ":msvc_x64",
     toolchain_identifier = "msvc_x64",
+)
+
+cc_toolchain_config(
+    name = "msvc_x64",
+    compiler = "msvc-cl",
+    cpu = "x64_windows",
 )
 
 toolchain(
@@ -131,14 +151,22 @@ toolchain(
 cc_toolchain(
     name = "cc-compiler-armeabi-v7a",
     all_files = ":empty",
+    ar_files = ":empty",
+    as_files = ":empty",
     compiler_files = ":empty",
-    cpu = "local",
     dwp_files = ":empty",
     linker_files = ":empty",
     objcopy_files = ":empty",
     strip_files = ":empty",
     supports_param_files = 1,
+    toolchain_config = ":stub_armeabi-v7a",
     toolchain_identifier = "stub_armeabi-v7a",
+)
+
+cc_toolchain_config(
+    name = "stub_armeabi-v7a",
+    compiler = "compiler",
+    cpu = "armeabi-v7a",
 )
 
 toolchain(
@@ -151,4 +179,9 @@ toolchain(
     ],
     toolchain = ":cc-compiler-armeabi-v7a",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
+filegroup(
+    name = "link_dynamic_library",
+    srcs = ["link_dynamic_library.sh"],
 )

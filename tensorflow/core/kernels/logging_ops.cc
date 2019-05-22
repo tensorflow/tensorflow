@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/logging_ops.h"
+
 #include <iostream>
 
 #include "absl/strings/str_cat.h"
@@ -48,35 +50,33 @@ Status AppendStringToFile(const std::string& fname, StringPiece data,
 
 }  // namespace
 
-class AssertOp : public OpKernel {
- public:
-  explicit AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
+AssertOp::AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
+}
+
+void AssertOp::Compute(OpKernelContext* ctx) {
+  const Tensor& cond = ctx->input(0);
+  OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
+              errors::InvalidArgument("In[0] should be a scalar: ",
+                                      cond.shape().DebugString()));
+
+  if (cond.scalar<bool>()()) {
+    return;
   }
-
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& cond = ctx->input(0);
-    OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
-                errors::InvalidArgument("In[0] should be a scalar: ",
-                                        cond.shape().DebugString()));
-
-    if (cond.scalar<bool>()()) {
-      return;
-    }
-    string msg = "assertion failed: ";
-    for (int i = 1; i < ctx->num_inputs(); ++i) {
-      strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
-                         "]");
-      if (i < ctx->num_inputs() - 1) strings::StrAppend(&msg, " ");
-    }
-    ctx->SetStatus(errors::InvalidArgument(msg));
+  string msg = "assertion failed: ";
+  for (int i = 1; i < ctx->num_inputs(); ++i) {
+    strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
+                       "]");
+    if (i < ctx->num_inputs() - 1) strings::StrAppend(&msg, " ");
   }
+  ctx->SetStatus(errors::InvalidArgument(msg));
+}
 
- private:
-  int32 summarize_ = 0;
-};
-
-REGISTER_KERNEL_BUILDER(Name("Assert").Device(DEVICE_CPU), AssertOp);
+REGISTER_KERNEL_BUILDER(Name("Assert")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("condition")
+                            .HostMemory("data"),
+                        AssertOp);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Assert")

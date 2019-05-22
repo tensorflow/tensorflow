@@ -161,24 +161,24 @@ ReferenceUtil::ReduceWindow1DGeneric(
     const std::function<float(float, float)>& reduce_func,
     absl::Span<const int64> window, absl::Span<const int64> stride,
     absl::Span<const std::pair<int64, int64>> padding) {
-  std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
-  std::vector<int64> window_counts(window.size(), 0);
-  std::vector<int64> pad_low(window.size(), 0);
-  for (int64 i = 0; i < window.size(); ++i) {
-    int64 padded_width = padding[i].first + dim_lengths[i] + padding[i].second;
-    window_counts[i] =
-        window_util::StridedBound(padded_width, window[i], stride[i]);
-    pad_low[i] = padding[i].first;
-  }
-  auto result = absl::make_unique<std::vector<float>>(window_counts[0]);
+  CHECK_EQ(window.size(), 1);
+  CHECK_EQ(stride.size(), 1);
+  CHECK_EQ(padding.size(), 1);
+
+  int64 padded_width = padding[0].first + operand.size() + padding[0].second;
+  int64 stride_amount = stride[0];
+  int64 window_size = window[0];
+  int64 result_size =
+      window_util::StridedBound(padded_width, window_size, stride_amount);
+  int64 pad_low = padding[0].first;
+  auto result = absl::make_unique<std::vector<float>>(result_size);
 
   // Do a full 1D reduce window.
-  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
-    int64 i0_base = i0 * stride[0] - pad_low[0];
-
+  for (int64 i0 = 0; i0 < result_size; ++i0) {
+    int64 i0_base = i0 * stride_amount - pad_low;
     float val = init;
-    for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
-      if (i0_base + i0_win >= 0 && i0_base + i0_win < dim_lengths[0]) {
+    for (int64 i0_win = 0; i0_win < window_size; ++i0_win) {
+      if (i0_base + i0_win >= 0 && i0_base + i0_win < operand.size()) {
         val = reduce_func(val, operand[i0_base + i0_win]);
       }
     }
@@ -207,6 +207,7 @@ ReferenceUtil::ReduceWindow2DGeneric(
     absl::Span<const std::pair<int64, int64>> padding) {
   std::vector<int64> dim_lengths{operand.height(), operand.width()};
 
+  // window_counts is the dimensions of the output.
   std::vector<int64> window_counts(window.size(), 0);
   std::vector<int64> pad_low(window.size(), 0);
   for (int64 i = 0; i < window.size(); ++i) {
@@ -227,10 +228,11 @@ ReferenceUtil::ReduceWindow2DGeneric(
       float val = init;
       for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
         for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
-          if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
-              i0_base + i0_win < operand.n1() &&
-              i1_base + i1_win < operand.n2()) {
-            val = reduce_func(val, operand(i0_base + i0_win, i1_base + i1_win));
+          int64 i_adjusted = i0_base + i0_win;
+          int64 j_adjusted = i1_base + i1_win;
+          if (i_adjusted >= 0 && j_adjusted >= 0 && i_adjusted < operand.n1() &&
+              j_adjusted < operand.n2()) {
+            val = reduce_func(val, operand(i_adjusted, j_adjusted));
           }
         }
       }
