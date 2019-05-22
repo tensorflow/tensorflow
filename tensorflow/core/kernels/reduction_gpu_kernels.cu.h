@@ -520,16 +520,16 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     // when this is fixed.
     TF_CHECK_OK(GpuLaunchKernel(CleanupSegments<T*, OUT_T, Op>, 1,
                                 TF_RED_WARPSIZE, 0, cu_stream,
-                                ((T*)temp_storage.flat<int8_t>().data()), out,
-                                1, 1, num_blocks, op, init));
+                                (T*)temp_storage.flat<int8_t>().data(), out, 1,
+                                1, num_blocks, op, init));
     return;
   }
 
   size_t temp_storage_bytes = 0;
   auto reduce = [&](void* temp_storage_ptr) {
     auto success =
-        gpuprim::DeviceReduce::Reduce(temp_storage_ptr, temp_storage_bytes, in, out,
-                                      in_size, op, init, cu_stream);
+        gpuprim::DeviceReduce::Reduce(temp_storage_ptr, temp_storage_bytes, in,
+                                      out, in_size, op, init, cu_stream);
 
     OP_REQUIRES(
         ctx, success == 0,
@@ -609,8 +609,9 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    TF_CHECK_OK(GpuLaunchKernel(ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op>, grid_dim,
-        block_dim, 0, cu_stream, in, out, extent_x, extent_y, op, init));
+    TF_CHECK_OK(GpuLaunchKernel(ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op>,
+                                grid_dim, block_dim, 0, cu_stream, in, out,
+                                extent_x, extent_y, op, init));
   } else {
     Tensor temp_storage;
     OP_REQUIRES_OK(ctx,
@@ -627,7 +628,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
     dim3 num_threads(128, 1, 1);
     TF_CHECK_OK(GpuLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
                                 num_threads, 0, cu_stream,
-                                ((T*)temp_storage.flat<int8_t>().data()), out,
+                                (T*)temp_storage.flat<int8_t>().data(), out,
                                 extent_x, extent_y, grid_dim.y, op, init));
   }
 }
@@ -663,10 +664,9 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
         (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op, init));
 
     dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
-    dim3 num_threads(128, 1, 1);
     TF_CHECK_OK(GpuLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
-                                num_threads, 0, cu_stream,
-                                ((T*)temp_storage.flat<int8_t>().data()), out,
+                                block_dim, 0, cu_stream,
+                                (T*)temp_storage.flat<int8_t>().data(), out,
                                 extent_x, extent_y, grid_dim.y, op, init));
   }
 }
@@ -675,27 +675,21 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
                            int extent_x, int extent_y, Op op, T init,
                            const gpuStream_t& cu_stream) {
-#ifdef GOOGLE_CUDA
-// FIXME on ROCm
   if (extent_y <= 16) {
     LaunchColumnReduction_LTE16Cols(ctx, out, in, extent_x, extent_y, op, init,
                                     cu_stream);
   } else if (extent_y <= 4096) {
-    LaunchColumnReduction_LTE4096Cols<T, Op, OUT_T, IN_T>(ctx, out, in, extent_x, extent_y, op,
+    LaunchColumnReduction_LTE4096Cols(ctx, out, in, extent_x, extent_y, op,
 
                                       init, cu_stream);
   } else {
-#endif
     int threads_per_block = 128;
     int num_blocks = Eigen::divup(extent_y, threads_per_block);
 
     TF_CHECK_OK(GpuLaunchKernel(ColumnReduceSimpleKernel<IN_T, OUT_T, Op>,
                                 num_blocks, threads_per_block, 0, cu_stream, in,
                                 out, 1, extent_x, extent_y, op));
-#ifdef GOOGLE_CUDA
-// FIXME on ROCm
   }
-#endif
 }
 
 template <typename T, typename Op, typename OUT_T, typename IN_T>
@@ -846,7 +840,7 @@ void ReduceImpl(OpKernelContext* ctx, OUT_T out, IN_T in, int in_rank,
     LaunchRowReduction(ctx, out, in, in_dim0, in_dim1, op, init, cu_stream);
   } else if (in_rank == 2 && out_rank == 1 &&
              reduction_axes[0] == 0) {  // column reduction
-    LaunchColumnReduction<T, Op, OUT_T, IN_T>(ctx, out, in, in_dim0, in_dim1, op, init, cu_stream);
+    LaunchColumnReduction(ctx, out, in, in_dim0, in_dim1, op, init, cu_stream);
   } else if (in_rank == 3 && out_rank == 2 && reduction_axes[0] == 1) {
     Launch3DYReduction(ctx, out, in, in_dim0, in_dim1, in_dim2, op, init,
                        cu_stream);
