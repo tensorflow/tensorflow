@@ -307,9 +307,11 @@ class PyLocalExecutable {
  public:
   // Compiles a computation to an executable.
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
-      const XlaComputation& computation, std::vector<Shape> argument_layouts,
+      const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
-      std::shared_ptr<PyLocalClient> client);
+      std::shared_ptr<PyLocalClient> client,
+      absl::optional<DeviceAssignment> device_assignment);
 
   PyLocalExecutable(std::shared_ptr<LocalExecutable> executable,
                     DeviceAssignment device_assignment,

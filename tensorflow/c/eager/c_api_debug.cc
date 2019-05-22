@@ -78,7 +78,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
         status->status = tensorflow::Status::OK();
       } else {
         VLOG(3) << "Fully padded shape of ["
-                << tensorflow::str_util::Join(shape_to_log, ", ") << "] is "
+                << absl::StrJoin(shape_to_log, ", ") << "] is "
                 << padded_shape.DebugString();
       }
     }

@@ -134,7 +134,7 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
     worker_session_->worker_cache->ListWorkers(&workers);
     return errors::InvalidArgument(
         "Could not find worker with target: ", options.target,
-        " Available workers: ", str_util::Join(workers, ", "));
+        " Available workers: ", absl::StrJoin(workers, ", "));
   }
 
   // Make RPC and obtain a graph handle.

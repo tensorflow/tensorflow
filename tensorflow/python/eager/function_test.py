@@ -1823,7 +1823,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Different rank
     rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
-    with self.assertRaisesRegexp(ValueError, 'do not match'):
+    with self.assertRaisesRegexp(ValueError, 'does not match'):
       defined(rt5)
 
   def testTensorKeywordArguments(self):

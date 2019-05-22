@@ -55,7 +55,8 @@ class XrtBuffer {
   // Builds a new XrtBuffer tuple from its constituent parts.
   static xla::StatusOr<std::shared_ptr<XrtBuffer>> MakeTuple(
       const std::shared_ptr<XrtContext>& context,
-      const std::vector<std::shared_ptr<XrtBuffer>>& elements);
+      const std::vector<std::shared_ptr<XrtBuffer>>& elements,
+      int xrt_device_ordinal);
 
   // Converts an XrtBuffer to an XLA literal, copying the buffer from the remote
   // host. Blocks until the buffer is available.

@@ -768,12 +768,45 @@ PyLocalExecutable::ExecutePerReplica(
 
 /*static*/ StatusOr<std::unique_ptr<PyLocalExecutable>>
 PyLocalExecutable::Compile(const XlaComputation& computation,
-                           std::vector<Shape> argument_layouts,
+                           absl::optional<std::vector<Shape>> argument_layouts,
                            const ExecutableBuildOptions* build_options,
-                           std::shared_ptr<PyLocalClient> client) {
+                           std::shared_ptr<PyLocalClient> client,
+                           absl::optional<DeviceAssignment> device_assignment) {
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Compile");
+
+  ExecutableBuildOptions options;
+  if (build_options != nullptr) {
+    options = *build_options;
+  }
+
+  if (device_assignment) {
+    if (device_assignment->replica_count() != options.num_replicas()) {
+      return InvalidArgument(
+          "Mismatched number of replicas for device "
+          "assignment and computation (%d vs %d).",
+          device_assignment->replica_count(), options.num_replicas());
+    } else if (device_assignment->computation_count() != 1) {
+      return Unimplemented(
+          "Only 1 computation per replica supported, %d requested.",
+          device_assignment->computation_count());
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        device_assignment,
+        client->client()->backend().computation_placer()->AssignDevices(
+            options.num_replicas(), /*computation_count=*/1));
+  }
+
+  if (!argument_layouts) {
+    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                        computation.GetProgramShape());
+    argument_layouts = program_shape.parameters();
+    for (Shape& shape : *argument_layouts) {
+      LayoutUtil::ClearLayout(&shape);
+    }
+  }
   std::vector<const Shape*> argument_layout_pointers;
-  argument_layout_pointers.reserve(argument_layouts.size());
+  argument_layout_pointers.reserve(argument_layouts->size());
 
   // Assign a default layout to any array subshapes that are missing layouts.
   auto assign_layouts = [client](Shape* shape) {
@@ -791,14 +824,9 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
         });
   };
 
-  for (Shape& layout : argument_layouts) {
+  for (Shape& layout : *argument_layouts) {
     argument_layout_pointers.push_back(&layout);
     TF_RETURN_IF_ERROR(assign_layouts(&layout));
-  }
-
-  ExecutableBuildOptions options;
-  if (build_options != nullptr) {
-    options = *build_options;
   }
 
   Shape result_layout;
@@ -816,14 +844,10 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<LocalExecutable> local_executable,
                       client->client()->Compile(
                           computation, argument_layout_pointers, options));
-  TF_ASSIGN_OR_RETURN(
-      DeviceAssignment device_assignment,
-      client->client()->backend().computation_placer()->AssignDevices(
-          options.num_replicas(), /*computation_count=*/1));
 
   return absl::make_unique<PyLocalExecutable>(
       std::shared_ptr<LocalExecutable>(std::move(local_executable)),
-      std::move(device_assignment), std::move(client));
+      std::move(*device_assignment), std::move(client));
 }
 
 }  // namespace xla

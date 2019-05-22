@@ -188,7 +188,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   // instructions as we iterate.
   std::vector<HloInstruction*> conditional_ops;
   for (auto* comp : module->computations()) {
-    for (auto* instr : comp->instructions()) {
+    for (auto* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kConditional) {
         conditional_ops.push_back(instr);
       }

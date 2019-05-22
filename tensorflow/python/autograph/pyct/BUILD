@@ -106,9 +106,6 @@ py_test(
 sh_test(
     name = "inspect_utils_test_par",
     srcs = ["inspect_utils_test.sh"],
-    data = [
-        ":inspect_utils_test.par",
-    ],
     tags = ["no_oss"],
 )
 

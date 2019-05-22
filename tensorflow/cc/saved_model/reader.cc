@@ -51,7 +51,7 @@ Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
 Status FindMetaGraphDef(const SavedModel& saved_model_proto,
                         const std::unordered_set<string>& tags,
                         MetaGraphDef* meta_graph_def) {
-  LOG(INFO) << "Reading meta graph with tags { " << str_util::Join(tags, " ")
+  LOG(INFO) << "Reading meta graph with tags { " << absl::StrJoin(tags, " ")
             << " }";
   for (const MetaGraphDef& graph_def : saved_model_proto.meta_graphs()) {
     // Get tags from the graph_def.
@@ -69,7 +69,7 @@ Status FindMetaGraphDef(const SavedModel& saved_model_proto,
       error::Code::NOT_FOUND,
       strings::StrCat(
           "Could not find meta graph def matching supplied tags: { ",
-          str_util::Join(tags, " "),
+          absl::StrJoin(tags, " "),
           " }. To inspect available tag-sets in the SavedModel, please "
           "use the SavedModel CLI: `saved_model_cli`"));
 }

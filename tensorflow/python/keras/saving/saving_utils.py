@@ -78,8 +78,13 @@ def trace_model_call(model, input_signature=None):
     flat_input_names = nest.flatten(input_names)
     flat_input_specs = []
     for input_tensor, input_name in zip(flat_inputs, flat_input_names):
+      # If the user has not explicitly provided the input_signature, we
+      # create it from the inputs. We make sure to set the first dimension
+      # (batch) to None here, as in serving or retraining, batch should not
+      # be fixed. See b/132783590 for context.
+      input_shape = [None] + input_tensor.shape[1:].as_list()
       flat_input_specs.append(tensor_spec.TensorSpec(
-          shape=input_tensor.shape, dtype=input_tensor.dtype,
+          shape=input_shape, dtype=input_tensor.dtype,
           name=input_name))
     input_specs = nest.pack_sequence_as(structure=inputs,
                                         flat_sequence=flat_input_specs)
@@ -99,7 +104,7 @@ def trace_model_call(model, input_signature=None):
     # When given a single input, Keras models will call the model on the tensor
     # rather than a list consisting of the single tensor.
     inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs))
+    outputs_list = nest.flatten(model(inputs=inputs))
     try:
       output_names = model.output_names
     except AttributeError:

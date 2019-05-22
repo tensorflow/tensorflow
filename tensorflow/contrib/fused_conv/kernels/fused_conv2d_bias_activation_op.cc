@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -225,17 +226,21 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
                                      ? static_cast<ScaleType>(kMinRange)
                                      : 0);
         if (side_input_scale == 0.0f) {
-          output = (conv_output_scaled + bias)
-                       .round()
-                       .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
-                       .template cast<T>();
+          output =
+              (conv_output_scaled + bias)
+                  // scalar_round_op_google uses HALF_TO_EVEN.
+                  .unaryExpr(Eigen::internal::scalar_round_op_google<float>())
+                  .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
+                  .template cast<T>();
         } else {
           auto side_input_scaled =
               side_input.cast<ScaleType>() * side_input_scale;
-          output = (conv_output_scaled + bias + side_input_scaled)
-                       .round()
-                       .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
-                       .template cast<T>();
+          output =
+              (conv_output_scaled + bias + side_input_scaled)
+                  // scalar_round_op_google uses HALF_TO_EVEN.
+                  .unaryExpr(Eigen::internal::scalar_round_op_google<float>())
+                  .clip(lower_bound, static_cast<ScaleType>(kMaxRange))
+                  .template cast<T>();
         }
       }
     }

@@ -5,13 +5,14 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 cc_binary(
     name = "minimal",
     srcs = [
         "minimal.cc",
     ],
+    copts = tflite_copts(),
     linkopts = tflite_linkopts() + select({
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE

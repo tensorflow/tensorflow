@@ -29,6 +29,7 @@ py_test(
     data = [
         "//tensorflow/tools/tensorflow_builder/compat_checker:test_config",
     ],
+    tags = ["no_pip"],
     deps = [
         ":compat_checker",
         "//tensorflow/python:platform",

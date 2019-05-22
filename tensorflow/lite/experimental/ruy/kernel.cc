@@ -2701,9 +2701,10 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
 
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_NEEDS_LEFT_SHIFT) "\n"
+        "beq 403f\n"
         "smax v11.4s, v9.4s, v8.4s\n"
         "smax v12.4s, v10.4s, v8.4s\n"
-
         "sshl v16.4s, v16.4s, v11.4s\n"
         "sshl v17.4s, v17.4s, v12.4s\n"
         "sshl v18.4s, v18.4s, v11.4s\n"
@@ -2720,6 +2721,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "sshl v29.4s, v29.4s, v12.4s\n"
         "sshl v30.4s, v30.4s, v11.4s\n"
         "sshl v31.4s, v31.4s, v12.4s\n"
+        "403:\n"
 
         "ldr q14, [x4]\n" // multiplier_fixedpoint
         "ldr q15, [x4, #16]\n" // multiplier_fixedpoint
@@ -3874,30 +3876,19 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "ldr q9, [x1]\n"
         "ldr q10, [x1, #16]\n"
 
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_NEEDS_LEFT_SHIFT) "\n"
+        "beq 403f\n"
         "smax v11.4s, v9.4s, v8.4s\n"
         "smax v12.4s, v10.4s, v8.4s\n"
-
-        // Now that we know what LHS and RHS data the next iteration of the
-        // main loop will need to load, we start loading the first 32 bytes of
-        // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
-        // in the rest of the work on the current block.
-        "ld1 {v0.8b}, [%[lhs_ptr]], #8\n"
         "sshl v16.4s, v16.4s, v11.4s\n"
-        "ldr x1, [%[lhs_ptr]], #8\n"
         "sshl v17.4s, v17.4s, v12.4s\n"
-        "ld1 {v1.8b}, [%[lhs_ptr]], #8\n"
         "sshl v18.4s, v18.4s, v11.4s\n"
         "sshl v19.4s, v19.4s, v12.4s\n"
-        "ldr x2, [%[lhs_ptr]], #8\n"
         "sshl v20.4s, v20.4s, v11.4s\n"
-        "ld1 {v2.8b}, [%[rhs_ptr]], #8\n"
         "sshl v21.4s, v21.4s, v12.4s\n"
         "sshl v22.4s, v22.4s, v11.4s\n"
-        "ldr x5, [%[rhs_ptr]], #8\n"
         "sshl v23.4s, v23.4s, v12.4s\n"
-        "ld1 {v3.8b}, [%[rhs_ptr]], #8\n"
         "sshl v24.4s, v24.4s, v11.4s\n"
-        "ldr x6, [%[rhs_ptr]], #8\n"
         "sshl v25.4s, v25.4s, v12.4s\n"
         "sshl v26.4s, v26.4s, v11.4s\n"
         "sshl v27.4s, v27.4s, v12.4s\n"
@@ -3905,6 +3896,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "sshl v29.4s, v29.4s, v12.4s\n"
         "sshl v30.4s, v30.4s, v11.4s\n"
         "sshl v31.4s, v31.4s, v12.4s\n"
+        "403:\n"
 
         "ldr q14, [x4]\n" // multiplier_fixedpoint
         "ldr q15, [x4, #16]\n" // multiplier_fixedpoint
@@ -3913,13 +3905,27 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "smin v12.4s, v10.4s, v8.4s\n"
 
         // Apply the fixed-point part of the multiplier.
+        //
+        // ... and, interleaved into that:
+        // Now that we know what LHS and RHS data the next iteration of the
+        // main loop will need to load, we start loading the first 32 bytes of
+        // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
+        // in the rest of the work on the current block.
+        "ld1 {v0.8b}, [%[lhs_ptr]], #8\n"
         "sqrdmulh v16.4s, v16.4s, v14.4s\n"
+        "ldr x1, [%[lhs_ptr]], #8\n"
         "sqrdmulh v17.4s, v17.4s, v15.4s\n"
+        "ld1 {v1.8b}, [%[lhs_ptr]], #8\n"
         "sqrdmulh v18.4s, v18.4s, v14.4s\n"
+        "ldr x2, [%[lhs_ptr]], #8\n"
         "sqrdmulh v19.4s, v19.4s, v15.4s\n"
+        "ld1 {v2.8b}, [%[rhs_ptr]], #8\n"
         "sqrdmulh v20.4s, v20.4s, v14.4s\n"
+        "ldr x5, [%[rhs_ptr]], #8\n"
         "sqrdmulh v21.4s, v21.4s, v15.4s\n"
+        "ld1 {v3.8b}, [%[rhs_ptr]], #8\n"
         "sqrdmulh v22.4s, v22.4s, v14.4s\n"
+        "ldr x6, [%[rhs_ptr]], #8\n"
         "sqrdmulh v23.4s, v23.4s, v15.4s\n"
         "sqrdmulh v24.4s, v24.4s, v14.4s\n"
         "sqrdmulh v25.4s, v25.4s, v15.4s\n"
