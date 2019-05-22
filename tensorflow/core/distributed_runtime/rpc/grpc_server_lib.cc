@@ -385,6 +385,7 @@ Status GrpcServer::Stop() {
       worker_service_->Shutdown();
       master_service_->Shutdown();
       eager_service_->Shutdown();
+      state_ = STOPPED;
       return Status::OK();
     case STOPPED:
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
