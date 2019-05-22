@@ -1151,6 +1151,9 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
     }
   }
 
+  // dequeue is used to ensure that the nodes are first-in-first-out.  This
+  // order guarantees that the exits in the ready queue are visited before
+  // nodes that will become ready in the future.
   std::deque<Node*> ready;
   ready.push_back(src_node);
   // ready_enters_per_frame and ready_exits serve as a staging area to buffer
@@ -1190,7 +1193,8 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
     }
 
     if (ready.empty()) {
-      // Try moving nodes from ready_enters_per_frame and read_exits to `ready`.
+      // Try moving nodes from ready_enters_per_frame and ready_exits to
+      // `ready`.
       if (!ready_exits.empty()) {
         // If there are nodes in ready_exits we must process them before
         // processing ready_enters_per_frame to make sure all nodes in the
@@ -1217,7 +1221,11 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
     }
   }
 
-  CHECK(ready_enters_per_frame.empty() && ready_exits.empty());
+  if (!ready_enters_per_frame.empty() || !ready_exits.empty()) {
+    return errors::InvalidArgument(
+        "Some enters/exits are never visited."
+        " Probably the input graph is malformed.");
+  }
   return Status::OK();
 }
 
@@ -1283,7 +1291,7 @@ Status DeadnessAnalysisImpl::Populate(bool enable_optimistic) {
           PopulateFrame(sub_topo, /*use_optimistic_mode=*/true, &success));
     }
     if (!success) {
-      // The optimistic mode does not converge. Let's fall back to the
+      // The optimistic mode does not converge.  Let's fall back to the
       // pessimistic mode.
       TF_RETURN_IF_ERROR(
           PopulateFrame(sub_topo, /*use_optimistic_mode=*/false, nullptr));
@@ -1298,6 +1306,9 @@ Status DeadnessAnalysisImpl::Populate(bool enable_optimistic) {
 Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
                                            bool use_optimistic_mode,
                                            bool* success) {
+  CHECK(use_optimistic_mode && success != nullptr ||
+        !use_optimistic_mode && success == nullptr);
+
   // This an abstract interpretation over the deadness propagation semantics of
   // the graph executor.
   //
@@ -1377,10 +1388,8 @@ Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
       if (!insert_result.second) {
         // If we have already seen this frame name, verify the predicate is the
         // same as the previously seen one's.
-        AndRecurrencePredicate* curr_andrec =
-            static_cast<AndRecurrencePredicate*>(merge_pred);
-        AndRecurrencePredicate* prev_andrec =
-            static_cast<AndRecurrencePredicate*>(insert_result.first->second);
+        Predicate* curr_andrec = merge_pred;
+        Predicate* prev_andrec = insert_result.first->second;
         if (curr_andrec != prev_andrec) {
           is_converged = false;
           VLOG(2) << "Running the optimistic mode on frame " << frame_name
