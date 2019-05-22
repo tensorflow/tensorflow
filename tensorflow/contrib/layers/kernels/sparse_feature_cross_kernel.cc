@@ -182,7 +182,7 @@ class StringCrosser {
     }
     // TODO(zakaria): this will copy the string twice, might effect
     // performance.
-    return str_util::Join(cross_vec, k_feature_separator);
+    return absl::StrJoin(cross_vec, k_feature_separator);
   }
 
  private:

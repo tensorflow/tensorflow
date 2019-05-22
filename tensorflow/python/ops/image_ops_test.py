@@ -212,6 +212,38 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
+  def testGrayscaleToRGBInputValidation(self):
+    # tests whether the grayscale_to_rgb function raises
+    # an exception if the input images' last dimension is
+    # not of size 1, i.e. the images have shape
+    # [batch size, height, width] or [height, width]
+
+    # tests if an exception is raised if a three dimensional
+    # input is used, i.e. the images have shape [batch size, height, width]
+    with self.cached_session(use_gpu=True):
+      # 3-D input with batch dimension.
+      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 1, 2])
+
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+
+      # this is the error message we expect the function to raise
+      err_msg = "Last dimension of a grayscale image should be size 1"
+      with self.assertRaisesRegexp(ValueError, err_msg):
+        image_ops.grayscale_to_rgb(x_tf)
+
+    # tests if an exception is raised if a two dimensional
+    # input is used, i.e. the images have shape [height, width]
+    with self.cached_session(use_gpu=True):
+      # 1-D input without batch dimension.
+      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([2])
+
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+
+      # this is the error message we expect the function to raise
+      err_msg = "A grayscale image must be at least two-dimensional"
+      with self.assertRaisesRegexp(ValueError, err_msg):
+        image_ops.grayscale_to_rgb(x_tf)
+
   @test_util.run_deprecated_v1
   def testShapeInference(self):
     # Shape inference works and produces expected output where possible
@@ -241,43 +273,37 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
 class AdjustGamma(test_util.TensorFlowTestCase):
 
-  def test_adjust_gamma_one(self):
-    """Same image should be returned for gamma equal to one"""
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_less_zero_float32(self):
+    """White image should be returned for gamma equal to zero"""
     with self.cached_session():
-      x_data = np.random.uniform(0, 255, (8, 8))
+      x_data = np.random.uniform(0, 1.0, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
       x = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.adjust_gamma(x, gamma=1)
 
-      y_tf = self.evaluate(y)
-      y_np = x_np
+      err_msg = "Gamma should be a non-negative real number"
+      with self.assertRaisesRegexp(ValueError, err_msg):
+        image_ops.adjust_gamma(x, gamma=-1)
 
-      self.assertAllClose(y_tf, y_np, 1e-6)
-
-  def test_adjust_gamma_less_zero(self):
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_less_zero_uint8(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
-      x_np = np.array(x_data, dtype=np.float32)
+      x_np = np.array(x_data, dtype=np.uint8)
 
       x = constant_op.constant(x_np, shape=x_np.shape)
 
-      err_msg = "Gamma should be a non-negative real number."
-
-      try:
+      err_msg = "Gamma should be a non-negative real number"
+      with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_tensor(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
-      x_data = np.random.uniform(0, 255, (8, 8))
+      x_data = np.random.uniform(0, 1.0, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
       x = constant_op.constant(x_np, shape=x_np.shape)
@@ -285,73 +311,101 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       image = image_ops.adjust_gamma(x, gamma=y)
 
-      err_msg = "Gamma should be a non-negative real number."
-      try:
+      err_msg = "Gamma should be a non-negative real number"
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, err_msg):
         self.evaluate(image)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
-  def test_adjust_gamma_zero(self):
-    """White image should be returned for gamma equal to zero"""
+  def _test_adjust_gamma_uint8(self, gamma):
+    """Verifying the output with expected results for gamma
+
+    correction for uint8 images
+    """
     with self.cached_session():
-      x_data = np.random.uniform(0, 255, (8, 8))
-      x_np = np.array(x_data, dtype=np.float32)
-
+      x_np = np.random.uniform(0, 255, (8, 8)).astype(np.uint8)
       x = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.adjust_gamma(x, gamma=0)
+      y = image_ops.adjust_gamma(x, gamma=gamma)
+      y_tf = np.trunc(y.eval())
 
-      y_tf = self.evaluate(y)
+      # calculate gamma correction using numpy
+      # firstly, transform uint8 to float representation
+      # then perform correction
+      y_np = np.power(x_np / 255.0, gamma)
+      # convert correct numpy image back to uint8 type
+      y_np = np.trunc(np.clip(y_np * 255.5, 0, 255.0))
 
-      dtype = x.dtype.as_numpy_dtype
-      y_np = np.array([dtypes.dtype_range[dtype][1]] * x_np.size)
-      y_np = y_np.reshape((8, 8))
+      self.assertAllClose(y_tf, y_np, 1e-6)
+
+  def _test_adjust_gamma_float32(self, gamma):
+    """Verifying the output with expected results for gamma
+
+    correction for float32 images
+    """
+    with self.cached_session():
+      x_np = np.random.uniform(0, 1.0, (8, 8))
+      x = constant_op.constant(x_np, shape=x_np.shape)
+      y = image_ops.adjust_gamma(x, gamma=gamma)
+      y_tf = y.eval()
+
+      y_np = np.clip(np.power(x_np, gamma), 0, 1.0)
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
   @test_util.run_deprecated_v1
-  def test_adjust_gamma_less_one(self):
-    """Verifying the output with expected results for gamma
-    correction with gamma equal to half"""
-    with self.cached_session():
-      x_np = np.arange(0, 255, 4, np.uint8).reshape(8, 8)
-      y = image_ops.adjust_gamma(x_np, gamma=0.5)
-      y_tf = np.trunc(y.eval())
-
-      y_np = np.array(
-          [[0, 31, 45, 55, 63, 71, 78, 84], [
-              90, 95, 100, 105, 110, 115, 119, 123
-          ], [127, 131, 135, 139, 142, 146, 149, 153], [
-              156, 159, 162, 165, 168, 171, 174, 177
-          ], [180, 183, 186, 188, 191, 194, 196, 199], [
-              201, 204, 206, 209, 211, 214, 216, 218
-          ], [221, 223, 225, 228, 230, 232, 234, 236],
-           [238, 241, 243, 245, 247, 249, 251, 253]],
-          dtype=np.float32)
-
-      self.assertAllClose(y_tf, y_np, 1e-6)
+  def test_adjust_gamma_one_float32(self):
+    """Same image should be returned for gamma equal to one"""
+    self._test_adjust_gamma_float32(1.0)
 
   @test_util.run_deprecated_v1
-  def test_adjust_gamma_greater_one(self):
+  def test_adjust_gamma_one_uint8(self):
+    self._test_adjust_gamma_uint8(1.0)
+
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_zero_uint8(self):
+    """White image should be returned for gamma equal
+
+    to zero for uint8 images
+    """
+    self._test_adjust_gamma_uint8(gamma=0.0)
+
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_less_one_uint8(self):
     """Verifying the output with expected results for gamma
-    correction with gamma equal to two"""
-    with self.cached_session():
-      x_np = np.arange(0, 255, 4, np.uint8).reshape(8, 8)
-      y = image_ops.adjust_gamma(x_np, gamma=2)
-      y_tf = np.trunc(y.eval())
 
-      y_np = np.array(
-          [[0, 0, 0, 0, 1, 1, 2, 3], [4, 5, 6, 7, 9, 10, 12, 14], [
-              16, 18, 20, 22, 25, 27, 30, 33
-          ], [36, 39, 42, 45, 49, 52, 56, 60], [64, 68, 72, 76, 81, 85, 90, 95],
-           [100, 105, 110, 116, 121, 127, 132, 138], [
-               144, 150, 156, 163, 169, 176, 182, 189
-           ], [196, 203, 211, 218, 225, 233, 241, 249]],
-          dtype=np.float32)
+    correction with gamma equal to half for uint8 images
+    """
+    self._test_adjust_gamma_uint8(gamma=0.5)
 
-      self.assertAllClose(y_tf, y_np, 1e-6)
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_greater_one_uint8(self):
+    """Verifying the output with expected results for gamma
+
+    correction for uint8 images
+    """
+    self._test_adjust_gamma_uint8(gamma=1.0)
+
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_less_one_float32(self):
+    """Verifying the output with expected results for gamma
+
+    correction with gamma equal to half for float32 images
+    """
+    self._test_adjust_gamma_float32(0.5)
+
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_greater_one_float32(self):
+    """Verifying the output with expected results for gamma
+
+    correction with gamma equal to two for float32 images
+    """
+    self._test_adjust_gamma_float32(1.0)
+
+  @test_util.run_deprecated_v1
+  def test_adjust_gamma_zero_float32(self):
+    """White image should be returned for gamma equal
+
+    to zero for float32 images
+    """
+    self._test_adjust_gamma_float32(0.0)
 
 
 class AdjustHueTest(test_util.TensorFlowTestCase):
@@ -1189,7 +1243,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1200,7 +1254,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
+      y = image_ops.transpose(image_ops.transpose(x_tf))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
@@ -1211,7 +1265,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       self.assertTrue(y.op.name.startswith("transpose"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
@@ -1227,7 +1281,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.transpose_image(x_tf)
+      y = image_ops.transpose(x_tf)
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1248,7 +1302,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
@@ -1264,7 +1318,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     for op in [
         image_ops.flip_left_right, image_ops.flip_up_down,
         image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose_image, image_ops.rot90
+        image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_dims_4 = op(p_unknown_dims_4)
       self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
@@ -2392,6 +2446,8 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
             expected_dtype = dtypes.float32
           self.assertEqual(y.dtype, expected_dtype)
 
+  # half_pixel_centers not supported by XLA
+  @test_util.disable_xla("b/127616992")
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
     # This test is also conducted with int8, so 127 is the maximum
@@ -3347,7 +3403,7 @@ class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
 
 # half_pixel_centers not supported by XLA
-@test_util.disable_all_xla("b/127616992")
+@test_util.for_all_test_methods(test_util.disable_xla, "b/127616992")
 class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
@@ -4497,11 +4553,11 @@ class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
         [0.2, 0.0, 1.0],
     ]
     scores_np = [0.7, 0.9, 0.1]
-    max_ouput_size_np = 3
+    max_output_size_np = 3
 
     overlaps = constant_op.constant(overlaps_np)
     scores = constant_op.constant(scores_np)
-    max_output_size = constant_op.constant(max_ouput_size_np)
+    max_output_size = constant_op.constant(max_output_size_np)
     overlap_threshold = 0.6
     score_threshold = 0.4
 
@@ -4677,7 +4733,8 @@ class SSIMTest(test_util.TensorFlowTestCase):
     expected = self._ssim[np.triu_indices(3)]
 
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
-    ssim = image_ops.ssim(*ph, max_val=1.0)
+    ssim = image_ops.ssim(
+        *ph, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       scores = [ssim.eval(dict(zip(ph, t)))
                 for t in itertools.combinations_with_replacement(img, 2)]
@@ -4691,8 +4748,14 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = np.concatenate(img1)
     img2 = np.concatenate(img2)
 
-    ssim = image_ops.ssim(constant_op.constant(img1),
-                          constant_op.constant(img2), 1.0)
+    ssim = image_ops.ssim(
+        constant_op.constant(img1),
+        constant_op.constant(img2),
+        1.0,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4704,7 +4767,8 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
 
-    ssim = image_ops.ssim(img1, img2, 1.0)
+    ssim = image_ops.ssim(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4718,8 +4782,14 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = img1.reshape((1, 16, 16, 1))
     img2 = img2.reshape((1, 16, 16, 1))
 
-    ssim = image_ops.ssim(constant_op.constant(img1),
-                          constant_op.constant(img2), 255)
+    ssim = image_ops.ssim(
+        constant_op.constant(img1),
+        constant_op.constant(img2),
+        255,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertLess(ssim.eval(), 0)
 
@@ -4729,10 +4799,12 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = self._RandomImage((1, 16, 16, 3), 255)
     img1 = constant_op.constant(img1, dtypes.uint8)
     img2 = constant_op.constant(img2, dtypes.uint8)
-    ssim_uint8 = image_ops.ssim(img1, img2, 255)
+    ssim_uint8 = image_ops.ssim(
+        img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
-    ssim_float32 = image_ops.ssim(img1, img2, 1.0)
+    ssim_float32 = image_ops.ssim(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
           ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
@@ -4775,7 +4847,8 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     expected = self._msssim[np.triu_indices(3)]
 
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
-    msssim = image_ops.ssim_multiscale(*ph, max_val=1.0)
+    msssim = image_ops.ssim_multiscale(
+        *ph, max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       scores = [msssim.eval(dict(zip(ph, t)))
                 for t in itertools.combinations_with_replacement(img, 2)]
@@ -4788,8 +4861,14 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
     scalar = constant_op.constant(1.0, dtype=dtypes.float32)
     scaled_ph = [x * scalar for x in ph]
-    msssim = image_ops.ssim_multiscale(*scaled_ph, max_val=1.0,
-                                       power_factors=(1, 1, 1, 1, 1))
+    msssim = image_ops.ssim_multiscale(
+        *scaled_ph,
+        max_val=1.0,
+        power_factors=(1, 1, 1, 1, 1),
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     grads = gradients.gradients(msssim, scalar)
     with self.cached_session(use_gpu=True) as sess:
       np_grads = sess.run(grads, feed_dict={ph[0]: img[0], ph[1]: img[1]})
@@ -4804,8 +4883,14 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img1 = np.concatenate(img1)
     img2 = np.concatenate(img2)
 
-    msssim = image_ops.ssim_multiscale(constant_op.constant(img1),
-                                       constant_op.constant(img2), 1.0)
+    msssim = image_ops.ssim_multiscale(
+        constant_op.constant(img1),
+        constant_op.constant(img2),
+        1.0,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(msssim), 1e-4)
 
@@ -4818,7 +4903,8 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
 
-    score_tensor = image_ops.ssim_multiscale(img1, img2, 1.0)
+    score_tensor = image_ops.ssim_multiscale(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(score_tensor), 1e-4)
 
@@ -4836,8 +4922,11 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
                 np.full_like(img1, fill_value=255)]
 
       images = [ops.convert_to_tensor(x, dtype=dtypes.float32) for x in images]
-      msssim_ops = [image_ops.ssim_multiscale(x, y, 1.0)
-                    for x, y in itertools.combinations(images, 2)]
+      msssim_ops = [
+          image_ops.ssim_multiscale(
+              x, y, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+          for x, y in itertools.combinations(images, 2)
+      ]
       msssim = self.evaluate(msssim_ops)
       msssim = np.squeeze(msssim)
 
@@ -4850,13 +4939,22 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img2 = self._RandomImage((1, 180, 240, 3), 255)
     img1 = constant_op.constant(img1, dtypes.uint8)
     img2 = constant_op.constant(img2, dtypes.uint8)
-    ssim_uint8 = image_ops.ssim_multiscale(img1, img2, 255)
+    ssim_uint8 = image_ops.ssim_multiscale(
+        img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
-    ssim_float32 = image_ops.ssim_multiscale(img1, img2, 1.0)
+    ssim_float32 = image_ops.ssim_multiscale(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
           ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
+
+  def testNumpyInput(self):
+    """Test case for GitHub issue 28241."""
+    image = np.random.random([512, 512, 1])
+    score_tensor = image_ops.ssim_multiscale(image, image, max_val=1.0)
+    with self.cached_session(use_gpu=True):
+      _ = self.evaluate(score_tensor)
 
 
 class ImageGradientsTest(test_util.TensorFlowTestCase):
@@ -5023,6 +5121,21 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
                                              dtypes.float32)
       image0, image1 = self.evaluate([image0, image1])
+      self.assertAllEqual(image0, image1)
+
+  def testExpandAnimations(self):
+    with self.cached_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/gif/testdata"
+      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+      image0 = image_ops.decode_image(
+          gif0, dtype=dtypes.float32, expand_animations=False)
+      # image_ops.decode_png() handles GIFs and returns 3D tensors
+      animation = image_ops.decode_gif(gif0)
+      first_frame = array_ops.gather(animation, 0)
+      image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
+      image0, image1 = self.evaluate([image0, image1])
+      self.assertEqual(len(image0.shape), 3)
+      self.assertAllEqual(list(image0.shape), [40, 20, 3])
       self.assertAllEqual(image0, image1)
 
 

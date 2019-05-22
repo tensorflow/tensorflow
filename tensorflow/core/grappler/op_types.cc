@@ -245,12 +245,14 @@ bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
 bool IsFusedBatchNorm(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "FusedBatchNorm" || op == "FusedBatchNormV2";
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2" ||
+         op == "FusedBatchNormV3";
 }
 
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2";
+  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
+         op == "FusedBatchNormGradV3";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
@@ -687,7 +689,7 @@ bool ModifiesInputsInPlace(const NodeDef& node) {
   }
 
   std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
-  if (str_util::StrContains(op_name, "inplace")) {
+  if (absl::StrContains(op_name, "inplace")) {
     return true;
   }
   return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
@@ -942,8 +944,8 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "RandomPoissonV2"}));
   const string& op_name = node.op();
   return kNonForwardingOps->count(op_name) > 0 ||
-         str_util::StrContains(op_name, "Segment") ||
-         str_util::StartsWith(op_name, "Quantize");
+         absl::StrContains(op_name, "Segment") ||
+         absl::StartsWith(op_name, "Quantize");
 }
 
 }  // namespace grappler

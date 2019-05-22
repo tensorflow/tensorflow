@@ -7,15 +7,20 @@ cc_library(
     srcs = ["convert.cc"],
     hdrs = ["convert.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tensor",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
+        ":shape",
+        ":status",
+        ":tensor",
+        ":types",
+        ":util",
         "@FP16",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "access_type",
+    hdrs = ["access_type.h"],
 )
 
 cc_library(
@@ -29,7 +34,7 @@ cc_library(
     srcs = ["memory_management.cc"],
     hdrs = ["memory_management.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:status",
+        ":status",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -92,7 +97,7 @@ cc_library(
     srcs = ["model_transformer.cc"],
     hdrs = ["model_transformer.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
+        ":model",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -158,7 +163,7 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:types",
+        ":types",
     ],
 )
 

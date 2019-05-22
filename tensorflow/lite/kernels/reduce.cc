@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/gemmlowp_support.h"
+#include "tensorflow/lite/kernels/cpu_backend_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/mean.h"
@@ -61,7 +61,7 @@ struct OpContext {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  gemmlowp_support::IncrementUsageCounter(context);
+  cpu_backend_support::IncrementUsageCounter(context);
   // Creates two temp tensors to store index and axis for internal
   // implementation only.
   auto* op_data = new OpData();
@@ -70,7 +70,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  gemmlowp_support::DecrementUsageCounter(context);
+  cpu_backend_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -297,15 +297,14 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
         ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
          (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
       if (op_context.input->type == kTfLiteUInt8) {
-        gemmlowp::GemmContext* gemmlowp_context =
-            gemmlowp_support::GetFromContext(context);
         optimized_ops::Mean(
             op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             op_context.input->params.zero_point, op_context.input->params.scale,
             GetTensorShape(op_context.output),
             GetTensorData<uint8_t>(op_context.output),
             op_context.output->params.zero_point,
-            op_context.output->params.scale, gemmlowp_context);
+            op_context.output->params.scale,
+            cpu_backend_support::GetFromContext(context));
       } else {
         reference_ops::Mean(op_params, GetTensorShape(input),
                             GetTensorData<float>(input),

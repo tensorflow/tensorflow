@@ -32,6 +32,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
   switch (tf_lite_type) {
     case kTfLiteFloat32:
       return NPY_FLOAT32;
+    case kTfLiteFloat16:
+      return NPY_FLOAT16;
     case kTfLiteInt32:
       return NPY_INT32;
     case kTfLiteInt16:

@@ -44,8 +44,8 @@ def make_saveable_from_iterator(iterator):
     saveable_obj = tf.data.experimental.make_saveable_from_iterator(iterator)
     # Add the SaveableObject to the SAVEABLE_OBJECTS collection so
     # it can be automatically saved using Saver.
-    tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
-    saver = tf.train.Saver()
+    tf.compat.v1.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+    saver = tf.compat.v1.train.Saver()
 
     while continue_training:
       ... Perform training ...

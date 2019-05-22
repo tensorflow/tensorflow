@@ -22,20 +22,23 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-// using ::testing::Eq;  // Optional ::testing aliases. Remove if unused.
-// using ::testing::Test;
 using ::testing::ElementsAre;
 
 TEST(Model, EmptyRecords) {
   ObjectsAssignment assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors({}, MemoryStrategy::NAIVE, &assignment).ok());
-  ASSERT_TRUE(assignment.object_ids.empty());
-  ASSERT_TRUE(assignment.object_sizes.empty());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
   ASSERT_TRUE(
       AssignObjectsToTensors({}, MemoryStrategy::GREEDY, &assignment).ok());
-  ASSERT_TRUE(assignment.object_ids.empty());
-  ASSERT_TRUE(assignment.object_sizes.empty());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
+  ASSERT_TRUE(
+      AssignObjectsToTensors({}, MemoryStrategy::MINCOSTFLOW, &assignment)
+          .ok());
+  EXPECT_TRUE(assignment.object_ids.empty());
+  EXPECT_TRUE(assignment.object_sizes.empty());
 }
 
 TEST(Model, OneRecord) {
@@ -50,6 +53,11 @@ TEST(Model, OneRecord) {
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::GREEDY, &assignment)
           .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
+                                     &assignment)
+                  .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
 }
@@ -71,6 +79,11 @@ TEST(Model, ChainRecords) {
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::GREEDY, &assignment)
           .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 1, 0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32));
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
+                                     &assignment)
+                  .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 1, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32));
 }
@@ -98,6 +111,11 @@ TEST(Model, ComplexRecords) {
           .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 2, 3, 1, 3, 2, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 64, 16, 8));
+  ASSERT_TRUE(AssignObjectsToTensors(usage_records, MemoryStrategy::MINCOSTFLOW,
+                                     &assignment)
+                  .ok());
+  EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 0, 3, 1, 3, 2, 0));
+  EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 64, 8, 8));
 }
 
 }  // namespace

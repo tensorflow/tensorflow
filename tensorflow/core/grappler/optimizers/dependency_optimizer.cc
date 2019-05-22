@@ -295,6 +295,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
     }
     node->set_op("NoOp");
     node->clear_attr();
+    DedupControlInputs(node);
     nodes_to_simplify->PushBack(node_to_idx_[node]);
     return;
   }

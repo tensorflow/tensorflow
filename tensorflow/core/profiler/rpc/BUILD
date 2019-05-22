@@ -31,7 +31,6 @@ tf_cuda_library(
         "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:grpc_services",
-        # "//tensorflow/core:platform_env",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/lib:profiler_eager_lib",

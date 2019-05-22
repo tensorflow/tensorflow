@@ -15,9 +15,10 @@ tf_cuda_library(
         "eager_profiler.cc",
     ],
     deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/profiler/internal:profiler_interface",
-        # "//tensorflow/stream_executor/lib",
     ],
     alwayslink = True,
 )

@@ -90,7 +90,7 @@ struct GatherFunctor<GPUDevice, T, Index> {
     const int64 indices_size = indices.size();
     const int64 slice_size = params.dimension(2);
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(out_size, d);
     if (is_axis_zero) {
       TF_CHECK_OK(CudaLaunchKernel(
           GatherOpKernel<T, Index, true>, config.block_count,

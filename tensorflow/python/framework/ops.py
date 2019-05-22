@@ -62,7 +62,13 @@ from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency: ops -> tensor_spec -> ops
+tensor_spec = LazyLoader(
+    "tensor_spec", globals(),
+    "tensorflow.python.framework.tensor_spec")
 
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
@@ -752,21 +758,29 @@ class _EagerTensorBase(Tensor):
     """
     if self.dtype == dtypes.resource:
       raise ValueError("Resource handles are not convertible to numpy.")
-    return self._cpu_nograd()._numpy()  # pylint: disable=protected-access
+    maybe_arr = self._cpu_nograd()._numpy()  # pylint: disable=protected-access
+    return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
   # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  # TODO(slebedev): avoid redundant copy in all of the following methods.
   def __int__(self):
     return int(self.numpy())
+
+  def __long__(self):
+    return long(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
 
   def __index__(self):
-    return int(self.numpy())
+    maybe_arr = self.numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
 
   def __array__(self, dtype=None):
-    return np.array(self.numpy(), dtype=dtype)
+    return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
@@ -880,7 +894,10 @@ class _EagerTensorBase(Tensor):
       self_device = self.device
 
       def grad_fun(dresult):
-        return [dresult._copy(device_name=self_device)]
+        return [
+            dresult._copy(device_name=self_device)
+            if hasattr(dresult, "_copy") else dresult
+        ]
 
       tape.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
@@ -1683,7 +1700,8 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
-    _get_graph_from_inputs([values, indices, dense_shape])
+    if not isinstance(values, tensor_spec.TensorSpec):
+      _get_graph_from_inputs([values, indices, dense_shape])
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape
@@ -1744,21 +1762,24 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
       return (self._values, self._indices, self._dense_shape)
 
   @classmethod
-  def _from_components(cls, components):
+  def _from_components(cls, components, metadata):
     return cls(*components)
 
   def _shape_invariant_to_components(self, shape=None):
     if shape is None:
       shape = self._values.shape
     if self._dense_shape is None:
-      return [shape, shape[:1]]  # values, indices
+      return (shape, shape[:1])  # values, indices
     else:
       # values, indices, dense_shape
-      return [shape, shape[:1], tensor_shape.TensorShape([shape.ndims])]
+      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
 
   @property
   def _is_graph_tensor(self):
     return hasattr(self._values, "graph")
+
+  def consumers(self):
+    return self._consumers()
 
 
 IndexedSlicesValue = collections.namedtuple(
@@ -2579,8 +2600,15 @@ class Operation(object):
     func = attr_value_pb2.NameAttrList(name=func_name)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
 
+  def _set_func_list_attr(self, attr_name, func_names):
+    """Private method used to set a list(function) attribute in the node_def."""
+    funcs = [attr_value_pb2.NameAttrList(name=func_name)
+             for func_name in func_names]
+    funcs_list = attr_value_pb2.AttrValue.ListValue(func=funcs)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=funcs_list))
+
   def _set_type_list_attr(self, attr_name, types):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(type) attribute in the node_def."""
     if not types:
       return
     if isinstance(types[0], dtypes.DType):
@@ -2589,7 +2617,7 @@ class Operation(object):
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
 
   def _set_shape_list_attr(self, attr_name, shapes):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(shape) attribute in the node_def."""
     shapes = [s.as_proto() for s in shapes]
     shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
@@ -3103,6 +3131,15 @@ class Graph(object):
     # being called inside function definitions behave as if they were seeing the
     # actual outside graph).
     self._graph_key = "grap-key-%d/" % (uid(),)
+    # A string with the last reduction method passed to
+    # losses.compute_weighted_loss(), or None. This is required only for
+    # backward compatibility with Estimator and optimizer V1 use cases.
+    self._last_loss_reduction = None
+    # Flag that is used to indicate whether loss has been scaled by optimizer.
+    # If this flag has been set, then estimator uses it to scale losss back
+    # before reporting. This is required only for backward compatibility with
+    # Estimator and optimizer V1 use cases.
+    self._is_loss_scaled_by_optimizer = False
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
     # Set to True if this graph is being built in an

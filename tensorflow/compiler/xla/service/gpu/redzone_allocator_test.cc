@@ -14,18 +14,32 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
+
+static void EXPECT_REDZONE_OK(StatusOr<RedzoneCheckStatus> status) {
+  EXPECT_TRUE(status.ok());
+  EXPECT_TRUE(status.ValueOrDie().ok());
+}
+
+static void EXPECT_REDZONE_VIOLATION(StatusOr<RedzoneCheckStatus> status) {
+  EXPECT_TRUE(status.ok());
+  EXPECT_FALSE(status.ValueOrDie().ok());
+}
 
 TEST(RedzoneAllocatorTest, WriteToRedzone) {
   constexpr int64 kRedzoneSize = 1 << 23;  // 8MiB redzone on each side
@@ -39,16 +53,17 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, kRedzoneSize,
-                             kRedzonePattern);
+  HloModuleConfig config;
+  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
+                             kRedzoneSize, kRedzonePattern);
 
   se::Stream stream(stream_exec);
   stream.Init();
   TF_ASSERT_OK_AND_ASSIGN(se::DeviceMemory<uint8> buf,
                           allocator.AllocateBytes(&stream,
                                                   /*byte_size=*/kAllocSize));
-  TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
   se::DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize);
@@ -88,19 +103,40 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     char old_redzone_value = 0;
     {
       XLA_SCOPED_LOGGING_TIMER("Checking redzones");
-      TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+      EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
     }
     stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
         .ThenMemZero(&redzone_at_offset, 1);
-    EXPECT_FALSE(allocator.CheckRedzones(&stream).ok());
+    EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones(&stream));
     stream.ThenMemcpy(&redzone_at_offset, &old_redzone_value, 1);
-    TF_EXPECT_OK(allocator.CheckRedzones(&stream));
+    EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
   };
 
   modify_redzone(lhs_redzone, /*offset=*/0, "lhs");
   modify_redzone(lhs_redzone, /*offset=*/kRedzoneSize - 1, "lhs");
   modify_redzone(rhs_redzone, /*offset=*/0, "rhs");
   modify_redzone(rhs_redzone, /*offset=*/kRedzoneSize - 1, "rhs");
+}
+
+// Older CUDA compute capabilities (<= 2.0) have a limitation that grid
+// dimension X cannot be larger than 65535.
+//
+// Make sure we can launch kernels on sizes larger than that, given that the
+// maximum number of threads per block is 1024.
+TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
+  // Make sure the redzone size would require grid dimension > 65535.
+  constexpr int64 kRedzoneSize = 65535 * 1024 + 1;
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
+  se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
+  HloModuleConfig config;
+  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
+                             kRedzoneSize, /*redzone_pattern=*/-1);
+  se::Stream stream(stream_exec);
+  stream.Init();
+  (void)allocator.AllocateBytes(&stream, /*byte_size=*/1);
+  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
 }
 
 }  // namespace

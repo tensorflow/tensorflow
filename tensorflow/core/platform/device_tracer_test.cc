@@ -40,8 +40,17 @@ limitations under the License.
 
 namespace tensorflow {
 struct ProfilerContext;
+
+#if GOOGLE_CUDA
 std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
     const ProfilerContext*);
+#else
+// We don't have device tracer for non-cuda case.
+std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
+    const ProfilerContext*) {
+  return nullptr;
+}
+#endif
 
 namespace {
 

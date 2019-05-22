@@ -112,7 +112,9 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      len(model.weights)
     self.assertFalse(model.built)
 
     x = np.random.random((batch_size, input_dim))
@@ -137,7 +139,9 @@ class TestSequential(keras_parameterized.TestCase):
         metrics=[keras.metrics.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 0)
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      len(model.weights)
     self.assertFalse(model.built)
 
     x = array_ops.ones((num_samples, input_dim))
@@ -376,6 +380,18 @@ class TestSequential(keras_parameterized.TestCase):
     seq.run_eagerly = testing_utils.should_run_eagerly()
     preds = seq.predict([['tensorflow eager']])
     self.assertEqual(preds.shape, (1,))
+
+  @keras_parameterized.run_all_keras_modes
+  def test_multi_output_layer_not_accepted(self):
+
+    class MultiOutputLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs, inputs
+
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([MultiOutputLayer(input_shape=(3,))])
 
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):

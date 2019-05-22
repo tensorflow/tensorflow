@@ -26,10 +26,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -51,8 +54,32 @@ class Structure(object):
   TODO(b/110122868): In the future, a single `Structure` will replace the
   `tf.data.Dataset.output_types`, `tf.data.Dataset.output_shapes`,
   and `tf.data.Dataset.output_classes`, and similar properties and arguments in
-  the `tf.data.Iterator` and `Optional` classes.
+  the `tf.compat.v1.data.Iterator` and `Optional` classes.
   """
+
+  @abc.abstractmethod
+  def __eq__(self, other):
+    """Returns the this structure and the input structure are equal.
+
+    Args:
+      other: the structure to use for equality check
+
+    Returns:
+      `True` if this and the input structure are equal and `False` otherwise.
+    """
+    raise NotImplementedError("Structure.__eq__()")
+
+  def __ne__(self, other):
+    return not self == other
+
+  @abc.abstractmethod
+  def __hash__(self):
+    """Returns the hash of this structure.
+
+    Returns:
+      The hash of this structure.
+    """
+    raise NotImplementedError("Structure.__hash__()")
 
   @abc.abstractproperty
   def _flat_shapes(self):
@@ -80,7 +107,7 @@ class Structure(object):
 
     * `s` and `t` are instances of the same `Structure` subclass.
     * The nested structures (if any) of `s` and `t` are the same, according to
-      `tf.contrib.framework.nest.assert_same_structure`, and each nested
+      `tf.nest.assert_same_structure`, and each nested
       structure of `t` is a "subtype" of the corresponding nested structure of
       `s`.
     * Any `tf.DType` components of `t` are the same as the corresponding
@@ -207,6 +234,10 @@ class Structure(object):
       return SparseTensorStructure.from_value(value)
     elif isinstance(value, tensor_array_ops.TensorArray):
       return TensorArrayStructure.from_value(value)
+    elif isinstance(
+        value,
+        (ragged_tensor.RaggedTensor, ragged_tensor_value.RaggedTensorValue)):
+      return RaggedTensorStructure.from_value(value)
     elif isinstance(value, (tuple, dict)):
       return NestedStructure.from_value(value)
     else:
@@ -265,6 +296,10 @@ def normalize_tensors(tensors):
     for i, t in enumerate(flat_tensors):
       if sparse_tensor_lib.is_sparse(t):
         prepared.append(sparse_tensor_lib.SparseTensor.from_value(t))
+      elif ragged_tensor.is_ragged(t):
+        prepared.append(
+            ragged_tensor.convert_to_tensor_or_ragged_tensor(
+                t, name="component_%d" % i))
       elif isinstance(t, tensor_array_ops.TensorArray):
         prepared.append(t)
       else:
@@ -350,6 +385,22 @@ class NestedStructure(Structure):
                         "or dictionary of Structure objects.")
       self._flat_shapes_list.extend(s._flat_shapes)
       self._flat_types_list.extend(s._flat_types)
+
+  def __eq__(self, other):
+    if not isinstance(other, NestedStructure):
+      return False
+    try:
+      # pylint: disable=protected-access
+      nest.assert_same_structure(self._nested_structure,
+                                 other._nested_structure)
+    except (ValueError, TypeError):
+      return False
+
+    return nest.flatten(self._nested_structure) == nest.flatten(
+        other._nested_structure)
+
+  def __hash__(self):
+    return hash(tuple(nest.flatten(self._nested_structure)))
 
   @property
   def _flat_shapes(self):
@@ -469,6 +520,14 @@ class TensorStructure(Structure):
     self._dtype = dtypes.as_dtype(dtype)
     self._shape = tensor_shape.as_shape(shape)
 
+  def __eq__(self, other):
+    return (isinstance(other, TensorStructure) and tensor_spec.TensorSpec(
+        self._shape, self._dtype) == tensor_spec.TensorSpec(
+            other._shape, other._dtype))
+
+  def __hash__(self):
+    return hash(tensor_spec.TensorSpec(self._shape, self._dtype))
+
   @property
   def _flat_shapes(self):
     return [self._shape]
@@ -542,6 +601,14 @@ class SparseTensorStructure(Structure):
   def __init__(self, dtype, dense_shape):
     self._dtype = dtypes.as_dtype(dtype)
     self._dense_shape = tensor_shape.as_shape(dense_shape)
+
+  def __eq__(self, other):
+    return (isinstance(other, SparseTensorStructure) and tensor_spec.TensorSpec(
+        self._dense_shape, self._dtype) == tensor_spec.TensorSpec(
+            other._dense_shape, other._dtype))
+
+  def __hash__(self):
+    return hash(tensor_spec.TensorSpec(self._dense_shape, self._dtype))
 
   @property
   def _flat_shapes(self):
@@ -620,6 +687,17 @@ class TensorArrayStructure(Structure):
     self._element_shape = tensor_shape.as_shape(element_shape)
     self._dynamic_size = dynamic_size
     self._infer_shape = infer_shape
+
+  def __eq__(self, other):
+    return (isinstance(other, TensorArrayStructure) and tensor_spec.TensorSpec(
+        self._element_shape, self._dtype) == tensor_spec.TensorSpec(
+            other._element_shape, other._dtype) and
+            self._dynamic_size == other._dynamic_size and
+            self._infer_shape == other._infer_shape)
+
+  def __hash__(self):
+    return hash((tensor_spec.TensorSpec(self._element_shape, self._dtype),
+                 self._dynamic_size, self._infer_shape))
 
   @property
   def _flat_shapes(self):
@@ -700,3 +778,88 @@ class TensorArrayStructure(Structure):
 
   def _unbatch(self):
     raise NotImplementedError("TensorArrayStructure._unbatch")
+
+
+@tf_export("data.experimental.RaggedTensorStructure")
+class RaggedTensorStructure(Structure):
+  """Represents structural information about a `tf.RaggedTensor`."""
+
+  def __init__(self, dtype, shape, ragged_rank):
+    self._dtype = dtypes.as_dtype(dtype)
+    self._shape = tensor_shape.as_shape(shape)
+    self._ragged_rank = ragged_rank
+
+  def __eq__(self, other):
+    return (isinstance(other, RaggedTensorStructure) and tensor_spec.TensorSpec(
+        self._shape, self._dtype) == tensor_spec.TensorSpec(
+            other._shape, other._dtype) and
+            self._ragged_rank == other._ragged_rank)
+
+  def __hash__(self):
+    return hash((tensor_spec.TensorSpec(self._shape, self._dtype),
+                 self._ragged_rank))
+
+  @property
+  def _flat_shapes(self):
+    # A list of shapes matching the shapes of `self._to_tensor_list()`.
+    # NOTE(mishragaurav): The default flat shape of a boxed `RaggedTensor` is
+    # `[]` (scalar), but a `RaggedTensorStructure` can also represent a batch of
+    # boxed `RaggedTensor` objects with shape `(?)` (and batches of batches,
+    # etc.), so the flat shape must be unknown.
+    return [tensor_shape.unknown_shape(None)]
+
+  @property
+  def _flat_types(self):
+    return [dtypes.variant]
+
+  def is_compatible_with(self, other):
+    return (isinstance(other, RaggedTensorStructure) and
+            self._dtype.is_compatible_with(other._dtype) and
+            self._shape.is_compatible_with(other._shape) and
+            self._ragged_rank == other._ragged_rank)
+
+  def _to_tensor_list(self, value):
+    return [value._to_variant()]
+
+  def _to_batched_tensor_list(self, value):
+    return [value._to_variant(batched_input=True)]
+
+  def _from_tensor_list(self, flat_value):
+    if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant):
+      raise ValueError("RaggedTensorStructure corresponds to a single "
+                       "tf.variant scalar.")
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
+    if self._ragged_rank <= 0:
+      raise ValueError(
+          "ragged_rank must be greater than zero. Found ragged_rank: %d" %
+          self._ragged_rank)
+    return ragged_tensor.RaggedTensor._from_variant(
+        flat_value[0], dtype=self._dtype, output_ragged_rank=self._ragged_rank)
+
+  @staticmethod
+  def from_value(value):
+    return RaggedTensorStructure(value.dtype, value.shape, value.ragged_rank)
+
+  def _to_legacy_output_types(self):
+    return self._dtype
+
+  def _to_legacy_output_shapes(self):
+    return self._shape
+
+  def _to_legacy_output_classes(self):
+    return self
+
+  def _batch(self, batch_size):
+    return RaggedTensorStructure(
+        self._dtype,
+        tensor_shape.TensorShape([batch_size]).concatenate(self._shape),
+        self._ragged_rank + 1)
+
+  def _unbatch(self):
+    # Note: Any ragged_rank is allowed here because the dataset could be
+    # subsequently batched again. Errors are handled in
+    # RaggedTensorStructure._from_compatible_tensor_list()
+    return RaggedTensorStructure(self._dtype, self._shape[1:],
+                                 self._ragged_rank - 1)

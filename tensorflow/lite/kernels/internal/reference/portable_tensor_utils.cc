@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <stdlib.h>
 #include <string.h>
+
 #include <algorithm>
+#include <cmath>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
@@ -334,9 +336,9 @@ void PortableMeanStddevNormalization(const float* input_vector,
     float stddev_inv = 0.0f;
     const float variance = sum_sq / v_size - mean * mean;
     if (variance == 0) {
-      stddev_inv = 1.0f / sqrt(normalization_epsilon);
+      stddev_inv = 1.0f / std::sqrt(normalization_epsilon);
     } else {
-      stddev_inv = 1.0f / sqrt(variance);
+      stddev_inv = 1.0f / std::sqrt(variance);
     }
     for (int i = 0; i < v_size; ++i) {
       output_vector[i] = (input_vector[i] - mean) * stddev_inv;

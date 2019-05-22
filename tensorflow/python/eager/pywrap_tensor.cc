@@ -283,9 +283,6 @@ typedef struct EagerTensor {
   // cycles, and hence don't provide GC support for it.
   PyObject* handle_data;
 
-  // This stores `_keras_mask` object and is set by Tensorflow layers.
-  PyObject* keras_mask;
-
   // This stores `_tensor_shape`, a cached `TensorShape` object, and is set the
   // first time that `_EagerTensorBase`'s `shape` property is called.
   PyObject* tensor_shape;
@@ -348,8 +345,6 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->handle = nullptr;
   Py_INCREF(Py_None);
   self->handle_data = Py_None;
-  Py_INCREF(Py_None);
-  self->keras_mask = Py_None;
   Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
   self->status = TF_NewStatus();
@@ -498,7 +493,6 @@ void EagerTensor_dealloc(EagerTensor* self) {
 
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);
-  Py_DECREF(self->keras_mask);
   Py_DECREF(self->tensor_shape);
   // If an attribute dictionary has been created, release it. Note that this
   // is only ever created by CPython's attribute setting methods; we don't
@@ -593,19 +587,6 @@ static int EagerTensor_settensor_handle(EagerTensor* self, PyObject* value,
   return 0;
 }
 
-static PyObject* EagerTensor_keras_mask(EagerTensor* self, void* unused) {
-  Py_INCREF(self->keras_mask);
-  return self->keras_mask;
-}
-
-static int EagerTensor_setkeras_mask(EagerTensor* self, PyObject* value,
-                                     void* unused) {
-  Py_DECREF(self->keras_mask);
-  Py_INCREF(value);
-  self->keras_mask = value;
-  return 0;
-}
-
 static PyObject* EagerTensor_tensor_shape(EagerTensor* self, void* unused) {
   Py_INCREF(self->tensor_shape);
   return self->tensor_shape;
@@ -646,7 +627,36 @@ static PyObject* EagerTensor_numpy(EagerTensor* self) {
     PyErr_SetString(PyExc_RuntimeError, TF_Message(status.get()));
     return nullptr;
   }
+
+  // HACK(slebedev): The following explains why TensorToNdarray never
+  // reuses the storage.
+  //
+  // TF_TensorToPyArray copies the storage unless its
+  // refcount is 1. For DT_STRING and DT_RESOURCE TF_TensorFromTensor
+  // has to copy so the refcount of the original storage is unchanged.
+  // However, if the storage can be reused by TF_TensorFromTensor its
+  // refcount is +1'd and hence TF_TensorToPyArray no longer can reuse it.
+  //
+  // Here we attempt a direct conversion without an intermediate TF_Tensor
+  // and fall-back to the slow path on failure.
   PyObject* ret = nullptr;
+  if (t->dtype() != tensorflow::DT_STRING &&
+      t->dtype() != tensorflow::DT_RESOURCE) {
+    tensorflow::gtl::InlinedVector<npy_intp, 4> dims(t->dims());
+    for (int d = 0; d < t->dims(); ++d) {
+      dims[d] = t->dim_size(d);
+    }
+
+    auto* copy = new tensorflow::Tensor(*t);
+    char* data = const_cast<char*>(copy->tensor_data().data());
+    if (tensorflow::ArrayFromMemory(
+            dims.size(), dims.data(), data, t->dtype(), [copy] { delete copy; },
+            &ret)
+            .ok()) {
+      return ret;
+    }
+  }
+
   auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
   if (MaybeRaiseExceptionFromStatus(cppstatus, PyExc_RuntimeError)) {
     Py_XDECREF(ret);
@@ -696,9 +706,6 @@ static PyGetSetDef EagerTensor_getseters[] = {
      nullptr, const_cast<char*>("backing_device"), nullptr},
     {const_cast<char*>("_handle_data"), (getter)EagerTensor_tensor_handle,
      (setter)EagerTensor_settensor_handle, const_cast<char*>("_tensor_handle"),
-     nullptr},
-    {const_cast<char*>("_keras_mask"), (getter)EagerTensor_keras_mask,
-     (setter)EagerTensor_setkeras_mask, const_cast<char*>("_keras_mask"),
      nullptr},
     {const_cast<char*>("_tensor_shape"), (getter)EagerTensor_tensor_shape,
      (setter)EagerTensor_settensor_shape, const_cast<char*>("_tensor_shape"),
@@ -823,8 +830,6 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     t->id = get_uid();
     Py_INCREF(Py_None);
     t->handle_data = Py_None;
-    Py_INCREF(Py_None);
-    t->keras_mask = Py_None;
     Py_INCREF(Py_None);
     t->tensor_shape = Py_None;
     t->handle = handle;

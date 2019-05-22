@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -41,6 +42,15 @@ class Policy(object):
   precision" refers to the use of both float16 (or bfloat16) and float32 in a
   model. See https://arxiv.org/abs/1710.03740 for more information on mixed
   precision training.
+
+  Note: We currently recommend using mixed precision through an alternative
+  function: `tf.train.experimental.enable_mixed_precision_graph_rewrite`. This
+  alternative function enables mixed precision under the hood, by rewriting the
+  graph to use float16 for certain ops. This alternative function is currently
+  more complete and easy to use than using a Policy. However, compared to
+  `enable_mixed_precision_graph_rewrite`, using a Policy supports Eager mode
+  outside `tf.function`s/`tf.keras.Model`s, and a Policy gives you more control
+  over what parts of the model are done in what dtype.
 
   Policies are constructed by passing a string to the `name` constructor
   argument. `name` determines the behavior of the policy. Currently, `name` can
@@ -125,8 +135,14 @@ class Policy(object):
   # TODO(reedwm): Implement get_config/from_config.
 
 
+# The policy in effect when TensorFlow starts. This is constant and never
+# changes.
+_default_policy = Policy('infer')
+
+# The current global policy in effect. This starts as the default policy, but
+# can be changed with `set_policy`.
 # TODO(reedwm): Make this thread local?
-_global_policy = Policy('infer')
+_global_policy = _default_policy
 
 
 @keras_export('keras.mixed_precision.experimental.global_policy')
@@ -143,13 +159,34 @@ def global_policy():
   return _global_policy
 
 
+def _check_if_mixed_precision_graph_rewrite_is_enabled():
+  if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
+    raise ValueError(
+        'The mixed precision policy cannot be set, because the mixed '
+        'precision graph rewrite has already been enabled.\n'
+        'At most, one of the following functions can be called:\n\n'
+        '  1. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
+        '(You called this first)\n'
+        '  2. tf.keras.mixed_precision.experimental.set_policy() (You called '
+        'this second)\n\n'
+        'You called both functions, which is an error, because both functions '
+        'enable you to use mixed precision. If in doubt which function to use, '
+        'use the first, as it is currently more complete and easy to use. The '
+        'first function enables mixed precision in the graph with a graph '
+        'rewrite. However it is currently not very customizable, and does not '
+        'support eager.')
+
+
 @keras_export('keras.mixed_precision.experimental.set_policy')
 def set_policy(policy):
   """Sets the global Policy."""
   global _global_policy
+  _check_if_mixed_precision_graph_rewrite_is_enabled()
   if not isinstance(policy, Policy):
     policy = Policy(policy)
   _global_policy = policy
+  mixed_precision_global_state.using_default_mixed_precision_policy = (
+      _global_policy is _default_policy)
 
 
 # TODO(reedwm): Make this thread local

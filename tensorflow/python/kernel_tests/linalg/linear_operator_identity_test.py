@@ -37,13 +37,13 @@ class LinearOperatorIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _dtypes_to_test(self):
-    # TODO(langmore) Test tf.float16 once tf.matrix_solve works in
+  @staticmethod
+  def dtypes_to_test():
+    # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     # Identity matrix is already Hermitian Positive Definite.
@@ -80,7 +80,7 @@ class LinearOperatorIdentityTest(
       operator.assert_self_adjoint().run()  # Should not fail
 
   def test_float16_matmul(self):
-    # float16 cannot be tested by base test class because tf.matrix_solve does
+    # float16 cannot be tested by base test class because tf.linalg.solve does
     # not work with float16.
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(
@@ -285,13 +285,13 @@ class LinearOperatorScaledIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _dtypes_to_test(self):
-    # TODO(langmore) Test tf.float16 once tf.matrix_solve works in
+  @staticmethod
+  def dtypes_to_test():
+    # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
 
@@ -374,7 +374,7 @@ class LinearOperatorScaledIdentityTest(
         operator.assert_self_adjoint().run()
 
   def test_float16_matmul(self):
-    # float16 cannot be tested by base test class because tf.matrix_solve does
+    # float16 cannot be tested by base test class because tf.linalg.solve does
     # not work with float16.
     with self.cached_session():
       multiplier = rng.rand(3).astype(np.float16)
@@ -495,6 +495,20 @@ class LinearOperatorScaledIdentityTest(
         linalg_lib.LinearOperatorScaledIdentity))
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
 
+  def test_identity_solve(self):
+    operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
+    operator2 = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=3.)
+    self.assertTrue(isinstance(
+        operator1.solve(operator1),
+        linalg_lib.LinearOperatorIdentity))
+
+    operator_solve = operator1.solve(operator2)
+    self.assertTrue(isinstance(
+        operator_solve,
+        linalg_lib.LinearOperatorScaledIdentity))
+    self.assertAllClose(3., self.evaluate(operator_solve.multiplier))
+
   def test_scaled_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2,
@@ -518,4 +532,6 @@ class LinearOperatorScaledIdentityTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorIdentityTest)
+  linear_operator_test_util.add_tests(LinearOperatorScaledIdentityTest)
   test.main()

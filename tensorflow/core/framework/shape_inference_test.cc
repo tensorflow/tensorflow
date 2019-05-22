@@ -153,7 +153,7 @@ TEST_F(ShapeInferenceTest, Run) {
     };
     Status s = c.Run(fn);
     // Extra error message is attached when Run fails.
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.ToString(),
         "Shape must be at most rank 0 but is rank 1 for 'foo' (op: 'foo_op')"))
         << s;
@@ -367,7 +367,7 @@ TEST_F(ShapeInferenceTest, WithRankAtMost) {
 
   // WithRankAtMost on shape with known dimensionality.
   s1 = in1;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.WithRankAtMost(in1, 2, &s1).ToString(),
       "Invalid argument: Shape must be at most rank 2 but is rank 3"));
 
@@ -405,7 +405,7 @@ TEST_F(ShapeInferenceTest, WithRankAtLeast) {
 
   // WithRankAtLeast on shape with known dimensionality.
   s1 = in1;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.WithRankAtLeast(in1, 4, &s1).ToString(),
       "Invalid argument: Shape must be at least rank 4 but is rank 3"));
 
@@ -448,13 +448,13 @@ TEST_F(ShapeInferenceTest, WithValue) {
   out1 = d0;
 
   EXPECT_TRUE(
-      str_util::StrContains(c.WithValue(d0, 0, &out1).ToString(),
-                            "Invalid argument: Dimension must be 0 but is 1"));
+      absl::StrContains(c.WithValue(d0, 0, &out1).ToString(),
+                        "Invalid argument: Dimension must be 0 but is 1"));
   EXPECT_FALSE(IsSet(out1));
   out1 = d0;
   EXPECT_TRUE(
-      str_util::StrContains(c.WithValue(d0, 2, &out1).ToString(),
-                            "Invalid argument: Dimension must be 2 but is 1"));
+      absl::StrContains(c.WithValue(d0, 2, &out1).ToString(),
+                        "Invalid argument: Dimension must be 2 but is 1"));
 
   EXPECT_FALSE(IsSet(out1));
   EXPECT_TRUE(c.WithValue(d0, 1, &out1).ok());
@@ -513,12 +513,12 @@ TEST_F(ShapeInferenceTest, MergeDim) {
   EXPECT_EQ(3, merged_dims.size());
 
   // Merging unequal values is an error.
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Merge(d2, d1, &out).ToString(),
       "Invalid argument: Dimensions must be equal, but are 2 and 1"));
 
   EXPECT_FALSE(IsSet(out));
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Merge(d1, d2, &out).ToString(),
       "Invalid argument: Dimensions must be equal, but are 1 and 2"));
 
@@ -727,21 +727,21 @@ TEST_F(ShapeInferenceTest, MergeShape) {
 
   // Incompatible merges give errors and set out to nullptr.
   out = s_unknown;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Merge(s_u_2, s_1_3, &out).ToString(),
       "Invalid argument: Dimension 1 in both shapes must be equal, but "
       "are 2 and 3"));
 
   EXPECT_FALSE(IsSet(out));
   out = s_unknown;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Merge(s_1_3, s_u_2, &out).ToString(),
       "Invalid argument: Dimension 1 in both shapes must be equal, but "
       "are 3 and 2"));
 
   EXPECT_FALSE(IsSet(out));
   out = s_unknown;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Merge(s_1, s_1_2, &out).ToString(),
       "Invalid argument: Shapes must be equal rank, but are 1 and 2"));
 
@@ -790,7 +790,7 @@ TEST_F(ShapeInferenceTest, MergePrefix) {
   // Incompatible merges give errors and set outs to nullptr.
   s_out = s_unknown;
   s_prefix_out = s_unknown;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.MergePrefix(s_1_u_3, s_2_4, &s_out, &s_prefix_out).ToString(),
       "Invalid argument: Dimensions must be equal, but are 1 and 2"));
 
@@ -799,7 +799,7 @@ TEST_F(ShapeInferenceTest, MergePrefix) {
 
   s_out = s_unknown;
   s_prefix_out = s_unknown;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.MergePrefix(s_2_4, s_1_u_3, &s_out, &s_prefix_out).ToString(),
       "Invalid argument: Shape must be at least rank 3 but is rank 2"));
   EXPECT_FALSE(IsSet(s_out));
@@ -859,21 +859,21 @@ TEST_F(ShapeInferenceTest, Subshape) {
 
   // Errors.
   out = unknown;
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Subshape(in0, 6, -3, &out).ToString(),
       "Invalid argument: Subshape must have computed start <= end, but is 5 "
       "and 2 (computed from start 6 and end -3 over shape with rank 5)"));
   EXPECT_FALSE(IsSet(out));
   out = unknown;
-  EXPECT_TRUE(str_util::StrContains(c.Subshape(in0, -50, 100, &out).ToString(),
-                                    "Invalid argument: Subshape start out of "
-                                    "bounds: -50, for shape with rank 5"));
+  EXPECT_TRUE(absl::StrContains(c.Subshape(in0, -50, 100, &out).ToString(),
+                                "Invalid argument: Subshape start out of "
+                                "bounds: -50, for shape with rank 5"));
 
   EXPECT_FALSE(IsSet(out));
   out = unknown;
-  EXPECT_TRUE(str_util::StrContains(c.Subshape(in0, 0, -50, &out).ToString(),
-                                    "Invalid argument: Subshape end out of "
-                                    "bounds: -50, for shape with rank 5"));
+  EXPECT_TRUE(absl::StrContains(c.Subshape(in0, 0, -50, &out).ToString(),
+                                "Invalid argument: Subshape end out of "
+                                "bounds: -50, for shape with rank 5"));
 
   EXPECT_FALSE(IsSet(out));
 }
@@ -1086,31 +1086,31 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
   EXPECT_EQ("?", create(&t));
 
   t = ::tensorflow::test::AsTensor<float>({1, 2, 3});
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       create(&t), "Input tensor must be int32 or int64, but was float"));
 
   t = ::tensorflow::test::AsScalar<int32>(1);
   auto s_scalar = create(&t);
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s_scalar,
       "Input tensor must be rank 1, or if its rank 0 it must have value -1"))
       << s_scalar;
 
   t = ::tensorflow::test::AsTensor<int32>({1, 2}, TensorShape{2, 1});
   auto s_matrix = create(&t);
-  EXPECT_TRUE(str_util::StrContains(
-      s_matrix, "Input tensor must be rank 1, but was rank 2"))
+  EXPECT_TRUE(absl::StrContains(s_matrix,
+                                "Input tensor must be rank 1, but was rank 2"))
       << s_matrix;
 
   // Test negative values for the dims.
   t = ::tensorflow::test::AsTensor<int64>({3, -2, 1});
-  EXPECT_TRUE(str_util::StrContains(
-      create(&t), "Invalid value in tensor used for shape: -2"));
+  EXPECT_TRUE(absl::StrContains(create(&t),
+                                "Invalid value in tensor used for shape: -2"));
 
   // Test negative values for the dims.
   t = ::tensorflow::test::AsTensor<int32>({3, -2, 1});
-  EXPECT_TRUE(str_util::StrContains(
-      create(&t), "Invalid value in tensor used for shape: -2"));
+  EXPECT_TRUE(absl::StrContains(create(&t),
+                                "Invalid value in tensor used for shape: -2"));
 
   // Test when the input shape is wrong.
   {
@@ -1168,9 +1168,9 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeProto) {
   EXPECT_TRUE(c.MakeShapeFromShapeProto(proto, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   proto.add_dim()->set_size(0);
-  EXPECT_TRUE(str_util::StrContains(
-      c.MakeShapeFromShapeProto(proto, &out).error_message(),
-      "An unknown shape must not have any dimensions set."));
+  EXPECT_TRUE(
+      absl::StrContains(c.MakeShapeFromShapeProto(proto, &out).error_message(),
+                        "An unknown shape must not have any dimensions set."));
   EXPECT_FALSE(IsSet(out));
 
   // With known rank.
@@ -1184,7 +1184,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeProto) {
 
   // With invalid dimension value.
   proto.add_dim()->set_size(-2);
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.MakeShapeFromShapeProto(proto, &out).error_message(),
       "Shape [0,?,1000,-2] has dimensions with values below -1 "
       "(where -1 means unknown)"));
@@ -1254,9 +1254,9 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
   EXPECT_EQ("20", c.DebugString(d));
 
   EXPECT_TRUE(
-      str_util::StrContains(c.MakeDimForScalarInput(1, &d).error_message(),
-                            "Dimension size, given by scalar input 1, must be "
-                            "non-negative but is -1"));
+      absl::StrContains(c.MakeDimForScalarInput(1, &d).error_message(),
+                        "Dimension size, given by scalar input 1, must be "
+                        "non-negative but is -1"));
 
   // Same tests, with int64 values.
   t1 = tensorflow::test::AsScalar<int64>(20);
@@ -1265,9 +1265,9 @@ TEST_F(ShapeInferenceTest, MakeDimForScalarInput) {
   EXPECT_EQ("20", c.DebugString(d));
 
   EXPECT_TRUE(
-      str_util::StrContains(c.MakeDimForScalarInput(1, &d).error_message(),
-                            "Dimension size, given by scalar input 1, must be "
-                            "non-negative but is -1"));
+      absl::StrContains(c.MakeDimForScalarInput(1, &d).error_message(),
+                        "Dimension size, given by scalar input 1, must be "
+                        "non-negative but is -1"));
 }
 
 TEST_F(ShapeInferenceTest, GetAttr) {
@@ -1320,18 +1320,18 @@ TEST_F(ShapeInferenceTest, Divide) {
   EXPECT_TRUE(c.Divide(d_6, d_2, evenly_divisible, &out).ok());
   EXPECT_EQ("3", c.DebugString(out));
 
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Divide(d_6, 5, evenly_divisible, &out).error_message(),
       "Dimension size must be evenly divisible by 5 but is 6"));
 
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Divide(d_6, 0, evenly_divisible, &out).error_message(),
       "Divisor must be positive but is 0"));
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Divide(d_6, d_0, evenly_divisible, &out).error_message(),
       "Divisor must be positive but is 0"));
 
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Divide(d_6, -1, evenly_divisible, &out).error_message(),
       "Divisor must be positive but is -1"));
 
@@ -1340,11 +1340,11 @@ TEST_F(ShapeInferenceTest, Divide) {
   EXPECT_TRUE(c.Divide(d_6, 5, evenly_divisible, &out).ok());
   EXPECT_EQ("1", c.DebugString(out));
 
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Divide(d_6, 0, evenly_divisible, &out).error_message(),
       "Divisor must be positive but is 0"));
 
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Divide(d_6, -1, evenly_divisible, &out).error_message(),
       "Divisor must be positive but is -1"));
 }
@@ -1394,7 +1394,7 @@ TEST_F(ShapeInferenceTest, Add) {
   EXPECT_TRUE(c.Add(d_0, d_6, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_6));
 
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Add(d_6, std::numeric_limits<int64>::max() - 5, &out).error_message(),
       "Dimension size overflow from adding 6 and 9223372036854775802"));
 }
@@ -1444,7 +1444,7 @@ TEST_F(ShapeInferenceTest, Subtract) {
   EXPECT_TRUE(c.Subtract(d_6, d_0, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_6));
 
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       c.Subtract(d_5, d_6, &out).error_message(),
       "Negative dimension size caused by subtracting 6 from 5"));
 }

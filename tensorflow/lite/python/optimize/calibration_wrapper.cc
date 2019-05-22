@@ -61,6 +61,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT32;  // TODO(b/129336260): No schema type for none.
     case kTfLiteFloat32:
       return TensorType_FLOAT32;
+    case kTfLiteFloat16:
+      return TensorType_FLOAT16;
     case kTfLiteInt32:
       return TensorType_INT32;
     case kTfLiteUInt8:
@@ -154,10 +156,10 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
-                 " Got tensor of type %d"
-                 " but expected type %d for input %d, name: %s ",
-                 python_utils::TfLiteTypeFromPyArray(array), tensor->type,
-                 index, tensor->name);
+                 " Got tensor of type %s"
+                 " but expected type %s for input %d, name: %s ",
+                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(tensor->type), index, tensor->name);
     return nullptr;
   }
 
@@ -186,7 +188,8 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
-                                            int output_py_type) {
+                                            int output_py_type,
+                                            bool allow_float) {
   TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
@@ -199,7 +202,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   flatbuffers::FlatBufferBuilder builder;
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-      TfLiteTypeToSchemaType(output_type), error_reporter_.get());
+      TfLiteTypeToSchemaType(output_type), allow_float, error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;

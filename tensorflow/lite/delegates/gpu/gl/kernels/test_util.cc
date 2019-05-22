@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -100,9 +101,9 @@ Status SingleOpModel::InvokeInternal(const CompilationOptions& compile_options,
   GpuInfo gpu_info;
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info));
   std::unique_ptr<CompiledModel> compiled_model;
-  RETURN_IF_ERROR(Compile(compile_options, graph_, shader,
-                          *NewDefaultWorkgroupsCalculator(gpu_info),
-                          &compiled_model));
+  RETURN_IF_ERROR(Compile(
+      compile_options, graph_, /*tflite_graph_io=*/std::unordered_set<int>(),
+      shader, *NewDefaultWorkgroupsCalculator(gpu_info), &compiled_model));
 
   // Get inference context.
   auto command_queue = NewCommandQueue(gpu_info);

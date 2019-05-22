@@ -290,7 +290,7 @@ port::Status Stream::RefreshStatus() {
 Stream &Stream::Init() {
   VLOG_CALL();
 
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   CHECK_EQ(false, allocated_)
       << "stream appears to already have been initialized";
   CHECK(!ok_) << "stream should be in !ok() state pre-initialization";
@@ -347,7 +347,9 @@ Stream &Stream::ThenBatchNormalizationForward(
     DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
     DeviceMemory<float> *saved_inv_var, bool is_training,
     std::function<const DeviceMemory<float> &()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    std::function<void()> inv_var_to_var,
+    ScratchAllocator *reserve_space_allocator,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
             PARAM(scale_offset_desc), PARAM(epsilon), PARAM(y));
   if (ok()) {
@@ -355,7 +357,8 @@ Stream &Stream::ThenBatchNormalizationForward(
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance, x_desc,
           scale_offset_desc, epsilon, y, batch_mean, batch_var, saved_mean,
-          saved_inv_var, is_training, std::move(var_to_inv_var),
+          saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
           std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
@@ -370,7 +373,9 @@ Stream &Stream::ThenBatchNormalizationBackward(
     const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
     DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
-    DeviceMemory<float> *offset_backprop) {
+    DeviceMemory<float> *offset_backprop,
+    DeviceMemory<uint8> *reserve_space_data,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
             PARAM(scale_offset_desc), PARAM(epsilon), PARAM(x_backprop),
             PARAM(scale_backprop), PARAM(offset_backprop));
@@ -378,7 +383,8 @@ Stream &Stream::ThenBatchNormalizationBackward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationBackward(
           this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
-          epsilon, x_backprop, scale_backprop, offset_backprop));
+          epsilon, x_backprop, scale_backprop, offset_backprop,
+          reserve_space_data, workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -397,7 +403,9 @@ Stream &Stream::ThenBatchNormalizationForward(
     DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
     DeviceMemory<float> *saved_inv_var, bool is_training,
     std::function<const DeviceMemory<float> &()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    std::function<void()> inv_var_to_var,
+    ScratchAllocator *reserve_space_allocator,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
             PARAM(scale_offset_desc), PARAM(epsilon), PARAM(y));
   if (ok()) {
@@ -405,7 +413,8 @@ Stream &Stream::ThenBatchNormalizationForward(
       CheckError(dnn->DoBatchNormalizationForward(
           this, x, scale, offset, estimated_mean, estimated_variance, x_desc,
           scale_offset_desc, epsilon, y, batch_mean, batch_var, saved_mean,
-          saved_inv_var, is_training, std::move(var_to_inv_var),
+          saved_inv_var, is_training, reserve_space_allocator,
+          workspace_allocator, std::move(var_to_inv_var),
           std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
@@ -421,7 +430,9 @@ Stream &Stream::ThenBatchNormalizationBackward(
     const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
     DeviceMemory<Eigen::half> *x_backprop, DeviceMemory<float> *scale_backprop,
-    DeviceMemory<float> *offset_backprop) {
+    DeviceMemory<float> *offset_backprop,
+    DeviceMemory<uint8> *reserve_space_data,
+    ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
             PARAM(scale_offset_desc), PARAM(epsilon), PARAM(x_backprop),
             PARAM(scale_backprop), PARAM(offset_backprop));
@@ -429,7 +440,9 @@ Stream &Stream::ThenBatchNormalizationBackward(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationBackward(
           this, y_backprop, x, scale, mean, inv_var, x_desc, scale_offset_desc,
-          epsilon, x_backprop, scale_backprop, offset_backprop));
+          epsilon, x_backprop, scale_backprop, offset_backprop,
+          reserve_space_data, workspace_allocator));
+
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1736,7 +1749,7 @@ Stream &Stream::ThenMemcpyH2DQuantized(
 }
 
 Stream *Stream::GetOrCreateSubStream() {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
 
   // Look for the first reusable sub_stream that is ok, dropping !ok sub_streams
   // we encounter along the way.
@@ -1783,7 +1796,7 @@ Stream *Stream::GetOrCreateSubStream() {
 }
 
 void Stream::ReturnSubStream(Stream *sub_stream) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
 
   // Look for the sub-stream.
   for (int64 index = 0; index < sub_streams_.size(); ++index) {
@@ -5285,7 +5298,7 @@ void Stream::CheckStatus(port::Status status) {
     return;
   }
   LOG(ERROR) << status;
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   ok_ = false;
 }
 

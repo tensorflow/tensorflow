@@ -50,7 +50,8 @@ std::vector<RegistrationInfo>* MutableRegistry() {
 void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
                       Allocator* out_allocator, StringPiece edge_name,
                       Device* dst, Tensor* output,
-                      DeviceContext* recv_dev_context, StatusCallback done) {
+                      DeviceContext* recv_dev_context, StatusCallback done,
+                      bool sync_dst_compute) {
   if (input->dtype() == DT_VARIANT) {
     Tensor copy(cpu_allocator, DT_VARIANT, input->shape());
     auto* status_cb = new ReffedStatusCallback(std::move(done));
@@ -62,13 +63,14 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
     };
     auto copier = std::bind(
         [dst, recv_dev_context, out_allocator, status_cb, cpu_allocator,
-         edge_name](StatusCallback wrapped_done_,
-                    // Begin unbound arguments
-                    const Tensor& from, Tensor* to) {
+         edge_name, sync_dst_compute](StatusCallback wrapped_done_,
+                                      // Begin unbound arguments
+                                      const Tensor& from, Tensor* to) {
           if (from.dtype() == DT_VARIANT) {
             status_cb->Ref();
             CopyHostToDevice(&from, cpu_allocator, out_allocator, edge_name,
-                             dst, to, recv_dev_context, wrapped_done_);
+                             dst, to, recv_dev_context, wrapped_done_,
+                             sync_dst_compute);
             return Status::OK();
           } else {
             if (!DMAHelper::CanUseDMA(&from)) {
@@ -82,8 +84,8 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
             if (status_cb->ok()) {
               status_cb->Ref();
               *to = Tensor(out_allocator, from.dtype(), from.shape());
-              recv_dev_context->CopyCPUTensorToDevice(&from, dst, to,
-                                                      wrapped_done_);
+              recv_dev_context->CopyCPUTensorToDevice(
+                  &from, dst, to, wrapped_done_, sync_dst_compute);
               return Status::OK();
             } else {
               return status_cb->status();
@@ -107,8 +109,8 @@ void CopyHostToDevice(const Tensor* input, Allocator* cpu_allocator,
       *output = std::move(copy);
     }
   } else {
-    recv_dev_context->CopyCPUTensorToDevice(input, dst, output,
-                                            std::move(done));
+    recv_dev_context->CopyCPUTensorToDevice(input, dst, output, std::move(done),
+                                            sync_dst_compute);
   }
 }
 
@@ -251,7 +253,8 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         Device* dst, const AllocatorAttributes src_alloc_attr,
                         const AllocatorAttributes dst_alloc_attr,
                         const Tensor* input, Tensor* output,
-                        int dev_to_dev_stream_index, StatusCallback done) {
+                        int dev_to_dev_stream_index, StatusCallback done,
+                        bool sync_dst_compute) {
   tracing::ScopedAnnotation annotation(edge_name);
   VLOG(1) << "Copy " << edge_name;
 
@@ -304,16 +307,17 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
         std::move(done), std::placeholders::_1);
     std::function<void(const Status&)> then_copy_to_other_device = std::bind(
         [delete_and_done, recv_dev_context, cpu_tensor, cpu_allocator,
-         out_allocator, edge_name, dst, output](StatusCallback delete_and_done_,
-                                                // Begin unbound arguments.
-                                                Status status) {
+         out_allocator, edge_name, dst, output,
+         sync_dst_compute](StatusCallback delete_and_done_,
+                           // Begin unbound arguments.
+                           Status status) {
           if (!status.ok()) {
             delete_and_done_(status);
             return;
           }
           CopyHostToDevice(cpu_tensor, cpu_allocator, out_allocator, edge_name,
                            dst, output, recv_dev_context,
-                           std::move(delete_and_done_));
+                           std::move(delete_and_done_), sync_dst_compute);
         },
         std::move(delete_and_done), std::placeholders::_1);
     CopyDeviceToHost(input, cpu_allocator, out_allocator, edge_name, src,
@@ -334,7 +338,8 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
   if (!non_cpu_src && non_cpu_dst) {
     // Host to Device copy.
     CopyHostToDevice(input, cpu_allocator, out_allocator, edge_name, dst,
-                     output, recv_dev_context, std::move(done));
+                     output, recv_dev_context, std::move(done),
+                     sync_dst_compute);
     return;
   }
 

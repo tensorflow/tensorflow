@@ -15,26 +15,38 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#include <dirent.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#endif
 
 namespace tflite {
 namespace evaluation {
 
+std::string StripTrailingSlashes(const std::string& path) {
+  int end = path.size();
+  while (end > 0 && path[end - 1] == '/') {
+    end--;
+  }
+  return path.substr(0, end);
+}
+
 bool ReadFileLines(const std::string& file_path,
                    std::vector<std::string>* lines_output) {
   if (!lines_output) {
-    LOG(ERROR) << "lines_output is null";
     return false;
   }
   std::ifstream stream(file_path.c_str());
   if (!stream) {
-    LOG(ERROR) << "Unable to open file: " << file_path;
     return false;
   }
   std::string line;
@@ -42,6 +54,56 @@ bool ReadFileLines(const std::string& file_path,
     lines_output->push_back(line);
   }
   return true;
+}
+
+TfLiteStatus GetSortedFileNames(const std::string& directory,
+                                std::vector<std::string>* result) {
+  DIR* dir;
+  struct dirent* ent;
+  if (result == nullptr) {
+    return kTfLiteError;
+  }
+  result->clear();
+  std::string dir_path = StripTrailingSlashes(directory);
+  if ((dir = opendir(dir_path.c_str())) != nullptr) {
+    while ((ent = readdir(dir)) != nullptr) {
+      std::string filename(std::string(ent->d_name));
+      if (filename.size() <= 2) continue;
+      result->emplace_back(dir_path + "/" + filename);
+    }
+    closedir(dir);
+  } else {
+    return kTfLiteError;
+  }
+  std::sort(result->begin(), result->end());
+  return kTfLiteOk;
+}
+
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
+#if defined(__ANDROID__)
+  return Interpreter::TfLiteDelegatePtr(
+      NnApiDelegate(),
+      // NnApiDelegate() returns a singleton, so provide a no-op deleter.
+      [](TfLiteDelegate*) {});
+#else
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+#endif  // defined(__ANDROID__)
+}
+
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
+    tflite::FlatBufferModel* model) {
+#if defined(__ANDROID__)
+  TfLiteGpuDelegateOptions options;
+  options.metadata = TfLiteGpuDelegateGetModelMetadata(model->GetModel());
+  options.compile_options.precision_loss_allowed = 1;
+  options.compile_options.preferred_gl_object_type =
+      TFLITE_GL_OBJECT_TYPE_FASTEST;
+  options.compile_options.dynamic_batch_enabled = 0;
+  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(&options),
+                                        &TfLiteGpuDelegateDelete);
+#else
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+#endif  // defined(__ANDROID__)
 }
 
 }  // namespace evaluation

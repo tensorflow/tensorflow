@@ -107,8 +107,8 @@ class MklLayoutPassTest : public ::testing::Test {
     // Canonicalize
     std::sort(nodes.begin(), nodes.end());
     std::sort(edges.begin(), edges.end());
-    return strings::StrCat(str_util::Join(nodes, ";"), "|",
-                           str_util::Join(edges, ";"));
+    return strings::StrCat(absl::StrJoin(nodes, ";"), "|",
+                           absl::StrJoin(edges, ";"));
   }
 
   string DoMklLayoutOptimizationPass() {

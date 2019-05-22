@@ -20,6 +20,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

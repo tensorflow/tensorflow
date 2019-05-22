@@ -24,9 +24,9 @@ class ModelTests: XCTestCase {
 
     let bundle = Bundle(for: type(of: self))
     guard let modelPath = bundle.path(
-            forResource: Constant.modelInfo.name,
-            ofType: Constant.modelInfo.extension)
-    else {
+      forResource: Constant.modelInfo.name,
+      ofType: Constant.modelInfo.extension
+    ) else {
       XCTFail("Failed to get the model file path.")
       return
     }

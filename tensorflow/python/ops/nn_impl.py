@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -522,7 +523,7 @@ def zero_fraction(value, name=None):
 
   ```python
       z = tf.nn.relu(...)
-      summ = tf.summary.scalar('sparsity', tf.nn.zero_fraction(z))
+      summ = tf.compat.v1.summary.scalar('sparsity', tf.nn.zero_fraction(z))
   ```
 
   Args:
@@ -1192,7 +1193,6 @@ def batch_normalization(x,
                         name=None):
   r"""Batch normalization.
 
-  As described in [Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift](http://arxiv.org/abs/1502.03167).
   Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
   `scale` \\(\gamma\\) to it, as well as an `offset` \\(\beta\\):
 
@@ -1217,6 +1217,10 @@ def batch_normalization(x,
       `mean` and `variance` in this case would typically be the outputs of
       `tf.nn.moments(..., keep_dims=False)` during training, or running averages
       thereof during inference.
+
+  See Source: [Batch Normalization: Accelerating Deep Network Training by
+  Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
+  (http://arxiv.org/abs/1502.03167).
 
   Args:
     x: Input `Tensor` of arbitrary dimensionality.
@@ -1255,7 +1259,9 @@ def fused_batch_norm(
     name=None):
   r"""Batch normalization.
 
-  As described in http://arxiv.org/abs/1502.03167.
+  See Source: [Batch Normalization: Accelerating Deep Network Training by
+  Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
+  (http://arxiv.org/abs/1502.03167).
 
   Args:
     x: Input `Tensor` of 4 dimensions.
@@ -1293,9 +1299,20 @@ def fused_batch_norm(
   # prevent exception (see cudnn.h).
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
-  # TODO(reedwm): In a few weeks, switch to using the V2 version exclusively. We
-  # currently only use the V2 version for float16 inputs, which is not supported
-  # by the V1 version.
+
+  if compat.forward_compatible(2019, 6, 6):
+    y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+        x,
+        scale,
+        offset,
+        mean,
+        variance,
+        epsilon=epsilon,
+        data_format=data_format,
+        is_training=is_training,
+        name=name)
+    return y, batch_mean, batch_var
+
   if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
     fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
   else:
@@ -1451,7 +1468,7 @@ def _compute_sampled_logits(weights,
         class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
-        the `labels` argument of `nn.softmax_cross_entropy_with_logits_v2`.
+        the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -1476,7 +1493,7 @@ def _compute_sampled_logits(weights,
     out_logits: `Tensor` object with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
         `nn.sigmoid_cross_entropy_with_logits` (NCE) or
-        `nn.softmax_cross_entropy_with_logits_v2` (sampled softmax).
+        `nn.softmax_cross_entropy_with_logits` (sampled softmax).
     out_labels: A Tensor object with the same shape as `out_logits`.
   """
 
@@ -1652,7 +1669,7 @@ def nce_loss_v2(weights,
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
   good results.  For more details, see
-  `tf.nn.log_uniform_candidate_sampler`.
+  `tf.random.log_uniform_candidate_sampler`.
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities
@@ -1756,7 +1773,7 @@ def nce_loss(weights,
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
   good results.  For more details, see
-  `tf.nn.log_uniform_candidate_sampler`.
+  `tf.random.log_uniform_candidate_sampler`.
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities
@@ -1855,7 +1872,7 @@ def sampled_softmax_loss_v2(weights,
     logits = tf.matmul(inputs, tf.transpose(weights))
     logits = tf.nn.bias_add(logits, biases)
     labels_one_hot = tf.one_hot(labels, n_classes)
-    loss = tf.nn.softmax_cross_entropy_with_logits_v2(
+    loss = tf.nn.softmax_cross_entropy_with_logits(
         labels=labels_one_hot,
         logits=logits)
   ```
@@ -1877,7 +1894,7 @@ def sampled_softmax_loss_v2(weights,
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size, num_true]`. The
       target classes.  Note that this format differs from the `labels` argument
-      of `nn.softmax_cross_entropy_with_logits_v2`.
+      of `nn.softmax_cross_entropy_with_logits`.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward activations of
       the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.
@@ -1950,7 +1967,7 @@ def sampled_softmax_loss(weights,
     logits = tf.matmul(inputs, tf.transpose(weights))
     logits = tf.nn.bias_add(logits, biases)
     labels_one_hot = tf.one_hot(labels, n_classes)
-    loss = tf.nn.softmax_cross_entropy_with_logits_v2(
+    loss = tf.nn.softmax_cross_entropy_with_logits(
         labels=labels_one_hot,
         logits=logits)
   ```
@@ -1968,7 +1985,7 @@ def sampled_softmax_loss(weights,
     biases: A `Tensor` of shape `[num_classes]`.  The class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
-        the `labels` argument of `nn.softmax_cross_entropy_with_logits_v2`.
+        the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
     num_sampled: An `int`.  The number of classes to randomly sample per batch.

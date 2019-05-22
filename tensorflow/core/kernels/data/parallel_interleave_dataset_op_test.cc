@@ -494,7 +494,7 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, GetNext) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
@@ -949,7 +949,7 @@ TEST_P(ParameterizedParallelInterleaveDatasetOpTest, Roundtrip) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 INSTANTIATE_TEST_SUITE_P(

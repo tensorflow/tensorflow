@@ -25,6 +25,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation_wrapper
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.compatibility import all_renames_v2
 
 
 class MockModule(types.ModuleType):
@@ -36,7 +37,7 @@ class DeprecationWrapperTest(test.TestCase):
   def testWrapperIsAModule(self):
     module = MockModule('test')
     wrapped_module = deprecation_wrapper.DeprecationWrapper(
-        module, 'test', {'bar': 'bar2', 'baz': 'compat.v1.baz'})
+        module, 'test')
     self.assertTrue(tf_inspect.ismodule(wrapped_module))
 
   @test.mock.patch.object(logging, 'warning', autospec=True)
@@ -45,9 +46,11 @@ class DeprecationWrapperTest(test.TestCase):
     module.foo = 1
     module.bar = 2
     module.baz = 3
+    all_renames_v2.symbol_renames['tf.test.bar'] = 'tf.bar2'
+    all_renames_v2.symbol_renames['tf.test.baz'] = 'tf.compat.v1.baz'
 
     wrapped_module = deprecation_wrapper.DeprecationWrapper(
-        module, 'test', {'bar': 'bar2', 'baz': 'compat.v1.baz'})
+        module, 'test')
     self.assertTrue(tf_inspect.ismodule(wrapped_module))
 
     self.assertEqual(0, mock_warning.call_count)

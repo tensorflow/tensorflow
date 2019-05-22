@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+
 #include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -48,6 +50,14 @@ class DatasetVariantWrapper {
     if (dataset_) dataset_->Ref();
   }
 
+  DatasetVariantWrapper& operator=(DatasetVariantWrapper&& other) {
+    if (&other == this) return *this;
+    std::swap(dataset_, other.dataset_);
+    return *this;
+  }
+
+  DatasetVariantWrapper& operator=(const DatasetVariantWrapper& other) = delete;
+
   ~DatasetVariantWrapper() {
     if (dataset_) dataset_->Unref();
   }
@@ -73,7 +83,7 @@ class DatasetVariantWrapper {
   }
 
  private:
-  DatasetBase* const dataset_;  // Owns one reference.
+  DatasetBase* dataset_;  // Owns one reference.
 };
 
 const char kWrappedDatasetVariantTypeName[] =
@@ -400,6 +410,26 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
+Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
+                                    std::vector<Tensor>* out_tensors,
+                                    bool* end_of_sequence) {
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                             profiler::TraceMeLevel::kInfo);
+  RecordStart(ctx, /*stop_output=*/true);
+  Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+  RecordStop(ctx, /*start_output=*/true);
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
+    s = errors::Internal(
+        "Iterator \"", params_.prefix,
+        "\" returned OutOfRange without setting `*end_of_sequence`. This "
+        "indicates that an error may have occurred. Original message: ",
+        s.error_message());
+    LOG(ERROR) << s;
+  }
+  return s;
+}
+
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset = nullptr;
   MakeDataset(ctx, &dataset);
@@ -476,6 +506,29 @@ void BackgroundWorker::WorkerLoop() {
     DCHECK(work_item != nullptr);
     work_item();
   }
+}
+
+namespace {
+class RunnerImpl : public Runner {
+ public:
+  void Run(const std::function<void()>& f) override {
+    f();
+
+    // NOTE: We invoke a virtual function to prevent `f` being tail-called, and
+    // thus ensure that this function remains on the stack until after `f`
+    // returns.
+    PreventTailCall();
+  }
+
+ private:
+  virtual void PreventTailCall() {}
+};
+}  // namespace
+
+/* static */
+Runner* Runner::get() {
+  static Runner* singleton = new RunnerImpl;
+  return singleton;
 }
 
 }  // namespace data

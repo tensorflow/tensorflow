@@ -22,6 +22,7 @@ py_library(
 py_test(
     name = "summaries_test",
     srcs = ["summaries_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
