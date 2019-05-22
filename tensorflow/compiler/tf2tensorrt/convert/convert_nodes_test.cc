@@ -1998,11 +1998,39 @@ void CheckAddedLayers(OpConverterTest* test, bool expect_scale_layer) {
   EXPECT_NE(expect_scale_layer, element_wise_layer_found);
 }
 
-template <DataType dtype>
-void CheckBinaryResults(OpConverterTest* test, const NodeDef& node_def,
-                        const DataVec& input_data, DataVec& output_data) {
-  using CType = typename EnumToDataType<dtype>::Type;
+template <typename OpType, DataType dtype>
+void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
+                  bool operand_2_is_tensor) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+  test->Reset();
+  const NodeDef node_def =
+      GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
+  if (operand_1_is_tensor) {
+    test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/1,
+                        TfDataTypeToTrt(dtype));
+  } else {
+    test->AddTestWeights("input1", /*dims=*/{1, 2},
+                         /*values=*/std::vector<CType>{CType(3), CType(6)});
+  }
+  if (operand_2_is_tensor) {
+    test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/1,
+                        TfDataTypeToTrt(dtype));
+  } else {
+    test->AddTestWeights("input2", /*dims=*/{2, 1},
+                         /*values=*/std::vector<CType>{CType(2), CType(3)});
+  }
+  test->RunValidationAndConversion(node_def);
 
+  DataVec input_data;
+  if (operand_1_is_tensor) {
+    input_data.emplace_back("input1",
+                            test::AsTensor<CType>({CType(3), CType(6)}));
+  }
+  if (operand_2_is_tensor) {
+    input_data.emplace_back("input2",
+                            test::AsTensor<CType>({CType(2), CType(3)}));
+  }
+  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   // Check output dims.
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
@@ -2010,9 +2038,9 @@ void CheckBinaryResults(OpConverterTest* test, const NodeDef& node_def,
   ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
   // After broadcasting first input becomes {3, 6, 3, 6} and second input
   // becomes {2, 3, 2, 3}.
-  test->BuildAndRun(
-      input_data, &output_data,
-      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
+  test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
+                                                  ? TrtPrecisionMode::FP16
+                                                  : TrtPrecisionMode::FP32);
   if (node_def.op() == "Add") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(5), CType(8), CType(6), CType(9)));
@@ -2043,61 +2071,6 @@ void CheckBinaryResults(OpConverterTest* test, const NodeDef& node_def,
   }
 }
 
-template <typename OpType, DataType dtype>
-void TestBinaryTensorOpTensor(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-  test->Reset();
-  const NodeDef node_def =
-      GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
-  test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
-  test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
-  test->RunValidationAndConversion(node_def);
-
-  const DataVec input_data{
-      {"input1", test::AsTensor<CType>({CType(3), CType(6)})},
-      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
-  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
-}
-
-template <typename OpType, DataType dtype>
-void TestBinaryTensorOpWeight(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-  test->Reset();
-  const NodeDef node_def =
-      GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
-  test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
-  test->AddTestWeights("input2", /*dims=*/{2, 1},
-                       /*values=*/std::vector<CType>{CType(2), CType(3)});
-  test->RunValidationAndConversion(node_def);
-
-  const DataVec input_data{
-      {"input1", test::AsTensor<CType>({CType(3), CType(6)})}};
-  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
-}
-
-template <typename OpType, DataType dtype>
-void TestBinaryWeightOpTensor(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-  test->Reset();
-  const NodeDef node_def =
-      GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
-  test->AddTestWeights("input1", /*dims=*/{1, 2},
-                       /*values=*/std::vector<CType>{CType(3), CType(6)});
-  test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
-  test->RunValidationAndConversion(node_def);
-
-  const DataVec input_data{
-      {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
-  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
-}
-
 TEST_F(OpConverterTest, ConvertBinary) {
   AttrValue dtype;
   dtype.set_type(DT_FLOAT);
@@ -2123,62 +2096,49 @@ TEST_F(OpConverterTest, ConvertBinary) {
         "Constant folding is falled back to TensorFlow, binary op received "
         "both input as constant at: my_add");
   }
-  // FP32 tests
-  TestBinaryTensorOpTensor<ops::Add, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Sub, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Mul, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Div, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::RealDiv, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Minimum, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Maximum, DT_FLOAT>(this);
-  TestBinaryTensorOpTensor<ops::Pow, DT_FLOAT>(this);
-  // Test with operand R = Weights
-  TestBinaryTensorOpWeight<ops::Add, DT_FLOAT>(this);
-  TestBinaryTensorOpWeight<ops::Sub, DT_FLOAT>(this);
-  TestBinaryTensorOpWeight<ops::Mul, DT_FLOAT>(this);
-  TestBinaryTensorOpWeight<ops::Div, DT_FLOAT>(this);
-  TestBinaryTensorOpWeight<ops::RealDiv, DT_FLOAT>(this);
-  TestBinaryTensorOpWeight<ops::Minimum, DT_FLOAT>(this);
-  TestBinaryTensorOpWeight<ops::Maximum, DT_FLOAT>(this);
-  TestBinaryTensorOpWeight<ops::Pow, DT_FLOAT>(this);
-  // Test with operand L = Weights
-  TestBinaryWeightOpTensor<ops::Add, DT_FLOAT>(this);
-  TestBinaryWeightOpTensor<ops::Sub, DT_FLOAT>(this);
-  TestBinaryWeightOpTensor<ops::Mul, DT_FLOAT>(this);
-  TestBinaryWeightOpTensor<ops::Div, DT_FLOAT>(this);
-  TestBinaryWeightOpTensor<ops::RealDiv, DT_FLOAT>(this);
-  TestBinaryWeightOpTensor<ops::Minimum, DT_FLOAT>(this);
-  TestBinaryWeightOpTensor<ops::Maximum, DT_FLOAT>(this);
-  TestBinaryWeightOpTensor<ops::Pow, DT_FLOAT>(this);
 
-  // FP16 tests
-  // TODO(tmorris): Use templates to avoid duplication.
-  TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Sub, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Mul, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Div, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::RealDiv, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Minimum, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Maximum, DT_HALF>(this);
-  TestBinaryTensorOpTensor<ops::Pow, DT_HALF>(this);
-  // Test with operand R = Weights
-  TestBinaryTensorOpWeight<ops::Add, DT_HALF>(this);
-  TestBinaryTensorOpWeight<ops::Sub, DT_HALF>(this);
-  TestBinaryTensorOpWeight<ops::Mul, DT_HALF>(this);
-  TestBinaryTensorOpWeight<ops::Div, DT_HALF>(this);
-  TestBinaryTensorOpWeight<ops::RealDiv, DT_HALF>(this);
-  TestBinaryTensorOpWeight<ops::Minimum, DT_HALF>(this);
-  TestBinaryTensorOpWeight<ops::Maximum, DT_HALF>(this);
-  TestBinaryTensorOpWeight<ops::Pow, DT_HALF>(this);
-  // Test with operand L = Weights
-  TestBinaryWeightOpTensor<ops::Add, DT_HALF>(this);
-  TestBinaryWeightOpTensor<ops::Sub, DT_HALF>(this);
-  TestBinaryWeightOpTensor<ops::Mul, DT_HALF>(this);
-  TestBinaryWeightOpTensor<ops::Div, DT_HALF>(this);
-  TestBinaryWeightOpTensor<ops::RealDiv, DT_HALF>(this);
-  TestBinaryWeightOpTensor<ops::Minimum, DT_HALF>(this);
-  TestBinaryWeightOpTensor<ops::Maximum, DT_HALF>(this);
-  TestBinaryWeightOpTensor<ops::Pow, DT_HALF>(this);
+  // Test combinations of tensor vs weight inputs (except when both inputs are
+  // weights).
+  for (const bool operand_1_is_tensor : {true, false}) {
+    for (const bool operand_2_is_tensor : {true, false}) {
+      if (!operand_1_is_tensor && !operand_2_is_tensor) continue;
+      // FP32 tests
+      TestBinaryOp<ops::Add, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Sub, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Mul, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Div, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::RealDiv, DT_FLOAT>(this, operand_1_is_tensor,
+                                           operand_2_is_tensor);
+      TestBinaryOp<ops::Minimum, DT_FLOAT>(this, operand_1_is_tensor,
+                                           operand_2_is_tensor);
+      TestBinaryOp<ops::Maximum, DT_FLOAT>(this, operand_1_is_tensor,
+                                           operand_2_is_tensor);
+      TestBinaryOp<ops::Pow, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      // FP16 tests
+      // TODO(tmorris): Use templates to avoid duplication.
+      TestBinaryOp<ops::Add, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Sub, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Mul, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Div, DT_FLOAT>(this, operand_1_is_tensor,
+                                       operand_2_is_tensor);
+      TestBinaryOp<ops::RealDiv, DT_HALF>(this, operand_1_is_tensor,
+                                          operand_2_is_tensor);
+      TestBinaryOp<ops::Minimum, DT_HALF>(this, operand_1_is_tensor,
+                                          operand_2_is_tensor);
+      TestBinaryOp<ops::Maximum, DT_HALF>(this, operand_1_is_tensor,
+                                          operand_2_is_tensor);
+      TestBinaryOp<ops::Pow, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+    }
+  }
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
