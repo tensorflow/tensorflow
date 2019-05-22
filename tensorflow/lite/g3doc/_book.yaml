@@ -32,12 +32,12 @@ upper_tabs:
       - heading: "Convert a model"
       - title: "TensorFlow Lite converter"
         path: /lite/convert/
+      - title: "Python API"
+        path: /lite/convert/python_api
       - title: "Command line examples"
         path: /lite/convert/cmdline_examples
       - title: "Command line reference"
         path: /lite/convert/cmdline_reference
-      - title: "Python API"
-        path: /lite/convert/python_api
       - title: "Convert quantized models"
         path: /lite/convert/quantization
 
