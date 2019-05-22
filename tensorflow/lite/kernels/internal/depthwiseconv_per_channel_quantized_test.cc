@@ -126,16 +126,33 @@ void PickReasonableMultiplier(
                        bias_shape_inference, bias_data, output_shape_inference,
                        &output_multiplier);
 
+  bool should_use_per_channel = true;
+
+  // TODO(b/132879305): Support stride == 2 per-channel case.
+  if (params.stride_width == 2 || params.stride_height == 2) {
+    should_use_per_channel = false;
+  }
+
+  // TODO(b/132878669): Support padding.
+  if (params.padding_values.width != 0 || params.padding_values.height != 0) {
+    should_use_per_channel = false;
+  }
+
   int base_multiplier;
   int base_shift;
-  // multipliers typically range in [2^30 ; 2^31 - 1].
-  // Values in [0, 2^30 - 1] are normally unused, but harmless.
-  // Thus a good way to randomize multipliers is to subtract from them
-  // a random value smaller than 2^30 but still significant compared to it.
   QuantizeMultiplier(output_multiplier, &base_multiplier, &base_shift);
   for (int i = 0; i < output_depth; ++i) {
-    output_multiplier_ptr[i] = base_multiplier - (std::rand() % (1 << 26));
-    output_shift_ptr[i] = base_shift - 1 + (std::rand() % 4);
+    if (should_use_per_channel) {
+      // multipliers typically range in [2^30 ; 2^31 - 1].
+      // Values in [0, 2^30 - 1] are normally unused, but harmless.
+      // Thus a good way to randomize multipliers is to subtract from them
+      // a random value smaller than 2^30 but still significant compared to it.
+      output_multiplier_ptr[i] = base_multiplier - (std::rand() % (1 << 26));
+      output_shift_ptr[i] = base_shift - 1 + (std::rand() % 4);
+    } else {
+      output_multiplier_ptr[i] = base_multiplier;
+      output_shift_ptr[i] = base_shift;
+    }
   }
 }
 
@@ -197,7 +214,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
   const int filter_width = 3;
   const int filter_height = 3;
   const int depth_multiplier = 1;
-  const int stride = 1;
+  const int stride = UniformRandomInt(1, 2);
   // We don't support dilations in the 3x3 filter.
   const int dilation_width_factor = 1;
   const int dilation_height_factor = 1;
@@ -309,7 +326,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
 }
 
 TEST(QuantizedDepthwiseConvPerChannelTest, FastKernelTest) {
-  for (int i = 0; i < 15; ++i) {
+  for (int i = 0; i < 30; ++i) {
     TryTestOneDepthwiseConv3x3Filter();
   }
 }
