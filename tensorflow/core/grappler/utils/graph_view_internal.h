@@ -131,7 +131,14 @@ class NodeViewInternal {
       : graph_view_(graph_view),
         node_index_(node_index),
         attrs_(AttrSlice(graph_view->graph()->node(node_index))) {}
+
+  NodeViewInternal()
+      : graph_view_(nullptr), node_index_(kMissingIndex), attrs_(AttrSlice()) {}
+
   virtual ~NodeViewInternal() {}
+
+  NodeViewInternal(NodeViewInternal&&) = default;
+  NodeViewInternal& operator=(NodeViewInternal&&) = default;
 
   bool operator==(const NodeViewInternal& other) const {
     return node_index_ == other.node_index_ && graph_view_ == other.graph_view_;
