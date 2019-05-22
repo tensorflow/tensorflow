@@ -218,7 +218,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      std::function<void()> inv_var_to_var) override;
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<Eigen::half>& x,
@@ -233,7 +233,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      std::function<void()> inv_var_to_var) override;
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
