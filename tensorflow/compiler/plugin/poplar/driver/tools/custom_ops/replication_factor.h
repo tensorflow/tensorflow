@@ -13,17 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_REMAP_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_REMAP_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_REPLICATION_FACTOR_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TOOLS_CUSTOM_OPS_REPLICATION_FACTOR_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
 
 namespace xla {
 namespace poplarplugin {
 
-class HloRemapInstruction : public HloPoplarInstruction {
+class HloReplicationFactorInstruction : public HloPoplarInstruction {
  public:
-  explicit HloRemapInstruction(HloInstruction* operand);
+  explicit HloReplicationFactorInstruction();
+
+  absl::flat_hash_set<int64> AllocatingIndices() const override;
+  absl::flat_hash_map<int64, int64> LayoutDependencies() const override;
+  uint64 NumberOfInplaceOperands() const override;
+
+  bool IsPopOpsElementwise() const;
+
+ private:
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const>,
+      HloCloneContext*) const override;
+};
+
+std::unique_ptr<HloInstruction> CreateReplicationFactorInstruction();
+
+class HloReplicationNormaliseInstruction : public HloPoplarInstruction {
+ public:
+  explicit HloReplicationNormaliseInstruction(HloInstruction* operand);
 
   const HloInstruction* input() const;
 
@@ -39,7 +57,8 @@ class HloRemapInstruction : public HloPoplarInstruction {
       HloCloneContext*) const override;
 };
 
-std::unique_ptr<HloInstruction> CreateRemap(HloInstruction* operand);
+std::unique_ptr<HloInstruction> CreateReplicationNormalise(
+    HloInstruction* operand);
 
 }  // namespace poplarplugin
 }  // namespace xla

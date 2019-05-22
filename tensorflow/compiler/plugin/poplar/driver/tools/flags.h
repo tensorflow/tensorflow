@@ -58,6 +58,9 @@ struct PoplarXlaFlags {
   // Path to the executable cache.
   std::string executable_cache_path;
 
+  // Path for the tensormap files
+  std::string tensor_map_file_path;
+
   // Stores all the values as a string.
   std::string as_string;
 
@@ -66,6 +69,10 @@ struct PoplarXlaFlags {
 
   // Use the fallback scheduler instead of the default one.
   bool fallback_scheduler;
+
+  // TODO T8856 - remove this flag.
+  // Indicates whether to add the copies before the all reduce.
+  bool add_all_reduce_copies;
 };
 
 // Getters for flags structs defined above.  The first call to any of these

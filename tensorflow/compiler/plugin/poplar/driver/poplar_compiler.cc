@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/norm_input_recomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_gather_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_scatter_expander.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/replication_factor_to_constant.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/root_token_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/sharding_pass.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/while_loop_condition_simplify.h"
@@ -487,6 +488,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<CustomOpReplacer>();
+    pipeline.AddPass<ReplicationFactorToConstant>(resources.replication_factor);
     pipeline.AddPass<HloComputationNameUniquify>();
     pipeline.AddPass<CholeskyExpander>();
     pipeline.AddPass<TriangularSolveExpander>();
@@ -567,12 +569,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   HloComputation* entry = module->entry_computation();
 
   if (poplarExecutor->IpuTraceEventsEnabled()) {
-    std::string dot_graph;
-    auto status = SerializeComputationToGraphDef(*entry);
-    if (status.ok()) {
-      dot_graph = status.ValueOrDie();
-    }
-    poplarExecutor->AddCompileBeginEventRecord(module->name(), dot_graph);
+    poplarExecutor->AddCompileBeginEventRecord(module->name());
   }
 
   // Set layout if there isn't one
@@ -665,10 +662,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       try {
         VLOG(1) << "Compile engine " << module->name();
 
-        // Generate this JSON early so that the VLOG trace can contain the
-        // output whether the engine compilation completes or not.
-        map_json = GetTensorMappingJson(GetReplicatedGraph(resources),
-                                        resources.tensor_maps);
+        map_json =
+            GetTensorMappingJson(module->name(), GetReplicatedGraph(resources),
+                                 resources.tensor_maps);
 
         auto& opts = poplarExecutor->GetOptionsFlags();
         auto progress_logging = [](int progress, int total) {

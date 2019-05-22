@@ -745,20 +745,6 @@ def extract_execute_reports(events):
   return result
 
 
-def extract_graphviz_from_compilation_event(evt):
-  """Return the final optimized XLA graph from a COMPILE_BEGIN event.
-
-  Args:
-    evt: An IpuTraceEvent which is of type COMPILE_BEGIN.
-
-  Returns:
-    A DOT file string of the main XLA computation.
-  """
-  if evt.type != IpuTraceEvent.COMPILE_BEGIN:
-    raise Exception("`evt` must be a COMPILE_BEGIN event")
-  return evt.compile_begin.xla_graph
-
-
 def get_memory_size_from_events(events):
   """Get the total memory consumption for the first compilation in the list
   of events.

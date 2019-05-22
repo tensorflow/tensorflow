@@ -3,8 +3,7 @@ syntax = "proto3";
 package tensorflow;
 
 message IpuTraceCompileBeginEvent {
-  // serialized final optimized XLA graph
-  bytes xla_graph = 1;
+  bytes deprecated_1 = 1;
 
   // The name of the module associated with the event
   bytes module_name = 2;

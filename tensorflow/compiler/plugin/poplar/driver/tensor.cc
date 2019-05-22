@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/hlo_poplar_instruction.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
@@ -1612,7 +1613,8 @@ Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
   return Status::OK();
 }
 
-std::string GetTensorMappingJson(const poplar::Graph& graph,
+std::string GetTensorMappingJson(const std::string& module_name,
+                                 const poplar::Graph& graph,
                                  const TensorMaps& tensor_maps) {
   Json::Value mappings;
 
@@ -1668,9 +1670,15 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
   json_builder["commentStyle"] = "None";
   std::string json_msg = Json::writeString(json_builder, root);
 
-  if (VLOG_IS_ON(2)) {
+  if (tensorflow::GetPoplarXlaFlags().executable_cache_path.size() > 0) {
     VLOG(2) << "[Poplar] Dumping tensor mapping";
-    VLOG(2) << json_msg;
+    auto path = tensorflow::GetPoplarXlaFlags().executable_cache_path;
+    auto filename =
+        tensorflow::io::JoinPath(path, module_name + ".tensor_map.json");
+    std::unique_ptr<tensorflow::WritableFile> file;
+    TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(filename, &file));
+    TF_CHECK_OK(file->Append(json_msg));
+    TF_CHECK_OK(file->Close());
   }
 
   return json_msg;
