@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace data {
 namespace name_utils {
 
-extern const char kPrefixDelimiter[];
+extern const char kDelimiter[];
 
 // Returns the dataset op name.
 //
