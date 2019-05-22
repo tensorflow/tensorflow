@@ -382,6 +382,7 @@ Status GrpcServer::Stop() {
       state_ = STOPPED;
       return Status::OK();
     case STARTED:
+      server_.get()->Shutdown();
       worker_service_->Shutdown();
       master_service_->Shutdown();
       eager_service_->Shutdown();
