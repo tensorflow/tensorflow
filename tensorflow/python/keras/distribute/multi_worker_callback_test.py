@@ -343,6 +343,27 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     model.fit(x=train_ds, epochs=100, steps_per_epoch=steps, callbacks=cbks)
     test_obj.assertLess(epoch_counter_cbk.last_epoch, 50)
 
+  @staticmethod
+  def callableForTestLearningRateScheduler(model, test_obj, train_ds, num_epoch,
+                                           steps, strategy, saving_filepath):
+
+    cbks = [
+        callbacks.LearningRateScheduler(
+            schedule=lambda x: 1. / (1. + x), verbose=1)
+    ]
+
+    # It is expected that with `epochs=2`, the learning rate would drop to
+    # 1 / (1 + 2) = 0.5.
+    model.fit(x=train_ds, epochs=2, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.5, atol=1e-8)
+
+    # It is expected that with `epochs=4`, the learning rate would drop to
+    # 1 / (1 + 4) = 0.25.
+    model.fit(x=train_ds, epochs=4, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.25, atol=1e-8)
+
   class PreemptionAtBatchBoundarySimulatingCallback(callbacks.Callback):
     """Callback to simulate preemtion at batch boundary."""
 
@@ -612,6 +633,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       callableForTestReduceLROnPlateau.__func__)
   test_early_stopping = generate_callback_test_function(
       callableForTestEarlyStopping.__func__)
+  test_learning_rate_scheduler = generate_callback_test_function(
+      callableForTestLearningRateScheduler.__func__)
 
 
 if __name__ == '__main__':
