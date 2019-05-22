@@ -289,12 +289,10 @@ Region *Region::getContainingRegion() {
 }
 
 Operation *Region::getContainingOp() {
-  assert(!container.isNull() && "no container");
   return container.dyn_cast<Operation *>();
 }
 
 Function *Region::getContainingFunction() {
-  assert(!container.isNull() && "no container");
   return container.dyn_cast<Function *>();
 }
 
