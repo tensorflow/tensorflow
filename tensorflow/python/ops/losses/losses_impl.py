@@ -419,6 +419,9 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "huber_loss",
                       (predictions, labels, weights)) as scope:
+    if delta == float('inf'):
+      return mean_squared_error(labels, predictions, weights, scope,
+                                loss_collection, reduction)
     predictions = math_ops.cast(predictions, dtype=dtypes.float32)
     labels = math_ops.cast(labels, dtype=dtypes.float32)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
