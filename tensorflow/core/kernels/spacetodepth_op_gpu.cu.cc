@@ -193,28 +193,25 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
       switch (block_size) {
         case 2:
-          TF_CHECK_OK(GpuLaunchKernel((S2D_NCHW_LOOP<T, 2>),
-              dim3(config.block_count), dim3(config.thread_per_block), 0,
-              d.stream(),
-              total_count, input.data(), output_width, input_width,
-              input_depth_by_output_area, output_depth_by_output_area,
-              output.data()));
+          TF_CHECK_OK(GpuLaunchKernel(
+              S2D_NCHW_LOOP<T, 2>, config.block_count, config.thread_per_block,
+              0, d.stream(), total_count, input.data(), output_width,
+              input_width, input_depth_by_output_area,
+              output_depth_by_output_area, output.data()));
           return;
         case 3:
-          TF_CHECK_OK(GpuLaunchKernel((S2D_NCHW_LOOP<T, 3>),
-              dim3(config.block_count), dim3(config.thread_per_block), 0,
-              d.stream(),
-              total_count, input.data(), output_width, input_width,
-              input_depth_by_output_area, output_depth_by_output_area,
-              output.data()));
+          TF_CHECK_OK(GpuLaunchKernel(
+              S2D_NCHW_LOOP<T, 3>, config.block_count, config.thread_per_block,
+              0, d.stream(), total_count, input.data(), output_width,
+              input_width, input_depth_by_output_area,
+              output_depth_by_output_area, output.data()));
           return;
         case 4:
-          TF_CHECK_OK(GpuLaunchKernel((S2D_NCHW_LOOP<T, 4>),
-              dim3(config.block_count), dim3(config.thread_per_block), 0,
-              d.stream(),
-              total_count, input.data(), output_width, input_width,
-              input_depth_by_output_area, output_depth_by_output_area,
-              output.data()));
+          TF_CHECK_OK(GpuLaunchKernel(
+              S2D_NCHW_LOOP<T, 4>, config.block_count, config.thread_per_block,
+              0, d.stream(), total_count, input.data(), output_width,
+              input_width, input_depth_by_output_area,
+              output_depth_by_output_area, output.data()));
           return;
       }
     }
