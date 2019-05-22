@@ -59,7 +59,7 @@ Type Attribute::getType() const { return impl->getType(); }
 MLIRContext *Attribute::getContext() const { return getType().getContext(); }
 
 /// Get the dialect this attribute is registered to.
-const Dialect &Attribute::getDialect() const { return impl->getDialect(); }
+Dialect &Attribute::getDialect() const { return impl->getDialect(); }
 
 bool Attribute::isOrContainsFunction() const {
   return impl->isOrContainsFunctionCache();

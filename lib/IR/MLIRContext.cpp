@@ -695,8 +695,8 @@ static Dialect &lookupDialectForSymbol(MLIRContext *ctx,
 StorageUniquer &MLIRContext::getTypeUniquer() { return getImpl().typeUniquer; }
 
 /// Get the dialect that registered the type with the provided typeid.
-const Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
-                                                 const ClassID *const typeID) {
+Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
+                                           const ClassID *const typeID) {
   return lookupDialectForSymbol(ctx, typeID);
 }
 

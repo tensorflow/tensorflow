@@ -27,7 +27,7 @@ using namespace mlir::detail;
 unsigned Type::getKind() const { return impl->getKind(); }
 
 /// Get the dialect this type is registered to.
-const Dialect &Type::getDialect() { return impl->getDialect(); }
+Dialect &Type::getDialect() { return impl->getDialect(); }
 
 MLIRContext *Type::getContext() { return getDialect().getContext(); }
 

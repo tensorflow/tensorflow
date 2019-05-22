@@ -52,7 +52,7 @@ protected:
 
 public:
   /// Get the dialect that this type is registered to.
-  const Dialect &getDialect() const {
+  Dialect &getDialect() {
     assert(dialect && "Malformed type storage object.");
     return *dialect;
   }
@@ -65,10 +65,10 @@ public:
 private:
   // Set the dialect for this storage instance. This is used by the TypeUniquer
   // when initializing a newly constructed type storage object.
-  void initializeDialect(const Dialect &newDialect) { dialect = &newDialect; }
+  void initializeDialect(Dialect &newDialect) { dialect = &newDialect; }
 
   /// The dialect for this type.
-  const Dialect *dialect;
+  Dialect *dialect;
 
   /// Space for subclasses to store data.
   unsigned subclassData;
@@ -106,14 +106,13 @@ public:
 
 private:
   /// Get the dialect that the type 'T' was registered with.
-  template <typename T>
-  static const Dialect &lookupDialectForType(MLIRContext *ctx) {
+  template <typename T> static Dialect &lookupDialectForType(MLIRContext *ctx) {
     return lookupDialectForType(ctx, T::getClassID());
   }
 
   /// Get the dialect that registered the type with the provided typeid.
-  static const Dialect &lookupDialectForType(MLIRContext *ctx,
-                                             const ClassID *const typeID);
+  static Dialect &lookupDialectForType(MLIRContext *ctx,
+                                       const ClassID *const typeID);
 };
 } // namespace detail
 

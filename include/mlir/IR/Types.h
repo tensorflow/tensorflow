@@ -144,7 +144,7 @@ public:
   MLIRContext *getContext();
 
   /// Get the dialect this type is registered to.
-  const Dialect &getDialect();
+  Dialect &getDialect();
 
   // Convenience predicates.  This is only for floating point types,
   // derived types should use isa/dyn_cast.

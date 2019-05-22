@@ -54,9 +54,9 @@ public:
   Type getType() const;
 
   /// Get the dialect of this attribute.
-  const Dialect &getDialect() const {
+  Dialect &getDialect() const {
     assert(dialect && "Malformed attribute storage object.");
-    return *dialect;
+    return const_cast<Dialect &>(*dialect);
   }
 
 protected:
@@ -75,11 +75,11 @@ protected:
 
   // Set the dialect for this storage instance. This is used by the
   // AttributeUniquer when initializing a newly constructed storage object.
-  void initializeDialect(const Dialect &newDialect) { dialect = &newDialect; }
+  void initializeDialect(Dialect &newDialect) { dialect = &newDialect; }
 
 private:
   /// The dialect for this attribute.
-  const Dialect *dialect;
+  Dialect *dialect;
 
   /// This field is a pair of:
   ///  - The type of the attribute value.
