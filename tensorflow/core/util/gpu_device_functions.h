@@ -111,8 +111,6 @@ __device__ detail::GpuGridRange<T> GpuGridRangeX(T count) {
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 
-CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
-
 // Helper to visit indices in the range 0 <= i < count using the y-coordinate.
 // Usage: for(int i : GpuGridRangeY(count)) { visit(i); }
 template <typename T>
@@ -472,7 +470,6 @@ __host__ __device__ T GpuLdg(const T* address) {
   return *address;
 #endif
 }
-CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLdg, CudaLdg);
 
 __host__ __device__ inline bool GpuLdg(const bool* address) {
   return GpuLdg(reinterpret_cast<const char*>(address)) != 0;

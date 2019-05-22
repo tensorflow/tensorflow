@@ -95,5 +95,5 @@ REGISTER_LINALG_OP_GPU("TridiagonalMatMul", (TridiagonalMatMulOpGpu<complex64>),
 REGISTER_LINALG_OP_GPU("TridiagonalMatMul",
                        (TridiagonalMatMulOpGpu<complex128>), complex128);
 }  // namespace tensorflow
-#TODO: enable this op on ROCm path
+
 #endif  // GOOGLE_CUDA
