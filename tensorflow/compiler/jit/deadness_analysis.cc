@@ -90,7 +90,7 @@ limitations under the License.
 // iterations over the graph.  On the first iteration it assigns a symbolic
 // predicate to merge nodes with backedges.  On the second iteration it tries
 // to pattern match the predicates for the backedges of these merges and infer
-// an AndRecurrence for the merge. In other words, we do a data flow analysis
+// an AndRecurrence for the merge.  In other words, we do a data flow analysis
 // where the data-flow lattice has two elements, Symbolic and NonSymbolic with
 // Symbolic > NonSymbolic.  The lattice has height = 2 so two iterations are
 // sufficient to converge.
@@ -1224,8 +1224,8 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
 
   if (!ready_enters_per_frame.empty() || !ready_exits.empty()) {
     return errors::InvalidArgument(
-        "Some enters/exits are never visited."
-        " Probably the input graph is malformed.");
+        "Some enters/exits have never been visited in the traversal."
+        " Most probably the input graph is malformed.");
   }
   return Status::OK();
 }
