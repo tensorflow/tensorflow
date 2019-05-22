@@ -25,37 +25,21 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-
 
 namespace xla {
 namespace gpu {
 
-// Enumeration to get target specific function information.
-enum class TargetFunctionID {
-  kShflDownF32 = 0,
-  kShflDownI32,
-  kThreadIdx,
+// Enmeration to get target specific intrinsics.
+enum class TargetIntrinsicID {
+  kThreadIdx = 0,
   kThreadIdy,
   kThreadIdz,
   kBlockIdx,
   kBlockIdy,
   kBlockIdz,
   kBarrierId,
-  kPow,
-  kErfcinv,
-  kLog,
-  kLog1p,
-  kSin,
-  kCos,
-  kExp,
-  kExpm1,
-  kSqrt,
-  kRsqrt,
-  kAtan2,
-  kFmod,
-  kRound,
 };
+
 // AMDGCN target address spaces
 constexpr int kAMDGPUGlobalMemoryAddrSpace = 1;
 constexpr int kAMDGPUSharedMemoryAddrSpace = 3;
@@ -63,16 +47,13 @@ constexpr int kAMDGPUSharedMemoryAddrSpace = 3;
 // NVPTX target address spaces
 constexpr int kNVPTXSharedMemoryAddrSpace = 3;
 
-// Emits a call to the specified target function  with the given operands.
-// Target function can either be an intrinsic or a device function.
+// Emits a call to the specified target intrinsic with the given operands.
 
 // Overloaded intrinsics (for example, "minnum") must include a type
 // in overloaded_types  for each overloaded type. Typically, overloaded
 // intrinsics have only a single overloaded type.
-llvm::Value* EmitCallToTargetFunction(
-    TargetFunctionID function_id, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
-    absl::Span<const llvm::Attribute::AttrKind> attributes,
+llvm::CallInst* EmitCallToTargetIntrinsic(
+    TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
 // Obtain the target specific address space for global variables
