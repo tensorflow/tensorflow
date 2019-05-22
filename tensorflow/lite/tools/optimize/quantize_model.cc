@@ -418,8 +418,7 @@ TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
     } else {
       error_reporter->Report(
           "Unable to find buffer or min/max value for input activation "
-          "%d "
-          "in %s in subgraph %d, node: %d",
+          "%d in %s in subgraph %d, node: %d",
           input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, *op_idx);
       return kTfLiteError;
     }
