@@ -1388,6 +1388,7 @@ tf_py_test(
     main = "framework/contrib_test.py",
     tags = [
         "no_pip",
+        "no_windows",
     ],
 )
 
