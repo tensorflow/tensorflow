@@ -420,15 +420,6 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
     TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_r_new_dims));
   }
 
-  // If the rank of the tensors is already the same, we can't do anything
-  // further.
-  if (operand_l_new_dims->nbDims == operand_r_new_dims->nbDims) {
-    VLOG(2) << "Broadcasted operands to [L] "
-            << DebugString(*operand_l_new_dims) << " and [R] "
-            << DebugString(*operand_r_new_dims);
-    return Status::OK();
-  }
-
   const nvinfer1::Dims* higher_rank =
       (operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)
           ? operand_l_new_dims
