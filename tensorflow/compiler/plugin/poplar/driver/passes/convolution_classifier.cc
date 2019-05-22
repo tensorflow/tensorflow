@@ -125,7 +125,7 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
       module->entry_computation()->parameter_instructions().end());
 
   for (const auto& comp : module->computations()) {
-    if (!tensorflow::str_util::StartsWith(comp->name(), "_")) {
+    if (!IsPopOpsFusion(comp)) {
       for (const auto* inst : comp->instructions()) {
         switch (inst->opcode()) {
           case HloOpcode::kConvolution: {
