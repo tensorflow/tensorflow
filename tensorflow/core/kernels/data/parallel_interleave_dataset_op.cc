@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
@@ -75,7 +77,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, block_length > 0,
                 errors::InvalidArgument("`block_length` must be > 0"));
 
-    int64 num_parallel_calls;
+    int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(
@@ -205,9 +207,16 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         cancelled_ = true;
         cond_var_->notify_all();
         // Wait for all in-flight calls to complete.
-        while (num_calls_ > 0) {
+        while (current_num_calls_ > 0 || future_num_calls_ > 0) {
           cond_var_->wait(l);
         }
+      }
+
+      string BuildTraceMeName() override {
+        // NOTE: We do not synchronize the following access to
+        // num_parallel_calls_ to minimize the tracing overhead.
+        int64 parallelism = num_parallel_calls_->value;
+        return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
       }
 
       Status Initialize(IteratorContext* ctx) override {
@@ -258,10 +267,11 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
         // Wait for all in-flight calls to complete.
-        while (num_calls_ > 0) {
+        while (current_num_calls_ > 0 || future_num_calls_ > 0) {
           cond_var_->wait(l);
         }
-        DCHECK_EQ(num_calls_, 0);
+        DCHECK_EQ(current_num_calls_, 0);
+        DCHECK_EQ(future_num_calls_, 0);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("block_index"), block_index_));
@@ -438,7 +448,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
               }
             }
           }
-          return all_elements_busy || num_calls_ >= num_parallel_calls_->value;
+          return all_elements_busy ||
+                 current_num_calls_ >= num_parallel_calls_->value;
         };
         while (true) {
           mutex_lock l(*mu_);
@@ -482,19 +493,19 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
                     dataset()->block_length_ - element->results.size();
               }
               if (num_results > 0) {
-                num_calls_++;
+                current_num_calls_++;
                 element->in_use = true;
                 thread_pool_->Schedule(std::bind(
                     &ParallelInterleaveIterator::FetchResults, this, ctx,
                     std::move(element), num_results,
                     [this, ctx]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-                      --num_calls_;
+                      --current_num_calls_;
                       const auto& stats_aggregator = ctx->stats_aggregator();
                       if (stats_aggregator) {
                         stats_aggregator->AddScalar(
                             stats_utils::ThreadUtilizationScalarName(
                                 dataset()->node_name()),
-                            static_cast<float>(num_calls_) /
+                            static_cast<float>(current_num_calls_) /
                                 static_cast<float>(num_parallel_calls_->value),
                             num_elements());
                       }
@@ -507,7 +518,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             stats_aggregator->AddScalar(
                 stats_utils::ThreadUtilizationScalarName(
                     dataset()->node_name()),
-                static_cast<float>(num_calls_) /
+                static_cast<float>(current_num_calls_) /
                     static_cast<float>(num_parallel_calls_->value),
                 num_elements());
           }
@@ -604,10 +615,13 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
               continue;
             }
             DisableAutotune(ctx.get(), element->iterator.get());
+            ++future_num_calls_;
             element->in_use = true;
-            thread_pool_->Schedule(
-                std::bind(&ParallelInterleaveIterator::FetchResults, this, ctx,
-                          std::move(element), dataset()->block_length_, [] {}));
+            thread_pool_->Schedule(std::bind(
+                &ParallelInterleaveIterator::FetchResults, this, ctx,
+                std::move(element), dataset()->block_length_,
+                [this]()
+                    EXCLUSIVE_LOCKS_REQUIRED(*mu_) { --future_num_calls_; }));
           }
           cond_var_->notify_all();
         }
@@ -892,8 +906,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       // Identifies the number of open iterators.
       int64 num_open_ GUARDED_BY(*mu_) = 0;
 
-      // Identifies the number of outstanding calls.
-      int64 num_calls_ GUARDED_BY(*mu_) = 0;
+      // Identifies the number of outstanding calls for CurrentElementsManager.
+      int64 current_num_calls_ GUARDED_BY(*mu_) = 0;
+      // Identifies the number of outstanding calls for FutureElementsManager.
+      int64 future_num_calls_ GUARDED_BY(*mu_) = 0;
 
       std::unique_ptr<thread::ThreadPool> thread_pool_;
       std::unique_ptr<Thread> current_elements_manager_ GUARDED_BY(*mu_);

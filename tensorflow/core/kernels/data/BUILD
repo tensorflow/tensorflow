@@ -51,6 +51,14 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/grappler/optimizers/data",
+        "//tensorflow/core/grappler/optimizers/data:function_utils",
+        "//tensorflow/core/grappler/optimizers/data:graph_utils",
     ],
 )
 
@@ -179,6 +187,26 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "batch_dataset_op_test",
+    size = "small",
+    srcs = ["batch_dataset_op_test.cc"],
+    deps = [
+        ":batch_dataset_op",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":range_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "shard_dataset_op",
     srcs = ["shard_dataset_op.cc"],
@@ -187,6 +215,26 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "shard_dataset_op_test",
+    size = "small",
+    srcs = ["shard_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":range_dataset_op",
+        ":shard_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -233,6 +281,27 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "padded_batch_dataset_op_test",
+    size = "small",
+    srcs = ["padded_batch_dataset_op_test.cc"],
+    deps = [
+        ":concatenate_dataset_op",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":padded_batch_dataset_op",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "filter_dataset_op",
     srcs = ["filter_dataset_op.cc"],
@@ -248,6 +317,29 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "filter_dataset_op_test",
+    size = "small",
+    srcs = ["filter_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":filter_dataset_op",
+        ":iterator_ops",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:unique_op",
+    ],
+)
+
 tf_kernel_library(
     name = "filter_by_component_dataset_op",
     srcs = ["filter_by_component_dataset_op.cc"],
@@ -257,6 +349,26 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "filter_by_component_dataset_op_test",
+    size = "small",
+    srcs = ["filter_by_component_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":filter_by_component_dataset_op",
+        ":iterator_ops",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -870,6 +982,28 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "reduce_dataset_op_test",
+    size = "small",
+    srcs = ["reduce_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":range_dataset_op",
+        ":stats_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+    ],
+)
+
 tf_kernel_library(
     name = "multi_device_iterator_ops",
     srcs = ["multi_device_iterator_ops.cc"],
@@ -915,31 +1049,11 @@ tf_kernel_library(
     ],
 )
 
-cc_library(
-    name = "graph_rewrite_dataset",
-    srcs = ["graph_rewrite_dataset.cc"],
-    hdrs = ["graph_rewrite_dataset.h"],
-    deps = [
-        ":captured_function",
-        ":dataset_utils",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/optimizers:meta_optimizer",
-        "//tensorflow/core/grappler/optimizers/data",
-        "//tensorflow/core/grappler/optimizers/data:function_utils",
-        "//tensorflow/core/grappler/optimizers/data:graph_utils",
-    ],
-)
-
 tf_kernel_library(
     name = "optimize_dataset_op",
     srcs = ["optimize_dataset_op.cc"],
     deps = [
-        ":graph_rewrite_dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

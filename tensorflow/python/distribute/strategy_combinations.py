@@ -105,6 +105,11 @@ central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
     "CentralStorage2GPUs",
     lambda: central_storage_strategy.CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
     required_gpus=2)
+central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
+    "CentralStorageCPUAndGPU",
+    lambda: central_storage_strategy.CentralStorageStrategy(
+        ["/gpu:0", "/cpu:0"]),
+    required_gpus=1)
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))

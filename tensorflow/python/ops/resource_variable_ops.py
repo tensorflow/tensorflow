@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
@@ -150,10 +151,13 @@ def variable_handle_from_shape_and_dtype(
     # When in eager mode, explicitly ensure so here. When in graph mode, it's
     # ensured by always generating different variable names.
     exists = gen_resource_variable_ops.var_is_initialized_op(handle)
-    if exists:
-      raise ValueError("variable object with name '%s' already created. Use "
-                       "get_variable() if reuse is desired." %
-                       shared_name)
+
+    # We create an assert Op instead of checking right away in order to be
+    # compatible with ASYNC execution mode. Further, since not all devices
+    # support string tensors, we encode the assertion string in the Op name
+    gen_logging_ops._assert(  # pylint: disable=protected-access
+        math_ops.logical_not(exists), [exists], name="EagerVariableNameReuse")
+
     with context.graph_mode(), ops.Graph().as_default() as graph:
       h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                   shared_name=shared_name,
@@ -173,10 +177,11 @@ def variable_handle_from_shape_and_dtype(
     return handle
 
 
-def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
+def eager_safe_variable_handle(initial_value, shape, shared_name, name,
+                               graph_mode):
   """Creates a variable handle with information to do shape inference.
 
-  The shape and dtype are read from `initial_value` and stored in the returned
+  The dtype is read from `initial_value` and stored in the returned
   resource tensor's handle data.
 
   If `initial_value.dtype == tf.variant`, we additionally extract the handle
@@ -206,6 +211,8 @@ def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
 
   Args:
     initial_value: A `Tensor`.
+    shape: The shape of the handle data. Can be `TensorShape(None)`
+      (i.e. unknown shape).
     shared_name: A string.
     name: A string.
     graph_mode: A python bool.
@@ -213,7 +220,6 @@ def eager_safe_variable_handle(initial_value, shared_name, name, graph_mode):
   Returns:
     The handle, a `Tensor` of type `resource`.
   """
-  shape = initial_value.get_shape()
   dtype = initial_value.dtype.base_dtype
   return variable_handle_from_shape_and_dtype(
       shape, dtype, shared_name, name, graph_mode, initial_value)
@@ -369,7 +375,8 @@ class ResourceVariable(variables.VariableV1):
                constraint=None,
                distribute_strategy=None,
                synchronization=None,
-               aggregation=None):
+               aggregation=None,
+               shape=None):
     """Creates a variable.
 
     Args:
@@ -418,6 +425,10 @@ class ResourceVariable(variables.VariableV1):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -448,7 +459,8 @@ class ResourceVariable(variables.VariableV1):
           dtype=dtype,
           constraint=constraint,
           synchronization=synchronization,
-          aggregation=aggregation)
+          aggregation=aggregation,
+          shape=shape)
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -468,7 +480,8 @@ class ResourceVariable(variables.VariableV1):
                       dtype=None,
                       constraint=None,
                       synchronization=None,
-                      aggregation=None):
+                      aggregation=None,
+                      shape=None):
     """Creates a variable.
 
     Args:
@@ -510,6 +523,10 @@ class ResourceVariable(variables.VariableV1):
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
+      shape: (optional) The shape of this variable. If None, the shape of
+        `initial_value` will be used. When setting this argument to
+        `tf.TensorShape(None)` (representing an unspecified shape), the variable
+        can be assigned with values of different shapes.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -588,12 +605,15 @@ class ResourceVariable(variables.VariableV1):
             initial_value = ops.convert_to_tensor(
                 initial_value() if init_from_fn else initial_value,
                 name="initial_value", dtype=dtype)
+          # Don't use `shape or initial_value.shape` since TensorShape has
+          # overridden `__bool__`.
+          self._shape = shape if shape is not None else initial_value.shape
           self._handle = eager_safe_variable_handle(
               initial_value=initial_value,
+              shape=self._shape,
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
-        self._shape = initial_value.shape
         # pylint: disable=protected-access
         if (self._in_graph_mode and initial_value is not None and
             initial_value.op._get_control_flow_context() is not None):
@@ -1710,24 +1730,29 @@ class UninitializedVariable(ResourceVariable):
     # Store the graph key so optimizers know how to only retrieve variables from
     # this graph. Guaranteed to be the same as the eager graph_key.
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-    self._shape = shape
-    self._dtype = dtype
+    self._shape = tensor_shape.as_shape(shape)
+    self._dtype = dtypes.as_dtype(dtype)
     with ops.init_scope():
-      handle_name = ops.name_from_scope_name(name)
-      unique_id = "%s_%d" % (handle_name, ops.uid())
-      shared_name = context.shared_name(unique_id)
-      self._handle = variable_handle_from_shape_and_dtype(
-          shape=shape, dtype=dtype, shared_name=shared_name,
-          name=name, graph_mode=self._in_graph_mode,
-          extra_handle_data=extra_handle_data)
-      if self._in_graph_mode:
-        with ops.name_scope("Read"), ops.colocate_with(self._handle):
-          # Manually assign reads to the handle's device to avoid log
-          # messages.
-          with ops.device(self._handle.device):
-            value = self._read_variable_op()
-          self._graph_element = value
-        ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
+      with ops.name_scope(name, "Variable") as name:
+        handle_name = ops.name_from_scope_name(name)
+        if self._in_graph_mode:
+          shared_name = handle_name
+          unique_id = shared_name
+        else:
+          unique_id = "%s_%d" % (handle_name, ops.uid())
+          shared_name = context.shared_name(unique_id)
+        self._handle = variable_handle_from_shape_and_dtype(
+            shape=shape, dtype=dtype, shared_name=shared_name,
+            name=name, graph_mode=self._in_graph_mode,
+            extra_handle_data=extra_handle_data)
+        if self._in_graph_mode:
+          with ops.name_scope("Read"), ops.colocate_with(self._handle):
+            # Manually assign reads to the handle's device to avoid log
+            # messages.
+            with ops.device(self._handle.device):
+              value = self._read_variable_op()
+            self._graph_element = value
+          ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint
@@ -1760,5 +1785,6 @@ def copy_to_graph_uninitialized(var):
   # pylint: enable=protected-access
   return new_variable
 
+ops.NotDifferentiable("Assert")
 ops.NotDifferentiable("VarIsInitializedOp")
 ops.NotDifferentiable("VariableShape")

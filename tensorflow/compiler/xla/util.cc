@@ -49,13 +49,13 @@ ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
   }
 }
 
-ScopedLoggingTimer::~ScopedLoggingTimer() {
+void ScopedLoggingTimer::StopAndLog() {
   if (enabled) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 
     TimerStats& stats = *timer_stats;
-    tensorflow::mutex_lock lock(stats.stats_lock);
+    tensorflow::mutex_lock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -70,8 +70,11 @@ ScopedLoggingTimer::~ScopedLoggingTimer() {
               << ", max: "
               << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
               << ", #called: " << stats.times_called << ")";
+    enabled = false;
   }
 }
+
+ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
@@ -108,7 +111,7 @@ std::vector<int64> InversePermutation(
   DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation[input_permutation[i]] = i;
+    output_permutation.at(input_permutation.at(i)) = i;
   }
   return output_permutation;
 }
@@ -118,7 +121,7 @@ std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
   CHECK_EQ(p1.size(), p2.size());
   std::vector<int64> output;
   for (size_t i = 0; i < p1.size(); ++i) {
-    output.push_back(p1[p2[i]]);
+    output.push_back(p1.at(p2.at(i)));
   }
   return output;
 }

@@ -40,8 +40,6 @@ py_library(
         "@gast_archive//:gast",
         "@six_archive//:six",
         "@termcolor_archive//:termcolor",
-        # TODO(mdan): Remove this dependency.
-        "//tensorflow/python:util",
     ],
 )
 
@@ -100,7 +98,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct/testing:test_modules",
+        "//tensorflow/python/autograph/pyct/testing",
         "@gast_archive//:gast",
     ],
 )
@@ -108,9 +106,6 @@ py_test(
 sh_test(
     name = "inspect_utils_test_par",
     srcs = ["inspect_utils_test.sh"],
-    data = [
-        ":inspect_utils_test.par",
-    ],
     tags = ["no_oss"],
 )
 
@@ -122,6 +117,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/pyct/testing",
     ],
 )
 

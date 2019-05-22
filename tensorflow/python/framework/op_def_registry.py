@@ -32,7 +32,10 @@ def register_op_list(op_list):
                     (op_list, type(op_list)))
   for op_def in op_list.op:
     if op_def.name in _registered_ops:
-      assert _registered_ops[op_def.name] == op_def
+      if _registered_ops[op_def.name] != op_def:
+        raise ValueError(
+            "Registered op_def for %s (%s) not equal to op_def to register (%s)"
+            % (op_def.name, _registered_ops[op_def.name], op_def))
     else:
       _registered_ops[op_def.name] = op_def
 

@@ -101,10 +101,10 @@ OpKernel::OpKernel(OpKernelConstruction* context,
                     context->output_types().end()),
       output_memory_types_(context->output_memory_types().begin(),
                            context->output_memory_types().end()),
-      graph_def_version_(context->graph_def_version()),
-      is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
+      graph_def_version_(context->graph_def_version()),
+      is_internal_(absl::StartsWith(type_string(), "_")),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
@@ -985,7 +985,10 @@ struct KernelRegistration {
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
 // factory functions for instantiating the OpKernel that matches the
 // KernelDef.
-typedef std::unordered_multimap<string, KernelRegistration> KernelRegistry;
+struct KernelRegistry {
+  mutex mu;
+  std::unordered_multimap<string, KernelRegistration> registry GUARDED_BY(mu);
+};
 
 #if defined(_WIN32)
 static const char kKernelLibPattern[] = "libtfkernel*.dll";
@@ -1027,7 +1030,7 @@ static Status IsProbablySafeToLoad(const string& path) {
   }
   if (!missing_features.empty()) {
     string errmsg = "Missing CPU features: ";
-    errmsg.append(str_util::Join(missing_features, ", "));
+    errmsg.append(absl::StrJoin(missing_features, ", "));
     return Status(errors::Code::FAILED_PRECONDITION, errmsg);
   }
   return Status::OK();
@@ -1113,9 +1116,12 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
     // before some file libraries can initialize, which in turn crashes the
     // program flakily. Until we get rid of static initializers in kernel
     // registration mechanism, we have this workaround here.
-    reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry())
-        ->emplace(key, KernelRegistration(*kernel_def, kernel_class_name,
-                                          std::move(factory)));
+    auto global_registry =
+        reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
+    mutex_lock l(global_registry->mu);
+    global_registry->registry.emplace(
+        key,
+        KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
   }
   delete kernel_def;
 }
@@ -1132,28 +1138,33 @@ namespace {
 static const StringPiece kKernelAttr("_kernel");
 
 // TODO(irving): Replace with const Node& version below.
-Status FindKernelRegistration(const DeviceType& device_type,
-                              const NodeDef& node_def,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
+Status FindKernelRegistration(
+    const DeviceType& device_type, StringPiece node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    StringPiece node_op, AttrSlice node_attrs, const KernelRegistration** reg,
+    bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
   // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_def, kKernelAttr);
+  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
 
-  const string key = Key(node_def.op(), device_type, label);
-  auto regs = GlobalKernelRegistryTyped()->equal_range(key);
+  const string key = Key(node_op, device_type, label);
+  auto typed_registry = GlobalKernelRegistryTyped();
+  tf_shared_lock lock(typed_registry->mu);
+  auto regs = typed_registry->registry.equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
     bool match;
-    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_def, &match));
+    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_attrs, &match));
     if (match) {
       if (*reg != nullptr) {
         return errors::InvalidArgument(
             "Multiple OpKernel registrations match NodeDef '",
-            FormatNodeDefForError(node_def), "': '",
-            ProtoShortDebugString((*reg)->def), "' and '",
+            FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                  experimental_debug_info),
+            "': '", ProtoShortDebugString((*reg)->def), "' and '",
             ProtoShortDebugString(iter->second.def), "'");
       }
       *reg = &iter->second;
@@ -1162,6 +1173,16 @@ Status FindKernelRegistration(const DeviceType& device_type,
     }
   }
   return Status::OK();
+}
+
+Status FindKernelRegistration(const DeviceType& device_type,
+                              const NodeDef& node_def,
+                              const KernelRegistration** reg,
+                              bool* was_attr_mismatch) {
+  return FindKernelRegistration(
+      device_type, node_def.name(), node_def.has_experimental_debug_info(),
+      node_def.experimental_debug_info(), node_def.op(),
+      AttrSlice(&node_def.attr()), reg, was_attr_mismatch);
 }
 
 }  // namespace
@@ -1176,29 +1197,44 @@ bool KernelDefAvailable(const DeviceType& device_type,
 }
 
 // TODO(irving): Change const NodeDef& to const Node&
-Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
-                     const KernelDef** def, string* kernel_class_name) {
+Status FindKernelDef(
+    const DeviceType& device_type, StringPiece node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
+    const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
-  TF_RETURN_IF_ERROR(
-      FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch));
+  TF_RETURN_IF_ERROR(FindKernelRegistration(
+      device_type, node_name, has_experimental_debug_info,
+      experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
     Status s = errors::NotFound(
-        "No registered '", node_def.op(), "' OpKernel for ",
+        "No registered '", node_op, "' OpKernel for ",
         DeviceTypeString(device_type), " devices compatible with node ",
-        FormatNodeDefForError(node_def));
+        FormatNodeDefForError(node_name, has_experimental_debug_info,
+                              experimental_debug_info));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match) ",
-          "Requested Attributes: ", SummarizeAttrs(node_def));
+          "Requested Attributes: ",
+          SummarizeAttrsHelper(node_attrs, node_device));
     }
-    errors::AppendToMessage(
-        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(&s,
+                            ".  Registered:", KernelsRegisteredForOp(node_op));
     return s;
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
   return Status::OK();
+}
+
+Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
+                     const KernelDef** def, string* kernel_class_name) {
+  return FindKernelDef(
+      device_type, node_def.name(), node_def.has_experimental_debug_info(),
+      node_def.experimental_debug_info(), node_def.op(), node_def.device(),
+      AttrSlice(&node_def.attr()), def, kernel_class_name);
 }
 
 Status SupportedDeviceTypesForNode(
@@ -1249,10 +1285,11 @@ KernelList GetAllRegisteredKernels() {
 
 KernelList GetFilteredRegisteredKernels(
     const std::function<bool(const KernelDef&)>& predicate) {
-  const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
+  KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
   KernelList kernel_list;
-  kernel_list.mutable_kernel()->Reserve(typed_registry->size());
-  for (const auto& p : *typed_registry) {
+  tf_shared_lock lock(typed_registry->mu);
+  kernel_list.mutable_kernel()->Reserve(typed_registry->registry.size());
+  for (const auto& p : typed_registry->registry) {
     const KernelDef& kernel_def = p.second.def;
     if (predicate(kernel_def)) {
       *kernel_list.add_kernel() = kernel_def;
@@ -1378,7 +1415,9 @@ bool FindArgInOp(StringPiece arg_name,
 }  // namespace
 
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
-  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
+  auto typed_registry = GlobalKernelRegistryTyped();
+  tf_shared_lock lock(typed_registry->mu);
+  for (const auto& key_registration : typed_registry->registry) {
     const KernelDef& kernel_def(key_registration.second.def);
     const OpRegistrationData* op_reg_data;
     const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);

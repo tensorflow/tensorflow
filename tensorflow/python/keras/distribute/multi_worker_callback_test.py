@@ -17,84 +17,27 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
+import json
 import os
 import sys
 import tempfile
+import threading
 
 from absl.testing import parameterized
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
-from tensorflow.python.framework import dtypes
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.platform import test
-
-
-# TODO(b/130219403): Investigate why this test cannot depend on
-# multi_worker_test. Once resolved, depend on it for the following 3 functions.
-def _mnist_synthetic_dataset(batch_size, steps_per_epoch):
-  # train dataset
-  x_train = array_ops.ones([batch_size * steps_per_epoch, 28, 28, 1],
-                           dtype=dtypes.float32)
-  y_train = array_ops.ones([batch_size * steps_per_epoch, 1],
-                           dtype=dtypes.int32)
-  train_ds = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
-  train_ds = train_ds.repeat()
-  # train_ds = train_ds.shuffle(100)
-  train_ds = train_ds.batch(64, drop_remainder=True)
-
-  # eval dataset
-  x_test = random_ops.random_uniform([10000, 28, 28, 1], dtype=dtypes.float32)
-  y_test = random_ops.random_uniform([10000, 1],
-                                     minval=0,
-                                     maxval=9,
-                                     dtype=dtypes.int32)
-  eval_ds = dataset_ops.Dataset.from_tensor_slices((x_test, y_test))
-  eval_ds = eval_ds.repeat()
-  eval_ds = eval_ds.batch(64, drop_remainder=True)
-
-  return train_ds, eval_ds
-
-
-def _get_model(input_shape):
-  # Define a deterministically-initialized CNN model to recognize MNIST digits,
-  # commented out several layers to simplify it.
-  model = keras.models.Sequential()
-  model.add(
-      keras.layers.Conv2D(
-          32,
-          kernel_size=(3, 3),
-          activation='relu',
-          input_shape=input_shape,
-          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-  model.add(keras.layers.BatchNormalization())
-  model.add(keras.layers.Flatten())
-  model.add(
-      keras.layers.Dense(
-          10,
-          activation='softmax',
-          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-
-  # TODO(yuefengz): optimizer with slot variables doesn't work because of
-  # optimizer's bug.
-  # TODO(yuefengz): we should not allow non-v2 optimizer.
-  model.compile(
-      loss=keras.losses.sparse_categorical_crossentropy,
-      optimizer=gradient_descent.SGD(learning_rate=0.001),
-      metrics=['accuracy'])
-  return model
 
 
 def get_strategy_object(strategy_cls):
@@ -127,9 +70,10 @@ def generate_callback_test_function(custom_callable):
         strategy = get_strategy_object(strategy_cls)
         batch_size = 64
         steps = 2
-        train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
+        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+            batch_size, steps)
         with strategy.scope():
-          model = _get_model((28, 28, 1))
+          model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
 
         custom_callable(
             model,
@@ -351,6 +295,328 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
                   load_weights_on_restart=True)
           ])
 
+  @staticmethod
+  def callableForTestReduceLROnPlateau(model, test_obj, train_ds, num_epoch,
+                                       steps, strategy, saving_filepath):
+
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='loss',
+            factor=0.1,
+            min_delta=1,
+            patience=1,
+            cooldown=5,
+            verbose=1)
+    ]
+
+    # It is expected that the learning rate would drop by `factor` within
+    # 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.0001, atol=1e-8)
+
+    # It is expected that the learning rate would drop by another `factor`
+    # within 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.00001, atol=1e-8)
+
+  @staticmethod
+  def callableForTestEarlyStopping(model, test_obj, train_ds, num_epoch, steps,
+                                   strategy, saving_filepath):
+
+    class EpochCounterCallback(callbacks.Callback):
+
+      def on_epoch_begin(self, epoch, logs):
+        self.last_epoch = epoch
+
+    epoch_counter_cbk = EpochCounterCallback()
+    cbks = [
+        callbacks.EarlyStopping(
+            monitor='loss', min_delta=0.05, patience=1, verbose=1),
+        epoch_counter_cbk
+    ]
+
+    # Empirically, it is expected that `model.fit()` would terminate around the
+    # 22th epoch. Asserting that it should have been stopped before the 50th
+    # epoch to avoid flakiness and be more predictable.
+    model.fit(x=train_ds, epochs=100, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertLess(epoch_counter_cbk.last_epoch, 50)
+
+  @staticmethod
+  def callableForTestLearningRateScheduler(model, test_obj, train_ds, num_epoch,
+                                           steps, strategy, saving_filepath):
+
+    cbks = [
+        callbacks.LearningRateScheduler(
+            schedule=lambda x: 1. / (1. + x), verbose=1)
+    ]
+
+    # It is expected that with `epochs=2`, the learning rate would drop to
+    # 1 / (1 + 2) = 0.5.
+    model.fit(x=train_ds, epochs=2, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.5, atol=1e-8)
+
+    # It is expected that with `epochs=4`, the learning rate would drop to
+    # 1 / (1 + 4) = 0.25.
+    model.fit(x=train_ds, epochs=4, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.25, atol=1e-8)
+
+  class PreemptionAtBatchBoundarySimulatingCallback(callbacks.Callback):
+    """Callback to simulate preemtion at batch boundary."""
+
+    def on_epoch_begin(self, epoch, logs=None):
+      self._current_epoch = epoch
+
+    def on_batch_begin(self, batch, logs=None):
+      if self._current_epoch == 1 and batch == 1 and not test_base.is_chief():
+        # Simulate preemtion at the start of second batch of second epoch.
+        raise RuntimeError('Preemption!')
+
+    def on_batch_end(self, batch, logs=None):
+      assert self._current_epoch < 1 or batch < 1
+
+    def on_epoch_end(self, epoch, logs=None):
+      assert epoch < 1
+
+  class PreemptionAtEpochBoundarySimulatingCallback(callbacks.Callback):
+    """Callback to simulate preemtion at epoch boundary."""
+
+    def on_epoch_begin(self, epoch, logs=None):
+      if epoch == 1 and not test_base.is_chief():
+        # Simulate preemtion at the start of second epoch.
+        raise RuntimeError('Preemption!')
+
+    def on_epoch_end(self, epoch, logs=None):
+      assert epoch < 1
+
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph'],
+          strategy_cls=[collective_strategy.CollectiveAllReduceStrategy],
+          required_gpus=[0, 1],
+          file_format=['h5'],  # TODO(rchao): Support TF format.
+          preemption_callback=[
+              PreemptionAtEpochBoundarySimulatingCallback,
+              PreemptionAtBatchBoundarySimulatingCallback
+          ]))
+  def testFaultToleranceInSyncStrategy(self, strategy_cls, file_format,
+                                       preemption_callback):
+    """Test fault-tolerance with multi-threading using sync dist-strat.
+
+    This test simulates multi-worker training that is interrupted by a
+    preemption, by having two threads, each of which represents a chief and a
+    non-chief worker, where the non-chief raises an error in the middle of
+    training loop. Upon excepting the error, a new thread with a new cluster
+    spec is created to simulate the recovered non-chief worker. Meanwhile, the
+    chief worker cannot proceed and hangs since the non-chief worker has
+    crashed. To simulate a restart of the chief, a new thread has been prepared
+    to run to take over chief with the help of a condition variable. It is
+    expected that after the restart of both chief and non-chief workers, the
+    training continues from the epoch they previously failed at. The test
+    concludes by verifying the preemption-interrupted training can finish with
+    the same loss and accuracy had the preemption not occurred.
+
+    Arguments:
+      strategy_cls: The strategy class to use.
+      file_format: `h5` or `tf`.
+      preemption_callback: The callback to simulate preemption.
+    """
+
+    def _independent_worker_fn(*args, **kwargs):  # pylint: disable=unused-argument
+      with test.mock.patch.object(dc, '_run_std_server',
+                                  self._make_mock_run_std_server()):
+        # Condition variable that blocks the thread that represents the
+        # restarted chief.
+        cv = kwargs.get('cv', None)
+        # `before_restart` is True for the threads that represent the original
+        # chief and non-chief worker, and False for threads that represent the
+        # restarted chief and non-chief workers.
+        before_restart = kwargs['before_restart']
+        if kwargs['new_chief']:
+          # `new_chief` is only True for the restarted chief thread. It waits
+          # until non-chief is preempted and restarted to simulate the causality
+          # where chief's restart results from non-chief's failure.
+          cv.acquire()
+          while not hasattr(cv, 'preempted'):
+            cv.wait()
+          cv.release()
+
+        # Model building under strategy scope. Following is the code we expect
+        # the user runs on every worker.
+        strategy = get_strategy_object(strategy_cls)
+        batch_size = 64
+        steps = 3
+        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+            batch_size, steps)
+        with strategy.scope():
+          model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
+
+        # Function to start a new thread. This will be called twice in the
+        # following code: one represents the restart of the non-chief, and one
+        # represents the restart of the chief as a result of the restart of the
+        # non-chief (so the training can continue in sync).
+        def start_new_thread(new_chief=False):
+          new_thread_tf_config = json.loads(os.environ['TF_CONFIG'])
+          new_thread_tf_config['cluster']['worker'] = kwargs['reserved_ports']
+          return self._run_task_in_thread(
+              task_fn=_independent_worker_fn,
+              cluster_spec=None,
+              task_type=None,
+              task_id=None,
+              tf_config=new_thread_tf_config,
+              before_restart=False,
+              cv=cv,
+              new_chief=new_chief)
+
+        if test_base.is_chief() and before_restart:
+          # Chief to start a new thread (that will be blocked by a condition
+          # variable until the non-chief's new thread is started). The thread
+          # for (recovered) chief is started before entering `fit()` because
+          # the original chief thread will eventually hang and be ignored.
+          start_new_thread(new_chief=True)
+
+        try:
+
+          class CkptSavedEpochAssertingCallback(callbacks.Callback):
+
+            def __init__(self, test_obj):
+              super(CkptSavedEpochAssertingCallback, self).__init__()
+              self.test_obj = test_obj
+
+            def on_epoch_begin(self, epoch, logs=None):
+              # `_ckpt_saved_epoch` attribute is set at the end of every epoch.
+              self.test_obj.assertEqual(self.model._ckpt_saved_epoch is None,
+                                        epoch == 0)
+
+          callbacks_list = [
+              callbacks.ModelCheckpoint(
+                  filepath=saving_filepath,
+                  save_weights_only=True,
+                  load_weights_on_restart=True),
+              CkptSavedEpochAssertingCallback(self)
+          ]
+          if before_restart:
+            callbacks_list.append(preemption_callback())
+
+          self.assertIsNone(model._ckpt_saved_epoch)
+          history = model.fit(
+              x=train_ds,
+              epochs=num_epoch,
+              steps_per_epoch=steps,
+              callbacks=callbacks_list)
+          self.assertIsNone(model._ckpt_saved_epoch)
+
+          # `history` of the training result is collected to be compared against
+          # each other. It is expected that the training results (loss and
+          # accuracy`) are the same with or without preemption.
+          self._histories.append(history.history)
+
+        except RuntimeError:
+          # pylint: disable=g-assert-in-except
+          self.assertTrue(before_restart)
+          # Reset the barrier so the new threads simulating recovery can
+          # continue.
+          self._barrier._counter = 0
+          self._barrier._flag = False
+
+          # Now that the non-chief has been preempted, it notifies the thread
+          # that simulates the restarted chief to start so they can be back in
+          # sync.
+          cv.acquire()
+          cv.preempted = True
+          cv.notify()
+          cv.release()
+
+          # At this point we should discard the original non-chief thread, and
+          # start the new thread that simulates the restarted non-chief, hence
+          # joining the thread and return.
+          self.join_independent_workers([start_new_thread()])
+          return
+
+        # Successful end of a `fit()` call.
+        self._successful_thread_ends += 1
+        self.assertFalse(before_restart)
+
+    # Common parameters
+    num_workers = 2
+    num_epoch = 3
+    # History list storing the results for preemption and no preemption cases.
+    self._histories = []
+    # Pass `saving_filepath` from the parent thread to ensure every worker has
+    # the same filepath to save.
+    saving_filepath = os.path.join(self.get_temp_dir(),
+                                   'checkpoint.' + file_format)
+    strategy = get_strategy_object(strategy_cls)
+
+    # Case 1: Training for `num_epoch` without preemptions.
+    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+    self._barrier = dc._Barrier(2)
+    self._successful_thread_ends = 0
+    threads = self.run_multiple_tasks_in_threads(
+        _independent_worker_fn,
+        cluster_spec,
+        saving_filepath=saving_filepath,
+        before_restart=False,
+        new_chief=False)
+    if os.path.exists(saving_filepath):
+      os.remove(saving_filepath)
+    threads_to_join = []
+    if strategy.extended.experimental_between_graph:
+      for ts in threads.values():
+        threads_to_join.extend(ts)
+    else:
+      threads_to_join = [threads['worker'][0]]
+    self.join_independent_workers(threads_to_join)
+    self.assertEqual(self._successful_thread_ends, 2)
+
+    # Case 2: Training for `num_epoch` epoch with preemptions.
+    # The preemption is simulated at both epoch boundary and batch boundary.
+    cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
+    cv = threading.Condition()
+    self._barrier = dc._Barrier(2)
+    # Ports reserved for new threads simulating recovery.
+    reserved_ports = [
+        'localhost:%s' % test_base.pick_unused_port()
+        for _ in range(num_workers)
+    ]
+    self._successful_thread_ends = 0
+    threads = self.run_multiple_tasks_in_threads(
+        _independent_worker_fn,
+        cluster_spec,
+        saving_filepath=saving_filepath,
+        reserved_ports=reserved_ports,
+        before_restart=True,
+        cv=cv,
+        new_chief=False)
+    if os.path.exists(saving_filepath):
+      os.remove(saving_filepath)
+    threads_to_join = []
+    if strategy.extended.experimental_between_graph:
+      # Only join the non-chief thread since the first thread for chief will
+      # eventually hang and be ignored.
+      threads_to_join = [threads['worker'][1]]
+    else:
+      threads_to_join = [threads['worker'][0]]
+    self.join_independent_workers(threads_to_join)
+    self.assertEqual(self._successful_thread_ends, 2)
+
+    def assert_all_elements_are_identical(list_to_check):
+      first_item = list_to_check[0]
+      for item in list_to_check[1:]:
+        self.assertAllClose(first_item, item, rtol=1e-5, atol=1e-5)
+
+    # Important: the results from preemption interrupted and non-interrupted
+    # cases should give the same final results.
+    assert_all_elements_are_identical(
+        [history['acc'][-1] for history in self._histories])
+    assert_all_elements_are_identical(
+        [history['loss'][-1] for history in self._histories])
+    # The length of `self._histories` would be num_workers * num_runs (3).
+    self.assertLen(self._histories, 4)
+
   # The actual testing methods go here.
   test_chief_only_callback = generate_callback_test_function(
       callableForTestChiefOnlyCallback.__func__)
@@ -363,6 +629,12 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       callableForTestModelRestoreCallback.__func__)
   test_unmatched_model_file = generate_callback_test_function(
       callableForTestUnmatchedModelFile.__func__)
+  test_reduce_lr_on_plateau = generate_callback_test_function(
+      callableForTestReduceLROnPlateau.__func__)
+  test_early_stopping = generate_callback_test_function(
+      callableForTestEarlyStopping.__func__)
+  test_learning_rate_scheduler = generate_callback_test_function(
+      callableForTestLearningRateScheduler.__func__)
 
 
 if __name__ == '__main__':

@@ -87,7 +87,7 @@ EOF
 CUSTOM_DUMP_ROOT=$(mktemp -d)
 mkdir -p ${CUSTOM_DUMP_ROOT}
 
-cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --fake_data --train_steps=2 --dump_root="${CUSTOM_DUMP_ROOT}" --ui_type=readline
+cat << EOF | ${DEBUG_TFLEARN_IRIS_BIN} --debug --train_steps=2 --dump_root="${CUSTOM_DUMP_ROOT}" --ui_type=readline
 run -p
 run -f has_inf_or_nan
 EOF

@@ -68,8 +68,8 @@ T ToArithmeticSafeType(T t) {
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
 // Typically ReturnT here indicates the resulting literal type of each evaluated
-// Handle* method of a TypedVisitor.  There are however a few notable exceptions
-// to this rule, notably:
+// Handle* method of a TypedVisitor.  There are however a few exceptions to this
+// rule, notably:
 // - HandleCompare and HandleIsFinite: where the resulting literal type is
 //   always boolean.
 // - HandleImag and HandleReal: where the resulting literal type is always float
@@ -81,7 +81,7 @@ T ToArithmeticSafeType(T t) {
 //   - ReturnT: The type of input and output of each operation.
 //   - ElementwiseT: The type in which internal computation are done.
 //
-// This a logically a private part of HloEvaluator.  It lives in this header
+// This is logically a private part of HloEvaluator.  It lives in this header
 // file rather than in hlo_evaluator.cc because we use extern templates and a
 // bunch of independent cc files to speed up compiling the many instantiations
 // of this class.
@@ -180,7 +180,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->GetEvaluatedLiteralFor(abs->operand(0));
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[abs],
-        (HloEvaluator::ElementWiseUnaryOpImpl<float, NativeT>(
+        (HloEvaluator::ElementWiseUnaryOpImpl<typename NativeT::value_type,
+                                              NativeT>(
             abs, [](NativeT elem_operand) { return std::abs(elem_operand); },
             operand_literal)));
 
@@ -2504,32 +2505,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           std::is_floating_point<NativeT>::value>::type* = nullptr>
   Status HandleIota(HloInstruction* instruction) {
     auto* iota = Cast<HloIotaInstruction>(instruction);
-    const int64 iota_size = iota->shape().dimensions(iota->iota_dimension());
-    // Avoid using std::vector since std::vector<bool> does not convert to
-    // absl::Span<bool>.
-    absl::InlinedVector<NativeT, 1> data(iota_size);
-    // We don't use std::iota for two reasons:
-    //
-    // (1) std:iota does not support bfloat16 and float16.
-    //
-    // (2) std::iota saturates for floating point types when the value is not
-    //     representable, but the definition of HLO iota is the value as a
-    //     64-bit integer cast to the native type.
-    for (int64 i = 0; i < iota_size; ++i) {
-      // static_cast is required for Eigen::half (F16).
-      data[i] = static_cast<NativeT>(i);
-    }
-    auto result = LiteralUtil::CreateR1<NativeT>(data);
 
-    if (iota->shape().rank() > 1) {
-      TF_ASSIGN_OR_RETURN(
-          parent_->evaluated_[iota],
-          result.Broadcast(iota->shape(), {iota->iota_dimension()}));
-    } else {
-      TF_RET_CHECK(iota->shape().rank() == 1);
-      parent_->evaluated_[iota] = std::move(result);
-    }
-
+    Literal result(iota->shape());
+    ShapeUtil::ForEachIndex(iota->shape(), [&](absl::Span<const int64> idx) {
+      result.Set(idx, static_cast<NativeT>(idx[iota->iota_dimension()]));
+      return true;
+    });
+    parent_->evaluated_[iota] = std::move(result);
     return Status::OK();
   }
   template <

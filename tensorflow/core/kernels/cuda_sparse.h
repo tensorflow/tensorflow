@@ -25,7 +25,7 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
-#include "cuda/include/cusparse.h"
+#include "third_party/gpus/cuda/include/cusparse.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"

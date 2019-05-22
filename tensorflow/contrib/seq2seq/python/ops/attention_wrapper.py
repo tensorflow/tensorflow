@@ -947,7 +947,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
       num_units: The depth of the query mechanism.
       memory: The memory to query; usually the output of an RNN encoder.  This
         tensor should be shaped `[batch_size, max_time, ...]`.
-      memory_sequence_length (optional): Sequence lengths for the batch entries
+      memory_sequence_length: (optional) Sequence lengths for the batch entries
         in memory.  If provided, the memory tensor rows are masked with zeros
         for values past the respective sequence lengths.
       normalize: Python boolean.  Whether to normalize the energy term.
@@ -2069,7 +2069,7 @@ def _maybe_mask_score(score,
     raise ValueError("memory_sequence_length and memory_mask can't be provided "
                      "at same time.")
   if memory_sequence_length is not None:
-    message = "All values in memory_sequence_length must greater than zero."
+    message = "All values in memory_sequence_length must be greater than zero."
     with ops.control_dependencies(
         [check_ops.assert_positive(memory_sequence_length, message=message)]):
       memory_mask = array_ops.sequence_mask(

@@ -149,8 +149,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_topology_view",
+        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:functions",
@@ -268,6 +268,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:canonicalizer",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
@@ -603,6 +604,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/utils:canonicalizer",
         "//tensorflow/core/grappler/utils:colocation",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
@@ -744,12 +746,14 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "shape_optimizer_test",
     srcs = ["shape_optimizer_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":shape_optimizer",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

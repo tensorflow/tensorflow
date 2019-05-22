@@ -157,21 +157,21 @@ def _Check3DImage(image, require_static=True):
 def _Assert3DImage(image):
   """Assert that we are working with a properly shaped image.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Args:
-      image: 3-D Tensor of shape [height, width, channels]
+  Args:
+    image: 3-D Tensor of shape [height, width, channels]
 
-    Raises:
-      ValueError: if `image.shape` is not a 3-vector.
+  Raises:
+    ValueError: if `image.shape` is not a 3-vector.
 
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
-    """
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
+  """
   return control_flow_ops.with_dependencies(
       _Check3DImage(image, require_static=False), image)
 
@@ -179,20 +179,20 @@ def _Assert3DImage(image):
 def _AssertAtLeast3DImage(image):
   """Assert that we are working with a properly shaped image.
 
-    Performs the check statically if possible (i.e. if the shape
-    is statically known). Otherwise adds a control dependency
-    to an assert op that checks the dynamic shape.
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
 
-    Args:
-      image: >= 3-D Tensor of size [*, height, width, depth]
+  Args:
+    image: >= 3-D Tensor of size [*, height, width, depth]
 
-    Raises:
-      ValueError: if image.shape is not a [>= 3] vector.
+  Raises:
+    ValueError: if image.shape is not a [>= 3] vector.
 
-    Returns:
-      If the shape of `image` could be verified statically, `image` is
-      returned unchanged, otherwise there will be a control dependency
-      added that asserts the correct dynamic shape.
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
   """
   return control_flow_ops.with_dependencies(
       _CheckAtLeast3DImage(image, require_static=False), image)
@@ -230,7 +230,76 @@ def _CheckAtLeast3DImage(image, require_static=True):
         check_ops.assert_positive(
             array_ops.shape(image),
             ["all dims of 'image.shape' "
-             'must be > 0.'])
+             'must be > 0.']),
+        check_ops.assert_greater_equal(
+            array_ops.rank(image),
+            3,
+            message="'image' must be at least three-dimensional.")
+    ]
+  else:
+    return []
+
+
+def _AssertGrayscaleImage(image):
+  """Assert that we are working with a properly shaped grayscale image.
+
+  Performs the check statically if possible (i.e. if the shape
+  is statically known). Otherwise adds a control dependency
+  to an assert op that checks the dynamic shape.
+
+  Args:
+    image: >= 2-D Tensor of size [*, 1]
+
+  Raises:
+    ValueError: if image.shape is not a [>= 2] vector or if
+              last dimension is not size 1.
+
+  Returns:
+    If the shape of `image` could be verified statically, `image` is
+    returned unchanged, otherwise there will be a control dependency
+    added that asserts the correct dynamic shape.
+  """
+  return control_flow_ops.with_dependencies(
+      _CheckGrayscaleImage(image, require_static=False), image)
+
+
+def _CheckGrayscaleImage(image, require_static=True):
+  """Assert that we are working with properly shaped grayscale image.
+
+  Args:
+    image: >= 2-D Tensor of size [*, 1]
+    require_static: Boolean, whether static shape is required.
+
+  Raises:
+    ValueError: if image.shape is not a [>= 2] vector or if
+              last dimension is not size 1.
+
+  Returns:
+    An empty list, if `image` has fully defined dimensions. Otherwise, a list
+    containing an assert op is returned.
+  """
+  try:
+    if image.get_shape().ndims is None:
+      image_shape = image.get_shape().with_rank(2)
+    else:
+      image_shape = image.get_shape().with_rank_at_least(2)
+  except ValueError:
+    raise ValueError('A grayscale image must be at least two-dimensional.')
+  if require_static and not image_shape.is_fully_defined():
+    raise ValueError('\'image\' must be fully defined.')
+  if image_shape.is_fully_defined():
+    if image_shape[-1] != 1:
+      raise ValueError('Last dimension of a grayscale image should be size 1.')
+  if not image_shape.is_fully_defined():
+    return [
+        check_ops.assert_equal(
+            array_ops.shape(image)[-1],
+            1,
+            message='Last dimension of a grayscale image should be size 1.'),
+        check_ops.assert_greater_equal(
+            array_ops.rank(image),
+            3,
+            message='A grayscale image must be at least two-dimensional.')
     ]
   else:
     return []
@@ -396,6 +465,7 @@ def _flip(image, flip_index, scope_name):
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     flip_index: 0 For vertical, 1 for horizontal.
+    scope_name: string, scope name.
 
   Returns:
     A tensor of the same type and shape as `image`.
@@ -1586,50 +1656,47 @@ def adjust_contrast(images, contrast_factor):
 @tf_export('image.adjust_gamma')
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs Gamma Correction on the input image.
-
-  Also known as Power Law Transform. This function transforms the
-  input image pixelwise according to the equation `Out = In**gamma`
-  after scaling each pixel to the range 0 to 1.
+  Also known as Power Law Transform. This function converts the
+  input images at first to float representation, then transforms them
+  pixelwise according to the equation `Out = gain * In**gamma`,
+  and then converts the back to the original data type.
 
   Args:
-    image : A Tensor.
+    image : RGB image or images to adjust.
     gamma : A scalar or tensor. Non negative real number.
     gain  : A scalar or tensor. The constant multiplier.
-
   Returns:
-    A Tensor. Gamma corrected output image.
-
+    A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
   Raises:
     ValueError: If gamma is negative.
-
   Notes:
     For gamma greater than 1, the histogram will shift towards left and
     the output image will be darker than the input image.
     For gamma less than 1, the histogram will shift towards right and
     the output image will be brighter than the input image.
-
   References:
     [1] http://en.wikipedia.org/wiki/Gamma_correction
   """
 
   with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
-    # Convert pixel value to DT_FLOAT for computing adjusted image.
-    img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
-    # Keep image dtype for computing the scale of corresponding dtype.
     image = ops.convert_to_tensor(image, name='image')
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+
+    if orig_dtype in [dtypes.float16, dtypes.float32]:
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     assert_op = _assert(gamma >= 0, ValueError,
                         'Gamma should be a non-negative real number.')
     if assert_op:
       gamma = control_flow_ops.with_dependencies(assert_op, gamma)
 
-    # scale = max(dtype) - min(dtype).
-    scale = constant_op.constant(
-        image.dtype.limits[1] - image.dtype.limits[0], dtype=dtypes.float32)
     # According to the definition of gamma correction.
-    adjusted_img = (img / scale)**gamma * scale * gain
+    adjusted_img = gain * flt_image**gamma
 
-    return adjusted_img
+    return convert_image_dtype(adjusted_img, orig_dtype, saturate=True)
 
 
 @tf_export('image.convert_image_dtype')
@@ -1747,6 +1814,7 @@ def grayscale_to_rgb(images, name=None):
 
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
+  The input images' last dimension must be size 1.
 
   Args:
     images: The Grayscale tensor to convert. Last dimension must be size 1.
@@ -1756,6 +1824,8 @@ def grayscale_to_rgb(images, name=None):
     The converted grayscale image(s).
   """
   with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
+    images = _AssertGrayscaleImage(images)
+
     images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = ([array_ops.ones(rank_1, dtype=dtypes.int32)] +
@@ -2068,7 +2138,11 @@ tf_export(
     'io.decode_image',
     'image.decode_image',
     v1=['io.decode_image', 'image.decode_image'])
-def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
+def decode_image(contents,
+                 channels=None,
+                 dtype=dtypes.uint8,
+                 name=None,
+                 expand_animations=True):
   """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
   Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
@@ -2079,7 +2153,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
   arrays `[height, width, num_channels]`. Make sure to take this into account
   when constructing your graph if you are intermixing GIF files with BMP, JPEG,
-  and/or PNG files.
+  and/or PNG files. Alternately, set the `expand_animations` argument of this
+  function to `False`, in which case the op will return 3-dimensional tensors
+  and will truncate animated GIF files to the first frame.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -2087,11 +2163,15 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       the decoded image.
     dtype: The desired DType of the returned `Tensor`.
     name: A name for the operation (optional)
+    expand_animations: Controls the shape of the returned op's output.
+      If `True`, the returned op will produce a 3-D tensor for PNG, JPEG, and
+      BMP files; and a 4-D tensor for all GIFs, whether animated or not.
+      If, `False`, the returned op will produce a 3-D tensor for all file
+      types and will truncate animated GIFs to the first frame.
 
   Returns:
-    `Tensor` with type `dtype` and shape `[height, width, num_channels]` for
-      BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
-      GIF images.
+    `Tensor` with type `dtype` and a 3- or 4-dimensional shape, depending on
+    the file type and the value of the `expand_animations` parameter.
 
   Raises:
     ValueError: On incorrect number of channels.
@@ -2102,7 +2182,7 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
     substr = string_ops.substr(contents, 0, 3)
 
     def _bmp():
-      """Decodes a GIF image."""
+      """Decodes a BMP image."""
       signature = string_ops.substr(contents, 0, 2)
       # Create assert op to check that bytes are BMP decodable
       is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
@@ -2116,9 +2196,9 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
         return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
 
     def _gif():
+      """Decodes a GIF image."""
       # Create assert to make sure that channels is not set to 1
       # Already checked above that channels is in (None, 0, 1, 3)
-
       gif_channels = 0 if channels is None else channels
       good_channels = math_ops.logical_and(
           math_ops.not_equal(gif_channels, 1, name='check_gif_channels'),
@@ -2126,7 +2206,12 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
       channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        result = convert_image_dtype(gen_image_ops.decode_gif(contents), dtype)
+        if not expand_animations:
+          # For now we decode animated GIFs fully and toss out all but the
+          # first frame when expand_animations is False
+          result = array_ops.gather(result, 0)
+        return result
 
     def check_gif():
       # Create assert op to check that bytes are GIF decodable
@@ -3098,12 +3183,11 @@ def ssim_multiscale(img1,
     are in range [0, 1].  Returns a tensor with shape:
     broadcast(img1.shape[:-3], img2.shape[:-3]).
   """
-  # Shape checking.
-  shape1 = img1.get_shape().with_rank_at_least(3)
-  shape2 = img2.get_shape().with_rank_at_least(3)
-  shape1[-3:].merge_with(shape2[-3:])
-
   with ops.name_scope(None, 'MS-SSIM', [img1, img2]):
+    # Convert to tensor if needed.
+    img1 = ops.convert_to_tensor(img1, name='img1')
+    img2 = ops.convert_to_tensor(img2, name='img2')
+    # Shape checking.
     shape1, shape2, checks = _verify_compatible_image_shapes(img1, img2)
     with ops.control_dependencies(checks):
       img1 = array_ops.identity(img1)
@@ -3651,7 +3735,7 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
   Returns:
     A `Tensor`. Has the same type as `images`.
   """
-  if colors is None and not compat.forward_compatible(2019, 5, 1):
+  if colors is None:
     return gen_image_ops.draw_bounding_boxes(images, boxes, name)
   return gen_image_ops.draw_bounding_boxes_v2(images, boxes, colors, name)
 

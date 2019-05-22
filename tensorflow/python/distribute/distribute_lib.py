@@ -433,9 +433,28 @@ class Strategy(object):
   def experimental_distribute_dataset(self, dataset):
     """Distributes a tf.data.Dataset instance provided via `dataset`.
 
-    Data from the given dataset will be distributed evenly across all the
-    compute replicas. This function assumes that the input dataset is batched
-    by the global batch size.
+    In a multi-worker setting, we will first attempt to distribute the dataset
+    by attempting to detect whether the dataset is being created out of
+    ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
+    attempting to shard the input files. Note that there has to be at least one
+    input file per worker. If you have less than one input file per worker, we
+    suggest that you should disable distributing your dataset using the method
+    below.
+
+    If that attempt is unsuccessful (e.g. the dataset is created from a
+    Dataset.range), we will shard the dataset evenly at the end by appending a
+    `.shard` operation to the end of the processing pipeline. This will cause
+    the entire preprocessing pipeline for all the data to be run on every
+    worker, and each worker will do redundant work. We will print a warning
+    if this method of sharding is selected. In this case, consider using
+    `experimental_distribute_datasets_from_function` instead.
+
+    You can disable dataset distribution using the `auto_shard` option in
+    `tf.data.experimental.DistributeOptions`.
+
+    Within each host, we will also split the data among all the worker devices
+    (if more than one a present), and this will happen even if multi-worker
+    sharding is disabled using the method above.
 
     The following is an example:
 
@@ -443,7 +462,8 @@ class Strategy(object):
     strategy = tf.distribute.MirroredStrategy()
 
     # Create a dataset
-    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", /a/4.tfr"])
 
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
@@ -454,14 +474,60 @@ class Strategy(object):
     ```
 
     Args:
-      dataset: `tf.data.Dataset` that will be distributed evenly across all
-        replicas.
+      dataset: `tf.data.Dataset` that will be sharded across all replicas using
+        the rules stated above.
 
     Returns:
       A `DistributedDataset` which returns inputs for each step of the
       computation.
     """
     return self._extended._experimental_distribute_dataset(dataset)  # pylint: disable=protected-access
+
+  def experimental_distribute_datasets_from_function(self, dataset_fn):
+    """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
+
+    `dataset_fn` will be called once for each worker in the strategy. Each
+    replica on that worker will dequeue one batch of inputs from the local
+    `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
+    from the `Dataset` every step).
+
+    This method can be used for several purposes. For example, where
+    `experimental_distribute_dataset` is unable to shard the input files, this
+    method might be used to manually shard the dataset (avoiding the slow
+    fallback behavior in `experimental_distribute_dataset`). In cases where the
+    dataset is infinite, this sharding can be done by creating dataset replicas
+    that differ only in their random seed.
+
+    The `dataset_fn` should take an `tf.distribute.InputContext` instance where
+    information about batching and input replication can be accessed:
+
+    ```
+    def dataset_fn(input_context):
+      batch_size = input_context.get_per_replica_batch_size(global_batch_size)
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat().batch(batch_size)
+      return d.shard(
+          input_context.num_input_pipelines, input_context.input_pipeline_id)
+
+    inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
+
+    for batch in inputs:
+      replica_results = strategy.experimental_run_v2(replica_fn, args=(batch,))
+    ```
+
+    IMPORTANT: The `Dataset` returned by `dataset_fn` should have a per-replica
+    batch size, unlike `distribute_dataset`, which uses the global batch size.
+    This may be computed using `input_context.get_per_replica_batch_size`.
+
+    Args:
+      dataset_fn: A function taking a `tf.distribute.InputContext` instance and
+        returning a `tf.data.Dataset`.
+
+    Returns:
+      A `DistributedDatasetsFromFunction` which returns inputs for each step of
+      the computation.
+    """
+    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+        dataset_fn)
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Runs ops in `fn` on each replica, with the given arguments.
@@ -1183,6 +1249,9 @@ class StrategyExtendedV2(object):
   def _experimental_distribute_dataset(self, dataset):
     raise NotImplementedError("must be implemented in descendants")
 
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    raise NotImplementedError("must be implemented in descendants")
+
   def _reduce(self, reduce_op, value):
     # Default implementation until we have an implementation for each strategy.
     return self._local_results(
@@ -1841,7 +1910,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _update_non_slot(self, colocate_with, fn, args, kwargs, should_group):
     # TODO(josh11b): Figure out what we should be passing to UpdateContext()
     # once that value is used for something.
-    with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
+    with UpdateContext(colocate_with):
       result = fn(*args, **kwargs)
       if should_group:
         return result

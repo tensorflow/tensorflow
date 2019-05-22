@@ -33,7 +33,10 @@ def tflite_copts():
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
+            "-Wno-comment",
+            "-Wno-ignored-attributes",
             "-Wno-sign-compare",
+            "-Wno-unknown-pragmas",
         ],
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
@@ -247,6 +250,7 @@ def generated_test_models():
         "elu",
         "equal",
         "exp",
+        "embedding_lookup",
         "expand_dims",
         "eye",
         "fill",
@@ -307,6 +311,7 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "round",
         "rsqrt",
         "shape",
         "sigmoid",

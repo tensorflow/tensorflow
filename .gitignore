@@ -34,14 +34,12 @@ local.properties
 gradleBuild
 
 # iOS
-Podfile.lock
-Pods
 *.pbxproj
-*.xcworkspacedata
+*.xcworkspace
 /*.podspec
-/tensorflow/lite/**/ios/BUILD
-/tensorflow/lite/**/objc/BUILD
-/tensorflow/lite/**/swift/BUILD
+/tensorflow/lite/**/[ios|objc|swift]*/BUILD
 /tensorflow/lite/examples/ios/simple/data/*.tflite
 /tensorflow/lite/examples/ios/simple/data/*.txt
-xcuserdata/**
+Podfile.lock
+Pods
+xcuserdata

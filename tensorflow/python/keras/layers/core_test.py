@@ -107,12 +107,14 @@ class LambdaLayerTest(keras_parameterized.TestCase):
         'class_name': 'Lambda',
         'config': config
     })
+    self.assertEqual(ld.function(3), 4)
 
     # test with lambda
     ld = keras.layers.Lambda(
         lambda x: keras.backend.concatenate([math_ops.square(x), x]))
     config = ld.get_config()
     ld = keras.layers.Lambda.from_config(config)
+    self.assertAllEqual(self.evaluate(ld.function([3])), [9, 3])
 
   def test_lambda_multiple_inputs(self):
     ld = keras.layers.Lambda(lambda x: x[0], output_shape=lambda x: x[0])
@@ -184,14 +186,25 @@ class LambdaLayerTest(keras_parameterized.TestCase):
 
   def test_lambda_config_serialization(self):
     # Test serialization with output_shape and output_shape_type
-    layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
+    layer = keras.layers.Lambda(
+        lambda x: x + 1,
+        output_shape=(1, 1),
+        mask=lambda i, m: m)
     layer(keras.backend.variable(np.ones((1, 1))))
     config = layer.get_config()
+
     layer = keras.layers.deserialize({
         'class_name': 'Lambda',
         'config': config
     })
+    self.assertAllEqual(layer.function(1), 2)
+    self.assertAllEqual(layer._output_shape, (1, 1))
+    self.assertAllEqual(layer.mask(1, True), True)
+
     layer = keras.layers.Lambda.from_config(config)
+    self.assertAllEqual(layer.function(1), 2)
+    self.assertAllEqual(layer._output_shape, (1, 1))
+    self.assertAllEqual(layer.mask(1, True), True)
 
   def test_lambda_with_variable(self):
 

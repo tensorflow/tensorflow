@@ -35,8 +35,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary.writer import writer_cache
@@ -115,7 +117,7 @@ def multi_inputs_multi_outputs_model():
       inputs=[input_a, input_b, input_m], outputs=[output_c, output_d])
   model.compile(
       loss='categorical_crossentropy',
-      optimizer=gradient_descent.GradientDescentOptimizer(0.001),
+      optimizer=gradient_descent_keras.SGD(learning_rate=0.001),
       metrics={
           'dense_2': 'categorical_accuracy',
           'dense_3': 'categorical_accuracy'
@@ -371,7 +373,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
     keras_model.compile(
         loss='categorical_crossentropy',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
+        optimizer=rmsprop_keras.RMSprop(learning_rate=0.01),
         cloning=cloning)
     config = run_config_lib.RunConfig(
         tf_random_seed=_RANDOM_SEED,
@@ -405,7 +407,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
     keras_model.compile(
         loss='categorical_crossentropy',
         metrics=[keras.metrics.CategoricalAccuracy()],
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
+        optimizer=rmsprop_keras.RMSprop(learning_rate=0.01),
         cloning=cloning)
     config = run_config_lib.RunConfig(
         tf_random_seed=_RANDOM_SEED,
@@ -477,36 +479,6 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
       eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
       self.assertLess(eval_results['loss'], baseline_eval_results['loss'])
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
-          ],
-          mode=['graph'],
-          cloning=[True, False]))
-  def test_keras_optimizer_with_distribution_strategy(self, distribution,
-                                                      cloning):
-    keras_model = simple_sequential_model()
-    keras_model.compile(
-        loss='categorical_crossentropy',
-        optimizer=keras.optimizers.rmsprop(lr=0.01),
-        cloning=cloning)
-
-    config = run_config_lib.RunConfig(
-        tf_random_seed=_RANDOM_SEED,
-        model_dir=self._base_dir,
-        train_distribute=distribution)
-    with self.cached_session():
-      est_keras = keras_lib.model_to_estimator(
-          keras_model=keras_model, config=config)
-      with self.assertRaisesRegexp(ValueError,
-                                   'Only TensorFlow native optimizers are '
-                                   'supported with DistributionStrategy.'):
-        est_keras.train(input_fn=get_ds_train_input_fn, steps=_TRAIN_SIZE / 16)
-
-    writer_cache.FileWriterCache.clear()
-    gfile.DeleteRecursively(self._config.model_dir)
-
 
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
@@ -536,11 +508,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           distribution, input_20_samples, steps=None, batch_size=None)
       self.assertEqual(batch_size, 20 // replica_scale_factor)
       self.assertEqual(steps, 1)
-
-      #  Default global batch size 32 cannot be used with 63 samples.
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_63_samples, steps=None, batch_size=None)
 
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_with_steps_no_batch_size(self,
@@ -611,16 +578,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           distribution, input_64_samples, steps=None, batch_size=32)
       self.assertEqual(batch_size, 32)
       self.assertEqual(steps, 2 // replica_scale_factor)
-
-      # Number of samples is not divisible by the global batch size
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=None, batch_size=20)
-
-      # Number of samples is not divisible by the global batch size
-      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
-        distributed_training_utils.get_input_params(
-            distribution, input_64_samples, steps=None, batch_size=3)
 
   @combinations.generate(all_strategy_combinations())
   def test_calculating_input_params_with_steps_with_batch_size(self,
@@ -771,6 +728,49 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
   @combinations.generate(
       combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(batch_size=[4, 6])))
+  def test_evaluate_with_partial_batch(self, distribution, batch_size):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss, metrics=metrics)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss, metrics=metrics)
+
+      x = np.random.random((10, 3)).astype('float32')
+      y = np.random.random((10, 4)).astype('float32')
+
+      # As sample size is 10, we batch by 4 so that the last batch is
+      # a partial batch. Also `evaluate()` using numpy array as inputs without
+      # distribution strategy uses entire sample as a single batch. As so,
+      # we remove parameters `batch_size` and `steps`.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      evaluate_ground_truth = cpu_model.evaluate(x, y)
+
+      # We don't compare the loss as loss is currently not computed as metric
+      # in Keras, the loss value is inaccurate for last partial batch due to
+      # more weights for the last batch samples.
+      steps = np.ceil(10.0 / batch_size)
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(
+              x, y, batch_size=batch_size, steps=steps)[1:],
+          evaluate_ground_truth[1:],
+          atol=1e-5,
+          rtol=1e-5)
+      # Test that `steps` is inferred correctly when final partial batch exists.
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(x, y, batch_size=batch_size)[1:],
+          evaluate_ground_truth[1:],
+          atol=1e-5,
+          rtol=1e-5)
+
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
@@ -803,6 +803,31 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           predict_ground_truth,
           atol=1e-5,
           rtol=1e-5)
+
+  @combinations.generate(tpu_strategy_combinations())
+  def test_no_target_model(self, distribution):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+
+      class MyLayer(keras.layers.Layer):
+
+        def call(self, inputs, training=None):
+          self.add_loss(math_ops.reduce_sum(inputs), inputs=True)
+          return inputs
+
+      with distribution.scope():
+        model = keras.models.Sequential()
+        model.add(keras.layers.Dense(16, activation='relu',
+                                     input_shape=_INPUT_SIZE))
+        model.add(MyLayer())
+        model.add(keras.layers.Dense(_NUM_CLASS, activation='softmax'))
+
+        model.compile(optimizer)
+        inputs = np.zeros((20, 10), np.float32)
+
+        model.fit(inputs, epochs=1, steps_per_epoch=2)
+        model.predict(inputs, steps=1)
+        model.evaluate(inputs, steps=1)
 
   @combinations.generate(
       combinations.times(tpu_strategy_combinations(),
@@ -1168,12 +1193,14 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.one_device_strategy
           ],
           mode=['graph', 'eager'], cloning=[True, False]))
-  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
-  # restored.
-  def DISABLED_test_dataset_wrong_input_shape(self, distribution, cloning):
+  def test_dataset_wrong_input_shape(self, distribution, cloning, mode):
+    if cloning or mode == 'graph':
+      self.skipTest('TODO(b/120943676, b/120957836): Re-enable for cloning=True'
+                    ' once the validation code is restored.')
     with self.cached_session():
       with distribution.scope():
         # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
@@ -1204,10 +1231,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           ],
           mode=['graph', 'eager'],
           cloning=[True, False]))
-  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
-  # restored.
-  def DISABLED_test_dataset_no_batch_input_validation(self, distribution,
-                                                      cloning):
+  def test_dataset_no_batch_input_validation(self, distribution,
+                                             cloning, mode):
+    if cloning or mode == 'graph':
+      self.skipTest('TODO(b/120943676, b/120957836): Re-enable for cloning=True'
+                    ' once the validation code is restored.')
     with self.cached_session():
       with distribution.scope():
         model = get_model()
@@ -1216,33 +1244,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         model.compile(optimizer, loss, cloning=cloning)
 
       # User forgets to batch the dataset
-      inputs = np.zeros((10, 3), dtype=np.float32)
+      inputs = np.zeros((10, 6), dtype=np.float32)
       targets = np.zeros((10, 4), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
 
-      with self.assertRaisesRegexp(ValueError, 'expected input to have shape'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[strategy_combinations.tpu_strategy_one_step],
-          mode=['graph'],
-          cloning=[True, False]))
-  def test_dataset_input_shape_fully_defined(self, distribution, cloning):
-    with self.cached_session():
-      with distribution.scope():
-        model = get_model()
-        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-        loss = 'mse'
-        model.compile(optimizer, loss, cloning=cloning)
-
-      dataset = get_dataset(distribution)
-      # Input shapes are not fully known. Batch dimension is unknown as we are
-      # not using the drop_remainder argument.
-      dataset = dataset.repeat(100).batch(10)
-
-      with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
+      with self.assertRaisesRegexp(ValueError, 'Call.*batch.*on.*Dataset'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(
@@ -1318,6 +1325,47 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
       self.assertAllClose(0.001, keras.backend.get_value(model.optimizer.lr))
+
+  @combinations.generate(
+      combinations.times(tpu_strategy_combinations(),
+                         combinations.combine(batch_size=[4, 6])))
+  def test_evaluate_with_dataset_with_partial_batch(self, distribution,
+                                                    batch_size):
+    with self.cached_session():
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+
+      with distribution.scope():
+        model_with_ds_strategy = get_model()
+        model_with_ds_strategy.compile(optimizer, loss, metrics=metrics)
+
+      cpu_model = get_model()
+      cpu_model.compile(optimizer, loss, metrics=metrics)
+
+      x = np.random.random((10, 3)).astype('float32')
+      y = np.random.random((10, 4)).astype('float32')
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+
+      # As sample size is 10, we make the last batch a partial batch.
+      cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      dataset_with_partial_batch = dataset.batch(batch_size)
+
+      # We don't compare the loss as loss is currently not computed as metric
+      # in Keras, the loss value is inaccurate for last partial batch due to
+      # more weights for the last batch samples.
+      steps = np.ceil(10.0 / batch_size)
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(
+              dataset_with_partial_batch, steps=steps)[1:],
+          cpu_model.evaluate(dataset_with_partial_batch, steps=steps)[1:],
+          atol=1e-5,
+          rtol=1e-5)
+      self.assertAllClose(
+          model_with_ds_strategy.evaluate(dataset_with_partial_batch)[1:],
+          cpu_model.evaluate(dataset_with_partial_batch)[1:],
+          atol=1e-5,
+          rtol=1e-5)
 
   @combinations.generate(
       combinations.times(tpu_strategy_combinations(),
@@ -1553,6 +1601,51 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       model.fit(x, y, epochs=1, steps_per_epoch=2)
 
   @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus
+          ],
+          mode=['graph', 'eager'],
+          cloning=[True, False],
+          reduction=[
+              loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE,
+              loss_reduction.ReductionV2.SUM
+          ]))
+  def test_distribution_strategy_with_loss_reduction_types(
+      self, distribution, cloning, reduction):
+    np.random.seed(_RANDOM_SEED)
+
+    def _get_model():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = keras.layers.Dense(10, kernel_initializer='zeros')(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      return model
+
+    x = np.random.random((64, 10))
+    y = np.random.random((64, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
+    dataset = dataset.batch(32)
+
+    model = _get_model()
+    model.compile(
+        'sgd', loss=keras.losses.MeanSquaredError(reduction=reduction))
+    history = model.fit(dataset, steps_per_epoch=2, epochs=1, shuffle=False)
+
+    with distribution.scope():
+      ds_model = _get_model()
+      ds_model.compile(
+          'sgd',
+          loss=keras.losses.MeanSquaredError(reduction=reduction),
+          cloning=cloning)
+      ds_history = ds_model.fit(
+          dataset, steps_per_epoch=2, epochs=1, shuffle=False)
+    self.assertArrayNear(history.history['loss'], ds_history.history['loss'],
+                         1e-5)
+
+  @combinations.generate(
       combinations.times(all_strategy_minus_default_and_tpu_combinations(),
                          combinations.combine(cloning=[True, False])))
   def test_distribution_strategy_with_symbolic_add_loss(self, distribution,
@@ -1571,12 +1664,12 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     x = np.ones((64, 10)).astype('float32')
 
     model = _make_model_with_add_loss()
-    model.compile('sgd', cloning=cloning)
+    model.compile('sgd')
     history = model.fit(x, steps_per_epoch=2, epochs=1)
 
     with distribution.scope():
       ds_model = _make_model_with_add_loss()
-      ds_model.compile('sgd')
+      ds_model.compile('sgd', cloning=cloning)
       ds_history = ds_model.fit(x, steps_per_epoch=2, epochs=1)
 
     self.assertAllClose(history.history, ds_history.history)

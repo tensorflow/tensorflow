@@ -69,8 +69,9 @@ namespace xla {
 //
 class ArCrsCombiner : public HloModulePass {
  public:
-  ArCrsCombiner(int num_spatial_partitions)
-      : num_spatial_partitions_(num_spatial_partitions) {}
+  ArCrsCombiner(int num_spatial_partitions, int num_replicas)
+      : num_spatial_partitions_(num_spatial_partitions),
+        num_replicas_(num_replicas) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -119,10 +120,19 @@ class ArCrsCombiner : public HloModulePass {
   absl::optional<HloInstruction*> WhileFromBodyParameter(
       HloInstruction* instruction);
 
+  // If the passed instruction is a parameter in one of the branch computations,
+  // and the branch body is only called by a single instruction, return the
+  // conditional instruction.
+  absl::optional<HloInstruction*> ConditionalFromBodyParameter(
+      HloInstruction* instruction);
+
   // Returns a vector of tuple instructions.
   // If all instructions that flow to "instruction" are tuples, return them.
-  // Otherwise, return an empty vector.
-  std::vector<HloInstruction*> GetAllTuples(HloInstruction* instruction);
+  // Otherwise, return absl::nullopt. Returns an empty vector if the instruction
+  // is already in the visited set.
+  absl::optional<std::vector<HloInstruction*>> GetAllTuples(
+      HloInstruction* instruction,
+      absl::flat_hash_set<HloInstruction*>* visited);
 
   // Checks whether two different elements in the same tuple compute the same
   // value.
@@ -150,6 +160,8 @@ class ArCrsCombiner : public HloModulePass {
   StatusOr<bool> RewriteGraph();
 
   int num_spatial_partitions_;
+
+  int num_replicas_;
 
   // Map from all-reduce ids to the AR/CRS pairs.
   absl::flat_hash_map<int64, std::vector<ArCrsPair>> all_reduce_map_;

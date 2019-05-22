@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -161,22 +163,45 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim) {
   });
 }
 
-XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim) {
+XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
   XlaBuilder* builder = input.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
+    if (dim < batch_dims) {
+      return InvalidArgument(
+          "Gather dim must be greater than or equal to the number of batch "
+          "dims");
+    }
     std::vector<int64> slice_sizes = input_shape.dimensions();
-    slice_sizes[dim] = 1;
     GatherDimensionNumbers gather_dnums;
+    gather_dnums.set_index_vector_dim(index_shape.rank());
+    if (batch_dims > 0) {
+      ShapeUtil::AppendMajorDimension(1, &index_shape);
+      std::vector<XlaOp> to_concat;
+      to_concat.reserve(batch_dims + 1);
+      for (int64 batch_dim = 0; batch_dim < batch_dims; ++batch_dim) {
+        to_concat.push_back(Iota(builder, index_shape, batch_dim));
+      }
+      to_concat.push_back(Reshape(index, index_shape.dimensions()));
+      index = ConcatInDim(builder, to_concat, gather_dnums.index_vector_dim());
+    }
     for (int64 i = 0; i < input_shape.rank(); ++i) {
-      if (i != dim) {
-        gather_dnums.add_offset_dims(i);
+      if (i < batch_dims || i == dim) {
+        if (slice_sizes[i] != 0) {
+          slice_sizes[i] = 1;
+          gather_dnums.add_collapsed_slice_dims(i);
+        }
+        gather_dnums.add_start_index_map(i);
+      } else {
+        if (i < dim) {
+          gather_dnums.add_offset_dims(i);
+        } else {
+          gather_dnums.add_offset_dims(i + gather_dnums.index_vector_dim() -
+                                       (1 + batch_dims));
+        }
       }
     }
-    gather_dnums.set_index_vector_dim(index_shape.rank());
-    gather_dnums.add_collapsed_slice_dims(dim);
-    gather_dnums.add_start_index_map(dim);
     return Gather(input, index, gather_dnums, slice_sizes);
   });
 }

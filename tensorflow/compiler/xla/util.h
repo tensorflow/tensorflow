@@ -87,17 +87,15 @@ using DimensionVector = absl::InlinedVector<int64, kInlineRank>;
 
 // Helper for macros above.  Don't use directly.
 #define XLA_SCOPED_LOGGING_TIMER_HELPER2(label, level, counter)         \
-  static ::tensorflow::mutex XLA_ScopedGlobalLoggingTimerLock##counter( \
-      ::tensorflow::LINKER_INITIALIZED);                                \
   static ::xla::TimerStats XLA_TimerStats##counter;                     \
   ::xla::ScopedLoggingTimer XLA_ScopedLoggingTimerInstance##counter(    \
       label, /*enabled=*/VLOG_IS_ON(level), &XLA_TimerStats##counter);
 
 struct TimerStats {
-  tensorflow::mutex stats_lock;
-  double cumulative_secs GUARDED_BY(stats_lock) = 0;
-  double max_secs GUARDED_BY(stats_lock) = 0;
-  uint64 times_called GUARDED_BY(stats_lock) = 0;
+  tensorflow::mutex stats_mutex;
+  double cumulative_secs GUARDED_BY(stats_mutex) = 0;
+  double max_secs GUARDED_BY(stats_mutex) = 0;
+  uint64 times_called GUARDED_BY(stats_mutex) = 0;
 };
 
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
@@ -107,12 +105,15 @@ struct ScopedLoggingTimer {
   // The timer does nothing if enabled is false.  This lets you pass in your
   // file's VLOG_IS_ON value.
   //
-  // timer_id should be derived from a __COUNTER__ macro. This is unique
-  // per each XLA_SCOPED_LOGGING_TIMER* invocation, which lets us display
-  // cumulative time across different timer instances created for the same
-  // macro in the source code.
+  // timer_stats is unowned non-null pointer which is used to populate the
+  // global timer statistics.
   ScopedLoggingTimer(const std::string& label, bool enabled,
                      TimerStats* timer_stats);
+
+  // Stop the timer and log the tracked time. Timer is disabled after this
+  // function is called.
+  void StopAndLog();
+
   ~ScopedLoggingTimer();
 
   bool enabled;
@@ -547,6 +548,78 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   container->erase(it);
   return Status::OK();
 }
+
+// MakeCleanup(f) returns an RAII cleanup object that calls 'f' in its
+// destructor. The easiest way to use MakeCleanup is with a lambda argument,
+// capturing the return value in an 'auto' local variable. Most users will not
+// need more sophisticated syntax than that.
+//
+// Example:
+//   void func() {
+//     auto resource = acquire_resource();
+//     auto cleanup = MakeCleanup([&] { release_resource(resource); });
+//     TF_RETURN_IF_ERROR(...);  // phew, calls release_resource!
+//   }
+//
+// You can use Cleanup<F> directly, instead of using MakeCleanup and auto,
+// but there's rarely a reason to do that.
+//
+// You can call 'release()' on a Cleanup object to cancel the cleanup
+//
+// You probably do not want to capture by reference in the cleanup lambda a
+// variable that is returned by the function.  This can lead to disabling of RVO
+// at best, and undefined behavior at worst.
+template <typename F>
+class Cleanup {
+ public:
+  Cleanup() : released_(true), f_() {}
+
+  template <typename G>
+  explicit Cleanup(G&& f) : f_(std::forward<G>(f)) {}
+
+  Cleanup(Cleanup&& src) : released_(src.is_released()), f_(src.release()) {}
+
+  // Implicitly move-constructible from any compatible Cleanup<G>. The source
+  // will be released as if src.release() were called. A moved-from Cleanup can
+  // be safely destroyed or reassigned.
+  template <typename G>
+  Cleanup(Cleanup<G>&& src) : released_(src.is_released()), f_(src.release()) {}
+
+  // Assignment to a Cleanup object behaves like destroying it and making a new
+  // one in its place, analogous to unique_ptr semantics.
+  Cleanup& operator=(Cleanup&& src) {
+    if (!released_) std::move(f_)();
+    released_ = src.released_;
+    f_ = src.release();
+    return *this;
+  }
+
+  ~Cleanup() {
+    if (!released_) std::move(f_)();
+  }
+
+  // Releases the cleanup function instead of running it. Hint: use
+  // c.release()() to run early.
+  F release() {
+    released_ = true;
+    return std::move(f_);
+  }
+
+  bool is_released() const { return released_; }
+
+ private:
+  static_assert(!std::is_reference<F>::value, "F must not be a reference");
+
+  bool released_ = false;
+  F f_;
+};
+
+template <int&... ExplicitParameterBarrier, typename F,
+          typename DecayF = typename std::decay<F>::type>
+ABSL_MUST_USE_RESULT Cleanup<DecayF> MakeCleanup(F&& f) {
+  return Cleanup<DecayF>(std::forward<F>(f));
+}
+
 }  // namespace xla
 
 #define XLA_LOG_LINES(SEV, STRING) \
