@@ -262,6 +262,9 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
 
+  if composite_tensor_utils.is_composite_or_composite_value(x):
+    return x
+
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
@@ -329,6 +332,7 @@ def standardize_input_data(data,
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
+
   if shapes is not None:
     data = [
         standardize_single_array(x, shape) for (x, shape) in zip(data, shapes)
@@ -366,8 +370,11 @@ def standardize_input_data(data,
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
+        elif composite_tensor_utils.is_composite_or_composite_value(data[i]):
+          data_shape = composite_tensor_utils.get_shape(data[i])
         else:
           data_shape = data[i].shape
+
         shape = shapes[i]
         if len(data_shape) != len(shape):
           raise ValueError('Error when checking ' + exception_prefix +

@@ -37,6 +37,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
@@ -3104,6 +3105,61 @@ def print_tensor(x, message=''):
     return x
 
 
+def is_tensor_or_composite_tensor(value):
+  """Test if a passed value object is a tensor-like or composite tensor."""
+  return (tensor_util.is_tensor(value) or isinstance(value, np.ndarray) or
+          composite_tensor_utils.is_composite_or_composite_value(value))
+
+
+def _try_process_scipy_sparse_input(value):
+  """Converts 'value' to a SparseTensor if it is a scipy sparse matrix.
+
+  Arguments:
+    value: An object that may have the attributes of a scipy sparse matrix.
+
+  Returns:
+    Either a SparseTensor based off of 'value' or 'value' itself.
+  """
+  try:
+    sparse_coo = value.tocoo()
+    row, col = sparse_coo.row, sparse_coo.col
+    data, shape = sparse_coo.data, sparse_coo.shape
+  except AttributeError:
+    # If we can't convert this object, it could be either a single data
+    # element (ie, a bool/int/float) which is OK to pass on, or something
+    # that we don't understand (which may or may not be OK). In either
+    # case, don't die here: the data standardization code will catch
+    # those issues.
+    return value
+
+  indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)), 1)
+  return sparse_tensor.SparseTensor(indices, data, shape)
+
+
+def try_convert_scipy_to_sparse(values):
+  """Converts scipy sparse matrices in 'values' to SparseTensors, if possible.
+
+  Arguments:
+    values: An input or list of inputs to convert. These may be TensorLikes,
+      ndarrays, composite tensors, or scipy sparse values.
+
+  Returns:
+    An input or list of inputs where scipy sparse tensors have been converted
+    to tf.SparseTensors.
+
+  Raises:
+    ValueError: If input cannot be converted to a SparseTensor.
+  """
+  # Convert scipy sparse data into sparse tensors.
+  value_structure = values
+  values = nest.flatten(values)
+  for idx, value in enumerate(values):
+    if not is_tensor_or_composite_tensor(value):
+      values[idx] = _try_process_scipy_sparse_input(value)
+  values = nest.pack_sequence_as(value_structure, values)
+
+  return values
+
 
 # GRAPH MANIPULATION
 
@@ -3134,7 +3190,8 @@ class GraphExecutionFunction(object):
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
-    self.inputs = nest.flatten(inputs)
+    self._inputs_structure = inputs
+    self.inputs = nest.flatten(inputs, expand_composites=True)
     self._outputs_structure = outputs
     self.outputs = cast_variables_to_tensor(
         nest.flatten(outputs, expand_composites=True))
@@ -3250,7 +3307,11 @@ class GraphExecutionFunction(object):
       return tensor
 
   def __call__(self, inputs):
-    inputs = nest.flatten(inputs)
+    inputs = try_convert_scipy_to_sparse(inputs)
+
+    # Ensure that input value types match any expected composite tensor types.
+    # TODO(momernick): Once TensorSpecs are implemented for CTs, use that here.
+    inputs = nest.flatten(inputs, expand_composites=True)
 
     session = get_session(inputs)
     feed_arrays = []
@@ -3260,11 +3321,7 @@ class GraphExecutionFunction(object):
     for tensor, value in zip(self.inputs, inputs):
       if value is None:
         continue
-      if is_sparse(tensor):
-        sparse_coo = value.tocoo()
-        indices = np.concatenate((np.expand_dims(sparse_coo.row, 1),
-                                  np.expand_dims(sparse_coo.col, 1)), 1)
-        value = (indices, sparse_coo.data, sparse_coo.shape)
+
       if tensor_util.is_tensor(value):
         # Case: feeding symbolic tensor.
         feed_symbols.append(tensor)
@@ -3319,8 +3376,9 @@ class EagerExecutionFunction(object):
 
   def __init__(self, inputs, outputs, updates=None, name=None):
     self.name = name
+    self._inputs_structure = inputs
+    inputs = nest.flatten(inputs, expand_composites=True)
     self._outputs_structure = outputs
-    inputs = nest.flatten(inputs)
     outputs = nest.flatten(outputs, expand_composites=True)
 
     updates = updates or []
@@ -3332,9 +3390,11 @@ class EagerExecutionFunction(object):
       # Edge case; never happens in practice
       raise ValueError('Cannot create a Keras backend function with updates'
                        ' but no outputs during eager execution.')
-
-    graphs = {i.graph for i in nest.flatten([inputs, outputs, updates])
-              if hasattr(i, 'graph')}
+    graphs = {
+        i.graph
+        for i in nest.flatten([inputs, outputs, updates])
+        if hasattr(i, 'graph')
+    }
     if len(graphs) > 1:
       raise ValueError('Cannot create an execution function which is comprised '
                        'of elements from multiple graphs.')
@@ -3424,7 +3484,10 @@ class EagerExecutionFunction(object):
               x.op.inputs[0])
 
   def __call__(self, inputs):
-    input_values = nest.flatten(inputs)
+    # Convert scipy sparse data into sparse tensors.
+    inputs = try_convert_scipy_to_sparse(inputs)
+
+    input_values = nest.flatten(inputs, expand_composites=True)
     if self._freezable_vars_values:
       input_values = input_values + self._freezable_vars_values
     converted_inputs = []
