@@ -766,7 +766,7 @@ func @ops(%arg0: !llvm.float, %arg1: !llvm.float, %arg2: !llvm.i32, %arg3: !llvm
 // CHECK-LABEL: define void @indirect_const_call(i64) {
 func @indirect_const_call(%arg0: !llvm.i64) {
 // CHECK-NEXT:  call void @body(i64 %0)
-  %0 = llvm.constant(@body : (!llvm.i64) -> ()) : !llvm<"void (i64)*">
+  %0 = llvm.constant(@body) : !llvm<"void (i64)*">
   llvm.call %0(%arg0) : (!llvm.i64) -> ()
 // CHECK-NEXT:  ret void
   llvm.return

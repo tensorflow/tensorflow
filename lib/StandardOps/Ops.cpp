@@ -21,6 +21,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
@@ -419,19 +420,18 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   llvm::SMLoc calleeLoc;
   FunctionType calleeType;
   SmallVector<OpAsmParser::OperandType, 4> operands;
-  Function *callee = nullptr;
   if (parser->parseFunctionName(calleeName, calleeLoc) ||
       parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
                                OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(calleeType) ||
-      parser->resolveFunctionName(calleeName, calleeType, calleeLoc, callee) ||
       parser->addTypesToList(calleeType.getResults(), result->types) ||
       parser->resolveOperands(operands, calleeType.getInputs(), calleeLoc,
                               result->operands))
     return failure();
 
-  result->addAttribute("callee", parser->getBuilder().getFunctionAttr(callee));
+  result->addAttribute("callee",
+                       parser->getBuilder().getFunctionAttr(calleeName));
   return success();
 }
 
@@ -450,9 +450,14 @@ static LogicalResult verify(CallOp op) {
   auto fnAttr = op.getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
     return op.emitOpError("requires a 'callee' function attribute");
+  auto *fn = op.getOperation()->getFunction()->getModule()->getNamedFunction(
+      fnAttr.getValue());
+  if (!fn)
+    return op.emitOpError() << "'" << fnAttr.getValue()
+                            << "' does not reference a valid function";
 
   // Verify that the operand and result types match the callee.
-  auto fnType = fnAttr.getValue()->getType();
+  auto fnType = fn->getType();
   if (fnType.getNumInputs() != op.getNumOperands())
     return op.emitOpError("incorrect number of operands for callee");
 
@@ -468,6 +473,11 @@ static LogicalResult verify(CallOp op) {
       return op.emitOpError("result type mismatch");
 
   return success();
+}
+
+Function *CallOp::getCallee() {
+  auto name = getAttrOfType<FunctionAttr>("callee").getValue();
+  return getOperation()->getFunction()->getModule()->getNamedFunction(name);
 }
 
 //===----------------------------------------------------------------------===//
@@ -494,8 +504,10 @@ struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
       return matchFailure();
 
     // Replace with a direct call.
+    SmallVector<Type, 8> callResults(op->getResultTypes());
     SmallVector<Value *, 8> callOperands(indirectCall.getArgOperands());
-    rewriter.replaceOpWithNewOp<CallOp>(op, calledFn.getValue(), callOperands);
+    rewriter.replaceOpWithNewOp<CallOp>(op, calledFn.getValue(), callResults,
+                                        callOperands);
     return matchSuccess();
   }
 };
@@ -1108,19 +1120,30 @@ static void print(OpAsmPrinter *p, ConstantOp &op) {
   if (op.getAttrs().size() > 1)
     *p << ' ';
   p->printAttributeAndType(op.getValue());
+
+  // If the value is a function, print a trailing type.
+  if (op.getValue().isa<FunctionAttr>()) {
+    *p << " : ";
+    p->printType(op.getType());
+  }
 }
 
 static ParseResult parseConstantOp(OpAsmParser *parser,
                                    OperationState *result) {
   Attribute valueAttr;
-  Type type;
-
   if (parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseAttribute(valueAttr, "value", result->attributes))
     return failure();
 
+  // If the attribute is a function, then we expect a trailing type.
+  Type type;
+  if (!valueAttr.isa<FunctionAttr>())
+    type = valueAttr.getType();
+  else if (parser->parseColonType(type))
+    return failure();
+
   // Add the attribute type to the list.
-  return parser->addTypeToList(valueAttr.getType(), result->types);
+  return parser->addTypeToList(type, result->types);
 }
 
 /// The constant op requires an attribute, and furthermore requires that it
@@ -1131,7 +1154,7 @@ static LogicalResult verify(ConstantOp &op) {
     return op.emitOpError("requires a 'value' attribute");
 
   auto type = op.getType();
-  if (type != value.getType())
+  if (!value.getType().isa<NoneType>() && type != value.getType())
     return op.emitOpError() << "requires attribute's type (" << value.getType()
                             << ") to match op's return type (" << type << ")";
 
@@ -1162,8 +1185,20 @@ static LogicalResult verify(ConstantOp &op) {
   }
 
   if (type.isa<FunctionType>()) {
-    if (!value.isa<FunctionAttr>())
+    auto fnAttr = value.dyn_cast<FunctionAttr>();
+    if (!fnAttr)
       return op.emitOpError("requires 'value' to be a function reference");
+
+    // Try to find the referenced function.
+    auto *fn = op.getOperation()->getFunction()->getModule()->getNamedFunction(
+        fnAttr.getValue());
+    if (!fn)
+      return op.emitOpError("reference to undefined function 'bar'");
+
+    // Check that the referenced function has the correct type.
+    if (fn->getType() != type)
+      return op.emitOpError("reference to function with mismatched type");
+
     return success();
   }
 

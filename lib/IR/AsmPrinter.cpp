@@ -679,14 +679,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     printType(attr.cast<TypeAttr>().getValue());
     break;
   case StandardAttributes::Function: {
-    auto *function = attr.cast<FunctionAttr>().getValue();
-    if (!function) {
-      os << "<<FUNCTION ATTR FOR DELETED FUNCTION>>";
-    } else {
-      printFunctionReference(function);
-      os << " : ";
-      printType(function->getType());
-    }
+    os << '@' << attr.cast<FunctionAttr>().getValue();
     break;
   }
   case StandardAttributes::OpaqueElements: {
@@ -1317,7 +1310,7 @@ void FunctionPrinter::numberValueID(Value *value) {
         } else {
           specialName << 'c' << intCst.getInt() << '_' << type;
         }
-      } else if (cst.isa<FunctionAttr>()) {
+      } else if (type.isa<FunctionType>()) {
         specialName << 'f';
       } else {
         specialName << "cst";

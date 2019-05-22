@@ -52,12 +52,12 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
 // CHECK-NEXT:  %17 = llvm.call @foo(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %18 = llvm.extractvalue %17[0] : !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %19 = llvm.insertvalue %18, %17[2] : !llvm<"{ i32, double, i32 }">
-// CHECK-NEXT:  %20 = llvm.constant(@foo : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">) : !llvm<"{ i32, double, i32 } (i32)*">
+// CHECK-NEXT:  %20 = llvm.constant(@foo) : !llvm<"{ i32, double, i32 } (i32)*">
 // CHECK-NEXT:  %21 = llvm.call %20(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
   %17 = llvm.call @foo(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
   %18 = llvm.extractvalue %17[0] : !llvm<"{ i32, double, i32 }">
   %19 = llvm.insertvalue %18, %17[2] : !llvm<"{ i32, double, i32 }">
-  %20 = llvm.constant(@foo : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">) : !llvm<"{ i32, double, i32 } (i32)*">
+  %20 = llvm.constant(@foo) : !llvm<"{ i32, double, i32 } (i32)*">
   %21 = llvm.call %20(%arg0) : (!llvm.i32) -> !llvm<"{ i32, double, i32 }">
 
 

@@ -214,8 +214,7 @@ struct StringAttributeStorage : public AttributeStorage {
 struct ArrayAttributeStorage : public AttributeStorage {
   using KeyTy = ArrayRef<Attribute>;
 
-  ArrayAttributeStorage(bool hasFunctionAttr, ArrayRef<Attribute> value)
-      : AttributeStorage(hasFunctionAttr), value(value) {}
+  ArrayAttributeStorage(ArrayRef<Attribute> value) : value(value) {}
 
   /// Key equality function.
   bool operator==(const KeyTy &key) const { return key == value; }
@@ -223,13 +222,8 @@ struct ArrayAttributeStorage : public AttributeStorage {
   /// Construct a new storage instance.
   static ArrayAttributeStorage *construct(AttributeStorageAllocator &allocator,
                                           const KeyTy &key) {
-    // Check to see if any of the elements have a function attr.
-    bool hasFunctionAttr = llvm::any_of(
-        key, [](Attribute elt) { return elt.isOrContainsFunction(); });
-
-    // Initialize the memory using placement new.
     return new (allocator.allocate<ArrayAttributeStorage>())
-        ArrayAttributeStorage(hasFunctionAttr, allocator.copyInto(key));
+        ArrayAttributeStorage(allocator.copyInto(key));
   }
 
   ArrayRef<Attribute> value;
@@ -291,37 +285,6 @@ struct TypeAttributeStorage : public AttributeStorage {
   }
 
   Type value;
-};
-
-/// An attribute representing a reference to a function.
-struct FunctionAttributeStorage : public AttributeStorage {
-  using KeyTy = Function *;
-
-  FunctionAttributeStorage(Function *value)
-      : AttributeStorage(value->getType(), /*isOrContainsFunctionCache=*/true),
-        value(value) {}
-
-  /// Key equality function.
-  bool operator==(const KeyTy &key) const { return key == value; }
-
-  /// Construct a new storage instance.
-  static FunctionAttributeStorage *
-  construct(AttributeStorageAllocator &allocator, KeyTy key) {
-    return new (allocator.allocate<FunctionAttributeStorage>())
-        FunctionAttributeStorage(key);
-  }
-
-  /// Storage cleanup function.
-  void cleanup() {
-    // Null out the function reference in the attribute to avoid dangling
-    // pointers.
-    value = nullptr;
-  }
-
-  /// Reset the type of this attribute to the type of the held function.
-  void resetType() { setType(value->getType()); }
-
-  Function *value;
 };
 
 /// An attribute representing a reference to a vector or tensor constant,

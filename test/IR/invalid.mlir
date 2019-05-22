@@ -492,14 +492,6 @@ func @invalid_result_type() -> () -> ()  // expected-error {{expected a top leve
 
 // -----
 
-func @func() -> (() -> ())
-func @referer() {
-  %f = constant @func : () -> () -> ()  // expected-error {{reference to function with mismatched type}}
-  return
-}
-
-// -----
-
 #map1 = (i)[j] -> (i+j)
 
 func @bound_symbol_mismatch(%N : index) {

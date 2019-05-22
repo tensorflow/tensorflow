@@ -21,6 +21,7 @@
 
 #include "mlir/GPU/GPUDialect.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 
@@ -303,7 +304,9 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
 }
 
 Function *LaunchFuncOp::kernel() {
-  return this->getAttr(getKernelAttrName()).cast<FunctionAttr>().getValue();
+  auto kernelAttr = getAttr(getKernelAttrName()).cast<FunctionAttr>();
+  return getOperation()->getFunction()->getModule()->getNamedFunction(
+      kernelAttr.getValue());
 }
 
 unsigned LaunchFuncOp::getNumKernelOperands() {
@@ -321,7 +324,11 @@ LogicalResult LaunchFuncOp::verify() {
   } else if (!kernelAttr.isa<FunctionAttr>()) {
     return emitOpError("attribute 'kernel' must be a function");
   }
+
   Function *kernelFunc = this->kernel();
+  if (!kernelFunc)
+    return emitError() << "kernel function '" << kernelAttr << "' is undefined";
+
   if (!kernelFunc->getAttrOfType<mlir::UnitAttr>(
           GPUDialect::getKernelFuncAttrName())) {
     return emitError("kernel function is missing the '")

@@ -219,12 +219,16 @@ def CallOp : Std_Op<"call"> {
       result->addOperands(operands);
       result->addAttribute("callee", builder->getFunctionAttr(callee));
       result->addTypes(callee->getType().getResults());
+  }]>, OpBuilder<
+    "Builder *builder, OperationState *result, StringRef callee,"
+    "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
+      result->addOperands(operands);
+      result->addAttribute("callee", builder->getFunctionAttr(callee));
+      result->addTypes(results);
   }]>];
 
   let extraClassDeclaration = [{
-    Function *getCallee() {
-      return getAttrOfType<FunctionAttr>("callee").getValue();
-    }
+    Function *getCallee();
 
     /// Get the argument operands to the called function.
     operand_range getArgOperands() {

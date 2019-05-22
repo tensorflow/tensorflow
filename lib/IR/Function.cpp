@@ -37,11 +37,6 @@ Function::Function(Location location, StringRef name, FunctionType type,
     : name(Identifier::get(name, type.getContext())), location(location),
       type(type), attrs(attrs), argAttrs(argAttrs), body(this) {}
 
-Function::~Function() {
-  // Clean up function attributes referring to this function.
-  FunctionAttr::dropFunctionReference(this);
-}
-
 MLIRContext *Function::getContext() { return getType().getContext(); }
 
 /// Swap the name of the given function with this one.

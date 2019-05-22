@@ -326,7 +326,7 @@ bool ModuleTranslation::convertOneFunction(Function &func) {
   // function.
   blockMapping.clear();
   valueMapping.clear();
-  llvm::Function *llvmFunc = functionMapping.lookup(&func);
+  llvm::Function *llvmFunc = functionMapping.lookup(func.getName());
   // Add function arguments to the value remapping table.
   // If there was noalias info then we decorate each argument accordingly.
   unsigned int argIdx = 0;
@@ -378,7 +378,6 @@ bool ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
   for (Function &function : mlirModule) {
-    Function *functionPtr = &function;
     mlir::BoolAttr isVarArgsAttr =
         function.getAttrOfType<BoolAttr>("std.varargs");
     bool isVarArgs = isVarArgsAttr && isVarArgsAttr.getValue();
@@ -390,7 +389,7 @@ bool ModuleTranslation::convertFunctions() {
     llvm::FunctionCallee llvmFuncCst =
         llvmModule->getOrInsertFunction(function.getName(), functionType);
     assert(isa<llvm::Function>(llvmFuncCst.getCallee()));
-    functionMapping[functionPtr] =
+    functionMapping[function.getName()] =
         cast<llvm::Function>(llvmFuncCst.getCallee());
   }
 

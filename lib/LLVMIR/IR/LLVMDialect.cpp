@@ -22,6 +22,7 @@
 #include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
 
 #include "llvm/AsmParser/Parser.h"
@@ -393,43 +394,22 @@ static void printCallOp(OpAsmPrinter *p, CallOp &op) {
   // callee (first operand) otherwise.
   *p << op.getOperationName() << ' ';
   if (isDirect)
-    *p << '@' << callee.getValue()->getName().strref();
+    *p << '@' << callee.getValue();
   else
     *p << *op.getOperand(0);
 
   *p << '(';
-  p->printOperands(std::next(op.operand_begin(), callee.hasValue() ? 0 : 1),
-                   op.operand_end());
+  p->printOperands(llvm::drop_begin(op.getOperands(), isDirect ? 0 : 1));
   *p << ')';
 
   p->printOptionalAttrDict(op.getAttrs(), {"callee"});
 
-  if (isDirect) {
-    *p << " : " << callee.getValue()->getType();
-    return;
-  }
-
-  // Reconstruct the function MLIR function type from LLVM function type,
-  // and print it.
-  auto operandType = op.getOperand(0)->getType().cast<LLVM::LLVMType>();
-  auto *llvmPtrType =
-      dyn_cast<llvm::PointerType>(operandType.getUnderlyingType());
-  assert(llvmPtrType &&
-         "operand #0 must have LLVM pointer type for indirect calls");
-  auto *llvmType = dyn_cast<llvm::FunctionType>(llvmPtrType->getElementType());
-  assert(llvmType &&
-         "operand #0 must have LLVM Function pointer type for indirect calls");
-
-  auto *llvmResultType = llvmType->getReturnType();
-  SmallVector<Type, 1> resultTypes;
-  if (!llvmResultType->isVoidTy())
-    resultTypes.push_back(LLVM::LLVMType::get(op.getContext(), llvmResultType));
-
+  // Reconstruct the function MLIR function type from operand and result types.
+  SmallVector<Type, 1> resultTypes(op.getOperation()->getResultTypes());
   SmallVector<Type, 8> argTypes;
-  argTypes.reserve(llvmType->getNumParams());
-  for (int i = 0, e = llvmType->getNumParams(); i < e; ++i)
-    argTypes.push_back(
-        LLVM::LLVMType::get(op.getContext(), llvmType->getParamType(i)));
+  argTypes.reserve(op.getNumOperands());
+  for (auto *operand : llvm::drop_begin(op.getOperands(), isDirect ? 0 : 1))
+    argTypes.push_back(operand->getType());
 
   *p << " : " << FunctionType::get(argTypes, resultTypes, op.getContext());
 }
@@ -467,10 +447,7 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(trailingTypeLoc, "expected function type");
   if (isDirect) {
     // Add the direct callee as an Op attribute.
-    Function *func;
-    if (parser->resolveFunctionName(calleeName, funcType, calleeLoc, func))
-      return failure();
-    auto funcAttr = parser->getBuilder().getFunctionAttr(func);
+    auto funcAttr = parser->getBuilder().getFunctionAttr(calleeName);
     attrs.push_back(parser->getBuilder().getNamedAttr("callee", funcAttr));
 
     // Make sure types match.

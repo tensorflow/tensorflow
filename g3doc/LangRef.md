@@ -860,11 +860,11 @@ of the specified [float type](#floating-point-types).
 Syntax:
 
 ``` {.ebnf}
-function-attribute ::= function-id `:` function-type
+function-attribute ::= function-id
 ```
 
-A function attribute is a literal attribute that represents a reference to the
-given function object.
+A function attribute is a literal attribute that represents a named reference to
+the given function.
 
 #### String Attribute
 

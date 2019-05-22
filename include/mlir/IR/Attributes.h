@@ -25,7 +25,6 @@ namespace mlir {
 class AffineMap;
 class Dialect;
 class Function;
-class FunctionAttr;
 class FunctionType;
 class Identifier;
 class IntegerSet;
@@ -45,7 +44,6 @@ struct ArrayAttributeStorage;
 struct AffineMapAttributeStorage;
 struct IntegerSetAttributeStorage;
 struct TypeAttributeStorage;
-struct FunctionAttributeStorage;
 struct SplatElementsAttributeStorage;
 struct DenseElementsAttributeStorage;
 struct DenseIntElementsAttributeStorage;
@@ -117,16 +115,6 @@ public:
 
   /// Get the dialect this attribute is registered to.
   Dialect &getDialect() const;
-
-  /// Return true if this field is, or contains, a function attribute.
-  bool isOrContainsFunction() const;
-
-  /// Replace a function attribute or function attributes nested in an array
-  /// attribute with another function attribute as defined by the provided
-  /// remapping table.  Return the original attribute if it (or any of nested
-  /// attributes) is not present in the table.
-  Attribute remapFunctionAttrs(
-      const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable) const;
 
   /// Print the attribute.
   void print(raw_ostream &os) const;
@@ -383,33 +371,23 @@ public:
 };
 
 /// A function attribute represents a reference to a function object.
-///
-/// When working with IR, it is important to know that a function attribute can
-/// exist with a null Function inside of it, which occurs when a function object
-/// is deleted that had an attribute which referenced it.  No references to this
-/// attribute should persist across the transformation, but that attribute will
-/// remain in MLIRContext.
 class FunctionAttr
     : public Attribute::AttrBase<FunctionAttr, Attribute,
-                                 detail::FunctionAttributeStorage> {
+                                 detail::StringAttributeStorage> {
 public:
   using Base::Base;
   using ValueType = Function *;
 
   static FunctionAttr get(Function *value);
+  static FunctionAttr get(StringRef value, MLIRContext *ctx);
 
-  Function *getValue() const;
-
-  FunctionType getType() const;
+  /// Returns the name of the held function reference.
+  StringRef getValue() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::Function;
   }
-
-  /// This function is used by the internals of the Function class to null out
-  /// attributes referring to functions that are about to be deleted.
-  static void dropFunctionReference(Function *value);
 
   /// This function is used by the internals of the Function class to update the
   /// type of the function attribute for 'value'.

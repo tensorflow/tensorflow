@@ -57,22 +57,11 @@ public:
       : context(module->getContext()), module(module), lex(sourceMgr, context),
         curToken(lex.lexToken()) {}
 
-  ~ParserState() {
-    // Destroy the forward references upon error.
-    for (auto forwardRef : functionForwardRefs)
-      delete forwardRef.second;
-    functionForwardRefs.clear();
-  }
-
   // A map from attribute alias identifier to Attribute.
   llvm::StringMap<Attribute> attributeAliasDefinitions;
 
   // A map from type alias identifier to Type.
   llvm::StringMap<Type> typeAliasDefinitions;
-
-  // This keeps track of all forward references to functions along with the
-  // temporary function used to represent them.
-  llvm::DenseMap<Identifier, Function *> functionForwardRefs;
 
 private:
   ParserState(const ParserState &) = delete;
@@ -190,8 +179,6 @@ public:
   ParseResult parseFunctionResultTypes(SmallVectorImpl<Type> &elements);
 
   // Attribute parsing.
-  Function *resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
-                                     FunctionType type);
   Attribute parseExtendedAttribute(Type type);
   Attribute parseAttribute(Type type = {});
 
@@ -998,32 +985,6 @@ TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
   return success();
 }
 
-/// Given a parsed reference to a function name like @foo and a type that it
-/// corresponds to, resolve it to a concrete function object (possibly
-/// synthesizing a forward reference) or emit an error and return null on
-/// failure.
-Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
-                                           FunctionType type) {
-  Identifier name = builder.getIdentifier(nameStr.drop_front());
-
-  // See if the function has already been defined in the module.
-  Function *function = getModule()->getNamedFunction(name);
-
-  // If not, get or create a forward reference to one.
-  if (!function) {
-    auto &entry = state.functionForwardRefs[name];
-    if (!entry)
-      entry = new Function(getEncodedSourceLocation(nameLoc), name, type,
-                           /*attrs=*/{});
-    function = entry;
-  }
-
-  if (function->getType() != type)
-    return (emitError(nameLoc, "reference to function with mismatched type"),
-            nullptr);
-  return function;
-}
-
 /// Parse an extended attribute.
 ///
 ///   extended-attribute ::= (dialect-attribute | attribute-alias)
@@ -1218,22 +1179,9 @@ Attribute Parser::parseAttribute(Type type) {
   }
 
   case Token::at_identifier: {
-    auto nameLoc = getToken().getLoc();
     auto nameStr = getTokenSpelling();
     consumeToken(Token::at_identifier);
-
-    if (parseToken(Token::colon, "expected ':' and function type"))
-      return nullptr;
-    auto typeLoc = getToken().getLoc();
-    Type type = parseType();
-    if (!type)
-      return nullptr;
-    auto fnType = type.dyn_cast<FunctionType>();
-    if (!fnType)
-      return (emitError(typeLoc, "expected function type"), nullptr);
-
-    auto *function = resolveFunctionReference(nameStr, nameLoc, fnType);
-    return function ? builder.getFunctionAttr(function) : nullptr;
+    return builder.getFunctionAttr(nameStr.drop_front());
   }
   case Token::kw_opaque: {
     consumeToken(Token::kw_opaque);
@@ -3224,7 +3172,7 @@ public:
     if (parser.getToken().isNot(Token::at_identifier))
       return failure();
 
-    result = parser.getTokenSpelling();
+    result = parser.getTokenSpelling().drop_front();
     parser.consumeToken(Token::at_identifier);
     return success();
   }
@@ -3323,13 +3271,6 @@ public:
       return emitError(startLoc, "expected ")
              << requiredOperandCount << " operands";
     return success();
-  }
-
-  /// Resolve a parse function name and a type into a function reference.
-  ParseResult resolveFunctionName(StringRef name, FunctionType type,
-                                  llvm::SMLoc loc, Function *&result) override {
-    result = parser.resolveFunctionReference(name, loc, type);
-    return failure(result == nullptr);
   }
 
   /// Parse a region that takes `arguments` of `argTypes` types.  This
@@ -3549,8 +3490,6 @@ public:
   ParseResult parseModule();
 
 private:
-  ParseResult finalizeModule();
-
   ParseResult parseAttributeAliasDef();
 
   ParseResult parseTypeAliasDef();
@@ -3782,42 +3721,6 @@ ParseResult ModuleParser::parseFunc() {
   return parser.parseFunctionBody(hadNamedArguments);
 }
 
-/// Finish the end of module parsing - when the result is valid, do final
-/// checking.
-ParseResult ModuleParser::finalizeModule() {
-  // Resolve all forward references, building a remapping table of attributes.
-  DenseMap<Attribute, FunctionAttr> remappingTable;
-  for (auto forwardRef : getState().functionForwardRefs) {
-    auto name = forwardRef.first;
-
-    // Resolve the reference.
-    auto *resolvedFunction = getModule()->getNamedFunction(name);
-    if (!resolvedFunction) {
-      forwardRef.second->emitError("reference to undefined function '")
-          << name << "'";
-      return failure();
-    }
-
-    remappingTable[builder.getFunctionAttr(forwardRef.second)] =
-        builder.getFunctionAttr(resolvedFunction);
-  }
-
-  // If there was nothing to remap, then we're done.
-  if (remappingTable.empty())
-    return success();
-
-  // Otherwise, walk the entire module replacing uses of one attribute set
-  // with the correct ones.
-  remapFunctionAttrs(*getModule(), remappingTable);
-
-  // Now that all references to the forward definition placeholders are
-  // resolved, we can deallocate the placeholders.
-  for (auto forwardRef : getState().functionForwardRefs)
-    delete forwardRef.second;
-  getState().functionForwardRefs.clear();
-  return success();
-}
-
 /// This is the top-level module parser.
 ParseResult ModuleParser::parseModule() {
   while (1) {
@@ -3828,7 +3731,7 @@ ParseResult ModuleParser::parseModule() {
 
       // If we got to the end of the file, then we're done.
     case Token::eof:
-      return finalizeModule();
+      return success();
 
     // If we got an error token, then the lexer already emitted an error, just
     // stop.  Someday we could introduce error recovery if there was demand

@@ -82,9 +82,8 @@ func @foo() {
   // CHECK: %c8 = constant 8
   %cst = constant 8 : index
 
-  // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @kernel_1 : (f32, memref<?xf32, 1>) -> ()} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
-  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1)
-      {kernel: @kernel_1 : (f32, memref<?xf32, 1>) -> ()}
+  // CHECK: "gpu.launch_func"(%c8, %c8, %c8, %c8, %c8, %c8, %0, %1) {kernel: @kernel_1} : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
+  "gpu.launch_func"(%cst, %cst, %cst, %cst, %cst, %cst, %0, %1) { kernel: @kernel_1 }
       : (index, index, index, index, index, index, f32, memref<?xf32, 1>) -> ()
   return
 }

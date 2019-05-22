@@ -78,33 +78,6 @@ public:
     return fn.getContext()->getRegisteredDialect(dialectNamePair.first);
   }
 
-  template <typename ErrorContext>
-  LogicalResult verifyAttribute(Attribute attr, ErrorContext &ctx) {
-    if (!attr.isOrContainsFunction())
-      return success();
-
-    // If we have a function attribute, check that it is non-null and in the
-    // same module as the operation that refers to it.
-    if (auto fnAttr = attr.dyn_cast<FunctionAttr>()) {
-      if (!fnAttr.getValue())
-        return failure("attribute refers to deallocated function!", ctx);
-
-      if (fnAttr.getValue()->getModule() != fn.getModule())
-        return failure("attribute refers to function '" +
-                           Twine(fnAttr.getValue()->getName()) +
-                           "' defined in another module!",
-                       ctx);
-      return success();
-    }
-
-    // Otherwise, we must have an array attribute, remap the elements.
-    for (auto elt : attr.cast<ArrayAttr>().getValue())
-      if (failed(verifyAttribute(elt, ctx)))
-        return failure();
-
-    return success();
-  }
-
   LogicalResult verify();
   LogicalResult verifyBlock(Block &block, bool isTopLevel);
   LogicalResult verifyOperation(Operation &op);
@@ -143,8 +116,6 @@ LogicalResult FuncVerifier::verify() {
     if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      fn);
-    if (failed(verifyAttribute(attr.second, fn)))
-      return failure();
 
     /// Check that the attribute is a dialect attribute, i.e. contains a '.' for
     /// the namespace.
@@ -165,8 +136,6 @@ LogicalResult FuncVerifier::verify() {
             llvm::formatv("invalid attribute name '{0}' on argument {1}",
                           attr.first.strref(), i),
             fn);
-      if (failed(verifyAttribute(attr.second, fn)))
-        return failure();
 
       /// Check that the attribute is a dialect attribute, i.e. contains a '.'
       /// for the namespace.
@@ -280,8 +249,6 @@ LogicalResult FuncVerifier::verifyOperation(Operation &op) {
     if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      op);
-    if (failed(verifyAttribute(attr.second, op)))
-      return failure();
 
     // Check for any optional dialect specific attributes.
     if (!attr.first.strref().contains('.'))

@@ -32,20 +32,15 @@ using namespace mlir::detail;
 // AttributeStorage
 //===----------------------------------------------------------------------===//
 
-AttributeStorage::AttributeStorage(Type type, bool isOrContainsFunctionCache)
-    : typeAndContainsFunctionAttrPair(type.getAsOpaquePointer(),
-                                      isOrContainsFunctionCache) {}
-AttributeStorage::AttributeStorage(bool isOrContainsFunctionCache)
-    : AttributeStorage(/*type=*/nullptr, isOrContainsFunctionCache) {}
-AttributeStorage::AttributeStorage()
-    : AttributeStorage(/*type=*/nullptr, /*isOrContainsFunctionCache=*/false) {}
+AttributeStorage::AttributeStorage(Type type)
+    : type(type.getAsOpaquePointer()) {}
+AttributeStorage::AttributeStorage() : type(nullptr) {}
 
 Type AttributeStorage::getType() const {
-  return Type::getFromOpaquePointer(
-      typeAndContainsFunctionAttrPair.getPointer());
+  return Type::getFromOpaquePointer(type);
 }
-void AttributeStorage::setType(Type type) {
-  typeAndContainsFunctionAttrPair.setPointer(type.getAsOpaquePointer());
+void AttributeStorage::setType(Type newType) {
+  type = newType.getAsOpaquePointer();
 }
 
 //===----------------------------------------------------------------------===//
@@ -60,42 +55,6 @@ MLIRContext *Attribute::getContext() const { return getType().getContext(); }
 
 /// Get the dialect this attribute is registered to.
 Dialect &Attribute::getDialect() const { return impl->getDialect(); }
-
-bool Attribute::isOrContainsFunction() const {
-  return impl->isOrContainsFunctionCache();
-}
-
-// Given an attribute that could refer to a function attribute in the remapping
-// table, walk it and rewrite it to use the mapped function.  If it doesn't
-// refer to anything in the table, then it is returned unmodified.
-Attribute Attribute::remapFunctionAttrs(
-    const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable) const {
-  // Most attributes are trivially unrelated to function attributes, skip them
-  // rapidly.
-  if (!isOrContainsFunction())
-    return *this;
-
-  // If we have a function attribute, remap it.
-  if (auto fnAttr = this->dyn_cast<FunctionAttr>()) {
-    auto it = remappingTable.find(fnAttr);
-    return it != remappingTable.end() ? it->second : *this;
-  }
-
-  // Otherwise, we must have an array attribute, remap the elements.
-  auto arrayAttr = this->cast<ArrayAttr>();
-  SmallVector<Attribute, 8> remappedElts;
-  bool anyChange = false;
-  for (auto elt : arrayAttr.getValue()) {
-    auto newElt = elt.remapFunctionAttrs(remappingTable);
-    remappedElts.push_back(newElt);
-    anyChange |= (elt != newElt);
-  }
-
-  if (!anyChange)
-    return *this;
-
-  return ArrayAttr::get(remappedElts, getContext());
-}
 
 //===----------------------------------------------------------------------===//
 // OpaqueAttr
@@ -293,27 +252,14 @@ Type TypeAttr::getValue() const { return getImpl()->value; }
 
 FunctionAttr FunctionAttr::get(Function *value) {
   assert(value && "Cannot get FunctionAttr for a null function");
-  return Base::get(value->getContext(), StandardAttributes::Function, value);
+  return get(value->getName(), value->getContext());
 }
 
-/// This function is used by the internals of the Function class to null out
-/// attributes referring to functions that are about to be deleted.
-void FunctionAttr::dropFunctionReference(Function *value) {
-  AttributeUniquer::erase<FunctionAttr>(value->getContext(),
-                                        StandardAttributes::Function, value);
+FunctionAttr FunctionAttr::get(StringRef value, MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::Function, value);
 }
 
-/// This function is used by the internals of the Function class to update the
-/// type of the attribute for 'value'.
-void FunctionAttr::resetType(Function *value) {
-  FunctionAttr::get(value).getImpl()->resetType();
-}
-
-Function *FunctionAttr::getValue() const { return getImpl()->value; }
-
-FunctionType FunctionAttr::getType() const {
-  return Attribute::getType().cast<FunctionType>();
-}
+StringRef FunctionAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
 // ElementsAttr

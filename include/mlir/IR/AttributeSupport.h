@@ -45,11 +45,6 @@ class AttributeStorage : public StorageUniquer::BaseStorage {
   friend StorageUniquer;
 
 public:
-  /// Returns if the derived attribute is or contains a function pointer.
-  bool isOrContainsFunctionCache() const {
-    return typeAndContainsFunctionAttrPair.getInt();
-  }
-
   /// Get the type of this attribute.
   Type getType() const;
 
@@ -60,14 +55,11 @@ public:
   }
 
 protected:
-  /// Construct a new attribute storage instance with the given type and a
-  /// boolean that signals if the derived attribute is or contains a function
-  /// pointer.
+  /// Construct a new attribute storage instance with the given type.
   /// Note: All attributes require a valid type. If no type is provided here,
   ///       the type of the attribute will automatically default to NoneType
   ///       upon initialization in the uniquer.
-  AttributeStorage(Type type, bool isOrContainsFunctionCache = false);
-  AttributeStorage(bool isOrContainsFunctionCache);
+  AttributeStorage(Type type);
   AttributeStorage();
 
   /// Set the type of this attribute.
@@ -81,10 +73,8 @@ private:
   /// The dialect for this attribute.
   Dialect *dialect;
 
-  /// This field is a pair of:
-  ///  - The type of the attribute value.
-  ///  - A boolean that is true if this is, or contains, a function attribute.
-  llvm::PointerIntPair<const void *, 1, bool> typeAndContainsFunctionAttrPair;
+  /// The opaque type of the attribute value.
+  const void *type;
 };
 
 /// Default storage type for attributes that require no additional
@@ -112,13 +102,6 @@ public:
   static T get(MLIRContext *ctx, unsigned kind, Args &&... args) {
     return ctx->getAttributeUniquer().get<typename T::ImplType>(
         getInitFn(ctx, T::getClassID()), kind, std::forward<Args>(args)...);
-  }
-
-  /// Erase a uniqued instance of attribute T.
-  template <typename T, typename... Args>
-  static void erase(MLIRContext *ctx, unsigned kind, Args &&... args) {
-    return ctx->getAttributeUniquer().erase<typename T::ImplType>(
-        kind, std::forward<Args>(args)...);
   }
 
 private:

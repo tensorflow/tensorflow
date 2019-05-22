@@ -94,7 +94,16 @@ func @launch_func_missing_callee_attribute(%sz : index) {
 
 func @launch_func_no_function_attribute(%sz : index) {
   // expected-error@+1 {{attribute 'kernel' must be a function}}
-  "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz) {kernel: "bar"}
+  "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz) {kernel: 10}
+      : (index, index, index, index, index, index) -> ()
+  return
+}
+
+// -----
+
+func @launch_func_undefined_function(%sz : index) {
+  // expected-error@+1 {{kernel function '@kernel_1' is undefined}}
+  "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz) { kernel: @kernel_1 }
       : (index, index, index, index, index, index) -> ()
   return
 }
@@ -107,8 +116,7 @@ func @kernel_1(%arg1 : !llvm<"float*">) {
 
 func @launch_func_missing_kernel_attr(%sz : index, %arg : !llvm<"float*">) {
   // expected-error@+1 {{kernel function is missing the 'gpu.kernel' attribute}}
-  "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz, %arg)
-      {kernel: @kernel_1 : (!llvm<"float*">) -> ()}
+  "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz, %arg) {kernel: @kernel_1}
       : (index, index, index, index, index, index, !llvm<"float*">) -> ()
   return
 }
@@ -122,7 +130,7 @@ func @kernel_1(%arg1 : !llvm<"float*">) attributes { gpu.kernel } {
 func @launch_func_kernel_operand_size(%sz : index, %arg : !llvm<"float*">) {
   // expected-error@+1 {{got 2 kernel operands but expected 1}}
   "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz, %arg, %arg)
-      {kernel: @kernel_1 : (!llvm<"float*">) -> ()}
+      {kernel: @kernel_1}
       : (index, index, index, index, index, index, !llvm<"float*">,
          !llvm<"float*">) -> ()
   return
@@ -137,7 +145,7 @@ func @kernel_1(%arg1 : !llvm<"float*">) attributes { gpu.kernel } {
 func @launch_func_kernel_operand_types(%sz : index, %arg : f32) {
   // expected-error@+1 {{type of function argument 0 does not match}}
   "gpu.launch_func"(%sz, %sz, %sz, %sz, %sz, %sz, %arg)
-      {kernel: @kernel_1 : (!llvm<"float*">) -> ()}
+      {kernel: @kernel_1}
       : (index, index, index, index, index, index, f32) -> ()
   return
 }

@@ -87,7 +87,7 @@ private:
   std::unique_ptr<llvm::Module> llvmModule;
 
   // Mappings between original and translated values, used for lookups.
-  llvm::DenseMap<Function *, llvm::Function *> functionMapping;
+  llvm::StringMap<llvm::Function *> functionMapping;
   llvm::DenseMap<Value *, llvm::Value *> valueMapping;
   llvm::DenseMap<Block *, llvm::BasicBlock *> blockMapping;
 };

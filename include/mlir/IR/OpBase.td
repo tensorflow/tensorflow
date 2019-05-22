@@ -665,7 +665,7 @@ def StrArrayAttr : TypedArrayAttrBase<StrAttr, "string array attribute"> {
 def FunctionAttr : Attr<CPred<"$_self.isa<FunctionAttr>()">,
                         "function attribute"> {
   let storageType = [{ FunctionAttr }];
-  let returnType = [{ Function * }];
+  let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getFunctionAttr($0)";
 }
 

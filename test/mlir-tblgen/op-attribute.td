@@ -104,7 +104,7 @@ def BOp : NS_Op<"b_op", []> {
 // CHECK: APFloat BOp::f64_attr()
 // CHECK: StringRef BOp::str_attr()
 // CHECK: ElementsAttr BOp::elements_attr()
-// CHECK: Function *BOp::function_attr()
+// CHECK: StringRef BOp::function_attr()
 // CHECK: SomeType BOp::type_attr()
 // CHECK: ArrayAttr BOp::array_attr()
 // CHECK: ArrayAttr BOp::some_attr_array()

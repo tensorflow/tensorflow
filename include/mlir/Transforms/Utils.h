@@ -120,21 +120,6 @@ Operation *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 void createAffineComputationSlice(Operation *opInst,
                                   SmallVectorImpl<AffineApplyOp> *sliceOps);
 
-/// Replaces (potentially nested) function attributes in the operation "op"
-/// with those specified in "remappingTable".
-void remapFunctionAttrs(
-    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
-
-/// Replaces (potentially nested) function attributes all operations of the
-/// Function "fn" with those specified in "remappingTable".
-void remapFunctionAttrs(
-    Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable);
-
-/// Replaces (potentially nested) function attributes in the entire module
-/// with those specified in "remappingTable".  Ignores external functions.
-void remapFunctionAttrs(
-    Module &module, const DenseMap<Attribute, FunctionAttr> &remappingTable);
-
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_UTILS_H

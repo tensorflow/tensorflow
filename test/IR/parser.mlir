@@ -372,8 +372,8 @@ func @attributes() {
   // CHECK: "foo"() {d: 1.000000e-09 : f64, func: [], i123: 7 : i64, if: "foo"} : () -> ()
   "foo"() {if: "foo", func: [], i123: 7, d: 1.e-9} : () -> ()
 
-  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
-  "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
+  // CHECK: "foo"() {fn: @attributes, if: @ifinst} : () -> ()
+  "foo"() {fn: @attributes, if: @ifinst} : () -> ()
 
   // CHECK: "foo"() {int: 0 : i42} : () -> ()
   "foo"() {int: 0 : i42} : () -> ()
@@ -923,15 +923,3 @@ func @none_type() {
   %none_val = "foo.unknown_op"() : () -> none
   return
 }
-
-// CHECK-LABEL: func @fn_attr_remap
-// CHECK: {some_dialect.arg_attr: @fn_attr_ref : () -> ()}
-func @fn_attr_remap(%arg0: i1 {some_dialect.arg_attr: @fn_attr_ref : () -> ()}) -> ()
-  // CHECK-NEXT: {some_dialect.fn_attr: @fn_attr_ref : () -> ()}
-  attributes {some_dialect.fn_attr: @fn_attr_ref : () -> ()} {
-  return
-}
-
-// CHECK-LABEL: func @fn_attr_ref
-func @fn_attr_ref() -> ()
-

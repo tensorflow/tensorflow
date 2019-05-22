@@ -319,7 +319,7 @@ func @calls(%arg0: i32) {
   // CHECK: %1 = call @return_op(%0) : (i32) -> i32
   %y = call @return_op(%x) : (i32) -> i32
   // CHECK: %2 = call @return_op(%0) : (i32) -> i32
-  %z = "std.call"(%x) {callee: @return_op : (i32) -> i32} : (i32) -> i32
+  %z = "std.call"(%x) {callee: @return_op} : (i32) -> i32
 
   // CHECK: %f = constant @affine_apply : () -> ()
   %f = constant @affine_apply : () -> ()

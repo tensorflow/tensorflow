@@ -380,11 +380,6 @@ public:
     return success();
   }
 
-  /// Resolve a parse function name and a type into a function reference.
-  virtual ParseResult resolveFunctionName(StringRef name, FunctionType type,
-                                          llvm::SMLoc loc,
-                                          Function *&result) = 0;
-
   /// Emit a diagnostic at the specified location and return failure.
   virtual InFlightDiagnostic emitError(llvm::SMLoc loc,
                                        const Twine &message = {}) = 0;

@@ -43,8 +43,6 @@ public:
            ArrayRef<NamedAttribute> attrs,
            ArrayRef<NamedAttributeList> argAttrs);
 
-  ~Function();
-
   /// The source location the function was defined or derived from.
   Location getLoc() { return location; }
 
@@ -72,7 +70,6 @@ public:
   void setType(FunctionType newType) {
     type = newType;
     argAttrs.resize(type.getNumInputs());
-    FunctionAttr::resetType(this);
   }
 
   MLIRContext *getContext();

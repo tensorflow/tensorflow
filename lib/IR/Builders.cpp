@@ -172,6 +172,9 @@ TypeAttr Builder::getTypeAttr(Type type) { return TypeAttr::get(type); }
 FunctionAttr Builder::getFunctionAttr(Function *value) {
   return FunctionAttr::get(value);
 }
+FunctionAttr Builder::getFunctionAttr(StringRef value) {
+  return FunctionAttr::get(value, getContext());
+}
 
 ElementsAttr Builder::getSplatElementsAttr(ShapedType type, Attribute elt) {
   return SplatElementsAttr::get(type, elt);

@@ -26,7 +26,7 @@ func @dim3(tensor<1xf32>) {
 
 func @constant() {
 ^bb:
-  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{requires attribute's type (none) to match op's return type (i32)}}
+  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{requires a result type that aligns with the 'value' attribute}}
   return
 }
 
@@ -149,7 +149,7 @@ func @intlimit2() {
 // -----
 
 func @calls(%arg0: i32) {
-  %x = call @calls() : () -> i32  // expected-error {{reference to function with mismatched type}}
+  %x = call @calls() : () -> i32  // expected-error {{incorrect number of operands for callee}}
   return
 }
 
