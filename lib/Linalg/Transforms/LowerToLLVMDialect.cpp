@@ -64,12 +64,10 @@ using llvm_select = ValueBuilder<LLVM::SelectOp>;
 using icmp = ValueBuilder<LLVM::ICmpOp>;
 
 template <typename T>
-static llvm::Type *getPtrToElementType(T containerType,
-                                       LLVMLowering &lowering) {
+static LLVMType getPtrToElementType(T containerType, LLVMLowering &lowering) {
   return lowering.convertType(containerType.getElementType())
       .template cast<LLVMType>()
-      .getUnderlyingType()
-      ->getPointerTo();
+      .getPointerTo();
 }
 
 // Convert the given type to the LLVM IR Dialect type.  The following
@@ -82,9 +80,8 @@ static llvm::Type *getPtrToElementType(T containerType,
 //     containing the respective dynamic values.
 static Type convertLinalgType(Type t, LLVMLowering &lowering) {
   auto *context = t.getContext();
-  auto *int64Ty = lowering.convertType(IntegerType::get(64, context))
-                      .cast<LLVM::LLVMType>()
-                      .getUnderlyingType();
+  auto int64Ty = lowering.convertType(IntegerType::get(64, context))
+                     .cast<LLVM::LLVMType>();
 
   // A buffer descriptor contains the pointer to a flat region of storage and
   // the size of the region.
@@ -95,9 +92,8 @@ static Type convertLinalgType(Type t, LLVMLowering &lowering) {
   //   int64_t size;
   // };
   if (auto bufferType = t.dyn_cast<BufferType>()) {
-    auto *ptrTy = getPtrToElementType(bufferType, lowering);
-    auto *structTy = llvm::StructType::get(ptrTy, int64Ty);
-    return LLVMType::get(context, structTy);
+    auto ptrTy = getPtrToElementType(bufferType, lowering);
+    return LLVMType::getStructTy(ptrTy, int64Ty);
   }
 
   // Range descriptor contains the range bounds and the step as 64-bit integers.
@@ -107,10 +103,8 @@ static Type convertLinalgType(Type t, LLVMLowering &lowering) {
   //   int64_t max;
   //   int64_t step;
   // };
-  if (t.isa<RangeType>()) {
-    auto *structTy = llvm::StructType::get(int64Ty, int64Ty, int64Ty);
-    return LLVMType::get(context, structTy);
-  }
+  if (t.isa<RangeType>())
+    return LLVMType::getStructTy(int64Ty, int64Ty, int64Ty);
 
   // View descriptor contains the pointer to the data buffer, followed by a
   // 64-bit integer containing the distance between the beginning of the buffer
@@ -136,10 +130,9 @@ static Type convertLinalgType(Type t, LLVMLowering &lowering) {
   //   int64_t strides[Rank];
   // };
   if (auto viewType = t.dyn_cast<ViewType>()) {
-    auto *ptrTy = getPtrToElementType(viewType, lowering);
-    auto *arrayTy = llvm::ArrayType::get(int64Ty, viewType.getRank());
-    auto *structTy = llvm::StructType::get(ptrTy, int64Ty, arrayTy, arrayTy);
-    return LLVMType::get(context, structTy);
+    auto ptrTy = getPtrToElementType(viewType, lowering);
+    auto arrayTy = LLVMType::getArrayTy(int64Ty, viewType.getRank());
+    return LLVMType::getStructTy(ptrTy, int64Ty, arrayTy, arrayTy);
   }
 
   return Type();
@@ -165,9 +158,8 @@ public:
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
     auto indexType = IndexType::get(op->getContext());
-    auto voidPtrTy = LLVM::LLVMType::get(
-        op->getContext(),
-        llvm::IntegerType::get(lowering.getLLVMContext(), 8)->getPointerTo());
+    auto voidPtrTy =
+        LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     auto int64Ty = lowering.convertType(operands[0]->getType());
     // Insert the `malloc` declaration if it is not already present.
     auto *module = op->getFunction()->getModule();
@@ -187,8 +179,8 @@ public:
                     llvm::divideCeil(vectorType.getElementTypeBitWidth(), 8);
     else
       elementSize = llvm::divideCeil(elementType.getIntOrFloatBitWidth(), 8);
-    auto elementPtrType = rewriter.getType<LLVMType>(getPtrToElementType(
-        allocOp.getResult()->getType().cast<BufferType>(), lowering));
+    auto elementPtrType = getPtrToElementType(
+        allocOp.getResult()->getType().cast<BufferType>(), lowering);
     auto bufferDescriptorType =
         convertLinalgType(allocOp.getResult()->getType(), lowering);
 
@@ -221,9 +213,8 @@ public:
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
-    auto voidPtrTy = LLVM::LLVMType::get(
-        op->getContext(),
-        llvm::IntegerType::get(lowering.getLLVMContext(), 8)->getPointerTo());
+    auto voidPtrTy =
+        LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
     auto *module = op->getFunction()->getModule();
     Function *freeFunc = module->getNamedFunction("free");
@@ -235,8 +226,8 @@ public:
 
     // Get MLIR types for extracting element pointer.
     auto deallocOp = cast<BufferDeallocOp>(op);
-    auto elementPtrTy = rewriter.getType<LLVMType>(getPtrToElementType(
-        deallocOp.getOperand()->getType().cast<BufferType>(), lowering));
+    auto elementPtrTy = getPtrToElementType(
+        deallocOp.getOperand()->getType().cast<BufferType>(), lowering);
 
     // Emit MLIR for buffer_dealloc.
     edsc::ScopedContext context(rewriter, op->getLoc());
@@ -298,8 +289,7 @@ public:
                        ArrayRef<Value *> indices,
                        PatternRewriter &rewriter) const {
     auto loadOp = cast<Op>(op);
-    auto elementTy = rewriter.getType<LLVMType>(
-        getPtrToElementType(loadOp.getViewType(), lowering));
+    auto elementTy = getPtrToElementType(loadOp.getViewType(), lowering);
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
     auto pos = [&rewriter](ArrayRef<int> values) {
       return positionAttr(rewriter, values);
@@ -425,8 +415,7 @@ public:
     // Helper function to obtain the ptr of the given `view`.
     auto getViewPtr = [pos, &rewriter, this](ViewType type,
                                              Value *view) -> Value * {
-      auto elementPtrTy =
-          rewriter.getType<LLVMType>(getPtrToElementType(type, lowering));
+      auto elementPtrTy = getPtrToElementType(type, lowering);
       return extractvalue(elementPtrTy, view, pos(0));
     };
 
@@ -512,8 +501,7 @@ public:
                PatternRewriter &rewriter) const override {
     auto viewOp = cast<ViewOp>(op);
     auto viewDescriptorTy = convertLinalgType(viewOp.getViewType(), lowering);
-    auto elementTy = rewriter.getType<LLVMType>(
-        getPtrToElementType(viewOp.getViewType(), lowering));
+    auto elementTy = getPtrToElementType(viewOp.getViewType(), lowering);
     auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
 
     auto pos = [&rewriter](ArrayRef<int> values) {

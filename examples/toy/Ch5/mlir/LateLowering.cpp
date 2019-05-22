@@ -210,15 +210,11 @@ private:
 
     // Create a function declaration for printf, signature is `i32 (i8*, ...)`
     Builder builder(&module);
-    MLIRContext *context = module.getContext();
-    auto *llvmDialect =
+    auto *dialect =
         module.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-    auto &llvmModule = llvmDialect->getLLVMModule();
-    llvm::IRBuilder<> llvmBuilder(llvmModule.getContext());
 
-    auto llvmI32Ty = LLVM::LLVMType::get(context, llvmBuilder.getIntNTy(32));
-    auto llvmI8PtrTy =
-        LLVM::LLVMType::get(context, llvmBuilder.getIntNTy(8)->getPointerTo());
+    auto llvmI32Ty = LLVM::LLVMType::getInt32Ty(dialect);
+    auto llvmI8PtrTy = LLVM::LLVMType::getInt8Ty(dialect).getPointerTo();
     auto printfTy = builder.getFunctionType({llvmI8PtrTy}, {llvmI32Ty});
     printfFunc = new Function(builder.getUnknownLoc(), "printf", printfTy);
     // It should be variadic, but we don't support it fully just yet.

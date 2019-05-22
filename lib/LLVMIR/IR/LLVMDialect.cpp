@@ -29,39 +29,11 @@
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/Mutex.h"
 #include "llvm/Support/SourceMgr.h"
 
 using namespace mlir;
 using namespace mlir::LLVM;
-
-namespace mlir {
-namespace LLVM {
-namespace detail {
-struct LLVMTypeStorage : public ::mlir::TypeStorage {
-  LLVMTypeStorage(llvm::Type *ty) : underlyingType(ty) {}
-
-  // LLVM types are pointer-unique.
-  using KeyTy = llvm::Type *;
-  bool operator==(const KeyTy &key) const { return key == underlyingType; }
-
-  static LLVMTypeStorage *construct(TypeStorageAllocator &allocator,
-                                    llvm::Type *ty) {
-    return new (allocator.allocate<LLVMTypeStorage>()) LLVMTypeStorage(ty);
-  }
-
-  llvm::Type *underlyingType;
-};
-} // end namespace detail
-} // end namespace LLVM
-} // end namespace mlir
-
-LLVMType LLVMType::get(MLIRContext *context, llvm::Type *llvmType) {
-  return Base::get(context, FIRST_LLVM_TYPE, llvmType);
-}
-
-llvm::Type *LLVMType::getUnderlyingType() const {
-  return getImpl()->underlyingType;
-}
 
 static void printLLVMBinaryOp(OpAsmPrinter *p, Operation *op) {
   // Fallback to the generic form if the op is not well-formed (may happen
@@ -161,14 +133,13 @@ static ParseResult parseICmpOp(OpAsmParser *parser, OperationState *result) {
   // The result type is either i1 or a vector type <? x i1> if the inputs are
   // vectors.
   auto *dialect = builder.getContext()->getRegisteredDialect<LLVMDialect>();
-  llvm::Type *llvmResultType = llvm::Type::getInt1Ty(dialect->getLLVMContext());
+  auto resultType = LLVMType::getInt1Ty(dialect);
   auto argType = type.dyn_cast<LLVM::LLVMType>();
   if (!argType)
     return parser->emitError(trailingTypeLoc, "expected LLVM IR dialect type");
   if (argType.getUnderlyingType()->isVectorTy())
-    llvmResultType = llvm::VectorType::get(
-        llvmResultType, argType.getUnderlyingType()->getVectorNumElements());
-  auto resultType = builder.getType<LLVM::LLVMType>(llvmResultType);
+    resultType = LLVMType::getVectorTy(
+        resultType, argType.getUnderlyingType()->getVectorNumElements());
 
   result->attributes = attrs;
   result->addTypes({resultType});
@@ -180,9 +151,7 @@ static ParseResult parseICmpOp(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 static void printAllocaOp(OpAsmPrinter *p, AllocaOp &op) {
-  auto *llvmPtrTy = op.getType().cast<LLVM::LLVMType>().getUnderlyingType();
-  auto *llvmElemTy = llvm::cast<llvm::PointerType>(llvmPtrTy)->getElementType();
-  auto elemTy = LLVM::LLVMType::get(op.getContext(), llvmElemTy);
+  auto elemTy = op.getType().cast<LLVM::LLVMType>().getPointerElementTy();
 
   auto funcTy = FunctionType::get({op.arraySize()->getType()}, {op.getType()},
                                   op.getContext());
@@ -291,13 +260,10 @@ static Type getLoadStoreElementType(OpAsmParser *parser, Type type,
   if (!llvmTy)
     return parser->emitError(trailingTypeLoc, "expected LLVM IR dialect type"),
            nullptr;
-  auto *llvmPtrTy = dyn_cast<llvm::PointerType>(llvmTy.getUnderlyingType());
-  if (!llvmPtrTy)
+  if (!llvmTy.getUnderlyingType()->isPointerTy())
     return parser->emitError(trailingTypeLoc, "expected LLVM pointer type"),
            nullptr;
-  auto elemTy = LLVM::LLVMType::get(parser->getBuilder().getContext(),
-                                    llvmPtrTy->getElementType());
-  return elemTy;
+  return llvmTy.getPointerElementTy();
 }
 
 // <operation> ::= `llvm.load` ssa-use attribute-dict? `:` type
@@ -465,33 +431,28 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
     Builder &builder = parser->getBuilder();
     auto *llvmDialect =
         builder.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-    llvm::Type *llvmResultType;
-    Type wrappedResultType;
+    LLVM::LLVMType llvmResultType;
     if (funcType.getNumResults() == 0) {
-      llvmResultType = llvm::Type::getVoidTy(llvmDialect->getLLVMContext());
-      wrappedResultType = builder.getType<LLVM::LLVMType>(llvmResultType);
+      llvmResultType = LLVM::LLVMType::getVoidTy(llvmDialect);
     } else {
-      wrappedResultType = funcType.getResult(0);
-      auto wrappedLLVMResultType = wrappedResultType.dyn_cast<LLVM::LLVMType>();
-      if (!wrappedLLVMResultType)
+      llvmResultType = funcType.getResult(0).dyn_cast<LLVM::LLVMType>();
+      if (!llvmResultType)
         return parser->emitError(trailingTypeLoc,
                                  "expected result to have LLVM type");
-      llvmResultType = wrappedLLVMResultType.getUnderlyingType();
     }
 
-    SmallVector<llvm::Type *, 8> argTypes;
+    SmallVector<LLVM::LLVMType, 8> argTypes;
     argTypes.reserve(funcType.getNumInputs());
     for (int i = 0, e = funcType.getNumInputs(); i < e; ++i) {
       auto argType = funcType.getInput(i).dyn_cast<LLVM::LLVMType>();
       if (!argType)
         return parser->emitError(trailingTypeLoc,
                                  "expected LLVM types as inputs");
-      argTypes.push_back(argType.getUnderlyingType());
+      argTypes.push_back(argType);
     }
-    auto *llvmFuncType = llvm::FunctionType::get(llvmResultType, argTypes,
-                                                 /*isVarArg=*/false);
-    auto wrappedFuncType =
-        builder.getType<LLVM::LLVMType>(llvmFuncType->getPointerTo());
+    auto llvmFuncType = LLVM::LLVMType::getFunctionTy(llvmResultType, argTypes,
+                                                      /*isVarArg=*/false);
+    auto wrappedFuncType = llvmFuncType.getPointerTo();
 
     auto funcArguments =
         ArrayRef<OpAsmParser::OperandType>(operands).drop_front();
@@ -505,7 +466,7 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
                                 parser->getNameLoc(), result->operands))
       return failure();
 
-    result->addTypes(wrappedResultType);
+    result->addTypes(llvmResultType);
   }
 
   result->attributes = attrs;
@@ -544,7 +505,6 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser *parser,
   // type by taking the element type, indexed by the position attribute for
   // stuctures.  Check the position index before accessing, it is supposed to be
   // in bounds.
-  llvm::Type *llvmContainerType = wrappedContainerType.getUnderlyingType();
   for (Attribute subAttr : positionArrayAttr) {
     auto positionElementAttr = subAttr.dyn_cast<IntegerAttr>();
     if (!positionElementAttr)
@@ -552,27 +512,27 @@ static LLVM::LLVMType getInsertExtractValueElementType(OpAsmParser *parser,
                                "expected an array of integer literals"),
              nullptr;
     int position = positionElementAttr.getInt();
+    auto *llvmContainerType = wrappedContainerType.getUnderlyingType();
     if (llvmContainerType->isArrayTy()) {
       if (position < 0 || static_cast<unsigned>(position) >=
                               llvmContainerType->getArrayNumElements())
         return parser->emitError(attributeLoc, "position out of bounds"),
                nullptr;
-      llvmContainerType = llvmContainerType->getArrayElementType();
+      wrappedContainerType = wrappedContainerType.getArrayElementType();
     } else if (llvmContainerType->isStructTy()) {
       if (position < 0 || static_cast<unsigned>(position) >=
                               llvmContainerType->getStructNumElements())
         return parser->emitError(attributeLoc, "position out of bounds"),
                nullptr;
-      llvmContainerType = llvmContainerType->getStructElementType(position);
+      wrappedContainerType =
+          wrappedContainerType.getStructElementType(position);
     } else {
       return parser->emitError(typeLoc,
                                "expected wrapped LLVM IR structure/array type"),
              nullptr;
     }
   }
-
-  Builder &builder = parser->getBuilder();
-  return builder.getType<LLVM::LLVMType>(llvmContainerType);
+  return wrappedContainerType;
 }
 
 // <operation> ::= `llvm.extractvalue` ssa-use
@@ -730,8 +690,7 @@ static ParseResult parseCondBrOp(OpAsmParser *parser, OperationState *result) {
   Builder &builder = parser->getBuilder();
   auto *llvmDialect =
       builder.getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-  auto i1Type = builder.getType<LLVM::LLVMType>(
-      llvm::Type::getInt1Ty(llvmDialect->getLLVMContext()));
+  auto i1Type = LLVM::LLVMType::getInt1Ty(llvmDialect);
 
   if (parser->parseOperand(condition) || parser->parseComma() ||
       parser->parseSuccessorAndUseList(trueDest, trueOperands) ||
@@ -844,9 +803,26 @@ static ParseResult parseConstantOp(OpAsmParser *parser,
 // LLVMDialect initialization, type parsing, and registration.
 //===----------------------------------------------------------------------===//
 
+namespace mlir {
+namespace LLVM {
+namespace detail {
+struct LLVMDialectImpl {
+  LLVMDialectImpl() : module("LLVMDialectModule", llvmContext) {}
+
+  llvm::LLVMContext llvmContext;
+  llvm::Module module;
+
+  /// A smart mutex to lock access to the llvm context. Unlike MLIR, LLVM is not
+  /// multi-threaded and requires locked access to prevent race conditions.
+  llvm::sys::SmartMutex<true> mutex;
+};
+} // end namespace detail
+} // end namespace LLVM
+} // end namespace mlir
+
 LLVMDialect::LLVMDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context),
-      module("LLVMDialectModule", llvmContext) {
+      impl(new detail::LLVMDialectImpl()) {
   addTypes<LLVMType>();
   addOperations<
 #define GET_OP_LIST
@@ -857,13 +833,21 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
   allowUnknownOperations();
 }
 
+LLVMDialect::~LLVMDialect() {}
+
 #define GET_OP_CLASSES
 #include "mlir/LLVMIR/LLVMOps.cpp.inc"
 
+llvm::LLVMContext &LLVMDialect::getLLVMContext() { return impl->llvmContext; }
+llvm::Module &LLVMDialect::getLLVMModule() { return impl->module; }
+
 /// Parse a type registered to this dialect.
 Type LLVMDialect::parseType(StringRef tyData, Location loc) const {
+  // LLVM is not thread-safe, so lock access to it.
+  llvm::sys::SmartScopedLock<true> lock(impl->mutex);
+
   llvm::SMDiagnostic errorMessage;
-  llvm::Type *type = llvm::parseType(tyData, errorMessage, module);
+  llvm::Type *type = llvm::parseType(tyData, errorMessage, impl->module);
   if (!type)
     return (getContext()->emitError(loc, errorMessage.getMessage()), nullptr);
   return LLVMType::get(getContext(), type);
@@ -889,3 +873,126 @@ LogicalResult LLVMDialect::verifyFunctionArgAttribute(Function *func,
 }
 
 static DialectRegistration<LLVMDialect> llvmDialect;
+
+//===----------------------------------------------------------------------===//
+// LLVMType.
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace LLVM {
+namespace detail {
+struct LLVMTypeStorage : public ::mlir::TypeStorage {
+  LLVMTypeStorage(llvm::Type *ty) : underlyingType(ty) {}
+
+  // LLVM types are pointer-unique.
+  using KeyTy = llvm::Type *;
+  bool operator==(const KeyTy &key) const { return key == underlyingType; }
+
+  static LLVMTypeStorage *construct(TypeStorageAllocator &allocator,
+                                    llvm::Type *ty) {
+    return new (allocator.allocate<LLVMTypeStorage>()) LLVMTypeStorage(ty);
+  }
+
+  llvm::Type *underlyingType;
+};
+} // end namespace detail
+} // end namespace LLVM
+} // end namespace mlir
+
+LLVMType LLVMType::get(MLIRContext *context, llvm::Type *llvmType) {
+  return Base::get(context, FIRST_LLVM_TYPE, llvmType);
+}
+
+LLVMDialect &LLVMType::getDialect() {
+  return static_cast<LLVMDialect &>(Type::getDialect());
+}
+
+llvm::Type *LLVMType::getUnderlyingType() const {
+  return getImpl()->underlyingType;
+}
+
+/// Array type utilities.
+LLVMType LLVMType::getArrayElementType() {
+  return get(getContext(), getUnderlyingType()->getArrayElementType());
+}
+
+/// Pointer type utilities.
+LLVMType LLVMType::getPointerTo(unsigned addrSpace) {
+  // Lock access to the dialect as this may modify the LLVM context.
+  llvm::sys::SmartScopedLock<true> lock(getDialect().impl->mutex);
+  return get(getContext(), getUnderlyingType()->getPointerTo(addrSpace));
+}
+LLVMType LLVMType::getPointerElementTy() {
+  return get(getContext(), getUnderlyingType()->getPointerElementType());
+}
+
+/// Struct type utilities.
+LLVMType LLVMType::getStructElementType(unsigned i) {
+  return get(getContext(), getUnderlyingType()->getStructElementType(i));
+}
+
+/// Utilities used to generate floating point types.
+LLVMType LLVMType::getDoubleTy(LLVMDialect *dialect) {
+  return get(dialect->getContext(),
+             llvm::Type::getDoubleTy(dialect->getLLVMContext()));
+}
+LLVMType LLVMType::getFloatTy(LLVMDialect *dialect) {
+  return get(dialect->getContext(),
+             llvm::Type::getFloatTy(dialect->getLLVMContext()));
+}
+LLVMType LLVMType::getHalfTy(LLVMDialect *dialect) {
+  return get(dialect->getContext(),
+             llvm::Type::getHalfTy(dialect->getLLVMContext()));
+}
+
+/// Utilities used to generate integer types.
+LLVMType LLVMType::getIntNTy(LLVMDialect *dialect, unsigned numBits) {
+  // Lock access to the dialect as this may modify the LLVM context.
+  llvm::sys::SmartScopedLock<true> lock(dialect->impl->mutex);
+  return get(dialect->getContext(),
+             llvm::Type::getIntNTy(dialect->getLLVMContext(), numBits));
+}
+
+/// Utilities used to generate other miscellaneous types.
+LLVMType LLVMType::getArrayTy(LLVMType elementType, uint64_t numElements) {
+  // Lock access to the dialect as this may modify the LLVM context.
+  llvm::sys::SmartScopedLock<true> lock(elementType.getDialect().impl->mutex);
+  return get(
+      elementType.getContext(),
+      llvm::ArrayType::get(elementType.getUnderlyingType(), numElements));
+}
+LLVMType LLVMType::getFunctionTy(LLVMType result, ArrayRef<LLVMType> params,
+                                 bool isVarArg) {
+  SmallVector<llvm::Type *, 8> llvmParams;
+  for (auto param : params)
+    llvmParams.push_back(param.getUnderlyingType());
+
+  // Lock access to the dialect as this may modify the LLVM context.
+  llvm::sys::SmartScopedLock<true> lock(result.getDialect().impl->mutex);
+  return get(result.getContext(),
+             llvm::FunctionType::get(result.getUnderlyingType(), llvmParams,
+                                     isVarArg));
+}
+LLVMType LLVMType::getStructTy(LLVMDialect *dialect,
+                               ArrayRef<LLVMType> elements, bool isPacked) {
+  SmallVector<llvm::Type *, 8> llvmElements;
+  for (auto elt : elements)
+    llvmElements.push_back(elt.getUnderlyingType());
+
+  // Lock access to the dialect as this may modify the LLVM context.
+  llvm::sys::SmartScopedLock<true> lock(dialect->impl->mutex);
+  return get(
+      dialect->getContext(),
+      llvm::StructType::get(dialect->getLLVMContext(), llvmElements, isPacked));
+}
+LLVMType LLVMType::getVectorTy(LLVMType elementType, unsigned numElements) {
+  // Lock access to the dialect as this may modify the LLVM context.
+  llvm::sys::SmartScopedLock<true> lock(elementType.getDialect().impl->mutex);
+  return get(
+      elementType.getContext(),
+      llvm::VectorType::get(elementType.getUnderlyingType(), numElements));
+}
+LLVMType LLVMType::getVoidTy(LLVMDialect *dialect) {
+  return get(dialect->getContext(),
+             llvm::Type::getVoidTy(dialect->getLLVMContext()));
+}

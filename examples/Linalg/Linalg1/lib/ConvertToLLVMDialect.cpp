@@ -62,22 +62,14 @@ Type linalg::convertLinalgType(Type t) {
   // Simple conversions.
   if (t.isa<IndexType>()) {
     int width = dialect->getLLVMModule().getDataLayout().getPointerSizeInBits();
-    auto *integerTy = llvm::IntegerType::get(dialect->getLLVMContext(), width);
-    return LLVM::LLVMType::get(context, integerTy);
+    return LLVM::LLVMType::getIntNTy(dialect, width);
   }
-  if (auto intTy = t.dyn_cast<IntegerType>()) {
-    int width = intTy.getWidth();
-    auto *integerTy = llvm::IntegerType::get(dialect->getLLVMContext(), width);
-    return LLVM::LLVMType::get(context, integerTy);
-  }
-  if (t.isF32()) {
-    auto *floatTy = llvm::Type::getFloatTy(dialect->getLLVMContext());
-    return LLVM::LLVMType::get(context, floatTy);
-  }
-  if (t.isF64()) {
-    auto *doubleTy = llvm::Type::getDoubleTy(dialect->getLLVMContext());
-    return LLVM::LLVMType::get(context, doubleTy);
-  }
+  if (auto intTy = t.dyn_cast<IntegerType>())
+    return LLVM::LLVMType::getIntNTy(dialect, intTy.getWidth());
+  if (t.isF32())
+    return LLVM::LLVMType::getFloatTy(dialect);
+  if (t.isF64())
+    return LLVM::LLVMType::getDoubleTy(dialect);
 
   // Range descriptor contains the range bounds and the step as 64-bit integers.
   //
@@ -87,9 +79,8 @@ Type linalg::convertLinalgType(Type t) {
   //   int64_t step;
   // };
   if (auto rangeTy = t.dyn_cast<linalg::RangeType>()) {
-    auto *int64Ty = llvm::Type::getInt64Ty(dialect->getLLVMContext());
-    auto *structTy = llvm::StructType::get(int64Ty, int64Ty, int64Ty);
-    return LLVM::LLVMType::get(context, structTy);
+    auto int64Ty = LLVM::LLVMType::getInt64Ty(dialect);
+    return LLVM::LLVMType::getStructTy(int64Ty, int64Ty, int64Ty);
   }
 
   // View descriptor contains the pointer to the data buffer, followed by a
@@ -116,14 +107,12 @@ Type linalg::convertLinalgType(Type t) {
   //   int64_t strides[Rank];
   // };
   if (auto viewTy = t.dyn_cast<linalg::ViewType>()) {
-    auto *elemTy = linalg::convertLinalgType(viewTy.getElementType())
-                       .cast<LLVM::LLVMType>()
-                       .getUnderlyingType()
-                       ->getPointerTo();
-    auto *int64Ty = llvm::Type::getInt64Ty(dialect->getLLVMContext());
-    auto *arrayTy = llvm::ArrayType::get(int64Ty, viewTy.getRank());
-    auto *structTy = llvm::StructType::get(elemTy, int64Ty, arrayTy, arrayTy);
-    return LLVM::LLVMType::get(context, structTy);
+    auto elemTy = linalg::convertLinalgType(viewTy.getElementType())
+                      .cast<LLVM::LLVMType>()
+                      .getPointerTo();
+    auto int64Ty = LLVM::LLVMType::getInt64Ty(dialect);
+    auto arrayTy = LLVM::LLVMType::getArrayTy(int64Ty, viewTy.getRank());
+    return LLVM::LLVMType::getStructTy(elemTy, int64Ty, arrayTy, arrayTy);
   }
 
   // All other types are kept as is.
@@ -217,11 +206,9 @@ public:
       if (type.hasStaticShape())
         return memref;
 
-      auto elementTy = LLVM::LLVMType::get(
-          type.getContext(), linalg::convertLinalgType(type.getElementType())
-                                 .cast<LLVM::LLVMType>()
-                                 .getUnderlyingType()
-                                 ->getPointerTo());
+      auto elementTy = linalg::convertLinalgType(type.getElementType())
+                           .cast<LLVM::LLVMType>()
+                           .getPointerTo();
       return intrinsics::extractvalue(elementTy, memref, pos(0));
     };
 
@@ -307,11 +294,9 @@ public:
     auto sliceOp = cast<linalg::SliceOp>(op);
     auto newViewDescriptorType =
         linalg::convertLinalgType(sliceOp.getViewType());
-    auto elementType = rewriter.getType<LLVM::LLVMType>(
-        linalg::convertLinalgType(sliceOp.getElementType())
-            .cast<LLVM::LLVMType>()
-            .getUnderlyingType()
-            ->getPointerTo());
+    auto elementType = linalg::convertLinalgType(sliceOp.getElementType())
+                           .cast<LLVM::LLVMType>()
+                           .getPointerTo();
     auto int64Ty = linalg::convertLinalgType(rewriter.getIntegerType(64));
 
     auto pos = [&rewriter](ArrayRef<int> values) {

@@ -67,11 +67,9 @@ public:
     auto loadOp = cast<Op>(op);
     auto elementType =
         loadOp.getViewType().template cast<linalg::ViewType>().getElementType();
-    auto *llvmPtrType = linalg::convertLinalgType(elementType)
-                            .template cast<LLVM::LLVMType>()
-                            .getUnderlyingType()
-                            ->getPointerTo();
-    elementType = rewriter.getType<LLVM::LLVMType>(llvmPtrType);
+    elementType = linalg::convertLinalgType(elementType)
+                      .template cast<LLVM::LLVMType>()
+                      .getPointerTo();
     auto int64Ty = linalg::convertLinalgType(rewriter.getIntegerType(64));
 
     auto pos = [&rewriter](ArrayRef<int> values) {

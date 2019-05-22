@@ -31,11 +31,12 @@ class IntegerType;
 class LLVMContext;
 class Module;
 class Type;
-}
+} // namespace llvm
 
 namespace mlir {
 namespace LLVM {
 class LLVMDialect;
+class LLVMType;
 }
 
 /// Conversion from the Standard dialect to the LLVM IR dialect.  Provides hooks
@@ -54,6 +55,9 @@ public:
 
   /// Returns the LLVM context.
   llvm::LLVMContext &getLLVMContext();
+
+  /// Returns the LLVM dialect.
+  LLVM::LLVMDialect *getDialect() { return llvmDialect; }
 
 protected:
   /// Add a set of converters to the given pattern list. Store the module
@@ -119,13 +123,13 @@ private:
 
   // Get the LLVM representation of the index type based on the bitwidth of the
   // pointer as defined by the data layout of the module.
-  llvm::IntegerType *getIndexType();
+  LLVM::LLVMType getIndexType();
 
   // Wrap the given LLVM IR type into an LLVM IR dialect type.
   Type wrap(llvm::Type *llvmType);
 
-  // Extract an LLVM IR type from the LLVM IR dialect type.
-  llvm::Type *unwrap(Type type);
+  // Extract an LLVM IR dialect type.
+  LLVM::LLVMType unwrap(Type type);
 };
 
 /// Base class for operation conversions targeting the LLVM IR dialect. Provides

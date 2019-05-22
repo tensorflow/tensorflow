@@ -45,46 +45,37 @@ llvm::LLVMContext &LLVMLowering::getLLVMContext() {
   return module->getContext();
 }
 
-// Wrap the given LLVM IR type into an LLVM IR dialect type.
-Type LLVMLowering::wrap(llvm::Type *llvmType) {
-  return LLVM::LLVMType::get(llvmDialect->getContext(), llvmType);
-}
-
 // Extract an LLVM IR type from the LLVM IR dialect type.
-llvm::Type *LLVMLowering::unwrap(Type type) {
+LLVM::LLVMType LLVMLowering::unwrap(Type type) {
   if (!type)
     return nullptr;
   auto *mlirContext = type.getContext();
   auto wrappedLLVMType = type.dyn_cast<LLVM::LLVMType>();
   if (!wrappedLLVMType)
-    return mlirContext->emitError(UnknownLoc::get(mlirContext),
-                                  "conversion resulted in a non-LLVM type"),
-           nullptr;
-  return wrappedLLVMType.getUnderlyingType();
+    mlirContext->emitError(UnknownLoc::get(mlirContext),
+                           "conversion resulted in a non-LLVM type");
+  return wrappedLLVMType;
 }
 
-llvm::IntegerType *LLVMLowering::getIndexType() {
-  return llvm::IntegerType::get(llvmDialect->getLLVMContext(),
-                                module->getDataLayout().getPointerSizeInBits());
+LLVM::LLVMType LLVMLowering::getIndexType() {
+  return LLVM::LLVMType::getIntNTy(
+      llvmDialect, module->getDataLayout().getPointerSizeInBits());
 }
 
-Type LLVMLowering::convertIndexType(IndexType type) {
-  return wrap(getIndexType());
-}
+Type LLVMLowering::convertIndexType(IndexType type) { return getIndexType(); }
 
 Type LLVMLowering::convertIntegerType(IntegerType type) {
-  return wrap(
-      llvm::Type::getIntNTy(llvmDialect->getLLVMContext(), type.getWidth()));
+  return LLVM::LLVMType::getIntNTy(llvmDialect, type.getWidth());
 }
 
 Type LLVMLowering::convertFloatType(FloatType type) {
   switch (type.getKind()) {
   case mlir::StandardTypes::F32:
-    return wrap(llvm::Type::getFloatTy(llvmDialect->getLLVMContext()));
+    return LLVM::LLVMType::getFloatTy(llvmDialect);
   case mlir::StandardTypes::F64:
-    return wrap(llvm::Type::getDoubleTy(llvmDialect->getLLVMContext()));
+    return LLVM::LLVMType::getDoubleTy(llvmDialect);
   case mlir::StandardTypes::F16:
-    return wrap(llvm::Type::getHalfTy(llvmDialect->getLLVMContext()));
+    return LLVM::LLVMType::getHalfTy(llvmDialect);
   case mlir::StandardTypes::BF16: {
     auto *mlirContext = llvmDialect->getContext();
     return mlirContext->emitError(UnknownLoc::get(mlirContext),
@@ -102,7 +93,7 @@ Type LLVMLowering::convertFloatType(FloatType type) {
 // they are into an LLVM StructType in their order of appearance.
 Type LLVMLowering::convertFunctionType(FunctionType type) {
   // Convert argument types one by one and check for errors.
-  SmallVector<llvm::Type *, 8> argTypes;
+  SmallVector<LLVM::LLVMType, 8> argTypes;
   for (auto t : type.getInputs()) {
     auto converted = convertType(t);
     if (!converted)
@@ -113,14 +104,14 @@ Type LLVMLowering::convertFunctionType(FunctionType type) {
   // If function does not return anything, create the void result type,
   // if it returns on element, convert it, otherwise pack the result types into
   // a struct.
-  llvm::Type *resultType =
+  LLVM::LLVMType resultType =
       type.getNumResults() == 0
-          ? llvm::Type::getVoidTy(llvmDialect->getLLVMContext())
+          ? LLVM::LLVMType::getVoidTy(llvmDialect)
           : unwrap(packFunctionResults(type.getResults()));
   if (!resultType)
     return {};
-  return wrap(llvm::FunctionType::get(resultType, argTypes, /*isVarArg=*/false)
-                  ->getPointerTo());
+  return LLVM::LLVMType::getFunctionTy(resultType, argTypes, /*isVarArg=*/false)
+      .getPointerTo();
 }
 
 // Convert a MemRef to an LLVM type. If the memref is statically-shaped, then
@@ -129,21 +120,21 @@ Type LLVMLowering::convertFunctionType(FunctionType type) {
 // pointer to the elemental type of the MemRef and the following N elements are
 // values of the Index type, one for each of N dynamic dimensions of the MemRef.
 Type LLVMLowering::convertMemRefType(MemRefType type) {
-  llvm::Type *elementType = unwrap(convertType(type.getElementType()));
+  LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
   if (!elementType)
     return {};
-  auto ptrType = elementType->getPointerTo();
+  auto ptrType = elementType.getPointerTo();
 
   // Extra value for the memory space.
   unsigned numDynamicSizes = type.getNumDynamicDims();
   // If memref is statically-shaped we return the underlying pointer type.
-  if (numDynamicSizes == 0) {
-    return wrap(ptrType);
-  }
-  SmallVector<llvm::Type *, 8> types(numDynamicSizes + 1, getIndexType());
+  if (numDynamicSizes == 0)
+    return ptrType;
+
+  SmallVector<LLVM::LLVMType, 8> types(numDynamicSizes + 1, getIndexType());
   types.front() = ptrType;
 
-  return wrap(llvm::StructType::get(llvmDialect->getLLVMContext(), types));
+  return LLVM::LLVMType::getStructTy(llvmDialect, types);
 }
 
 // Convert a 1D vector type to an LLVM vector type.
@@ -155,9 +146,9 @@ Type LLVMLowering::convertVectorType(VectorType type) {
     return {};
   }
 
-  llvm::Type *elementType = unwrap(convertType(type.getElementType()));
+  LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
   return elementType
-             ? wrap(llvm::VectorType::get(elementType, type.getShape().front()))
+             ? LLVM::LLVMType::getVectorTy(elementType, type.getShape().front())
              : Type();
 }
 
@@ -189,8 +180,7 @@ static Type getMemRefElementPtrType(MemRefType t, LLVMLowering &lowering) {
   auto converted = lowering.convertType(elementType);
   if (!converted)
     return {};
-  llvm::Type *llvmType = converted.cast<LLVM::LLVMType>().getUnderlyingType();
-  return LLVM::LLVMType::get(t.getContext(), llvmType->getPointerTo());
+  return converted.cast<LLVM::LLVMType>().getPointerTo();
 }
 
 LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
@@ -226,15 +216,13 @@ public:
   // Get the MLIR type wrapping the LLVM integer type whose bit width is defined
   // by the pointer size used in the LLVM module.
   LLVM::LLVMType getIndexType() const {
-    llvm::Type *llvmType = llvm::Type::getIntNTy(
-        getContext(), getModule().getDataLayout().getPointerSizeInBits());
-    return LLVM::LLVMType::get(dialect.getContext(), llvmType);
+    return LLVM::LLVMType::getIntNTy(
+        &dialect, getModule().getDataLayout().getPointerSizeInBits());
   }
 
   // Get the MLIR type wrapping the LLVM i8* type.
   LLVM::LLVMType getVoidPtrType() const {
-    return LLVM::LLVMType::get(dialect.getContext(),
-                               llvm::Type::getInt8PtrTy(getContext()));
+    return LLVM::LLVMType::getInt8PtrTy(&dialect);
   }
 
   // Create an LLVM IR pseudo-operation defining the given index constant.
@@ -478,10 +466,8 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
                                   cumulativeSize)
             .getResult(0);
     auto structElementType = lowering.convertType(elementType);
-    auto elementPtrType = LLVM::LLVMType::get(
-        op->getContext(), structElementType.cast<LLVM::LLVMType>()
-                              .getUnderlyingType()
-                              ->getPointerTo());
+    auto elementPtrType =
+        structElementType.cast<LLVM::LLVMType>().getPointerTo();
     allocated = rewriter.create<LLVM::BitcastOp>(op->getLoc(), elementPtrType,
                                                  ArrayRef<Value *>(allocated));
 
@@ -530,14 +516,9 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
       op->getFunction()->getModule()->getFunctions().push_back(freeFunc);
     }
 
-    auto *type =
-        operands[0]->getType().cast<LLVM::LLVMType>().getUnderlyingType();
-    auto hasStaticShape = type->isPointerTy();
-    Type elementPtrType =
-        (hasStaticShape)
-            ? rewriter.getType<LLVM::LLVMType>(type)
-            : rewriter.getType<LLVM::LLVMType>(
-                  cast<llvm::StructType>(type)->getStructElementType(0));
+    auto type = operands[0]->getType().cast<LLVM::LLVMType>();
+    auto hasStaticShape = type.getUnderlyingType()->isPointerTy();
+    Type elementPtrType = hasStaticShape ? type : type.getStructElementType(0);
     Value *bufferPtr = extractMemRefElementPtr(
         rewriter, op->getLoc(), operands[0], elementPtrType, hasStaticShape);
     Value *casted = rewriter.create<LLVM::BitcastOp>(
@@ -964,10 +945,6 @@ Type LLVMLowering::convertType(Type t) {
   return {};
 }
 
-static llvm::Type *unwrapType(Type type) {
-  return type.cast<LLVM::LLVMType>().getUnderlyingType();
-}
-
 // Create an LLVM IR structure type if there is more than one result.
 Type LLVMLowering::packFunctionResults(ArrayRef<Type> types) {
   assert(!types.empty() && "expected non-empty list of type");
@@ -975,18 +952,16 @@ Type LLVMLowering::packFunctionResults(ArrayRef<Type> types) {
   if (types.size() == 1)
     return convertType(types.front());
 
-  SmallVector<llvm::Type *, 8> resultTypes;
+  SmallVector<LLVM::LLVMType, 8> resultTypes;
   resultTypes.reserve(types.size());
   for (auto t : types) {
-    Type converted = convertType(t);
+    auto converted = convertType(t).dyn_cast<LLVM::LLVMType>();
     if (!converted)
       return {};
-    resultTypes.push_back(unwrapType(converted));
+    resultTypes.push_back(converted);
   }
 
-  return LLVM::LLVMType::get(
-      llvmDialect->getContext(),
-      llvm::StructType::get(llvmDialect->getLLVMContext(), resultTypes));
+  return LLVM::LLVMType::getStructTy(llvmDialect, resultTypes);
 }
 
 // Convert function signatures using the stored LLVM IR module.
