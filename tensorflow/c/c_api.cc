@@ -98,7 +98,6 @@ using tensorflow::TensorId;
 using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
 using tensorflow::VersionDef;
-using tensorflow::error::Code;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::gtl::ArraySlice;
@@ -1676,7 +1675,7 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
       if (metadata.list_size == 0) {
         for (int i = 0; i < oper->node.op_def().attr_size(); ++i) {
           const auto& a = oper->node.op_def().attr(i);
-          if (a.name().compare(attr_name) != 0) continue;
+          if (a.name() != attr_name) continue;
           const string& typestr = a.type();
           if (typestr == "list(string)") {
             metadata.type = TF_ATTR_STRING;
