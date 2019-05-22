@@ -1270,7 +1270,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
 
     // Note: the condition to reach this is uniform across the entire block.
     __syncthreads();
-    unsigned active_threads = GpuBallotSync(kGpuWarpAll, channel_in_range);
+    unsigned active_threads = GpuBallotSync(kCudaWarpAll, channel_in_range);
 
     if (channel_in_range) {
       const T* const out_ptr = inout_offset + output;
@@ -1542,7 +1542,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
 
     // Note: the condition to reach this is uniform across the entire block.
     __syncthreads();
-    unsigned active_threads = GpuBallotSync(kGpuWarpAll, channel_in_range);
+    unsigned active_threads = GpuBallotSync(kCudaWarpAll, channel_in_range);
 
     if (channel_in_range) {
       const T* const out_ptr = inout_offset + output;
