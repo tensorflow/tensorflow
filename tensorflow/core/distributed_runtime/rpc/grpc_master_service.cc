@@ -128,6 +128,7 @@ class GrpcMasterService : public AsyncServiceInterface {
         // NOTE(mrry): A null `callback_tag` indicates that this is
         // the shutdown alarm.
         cq_->Shutdown();
+        break;
       }
     }
   }

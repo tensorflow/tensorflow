@@ -382,8 +382,10 @@ Status GrpcServer::Stop() {
       state_ = STOPPED;
       return Status::OK();
     case STARTED:
-      return errors::Unimplemented(
-          "Clean shutdown is not currently implemented");
+      worker_service_->Shutdown();
+      master_service_->Shutdown();
+      eager_service_->Shutdown();
+      return Status::OK();
     case STOPPED:
       LOG(INFO) << "Server already stopped (target: " << target() << ")";
       return Status::OK();

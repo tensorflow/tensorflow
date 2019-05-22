@@ -122,10 +122,12 @@ class GrpcWorkerServiceThread {
       mutex_lock lock(shutdown_mu_);
       is_shutdown_ = true;
     }
-    cq_->Shutdown();
+    shutdown_alarm_ = new ::grpc::Alarm(cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
   }
 
  private:
+  ::grpc::Alarm* shutdown_alarm_ = nullptr;
+
   // Add one or more completion queue entries for each worker method, then
   // begin servicing requests from the completion queue.
   void HandleRPCsLoop() {
@@ -164,8 +166,13 @@ class GrpcWorkerServiceThread {
     while (cq_->Next(&tag, &ok)) {
       UntypedCall<GrpcWorkerServiceThread>::Tag* callback_tag =
           static_cast<UntypedCall<GrpcWorkerServiceThread>::Tag*>(tag);
-      CHECK(callback_tag);
-      callback_tag->OnCompleted(this, ok);
+      if (callback_tag) {
+        callback_tag->OnCompleted(this, ok);
+      } else {
+        cq_->Shutdown();
+        delete shutdown_alarm_;
+        break;
+      }
     }
   }
 
