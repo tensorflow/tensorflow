@@ -84,6 +84,8 @@ class PoplarPlatform : public se::Platform {
 
   Status ConfigurePoplarDevices(const IpuOptions& opts);
 
+  Status ResetSeed(int ordinal, int seed);
+
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 
   void AboutToFreeEngine(poplar::Engine* engine);

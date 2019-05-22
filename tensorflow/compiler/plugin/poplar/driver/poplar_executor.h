@@ -369,6 +369,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   Status RegisterOutfeeds(const OutfeedInfos& outfeed_infos);
 
+  void ResetSeed(int seed);
+
  private:
   struct TensorControl {
     size_t size = 0;
@@ -542,6 +544,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   void DeferredDeallocation();
 
+  void ConnectSeedCallback(poplar::Engine* engine, int replication_factor);
+
   int ordinal_;
 
   std::recursive_mutex mutex_;
@@ -612,6 +616,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
       infeed_dataset_iterators_;
 
   absl::flat_hash_set<std::string> registered_outfeeds_;
+
+  std::mt19937_64 seed_gen;
 };
 
 }  // namespace poplarplugin

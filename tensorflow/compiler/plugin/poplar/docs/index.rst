@@ -11,6 +11,7 @@ Targeting the IPU from TensorFlow
     tutorial
     device_selection
     variables
+    rand_and_fp
     logging
     poplar_ops 
     perf_training

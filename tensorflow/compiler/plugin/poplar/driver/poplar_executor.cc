@@ -200,19 +200,6 @@ Shape GetOutfeedShape(const Shape& output_shape,
   }
 }
 
-void ConnectSeedCallback(poplar::Engine* engine, int replication_factor) {
-  static std::random_device rd;
-  static std::mt19937_64 gen(rd());
-
-  auto callback = [gen, replication_factor](void* ptr) mutable {
-    uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
-    for (int i = 0; i < std::max(replication_factor, 1); ++i) {
-      seedValue[i] = gen();
-    }
-  };
-
-  engine->connectStreamToCallback(GetRandomNumberSeedStream(), callback);
-}
 }  // namespace
 
 PoplarExecutor::TensorControl::TensorControl(size_t size_) {
@@ -235,7 +222,11 @@ PoplarExecutor::PoplarExecutor()
       poplar_device_hash_(0),
       hardware_configured_(false),
       thread_pool_(tensorflow::Env::Default(), "poplar_executor_threadpool",
-                   PoplarExecutor::NUM_THREADS) {}
+                   PoplarExecutor::NUM_THREADS) {
+  // TODO should this use the time/ms?
+  static std::random_device rd;
+  seed_gen.seed(rd());
+}
 
 PoplarExecutor::~PoplarExecutor() {}
 
@@ -1444,6 +1435,21 @@ Status PoplarExecutor::RegisterOutfeeds(const OutfeedInfos& outfeed_infos) {
   }
   return Status::OK();
 }
+
+void PoplarExecutor::ConnectSeedCallback(poplar::Engine* engine,
+                                         int replication_factor) {
+  auto& gen = seed_gen;
+  auto callback = [&gen, replication_factor](void* ptr) mutable {
+    uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
+    for (int i = 0; i < std::max(replication_factor, 1); ++i) {
+      seedValue[i] = gen();
+    }
+  };
+
+  engine->connectStreamToCallback(GetRandomNumberSeedStream(), callback);
+}
+
+void PoplarExecutor::ResetSeed(int seed) { seed_gen.seed(seed); }
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     perftools::gputools::StreamExecutor* executor,

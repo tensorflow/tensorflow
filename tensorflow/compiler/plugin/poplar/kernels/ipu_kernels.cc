@@ -94,4 +94,37 @@ class IpuConfigureHardwareOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("IpuConfigureHardware").Device(DEVICE_CPU),
                         IpuConfigureHardwareOp);
 
+class IpuResetSeedOp : public OpKernel {
+ public:
+  explicit IpuResetSeedOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device", &dev_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("seed", &seed_));
+  }
+  ~IpuResetSeedOp() override{};
+
+  void Compute(OpKernelContext* ctx) override {
+    auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
+    OP_REQUIRES(ctx, platform.ok(), platform.status());
+
+    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
+
+    DeviceNameUtils::ParsedName parsed_name;
+    DeviceNameUtils::ParseFullName(dev_name_, &parsed_name);
+
+    OP_REQUIRES(ctx, parsed_name.has_id,
+                errors::InvalidArgument("Invalid device name %s", dev_name_));
+
+    OP_REQUIRES_OK(ctx, p->ResetSeed(parsed_name.id, seed_));
+  }
+
+ private:
+  std::string dev_name_;
+  int seed_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(IpuResetSeedOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("IpuResetSeed").Device(DEVICE_CPU),
+                        IpuResetSeedOp);
+
 }  // namespace tensorflow
