@@ -988,26 +988,24 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
         operand_2_shape, operand_2_is_tensor, operand_2_batch_size);
 
     // operand_1 broadcast operand_2
-    ExpectStatus(
-        this->converter_->GetTrtBroadcastShape(
-            operand_1, operand_2, &operand_1_new_dims, &operand_2_new_dims),
-        expected_code, expected_error_msg_substr);
+    ExpectStatus(GetTrtBroadcastShape(operand_1, operand_2, &operand_1_new_dims,
+                                      &operand_2_new_dims),
+                 expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
     }
     // operand_2 broadcast operand_1
-    ExpectStatus(
-        this->converter_->GetTrtBroadcastShape(
-            operand_2, operand_1, &operand_2_new_dims, &operand_1_new_dims),
-        expected_code, expected_error_msg_substr);
+    ExpectStatus(GetTrtBroadcastShape(operand_2, operand_1, &operand_2_new_dims,
+                                      &operand_1_new_dims),
+                 expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
     }
   };
 
-  // Both inputs are weights.
+  // Both inputs are weights. This should be handled by constfold grappler.
   symmetric_test({1}, {1}, kIsNotTensor, kIsNotTensor, {1}, {1});
 
   // One tensor and one weights.
@@ -1064,7 +1062,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
     int batch_size = -1;
     for (const NodeDef& node : gdef.node()) {
       absl::string_view node_name(node.name());
-      if (absl::ConsumePrefix(&node_name, kInputPHName)) {
+      if (str_util::ConsumePrefix(&node_name, kInputPHName)) {
         int port = -1;
         EXPECT_TRUE(absl::SimpleAtoi(node_name, &port)) << node.name();
         if (input_shapes.size() < port + 1) input_shapes.resize(port + 1);
@@ -1344,6 +1342,10 @@ class OpConverterTest : public ::testing::Test {
       RunConversion(node_def, expected_code, expected_msg_substr);
     }
   }
+
+  void TestMatMulHelper(
+      const std::function<NodeDef(DataType, bool, bool)>& get_matmul,
+      const std::string& op_name);
 
   // Expose quantization_ranges_ for tests
   std::unordered_map<nvinfer1::ITensor*, float>& quantization_ranges() {
@@ -1672,60 +1674,59 @@ TEST_F(OpConverterTest, ConvertReshape) {
 // Helper function for testing MatMul and BatchMatMul
 // get_matmul corresponds to the function used to generate the node. It should
 // accept (DataType, transpose_a, transpose_b) as parameters.
-void TestMatMulHelper(
-    OpConverterTest* test,
+void OpConverterTest::TestMatMulHelper(
     const std::function<NodeDef(DataType, bool, bool)>& get_matmul,
     const std::string& op_name) {
   // HACK: This needs to be done in a better way.
   const bool is_batch_matmul = op_name == "BatchMatMul";
   {
     // Unsupported data type.
-    test->Reset();
+    Reset();
     NodeDef node_def = get_matmul(DT_INT32, false, false);
-    test->AddTestTensor("input", {2}, /*batch_size=*/1,
-                        nvinfer1::DataType::kINT32);
-    test->AddTestWeights<int32>("weights", {2, 1}, {3, 5});
-    test->RunValidationAndConversion(
+    AddTestTensor("input", {2}, /*batch_size=*/1, nvinfer1::DataType::kINT32);
+    AddTestWeights<int32>("weights", {2, 1}, {3, 5});
+    RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        StrCat("Data type int32 is not supported for ", op_name,
-               ", must be one of [float, half], at my_matmul")
+        ("Data type int32 is not supported for " + op_name +
+         ", "
+         "must be one of [float, half], at my_matmul")
             .c_str());
   }
   // OK.
   for (bool transpose_a : {false, true}) {
     for (bool transpose_b : {false, true}) {
-      test->Reset();
+      Reset();
       NodeDef node_def = get_matmul(DT_FLOAT, transpose_a, transpose_b);
-      test->AddTestTensor("input", {2}, /*batch_size=*/1);
-      test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+      AddTestTensor("input", {2}, /*batch_size=*/1);
+      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       if (is_batch_matmul) {
         if (transpose_a || transpose_b) {
-          test->RunValidationAndConversion(
+          RunValidationAndConversion(
               node_def, error::INVALID_ARGUMENT,
               "Input weight attempts to broadcast across batch dimension for "
               "BatchMatMul, at my_matmul");
         } else {
-          test->RunValidationAndConversion(
+          RunValidationAndConversion(
               node_def, error::INVALID_ARGUMENT,
               "Input weight attempts to broadcast across batch dimension");
         }
         continue;
       } else if (transpose_a) {
-        test->RunValidationAndConversion(
+        RunValidationAndConversion(
             node_def, error::INVALID_ARGUMENT,
             "Cannot transpose first input if it is a tensor with fewer than 2 "
             "non-batch dimensions");
         continue;
       }
-      test->RunValidationAndConversion(node_def);
+      RunValidationAndConversion(node_def);
       TRT_TensorOrWeights output;
-      TF_EXPECT_OK(test->GetTensorOrWeights("my_matmul", &output));
+      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
       ASSERT_TRUE(output.is_tensor());
       ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
 
       const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
       DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
-      test->BuildAndRun(input_data, &output_data);
+      BuildAndRun(input_data, &output_data);
       if (transpose_b) {
         EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
       } else {
@@ -1735,31 +1736,31 @@ void TestMatMulHelper(
   }
   // OK, 3D inputs
   for (bool transpose_b : {false, true}) {
-    test->Reset();
+    Reset();
     NodeDef node_def = get_matmul(DT_FLOAT, /*transpose_a=*/false, transpose_b);
-    test->AddTestTensor("input", {2}, /*batch_size=*/1);
-    test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    AddTestTensor("input", {2}, /*batch_size=*/1);
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
       if (transpose_b) {
-        test->RunValidationAndConversion(
+        RunValidationAndConversion(
             node_def, error::INVALID_ARGUMENT,
             "Input weight attempts to broadcast across batch dimension for "
             "BatchMatMul, at my_matmul");
       } else {
-        test->RunValidationAndConversion(
+        RunValidationAndConversion(
             node_def, error::INVALID_ARGUMENT,
             "Input weight attempts to broadcast across batch dimension");
       }
       continue;
     }
-    test->RunValidationAndConversion(node_def);
+    RunValidationAndConversion(node_def);
     TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_matmul", &output));
+    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
     ASSERT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({2}, output.tensor()->getDimensions());
     const DataVec input_data{{"input", test::AsTensor<float>({0, 1})}};
     DataVec output_data{{"my_matmul", ConstructTensor<float>(2)}};
-    test->BuildAndRun(input_data, &output_data);
+    BuildAndRun(input_data, &output_data);
     if (transpose_b) {
       EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(1, 3));
     } else {
@@ -1823,7 +1824,7 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         node_def, error::INVALID_ARGUMENT,
         "Cannot currently transpose constant input if it is not 2 dimensional");
   }
-  TestMatMulHelper(this, get_matmul_nodedef, "MatMul");
+  TestMatMulHelper(get_matmul_nodedef, "MatMul");
 }
 
 TEST_F(OpConverterTest, ConvertBatchMatMul) {
@@ -1880,7 +1881,7 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
     }
   }
 
-  TestMatMulHelper(this, get_batch_matmul_nodedef, "BatchMatMul");
+  TestMatMulHelper(get_batch_matmul_nodedef, "BatchMatMul");
 }
 
 template <DataType dtype>
@@ -2001,7 +2002,7 @@ void CheckAddedLayers(OpConverterTest* test, bool expect_scale_layer) {
 }
 
 template <DataType dtype>
-void checkBinaryResults(OpConverterTest* test, const NodeDef& node_def,
+void CheckBinaryResults(OpConverterTest* test, const NodeDef& node_def,
                         const DataVec& input_data, DataVec& output_data) {
   using CType = typename EnumToDataType<dtype>::Type;
 
@@ -2061,7 +2062,7 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
       {"input1", test::AsTensor<CType>({CType(3), CType(6)})},
       {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  checkBinaryResults<dtype>(test, node_def, input_data, output_data);
+  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
 
 template <typename OpType, DataType dtype>
@@ -2079,7 +2080,7 @@ void TestBinaryTensorOpWeight(OpConverterTest* test) {
   const DataVec input_data{
       {"input1", test::AsTensor<CType>({CType(3), CType(6)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  checkBinaryResults<dtype>(test, node_def, input_data, output_data);
+  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
 
 template <typename OpType, DataType dtype>
@@ -2097,7 +2098,7 @@ void TestBinaryWeightOpTensor(OpConverterTest* test) {
   const DataVec input_data{
       {"input2", test::AsTensor<CType>({CType(2), CType(3)})}};
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
-  checkBinaryResults<dtype>(test, node_def, input_data, output_data);
+  CheckBinaryResults<dtype>(test, node_def, input_data, output_data);
 }
 
 TEST_F(OpConverterTest, ConvertBinary) {
@@ -2154,6 +2155,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryWeightOpTensor<ops::Pow, DT_FLOAT>(this);
 
   // FP16 tests
+  // TODO(tmorris): Use templates to avoid duplication.
   TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Sub, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Mul, DT_HALF>(this);

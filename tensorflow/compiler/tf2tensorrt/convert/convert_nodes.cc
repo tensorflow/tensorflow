@@ -385,10 +385,10 @@ string DebugString(const nvinfer1::ITensor& tensor) {
                 ", dims=", DebugString(tensor.getDimensions()), ")");
 }
 
-Status Converter::GetTrtBroadcastShape(
-    const TRT_TensorOrWeights& operand_l, const TRT_TensorOrWeights& operand_r,
-    nvinfer1::Dims* operand_l_new_dims,
-    nvinfer1::Dims* operand_r_new_dims) const {
+Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                            const TRT_TensorOrWeights& operand_r,
+                            nvinfer1::Dims* operand_l_new_dims,
+                            nvinfer1::Dims* operand_r_new_dims) {
   // TensorRT Elementwise op supports broadcast but requires both tensor to be
   // of Identical rank.
   // This function broadcasts the lower rank dimension across the higher rank
@@ -396,26 +396,24 @@ Status Converter::GetTrtBroadcastShape(
   (*operand_l_new_dims) = operand_l.GetTrtDims();
   (*operand_r_new_dims) = operand_r.GetTrtDims();
 
-  // clang-format off
-  // Weights may include a batch dimension, so we need to remove it.
-  // We determine if that is the case by checking if the rank of the weights is
-  // larger than the rank of the tensor. Needed for cases such as:
+  // Weights may include a dimension which must be broadcasted against a
+  // tensor's batch dimension. This occurs when the rank of the weights is
+  // larger than the rank of the tensor. Example:
   // t: [1, 1] w/ implicit batch size of 1
   // w: [1, 1, 1]
+  ///    ^ this dimension in w needs to be broadcasted against t's batch dim.
   // where the output in TRT is expected to be 2D, not 3D.
-  // clang-format on
   if (operand_l.is_weights() &&
       operand_l_new_dims->nbDims > operand_r_new_dims->nbDims) {
-    if (operand_l_new_dims->d[0] != -1 && operand_l_new_dims->d[0] != 1) {
+    if (operand_l_new_dims->d[0] != 1) {
       return errors::InvalidArgument(
           "Cannot broadcast weights with non-trivial batch dimension");
     }
     TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_l_new_dims));
   }
-
   if (operand_r.is_weights() &&
       operand_r_new_dims->nbDims > operand_l_new_dims->nbDims) {
-    if (operand_r_new_dims->d[0] != -1 && operand_r_new_dims->d[0] != 1) {
+    if (operand_r_new_dims->d[0] != 1) {
       return errors::InvalidArgument(
           "Cannot broadcast weights with non-trivial batch dimension");
     }
@@ -461,11 +459,10 @@ Status Converter::GetTrtBroadcastShape(
     if ((operand_l_new_dims->d[i] != operand_r_new_dims->d[i]) &&
         (operand_l_new_dims->d[i] != 1) && (operand_r_new_dims->d[i] != 1)) {
       return errors::InvalidArgument(
-          "Infeasible broadcast scheme (",
-          "batch_dim: ", operand_l_new_dims->d[0], ", ",
-          DebugString(*operand_l_new_dims), " vs ",
-          "batch_dim: ", operand_r_new_dims->d[0], ", ",
-          DebugString(*operand_r_new_dims), ")");
+          "Infeasible broadcast scheme (batch_dim: ", operand_l_new_dims->d[0],
+          ", ", DebugString(*operand_l_new_dims), " vs batch_dim: ",
+          operand_r_new_dims->d[0], ", ", DebugString(*operand_r_new_dims),
+          ")");
     }
   }
   return Status::OK();
@@ -1769,8 +1766,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
 
-// Before TRT 5.1.3, we have to calculate padding ourselves.
-#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
+  // Add padding.
   std::vector<std::pair<int, int>> padding;
   if (attrs.get<string>("padding") == "SAME") {
     nvinfer1::DimsHW effective_kernel_size = kernel_size;
@@ -1797,12 +1793,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     padding = {{0, 0}, {0, 0}};
   }
 
-  // Handle asymmetric padding. TensorRT 5.1 added support for asymmetric
-  // padding via setPrePadding and setPostPadding. Due to a bug in 5.1.2, we can
-  // only use asymmetric padding in convolutions with 5.1.3+. But in 5.1.3, we
-  // will always use setPaddingMode for simplicity.
+// TensorRT 5.1 added support for asymmetric padding. Due to a bug in 5.1.2, we
+// can only use asymmetric padding in convolutions with 5.1.3+.
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
+    // Handle asymmetric padding.
     auto pad_layer = params->converter->network()->addPadding(
         *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
@@ -1825,13 +1821,20 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setStride(stride);
 // TensorRT 5.1.3 added support for padding modes.
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
-    // VALID padding is the default TRT behavior.
     if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
       // SAME_UPPER means that post padding is preferred.
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
+    // For VALID padding, we need to manually set the padding.
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(
+        nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
+            << " and post-padding to: " << DebugString(layer->getPostPadding());
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
 #endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
@@ -1845,10 +1848,17 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setStride(stride);
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
     if (attrs.get<string>("padding") == "SAME") {
+      VLOG(2) << "Using SAME padding";
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
+    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    layer->setPostPadding(
+        nvinfer1::DimsHW{padding[0].second, padding[1].second});
+    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
+            << " and post-padding to: " << DebugString(layer->getPostPadding());
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
+    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
 #endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
@@ -2514,8 +2524,6 @@ Status ConvertPool(OpConverterParams* params) {
   const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
   const nvinfer1::DimsHW ksize(tf_kernel[h_index], tf_kernel[w_index]);
 
-// Before TRT 5.1.3, we have to calculate padding ourselves.
-#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   auto tensor_dim = tensor->getDimensions();
   std::vector<std::pair<int, int>> padding;
   if (padding_type == "SAME") {
@@ -2528,13 +2536,13 @@ Status ConvertPool(OpConverterParams* params) {
   } else if (padding_type == "VALID") {
     padding = {{0, 0}, {0, 0}};
   }
-#endif
-// TensorRT 5.1 added support for asymmetric padding. Before that, we need an
-// extra padding layer.
+
+// TensorRT 5.1 added support for asymmetric padding.
 #if !IS_TRT_VERSION_GE(5, 1, 0, 0)
-  // Asymmetric padding case.
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
+    VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
+            << padding[1].first << padding[1].second;
     auto pad_layer = params->converter->network()->addPadding(
         *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
@@ -2556,13 +2564,16 @@ Status ConvertPool(OpConverterParams* params) {
                                                         layer->getOutput(0));
 
   layer->setStride(stride);
+// TensorRT 5.1.3 added support for padding modes.
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
-  // VALID padding is the default TRT behavior.
   if (attrs.get<string>("padding") == "SAME") {
     // SAME_UPPER means that post padding is preferred.
     layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
   }
-#elif IS_TRT_VERSION_GE(5, 1, 0, 0)
+#endif
+// TensorRT 5.1 has support for asymmetric padding.
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+  // If padding mode is not SAME, then these values will be used instead.
   layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
   layer->setPostPadding(nvinfer1::DimsHW{padding[0].second, padding[1].second});
 #else
@@ -3098,7 +3109,8 @@ Status ConvertBinary(OpConverterParams* params) {
         "both input as constant at: ",
         node_def.name());
   }
-
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   const TRT_TensorOrWeights& operand_l = inputs.at(0);
   const TRT_TensorOrWeights& operand_r = inputs.at(1);
 
@@ -3119,48 +3131,27 @@ Status ConvertBinary(OpConverterParams* params) {
   }
 
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  Status status = params->converter->GetTrtBroadcastShape(
-      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r);
-  if (!status.ok()) {
-    return errors::InvalidArgument(
-        "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
-        status.error_message());
-  }
-  if (params->validation_only) return Status::OK();
+  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
+      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r));
 
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
   // This will also convert constants to tensors, and set quantization ranges.
-  status = params->converter->PrepareTensorForShape(
-      operand_l, broadcasted_dims_l, params->validation_only, &tensor_l);
-  if (status.ok()) {
-    status = params->converter->PrepareTensorForShape(
-        operand_r, broadcasted_dims_r, params->validation_only, &tensor_r);
-  }
-  if (!status.ok()) {
-    return errors::Internal("Failed to convert binary op ", node_def.name(),
-                            ": ", status.error_message());
-  }
-
-  // Check type consistency.
-  TFAttrs attrs(node_def);
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
-  TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
-      << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
-  TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
-      << DebugString(tensor_r->getType()) << " vs " << DebugString(dtype);
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      operand_l, broadcasted_dims_l, params->validation_only, &tensor_l));
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      operand_r, broadcasted_dims_r, params->validation_only, &tensor_r));
+  if (params->validation_only) return Status::OK();
 
   // Add ElementWise layer.
   nvinfer1::IElementWiseLayer* layer =
-      params->converter->network()->addElementWise(
-          *const_cast<nvinfer1::ITensor*>(tensor_l),
-          *const_cast<nvinfer1::ITensor*>(tensor_r), op_pair->second);
+      params->converter->network()->addElementWise(*tensor_l, *tensor_r,
+                                                   op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   // Pass the output
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return tensorflow::Status::OK();
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
 }
 
 Status ConvertRsqrt(OpConverterParams* params) {
@@ -3976,8 +3967,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
         params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
 
-  constexpr auto get_matrix_op =
-      [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
+  constexpr auto get_matrix_op = [](
+      nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
     return (in->getDimensions().nbDims < 2)
                ? nvinfer1::MatrixOperation::kVECTOR
                : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
@@ -3987,9 +3978,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   // If the MatMul operand is a constant, applies transposes at conversion-time
   // as necessary. If the operand is a tensor, does nothing. If required
   // transposes were applied, sets transpose to false.
-  const auto prepare_matmul_operand =
-      [&params](TRT_TensorOrWeights operand,
-                bool* transpose) -> nvinfer1::ITensor* {
+  const auto prepare_matmul_operand = [&params](
+      TRT_TensorOrWeights operand, bool* transpose) -> nvinfer1::ITensor* {
     if (operand.is_tensor()) {
       return operand.tensor();
     } else {
@@ -4063,29 +4053,29 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   const bool transpose_b = attrs.get<bool>("adj_y");
 
   // Removes the batch dimension from weights.
-  const auto remove_weights_batch_dim =
-      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
-        auto dims = input.GetTrtDims();
-        if (input.is_weights()) {
-          // The other operand must be a tensor, this is ensured by earlier
-          // checks. Checks that the batch dimension is not changed by
-          // broadcasting.
-          if (dims.d[0] != 1) {
-            return errors::InvalidArgument(
-                "Input weight attempts to broadcast across batch dimension for "
-                "BatchMatMul, at ",
-                params->node_def.name());
-          }
-          // Remove the batch dimension from the weights.
-          TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
-        }
-        // Create tensor and reshape if necessary.
-        nvinfer1::ITensor* t{nullptr};
-        TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-            input, dims, params->validation_only, &t));
-        *tensor = TRT_TensorOrWeights{t};
-        return Status::OK();
-      };
+  const auto remove_weights_batch_dim = [&params](
+      const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
+    auto dims = input.GetTrtDims();
+    if (input.is_weights()) {
+      // The other operand must be a tensor, this is ensured by earlier
+      // checks. Checks that the batch dimension is not changed by
+      // broadcasting.
+      if (dims.d[0] != 1) {
+        return errors::InvalidArgument(
+            "Input weight attempts to broadcast across batch dimension for "
+            "BatchMatMul, at ",
+            params->node_def.name());
+      }
+      // Remove the batch dimension from the weights.
+      TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
+    }
+    // Create tensor and reshape if necessary.
+    nvinfer1::ITensor* t{nullptr};
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        input, dims, params->validation_only, &t));
+    *tensor = TRT_TensorOrWeights{t};
+    return Status::OK();
+  };
 
   TRT_TensorOrWeights tensor_l{nullptr};
   TRT_TensorOrWeights tensor_r{nullptr};
@@ -4313,7 +4303,7 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // Broadcast inputs.
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  TF_RETURN_IF_ERROR(params->converter->GetTrtBroadcastShape(
+  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
       inputs.at(0), inputs.at(1), &broadcasted_dims_l, &broadcasted_dims_r));
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;

@@ -51,15 +51,6 @@ namespace convert {
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
     NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
-inline std::ostream& operator<<(std::ostream& o, const nvinfer1::Dims& dims)
-{
-    o << "[";
-    for (int i = 0; i < dims.nbDims; i++)
-        o << (i ? "," : "") << dims.d[i];
-    o << "]";
-    return o;
-}
-
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
@@ -521,13 +512,6 @@ class Converter {
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
 
-  // Return OK if the broadcast scheme is supported and compute the shapes after
-  // broadcasting.
-  Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
-                              const TRT_TensorOrWeights& operand_r,
-                              nvinfer1::Dims* operand_l_new_dims,
-                              nvinfer1::Dims* operand_r_new_dims) const;
-
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
@@ -600,6 +584,13 @@ class Converter {
   friend class ConverterTest;
   friend class OpConverterTest;
 };
+
+// Return OK if the broadcast scheme is supported and compute the shapes after
+// broadcasting.
+Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                            const TRT_TensorOrWeights& operand_r,
+                            nvinfer1::Dims* operand_l_new_dims,
+                            nvinfer1::Dims* operand_r_new_dims);
 
 // Map of all supported UnaryOperations
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
