@@ -137,7 +137,7 @@ __device__ const unsigned kCudaWarpAll = 0xffffffff;
 #elif TENSORFLOW_USE_ROCM
 // ROCM TODO add ROCM implementation
 // Mask for all 64 threads in a wavefront.
-__device__ const unsigned kGpuWarpAll = 0xffffffff;
+__device__ const unsigned kCudaWarpAll = 0xffffffff;
 #endif
 
 // Returns the warp lane ID of the calling thread
@@ -240,7 +240,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorGetSrcLane,
 // must have their corresponding bit in 'mask' set.
 
 // Wrapper for __syncwarp. No-op for CUDA 8 and earlier.
-__device__ inline void GpuSyncWarp(unsigned mask = kGpuWarpAll) {
+__device__ inline void GpuSyncWarp(unsigned mask = kCudaWarpAll) {
   assert(mask & 1u << GpuLaneId());
 #if CUDA_VERSION >= 9000
   __syncwarp(mask);
