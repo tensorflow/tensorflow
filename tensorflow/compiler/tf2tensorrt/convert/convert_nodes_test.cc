@@ -2023,12 +2023,12 @@ void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
 
   DataVec input_data;
   if (operand_1_is_tensor) {
-    input_data.emplace_back("input1",
-                            test::AsTensor<CType>({CType(3), CType(6)}));
+    input_data.push_back({"input1",
+                          test::AsTensor<CType>({CType(3), CType(6)})});
   }
   if (operand_2_is_tensor) {
-    input_data.emplace_back("input2",
-                            test::AsTensor<CType>({CType(2), CType(3)}));
+    input_data.push_back({"input2",
+                          test::AsTensor<CType>({CType(2), CType(3)})});
   }
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   // Check output dims.
@@ -2083,7 +2083,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                StrCat("Add got ", std::to_string(num_inputs),
                                       " inputs but expected 2, at my_add")
-                                   .c_str()););
+                                   .c_str());
   }
   {
     // Both inputs are weights.
