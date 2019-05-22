@@ -26,7 +26,7 @@ namespace deadness_analysis_internal {
 // testing purposes only.
 using PredicateMapTy = absl::flat_hash_map<TensorId, string, TensorId::Hasher>;
 Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map,
-                         bool force_pessimistic = false);
+                         bool enable_optimistic = true);
 
 }  // namespace deadness_analysis_internal
 }  // namespace tensorflow

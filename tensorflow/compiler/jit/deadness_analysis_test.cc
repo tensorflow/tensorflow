@@ -639,7 +639,7 @@ TEST(DeadnessAnalysisTest, ControlEquivalentLoopBodies) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/false));
+                                   /*enable_optimistic=*/true));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
               "{#true,&,*iv0/cond:0}<loop>");
@@ -653,7 +653,7 @@ TEST(DeadnessAnalysisTest, ControlEquivalentLoopBodies) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/true));
+                                   /*enable_optimistic=*/false));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
               "{#true,&,*iv0/cond:0}<loop>");
@@ -683,7 +683,7 @@ TEST(DeadnessAnalysisTest, LoopInvariantPredicateOnBackedge) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/false));
+                                   /*enable_optimistic=*/true));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv.induction_var)],
               "{#true,&,*iv0/cond:0}<frame>");
@@ -691,7 +691,7 @@ TEST(DeadnessAnalysisTest, LoopInvariantPredicateOnBackedge) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/true));
+                                   /*enable_optimistic=*/false));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv.induction_var)],
               "div0/iv:0");
@@ -746,7 +746,7 @@ TEST(DeadnessAnalysisTest, ControlEquivalentNestedLoopBodies) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/false));
+                                   /*enable_optimistic=*/true));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer.induction_var)],
               "{#true,&,*iv_outer/cond:0}<outer_loop>");
@@ -755,7 +755,7 @@ TEST(DeadnessAnalysisTest, ControlEquivalentNestedLoopBodies) {
               "{#true,&,*iv_outer/cond:0}<outer_loop>),&,*iv_inner/"
               "cond:0}<inner_loop;outer_loop>");
 
-    // force_pessimistic = true or not should produce the same results because
+    // enable_optimistic = true or not should produce the same results because
     // of fallback.  However, note that the order of iv_inner/cond:0 and
     // iv_inner/iv:0 is different because the optimistic approach does not
     // create predicates for all merges and it can change the predicate id and
@@ -772,7 +772,7 @@ TEST(DeadnessAnalysisTest, ControlEquivalentNestedLoopBodies) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/true));
+                                   /*enable_optimistic=*/false));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer.induction_var)],
               "{#true,&,*iv_outer/cond:0}<outer_loop>");
@@ -925,7 +925,7 @@ TEST(DeadnessAnalysisTest, CyclicRecurrence) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/false));
+                                   /*enable_optimistic=*/true));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
               "{#true,&,*iv0/cond:0}<loop>");
@@ -942,7 +942,7 @@ TEST(DeadnessAnalysisTest, CyclicRecurrence) {
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
-                                   /*force_pessimistic=*/true));
+                                   /*enable_optimistic=*/false));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
               "{#true,&,*iv0/cond:0}<loop>");
