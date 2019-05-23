@@ -291,20 +291,22 @@ def set_ipu_model_options(opts, compile_ipu_code=True):
   return opts
 
 
-def set_recomputation_options(opts, recompute_norm_inputs=True):
+def set_recomputation_options(opts, allow_recompute=True):
   """Set re-computation options.
 
   Args:
-    recompute_norm_inputs: Whether or not to re-compute the norm inputs
-      during training. Enabling this option can reduce memory usage at the
-      expense of extra computation.
+    allow_recompute: Whether or not to re-compute instructions during training. 
+    If this is enabled then we will attempt to pattern match instructions in 
+    the forward pass and recompute them in the backward pass to avoid having 
+    to preserve that memory. Enabling this option can reduce memory usage at 
+    the expense of extra computation.
 
   Returns:
     The IpuOptions configuration protobuf.
   """
 
-  opts.speed_size_config.recompute_norm_inputs = recompute_norm_inputs
-  opts.speed_size_config.has_recompute_norm_inputs = True
+  opts.speed_size_config.allow_recompute = allow_recompute
+  opts.speed_size_config.has_allow_recompute = True
 
   return opts
 

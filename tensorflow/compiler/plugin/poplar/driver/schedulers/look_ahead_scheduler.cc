@@ -325,7 +325,7 @@ void LookAheadScheduler::DumpClusterAsDot(
     dot << (uint64_t)cluster << " [label=\"";
 
     for (const HloInstruction* node : cluster->nodes) {
-      dot << node->name() << "\\n";
+      dot << node->metadata().op_type() << ": " << node->name() << "\\n";
     }
 
     dot << HumanReadableNumBytes(cluster->net_memory_usage) << "\"";

@@ -45,9 +45,9 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_wide_const.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/hlo_computation_name_uniquify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inter_ipu_copy_inserter.h"
-#include "tensorflow/compiler/plugin/poplar/driver/passes/norm_input_recomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_gather_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_scatter_expander.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/recompute_instructions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/replication_factor_to_constant.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/root_token_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/sharding_pass.h"
@@ -529,8 +529,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<WhileLoopToRepeatSimplify>();
     }
     pipeline.AddPass<HloSubcomputationUnification>();
-    pipeline.AddPass<NormInputRecomputation>(
-        poplarExecutor->NormInputRecomputationEnabled());
+    pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
+    pipeline.AddPass<RecomputeInstructions>(
+        poplarExecutor->InstructionRecomputationEnabled(),
+        resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<DependencyReplacer>(true);
     pipeline.AddPass<InplaceFinder>(resources.annotations);

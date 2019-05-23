@@ -305,11 +305,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
         .disable_graph_convolution_caching();
   }
 
-  bool NormInputRecomputationEnabled() const {
+  bool InstructionRecomputationEnabled() const {
     // Re-computation of non linearities is enabled by default unless the user
     // has specifically told us not to do it.
-    return current_config_.speed_size_config().has_recompute_norm_inputs()
-               ? current_config_.speed_size_config().recompute_norm_inputs()
+    return current_config_.speed_size_config().has_allow_recompute()
+               ? current_config_.speed_size_config().allow_recompute()
                : false;
   }
 
