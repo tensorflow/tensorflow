@@ -670,6 +670,10 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
     cache_value = &iter->second;
   }
 
+  // Disable this routine for now because we do not yet know
+  // how to enable the of the definition + calls to PtxOptsFromConfig
+  // in both ROCm and CUDA modes
+#if DISABLED_CODE_IN_UPSTREAM_SYNC_150920
   // Compile the ptx if it wasn't in the cache before we called this function.
   // Other threads asking for the same compilation key will block on
   // cache_value->mutex_ until compilation is done.
@@ -720,6 +724,7 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
       }
     }
   }
+#endif // DISABLED_CODE_IN_UPSTREAM_SYNC_150920
 
   CHECK(cache_value != nullptr);
   CHECK(cache_value->compilation_done);

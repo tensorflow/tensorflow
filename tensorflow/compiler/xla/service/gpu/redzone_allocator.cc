@@ -270,6 +270,10 @@ StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
     se::Stream* stream) const {
   XLA_SCOPED_LOGGING_TIMER("Redzone checking");
 
+  // Disable this routine for now because we do not yet know
+  // how to enable the of the definition + calls to PtxOptsFromConfig
+  // in both ROCm and CUDA modes
+#if DISABLED_CODE_IN_UPSTREAM_SYNC_150920
   se::StreamExecutor* executor = stream->parent();
 
   absl::Span<const uint8> compiled_ptx = {};
@@ -304,6 +308,7 @@ StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
       return redzone_status;
     }
   }
+#endif // DISABLED_CODE_IN_UPSTREAM_SYNC_150920
 
   return RedzoneCheckStatus::OK();
 }
