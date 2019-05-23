@@ -637,6 +637,9 @@ py_test(
     size = "small",
     srcs = ["python/learn/estimators/multioutput_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":learn",
         "//tensorflow/python:client_testlib",
