@@ -172,9 +172,8 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kDynamicSlice ||
           instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
           (instr.opcode() == HloOpcode::kFusion &&
-           instr.fusion_kind() == HloInstruction::FusionKind::kLoop &&
-	   !instr.IsMultiOutputFusion()) ||
-          instr.opcode() == HloOpcode::kGather ||
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop)
+	  instr.opcode() == HloOpcode::kGather ||
           instr.opcode() == HloOpcode::kIota ||
           instr.opcode() == HloOpcode::kPad ||
           (instr.opcode() == HloOpcode::kReduce &&
@@ -195,6 +194,11 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
                                    const HloInstruction& consumer) {
 
   if (!IsLoopFusible(producer) || !IsFusible(consumer)) {
+    return false;
+  }
+
+  // Skip multiple output fusion. It's not yet supported.
+  if (producer.IsMultiOutputFusion()) {
     return false;
   }
 
@@ -232,11 +236,7 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
                                               const HloInstruction& consumer) {
 
-  if (!producer.IsFusible() || !IsInputFusibleReduction(consumer)) {
-    return false;
-  }
-
-  if (!producer.IsElementwise() && !producer.IsLoopFusion()) {
+  if (!IsFusibleAsMultiOutputFusionRoot(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
 

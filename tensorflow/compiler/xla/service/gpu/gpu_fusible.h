@@ -76,9 +76,14 @@ bool FusionWouldBeTooLarge(const HloInstruction* a, const HloInstruction* b);
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2);
 
+// Whether the instructions are compatible for producer-consumer fusion
+// i.e. whether the producer and consumer are loop/input fusible and
+// they are not library calls.
 bool IsProducerConsumerFusible(const HloInstruction& producer,
                                    const HloInstruction& consumer);
 
+// Whether the instructions are producer-consumer fusible and
+// multi-output fusible.
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
                                               const HloInstruction& consumer);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in

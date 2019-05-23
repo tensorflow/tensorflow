@@ -200,7 +200,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // computation.
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
-	       IsProducerConsumerFusionLegal(*fusion, *user);
+	       IsProducerConsumerFusible(*fusion, *user);
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";
