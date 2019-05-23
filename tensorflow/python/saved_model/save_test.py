@@ -262,7 +262,7 @@ class SaveTest(test.TestCase):
 
   def test_docstring(self):
 
-    class Adder(util.Checkpoint):
+    class Adder(module.Module):
 
       @def_function.function(input_signature=[tensor_spec.TensorSpec(
           shape=None, dtype=dtypes.float32)])
