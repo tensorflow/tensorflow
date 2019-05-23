@@ -91,8 +91,9 @@ struct Int8x4ToInt32<int8> {
 
 template <typename BiasType, typename ScaleType>
 class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
-  using T = qint8;       // conv_input and filter type
-  using TempT = qint32;  // temporary accumulator type for tensor contraction
+  using T = qint8;         // conv_input and filter type
+  using ComputeT = float;  // convert inputs to fp32 for tensor contraction
+  using TempT = float;     // temporary accumulator type for tensor contraction
 
  public:
   void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
@@ -107,7 +108,7 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
 
     // Output tensor has type T (QInt8), but we can only evaluate Int8 Tensor
     // contraction using 32-bit accumulation (QInt32).
-    Tensor temp_output(DT_QINT32, output->shape());
+    Tensor temp_output(DataTypeToEnum<TempT>::value, output->shape());
 
     constexpr int32 row_dilation = 1;
     constexpr int32 col_dilation = 1;
@@ -133,7 +134,8 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
       auto in0 = conv_input.shaped<T, 2>({conv_width, filter.dim_size(2)});
       auto in1 = filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)});
 
-      out.device(device) = in0.contract(in1, dim_pair, output_kernel);
+      out.device(device) = in0.cast<ComputeT>().contract(
+          in1.cast<ComputeT>(), dim_pair, output_kernel);
 
     } else if (filter.dim_size(0) == conv_input.dim_size(1) &&
                filter.dim_size(1) == conv_input.dim_size(2) &&
@@ -152,7 +154,8 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
       auto in0 = conv_input.shaped<T, 2>({conv_input.dim_size(0), k});
       auto in1 = filter.shaped<T, 2>({k, filter.dim_size(3)});
 
-      out.device(device) = in0.contract(in1, dim_pair, output_kernel);
+      out.device(device) = in0.cast<ComputeT>().contract(
+          in1.cast<ComputeT>(), dim_pair, output_kernel);
 
     } else {
       auto out = temp_output.tensor<TempT, 4>();
@@ -160,9 +163,9 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
       auto in1 = filter.tensor<T, 4>();
 
       // Need to swap row/col when calling Eigen.
-      out.device(device) =
-          Eigen::SpatialConvolution(in0, in1, col_stride, row_stride, padding,
-                                    col_dilation, row_dilation, output_kernel);
+      out.device(device) = Eigen::SpatialConvolution(
+          in0.cast<ComputeT>(), in1.cast<ComputeT>(), col_stride, row_stride,
+          padding, col_dilation, row_dilation, output_kernel);
     }
   }
 
@@ -220,8 +223,12 @@ class LaunchFusedConv2DBiasActivationOp<CPUDevice, qint8, BiasType, ScaleType> {
         typename TTypes<T>::UnalignedTensor output(output_base + col * stride,
                                                    num_rows);
 
-        auto conv_output_scaled =
-            conv_output.cast<ScaleType>() * conv_input_scale;
+        // TODO(ezhulenev): No-op cast optimization in Eigen cause dangling
+        // references and segfaults.
+        static_assert(std::is_same<ScaleType, TempT>::value,
+                      "Must use 'conv_output.cast<ScaleType>()'");
+        auto conv_output_scaled = conv_output * conv_input_scale;
+
         ScaleType lower_bound = (activation_mode == ActivationMode::NONE
                                      ? static_cast<ScaleType>(kMinRange)
                                      : 0);
