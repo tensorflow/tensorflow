@@ -149,6 +149,45 @@ struct ContractionWithBatchNormAndActivation {
   float epsilon = 0.0;
 };
 
+#ifdef INTEL_MKL
+// Contraction node followed by a BiasAdd and Add.
+struct ContractionWithBiasAddAndAdd {
+  ContractionWithBiasAddAndAdd() = default;
+  ContractionWithBiasAddAndAdd(const NodeDef* contraction,
+                               const NodeDef* bias_add, const NodeDef* add,
+                               int port_id)
+      : contraction(contraction),
+        bias_add(bias_add),
+        add(add),
+        port_id(port_id) {}
+
+  const NodeDef* contraction = nullptr;
+  const NodeDef* bias_add = nullptr;
+  const NodeDef* add = nullptr;
+  int port_id = 0;
+};
+
+// Contraction node followed by a BiasAdd, Add and Relu.
+struct ContractionWithBiasAndAddActivation {
+  ContractionWithBiasAndAddActivation() = default;
+  ContractionWithBiasAndAddActivation(const NodeDef* contraction,
+                                      const NodeDef* bias_add,
+                                      const NodeDef* add, int port_id,
+                                      const NodeDef* activation)
+      : contraction(contraction),
+        bias_add(bias_add),
+        add(add),
+        port_id(port_id),
+        activation(activation) {}
+
+  const NodeDef* contraction = nullptr;
+  const NodeDef* bias_add = nullptr;
+  const NodeDef* add = nullptr;
+  int port_id = 0;
+  const NodeDef* activation = nullptr;
+};
+#endif  // INTEL_MKL
+
 bool IsInPreserveSet(const RemapperContext& ctx, const NodeDef* node) {
   return ctx.nodes_to_preserve.count(node->name()) > 0;
 }
@@ -260,7 +299,8 @@ bool IsGpuCompatible(const RemapperContext& ctx,
   // activation.
   bool is_relu = IsRelu(*matched.activation);
 
-  return is_relu && is_spatial_conv && IsGpuCompatibleConv2D(matched.contraction);
+  return is_relu && is_spatial_conv &&
+         IsGpuCompatibleConv2D(matched.contraction);
 }
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAdd& matched) {
@@ -484,6 +524,89 @@ bool FindConv2DWithBatchNormAndActivation(
 
   return true;
 }
+
+#ifdef INTEL_MKL
+// As AddN has multiple inputs, this function tries to find Conv2D + Bias
+// pattern in specific input port.
+bool FindContractionWithBiasInPort(const RemapperContext& ctx,
+                                   const NodeDef* add, int port_id,
+                                   ContractionWithBiasAdd* base) {
+  // Input to AddN must match ContractionWithBiasAdd pattern.
+  const auto input_port = GraphView::InputPort(add, port_id);
+  const auto bias_add = ctx.graph_view.GetRegularFanin(input_port);
+
+  if (!FindContractionWithBias(ctx, bias_add.node, base,
+                               /*check_device_compatible=*/false) ||
+      !HasSingleFanoutNode(ctx.graph_view, base->bias_add) ||
+      !HaveSameDataType(add, base->bias_add) ||
+      IsInPreserveSet(ctx, base->bias_add))
+    return false;
+  return true;
+}
+
+bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
+                                      const NodeDef* add,
+                                      ContractionWithBiasAddAndAdd* matched) {
+  // Root of the pattern must be a AddN
+  if (!add || !IsAddN(*add) || HasControlFaninOrFanout(ctx.graph_view, add))
+    return false;
+
+  // Fusion with AddN is supported only when it has two inputs.
+  if (add->input_size() != 2) {
+    return false;
+  }
+
+  // MKL AddN ops only support float data type.
+  if (!HasDataType(add, DT_FLOAT)) return false;
+
+  ContractionWithBiasAdd base;
+  matched->port_id = 0;
+
+  // Find the conv+bias pattern in specific port.
+  if (!FindContractionWithBiasInPort(ctx, add, matched->port_id, &base)) {
+    matched->port_id = 1;
+    if (!FindContractionWithBiasInPort(ctx, add, matched->port_id, &base)) {
+      return false;
+    }
+  }
+
+  // We successfully found a Conv2D+BiasAdd+AddN pattern.
+  matched->contraction = base.contraction;
+  matched->bias_add = base.bias_add;
+  matched->add = add;
+
+  return true;
+}
+
+bool FindContractionWithBiasAndAddActivation(
+    const RemapperContext& ctx, const NodeDef* activation,
+    ContractionWithBiasAndAddActivation* matched) {
+  // Root of the pattern must be an activation node.
+  if (!activation || !IsSupportedActivation(*activation) ||
+      HasControlFaninOrFanout(ctx.graph_view, activation))
+    return false;
+
+  // MKL activation op only supports float data type.
+  if (!HasDataType(activation, DT_FLOAT)) return false;
+
+  // And input to activation must match ContractionWithBiasAddAndAdd pattern.
+  const auto input_port = GraphView::InputPort(activation, 0);
+  const auto add = ctx.graph_view.GetRegularFanin(input_port);
+
+  ContractionWithBiasAddAndAdd base;
+
+  if (!FindContractionWithBiasAddAndAdd(ctx, add.node, &base)) {
+    return false;
+  }
+
+  // We successfully found a Conv2D+BiasAdd+AddN+activation pattern.
+  const ContractionWithBiasAndAddActivation pattern{
+      base.contraction, base.bias_add, base.add, base.port_id, activation};
+  *matched = pattern;
+
+  return true;
+}
+#endif
 
 // Check that given node meets some basic FusedBatchNorm optimization
 // preconditions. We use this check to lazily infer graph properties which is
@@ -729,6 +852,64 @@ void AddFusedConv2DNode(
   invalidated_nodes->insert(matched.contraction);
 }
 
+#ifdef INTEL_MKL
+void AddFusedContractionNode(
+    const ContractionWithBiasAddAndAdd& matched, GraphDef* optimized_graph,
+    absl::flat_hash_set<const NodeDef*>* invalidated_nodes) {
+  // MKL version only support fusion for Conv2D
+  DCHECK(IsConv2D(*matched.contraction));
+
+  NodeDef* fused_conv2d = optimized_graph->add_node();
+  fused_conv2d->set_name(matched.add->name());
+  fused_conv2d->set_op(kFusedConv2D);
+  fused_conv2d->set_device(matched.contraction->device());
+  fused_conv2d->add_input(matched.contraction->input(0));  // 0: input
+  fused_conv2d->add_input(matched.contraction->input(1));  // 1: filter
+  fused_conv2d->add_input(matched.bias_add->input(1));     // 2: bias
+
+  // Add OP has two inputs, one is conv+bias pattern matched previously,
+  // the other input to add is fused here.
+  fused_conv2d->add_input(matched.add->input(1 - matched.port_id));
+
+  CopyConv2DAttributes(matched.contraction, fused_conv2d);
+  SetFusedOpAttributes(fused_conv2d, {"BiasAdd", "Add"}, 2);
+
+  invalidated_nodes->insert(matched.add);
+  invalidated_nodes->insert(matched.bias_add);
+  invalidated_nodes->insert(matched.contraction);
+}
+
+void AddFusedContractionNode(
+    const ContractionWithBiasAndAddActivation& matched,
+    GraphDef* optimized_graph,
+    absl::flat_hash_set<const NodeDef*>* invalidated_nodes) {
+  // MKL version only support fusion for Conv2D
+  DCHECK(IsConv2D(*matched.contraction));
+  // MKL version only support relu as activation
+  DCHECK(IsRelu(*matched.activation));
+
+  NodeDef* fused_conv2d = optimized_graph->add_node();
+  fused_conv2d->set_name(matched.activation->name());
+  fused_conv2d->set_op(kFusedConv2D);
+  fused_conv2d->set_device(matched.contraction->device());
+  fused_conv2d->add_input(matched.contraction->input(0));  // 0: input
+  fused_conv2d->add_input(matched.contraction->input(1));  // 1: filter
+  fused_conv2d->add_input(matched.bias_add->input(1));     // 2: bias
+
+  // Add OP has two inputs, one is conv+bias pattern matched previously,
+  // the other input to add is fused here.
+  fused_conv2d->add_input(matched.add->input(1 - matched.port_id));
+
+  CopyConv2DAttributes(matched.contraction, fused_conv2d);
+  SetFusedOpAttributes(fused_conv2d, {"BiasAdd", "Add", "Relu"}, 2);
+
+  invalidated_nodes->insert(matched.activation);
+  invalidated_nodes->insert(matched.add);
+  invalidated_nodes->insert(matched.bias_add);
+  invalidated_nodes->insert(matched.contraction);
+}
+#endif
+
 void AddBatchNormNodes(const FusedBatchNorm& matched,
                        GraphDef* optimized_graph) {
   const NodeDef& fused_node = *matched.fused_batch_norm;
@@ -884,6 +1065,10 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   ContractionWithBatchNorm              contract_with_batch_norm;
   ContractionWithBatchNormAndActivation contract_with_batch_norm_and_activation;
   ContractionWithSqueezeAndBiasAdd      contract_with_squeeze_and_bias;
+#endif  // !INTEL_MKL
+#ifdef INTEL_MKL
+  ContractionWithBiasAddAndAdd          contract_with_bias_and_add;
+  ContractionWithBiasAndAddActivation   contract_with_bias_and_add_activation;
 #endif  // INTEL_MKL
   // clang-format on
 
@@ -912,6 +1097,26 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes.count(&node) > 0) continue;
 
+#ifdef INTEL_MKL
+    if (!item.optimization_options().is_eager_mode) {
+      // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
+      if (FindContractionWithBiasAndAddActivation(
+              ctx, &node, &contract_with_bias_and_add_activation)) {
+        AddFusedContractionNode(contract_with_bias_and_add_activation,
+                                optimized_graph, &invalidated_nodes);
+        continue;
+      }
+
+      // Remap Conv2D+BiasAdd+Add into the _FusedConv2D.
+      if (FindContractionWithBiasAddAndAdd(ctx, &node,
+                                           &contract_with_bias_and_add)) {
+        AddFusedContractionNode(contract_with_bias_and_add, optimized_graph,
+                                &invalidated_nodes);
+        continue;
+      }
+    }
+#endif  //! INTEL_MKL
+
     // Remap {Conv2D,MatMul}+BiasAdd into the _Fused{Conv2D,MatMul}
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBias(ctx, &node, &contract_with_bias)) {
@@ -929,9 +1134,9 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
       continue;
     }
 
-    // NOTE: We can only fuse BatchNorm into Conv2D nodes. In theory we can do
-    // it for MatMul as well, but in practice this pattern does not appear in
-    // real Tensorflow graphs.
+// NOTE: We can only fuse BatchNorm into Conv2D nodes. In theory we can do
+// it for MatMul as well, but in practice this pattern does not appear in
+// real Tensorflow graphs.
 
 // TODO(penporn):
 // Remove this once TF-MKL supports _FusedConv2D with these operations.
