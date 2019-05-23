@@ -77,6 +77,11 @@ public:
   KernelDim3 getGridSize();
   /// Get the SSA values corresponding to kernel block size.
   KernelDim3 getBlockSize();
+  /// Get the operand values passed as kernel arguments.
+  Operation::operand_range getKernelOperandValues();
+  /// Append the operand types passed as kernel arguments to `out`.
+  void getKernelOperandTypes(SmallVectorImpl<Type> &out);
+
   /// Get the SSA values passed as operands to specify the grid size.
   KernelDim3 getGridSizeOperandValues();
   /// Get the SSA values passed as operands to specify the block size.
