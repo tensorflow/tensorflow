@@ -120,14 +120,14 @@ struct DialectConversionRewriter final : public PatternRewriter {
   /// Apply all requested operation rewrites. This method is invoked when the
   /// conversion process succeeds.
   void applyRewrites() {
-    argConverter.applyRewrites();
-
     // Apply all of the rewrites replacements requested during conversion.
     for (auto &repl : replacements) {
       for (unsigned i = 0, e = repl.newValues.size(); i != e; ++i)
         repl.op->getResult(i)->replaceAllUsesWith(repl.newValues[i]);
       repl.op->erase();
     }
+
+    argConverter.applyRewrites();
   }
 
   /// PatternRewriter hook for replacing the results of an operation.
