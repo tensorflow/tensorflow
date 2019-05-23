@@ -51,33 +51,38 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .HostMemory("reduction_indices"),                                    \
       ReductionOp<GPUDevice, type, int64, Eigen::internal::SumReducer<type>>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,TF_CALL_int64(REGISTER_GPU_KERNELS));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false, TF_CALL_int64(REGISTER_GPU_KERNELS));
 TF_CALL_complex64(REGISTER_GPU_KERNELS);
 TF_CALL_complex128(REGISTER_GPU_KERNELS);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,
+                               TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
 #undef REGISTER_GPU_KERNELS
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(
-    Name("Sum")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("T")
-        .TypeConstraint<int32>("Tidx")
-        .HostMemory("input")
-        .HostMemory("output")
-        .HostMemory("reduction_indices"),
-    ReductionOp<CPUDevice, int32, int32, Eigen::internal::SumReducer<int32>>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(
-    Name("Sum")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("T")
-        .TypeConstraint<int64>("Tidx")
-        .HostMemory("input")
-        .HostMemory("output")
-        .HostMemory("reduction_indices"),
-    ReductionOp<CPUDevice, int32, int64, Eigen::internal::SumReducer<int32>>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false,
+    REGISTER_KERNEL_BUILDER(Name("Sum")
+                                .Device(DEVICE_GPU)
+                                .TypeConstraint<int32>("T")
+                                .TypeConstraint<int32>("Tidx")
+                                .HostMemory("input")
+                                .HostMemory("output")
+                                .HostMemory("reduction_indices"),
+                            ReductionOp<CPUDevice, int32, int32,
+                                        Eigen::internal::SumReducer<int32>>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false,
+    REGISTER_KERNEL_BUILDER(Name("Sum")
+                                .Device(DEVICE_GPU)
+                                .TypeConstraint<int32>("T")
+                                .TypeConstraint<int64>("Tidx")
+                                .HostMemory("input")
+                                .HostMemory("output")
+                                .HostMemory("reduction_indices"),
+                            ReductionOp<CPUDevice, int32, int64,
+                                        Eigen::internal::SumReducer<int32>>));
 
 #endif
 

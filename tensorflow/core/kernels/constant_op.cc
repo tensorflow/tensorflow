@@ -230,14 +230,15 @@ TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU_KERNEL));
 #endif
 #undef REGISTER_GPU_KERNEL
 
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Fill") \
-                            .Device(DEVICE_GPU) \
-                            .TypeConstraint<int32>("T") \
-                            .TypeConstraint<int32>("index_type") \
-                            .HostMemory("dims") \
-                            .HostMemory("value") \
-                            .HostMemory("output"), \
-                        FillOp<CPUDevice, int32, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("Fill")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("T")
+                                       .TypeConstraint<int32>("index_type")
+                                       .HostMemory("dims")
+                                       .HostMemory("value")
+                                       .HostMemory("output"),
+                                   FillOp<CPUDevice, int32, int32>));
 // Don't put the fill op on to GPU if it is ROCM
 // We don't know whether it will benefit so leave it as it was
 #if TENSORFLOW_USE_ROCM

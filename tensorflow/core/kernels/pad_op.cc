@@ -357,47 +357,51 @@ TF_CALL_uint8(DECLARE_GPU_SPECS);
                           PadOp<GPUDevice, T, int64>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNEL);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU_KERNEL));
 TF_CALL_int8(REGISTER_GPU_KERNEL);
 TF_CALL_uint8(REGISTER_GPU_KERNEL);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Pad")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int32>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Pad")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int64>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("PadV2")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("constant_values")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int32>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("PadV2")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("constant_values")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int64>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("Pad")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("T")
+                                       .TypeConstraint<int32>("Tpaddings")
+                                       .HostMemory("input")
+                                       .HostMemory("paddings")
+                                       .HostMemory("output"),
+                                   PadOp<CPUDevice, int32, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("Pad")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("T")
+                                       .TypeConstraint<int64>("Tpaddings")
+                                       .HostMemory("input")
+                                       .HostMemory("paddings")
+                                       .HostMemory("output"),
+                                   PadOp<CPUDevice, int32, int64>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("PadV2")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("T")
+                                       .TypeConstraint<int32>("Tpaddings")
+                                       .HostMemory("input")
+                                       .HostMemory("paddings")
+                                       .HostMemory("constant_values")
+                                       .HostMemory("output"),
+                                   PadOp<CPUDevice, int32, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("PadV2")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("T")
+                                       .TypeConstraint<int64>("Tpaddings")
+                                       .HostMemory("input")
+                                       .HostMemory("paddings")
+                                       .HostMemory("constant_values")
+                                       .HostMemory("output"),
+                                   PadOp<CPUDevice, int32, int64>));
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL

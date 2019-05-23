@@ -260,7 +260,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU));
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -489,7 +489,7 @@ TF_CALL_ALL_TYPES(REGISTER_WRITE);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU));
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -580,7 +580,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU));
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -782,34 +782,40 @@ REGISTER_GATHER_AND_PACK(qint32);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU));
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(
-    Name("TensorArrayGather")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("dtype")
-        .HostMemory("indices")
-        .HostMemory("handle"),
-    TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(
-    Name("TensorArrayGatherV2")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("dtype")
-        .HostMemory("indices")
-        .HostMemory("handle"),
-    TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(
-    Name("TensorArrayGatherV3")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("dtype")
-        .HostMemory("indices")
-        .HostMemory("handle"),
-    TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false,
+    REGISTER_KERNEL_BUILDER(
+        Name("TensorArrayGather")
+            .Device(DEVICE_GPU)
+            .TypeConstraint<int32>("dtype")
+            .HostMemory("indices")
+            .HostMemory("handle"),
+        TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false,
+    REGISTER_KERNEL_BUILDER(
+        Name("TensorArrayGatherV2")
+            .Device(DEVICE_GPU)
+            .TypeConstraint<int32>("dtype")
+            .HostMemory("indices")
+            .HostMemory("handle"),
+        TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false,
+    REGISTER_KERNEL_BUILDER(
+        Name("TensorArrayGatherV3")
+            .Device(DEVICE_GPU)
+            .TypeConstraint<int32>("dtype")
+            .HostMemory("indices")
+            .HostMemory("handle"),
+        TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>));
 
 #endif  // GOOGLE_CUDA
 
@@ -1004,31 +1010,34 @@ REGISTER_CONCAT(qint32);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU));
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
-                            .HostMemory("lengths")
-                            .HostMemory("handle"),
-                        TensorArrayConcatOp<CPUDevice, int32>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
-                            .HostMemory("lengths")
-                            .HostMemory("handle"),
-                        TensorArrayConcatOp<CPUDevice, int32>));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
-                            .HostMemory("lengths")
-                            .HostMemory("handle"),
-                        TensorArrayConcatOp<CPUDevice, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("dtype")
+                                       .HostMemory("lengths")
+                                       .HostMemory("handle"),
+                                   TensorArrayConcatOp<CPUDevice, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("dtype")
+                                       .HostMemory("lengths")
+                                       .HostMemory("handle"),
+                                   TensorArrayConcatOp<CPUDevice, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("dtype")
+                                       .HostMemory("lengths")
+                                       .HostMemory("handle"),
+                                   TensorArrayConcatOp<CPUDevice, int32>));
 
 #endif  // GOOGLE_CUDA
 
@@ -1225,7 +1234,7 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU));
 TF_CALL_int64(REGISTER_GPU);
 #undef REGISTER_GPU
 
@@ -1395,7 +1404,7 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT);
                           TensorArraySplitOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU));
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 #undef REGISTER_GPU

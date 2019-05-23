@@ -218,9 +218,9 @@ limitations under the License.
           TF_CALL_QUANTIZED_TYPES(m)
 #if TF_WITH_GPU_ENABLED_INT_OPS
 // Need 3 levels to expand couter macro properly
-#define TF_GPU_INT_OPS_UNIQ_HELPER(ctr,include_exclude,...) \
-  TF_GPU_INT_OPS_HELPER(ctr,include_exclude,__VA_ARGS__)
-#define TF_GPU_INT_OPS_HELPER(ctr,include_exclude,...)                      \
+#define TF_GPU_INT_OPS_UNIQ_HELPER(ctr, include_exclude, ...) \
+  TF_GPU_INT_OPS_HELPER(ctr, include_exclude, __VA_ARGS__)
+#define TF_GPU_INT_OPS_HELPER(ctr, include_exclude, ...)                  \
   static bool int_ops_helper_class__##ctr##__object = []() -> bool {      \
     bool use_int_types_on_gpu = false;                                    \
     if (!tensorflow::ReadBoolFromEnvVar("TF_USE_INT_TYPES_ON_GPU", false, \
@@ -228,17 +228,17 @@ limitations under the License.
              .ok()) {                                                     \
       LOG(FATAL) << "Error from ReadBoolFromEnvVar";                      \
     };                                                                    \
-    if (use_int_types_on_gpu == bool(include_exclude)) {                                           \
-      __VA_ARGS__                                                    \
+    if (use_int_types_on_gpu == bool(include_exclude)) {                  \
+      __VA_ARGS__                                                         \
     }                                                                     \
     return use_int_types_on_gpu;                                          \
   }();
-#define TF_INCLUDE_IF_WITH_EXTRA_TYPES(include_exclude,...) \
-  TF_GPU_INT_OPS_UNIQ_HELPER(__COUNTER__, include_exclude,__VA_ARGS__)
+#define TF_INCLUDE_IF_WITH_EXTRA_TYPES(include_exclude, ...) \
+  TF_GPU_INT_OPS_UNIQ_HELPER(__COUNTER__, include_exclude, __VA_ARGS__)
 
 #endif
-#define TF_IF_WITH_EXTRA_TYPES(x, y) \
-  TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,y)  \
+#define TF_IF_WITH_EXTRA_TYPES(x, y)      \
+  TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, y) \
   x
 
 #ifdef TENSORFLOW_SYCL_NO_DOUBLE

@@ -32,13 +32,14 @@ TF_INCLUDE_IF_WITH_EXTRA_TYPES(false, REGISTER7(BinaryOp, GPU, "Less", functor::
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Less")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::less<int32>>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("Less")
+                                       .Device(DEVICE_GPU)
+                                       .HostMemory("x")
+                                       .HostMemory("y")
+                                       .HostMemory("z")
+                                       .TypeConstraint<int32>("T"),
+                                   BinaryOp<CPUDevice, functor::less<int32>>));
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER3(BinaryOp, SYCL, "Less", functor::less, float, double, int64);

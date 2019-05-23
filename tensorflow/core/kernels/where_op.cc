@@ -372,13 +372,14 @@ class WhereGPUOp : public AsyncOpKernel {
       Name("Where").Device(DEVICE_GPU).TypeConstraint<T>("T"), WhereGPUOp<T>);
 
 TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_WHERE_OP));
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Where")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("input")
-                            .HostMemory("index"),
-                        WhereCPUOp<int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU_WHERE_OP));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(
+    false, REGISTER_KERNEL_BUILDER(Name("Where")
+                                       .Device(DEVICE_GPU)
+                                       .TypeConstraint<int32>("T")
+                                       .HostMemory("input")
+                                       .HostMemory("index"),
+                                   WhereCPUOp<int32>));
 
 #undef REGISTER_GPU_WHERE_OP
 

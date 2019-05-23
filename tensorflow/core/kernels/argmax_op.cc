@@ -226,7 +226,8 @@ TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_CLASS);
                               .HostMemory("dimension"),             \
                           ArgMinOp<GPUDevice, type, int32>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_INTEGRAL_TYPES(REGISTER_ARGMAX_GPU));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,
+                               TF_CALL_INTEGRAL_TYPES(REGISTER_ARGMAX_GPU));
 
 #undef REGISTER_ARGMAX_GPU
 
