@@ -91,6 +91,18 @@ py_test(
 )
 
 py_test(
+    name = "errors_test",
+    srcs = ["errors_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
     name = "inspect_utils_test",
     srcs = ["inspect_utils_test.py"],
     python_version = "PY2",
