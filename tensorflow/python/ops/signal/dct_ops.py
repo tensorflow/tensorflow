@@ -80,7 +80,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     A `[..., samples]` `float32` `Tensor` containing the DCT of `input`.
 
   Raises:
-    ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
+    ValueError: If `type` is not `1`, `2` or `3`, `axis` is
       not `-1`, or `norm` is not `None` or `'ortho'`.
     ValueError: If `type` is `1` and `norm` is `ortho`.
 
