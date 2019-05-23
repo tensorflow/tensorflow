@@ -436,32 +436,32 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
       // Set the batch dimension to -1, since batch size is not supposed to
       // be broadcasted.
       output_dims_array[0] = -1;
-      }
+    }
     // Copy to output dimensions (stripping the batch dimension).
     output_dims->nbDims = broadcast_num_dims - 1;
     std::copy(output_dims_array + 1, output_dims_array + broadcast_num_dims,
               output_dims->d);
     return Status::OK();
-    };
+  };
 
   // Compute the output dimensions.
   const int broadcast_num_dims =
       std::max(operand_l.GetTrtDims().nbDims + (operand_l.is_tensor() ? 1 : 0),
-              operand_r.GetTrtDims().nbDims + (operand_r.is_tensor() ? 1 : 0));
+               operand_r.GetTrtDims().nbDims + (operand_r.is_tensor() ? 1 : 0));
   int output_l[max_nb_dims], output_r[max_nb_dims];
   TF_RETURN_IF_ERROR(compute_output_dims(operand_l, broadcast_num_dims,
-                                        output_l, operand_l_new_dims));
+                                         output_l, operand_l_new_dims));
   TF_RETURN_IF_ERROR(compute_output_dims(operand_r, broadcast_num_dims,
-                                        output_r, operand_r_new_dims));
+                                         output_r, operand_r_new_dims));
 
   // Compare broadcast feasibility
   for (int i = 0; i < broadcast_num_dims; ++i) {
     if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
         (output_r[i] != 1)) {
       return errors::InvalidArgument(
-      "Infeasible broadcast scheme (", "batch_dim: ", output_l[0], ", ",
-      DebugString(*operand_l_new_dims), " vs ", "batch_dim: ", output_r[0],
-      ", ", DebugString(*operand_r_new_dims), ")");
+          "Infeasible broadcast scheme (", "batch_dim: ", output_l[0], ", ",
+          DebugString(*operand_l_new_dims), " vs ", "batch_dim: ", output_r[0],
+          ", ", DebugString(*operand_r_new_dims), ")");
     }
   }
   return Status::OK();
