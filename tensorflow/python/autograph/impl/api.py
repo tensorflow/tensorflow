@@ -39,11 +39,13 @@ from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import tf_stack
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -110,6 +112,21 @@ class _ErrorMetadata(errors.ErrorMetadataBase):
     # For user defined exceptions, we could define an interface that allowed
     # them to work under this mechanism.
     return StagingError(self.get_message())
+
+
+class StackTraceMapper(tf_stack.StackTraceMapper):
+  """Remaps generated code to code it originated from."""
+
+  def __init__(self, converted_fn):
+    self._source_map = converted_fn.ag_source_map
+
+  def map(self, filename, lineno, name):
+    loc = origin_info.LineLocation(filename=filename, lineno=lineno)
+    if loc not in self._source_map:
+      return filename, lineno, name
+
+    origin = self._source_map[loc]
+    return origin.loc.filename, origin.loc.lineno, origin.function_name
 
 
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
@@ -455,10 +472,11 @@ def converted_call(f, owner, options, args, kwargs):
     return _call_unconverted(f, args, kwargs)
 
   try:
-    if kwargs is not None:
-      result = converted_f(*effective_args, **kwargs)
-    else:
-      result = converted_f(*effective_args)
+    with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+      if kwargs is not None:
+        result = converted_f(*effective_args, **kwargs)
+      else:
+        result = converted_f(*effective_args)
   except Exception as e:
     _attach_metadata(e, converted_f, True)
     raise
