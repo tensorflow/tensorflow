@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -292,6 +293,36 @@ class DefFunctionTest(test.TestCase):
     self.assertEqual(signature_args,
                      (tensor_spec.TensorSpec(
                          None, dtypes.float32, name='x'),))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_variable_naming(self):
+    class HasVars(module.Module):
+
+      def __init__(self):
+        self.x = None
+        self.y = None
+        self.z = None
+
+      @def_function.function
+      def make_x(self):
+        if self.x is None:
+          self.x = variables.Variable(1., name='v')
+
+      def make_y(self):
+        if self.y is None:
+          self.y = variables.Variable(1., name='v')
+
+      def make_z(self):
+        if self.z is None:
+          with ops.name_scope('z_scope'):
+            self.z = variables.Variable(1., name='z')
+
+    root = HasVars()
+    root.make_x()
+    root.make_y()
+    root.make_z()
+    self.assertEqual('v:0', root.x.name)
+    self.assertEqual('z_scope/z:0', root.z.name)
 
   def test_concrete_function_keyword_arguments(self):
     @def_function.function
