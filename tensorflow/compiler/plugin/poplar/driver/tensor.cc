@@ -1126,8 +1126,8 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
   poplar::Tensor tensor;
 
   TF_ASSIGN_OR_RETURN(poplar::Type type, PoplarDataType(literal.shape()));
-
-  if (ShapeUtil::ElementsIn(literal.shape()) > 32) {
+  const bool has_tensor_target = HasTensorAllocationTarget(src, resources);
+  if (has_tensor_target || ShapeUtil::ElementsIn(literal.shape()) > 32) {
     TF_ASSIGN_OR_RETURN(tensor,
                         AddTensor(graph, src, shape, resources, tensor_map));
     switch (literal.shape().element_type()) {
