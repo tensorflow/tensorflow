@@ -183,6 +183,7 @@ def do_not_convert_internal(f):
   return f
 
 
+@tf_export('autograph.experimental.do_not_convert')
 def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   """Decorator that suppresses the conversion of a function.
 
