@@ -39,8 +39,8 @@ class Value;
 /// Base class for the dialect conversion patterns that require type changes.
 /// Specific conversions must derive this class and implement least one
 /// `rewrite` method.
-/// NOTE: These conversion patterns can only be used with the DialectConversion
-/// class.
+/// NOTE: These conversion patterns can only be used with the 'apply*' methods
+/// below.
 class DialectConversionPattern : public RewritePattern {
 public:
   /// Construct an DialectConversionPattern.  `rootName` must correspond to the
@@ -112,21 +112,9 @@ private:
 //       match against the list of conversions.  On the first match, call
 //       `rewrite` for the operations, and advance to the next iteration.  If no
 //       match is found, replicate the operation as is.
-/// 3. Update all attributes of function type to point to the new functions.
-/// 4. Replace old functions with new functions in the module.
-/// If any error happened during the conversion, the pass fails as soon as
-/// possible.
-///
-/// If conversion fails for a specific function, that functions remains
-/// unmodified. Otherwise, successfully converted functions will remain
-/// converted.
 class DialectConversion {
 public:
   virtual ~DialectConversion() = default;
-
-  /// Run the converter on the provided module.
-  LLVM_NODISCARD
-  LogicalResult convert(Module *m);
 
   /// Derived classes must implement this hook to produce a set of conversion
   /// patterns to apply.  They may use `mlirContext` to obtain registered
@@ -169,6 +157,19 @@ public:
       FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
       SmallVectorImpl<NamedAttributeList> &convertedArgAttrs);
 };
+
+/// Convert the given module with the provided dialect conversion object.
+/// If conversion fails for a specific function, those functions remains
+/// unmodified.
+LLVM_NODISCARD
+LogicalResult applyConverter(Module &module, DialectConversion &converter);
+
+/// Convert the given function with the provided conversion patterns. This will
+/// convert as many of the operations within 'fn' as possible given the set of
+/// patterns.
+LLVM_NODISCARD
+LogicalResult applyConversionPatterns(Function &fn,
+                                      OwningRewritePatternList &&patterns);
 
 } // end namespace mlir
 

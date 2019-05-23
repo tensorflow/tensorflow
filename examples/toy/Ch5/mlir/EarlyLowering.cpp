@@ -134,7 +134,8 @@ protected:
 /// dialect.
 struct EarlyLoweringPass : public ModulePass<EarlyLoweringPass> {
   void runOnModule() override {
-    if (failed(EarlyLowering().convert(&getModule()))) {
+    EarlyLowering lowering;
+    if (failed(applyConverter(getModule(), lowering))) {
       getModule().getContext()->emitError(
           mlir::UnknownLoc::get(getModule().getContext()),
           "Error lowering Toy\n");

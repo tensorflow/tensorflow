@@ -226,13 +226,13 @@ void DialectConversionPattern::rewrite(Operation *op,
 // FunctionConverter
 //===----------------------------------------------------------------------===//
 namespace {
-// This class converts a single function using a given DialectConversion
-// structure.
+// This class converts a single function using the given pattern matcher. If a
+// DialectConversion object is also provided, then the types of block arguments
+// will be converted using the appropriate 'convertType' calls.
 class FunctionConverter {
 public:
-  // Constructs a FunctionConverter.
-  explicit FunctionConverter(MLIRContext *ctx, DialectConversion *conversion,
-                             RewritePatternMatcher &matcher)
+  explicit FunctionConverter(MLIRContext *ctx, RewritePatternMatcher &matcher,
+                             DialectConversion *conversion = nullptr)
       : dialectConversion(conversion), matcher(matcher) {}
 
   /// Converts the given function to the dialect using hooks defined in
@@ -319,11 +319,15 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
                                  Region &region, RegionParent *parent) {
   assert(!region.empty() && "expected non-empty region");
 
-  // Create the arguments of each of the blocks in the region.
-  for (Block &block : region)
-    for (auto *arg : block.getArguments())
-      if (failed(convertArgument(rewriter, arg, parent->getLoc())))
-        return failure();
+  // Create the arguments of each of the blocks in the region. If a type
+  // converter was not provided, then we don't need to change any of the block
+  // types.
+  if (dialectConversion) {
+    for (Block &block : region)
+      for (auto *arg : block.getArguments())
+        if (failed(convertArgument(rewriter, arg, parent->getLoc())))
+          return failure();
+  }
 
   // Start a DFS-order traversal of the CFG to make sure defs are converted
   // before uses in dominated blocks.
@@ -346,8 +350,8 @@ LogicalResult FunctionConverter::convertFunction(Function *f) {
   // Rewrite the function body.
   DialectConversionRewriter rewriter(f);
   if (failed(convertRegion(rewriter, f->getBody(), f))) {
-    // Reset any of the converted arguments.
-    rewriter.argConverter.discardRewrites();
+    // Reset any of the generated rewrites.
+    rewriter.discardRewrites();
     return failure();
   }
 
@@ -359,24 +363,6 @@ LogicalResult FunctionConverter::convertFunction(Function *f) {
 //===----------------------------------------------------------------------===//
 // DialectConversion
 //===----------------------------------------------------------------------===//
-
-namespace {
-/// This class represents a function to be converted. It allows for converting
-/// the body of functions and the signature in two phases.
-struct ConvertedFunction {
-  ConvertedFunction(Function *fn, FunctionType newType,
-                    ArrayRef<NamedAttributeList> newFunctionArgAttrs)
-      : fn(fn), newType(newType),
-        newFunctionArgAttrs(newFunctionArgAttrs.begin(),
-                            newFunctionArgAttrs.end()) {}
-
-  /// The function to convert.
-  Function *fn;
-  /// The new type and argument attributes for the function.
-  FunctionType newType;
-  SmallVector<NamedAttributeList, 4> newFunctionArgAttrs;
-};
-} // end anonymous namespace
 
 // Create a function type with arguments and results converted, and argument
 // attributes passed through.
@@ -403,21 +389,38 @@ FunctionType DialectConversion::convertFunctionSignatureType(
   return FunctionType::get(arguments, results, type.getContext());
 }
 
-// Converts the module as follows.
-// 1. Call `convertFunction` on each function of the module and collect the
-// mapping between old and new functions.
-// 2. Remap all function attributes in the new functions to point to the new
-// functions instead of the old ones.
-// 3. Replace old functions with the new in the module.
-LogicalResult DialectConversion::convert(Module *module) {
-  if (!module)
-    return failure();
+//===----------------------------------------------------------------------===//
+// applyConversionPatterns
+//===----------------------------------------------------------------------===//
 
+namespace {
+/// This class represents a function to be converted. It allows for converting
+/// the body of functions and the signature in two phases.
+struct ConvertedFunction {
+  ConvertedFunction(Function *fn, FunctionType newType,
+                    ArrayRef<NamedAttributeList> newFunctionArgAttrs)
+      : fn(fn), newType(newType),
+        newFunctionArgAttrs(newFunctionArgAttrs.begin(),
+                            newFunctionArgAttrs.end()) {}
+
+  /// The function to convert.
+  Function *fn;
+  /// The new type and argument attributes for the function.
+  FunctionType newType;
+  SmallVector<NamedAttributeList, 4> newFunctionArgAttrs;
+};
+} // end anonymous namespace
+
+/// Convert the given module with the provided dialect conversion object.
+/// If conversion fails for a specific function, those functions remains
+/// unmodified.
+LogicalResult mlir::applyConverter(Module &module,
+                                   DialectConversion &converter) {
   // Grab the conversion patterns from the converter and create the pattern
   // matcher.
-  MLIRContext *context = module->getContext();
+  MLIRContext *context = module.getContext();
   OwningRewritePatternList patterns;
-  initConverters(patterns, context);
+  converter.initConverters(patterns, context);
   RewritePatternMatcher matcher(std::move(patterns));
 
   // Try to convert each of the functions within the module. Defer updating the
@@ -426,18 +429,18 @@ LogicalResult DialectConversion::convert(Module *module) {
   // public signatures of the functions within the module before they are
   // updated.
   std::vector<ConvertedFunction> toConvert;
-  toConvert.reserve(module->getFunctions().size());
-  for (auto &func : *module) {
+  toConvert.reserve(module.getFunctions().size());
+  for (auto &func : module) {
     // Convert the function type using the dialect converter.
     SmallVector<NamedAttributeList, 4> newFunctionArgAttrs;
-    FunctionType newType = convertFunctionSignatureType(
+    FunctionType newType = converter.convertFunctionSignatureType(
         func.getType(), func.getAllArgAttrs(), newFunctionArgAttrs);
     if (!newType || !newType.isa<FunctionType>())
       return func.emitError("could not convert function type");
 
     // Convert the body of this function.
-    FunctionConverter converter(context, this, matcher);
-    if (failed(converter.convertFunction(&func)))
+    FunctionConverter funcConverter(context, matcher, &converter);
+    if (failed(funcConverter.convertFunction(&func)))
       return failure();
 
     // Add function signature to be updated.
@@ -452,4 +455,16 @@ LogicalResult DialectConversion::convert(Module *module) {
   }
 
   return success();
+}
+
+/// Convert the given function with the provided conversion patterns. This will
+/// convert as many of the operations within 'fn' as possible given the set of
+/// patterns.
+LogicalResult
+mlir::applyConversionPatterns(Function &fn,
+                              OwningRewritePatternList &&patterns) {
+  // Convert the body of this function.
+  RewritePatternMatcher matcher(std::move(patterns));
+  FunctionConverter converter(fn.getContext(), matcher);
+  return converter.convertFunction(&fn);
 }

@@ -608,7 +608,8 @@ void LowerLinalgToLLVMPass::runOnModule() {
     signalPassFailure();
 
   // Convert to the LLVM IR dialect using the converter defined above.
-  if (failed(Lowering().convert(&module)))
+  Lowering lowering;
+  if (failed(applyConverter(module, lowering)))
     signalPassFailure();
 }
 

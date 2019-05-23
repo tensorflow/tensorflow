@@ -143,7 +143,7 @@ void linalg::convertLinalg3ToLLVM(Module &module) {
   assert(succeeded(rr) && "affine loop lowering failed");
 
   auto lowering = makeLinalgToLLVMLowering(getConversions);
-  auto r = lowering->convert(&module);
+  auto r = applyConverter(module, *lowering);
   (void)r;
   assert(succeeded(r) && "conversion failed");
 }

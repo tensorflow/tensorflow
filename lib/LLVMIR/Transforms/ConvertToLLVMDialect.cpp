@@ -1006,9 +1006,9 @@ class LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
 public:
   // Run the dialect converter on the module.
   void runOnModule() override {
-    Module *m = &getModule();
-    LLVM::ensureDistinctSuccessors(m);
-    if (failed(impl.convert(m)))
+    Module &m = getModule();
+    LLVM::ensureDistinctSuccessors(&m);
+    if (failed(applyConverter(m, impl)))
       signalPassFailure();
   }
 

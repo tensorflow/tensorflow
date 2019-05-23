@@ -436,7 +436,8 @@ void linalg::convertToLLVM(mlir::Module &module) {
 
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
-  auto r = Lowering(getDescriptorConverters).convert(&module);
+  Lowering lowering(getDescriptorConverters);
+  auto r = applyConverter(module, lowering);
   (void)r;
   assert(succeeded(r) && "conversion failed");
 }

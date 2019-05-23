@@ -343,8 +343,9 @@ protected:
 /// and is targeting LLVM otherwise.
 struct LateLoweringPass : public ModulePass<LateLoweringPass> {
   void runOnModule() override {
-    // Perform Toy specific lowering
-    if (failed(LateLowering().convert(&getModule()))) {
+    // Perform Toy specific lowering.
+    LateLowering lowering;
+    if (failed(applyConverter(getModule(), lowering))) {
       getModule().getContext()->emitError(
           UnknownLoc::get(getModule().getContext()), "Error lowering Toy\n");
       signalPassFailure();
