@@ -10,6 +10,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
+
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
 namespace tensorflow {
@@ -17,7 +19,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "prefetch_dataset";
-constexpr char kOpName[] = "PrefetchDataset";
 
 class PrefetchDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -38,11 +39,12 @@ class PrefetchDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def = test::function::NDef(kNodeName, kOpName,
-                                            {"input_dataset", "buffer_size"},
-                                            {{"output_types", output_types},
-                                             {"output_shapes", output_shapes},
-                                             {"slack_period", 0}});
+    NodeDef node_def = test::function::NDef(
+        kNodeName, name_utils::OpName(PrefetchDatasetOp::kDatasetType),
+        {PrefetchDatasetOp::kInputDataset, PrefetchDatasetOp::kBufferSize},
+        {{PrefetchDatasetOp::kOutputTypes, output_types},
+         {PrefetchDatasetOp::kOutputShapes, output_shapes},
+         {PrefetchDatasetOp::kSlackPeriod, 0}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -293,7 +295,8 @@ TEST_F(PrefetchDatasetOpTest, DatasetTypeString) {
                              &prefetch_dataset));
   core::ScopedUnref scoped_unref(prefetch_dataset);
 
-  EXPECT_EQ(prefetch_dataset->type_string(), kOpName);
+  EXPECT_EQ(prefetch_dataset->type_string(),
+            name_utils::OpName(PrefetchDatasetOp::kDatasetType));
 }
 
 TEST_F(PrefetchDatasetOpTest, DatasetOutputDtypes) {
@@ -547,7 +550,9 @@ TEST_F(PrefetchDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(prefetch_dataset->MakeIterator(iterator_ctx.get(), "Iterator",
                                               &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::Prefetch");
+  EXPECT_EQ(
+      iterator->prefix(),
+      name_utils::IteratorPrefix(PrefetchDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedPrefetchDatasetOpTest, Roundtrip) {
