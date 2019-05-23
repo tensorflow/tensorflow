@@ -287,6 +287,34 @@ Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   }
 }
 
+ElementsAttr ElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APInt &)> mapping) const {
+  switch (getKind()) {
+  case StandardAttributes::DenseIntElements:
+  case StandardAttributes::DenseFPElements:
+    return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
+  case StandardAttributes::SplatElements:
+    return cast<SplatElementsAttr>().mapValues(newElementType, mapping);
+  default:
+    llvm_unreachable("unsupported ElementsAttr subtype");
+  }
+}
+
+ElementsAttr ElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+  switch (getKind()) {
+  case StandardAttributes::DenseIntElements:
+  case StandardAttributes::DenseFPElements:
+    return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
+  case StandardAttributes::SplatElements:
+    return cast<SplatElementsAttr>().mapValues(newElementType, mapping);
+  default:
+    llvm_unreachable("unsupported ElementsAttr subtype");
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // SplatElementsAttr
 //===----------------------------------------------------------------------===//
@@ -299,6 +327,73 @@ SplatElementsAttr SplatElementsAttr::get(ShapedType type, Attribute elt) {
 }
 
 Attribute SplatElementsAttr::getValue() const { return getImpl()->elt; }
+
+SplatElementsAttr SplatElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APInt &)> mapping) const {
+  ShapedType inType = getType();
+
+  ShapedType newArrayType;
+  if (inType.isa<RankedTensorType>())
+    newArrayType = RankedTensorType::get(inType.getShape(), newElementType);
+  else if (inType.isa<UnrankedTensorType>())
+    newArrayType = RankedTensorType::get(inType.getShape(), newElementType);
+  else if (inType.isa<VectorType>())
+    newArrayType = VectorType::get(inType.getShape(), newElementType);
+  else
+    assert(false && "Unhandled tensor type");
+
+  assert(getType().getElementType().isa<IntegerType>() &&
+         "Attempting to map non-integer array as integers");
+
+  if (newElementType.isa<IntegerType>()) {
+    APInt newValue = mapping(getValue().cast<IntegerAttr>().getValue());
+    auto newAttr = IntegerAttr::get(newElementType, newValue);
+    return get(newArrayType, newAttr);
+  }
+
+  if (newElementType.isa<FloatType>()) {
+    APFloat newValue(newElementType.cast<FloatType>().getFloatSemantics(),
+                     mapping(getValue().cast<IntegerAttr>().getValue()));
+    auto newAttr = FloatAttr::get(newElementType, newValue);
+    return get(newArrayType, newAttr);
+  }
+
+  llvm_unreachable("unknown output splat type");
+}
+
+SplatElementsAttr SplatElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+  Type inType = getType();
+
+  ShapedType newArrayType;
+  if (inType.isa<RankedTensorType>()) {
+    newArrayType = RankedTensorType::get(getType().getShape(), newElementType);
+  } else if (inType.isa<UnrankedTensorType>()) {
+    newArrayType = RankedTensorType::get(getType().getShape(), newElementType);
+  }
+
+  assert(newArrayType && "Unhandled tensor type");
+  assert(getType().getElementType().isa<FloatType>() &&
+         "mapping function expects float tensor");
+
+  Attribute newAttr;
+  if (newElementType.isa<IntegerType>()) {
+    APInt newValue = mapping(getValue().cast<FloatAttr>().getValue());
+    newAttr = IntegerAttr::get(newElementType, newValue);
+    return get(newArrayType, newAttr);
+  }
+
+  if (newElementType.isa<FloatType>()) {
+    APFloat newValue(newElementType.cast<FloatType>().getFloatSemantics(),
+                     mapping(getValue().cast<FloatAttr>().getValue()));
+    newAttr = FloatAttr::get(newElementType, newValue);
+    return get(newArrayType, newAttr);
+  }
+
+  llvm_unreachable("unknown output splat type");
+}
 
 //===----------------------------------------------------------------------===//
 // RawElementIterator
@@ -459,6 +554,18 @@ void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   }
 }
 
+DenseElementsAttr DenseElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APInt &)> mapping) const {
+  return cast<DenseIntElementsAttr>().mapValues(newElementType, mapping);
+}
+
+DenseElementsAttr DenseElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+  return cast<DenseFPElementsAttr>().mapValues(newElementType, mapping);
+}
+
 ArrayRef<char> DenseElementsAttr::getRawData() const {
   return static_cast<ImplType *>(impl)->data;
 }
@@ -562,6 +669,46 @@ void DenseIntElementsAttr::getValues(SmallVectorImpl<APInt> &values) const {
   values.assign(raw_begin(), raw_end());
 }
 
+template<typename Fn, typename Attr>
+static ShapedType mappingHelper(
+    Fn mapping, Attr& attr, ShapedType inType, Type newElementType,
+    llvm::SmallVectorImpl<char>& data) {
+  size_t bitWidth = getDenseElementBitwidth(newElementType);
+
+  ShapedType newArrayType;
+  if (inType.isa<RankedTensorType>())
+    newArrayType = RankedTensorType::get(inType.getShape(), newElementType);
+  else if (inType.isa<UnrankedTensorType>())
+    newArrayType = RankedTensorType::get(inType.getShape(), newElementType);
+  else if (inType.isa<VectorType>())
+    newArrayType = VectorType::get(inType.getShape(), newElementType);
+  else
+    assert(newArrayType && "Unhandled tensor type");
+
+  data.resize(APInt::getNumWords(bitWidth * inType.getNumElements()) *
+               APInt::APINT_WORD_SIZE);
+
+  uint64_t elementIdx = 0;
+  for (auto value : attr) {
+    auto newInt = mapping(value);
+    assert(newInt.getBitWidth() == bitWidth);
+    attr.writeBits(data.data(), elementIdx * bitWidth, newInt);
+    ++elementIdx;
+  }
+
+  return newArrayType;
+}
+
+DenseElementsAttr DenseIntElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APInt &)> mapping) const {
+  llvm::SmallVector<char, 8> elementData;
+  auto newArrayType = mappingHelper(
+      mapping, *this, getType(), newElementType, elementData);
+
+  return get(newArrayType, elementData);
+}
+
 //===----------------------------------------------------------------------===//
 // DenseFPElementsAttr
 //===----------------------------------------------------------------------===//
@@ -587,6 +734,16 @@ DenseFPElementsAttr DenseFPElementsAttr::get(ShapedType type,
 void DenseFPElementsAttr::getValues(SmallVectorImpl<APFloat> &values) const {
   values.reserve(size());
   values.assign(begin(), end());
+}
+
+DenseElementsAttr DenseFPElementsAttr::mapValues(
+    Type newElementType,
+    llvm::function_ref<APInt(const APFloat &)> mapping) const {
+  llvm::SmallVector<char, 8> elementData;
+  auto newArrayType = mappingHelper(
+      mapping, *this, getType(), newElementType, elementData);
+
+  return get(newArrayType, elementData);
 }
 
 /// Iterator access to the float element values.
