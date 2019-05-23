@@ -173,14 +173,14 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
 
 template <typename IndexType, typename OutputMapper, bool ConjugateLhs = false,
           bool ConjugateRhs = false>
-struct mkldnn_gemm_s8s8s32_kernel {
+struct mkldnn_gemm_s8u8s32_kernel {
   static_assert(!ConjugateLhs, "MKL-DNN kernel doesn't support ConjugateLhs");
   static_assert(!ConjugateRhs, "MKL-DNN kernel doesn't support ConjugateRhs");
 
   static constexpr int kComputeStrideFromBlockDimensions = -1;
 
   using LhsScalar = Eigen::QInt8;
-  using RhsScalar = Eigen::QInt8;
+  using RhsScalar = Eigen::QUInt8;
   using ResScalar = Eigen::QInt32;
 
   EIGEN_DONT_INLINE
@@ -215,13 +215,12 @@ struct mkldnn_gemm_s8s8s32_kernel {
     const char offsetc = 'F';
     const int32_t co = 0;
 
-    const int8_t* A = reinterpret_cast<const int8_t*>(blockA);
-    const int8_t* B = reinterpret_cast<const int8_t*>(blockB);
-    int32_t* C =
-        reinterpret_cast<int32_t*>(const_cast<ResScalar*>(output.data()));
+    const auto* A = reinterpret_cast<const int8_t*>(blockA);
+    const auto* B = reinterpret_cast<const uint8_t*>(blockB);
+    auto* C = reinterpret_cast<int32_t*>(const_cast<ResScalar*>(output.data()));
 
     mkldnn_status_t st =
-        mkldnn_gemm_s8s8s32(&transposeA, &transposeB, &offsetc,  //
+        mkldnn_gemm_s8u8s32(&transposeA, &transposeB, &offsetc,  //
                             &m, &n, &k,                          //
                             &alpha,                              //
                             A, &ldA, &ao,                        //
@@ -448,10 +447,10 @@ struct GemmKernelProvider<float, float, float, StorageIndex, OutputMapper> {
 };
 
 template <typename StorageIndex, typename OutputMapper>
-struct GemmKernelProvider<Eigen::QInt32, Eigen::QInt8, Eigen::QInt8,
+struct GemmKernelProvider<Eigen::QInt32, Eigen::QInt8, Eigen::QUInt8,
                           StorageIndex, OutputMapper> {
   enum { Defined = 1 };
-  using GemmKernel = mkldnn_gemm_s8s8s32_kernel<StorageIndex, OutputMapper>;
+  using GemmKernel = mkldnn_gemm_s8u8s32_kernel<StorageIndex, OutputMapper>;
 };
 
 // NOTE: 'std::enable_if' doesn't work for template specializations. See
@@ -822,7 +821,7 @@ struct GemmKernelProvider<Eigen::QInt32, Eigen::QInt8, Eigen::QInt8,
 
 REGISTER_TENSOR_CONTRACTION_KERNEL_WITH_FALLBACK(float, float, float);
 REGISTER_TENSOR_CONTRACTION_KERNEL_NO_FALLBACK(Eigen::QInt32, Eigen::QInt8,
-                                               Eigen::QInt8);
+                                               Eigen::QUInt8);
 
 #undef REGISTER_TENSOR_CONTRACTION_KERNEL
 
