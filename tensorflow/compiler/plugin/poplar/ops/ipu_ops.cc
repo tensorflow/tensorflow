@@ -22,6 +22,12 @@ REGISTER_OP("IpuConfigureHardware")
     .SetIsStateful()
     .Doc("IPU Hardware configuration.");
 
+REGISTER_OP("IpuResetSeed")
+    .Attr("device: string")
+    .Attr("seed: int")
+    .SetIsStateful()
+    .Doc("Reset IPU seed.");
+
 REGISTER_OP("IpuEventTrace")
     .Output("out: string")
     .SetIsStateful()

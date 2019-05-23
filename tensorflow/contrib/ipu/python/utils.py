@@ -596,6 +596,27 @@ def select_ipus(opts, indices):
   return opts
 
 
+def reset_ipu_seed(seed, device="/device:IPU:0", cpu_device="cpu"):
+  """Reset the seed used to generate stateful random numbers and perform
+  stochastic rounding.
+
+  Args:
+    seed: The new random number generator seed.
+    device: The device to which the seed will be applied.
+    cpu_device: The CPU device which is on the same hardware to the IPU device.
+
+  Returns:
+    None
+  """
+  g = ops.Graph()
+  with g.as_default():
+    with ops.device(cpu_device):
+      cfg_op = gen_ipu_ops.ipu_reset_seed(device, seed)
+
+  with session_lib.Session(graph=g) as sess:
+    sess.run(cfg_op)
+
+
 def extract_all_strings_from_event_trace(events):
   """Extract a concatenation of all data strings from an IPU event trace.
 

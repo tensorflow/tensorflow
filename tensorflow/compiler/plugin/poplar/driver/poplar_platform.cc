@@ -146,6 +146,17 @@ Status PoplarPlatform::ConfigurePoplarDevices(const IpuOptions& opts) {
   return Status::OK();
 }
 
+Status PoplarPlatform::ResetSeed(int ordinal, int seed) {
+  if (ordinal < VisibleDeviceCount()) {
+    TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
+                        ExecutorForDevice(ordinal));
+    auto* e = static_cast<PoplarExecutor*>(executor->implementation());
+    e->ResetSeed(seed);
+    return Status::OK();
+  }
+  return xla::InternalError("Invalid ordinal on seed reset: %d", ordinal);
+}
+
 Status PoplarPlatform::GetCompilerEvents(
     std::list<tensorflow::IpuTraceEvent>& out) {
   for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
