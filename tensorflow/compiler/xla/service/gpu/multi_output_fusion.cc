@@ -133,7 +133,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     auto consumer_operands = consumer->operands();
     for (size_t i = 0; i < consumer_operands.size(); ++i) {
       HloInstruction* producer = consumer_operands[i];
-      if (!IsProducerConsumerMultiOutputFusionLegal(*producer, *consumer)) {
+      if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
         VLOG(3) << producer->name() << " and " << consumer->name() << " are not fusible.";
         continue;
       }

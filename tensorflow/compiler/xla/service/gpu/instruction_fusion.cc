@@ -131,7 +131,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
     return false;
   }
 
-  if (!IsProducerConsumerFusionLegal(*producer, *consumer) ||
+  if (!IsProducerConsumerFusible(*producer, *consumer) ||
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return false;
   }
@@ -150,8 +150,8 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
   // The following checks are potentially expensive.	
-  if (FusionWouldBeTooLarge(consumer, producer)) {	
-    return false;	
+  if (FusionWouldBeTooLarge(consumer, producer)) {
+    return false;
   }
   // Also check that our emitter can handle the fusion node. We currently can
   // have exponential time/memory requirements for emitting certain fusion

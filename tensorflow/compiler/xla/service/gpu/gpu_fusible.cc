@@ -191,10 +191,12 @@ bool IsFusible(const HloInstruction& instr) {
   return IsInputFusible(instr) || IsLoopFusible(instr);
 }
 
-bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
+bool IsProducerConsumerFusible(const HloInstruction& producer,
                                    const HloInstruction& consumer) {
 
-  if (!IsLoopFusible(producer) || !IsFusible(consumer)) return false;
+  if (!IsLoopFusible(producer) || !IsFusible(consumer)) {
+    return false;
+  }
 
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
@@ -227,16 +229,24 @@ bool IsProducerConsumerFusionLegal(const HloInstruction& producer,
   return true;
 }
 
-bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
+bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
                                               const HloInstruction& consumer) {
 
-  if (!producer.IsFusible() || !IsInputFusibleReduction(consumer)) return false;
+  if (!producer.IsFusible() || !IsInputFusibleReduction(consumer)) {
+    return false;
+  }
 
-  if (!producer.IsElementwise() && !producer.IsLoopFusion()) return false;
+  if (!producer.IsElementwise() && !producer.IsLoopFusion()) {
+    return false;
+  }
 
-  if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) return false;
+  if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
+    return false;
+  }
 
-  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) return false;
+  if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
+    return false;
+  }
 
   return true;
 }
@@ -259,7 +269,7 @@ bool IsProducerConsumerMultiOutputFusionLegal(const HloInstruction& producer,
 // This limit is also often good for performance.  In a fusion with many
 // operands, each GPU thread likely has to do a lot of work, and so possibly
 // uses a lot of registers, thus limiting occupancy.
-bool FusionWouldBeTooLarge(const HloInstruction* a, const HloInstruction* b) {
+bool FusionWouldBeTooLarge(const HloInstruction& instr1, const HloInstruction& instr2) {
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.
   //
@@ -275,8 +285,8 @@ bool FusionWouldBeTooLarge(const HloInstruction* a, const HloInstruction* b) {
   // But because this is a heuristic and our limit
   // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
   // big difference), we ignore this small inaccuracy in favor of simplicity.
-  int64 num_output_buffers = ShapeUtil::SubshapeCount(a->shape()) +
-                             ShapeUtil::SubshapeCount(b->shape());
+  int64 num_output_buffers = ShapeUtil::SubshapeCount(instr1.shape()) +
+                             ShapeUtil::SubshapeCount(instr2.shape());
 
   // The new fusion will have no more operands and outputs than
   //   producer_operands + consumer_operands - 1 + num_output_buffers
@@ -285,15 +295,15 @@ bool FusionWouldBeTooLarge(const HloInstruction* a, const HloInstruction* b) {
   //
   // This fact may be enough to let us avoid having to compute the true total
   // number of operands, which can be expensive.
-  if (a->operand_count() + b->operand_count() - 1 + num_output_buffers <=
+  if (instr1.operand_count() + instr2.operand_count() - 1 + num_output_buffers <=
       kMaxOperandsAndOutputsPerFusion) {
     return false;
   }
 
   // Compute the precise number of operands to the new fusion.
-  absl::flat_hash_set<const HloInstruction*> operands(a->operands().begin(),
-                                                      a->operands().end());
-  operands.insert(b->operands().begin(), b->operands().end());
+  absl::flat_hash_set<const HloInstruction*> operands(instr1.operands().begin(),
+                                                      instr1.operands().end());
+  operands.insert(instr2.operands().begin(), instr2.operands().end());
   // If there's an edge between `a` and `b`, don't count it: We're fusing that
   // producer -> consumer relationship.
   operands.erase(a);
