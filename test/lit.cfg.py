@@ -55,6 +55,7 @@ tool_dirs = [config.mlir_tools_dir, config.llvm_tools_dir]
 tools = [
     'mlir-opt',
     'mlir-tblgen',
+    'mlir-test-opt',
     'mlir-translate',
     'mlir-edsc-builder-api-test',
 ]
