@@ -118,7 +118,7 @@ class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
     Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>,
     LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);"> {
   let parser = [{ return impl::parseBinaryOp(parser, result); }];
-  let printer = [{ printLLVMBinaryOp(p, this->getOperation()); }];
+  let printer = [{ mlir::impl::printBinaryOp(this->getOperation(), p); }];
 }
 
 // Integer binary operations.
@@ -183,10 +183,23 @@ def LLVM_BitcastOp
     : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
       Arguments<(ins LLVM_Type:$arg)>,
       LLVM_Builder<"$res = builder.CreateBitCast($arg, $_resultType);"> {
-  let parser = [{ return parseBitcastOp(parser, result); }];
-  let printer = [{ printBitcastOp(p, *this); }];
+  let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
+  let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
 }
-
+def LLVM_IntToPtrOp
+    : LLVM_OneResultOp<"inttoptr", [NoSideEffect]>,
+      Arguments<(ins LLVM_Type:$arg)>,
+      LLVM_Builder<"$res = builder.CreateIntToPtr($arg, $_resultType);"> {
+  let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
+  let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
+}
+def LLVM_PtrToIntOp
+    : LLVM_OneResultOp<"ptrtoint", [NoSideEffect]>,
+      Arguments<(ins LLVM_Type:$arg)>,
+      LLVM_Builder<"$res = builder.CreatePtrToInt($arg, $_resultType);"> {
+  let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
+  let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
+}
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
                   Arguments<(ins OptionalAttr<FunctionAttr>:$callee,

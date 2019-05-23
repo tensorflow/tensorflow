@@ -810,3 +810,12 @@ func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias: true}) {
 // CHECK-LABEL: @llvm_varargs(...) 
 func @llvm_varargs()
   attributes {std.varargs: true}
+
+func @intpointerconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
+// CHECK:      %2 = inttoptr i32 %0 to i32*
+// CHECK-NEXT: %3 = ptrtoint i32* %2 to i32
+  %1 = llvm.inttoptr %arg0 : !llvm.i32 to !llvm<"i32*">
+  %2 = llvm.ptrtoint %1 : !llvm<"i32*"> to !llvm.i32
+  llvm.return %2 : !llvm.i32
+}
+

@@ -78,8 +78,16 @@ func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
 
 // Misc operations.
 // CHECK:       %24 = llvm.select %7, %0, %1 : !llvm.i1, !llvm.i32
-// CHECK-NEXT:  llvm.return
   %24 = llvm.select %7, %0, %1 : !llvm.i1, !llvm.i32
+
+// Integer to pointer and pointer to integer conversions.
+//
+// CHECK:       %25 = llvm.inttoptr %arg0 : !llvm.i32 to !llvm<"i32*">
+// CHECK-NEXT:  %26 = llvm.ptrtoint %25 : !llvm<"i32*"> to !llvm.i32
+  %25 = llvm.inttoptr %arg0 : !llvm.i32 to !llvm<"i32*">
+  %26 = llvm.ptrtoint %25 : !llvm<"i32*"> to !llvm.i32
+
+// CHECK:  llvm.return
   llvm.return
 }
 

@@ -990,6 +990,7 @@ ParseResult impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
   return failure(parser->parseOperand(srcInfo) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
                  parser->parseColonType(srcType) ||
                  parser->resolveOperand(srcInfo, srcType, result->operands) ||
                  parser->parseKeywordType("to", dstType) ||
@@ -997,8 +998,10 @@ ParseResult impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
 }
 
 void impl::printCastOp(Operation *op, OpAsmPrinter *p) {
-  *p << op->getName() << ' ' << *op->getOperand(0) << " : "
-     << op->getOperand(0)->getType() << " to " << op->getResult(0)->getType();
+  *p << op->getName() << ' ' << *op->getOperand(0);
+  p->printOptionalAttrDict(op->getAttrs());
+  *p << " : " << op->getOperand(0)->getType() << " to "
+     << op->getResult(0)->getType();
 }
 
 Value *impl::foldCastOp(Operation *op) {

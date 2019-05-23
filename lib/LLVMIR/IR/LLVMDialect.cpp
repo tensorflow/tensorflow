@@ -35,24 +35,6 @@
 using namespace mlir;
 using namespace mlir::LLVM;
 
-static void printLLVMBinaryOp(OpAsmPrinter *p, Operation *op) {
-  // Fallback to the generic form if the op is not well-formed (may happen
-  // during incomplete rewrites, and used for debugging).
-  const auto *abstract = op->getAbstractOperation();
-  (void)abstract;
-  assert(abstract && "pretty printing an unregistered operation");
-
-  auto resultType = op->getResult(0)->getType();
-  if (resultType != op->getOperand(0)->getType() ||
-      resultType != op->getOperand(1)->getType())
-    return p->printGenericOp(op);
-
-  *p << op->getName().getStringRef() << ' ' << *op->getOperand(0) << ", "
-     << *op->getOperand(1);
-  p->printOptionalAttrDict(op->getAttrs());
-  *p << " : " << op->getResult(0)->getType();
-}
-
 //===----------------------------------------------------------------------===//
 // Printing/parsing for LLVM::ICmpOp.
 //===----------------------------------------------------------------------===//
@@ -318,33 +300,6 @@ static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
     return failure();
 
   result->attributes = attrs;
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Printing/parsing for LLVM::BitcastOp.
-//===----------------------------------------------------------------------===//
-
-static void printBitcastOp(OpAsmPrinter *p, BitcastOp &op) {
-  *p << op.getOperationName() << ' ' << *op.arg();
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.arg()->getType() << " to " << op.getType();
-}
-
-// <operation> ::= `llvm.bitcast` ssa-use attribute-dict? `:` type `to` type
-static ParseResult parseBitcastOp(OpAsmParser *parser, OperationState *result) {
-  SmallVector<NamedAttribute, 4> attrs;
-  OpAsmParser::OperandType arg;
-  Type sourceType, type;
-
-  if (parser->parseOperand(arg) || parser->parseOptionalAttributeDict(attrs) ||
-      parser->parseColonType(sourceType) || parser->parseKeyword("to") ||
-      parser->parseType(type) ||
-      parser->resolveOperand(arg, sourceType, result->operands))
-    return failure();
-
-  result->attributes = attrs;
-  result->addTypes(type);
   return success();
 }
 
