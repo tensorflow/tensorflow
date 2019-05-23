@@ -600,6 +600,38 @@ class VariablesTestCase(test.TestCase):
     with ops.get_default_graph().as_default():
       create_variable()
 
+  def testTrainableVariableV1(self):
+    v1 = variables.VariableV1(1.0)
+    self.assertEqual(True, v1.trainable)
+
+    v2 = variables.VariableV1(
+        1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    self.assertEqual(False, v2.trainable)
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Synchronization value can be set to VariableSynchronization.ON_READ "
+        "only for non-trainable variables"):
+      _ = variables.VariableV1(
+          1.0, trainable=True,
+          synchronization=variables.VariableSynchronization.ON_READ)
+
+  def testTrainableVariableV2(self):
+    v1 = variables.Variable(1.0)
+    self.assertEqual(True, v1.trainable)
+
+    v2 = variables.Variable(
+        1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    self.assertEqual(False, v2.trainable)
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Synchronization value can be set to VariableSynchronization.ON_READ "
+        "only for non-trainable variables"):
+      _ = variables.Variable(
+          1.0, trainable=True,
+          synchronization=variables.VariableSynchronization.ON_READ)
+
 
 class IsInitializedTest(test.TestCase):
 

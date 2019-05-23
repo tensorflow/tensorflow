@@ -383,7 +383,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
   def __init__(self,
                initial_value=None,
-               trainable=True,
+               trainable=None,
                validate_shape=True,
                caching_device=None,
                name=None,
@@ -412,8 +412,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, GradientTapes automatically watch uses
-        of this variable.
+      trainable: If `True`, GradientTapes automatically watch uses
+        of this variable. Defaults to `True` unless `synchronization` is
+        set to `ON_READ`.
       validate_shape: If `False`, allows the variable to be initialized with a
         value of unknown shape. If `True`, the default, the shape of
         `initial_value` must be known.
@@ -1361,7 +1362,7 @@ class VariableV1(Variable):
 
   def __init__(self,  # pylint: disable=super-init-not-called
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,
                caching_device=None,
@@ -1393,9 +1394,10 @@ class VariableV1(Variable):
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True` unless `synchronization` is set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1427,8 +1429,15 @@ class VariableV1(Variable):
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       use_resource: whether to use resource variables.
-      synchronization: unused
-      aggregation: unused
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
       shape: (optional) The shape of this variable. If None, the shape of
         `initial_value` will be used. When setting this argument to
         `tf.TensorShape(None)` (representing an unspecified shape), the variable
@@ -1450,7 +1459,7 @@ class RefVariable(VariableV1):
 
   def __init__(self,  # pylint: disable=super-init-not-called
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,
                caching_device=None,
@@ -1481,9 +1490,10 @@ class RefVariable(VariableV1):
         callable with no argument that returns the initial value when called. In
         that case, `dtype` must be specified. (Note that initializer functions
         from init_ops.py must first be bound to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True` unless `synchronization` is set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -1568,7 +1578,7 @@ class RefVariable(VariableV1):
 
   def _init_from_args(self,
                       initial_value=None,
-                      trainable=True,
+                      trainable=None,
                       collections=None,
                       validate_shape=True,
                       caching_device=None,
@@ -1588,9 +1598,10 @@ class RefVariable(VariableV1):
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
-      trainable: If `True`, the default, also adds the variable to the graph
+      trainable: If `True`, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True` unless `synchronization` is set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
