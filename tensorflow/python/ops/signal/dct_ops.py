@@ -48,7 +48,7 @@ def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
         "Unknown normalization. Expected None or 'ortho', got: %s" % norm)
 
 
-# TODO(rjryan): Implement `n` and `axis` parameters.
+# TODO(rjryan): Implement `axis` parameter.
 @tf_export("signal.dct", v1=["signal.dct", "spectral.dct"])
 def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
   """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
@@ -90,6 +90,18 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     # We use the RFFT to compute the DCT and TensorFlow only supports float32
     # for FFTs at the moment.
     input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
+
+    seq_len = (tensor_shape.dimension_value(input.shape[-1])
+                or _array_ops.shape(input)[-1])
+    if n is not None:
+      if n <= seq_len:
+        input = input[..., 0:n]
+      else:
+        rank = len(input.shape)
+        padding = [[0,0] for i in range(rank)]
+        padding[rank-1][1] = n - seq_len
+        padding = _ops.convert_to_tensor(padding, dtype=_dtypes.int32)
+        input = _array_ops.pad(input, paddings=padding)
 
     axis_dim = (tensor_shape.dimension_value(input.shape[-1])
                 or _array_ops.shape(input)[-1])
