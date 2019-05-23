@@ -236,9 +236,6 @@ limitations under the License.
 #define TF_INCLUDE_IF_WITH_EXTRA_TYPES(include_exclude,...) \
   TF_GPU_INT_OPS_UNIQ_HELPER(__COUNTER__, include_exclude,__VA_ARGS__)
 
-#else
-#define TF_INCLUDE_IF_WITH_EXTRA_TYPES( \
-    k)  // Disable if compile flag was not set
 #endif
 #define TF_IF_WITH_EXTRA_TYPES(x, y) \
   TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,y)  \

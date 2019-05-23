@@ -218,32 +218,25 @@ REGISTER_KERNEL_BUILDER(Name("Fill")
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if TF_WITH_GPU_ENABLED_INT_OPS
 #define REGISTER_GPU_KERNEL(TYPE) REGISTER_KERNEL(GPU, TYPE)
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(true,TF_CALL_int32(REGISTER_GPU_KERNEL));
-#undef REGISTER_GPU_KERNEL
-#else
-REGISTER_KERNEL(GPU, Eigen::half);
-REGISTER_KERNEL(GPU, bfloat16);
-REGISTER_KERNEL(GPU, float);
-REGISTER_KERNEL(GPU, double);
-REGISTER_KERNEL(GPU, complex64);
-REGISTER_KERNEL(GPU, complex128);
-REGISTER_KERNEL(GPU, uint8);
-REGISTER_KERNEL(GPU, int8);
-REGISTER_KERNEL(GPU, uint16);
-REGISTER_KERNEL(GPU, int16);
-REGISTER_KERNEL(GPU, int64);
-REGISTER_KERNEL(GPU, bool);
-// Currently we do not support filling strings on GPU
+#if !TENSORFLOW_USE_ROCM
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, TF_CALL_int32(REGISTER_GPU_KERNEL));
 #endif
+#undef REGISTER_GPU_KERNEL
 
-#if TENSORFLOW_USE_ROCM || !TF_WITH_GPU_ENABLED_INT_OPS
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
-TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Fill")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Fill") \
+                            .Device(DEVICE_GPU) \
+                            .TypeConstraint<int32>("T") \
+                            .TypeConstraint<int32>("index_type") \
+                            .HostMemory("dims") \
+                            .HostMemory("value") \
+                            .HostMemory("output"), \
+                        FillOp<CPUDevice, int32, int32>));
+// Don't put the fill op on to GPU if it is ROCM
+// We don't know whether it will benefit so leave it as it was
+#if TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("index_type")
@@ -251,6 +244,9 @@ TF_INCLUDE_IF_WITH_EXTRA_TYPES(false,REGISTER_KERNEL_BUILDER(Name("Fill")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32, int32>);
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
 #endif
 #endif
 

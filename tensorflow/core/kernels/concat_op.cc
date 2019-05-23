@@ -225,22 +225,20 @@ REGISTER_GPU(bool);
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-#if ! TF_WITH_GPU_ENABLED_INT_OPS
-REGISTER_KERNEL_BUILDER(Name("Concat")
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false, REGISTER_KERNEL_BUILDER(Name("Concat")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("concat_dim")
                             .HostMemory("values")
                             .HostMemory("output"),
-                        ConcatOp<CPUDevice, int32>);
-REGISTER_KERNEL_BUILDER(Name("ConcatV2")
+                        ConcatOp<CPUDevice, int32>));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(false, REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
                             .HostMemory("values")
-                            .HostMemory("axis")
+                            .HostMemory("axis") 
                             .HostMemory("output"),
-                        ConcatV2Op<CPUDevice, int32>);
-#endif
+                        ConcatV2Op<CPUDevice, int32>));
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
