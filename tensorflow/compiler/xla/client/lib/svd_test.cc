@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/svd.h"
+
 #include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
@@ -219,7 +220,9 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_128x512) {
+// TODO(b/133353535): This test seems too sensitive to the particular choice of
+// random matrix.
+XLA_TEST_F(SVDTest, DISABLED_Various_Size_Random_Matrix_128x512) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(128, 512);
   XlaOp a;
