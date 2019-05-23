@@ -30,6 +30,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
@@ -40,6 +41,15 @@
 using namespace llvm;
 using namespace mlir;
 using namespace mlir::tblgen;
+
+namespace llvm {
+template <> struct format_provider<mlir::tblgen::Pattern::IdentifierLine> {
+  static void format(const mlir::tblgen::Pattern::IdentifierLine &v,
+                     raw_ostream &os, StringRef style) {
+    os << v.first << ":" << v.second;
+  }
+};
+} // end namespace llvm
 
 // Returns the bound symbol for the given op argument or op named `symbol`.
 //
@@ -445,6 +455,9 @@ void PatternEmitter::emit(StringRef rewriteName) {
         loc, "replacing op with variadic results not supported right now");
 
   // Emit RewritePattern for Pattern.
+  auto locs = pattern.getLocation();
+  os << formatv("/* Generated from:\n\t{0:$[ instantiating\n\t]}\n*/\n",
+                make_range(locs.rbegin(), locs.rend()));
   os << formatv(R"(struct {0} : public RewritePattern {
   {0}(MLIRContext *context) : RewritePattern("{1}", {2}, context) {{})",
                 rewriteName, rootName, pattern.getBenefit())

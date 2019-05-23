@@ -229,6 +229,20 @@ int tblgen::Pattern::getBenefit() const {
   return initBenefit + dyn_cast<llvm::IntInit>(delta->getArg(0))->getValue();
 }
 
+std::vector<tblgen::Pattern::IdentifierLine>
+tblgen::Pattern::getLocation() const {
+  std::vector<std::pair<StringRef, unsigned>> result;
+  result.reserve(def.getLoc().size());
+  for (auto loc : def.getLoc()) {
+    unsigned buf = llvm::SrcMgr.FindBufferContainingLoc(loc);
+    assert(buf && "invalid source location");
+    result.emplace_back(
+        llvm::SrcMgr.getBufferInfo(buf).Buffer->getBufferIdentifier(),
+        llvm::SrcMgr.getLineAndColumn(loc, buf).first);
+  }
+  return result;
+}
+
 void tblgen::Pattern::collectBoundArguments(DagNode tree) {
   auto &op = getDialectOp(tree);
   auto numOpArgs = op.getNumArgs();

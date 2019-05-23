@@ -23,6 +23,8 @@ def MyRule : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
 // Test rewrite rule naming
 // ---
 
+// CHECK: Generated from:
+// CHECK-NEXT: {{.*pattern.td.*}}
 // CHECK: struct MyRule : public RewritePattern
 
 def : Pat<(OpA $input, $attr), (OpB $input, $attr)>;

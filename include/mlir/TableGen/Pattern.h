@@ -220,6 +220,12 @@ public:
   // Returns the benefit score of the pattern.
   int getBenefit() const;
 
+  using IdentifierLine = std::pair<StringRef, unsigned>;
+
+  // Returns the file location of the pattern (buffer identifier + line number
+  // pair).
+  std::vector<IdentifierLine> getLocation() const;
+
 private:
   // Recursively collects all bound arguments inside the DAG tree rooted
   // at `tree`.
