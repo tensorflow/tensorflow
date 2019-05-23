@@ -270,8 +270,8 @@ class WrappedFunction(function.ConcreteFunction):
       Also extracts ops from `fetches`.
 
       Args:
-        fetch: The fetch to preprocess: Tensor, TensorInfo, or Operation, or string
-          identifying a Tensor or Operation.
+        fetch: The fetch to preprocess: Tensor, TensorInfo, or Operation, or
+          string identifying a Tensor or Operation.
 
       Returns:
         `fetch` converted to a Tensor.
