@@ -1902,8 +1902,8 @@ struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 2,
 template <>
 struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                                       EdgeType::kCenter, 1, 1> {
-  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
-                         const int32* bias_ptr, uint8* output_ptr,
+  static inline void Run(const int8* input_ptr, const int8* filter_ptr,
+                         const int32* bias_ptr, int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
@@ -1931,9 +1931,9 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "dup v25.8h, w9\n"
 
         "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "saddw v8.8h, v26.8h, v8.8b\n"
         "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v0.8h, v25.8h, v0.8b\n"
+        "saddw v0.8h, v25.8h, v0.8b\n"
 
         "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
 
@@ -1953,13 +1953,13 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
           "sqadd v16.8h, v16.8h, v28.8h\n"
-          "sqxtun v16.8b, v16.8h\n"
-          "umax v16.8b, v16.8b, v30.8b\n"
-          "umin v16.8b, v16.8b, v31.8b\n"
+          "sqxtn v16.8b, v16.8h\n"
+          "smax v16.8b, v16.8b, v30.8b\n"
+          "smin v16.8b, v16.8b, v31.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
-          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "saddw v8.8h, v26.8h, v8.8b\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-          "uaddw v0.8h, v25.8h, v0.8b\n"
+          "saddw v0.8h, v25.8h, v0.8b\n"
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
 
           "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
@@ -1976,9 +1976,9 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
         "sqadd v16.8h, v16.8h, v28.8h\n"
-        "sqxtun v16.8b, v16.8h\n"
-        "umax v16.8b, v16.8b, v30.8b\n"
-        "umin v16.8b, v16.8b, v31.8b\n"
+        "sqxtn v16.8b, v16.8h\n"
+        "smax v16.8b, v16.8b, v30.8b\n"
+        "smin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -2003,8 +2003,8 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
 template <>
 struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                                       EdgeType::kCorner, 1, 1> {
-  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
-                         const int32* bias_ptr, uint8* output_ptr,
+  static inline void Run(const int8* input_ptr, const int8* filter_ptr,
+                         const int32* bias_ptr, int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
@@ -2052,17 +2052,17 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "dup v25.8h, w6\n"
 
         // Add input and filter offsets.
-        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "saddw v8.8h, v26.8h, v8.8b\n"
         "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v9.8h, v26.8h, v9.8b\n"
+        "saddw v9.8h, v26.8h, v9.8b\n"
         "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v10.8h, v26.8h, v10.8b\n"
-        "uaddw v11.8h, v26.8h, v11.8b\n"
+        "saddw v10.8h, v26.8h, v10.8b\n"
+        "saddw v11.8h, v26.8h, v11.8b\n"
 
-        "uaddw v0.8h, v25.8h, v0.8b\n"
-        "uaddw v1.8h, v25.8h, v1.8b\n"
-        "uaddw v2.8h, v25.8h, v2.8b\n"
-        "uaddw v3.8h, v25.8h, v3.8b\n"
+        "saddw v0.8h, v25.8h, v0.8b\n"
+        "saddw v1.8h, v25.8h, v1.8b\n"
+        "saddw v2.8h, v25.8h, v2.8b\n"
+        "saddw v3.8h, v25.8h, v3.8b\n"
 
         "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
 
@@ -2094,20 +2094,20 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
           "sqadd v16.8h, v16.8h, v28.8h\n"
-          "sqxtun v16.8b, v16.8h\n"
-          "umax v16.8b, v16.8b, v30.8b\n"
-          "umin v16.8b, v16.8b, v31.8b\n"
+          "sqxtn v16.8b, v16.8h\n"
+          "smax v16.8b, v16.8b, v30.8b\n"
+          "smin v16.8b, v16.8b, v31.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
-          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "saddw v8.8h, v26.8h, v8.8b\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-          "uaddw v9.8h, v26.8h, v9.8b\n"
+          "saddw v9.8h, v26.8h, v9.8b\n"
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-          "uaddw v10.8h, v26.8h, v10.8b\n"
-          "uaddw v11.8h, v26.8h, v11.8b\n"
-          "uaddw v0.8h, v25.8h, v0.8b\n"
-          "uaddw v1.8h, v25.8h, v1.8b\n"
-          "uaddw v2.8h, v25.8h, v2.8b\n"
-          "uaddw v3.8h, v25.8h, v3.8b\n"
+          "saddw v10.8h, v26.8h, v10.8b\n"
+          "saddw v11.8h, v26.8h, v11.8b\n"
+          "saddw v0.8h, v25.8h, v0.8b\n"
+          "saddw v1.8h, v25.8h, v1.8b\n"
+          "saddw v2.8h, v25.8h, v2.8b\n"
+          "saddw v3.8h, v25.8h, v3.8b\n"
 
           "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
 
@@ -2129,9 +2129,9 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
         "sqadd v16.8h, v16.8h, v28.8h\n"
-        "sqxtun v16.8b, v16.8h\n"
-        "umax v16.8b, v16.8b, v30.8b\n"
-        "umin v16.8b, v16.8b, v31.8b\n"
+        "sqxtn v16.8b, v16.8h\n"
+        "smax v16.8b, v16.8b, v30.8b\n"
+        "smin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -2156,8 +2156,8 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
 template <>
 struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                                       EdgeType::kHorizontal, 1, 1> {
-  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
-                         const int32* bias_ptr, uint8* output_ptr,
+  static inline void Run(const int8* input_ptr, const int8* filter_ptr,
+                         const int32* bias_ptr, int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
@@ -2211,21 +2211,21 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "dup v25.8h, w12\n"
 
         // Add input and filter offsets.
-        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "saddw v8.8h, v26.8h, v8.8b\n"
         "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v9.8h, v26.8h, v9.8b\n"
+        "saddw v9.8h, v26.8h, v9.8b\n"
         "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v10.8h, v26.8h, v10.8b\n"
-        "uaddw v11.8h, v26.8h, v11.8b\n"
-        "uaddw v12.8h, v26.8h, v12.8b\n"
-        "uaddw v13.8h, v26.8h, v13.8b\n"
+        "saddw v10.8h, v26.8h, v10.8b\n"
+        "saddw v11.8h, v26.8h, v11.8b\n"
+        "saddw v12.8h, v26.8h, v12.8b\n"
+        "saddw v13.8h, v26.8h, v13.8b\n"
 
-        "uaddw v0.8h, v25.8h, v0.8b\n"
-        "uaddw v1.8h, v25.8h, v1.8b\n"
-        "uaddw v2.8h, v25.8h, v2.8b\n"
-        "uaddw v3.8h, v25.8h, v3.8b\n"
-        "uaddw v4.8h, v25.8h, v4.8b\n"
-        "uaddw v5.8h, v25.8h, v5.8b\n"
+        "saddw v0.8h, v25.8h, v0.8b\n"
+        "saddw v1.8h, v25.8h, v1.8b\n"
+        "saddw v2.8h, v25.8h, v2.8b\n"
+        "saddw v3.8h, v25.8h, v3.8b\n"
+        "saddw v4.8h, v25.8h, v4.8b\n"
+        "saddw v5.8h, v25.8h, v5.8b\n"
 
         "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
 
@@ -2272,25 +2272,25 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
           "sqadd v16.8h, v16.8h, v28.8h\n"
-          "sqxtun v16.8b, v16.8h\n"
-          "umax v16.8b, v16.8b, v30.8b\n"
-          "umin v16.8b, v16.8b, v31.8b\n"
-          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "sqxtn v16.8b, v16.8h\n"
+          "smax v16.8b, v16.8b, v30.8b\n"
+          "smin v16.8b, v16.8b, v31.8b\n"
+          "saddw v8.8h, v26.8h, v8.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
-          "uaddw v9.8h, v26.8h, v9.8b\n"
-          "uaddw v10.8h, v26.8h, v10.8b\n"
-          "uaddw v11.8h, v26.8h, v11.8b\n"
-          "uaddw v12.8h, v26.8h, v12.8b\n"
-          "uaddw v13.8h, v26.8h, v13.8b\n"
+          "saddw v9.8h, v26.8h, v9.8b\n"
+          "saddw v10.8h, v26.8h, v10.8b\n"
+          "saddw v11.8h, v26.8h, v11.8b\n"
+          "saddw v12.8h, v26.8h, v12.8b\n"
+          "saddw v13.8h, v26.8h, v13.8b\n"
 
-          "uaddw v0.8h, v25.8h, v0.8b\n"
-          "uaddw v1.8h, v25.8h, v1.8b\n"
-          "uaddw v2.8h, v25.8h, v2.8b\n"
+          "saddw v0.8h, v25.8h, v0.8b\n"
+          "saddw v1.8h, v25.8h, v1.8b\n"
+          "saddw v2.8h, v25.8h, v2.8b\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-          "uaddw v3.8h, v25.8h, v3.8b\n"
+          "saddw v3.8h, v25.8h, v3.8b\n"
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-          "uaddw v4.8h, v25.8h, v4.8b\n"
-          "uaddw v5.8h, v25.8h, v5.8b\n"
+          "saddw v4.8h, v25.8h, v4.8b\n"
+          "saddw v5.8h, v25.8h, v5.8b\n"
 
           "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
 
@@ -2315,9 +2315,9 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
         "sqadd v16.8h, v16.8h, v28.8h\n"
-        "sqxtun v16.8b, v16.8h\n"
-        "umax v16.8b, v16.8b, v30.8b\n"
-        "umin v16.8b, v16.8b, v31.8b\n"
+        "sqxtn v16.8b, v16.8h\n"
+        "smax v16.8b, v16.8b, v30.8b\n"
+        "smin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -2342,8 +2342,8 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
 template <>
 struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                                       EdgeType::kVertical, 1, 1> {
-  static inline void Run(const uint8* input_ptr, const uint8* filter_ptr,
-                         const int32* bias_ptr, uint8* output_ptr,
+  static inline void Run(const int8* input_ptr, const int8* filter_ptr,
+                         const int32* bias_ptr, int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
@@ -2399,21 +2399,21 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "dup v25.8h, w12\n"
 
         // Add input and filter offsets.
-        "uaddw v8.8h, v26.8h, v8.8b\n"
+        "saddw v8.8h, v26.8h, v8.8b\n"
         "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v9.8h, v26.8h, v9.8b\n"
+        "saddw v9.8h, v26.8h, v9.8b\n"
         "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-        "uaddw v10.8h, v26.8h, v10.8b\n"
-        "uaddw v11.8h, v26.8h, v11.8b\n"
-        "uaddw v12.8h, v26.8h, v12.8b\n"
-        "uaddw v13.8h, v26.8h, v13.8b\n"
+        "saddw v10.8h, v26.8h, v10.8b\n"
+        "saddw v11.8h, v26.8h, v11.8b\n"
+        "saddw v12.8h, v26.8h, v12.8b\n"
+        "saddw v13.8h, v26.8h, v13.8b\n"
 
-        "uaddw v0.8h, v25.8h, v0.8b\n"
-        "uaddw v1.8h, v25.8h, v1.8b\n"
-        "uaddw v2.8h, v25.8h, v2.8b\n"
-        "uaddw v3.8h, v25.8h, v3.8b\n"
-        "uaddw v4.8h, v25.8h, v4.8b\n"
-        "uaddw v5.8h, v25.8h, v5.8b\n"
+        "saddw v0.8h, v25.8h, v0.8b\n"
+        "saddw v1.8h, v25.8h, v1.8b\n"
+        "saddw v2.8h, v25.8h, v2.8b\n"
+        "saddw v3.8h, v25.8h, v3.8b\n"
+        "saddw v4.8h, v25.8h, v4.8b\n"
+        "saddw v5.8h, v25.8h, v5.8b\n"
 
         "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
 
@@ -2462,25 +2462,25 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "sqxtn v16.4h, v16.4s\n"
           "sqxtn2 v16.8h, v17.4s\n"
           "sqadd v16.8h, v16.8h, v28.8h\n"
-          "sqxtun v16.8b, v16.8h\n"
-          "umax v16.8b, v16.8b, v30.8b\n"
-          "umin v16.8b, v16.8b, v31.8b\n"
-          "uaddw v8.8h, v26.8h, v8.8b\n"
+          "sqxtn v16.8b, v16.8h\n"
+          "smax v16.8b, v16.8b, v30.8b\n"
+          "smin v16.8b, v16.8b, v31.8b\n"
+          "saddw v8.8h, v26.8h, v8.8b\n"
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
-          "uaddw v9.8h, v26.8h, v9.8b\n"
-          "uaddw v10.8h, v26.8h, v10.8b\n"
-          "uaddw v11.8h, v26.8h, v11.8b\n"
-          "uaddw v12.8h, v26.8h, v12.8b\n"
-          "uaddw v13.8h, v26.8h, v13.8b\n"
+          "saddw v9.8h, v26.8h, v9.8b\n"
+          "saddw v10.8h, v26.8h, v10.8b\n"
+          "saddw v11.8h, v26.8h, v11.8b\n"
+          "saddw v12.8h, v26.8h, v12.8b\n"
+          "saddw v13.8h, v26.8h, v13.8b\n"
 
-          "uaddw v0.8h, v25.8h, v0.8b\n"
-          "uaddw v1.8h, v25.8h, v1.8b\n"
-          "uaddw v2.8h, v25.8h, v2.8b\n"
+          "saddw v0.8h, v25.8h, v0.8b\n"
+          "saddw v1.8h, v25.8h, v1.8b\n"
+          "saddw v2.8h, v25.8h, v2.8b\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-          "uaddw v3.8h, v25.8h, v3.8b\n"
+          "saddw v3.8h, v25.8h, v3.8b\n"
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-          "uaddw v4.8h, v25.8h, v4.8b\n"
-          "uaddw v5.8h, v25.8h, v5.8b\n"
+          "saddw v4.8h, v25.8h, v4.8b\n"
+          "saddw v5.8h, v25.8h, v5.8b\n"
 
           "bge " DEPTHWISECONV_LABEL_DEPTH_8_LOOP "b\n"
 
@@ -2505,10 +2505,10 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "sqxtn v16.4h, v16.4s\n"
         "sqxtn2 v16.8h, v17.4s\n"
         "sqadd v16.8h, v16.8h, v28.8h\n"
-        "sqxtun v16.8b, v16.8h\n"
+        "sqxtn v16.8b, v16.8h\n"
         // TODO(b/129852264): Improve testing coverage.
-        "umax v16.8b, v16.8b, v30.8b\n"
-        "umin v16.8b, v16.8b, v31.8b\n"
+        "smax v16.8b, v16.8b, v30.8b\n"
+        "smin v16.8b, v16.8b, v31.8b\n"
         "st1 {v16.8b}, [%[output_ptr]]\n"
         :
         // Outputs.
@@ -2690,10 +2690,10 @@ struct DepthwiseConvMultiRowPerChannel {
 //   * Vertical edges.
 template <DepthwiseConvOutputRounding output_rounding>
 inline void DepthwiseConvHandlePaddingPerChannel(
-    const uint8* input_data, const uint8* filter_data, const int32* bias_data,
-    uint8* output_data, const DepthwiseConvParams& params) {
+    const int8* input_data, const int8* filter_data, const int32* bias_data,
+    int8* output_data, const DepthwiseConvParams& params) {
   if (params.input_width == 1 && params.input_height == 1) {
-    const uint8* filter_ptr =
+    const int8* filter_ptr =
         filter_data + params.filter_row_size + params.output_depth;
     DepthwiseConvPartialPerChannel<output_rounding, EdgeType::kCenter, 1,
                                    1>::Run(input_data, filter_ptr, bias_data,
@@ -2707,10 +2707,10 @@ inline void DepthwiseConvHandlePaddingPerChannel(
   const int32 out_y_end_corner = params.output_height - 1;
 
   // Handle top row.
-  const uint8* input_ptr = input_data;
-  const uint8* filter_ptr =
+  const int8* input_ptr = input_data;
+  const int8* filter_ptr =
       filter_data + params.filter_row_size + params.output_depth;
-  uint8* output_ptr = output_data;
+  int8* output_ptr = output_data;
 
   DepthwiseConvPartialPerChannel<output_rounding, EdgeType::kCorner, 1, 1>::Run(
       input_ptr, filter_ptr, bias_data, output_ptr, &params);
@@ -2911,16 +2911,16 @@ inline void DepthwiseConv3x3FilterPerChannel(
     int32 end_y = row_end;
 
     // TODO(b/132878669): Support padding.
-    //     if (pad_width == 1 && pad_height == 1) {
-    //       DepthwiseConvHandlePaddingPerChannel<output_rounding>(
-    //           input_ptr, filter_data, bias_data, output_ptr, params);
-    //
-    //       // Update extents now that the edges have been handled.
-    //       out_x = 1;
-    //       end_x = params.output_width - 1;
-    //       out_y = std::max(1, out_y);
-    //       end_y = std::min(params.output_height - 1, end_y);
-    //     }
+    if (pad_width == 1 && pad_height == 1) {
+      DepthwiseConvHandlePaddingPerChannel<output_rounding>(
+          input_ptr, filter_data, bias_data, output_ptr, params);
+
+      // Update extents now that the edges have been handled.
+      out_x = 1;
+      end_x = params.output_width - 1;
+      out_y = std::max(1, out_y);
+      end_y = std::min(params.output_height - 1, end_y);
+    }
 
     // pad_width and pad_height can both be 0 or 1, depending on padding option,
     // such as Padding_VALID / Padding_SAME.
