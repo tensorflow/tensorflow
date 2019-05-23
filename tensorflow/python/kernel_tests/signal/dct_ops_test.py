@@ -150,6 +150,9 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # Unsupported type.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, type=5)
+    # Invalid n.
+    with self.assertRaises(ValueError):
+      dct_ops.dct(signals, n=-2)
     # DCT-I normalization not implemented.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, type=1, norm="ortho")
@@ -159,8 +162,6 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # Unknown normalization.
     with self.assertRaises(ValueError):
       dct_ops.dct(signals, norm="bad")
-    with self.assertRaises(NotImplementedError):
-      dct_ops.dct(signals, n=10)
     with self.assertRaises(NotImplementedError):
       dct_ops.dct(signals, axis=0)
 
