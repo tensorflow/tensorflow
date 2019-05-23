@@ -261,6 +261,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self.steps_per_run = steps_per_run
     self._require_static_shapes = True
 
+    self.experimental_enable_get_next_as_optional = True
+
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_tpu_variable(colocate_with_variable, self)
 
@@ -270,8 +272,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
-        _enable_get_next_as_optional=True)
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -288,8 +289,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         input_fn,
         self._input_workers,
         input_contexts,
-        self._container_strategy(),
-        _enable_get_next_as_optional=True)
+        self._container_strategy())
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
