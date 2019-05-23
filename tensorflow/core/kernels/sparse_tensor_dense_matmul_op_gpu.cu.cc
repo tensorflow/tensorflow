@@ -46,7 +46,7 @@ __global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
     // out[i, j]
     T* out_location = out + i * p + j;
     if (!FastBoundsCheck(k, n)) {
-      GpuAtomicAdd(out_location, Eigen::NumTraits<T>::quiet_NaN());
+      GpuAtomicAdd(out_location, std::numeric_limits<T>::quiet_NaN());
       continue;
     }
 
