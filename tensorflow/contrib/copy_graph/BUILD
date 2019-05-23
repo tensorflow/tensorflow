@@ -28,6 +28,7 @@ py_library(
 py_test(
     name = "copy_test",
     srcs = glob(["python/util/copy_test.py"]),
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":copy_graph_py",

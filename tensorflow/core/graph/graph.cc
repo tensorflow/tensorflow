@@ -87,6 +87,13 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"FakeParam", NC_FAKE_PARAM},
         {"PartitionedCall", NC_PARTITIONED_CALL},
         {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
+        // Not using the constants defined in FunctionLibraryDefinition for the
+        // 4 ops below because android inference library does not link
+        // tf.function related files.
+        {"_Arg", NC_ARG},
+        {"_DeviceArg", NC_ARG},
+        {"_Retval", NC_RETVAL},
+        {"_DeviceRetval", NC_RETVAL},
     });
 
 #undef REF_CLASS
@@ -308,9 +315,15 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
 // NodeDebugInfo
 
 NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
-NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
-  if (ndef.has_experimental_debug_info()) {
-    const auto& names = ndef.experimental_debug_info().original_node_names();
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef)
+    : NodeDebugInfo(ndef.name(), ndef.has_experimental_debug_info(),
+                    ndef.experimental_debug_info()) {}
+NodeDebugInfo::NodeDebugInfo(
+    StringPiece node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info)
+    : name(node_name) {
+  if (has_experimental_debug_info) {
+    const auto& names = experimental_debug_info.original_node_names();
     original_node_names.assign(names.begin(), names.end());
   }
 }
@@ -440,12 +453,20 @@ void Graph::RemoveNode(Node* node) {
   DCHECK(!node->IsSink());
 
   // Remove any edges involving this node.
-  while (!node->in_edges_.empty()) {
-    RemoveEdge(*node->in_edges_.begin());
+  for (const Edge* e : node->in_edges_) {
+    CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
+    edges_[e->id_] = nullptr;
+    RecycleEdge(e);
+    --num_edges_;
   }
-  while (!node->out_edges_.empty()) {
-    RemoveEdge(*node->out_edges_.begin());
+  node->in_edges_.clear();
+  for (const Edge* e : node->out_edges_) {
+    CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
+    edges_[e->id_] = nullptr;
+    RecycleEdge(e);
+    --num_edges_;
   }
+  node->out_edges_.clear();
   ReleaseNode(node);
 }
 
@@ -489,15 +510,12 @@ void Graph::RemoveEdge(const Edge* e) {
   CHECK_GT(num_edges_, 0);
 
   edges_[e->id_] = nullptr;
-
-  Edge* del = const_cast<Edge*>(e);
-  del->src_ = nullptr;
-  del->dst_ = nullptr;
-  del->id_ = -1;
-  del->src_output_ = kControlSlot - 1;
-  del->dst_input_ = kControlSlot - 1;
-  free_edges_.push_back(del);
+  RecycleEdge(e);
   --num_edges_;
+}
+
+void Graph::RecycleEdge(const Edge* e) {
+  free_edges_.push_back(const_cast<Edge*>(e));
 }
 
 const Edge* Graph::AddControlEdge(Node* source, Node* dest,

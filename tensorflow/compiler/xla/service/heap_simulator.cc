@@ -251,7 +251,26 @@ Status HeapSimulator::RunComputation(
       // We can only share with the operand buffer if it is about to be freed;
       // we must be the last user of the buffer.
       bool shared = false;
-      if (options_.may_reuse_operand_buffers) {
+      auto shared_it = shared_buffers_.find(buffer);
+      if (shared_it != shared_buffers_.end()) {
+        std::shared_ptr<SharedGroup> group = shared_it->second;
+        if (group->refcount != 0) {
+          // This buffer has a shared group with already some instructions
+          // scheduled (refcount > 0), find and share buffer with the
+          // canonical instruction.
+          shared = true;
+          VLOG(3) << "  Sharing: " << buffer->ToString()
+                  << " with must aliased buffer "
+                  << group->canonical->ToString();
+          FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer,
+                         instruction, group->canonical);
+        } else {
+          VLOG(3) << "  New shared group, canonical buffer: "
+                  << buffer->ToString();
+          group->canonical = buffer;
+        }
+        group->refcount++;
+      } else if (options_.may_reuse_operand_buffers) {
         for (const BufferValue* operand_buffer : operand_buffers_to_free) {
           if (reused_buffers.contains(operand_buffer)) {
             continue;
@@ -261,12 +280,17 @@ Status HeapSimulator::RunComputation(
               points_to_analysis.CanShareOperandBufferWithUser(
                   operand_buffer->instruction(), operand_buffer->index(),
                   buffer->instruction(), buffer->index())) {
-            VLOG(3) << "  Sharing: " << buffer->ToString() << " with "
-                    << operand_buffer->ToString();
-            ShareBuffer(buffer, operand_buffer, instruction);
-            shared = true;
-            reused_buffers.insert(operand_buffer);
-            break;
+            // Make sure the two buffers belong to the same shared groups.
+            // Otherwise we'd need to merge those shared groups which is not
+            // suported.
+            if (InSameSharedGroup(buffer, operand_buffer)) {
+              VLOG(3) << "  Sharing: " << buffer->ToString() << " with "
+                      << operand_buffer->ToString();
+              ShareBuffer(buffer, operand_buffer, instruction);
+              shared = true;
+              reused_buffers.insert(operand_buffer);
+              break;
+            }
           }
         }
       }
@@ -358,6 +382,17 @@ HeapSimulator::HeapSimulator(
       options_(options),
       schedule_(schedule),
       memory_by_computation_(memory_by_computation) {
+  for (const BufferValueFlatSet& value_set : options.must_alias_sets) {
+    auto group = std::make_shared<SharedGroup>();
+    group->refcount = 0;
+    VLOG(2) << "Shared buffers:";
+    for (const BufferValue* buffer_value : value_set) {
+      VLOG(2) << "    " << buffer_value->ToString();
+      shared_buffers_.emplace(buffer_value, group);
+      // Refcounts are not incremented here as buffers are shared but not
+      // referenced yet.
+    }
+  }
   debug_trace_.set_whole_module_simulation(schedule_ != nullptr);
 }
 
@@ -402,9 +437,13 @@ void HeapSimulator::Free(const BufferValue* buffer,
   if (shared_it != shared_buffers_.end()) {
     std::shared_ptr<SharedGroup> group = shared_it->second;
     --group->refcount;
+    VLOG(3) << "    Decrementing refcount : " << group->canonical->ToString();
     if (group->refcount > 0) {
+      // Another buffer still holds the reference to this shared group, don't
+      // free the underlying canonical buffer.
       return;
     }
+    VLOG(3) << "    Ref == 0 " << group->canonical->ToString();
     CHECK_EQ(group->refcount, 0)
         << "Free caused negative refcount on shared buffer: " << *buffer;
     buffer = group->canonical;
@@ -421,6 +460,21 @@ void HeapSimulator::Free(const BufferValue* buffer,
   no_fragmentation_stats_->Free(buffer, size);
 
   FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
+}
+
+bool HeapSimulator::InSameSharedGroup(const BufferValue* left,
+                                      const BufferValue* right) {
+  auto left_it = shared_buffers_.find(left);
+  if (left_it == shared_buffers_.end()) {
+    return true;
+  }
+
+  auto right_it = shared_buffers_.find(right);
+  if (right_it == shared_buffers_.end()) {
+    return true;
+  }
+
+  return left_it->second == right_it->second;
 }
 
 // ShareBuffer associates buffers with their SharedGroup in shared_buffers_.
@@ -445,6 +499,12 @@ void HeapSimulator::ShareBuffer(const BufferValue* buffer,
     // The 'shared' buffer already has a group; it might be the canonical, but
     // also might not be.  Just add 'buffer' to the existing group.
     std::shared_ptr<SharedGroup> group = shared_it->second;
+
+    if (group->refcount == 0) {
+      // Nothing is scheduled at the shared group yet. This must be the
+      // canonical.
+      group->canonical = shared;
+    }
     canonical = group->canonical;
     ++group->refcount;
     shared_buffers_.emplace(buffer, group);
@@ -475,7 +535,7 @@ HeapSimulator::Result HeapSimulator::Finish() {
     for (const auto& share_pair : shared_buffers_) {
       const BufferValue* buffer = share_pair.first;
       std::shared_ptr<SharedGroup> group = share_pair.second;
-      if (buffer != group->canonical) {
+      if (buffer != group->canonical && group->canonical != nullptr) {
         // The canonical must already exist in the chunk_map, since we called
         // Alloc(canonical) on the underlying algorithm.  Add non-canonical
         // chunks with the same offset as the canonical.

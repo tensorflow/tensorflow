@@ -48,7 +48,8 @@ void Logger::log(Severity severity, const char* msg) {
     // This is useless for now. But would catch it in future if enum changes. It
     // is always good to have default case!
     default: {
-      LOG(FATAL) << name_ << "Got unknown severity level from TRT " << msg;
+      LOG(FATAL) << name_ << "Got unknown severity level " << int(severity)
+                 << " from TensorRT: " << msg;
       break;
     }
   }

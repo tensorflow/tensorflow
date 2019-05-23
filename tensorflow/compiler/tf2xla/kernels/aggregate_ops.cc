@@ -36,19 +36,36 @@ class AddNOp : public XlaOpKernel {
     xla::XlaOp sum;
     switch (kind) {
       case XlaExpression::Kind::kTensorList: {
+        // Check that all TensorLists are initialized.
+        for (int i = 1; i < ctx->num_inputs(); ++i) {
+          xla::XlaOp list = ctx->Input(i);
+          bool is_initialized;
+          OP_REQUIRES_OK(ctx, IsTensorListInitialized(list, &is_initialized));
+          OP_REQUIRES(
+              ctx, is_initialized,
+              errors::InvalidArgument("TensorList input #", i,
+                                      " for AddN op is an uninitialized list"));
+        }
+        // Nested TensorList is not supported.
+        bool is_nested_list;
+        OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested_list));
+        OP_REQUIRES(ctx, !is_nested_list,
+                    errors::Unimplemented(
+                        "Nested TensorList is not supported for AddN op"));
+
         OP_REQUIRES_OK(ctx, GetTensorListBuffer(ctx->Input(0), &sum));
-        TensorShape sum_shape;
+        xla::Shape sum_shape;
         OP_REQUIRES_OK(ctx,
                        GetTensorListBufferShape(ctx->Input(0), &sum_shape));
         for (int i = 1; i < ctx->num_inputs(); ++i) {
           xla::XlaOp operand;
           OP_REQUIRES_OK(ctx, GetTensorListBuffer(ctx->Input(i), &operand));
           // Check that the shapes match.
-          TensorShape operand_shape;
+          xla::Shape operand_shape;
           OP_REQUIRES_OK(
               ctx, GetTensorListBufferShape(ctx->Input(i), &operand_shape));
           OP_REQUIRES(
-              ctx, sum_shape.dim_sizes() == operand_shape.dim_sizes(),
+              ctx, sum_shape.dimensions() == operand_shape.dimensions(),
               errors::InvalidArgument(
                   "TensorList arguments to AddN must all have the same ",
                   "shape.\n", "Expected: ", sum_shape.DebugString(), "\n",
@@ -57,7 +74,8 @@ class AddNOp : public XlaOpKernel {
         }
         xla::XlaOp push_index;
         OP_REQUIRES_OK(ctx, GetTensorListPushIndex(ctx->Input(0), &push_index));
-        OP_REQUIRES_OK(ctx, BuildTensorList(sum, push_index, &sum));
+        OP_REQUIRES_OK(ctx, BuildNonNestedTensorList(sum, push_index, &sum));
+        ctx->SetTensorListOutput(0, sum);
         break;
       }
       default:
@@ -65,9 +83,8 @@ class AddNOp : public XlaOpKernel {
         for (int i = 1; i < ctx->num_inputs(); ++i) {
           sum = xla::Add(sum, ctx->Input(i));
         }
+        ctx->SetOutput(0, sum);
     }
-
-    ctx->SetOutput(0, sum);
   }
 
  private:

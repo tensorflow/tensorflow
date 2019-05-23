@@ -11,8 +11,8 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_not_windows",
-    "tf_copts",
     "tf_cc_test",
+    "tf_copts",
 )
 
 # To be exported to tensorflow/core:mobile_srcs.

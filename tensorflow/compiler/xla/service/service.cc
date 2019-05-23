@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -319,6 +320,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     config->set_intra_op_parallelism_threads(
         execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
   }
+
+  if (execution_options != nullptr &&
+      execution_options->has_device_assignment()) {
+    TF_ASSIGN_OR_RETURN(
+        auto device_assignment,
+        DeviceAssignment::Deserialize(execution_options->device_assignment()));
+    config->set_static_device_assignment(*device_assignment);
+  }
+
   return std::move(config);
 }
 
@@ -337,7 +347,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const std::vector<const HloModuleProto*>& module_protos,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << StrFormat("BuildExecutable on service %p", this);
 
   // Dump computation proto state if flag is set.
@@ -773,7 +783,7 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const HloModuleProto& module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-    se::StreamExecutor* executor, DeviceMemoryAllocator* device_allocator) {
+    se::StreamExecutor* executor, se::DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << StrFormat(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name());

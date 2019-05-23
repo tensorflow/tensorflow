@@ -21,7 +21,7 @@ limitations under the License.
 // Eventually the various C APIs defined in context.h will be migrated into
 // the appropriate /c/c_api*.h header. For now, we pull in existing definitions
 // for convenience.
-#include "tensorflow/lite/context.h"
+#include "c_api_types.h"
 
 // --------------------------------------------------------------------------
 // Experimental C API for TensorFlowLite.
@@ -58,6 +58,11 @@ typedef TfLiteRegistration TFL_Registration;
 typedef TfLiteStatus TFL_Status;
 typedef TfLiteTensor TFL_Tensor;
 typedef TfLiteType TFL_Type;
+
+// --------------------------------------------------------------------------
+// TFL_Version returns a string describing version information of the
+// TensorFlow Lite library. TensorFlow Lite uses semantic versioning.
+TFL_CAPI_EXPORT extern const char* TFL_Version(void);
 
 // --------------------------------------------------------------------------
 // TFL_Model wraps a loaded TensorFlow Lite model.

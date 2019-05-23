@@ -29,8 +29,7 @@ namespace {
 
 // Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
 xla::XlaOp CreateDiagonal(xla::XlaOp input, int64 last_dim_size,
-                          absl::Span<const int64> other_dims,
-                          xla::PrimitiveType element_type) {
+                          absl::Span<const int64> other_dims) {
   xla::XlaBuilder* builder = input.builder();
   // Create two matrices that have the following forms, and compare them:
   //
@@ -58,22 +57,17 @@ xla::XlaOp CreateDiagonal(xla::XlaOp input, int64 last_dim_size,
   // select(  [f, t, f]  ,  [4, 4, 4]  ,  [0, 0, 0]  ) =  [0, 4, 0]
   //          [f, f, t]]    [9, 9, 9]]    [0, 0, 0]]      [0, 0, 9]]
   //
-  // Broadcasting the input is less-than-trivial, since we need to broadcast
-  // into a "middle" dimension. We can do this with a reshape + implicit
-  // broadcast.
-  // TODO(b/30112114): Replace with in-dim broadcast when those are supported.
-  std::vector<int64> broadcast_dims(other_dims.begin(), other_dims.end());
-  broadcast_dims.push_back(1LL);
-  broadcast_dims.push_back(last_dim_size);
-  xla::XlaOp input_broadcast = xla::Reshape(input, broadcast_dims);
+  std::vector<int64> out_dim_sizes(other_dims.begin(), other_dims.end());
+  out_dim_sizes.push_back(last_dim_size);
+  out_dim_sizes.push_back(last_dim_size);
 
-  broadcast_dims[broadcast_dims.size() - 2] = last_dim_size;
-  auto broadcast_shape =
-      xla::ShapeUtil::MakeShape(element_type, broadcast_dims);
-  xla::XlaOp zeros = xla::Zeros(builder, broadcast_shape);
-
-  input_broadcast = xla::Add(input_broadcast, zeros);
-  return xla::Select(mask, input_broadcast, zeros);
+  // Broadcast into the second to last dimension.
+  std::vector<int64> broadcast_dimensions(other_dims.size() + 1);
+  absl::c_iota(broadcast_dimensions, 0);
+  ++broadcast_dimensions.back();
+  xla::XlaOp input_broadcast =
+      xla::BroadcastInDim(input, out_dim_sizes, broadcast_dimensions);
+  return xla::Select(mask, input_broadcast, xla::ZerosLike(input_broadcast));
 }
 
 class DiagOp : public XlaOpKernel {
@@ -103,8 +97,7 @@ class DiagOp : public XlaOpKernel {
     input = xla::Reshape(input, {size});
 
     // Create an R2 with the R1 diagonal.
-    xla::XlaOp diag =
-        CreateDiagonal(input, size, /*other_dims=*/{}, ctx->input_xla_type(0));
+    xla::XlaOp diag = CreateDiagonal(input, size, /*other_dims=*/{});
 
     // Reshapes to the final shape.
     std::vector<int64> new_dims(dims.size() * 2);
@@ -181,8 +174,7 @@ class MatrixDiagOp : public XlaOpKernel {
     other_dims.remove_suffix(1);
 
     xla::XlaOp input = ctx->Input(0);
-    xla::XlaOp diag = CreateDiagonal(input, last_dim_size, other_dims,
-                                     ctx->input_xla_type(0));
+    xla::XlaOp diag = CreateDiagonal(input, last_dim_size, other_dims);
     ctx->SetOutput(0, diag);
   }
 };

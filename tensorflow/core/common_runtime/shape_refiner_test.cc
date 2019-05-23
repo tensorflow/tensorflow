@@ -149,21 +149,6 @@ TEST_F(ShapeRefinerTest, MatMul) {
   EXPECT_SHAPE("[2,2]", m, mm, 0);
 }
 
-TEST_F(ShapeRefinerTest, InvalidOrder) {
-  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
-  Scope root = Scope::NewRootScope();
-  auto a = ops::Const(root, {{1.0f}, {2.0f}});
-  auto b = ops::Const(root, {{1.0f, 2.0f}});
-  auto mm = ops::MatMul(root, a, b);
-
-  Status s = m.AddNode(mm.node());
-  ASSERT_FALSE(s.ok());
-  ASSERT_EQ(
-      "Input 0 ('Const') for 'MatMul' was not previously added to "
-      "ShapeRefiner.",
-      s.error_message());
-}
-
 TEST_F(ShapeRefinerTest, BadShapes) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Scope root = Scope::NewRootScope();
@@ -177,8 +162,8 @@ TEST_F(ShapeRefinerTest, BadShapes) {
   // an error.
   Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(str_util::StrContains(
-      s.error_message(), "Dimensions must be equal, but are 1 and 2"));
+  ASSERT_TRUE(absl::StrContains(s.error_message(),
+                                "Dimensions must be equal, but are 1 and 2"));
 }
 
 TEST_F(ShapeRefinerTest, SetShape) {
@@ -1066,8 +1051,8 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));
-  EXPECT_TRUE(str_util::StrContains(m.AddNode(result).error_message(),
-                                    "but is rank 2"));
+  EXPECT_TRUE(
+      absl::StrContains(m.AddNode(result).error_message(), "but is rank 2"));
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {

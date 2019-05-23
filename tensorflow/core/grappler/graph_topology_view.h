@@ -38,7 +38,7 @@ namespace grappler {
 //   b = Placeholder(..)
 //   c = AddN([a, a, b])
 //
-// GraphView edges:         [a:0 -> c:0, a:0 -> c:1, b:0 -> c:3]
+// GraphView edges:         [a:0 -> c:0, a:0 -> c:1, b:0 -> c:2]
 // GraphTopologyView edges: [a -> c, b -> c]
 //
 // GraphView is used for exploring single node fanins and fanouts, and

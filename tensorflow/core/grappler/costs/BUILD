@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_protos_grappler",
@@ -17,8 +17,8 @@ filegroup(
 
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library",
     "tf_additional_all_protos",
+    "tf_proto_library",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -41,6 +41,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler:mutable_graph_view",
@@ -165,11 +166,22 @@ tf_cc_test(
 
 cc_library(
     name = "cost_estimator",
+    srcs = ["cost_estimator.cc"],
     hdrs = ["cost_estimator.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_estimator_test",
+    srcs = ["cost_estimator_test.cc"],
+    deps = [
+        ":cost_estimator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

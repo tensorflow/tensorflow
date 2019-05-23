@@ -673,7 +673,7 @@ class SequenceQueueingStateSaver(object):
   batch_size = 32
   num_unroll = 20
   lstm_size = 8
-  cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
+  cell = tf.compat.v1.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
   initial_state_values = tf.zeros(cell.state_size, dtype=tf.float32)
 
   raw_data = get_single_input_from_input_reader()
@@ -702,12 +702,12 @@ class SequenceQueueingStateSaver(object):
     state_name="lstm_state")
 
   # Start a prefetcher in the background
-  sess = tf.Session()
+  sess = tf.compat.v1.Session()
   num_threads = 3
-  queue_runner = tf.train.QueueRunner(
+  queue_runner = tf.compat.v1.train.QueueRunner(
       stateful_reader, [stateful_reader.prefetch_op] * num_threads)
-  tf.train.add_queue_runner(queue_runner)
-  tf.train.start_queue_runners(sess=session)
+  tf.compat.v1.train.add_queue_runner(queue_runner)
+  tf.compat.v1.train.start_queue_runners(sess=session)
 
   while True:
     # Step through batches, perform training or inference...
@@ -1320,7 +1320,7 @@ def batch_sequences_with_states(input_key,
   num_unroll = 20
   num_enqueue_threads = 3
   lstm_size = 8
-  cell = tf.contrib.rnn.BasicLSTMCell(num_units=lstm_size)
+  cell = tf.compat.v1.nn.rnn_cell.BasicLSTMCell(num_units=lstm_size)
 
   key, sequences, context = my_parser(raw_data)
   initial_state_values = tf.zeros((state_size,), dtype=tf.float32)
@@ -1349,9 +1349,9 @@ def batch_sequences_with_states(input_key,
     state_name="lstm_state")
 
   # Start a prefetcher in the background
-  sess = tf.Session()
+  sess = tf.compat.v1.Session()
 
-  tf.train.start_queue_runners(sess=session)
+  tf.compat.v1.train.start_queue_runners(sess=session)
 
   while True:
     # Step through batches, perform training or inference...

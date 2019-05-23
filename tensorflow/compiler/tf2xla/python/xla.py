@@ -304,6 +304,7 @@ def svd(a, max_iter, epsilon, precision_config=None):
 
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
+einsum = gen_xla_ops.xla_einsum
 
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove
 # the XLA-specific pad operator.
@@ -369,6 +370,9 @@ def reduce_window(operand,
       padding=padding,
       computation=reducer,
       name=name)
+
+
+replica_id = gen_xla_ops.xla_replica_id
 
 
 def reshape(x, new_sizes, dimensions=None, name=None):

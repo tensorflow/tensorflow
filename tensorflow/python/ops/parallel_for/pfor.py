@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,8 +34,12 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -838,10 +843,15 @@ class RegisterPForWithArgs(RegisterPFor):
     return converter
 
 
+# TODO(agarwal): call raw_ops instead of calling these low level routines.
 def _create_op(op_type, inputs, op_dtypes, attrs=None):
   """Utility to create an op."""
-  return ops.get_default_graph().create_op(
+  op = ops.get_default_graph().create_op(
       op_type, inputs, op_dtypes, attrs=attrs, compute_device=True)
+  flat_attrs = nest.flatten([(str(a), op.get_attr(str(a))) for a in attrs])
+  execute.record_gradient(
+      op_type, op.inputs, tuple(flat_attrs), op.outputs[:], "")
+  return op
 
 
 WrappedTensor = collections.namedtuple("WrappedTensor",
@@ -983,7 +993,8 @@ class PForConfig(object):
 
   def _lookup_reduction(self, pl):
     """Lookups Placeholder `pl` in the reduction map."""
-    assert isinstance(pl, ops.Tensor)
+    msg = "Expected Tensor, got {} of type {}."
+    assert isinstance(pl, ops.Tensor), msg.format(pl, type(pl))
     return self._reduce_concat_map.get(pl, None)
 
 
@@ -1476,8 +1487,8 @@ def _channel_flatten_input(x, data_format):
   return outputs
 
 
-# Note that with training=True, running FusedBatchNorm on individual examples
-# is very different from running FusedBatchNorm on a batch of those examples.
+# Note that with training=True, running FusedBatchNormV3 on individual examples
+# is very different from running FusedBatchNormV3 on a batch of those examples.
 # This is because, for the latter case, the operation can be considered as first
 # computing the mean and variance over all the examples and then using these
 # to scale all those examples. This creates a data dependency between these
@@ -1486,7 +1497,7 @@ def _channel_flatten_input(x, data_format):
 # As with other kernels, the conversion here effectively runs the kernel
 # independently for each iteration, and returns outputs by stacking outputs from
 # each of those iterations.
-@RegisterPFor("FusedBatchNorm")
+@RegisterPFor("FusedBatchNormV3")
 def _convert_fused_batch_norm(pfor_input):
   is_training = pfor_input.get_attr("is_training")
   # When BatchNorm is used with training=False, mean and variance are provided
@@ -1515,8 +1526,8 @@ def _convert_fused_batch_norm(pfor_input):
 
   pfor_input.stack_inputs()
   data_format = pfor_input.get_attr("data_format")
-  # We merge the first dimension with the "C" dimension, run FusedBatchNorm, and
-  # then transpose back.
+  # We merge the first dimension with the "C" dimension, run FusedBatchNormV3,
+  # and then transpose back.
   x = pfor_input.stacked_input(0)
   x, reverse_order, reverse_shape = _channel_flatten_input(x, data_format)
   # Note that we stack all the other inputs as well so that they are the same
@@ -1538,7 +1549,7 @@ def _convert_fused_batch_norm(pfor_input):
   return [wrap(x, True) for x in outputs]
 
 
-@RegisterPFor("FusedBatchNormGrad")
+@RegisterPFor("FusedBatchNormGradV3")
 def _convert_fused_batch_norm_grad(pfor_input):
   pfor_input.stack_inputs()
   data_format = pfor_input.get_attr("data_format")
@@ -1641,6 +1652,13 @@ def _convert_conv2d_backprop_filter(pfor_input):
     return wrap(output, True)
 
 
+@RegisterPForWithArgs("LogSoftmax", gen_nn_ops.log_softmax)
+@RegisterPForWithArgs("Softmax", gen_nn_ops.softmax)
+def _convert_softmax(pfor_input, op_type, op_func):
+  del op_type
+  return wrap(op_func(pfor_input.stacked_input(0)), True)
+
+
 # array_ops
 
 
@@ -1663,9 +1681,27 @@ def _convert_identity_n(pfor_input):
 def _convert_reshape(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_dim = array_ops.shape(t)[:1]
-  new_shape = array_ops.concat([new_dim, shape], axis=0)
+  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
+
+
+@RegisterPFor("BroadcastTo")
+def _convert_broadcast_to(pfor_input):
+  t = pfor_input.stacked_input(0)
+  shape = pfor_input.unstacked_input(1)
+  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+
+  # Expand dims of stacked t to broadcast against the new shape.
+  # TODO(davmre): consider factoring out common code with
+  # `expanddim_inputs_for_broadcast`, which has similar logic but with
+  # implicit shapes (of input Tensors) rather than explicit shapes.
+  rank_diff = array_ops.shape(new_shape)[0] - array_ops.rank(t)
+  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
+  t_shape = array_ops.shape(t)
+  t_expanded_shape = array_ops.concat([t_shape[:1], ones, t_shape[1:]], axis=0)
+
+  return wrap(array_ops.broadcast_to(array_ops.reshape(t, t_expanded_shape),
+                                     new_shape), True)
 
 
 @RegisterPFor("ExpandDims")
@@ -1674,6 +1710,48 @@ def _convert_expanddims(pfor_input):
   dim = pfor_input.unstacked_input(1)
   dim += math_ops.cast(dim >= 0, dtypes.int32)
   return wrap(array_ops.expand_dims(t, axis=dim), True)
+
+
+@RegisterPForWithArgs("LowerBound", gen_array_ops.lower_bound)
+@RegisterPForWithArgs("UpperBound", gen_array_ops.upper_bound)
+def _convert_searchsorted(pfor_input, _, op_func):
+  pfor_input.stack_inputs()
+  sorted_inputs = _flatten_first_two_dims(pfor_input.stacked_input(0))
+  values = _flatten_first_two_dims(pfor_input.stacked_input(1))
+  out_type = pfor_input.get_attr("out_type")
+  output = op_func(sorted_inputs, values, out_type)
+  return wrap(_unflatten_first_dim(
+      output, pfor_input.pfor.loop_len_vector), True)
+
+
+@RegisterPFor("MatrixBandPart")
+def _convert_matrix_band_part(pfor_input):
+  t = pfor_input.stacked_input(0)
+  num_lower = pfor_input.unstacked_input(1)
+  num_upper = pfor_input.unstacked_input(2)
+  return wrap(array_ops.matrix_band_part(
+      t, num_lower=num_lower, num_upper=num_upper), True)
+
+
+@RegisterPFor("MatrixSetDiag")
+def _convert_matrix_set_diag(pfor_input):
+  pfor_input.stack_inputs()
+  t = pfor_input.stacked_input(0)
+  diag = pfor_input.stacked_input(1)
+  return wrap(array_ops.matrix_set_diag(t, diag), True)
+
+
+@RegisterPFor("OneHot")
+def _convert_one_hot(pfor_input):
+  indices = pfor_input.stacked_input(0)
+  depth = pfor_input.unstacked_input(1)
+  on_value = pfor_input.unstacked_input(2)
+  off_value = pfor_input.unstacked_input(3)
+  axis = pfor_input.get_attr("axis")
+  if axis >= 0:
+    axis += 1
+  return wrap(
+      array_ops.one_hot(indices, depth, on_value, off_value, axis), True)
 
 
 @RegisterPFor("Slice")
@@ -1738,6 +1816,14 @@ def _convert_split_v(pfor_input):
   split_dim = pfor_input.unstacked_input(2)
   split_dim += math_ops.cast(split_dim >= 0, dtypes.int32)
   return [wrap(x, True) for x in array_ops.split(t, splits, axis=split_dim)]
+
+
+@RegisterPFor("Squeeze")
+def _convert_squeeze(pfor_input):
+  t = pfor_input.stacked_input(0)
+  squeeze_dims = pfor_input.get_attr("squeeze_dims")
+  squeeze_dims = [i + 1 if i >= 0 else i for i in squeeze_dims]
+  return wrap(array_ops.squeeze(t, axis=squeeze_dims), True)
 
 
 @RegisterPFor("Transpose")
@@ -1966,6 +2052,8 @@ def _convert_matmul(pfor_input):
     return wrap(prod, True)
 
 
+# TODO(rmlarsen): Use the converter of BatchMatMulV2 once compatibility window
+# is met.
 @RegisterPFor("BatchMatMul")
 def _convert_batch_mat_mul(pfor_input):
   # TODO(agarwal): There may be a more efficient way to do this instead of
@@ -1983,11 +2071,25 @@ def _convert_batch_mat_mul(pfor_input):
   return wrap(output, True)
 
 
+@RegisterPFor("BatchMatMulV2")
+def _convert_batch_mat_mul_v2(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  x = pfor_input.input(0)[0]
+  y = pfor_input.input(1)[0]
+  adj_x = pfor_input.get_attr("adj_x")
+  adj_y = pfor_input.get_attr("adj_y")
+
+  output = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
+  return wrap(output, True)
+
+
 @RegisterPForWithArgs("Sum", math_ops.reduce_sum)
 @RegisterPForWithArgs("Prod", math_ops.reduce_prod)
 @RegisterPForWithArgs("Max", math_ops.reduce_max)
 @RegisterPForWithArgs("Min", math_ops.reduce_min)
 @RegisterPForWithArgs("Mean", math_ops.reduce_mean)
+@RegisterPForWithArgs("All", math_ops.reduce_all)
+@RegisterPForWithArgs("Any", math_ops.reduce_any)
 def _convert_reduction(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   indices = pfor_input.unstacked_input(1)
@@ -2070,72 +2172,74 @@ def _convert_cast(pfor_input):
 
 
 @RegisterPForWithArgs("Abs", math_ops.abs)
-@RegisterPForWithArgs("Acosh", math_ops.acosh)
 @RegisterPForWithArgs("Acos", math_ops.acos)
+@RegisterPForWithArgs("Acosh", math_ops.acosh)
 @RegisterPForWithArgs("Add", math_ops.add)
 @RegisterPForWithArgs("AddV2", math_ops.add_v2)
 @RegisterPForWithArgs("Angle", math_ops.angle)
-@RegisterPForWithArgs("Asinh", math_ops.asinh)
 @RegisterPForWithArgs("Asin", math_ops.asin)
+@RegisterPForWithArgs("Asinh", math_ops.asinh)
+@RegisterPForWithArgs("Atan", math_ops.atan)
 @RegisterPForWithArgs("Atan2", math_ops.atan2)
 @RegisterPForWithArgs("Atanh", math_ops.atanh)
-@RegisterPForWithArgs("Atan", math_ops.atan)
 @RegisterPForWithArgs("BesselI0e", math_ops.bessel_i0e)
 @RegisterPForWithArgs("BesselI1e", math_ops.bessel_i1e)
 @RegisterPForWithArgs("BitwiseAnd", bitwise_ops.bitwise_and)
 @RegisterPForWithArgs("BitwiseOr", bitwise_ops.bitwise_or)
 @RegisterPForWithArgs("BitwiseXor", bitwise_ops.bitwise_xor)
 @RegisterPForWithArgs("Ceil", math_ops.ceil)
-@RegisterPForWithArgs("ComplexAbs", math_ops.complex_abs)
 @RegisterPForWithArgs("Complex", math_ops.complex)
+@RegisterPForWithArgs("ComplexAbs", math_ops.complex_abs)
 @RegisterPForWithArgs("Conj", math_ops.conj)
-@RegisterPForWithArgs("Cosh", math_ops.cosh)
 @RegisterPForWithArgs("Cos", math_ops.cos)
+@RegisterPForWithArgs("Cosh", math_ops.cosh)
 @RegisterPForWithArgs("Digamma", math_ops.digamma)
 @RegisterPForWithArgs("Div", math_ops.div)
 @RegisterPForWithArgs("DivNoNan", math_ops.div_no_nan)
 @RegisterPForWithArgs("Elu", nn_ops.elu)
 @RegisterPForWithArgs("Equal", math_ops.equal)
-@RegisterPForWithArgs("Erfc", math_ops.erfc)
 @RegisterPForWithArgs("Erf", math_ops.erf)
-@RegisterPForWithArgs("Expm1", math_ops.expm1)
+@RegisterPForWithArgs("Erfc", math_ops.erfc)
 @RegisterPForWithArgs("Exp", math_ops.exp)
-@RegisterPForWithArgs("FloorDiv", math_ops.floor_div)
+@RegisterPForWithArgs("Expm1", math_ops.expm1)
 @RegisterPForWithArgs("Floor", math_ops.floor)
+@RegisterPForWithArgs("FloorDiv", math_ops.floor_div)
 @RegisterPForWithArgs("FloorMod", math_ops.floor_mod)
-@RegisterPForWithArgs("GreaterEqual", math_ops.greater_equal)
 @RegisterPForWithArgs("Greater", math_ops.greater)
-@RegisterPForWithArgs("Igammac", math_ops.igammac)
-@RegisterPForWithArgs("IgammaGradA", math_ops.igamma_grad_a)
+@RegisterPForWithArgs("GreaterEqual", math_ops.greater_equal)
 @RegisterPForWithArgs("Igamma", math_ops.igamma)
+@RegisterPForWithArgs("IgammaGradA", math_ops.igamma_grad_a)
+@RegisterPForWithArgs("Igammac", math_ops.igammac)
 @RegisterPForWithArgs("Imag", math_ops.imag)
-@RegisterPForWithArgs("Invert", bitwise_ops.invert)
 @RegisterPForWithArgs("Inv", math_ops.inv)
+@RegisterPForWithArgs("Invert", bitwise_ops.invert)
 @RegisterPForWithArgs("IsFinite", math_ops.is_finite)
 @RegisterPForWithArgs("IsInf", math_ops.is_inf)
+@RegisterPForWithArgs("IsNan", math_ops.is_nan)
 @RegisterPForWithArgs("LeftShift", bitwise_ops.left_shift)
-@RegisterPForWithArgs("LessEqual", math_ops.less_equal)
 @RegisterPForWithArgs("Less", math_ops.less)
+@RegisterPForWithArgs("LessEqual", math_ops.less_equal)
 @RegisterPForWithArgs("Lgamma", math_ops.lgamma)
+@RegisterPForWithArgs("Log", math_ops.log)
 @RegisterPForWithArgs("Log1p", math_ops.log1p)
 @RegisterPForWithArgs("LogicalAnd", math_ops.logical_and)
 @RegisterPForWithArgs("LogicalNot", math_ops.logical_not)
 @RegisterPForWithArgs("LogicalOr", math_ops.logical_or)
 @RegisterPForWithArgs("LogicalXor", math_ops.logical_xor)
-@RegisterPForWithArgs("Log", math_ops.log)
 @RegisterPForWithArgs("Maximum", math_ops.maximum)
 @RegisterPForWithArgs("Minimum", math_ops.minimum)
 @RegisterPForWithArgs("Mod", math_ops.mod)
 @RegisterPForWithArgs("Mul", math_ops.multiply)
+@RegisterPForWithArgs("MulNoNan", math_ops.mul_no_nan)
 @RegisterPForWithArgs("Neg", math_ops.negative)
 @RegisterPForWithArgs("NotEqual", math_ops.not_equal)
 @RegisterPForWithArgs("Polygamma", math_ops.polygamma)
 @RegisterPForWithArgs("Pow", math_ops.pow)
-@RegisterPForWithArgs("RealDiv", math_ops.divide)
 @RegisterPForWithArgs("Real", math_ops.real)
+@RegisterPForWithArgs("RealDiv", math_ops.divide)
 @RegisterPForWithArgs("Reciprocal", math_ops.reciprocal)
-@RegisterPForWithArgs("Relu6", nn_ops.relu6)
 @RegisterPForWithArgs("Relu", nn_ops.relu)
+@RegisterPForWithArgs("Relu6", nn_ops.relu6)
 @RegisterPForWithArgs("RightShift", bitwise_ops.right_shift)
 @RegisterPForWithArgs("Rint", math_ops.rint)
 @RegisterPForWithArgs("Round", math_ops.round)
@@ -2143,18 +2247,20 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Selu", nn_ops.selu)
 @RegisterPForWithArgs("Sigmoid", math_ops.sigmoid)
 @RegisterPForWithArgs("Sign", math_ops.sign)
-@RegisterPForWithArgs("Sinh", math_ops.sinh)
 @RegisterPForWithArgs("Sin", math_ops.sin)
+@RegisterPForWithArgs("Sinh", math_ops.sinh)
 @RegisterPForWithArgs("Softplus", nn_ops.softplus)
 @RegisterPForWithArgs("Softsign", nn_ops.softsign)
 @RegisterPForWithArgs("Sqrt", math_ops.sqrt)
-@RegisterPForWithArgs("SquaredDifference", math_ops.squared_difference)
 @RegisterPForWithArgs("Square", math_ops.square)
+@RegisterPForWithArgs("SquaredDifference", math_ops.squared_difference)
 @RegisterPForWithArgs("Sub", math_ops.subtract)
-@RegisterPForWithArgs("Tanh", math_ops.tanh)
 @RegisterPForWithArgs("Tan", math_ops.tan)
+@RegisterPForWithArgs("Tanh", math_ops.tanh)
 @RegisterPForWithArgs("TruncateDiv", math_ops.truncate_div)
 @RegisterPForWithArgs("TruncateMod", math_ops.truncate_mod)
+@RegisterPForWithArgs("Xdivy", math_ops.xdivy)
+@RegisterPForWithArgs("Xlogy", math_ops.xlogy)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
   # Note that ops handled here do not have attributes except "T" and "Tout", and
@@ -2277,12 +2383,20 @@ def _convert_select(pfor_input):
 # random_ops
 
 
+def _transpose_dim_to_front(x, dim):
+  rank = array_ops.rank(x)
+  return array_ops.transpose(
+      x,
+      perm=array_ops.concat([
+          [dim],
+          math_ops.range(0, dim),
+          math_ops.range(dim + 1, rank)], axis=0))
+
+
 @RegisterPForWithArgs("RandomUniform")
 @RegisterPForWithArgs("RandomUniformInt")
 @RegisterPForWithArgs("RandomStandardNormal")
 @RegisterPForWithArgs("TruncatedNormal")
-@RegisterPForWithArgs("RandomGamma")
-@RegisterPForWithArgs("RandomPoissonV2")
 def _convert_random(pfor_input, op_type, *args, **kw_args):
   del args
   del kw_args
@@ -2298,6 +2412,94 @@ def _convert_random(pfor_input, op_type, *args, **kw_args):
       inputs, [x.dtype for x in pfor_input.outputs],
       attrs=pfor_input.op.node_def.attr).outputs
   return [wrap(x, True) for x in outputs]
+
+
+@RegisterPFor("RandomGamma")
+@RegisterPFor("RandomPoissonV2")
+def _convert_random_with_param(pfor_input):
+  shape = pfor_input.unstacked_input(0)
+  # param is lam (Poisson rate) or alpha (Gamma shape).
+  param, param_stacked, _ = pfor_input.input(1)
+  logging.warning(
+      "Note that %s inside pfor op may not give same output as "
+      "inside a sequential loop.", pfor_input.op_type)
+
+  if param_stacked:
+    samples = _create_op(
+        pfor_input.op_type,
+        inputs=[shape, param],
+        op_dtypes=[x.dtype for x in pfor_input.outputs],
+        attrs=pfor_input.op.node_def.attr).outputs[0]
+    loop_dim = array_ops.shape(shape)[0]
+    stacked_samples = _transpose_dim_to_front(samples, loop_dim)
+  else:
+    shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+    stacked_samples = _create_op(
+        pfor_input.op_type,
+        inputs=[shape, param],
+        op_dtypes=[x.dtype for x in pfor_input.outputs],
+        attrs=pfor_input.op.node_def.attr).outputs[0]
+
+  return wrap(stacked_samples, True)
+
+
+@RegisterPFor("Multinomial")
+def _convert_multinomial(pfor_input):
+  logits, logits_stacked, _ = pfor_input.input(0)
+  num_samples = pfor_input.unstacked_input(1)
+  seed = pfor_input.get_attr("seed")
+  seed2 = pfor_input.get_attr("seed2")
+  output_dtype = pfor_input.get_attr("output_dtype")
+  logging.warning(
+      "Note that Multinomial inside pfor op may not give same output as "
+      "inside a sequential loop.")
+
+  n = pfor_input.pfor.loop_len_vector[0]
+  if logits_stacked:
+    flattened_logits = _flatten_first_two_dims(logits)
+    samples = gen_random_ops.multinomial(
+        flattened_logits,
+        num_samples,
+        seed=seed, seed2=seed2, output_dtype=output_dtype)
+    stacked_samples = _unflatten_first_dim(samples, [n])
+  else:
+    samples = gen_random_ops.multinomial(
+        logits, num_samples * n,
+        seed=seed, seed2=seed2, output_dtype=output_dtype)
+    stacked_samples = array_ops.transpose(
+        array_ops.reshape(samples, [-1, n, num_samples]), [1, 0, 2])
+
+  return wrap(stacked_samples, True)
+
+
+# linalg_ops
+
+
+@RegisterPFor("Cholesky")
+def _convert_cholesky(pfor_input):
+  t = pfor_input.stacked_input(0)
+  return wrap(linalg_ops.cholesky(t), True)
+
+
+@RegisterPFor("LogMatrixDeterminant")
+def _convert_log_matrix_determinant(pfor_input):
+  # Input must have shape [N, M, M], so we need to flatten.
+  t = _flatten_first_two_dims(pfor_input.stacked_input(0))
+  sign, log_abs_det = linalg_ops.log_matrix_determinant(t)
+  return [wrap(_unflatten_first_dim(x, pfor_input.pfor.loop_len_vector), True)
+          for x in (sign, log_abs_det)]
+
+
+@RegisterPFor("MatrixTriangularSolve")
+def _convert_matrix_triangular_solve(pfor_input):
+  pfor_input.stack_inputs()
+  matrix = pfor_input.stacked_input(0)
+  rhs = pfor_input.stacked_input(1)
+  lower = pfor_input.get_attr("lower")
+  adjoint = pfor_input.get_attr("adjoint")
+  output = linalg_ops.matrix_triangular_solve(
+      matrix, rhs, lower=lower, adjoint=adjoint)
+  return wrap(output, True)
 
 
 # logging_ops

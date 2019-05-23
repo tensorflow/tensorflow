@@ -135,7 +135,7 @@ class AttentionMechanismTest(test.TestCase, parameterized.TestCase):
     encoder_input = keras.layers.Embedding(
         vocab, embedding_dim, mask_zero=True)(
             inputs)
-    encoder_output = keras.layers.UnifiedLSTM(
+    encoder_output = keras.layers.LSTM(
         self.memory_size, return_sequences=True)(
             encoder_input)
 

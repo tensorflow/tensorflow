@@ -426,16 +426,17 @@ struct google_floor_fmod {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
     // EIGEN_STATIC_ASSERT(NUMERIC_TYPE_MUST_BE_REAL);
-    T trunc_mod = std::fmod(x, y);
-    return (x < T(0)) == (y < T(0)) ? trunc_mod : std::fmod(trunc_mod + y, y);
+    T trunc_mod = scalar_fmod_op<T>()(x, y);
+    return trunc_mod != T(0) && (y < T(0) != trunc_mod < T(0)) ? trunc_mod + y
+                                                               : trunc_mod;
   }
 };
 
 template <typename Scalar>
 struct functor_traits<google_floor_fmod<Scalar>> {
   enum {
-    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
-           2 * NumTraits<Scalar>::AddCost,
+    Cost = functor_traits<Eigen::internal::scalar_fmod_op<Scalar>>::Cost +
+           NumTraits<Scalar>::AddCost,
     PacketAccess = false
   };
 };
@@ -446,16 +447,17 @@ struct google_floor_mod {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
     // EIGEN_STATIC_ASSERT(!NUMERIC_TYPE_MUST_BE_REAL);
-    T trunc_mod = x % y;
-    return (x < T(0)) == (y < T(0)) ? trunc_mod : (trunc_mod + y) % y;
+    T trunc_mod = Eigen::internal::scalar_mod2_op<T>()(x, y);
+    return trunc_mod != T(0) && (y < T(0) != trunc_mod < T(0)) ? trunc_mod + y
+                                                               : trunc_mod;
   }
 };
 
 template <typename Scalar>
 struct functor_traits<google_floor_mod<Scalar>> {
   enum {
-    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
-           2 * NumTraits<Scalar>::AddCost,
+    Cost = functor_traits<Eigen::internal::scalar_mod2_op<Scalar>>::Cost +
+           NumTraits<Scalar>::AddCost,
     PacketAccess = false
   };
 };
@@ -982,7 +984,7 @@ struct scalar_atan2_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
 #if GOOGLE_CUDA
-    return ::atan2(y, x);
+    return std::atan2(y, x);
 #else
     return std::atan2(y, x);
 #endif
@@ -1204,6 +1206,18 @@ struct BatchSelectFunctor {
                   TTypes<bool>::ConstVec cond_vec,
                   typename TTypes<T>::ConstMatrix then_flat_outer_dims,
                   typename TTypes<T>::ConstMatrix else_flat_outer_dims);
+};
+
+template <typename Device, typename T, int NDIMS>
+struct BCastSelectFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<T, NDIMS>::Tensor output_tensor,
+                  typename TTypes<bool, NDIMS>::ConstTensor cond_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor then_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor else_tensor,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> cond_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> then_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> else_bcast);
 };
 
 }  // end namespace functor

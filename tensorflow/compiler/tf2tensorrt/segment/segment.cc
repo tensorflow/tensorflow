@@ -443,6 +443,10 @@ Status SegmentGraph(const Graph* tf_graph,
         unsupported_ops.emplace(node->tf_node()->type_string());
         num_unsupported_ops++;
         node = nullptr;
+      } else {
+        VLOG(2) << "Accepted as a TF-TRT candidate, "
+                << "(Op type: " << node->tf_node()->type_string() << "), "
+                << "(Op name: " << node->name();
       }
     }
     node_segments.emplace_back(node);
@@ -455,7 +459,7 @@ Status SegmentGraph(const Graph* tf_graph,
   }
   LOG(INFO) << msg << "(For more information see "
             << "https://docs.nvidia.com/deeplearning"
-            << "/dgx/integrate-tf-trt/index.html#support-ops).";
+            << "/dgx/tf-trt-user-guide/index.html#supported-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
@@ -668,10 +672,13 @@ Status SegmentGraph(const Graph* tf_graph,
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
     std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
-    if (VLOG_IS_ON(1)) {
-      string s = "parent=" + segment_root + ":";
-      for (auto node : segment_nodes) s += " " + node->name();
-      VLOG(1) << "Segment " << segments->size() << ": " << s;
+    if (VLOG_IS_ON(1) && !segment_nodes.empty()) {
+      string s;
+      for (auto node : segment_nodes) {
+        StrAppend(&s, "\n[Op type: ", node->type_string(), "] ", node->name());
+      }
+      VLOG(1) << "Nodes in segment " << segments->size()
+              << " with parent=" << segment_root << ":" << s;
     }
 
     // Don't use small segments.

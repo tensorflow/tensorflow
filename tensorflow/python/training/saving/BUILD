@@ -34,6 +34,7 @@ cuda_py_test(
         ":functional_saver",
         "//tensorflow/python/eager:test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

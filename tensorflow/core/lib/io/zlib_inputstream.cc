@@ -197,24 +197,21 @@ Status ZlibInputStream::ReadNBytes(int64 bytes_to_read, string* result) {
 
     // Now that the cache is empty we need to inflate more data.
 
-    // Step 1. Fill up input buffer.
-    // We read from stream only after the previously read contents have been
-    // completely consumed. This is an optimization and can be removed if
-    // it causes problems. `ReadFromStream` is capable of handling partially
-    // filled up buffers.
-    if (z_stream_def_->stream->avail_in == 0) {
-      TF_RETURN_IF_ERROR(ReadFromStream());
-    }
-
-    // Step 2. Setup output stream.
+    // Step 1. Setup output stream.
     z_stream_def_->stream->next_out = z_stream_def_->output.get();
     next_unread_byte_ = reinterpret_cast<char*>(z_stream_def_->output.get());
     z_stream_def_->stream->avail_out = output_buffer_capacity_;
 
-    // Step 3. Inflate Inflate Inflate!
+    // Step 2. Try to inflate some input data.
     TF_RETURN_IF_ERROR(Inflate());
 
-    bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);
+    // Step 3. Read any data produced by inflate. If no progress was made by
+    // inflate, read more compressed data from the input stream.
+    if (NumUnreadBytes() == 0) {
+      TF_RETURN_IF_ERROR(ReadFromStream());
+    } else {
+      bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);
+    }
   }
 
   return Status::OK();
@@ -224,7 +221,11 @@ int64 ZlibInputStream::Tell() const { return bytes_read_; }
 
 Status ZlibInputStream::Inflate() {
   int error = inflate(z_stream_def_->stream.get(), zlib_options_.flush_mode);
-  if (error != Z_OK && error != Z_STREAM_END) {
+  // Source: http://zlib.net/manual.html
+  // Z_BUF_ERROR: `inflate` returns Z_BUF_ERROR if no progress was made. This is
+  // not fatal and `inflate` can be called again with more input and output
+  // space to continue inflating.
+  if (error != Z_OK && error != Z_STREAM_END && error != Z_BUF_ERROR) {
     string error_string =
         strings::StrCat("inflate() failed with error ", error);
     if (z_stream_def_->stream->msg != nullptr) {

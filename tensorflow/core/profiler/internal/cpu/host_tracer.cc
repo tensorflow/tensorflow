@@ -12,23 +12,52 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/internal/cpu/host_tracer.h"
-
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace cpu {
+namespace {
+// Controls TraceMeRecorder and converts TraceMeRecorder::Events into
+// RunMetadata messages.
+//
+// Thread-safety: This class is go/thread-compatible.
+class HostTracer : public ProfilerInterface {
+ public:
+  explicit HostTracer(int host_trace_level);
+  ~HostTracer() override;
 
-/* static */ std::unique_ptr<HostTracer> HostTracer::Create(
-    int host_trace_level) {
-  return absl::WrapUnique(new HostTracer(host_trace_level));
-}
+  // Starts recording TraceMes.
+  Status Start() override;
+
+  // Stops recording TraceMes.
+  Status Stop() override;
+
+  // Populates user traces and thread names in response.
+  // The user traces and thread names are in no particular order.
+  Status CollectData(RunMetadata* run_metadata) override;
+
+ private:
+  // Level of host tracing.
+  const int host_trace_level_;
+
+  // True if currently recording.
+  bool recording_ = false;
+
+  // Container of all traced events.
+  TraceMeRecorder::Events events_;
+};
+
 HostTracer::HostTracer(int host_trace_level)
     : host_trace_level_(host_trace_level) {}
 
@@ -57,15 +86,8 @@ Status HostTracer::Stop() {
 constexpr char kUserMetadataMarker = '#';
 
 Status HostTracer::CollectData(RunMetadata* run_metadata) {
-  auto step_stats_collector =
-      absl::make_unique<StepStatsCollector>(run_metadata->mutable_step_stats());
-  return CollectDataToCollector(step_stats_collector.get());
-}
-
-Status HostTracer::CollectDataToCollector(
-    StepStatsCollector* step_stats_collector) {
-  if (events_.empty() && recording_) {
-    events_ = TraceMeRecorder::Collect();
+  if (recording_) {
+    return Status(error::INTERNAL, "TraceMeRecorder not stopped");
   }
   // Pair up start and end events, and add complete events to trace_entries.
   absl::flat_hash_map<uint64, uint64> end_times;
@@ -77,10 +99,12 @@ Status HostTracer::CollectDataToCollector(
     }
   }
 
+  StepStatsCollector step_stats_collector(run_metadata->mutable_step_stats());
+
   const string cpu_name = "/host:CPU";
   for (auto& thread : events_) {
-    step_stats_collector->SaveThreadName(cpu_name, thread.thread.tid,
-                                         thread.thread.name);
+    step_stats_collector.SaveThreadName(cpu_name, thread.thread.tid,
+                                        thread.thread.name);
     for (auto& event : thread.events) {
       if (!event.end_time) {
         auto it = end_times.find(event.activity_id);
@@ -106,14 +130,31 @@ Status HostTracer::CollectDataToCollector(
                                    EnvTime::kMicrosToNanos);
         ns->set_thread_id(thread.thread.tid);
         // TODO(fishx): Add thread name to RunMetadata
-        step_stats_collector->Save(cpu_name, ns);
+        step_stats_collector.Save(cpu_name, ns);
       }
     }
   }
   events_.clear();
-  step_stats_collector->Finalize();
+  step_stats_collector.Finalize();
   return Status::OK();
 }
+}  // namespace
+
+// Not in anonymous namespace for testing purposes.
+std::unique_ptr<ProfilerInterface> CreateHostTracer(const ProfilerContext*) {
+  int host_trace_level = 2;
+  return absl::make_unique<HostTracer>(host_trace_level);
+}
+
+auto register_host_tracer_factory = [] {
+  bool enable;
+
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_CPU_PROFILER", true, &enable));
+  if (enable) {
+    RegisterProfilerFactory(&CreateHostTracer);
+  }
+  return 0;
+}();
 
 }  // namespace cpu
 }  // namespace profiler

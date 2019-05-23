@@ -23,6 +23,9 @@ cc_library(
         "operator.h",
         "simple_operator.h",
     ],
+    visibility = [
+        "//tensorflow/lite/toco:__subpackages__",
+    ],
     deps = [
         ":types",
         "//tensorflow/core:framework",

@@ -26,8 +26,8 @@ void NoiseReductionApply(struct NoiseReductionState* state, uint32_t* signal) {
     // Update the estimate of the noise.
     const uint32_t signal_scaled_up = signal[i] << state->smoothing_bits;
     uint32_t estimate =
-        (((uint64_t) signal_scaled_up * smoothing) +
-         ((uint64_t) state->estimate[i] * one_minus_smoothing)) >>
+        (((uint64_t)signal_scaled_up * smoothing) +
+         ((uint64_t)state->estimate[i] * one_minus_smoothing)) >>
         kNoiseReductionBits;
     state->estimate[i] = estimate;
 
@@ -37,10 +37,10 @@ void NoiseReductionApply(struct NoiseReductionState* state, uint32_t* signal) {
     }
 
     const uint32_t floor =
-        ((uint64_t) signal[i] * state->min_signal_remaining) >>
+        ((uint64_t)signal[i] * state->min_signal_remaining) >>
         kNoiseReductionBits;
-    const uint32_t subtracted = (signal_scaled_up - estimate) >>
-        state->smoothing_bits;
+    const uint32_t subtracted =
+        (signal_scaled_up - estimate) >> state->smoothing_bits;
     const uint32_t output = subtracted > floor ? subtracted : floor;
     signal[i] = output;
   }

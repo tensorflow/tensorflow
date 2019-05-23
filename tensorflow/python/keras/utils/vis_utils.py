@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -43,11 +44,11 @@ def _check_pydot():
     # Attempt to create an image of a blank graph
     # to check the pydot/graphviz installation.
     pydot.Dot.create(pydot.Dot())
-  except Exception:
+    return True
+  except Exception:  # pylint: disable=broad-except
     # pydot raises a generic Exception here,
     # so no specific class can be caught.
-    raise ImportError('Failed to import pydot. You must install pydot'
-                      ' and graphviz for `pydotprint` to work.')
+    return False
 
 
 def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
@@ -63,13 +64,28 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
           'LR' creates a horizontal plot.
 
   Returns:
-      A `pydot.Dot` instance representing the Keras model.
+      A `pydot.Dot` instance representing the Keras model (or None if the Dot
+      file could not be generated).
+
+  Raises:
+    ImportError: if graphviz or pydot are not available.
   """
   from tensorflow.python.keras.layers.wrappers import Wrapper
   from tensorflow.python.keras.models import Sequential
   from tensorflow.python.util import nest
 
-  _check_pydot()
+  check = _check_pydot()
+  if not check:
+    if 'IPython.core.magics.namespace' in sys.modules:
+      # We don't raise an exception here in order to avoid crashing notebook
+      # tests where graphviz is not available.
+      print('Failed to import pydot. You must install pydot'
+            ' and graphviz for `pydotprint` to work.')
+      return
+    else:
+      raise ImportError('Failed to import pydot. You must install pydot'
+                        ' and graphviz for `pydotprint` to work.')
+
   dot = pydot.Dot()
   dot.set('rankdir', rankdir)
   dot.set('concentrate', True)
@@ -151,6 +167,8 @@ def plot_model(model,
       This enables in-line display of the model plots in notebooks.
   """
   dot = model_to_dot(model, show_shapes, show_layer_names, rankdir)
+  if dot is None:
+    return
   _, extension = os.path.splitext(to_file)
   if not extension:
     extension = 'png'

@@ -49,6 +49,15 @@ class DeviceFactory {
                                            const SessionOptions& options,
                                            const string& name_prefix);
 
+  // Iterate through all device factories and build a list of all of the
+  // possible physical devices.
+  //
+  // CPU is are added first.
+  static Status ListAllPhysicalDevices(std::vector<string>* devices);
+
+  // For a specific device factory list all possible physical devices.
+  virtual Status ListPhysicalDevices(std::vector<string>* devices) = 0;
+
   // Most clients should call AddDevices() instead.
   virtual Status CreateDevices(
       const SessionOptions& options, const string& name_prefix,

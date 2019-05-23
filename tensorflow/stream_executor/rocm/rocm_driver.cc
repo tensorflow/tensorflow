@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <stdint.h>
 #include <stdlib.h>
+
 #include <map>
 #include <set>
 #include <utility>
@@ -23,18 +24,17 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/stream_executor/gpu/gpu_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
-#include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver_wrapper.h"
 
@@ -115,15 +115,9 @@ string ToString(hipError_t result) {
 // stack-limited threads (such as those spawned by a default-argument
 // thread::ThreadPool on some platforms), we run certain routines in this pool
 // and wait for completion.
-static mutex driver_executor_threadpool_mu(LINKER_INITIALIZED);
-static port::ThreadPool* InitializeDriverExecutor() {
-  return new port::ThreadPool(port::Env::Default(), port::ThreadOptions(),
-                              "rocm_driver", 1);
-}
-
 port::ThreadPool* GetDriverExecutor() {
-  mutex_lock lock(driver_executor_threadpool_mu);
-  static port::ThreadPool* thread_pool = InitializeDriverExecutor();
+  static port::ThreadPool* thread_pool = new port::ThreadPool(
+      port::Env::Default(), port::ThreadOptions(), "rocm_driver", 1);
   return thread_pool;
 }
 
@@ -311,17 +305,10 @@ static port::Status InternalInit() {
 /* static */ port::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as hipInit need only be
   // called once, but GpuDriver::Init may be called many times.
-  static port::Status init_retval;
-  static bool set = false;
-  static mutex* init_mu = new mutex;
-
-  mutex_lock lock(*init_mu);
-  if (!set) {
-    init_retval = InternalInit();
-    set = true;
-  }
-
-  return init_retval;
+  static port::Status* init_retval = [] {
+    return new port::Status(InternalInit());
+  }();
+  return *init_retval;
 }
 
 /* static */ port::Status GpuDriver::GetDevice(int device_ordinal,
@@ -472,7 +459,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ bool GpuDriver::LoadHsaco(GpuContext* context,
                                        const char* hsaco_contents,
                                        hipModule_t* module) {
-  port::Notification notification;
+  absl::Notification notification;
   bool ret = true;
   GetDriverExecutor()->Schedule(
       [context, hsaco_contents, module, &ret, &notification]() {
@@ -500,7 +487,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                     hipDeviceptr_t location,
                                                     uint8 value, size_t size) {
   ScopedActivateContext activation{context};
-  hipError_t res = tensorflow::wrap::hipMemset(location, value, size);
+  hipError_t res = tensorflow::wrap::hipMemsetD8(location, value, size);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -514,15 +501,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                      size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  unsigned char valueC = static_cast<unsigned char>(value);
-  uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC);
-  if (value32 != value) {
-    //  mismatch indicates case where hipMemsetAsyc can't emulate hipMemSetD32
-    LOG(ERROR) << "failed to memset memory";
-    return false;
-  }
-  hipError_t res = tensorflow::wrap::hipMemset(pointer, static_cast<int>(value),
-                                               uint32_count * 4);
+  hipError_t res = tensorflow::wrap::hipMemsetD32(pointer, value, uint32_count);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -553,17 +532,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                       GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-
-  // FIXME - need to set a 32-bit value here
-  unsigned char valueC = static_cast<unsigned char>(value);
-  uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC);
-  if (value32 != value) {
-    // mismatch indicates case where hipMemsetAsyc can't emulate hipMemSetD32
-    LOG(ERROR) << "failed to memset memory";
-    return false;
-  }
-  hipError_t res = tensorflow::wrap::hipMemsetAsync(pointer, value,
-                                                    uint32_count * 4, stream);
+  hipError_t res =
+      tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;
@@ -671,7 +641,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                              uint64 bytes) {
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;
-  hipError_t res = tensorflow::wrap::hipMallocVanilla(&result, bytes);
+  hipError_t res = tensorflow::wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to allocate "
                << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
@@ -717,8 +687,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = tensorflow::wrap::hipHostMallocVanilla(
-      &host_mem, bytes, hipHostMallocPortable);
+  hipError_t res =
+      tensorflow::wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to alloc " << bytes
                << " bytes on host: " << ToString(res);
@@ -1025,9 +995,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ port::Status GpuDriver::CreateEvent(GpuContext* context,
-                                                 GpuEventHandle* event,
-                                                 EventFlags flags) {
+/* static */ port::Status GpuDriver::InitEvent(GpuContext* context,
+                                               GpuEventHandle* event,
+                                               EventFlags flags) {
   int hipflags;
   switch (flags) {
     case EventFlags::kDefault:

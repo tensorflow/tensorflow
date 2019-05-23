@@ -138,6 +138,7 @@ cc_library(
         ":rocm_driver",
         ":rocm_gpu_executor",
         ":rocm_platform_id",
+        "@com_google_absl//absl/memory",
         "//tensorflow/stream_executor",  # buildcleaner: keep
         "//tensorflow/stream_executor:executor_cache",
         "//tensorflow/stream_executor:multi_platform_manager",
@@ -232,7 +233,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:logging_proto_cc",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_executor_pimpl_header",

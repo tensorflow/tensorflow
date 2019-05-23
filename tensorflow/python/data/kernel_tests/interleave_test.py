@@ -239,6 +239,18 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       actual_output.append(self.evaluate(get_next()))
     self.assertAllEqual(expected_output.sort(), actual_output.sort())
 
+  def testInterleaveMap(self):
+    dataset = dataset_ops.Dataset.range(100)
+
+    def interleave_fn(x):
+      dataset = dataset_ops.Dataset.from_tensors(x)
+      return dataset.map(lambda x: x + x)
+
+    dataset = dataset.interleave(interleave_fn, cycle_length=5)
+    dataset = dataset.interleave(interleave_fn, cycle_length=5)
+
+    self.assertDatasetProduces(dataset, [4 * x for x in range(100)])
+
 
 if __name__ == "__main__":
   test.main()

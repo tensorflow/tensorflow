@@ -25,8 +25,7 @@ inline void FullyConnected(
     const int8_t* input_data, const RuntimeShape& filter_shape,
     const int8_t* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    int8_t* output_data, void* gemm_context) {
-  (void)gemm_context;  // only used in optimized code.
+    int8_t* output_data) {
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
   const int32 output_offset = params.output_offset;

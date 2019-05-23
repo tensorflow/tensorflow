@@ -11,8 +11,8 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",
     "if_android",
+    "tf_copts",
 )
 
 exports_files([

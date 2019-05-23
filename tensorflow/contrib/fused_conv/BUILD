@@ -19,10 +19,10 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
     "tf_custom_op_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -73,13 +73,17 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:conv_2d_hdrs",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
+        "//tensorflow/core/kernels:cwise_lib_hdrs",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
         "//third_party/eigen3",
+        "@com_google_absl//absl/time",
         "@local_config_cuda//cuda:cudnn_header",
     ],
     alwayslink = 1,
@@ -100,6 +104,8 @@ tf_custom_op_library(
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:conv_2d_hdrs",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
+        "//tensorflow/core/kernels:cwise_lib_hdrs",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
         "@local_config_cuda//cuda:cudnn_header",

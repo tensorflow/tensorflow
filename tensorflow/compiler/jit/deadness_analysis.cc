@@ -106,6 +106,8 @@ namespace tensorflow {
 
 namespace {
 
+using se::port::StatusOr;
+
 // Represents a logical predicate, used as described in the algorithm overview
 // above.
 class Predicate {
@@ -369,7 +371,8 @@ class PredicateFactory {
                              Predicate** predicate) {
     TensorId tensor_id(node->name(), output_idx);
 
-    bool is_boolean_tensor = node->output_type(tensor_id.index()) == DT_BOOL;
+    bool is_boolean_tensor =
+        BaseType(node->output_type(tensor_id.index())) == DT_BOOL;
     TF_RET_CHECK(!must_be_true || is_boolean_tensor);
 
     if (node->type_string() == "Const" && must_be_true) {
@@ -698,7 +701,8 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
 
   Status Populate();
   Status PopulateWithReversePostOrder(absl::Span<Node* const> rpo);
-  bool HasInputsWithMismatchingDeadness(const Node& node) override;
+  StatusOr<DeadnessAnalysis::DeadnessPredicate> GetPredicateFor(
+      Node* n, int oidx) const override;
   void Print() const override;
   absl::flat_hash_map<TensorId, string, TensorId::Hasher> PredicateMapAsString()
       const;
@@ -1113,42 +1117,13 @@ Status DeadnessAnalysisImpl::PopulateWithReversePostOrder(
   return Status::OK();
 }
 
-bool DeadnessAnalysisImpl::HasInputsWithMismatchingDeadness(const Node& node) {
-  CHECK(!node.IsMerge());
-
-  if (vlog_) {
-    VLOG(2) << "HasInputsWithMismatchingDeadness(" << node.name() << ")";
-  }
-
-  Predicate* pred = nullptr;
-  for (const Edge* edge : node.in_edges()) {
-    auto it = predicate_map_.find(InputEdgeToTensorId(edge));
-    CHECK(it != predicate_map_.end());
-    if (vlog_) {
-      VLOG(2) << "  " << InputEdgeToTensorId(edge).ToString() << ": "
-              << it->second->ToString();
-    }
-
-    // Today we just compare the predicates for equality (with some
-    // canonicalization/simplification happening before) but we could be more
-    // sophisticated here if need be.  Comparing pointers is sufficient because
-    // we intern Predicate instances by their content.
-    if (pred != nullptr && pred != it->second) {
-      if (vlog_) {
-        VLOG(2) << "HasInputsWithMismatchingDeadness(" << node.name()
-                << ") -> true";
-      }
-      return true;
-    }
-    pred = it->second;
-  }
-
-  if (vlog_) {
-    VLOG(2) << "HasInputsWithMismatchingDeadness(" << node.name()
-            << ") -> false";
-  }
-
-  return false;
+StatusOr<DeadnessAnalysis::DeadnessPredicate>
+DeadnessAnalysisImpl::GetPredicateFor(Node* n, int oidx) const {
+  auto it = predicate_map_.find(TensorId(n->name(), oidx));
+  TF_RET_CHECK(it != predicate_map_.end())
+      << "could not find " << TensorId(n->name(), oidx).ToString()
+      << " in predicate map";
+  return MakeDeadnessPredicate(it->second);
 }
 
 void DeadnessAnalysisImpl::Print() const {
@@ -1212,5 +1187,9 @@ Status ComputePredicates(const Graph& graph,
   return Status::OK();
 }
 }  // namespace deadness_analysis_internal
+
+string DeadnessAnalysis::DebugString(DeadnessPredicate predicate) const {
+  return static_cast<Predicate*>(predicate.pred_)->ToString();
+}
 
 }  // namespace tensorflow

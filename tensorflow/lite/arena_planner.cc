@@ -108,8 +108,8 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     refcounts[tensor_index]++;
   }
 
-  // Variable tensors should are also never overwritten and need to be alive all
-  // the time.
+  // Variable tensors also should be ensured to be never overwritten and need to
+  // be alive all the time.
   for (int tensor_index : graph_info_->variables()) {
     refcounts[tensor_index]++;
   }
@@ -135,7 +135,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   }
 
   // Count references to node input tensors.
-  for (int i = 0; i < graph_info_->num_nodes(); ++i) {
+  for (size_t i = 0; i < graph_info_->num_nodes(); ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {

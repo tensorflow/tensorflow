@@ -165,7 +165,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this.inferenceDurationNanoseconds = inferenceDurationNanoseconds;
   }
 
-  private static native boolean run(long interpreterHandle, long errorHandle);
+  private static native void run(long interpreterHandle, long errorHandle);
 
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {

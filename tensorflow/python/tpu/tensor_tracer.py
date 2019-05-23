@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import os
 import os.path
-import re
 import sys
 
 from tensorflow.python.framework import constant_op
@@ -40,24 +39,19 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.tpu import tensor_tracer_flags
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu.ops import tpu_ops
 
 _TRACER_LOG_PREFIX = ' [>>>TT>>>]'
 _DEVICE_TYPE_TPU = 'tpu'
 _DEVICE_TYPE_CPU = 'cpu'
-_TRACE_MODE_NAN_INF = 'nan-inf'
-_TRACE_MODE_PART_TENSOR = 'part-tensor'
 _TRACE_MODE_PART_TENSOR_SIZE = 3
-_TRACE_MODE_FULL_TENSOR = 'full-tensor'
-_TRACE_MODE_NORM = 'norm'
-_TRACE_MODE_MAX_ABS = 'max-abs'
-_SUBMODE_BRIEF = 'brief'
-_SUBMODE_DETAILED = 'detailed'
 _REASON_OUTSIDE_OP_RANGE = 'not-traced-outside-op-range'
 _REASON_UNSAFE_OP = 'not-traced-unsafe-op'
 _REASON_WHILELOOP_OP = 'not-traced-special-whileloop-op'
 _REASON_UNSAFE_SCALAR = 'not-traced-unsafe-scalar'
+_REASON_SKIP_SCALAR = 'not-traced-scalar'
 _REASON_LESS_INTERESTING_OP = 'not-traced-less-interesting-op'
 _REASON_DEVICE_MISMATCH = 'not-traced-device-mismatch'
 _REASON_DYNAMIC_SHAPE = 'not-traced-dynamic-shape'
@@ -87,30 +81,7 @@ _FIELD_NAME_NUM_OPS = 'number-of-ops:'
 _FIELD_NAME_NUM_TENSORS = 'number-of-tensors:'
 _FIELD_NAME_NUM_CACHE_INDICES = 'number-of-indices:'
 _FIELD_NAME_TOPOLOGICAL_SORT_SUCCEED = 'topological-sort-succeed:'
-_FLAGS_ENV_VAR = 'TENSOR_TRACER_FLAGS'
-_FLAG_SINGLE_QUOTE_PAT = re.compile(r"\s*--([^=]+)='([^']*)'")
-_FLAG_DOUBLE_QUOTE_PAT = re.compile(r'\s*--([^=]+)="([^"]*)"')
-_FLAG_NO_QUOTE_PAT = re.compile(r'\s*--([^=]+)=(\S*)')
-_FLAG_NO_EQUAL_PAT = re.compile(r'\s*--([^=]+)\s*')
-_FLAG_NAME_ENABLE = 'enable'
-_FLAG_NAME_TRACE_MODE = 'trace_mode'
-_FLAG_NAME_USE_COMPACT_TRACE = 'compact_trace'
-_FLAG_NAME_SUBMODE = 'submode'
-_FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS = 'include_less_interesting_ops'
-_FLAG_NAME_EXCLUDED_OPNAMES = 'excluded_opnames'
-_FLAG_NAME_EXCLUDED_OPTYPES = 'excluded_optypes'
-_FLAG_NAME_INCLUDED_OPNAMES = 'included_opnames'
-_FLAG_NAME_INCLUDED_OPTYPES = 'included_optypes'
-_FLAG_NAME_TRACE_DIR = 'trace_dir'
-_FLAG_NAME_REPORT_FILE = 'report_file'
-_FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR = 'use_test_undeclared_outputs_dir'
-_FLAG_NAME_OP_RANGE = 'op_range'
-# Folder to dump the pre (before tensor tracer updates) and post graphs (after
-# tensor tracer updates).
-_FLAG_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
-_OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _OUTPUT_STREAM_ESCAPE = 'file://'
-_TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
 _TENSOR_TRACER_COLLECTION = 'tensor_tracer_variables'
 _TENSOR_TRACER_CHECKPOINT = 'tensor_tracer_checkpoint'
 _TRACE_FILE_NAME = 'trace.all'
@@ -218,8 +189,7 @@ def _create_tensor_values_cache(graph, num_tensors):
             _COMPACT_TRACE_ENTRY_INIT_VALUE),
         trainable=False,
         use_resource=True,
-        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.GLOBAL_VARIABLES])
-
+        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES])
 
 class TensorTracer(object):
   """A software construct for tracing tensor values in a TF graph on TPU.
@@ -239,182 +209,11 @@ class TensorTracer(object):
   """
   # The set of graphs that are rewritten by tensor tracer.
   _traced_graphs = set()
-  @staticmethod
-  def _match_next_flag(flags, pos):
-    """Returns the match for the next TensorTracer flag.
-
-    Args:
-       flags: a string that contains the flags.
-       pos: where in flags to start the search.
-
-    Returns:
-       A pair where the first element is the regular-expression
-       match found and the second element indicates if the match
-       has a value.
-    """
-
-    match = _FLAG_DOUBLE_QUOTE_PAT.match(flags, pos)
-    if match:
-      return match, True
-    match = _FLAG_SINGLE_QUOTE_PAT.match(flags, pos)
-    if match:
-      return match, True
-    match = _FLAG_NO_QUOTE_PAT.match(flags, pos)
-    if match:
-      return match, True
-    match = _FLAG_NO_EQUAL_PAT.match(flags, pos)
-    if match:
-      # The flag is found but is not given a value.
-      return match, False
-    # The flag is not found.
-    return None, False
-
-  @staticmethod
-  def validate_flag_names():
-    """Validates if the TensorTrace flags passed are valid."""
-    valid_flag_names = [_FLAG_NAME_ENABLE, _FLAG_NAME_TRACE_MODE,
-                        _FLAG_NAME_USE_COMPACT_TRACE,
-                        _FLAG_NAME_SUBMODE,
-                        _FLAG_NAME_EXCLUDED_OPNAMES,
-                        _FLAG_NAME_EXCLUDED_OPTYPES,
-                        _FLAG_NAME_INCLUDED_OPNAMES,
-                        _FLAG_NAME_INCLUDED_OPTYPES,
-                        _FLAG_NAME_TRACE_DIR,
-                        _FLAG_NAME_REPORT_FILE,
-                        _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
-                        _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS,
-                        _FLAG_NAME_OP_RANGE,
-                        _FLAG_DUMP_BEFORE_AFTER_GRAPHS]
-    tensor_tracer_flags = os.environ.get(_FLAGS_ENV_VAR)
-    if not tensor_tracer_flags:
-      return
-    pos = 0
-    while True:
-      match, _ = TensorTracer._match_next_flag(tensor_tracer_flags, pos)
-      if not match:
-        break
-      flag_name = match.group(1)
-      if flag_name not in valid_flag_names:
-        raise ValueError(
-            'The flag name "%s" passed via the environment variable "%s" '
-            'is invalid. Valid flag names are:'
-            '\n%s'%(flag_name, _FLAGS_ENV_VAR, valid_flag_names))
-      pos = match.end()
-
-  @staticmethod
-  def print_flag_values():
-    """Prints all TensorTracer flags passed via environment variables."""
-
-    tensor_tracer_flags = os.environ.get(_FLAGS_ENV_VAR)
-    if not tensor_tracer_flags:
-      return 'Env variable "%s" is not set'%_FLAGS_ENV_VAR
-    result = 'Env variable "%s" is set to "%s"\n'%(_FLAGS_ENV_VAR,
-                                                   tensor_tracer_flags)
-    result += 'Individual flag value:\n'
-    pos = 0
-    while True:
-      match, has_value = TensorTracer._match_next_flag(
-          tensor_tracer_flags, pos)
-      if not match:
-        break
-      flag_name = match.group(1)
-      if has_value:
-        flag_value = match.group(2)
-      else:
-        flag_value = None
-      result += '  %s: %s\n'%(flag_name, flag_value)
-      pos = match.end()
-    result += '\n'
-    return result
-
-  @staticmethod
-  def get_flag_value(wanted_flag_name):
-    """Returns the value of a TensorTracer flags.
-
-    Args:
-      wanted_flag_name: the name the the flag we are looking for.
-
-    Returns:
-      A pair where the first element indicates if the flag is
-      found and the second element is the value of the flag.
-
-    Raises:
-      RuntimeError: If supposedly deadcode is reached.
-    """
-
-    tensor_tracer_flags = os.getenv(_FLAGS_ENV_VAR)
-    if not tensor_tracer_flags:
-      return False, None
-    pos = 0
-    while True:
-      match, has_value = TensorTracer._match_next_flag(
-          tensor_tracer_flags, pos)
-      if not match:
-        return False, None
-      flag_name = match.group(1)
-      if has_value:
-        flag_value = match.group(2)
-      else:
-        flag_value = None
-      if flag_name == wanted_flag_name:
-        return True, flag_value
-      pos = match.end()
-    raise RuntimeError('Should not reach here.')
-
-  @staticmethod
-  def flag_value_to_re_list(flag_name):
-    """Converts list of strings to compiled RE."""
-
-    re_list = []
-    found, flag_value = TensorTracer.get_flag_value(flag_name)
-    if not found or not flag_value:
-      return re_list
-    list_of_values = flag_value.split()
-    for v in list_of_values:
-      r = re.compile(v)
-      re_list.append(r)
-    return re_list
-
-  @staticmethod
-  def _is_flag_on(flag_name):
-    """Returns True if the given flag is on."""
-
-    found, flag_value = TensorTracer.get_flag_value(flag_name)
-    if not found:
-      return False
-    if flag_value is None:
-      return True
-    # Depends on the flag value.
-    flag_value = flag_value.lower()
-    enabled = flag_value in ['1', 't', 'true', 'y', 'yes']
-    return enabled
 
   @staticmethod
   def is_enabled():
     """Returns True if TensorTracer is enabled."""
-
-    return TensorTracer._is_flag_on(_FLAG_NAME_ENABLE)
-
-  @staticmethod
-  def use_test_undeclared_outputs_dir():
-    """Decides the output directory of the report and trace files.
-
-    Args:
-       None.
-
-    Returns:
-       True if the output files should be written to the
-       test-undeclared-outputs-directory defined via an
-       env variable.
-    """
-
-    return TensorTracer._is_flag_on(
-        _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR)
-
-  @staticmethod
-  def use_compact_trace():
-    return TensorTracer._is_flag_on(
-        _FLAG_NAME_USE_COMPACT_TRACE)
+    return tensor_tracer_flags.TTParameters().is_enabled()
 
   @staticmethod
   def check_device_type(device_type):
@@ -422,30 +221,6 @@ class TensorTracer(object):
 
     if device_type not in [_DEVICE_TYPE_TPU, _DEVICE_TYPE_CPU]:
       raise ValueError('Invalid device_type "%s"'%device_type)
-
-  @staticmethod
-  def check_trace_mode(trace_mode):
-    """Checks if the given trace mode is valid."""
-
-    valid_trace_modes = [_TRACE_MODE_NAN_INF, _TRACE_MODE_PART_TENSOR,
-                         _TRACE_MODE_FULL_TENSOR, _TRACE_MODE_NORM,
-                         _TRACE_MODE_MAX_ABS]
-    if trace_mode not in valid_trace_modes:
-      raise ValueError('Invalid trace mode "%s" given to the Tensor_Tracer.'
-                       'Valid trace modes are: %s'%(trace_mode,
-                                                    valid_trace_modes))
-
-  @staticmethod
-  def check_submode(submode):
-    """Checks if the given submode is valid."""
-
-    if not submode:
-      return
-    valid_submodes = [_SUBMODE_DETAILED, _SUBMODE_BRIEF]
-    if submode not in valid_submodes:
-      raise ValueError('Invalid submode "%s" given to the Tensor_Tracer.'
-                       'Valid submodes are: %s'%(submode,
-                                                 valid_submodes))
 
   @staticmethod
   def loop_cond_op(op):
@@ -509,14 +284,10 @@ class TensorTracer(object):
       return True
     return False
 
-  @staticmethod
-  def less_interesting_op(op):
-    """Returns True if the given Op is not an interesting one to be traced."""
-
-    found, _ = TensorTracer.get_flag_value(
-        _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS)
-    if found:
-      # users force to include all ops.
+  def _less_interesting_op(self, op):
+    """Returns True if the given op is not an interesting one to be traced."""
+    # If flag is set to include less interesting ops, then include everything.
+    if self._parameters.include_less_interesting_ops:
       return False
     # Following ops are highly unlikey to cause bugs.
     return op.type in ['Const', 'Identity', 'Cast', 'Shape']
@@ -540,54 +311,57 @@ class TensorTracer(object):
        cycle is found) and the second element is either the sorted
        list of nodes or the cycle of nodes found.
     """
+    def _is_loop_edge(op):
+      """Returns true if the op is the end of a while-loop creating a cycle."""
+      return op.type in ['NextIteration']
 
-    def visit(op, cycle, permanently_marked_ops,
-              temporarily_marked_ops, sorted_ops):
-      """Recursively visits all Ops in a graph.
+    def _in_op_degree(op):
+      """Returns the number of incoming edges to the given op.
 
+      The edge calculation skips the edges that come from 'NextIteration' ops.
+      NextIteration creates a cycle in the graph. We break cycles by treating
+      this op as 'sink' and ignoring all outgoing edges from it.
       Args:
-         op: the current Op being visited.
-         cycle: a cycle of Ops found.
-         permanently_marked_ops: the set of Ops that were already visited.
-         temporarily_marked_ops: the set of Ops that we have visited during
-                                 the current descent.
-         sorted_ops: the list of Ops sorted in topological order.
+        op: Tf.Operation
+      Returns:
+        the number of incoming edges.
       """
+      count = 0
+      for op in op.control_inputs + [in_tensor.op for in_tensor in op.inputs]:
+        if not _is_loop_edge(op):
+          count += 1
+      return count
 
-      if cycle:
-        return
-      if op in permanently_marked_ops:
-        return
-      if op in temporarily_marked_ops:
-        cycle = temporarily_marked_ops
-        return
-      temporarily_marked_ops.add(op)
-      for i in range(len(op.outputs)):
-        out_tensor = op.outputs[i]
-        for consumer_op in out_tensor.consumers():
-          visit(consumer_op, cycle, permanently_marked_ops,
-                temporarily_marked_ops, sorted_ops)
-      # pylint: disable=protected-access
-      for ctrl_output_op in op._control_outputs:
-        # pylint: enable=protected-access
-        visit(ctrl_output_op, cycle, permanently_marked_ops,
-              temporarily_marked_ops, sorted_ops)
-      temporarily_marked_ops.remove(op)
-      permanently_marked_ops.add(op)
-      sorted_ops.insert(0, op)
-
-    graph_cycle = set([])
     sorted_ops = []
-    permanently_marked_ops = set([])
-    temporarily_marked_ops = set([])
-    unsorted_ops = g.get_operations()
-    for op in unsorted_ops:
-      visit(op, graph_cycle, permanently_marked_ops,
-            temporarily_marked_ops, sorted_ops)
-    if graph_cycle:
-      return (False, graph_cycle)
+    op_in_degree = {op: _in_op_degree(op) for op in g.get_operations()}
+
+    frontier = [op for (op, degree) in op_in_degree.items() if degree == 0]
+    frontier.sort(key=lambda op: op.name)
+    while frontier:
+      op = frontier.pop()
+      # Remove the op from graph, and remove its outgoing edges.
+      sorted_ops.append(op)
+      if _is_loop_edge(op):
+        continue
+      # pylint: disable=protected-access
+      consumers = list(op._control_outputs)
+      # pylint: enable=protected-access
+      for out_tensor in op.outputs:
+        consumers += [consumer_op for consumer_op in out_tensor.consumers()]
+      consumers.sort(key=lambda op: op.name)
+      for consumer in consumers:
+        # For each deleted edge shift the bucket of the vertex.
+        op_in_degree[consumer] -= 1
+        if op_in_degree[consumer] == 0:
+          frontier.append(consumer)
+        if op_in_degree[consumer] < 0:
+          raise ValueError('consumer:%s degree mismatch'%consumer.name)
+
+    left_ops = set([op for (op, degree) in op_in_degree.items() if degree > 0])
+    if left_ops:
+      return (False, left_ops)
     else:
-      assert len(unsorted_ops) == len(sorted_ops)
+      assert len(g.get_operations()) == len(sorted_ops)
       return (True, sorted_ops)
 
   @staticmethod
@@ -622,32 +396,17 @@ class TensorTracer(object):
 
     Sets the various member fields from the flags (if given) or the defaults.
     """
+    self._parameters = tensor_tracer_flags.TTParameters()
+    self._set_report_file()
     self._version = 'use-outside-compilation'
     self._device_type = None
-    TensorTracer.validate_flag_names()
-    found, self._trace_mode = TensorTracer.get_flag_value(_FLAG_NAME_TRACE_MODE)
-    if not found or not self._trace_mode:
-      self._trace_mode = _TRACE_MODE_NAN_INF
-    TensorTracer.check_trace_mode(self._trace_mode)
-    found, self._submode = TensorTracer.get_flag_value(_FLAG_NAME_SUBMODE)
-    if not found or not self._submode:
-      self._submode = _SUBMODE_DETAILED
-    TensorTracer.check_submode(self._submode)
     self._part_tensor_size = _TRACE_MODE_PART_TENSOR_SIZE
     self._instrument_records = {}
-    self._set_trace_dir()
-    self._set_report_file()
-    self._set_op_range()
-    self._set_excluded_opnames()
-    self._set_excluded_optypes()
-    self._set_included_opnames()
-    self._set_included_optypes()
     self._num_replicas = None
     self._num_replicas_per_host = None
     self._num_hosts = None
     self._replica_id = None
-    _, self._graph_dump_path = TensorTracer.get_flag_value(
-        _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
+    self._included_op_full_names = set()
 
   def _add_replica_id_to_graph(self):
     """Adds nodes for computing the replica ID to the graph."""
@@ -661,35 +420,13 @@ class TensorTracer(object):
     else:
       self._replica_id = 'unknown'
 
-  def _set_trace_dir(self):
-    found, self._trace_dir = TensorTracer.get_flag_value(_FLAG_NAME_TRACE_DIR)
-    if found and self._trace_dir \
-       and TensorTracer.use_test_undeclared_outputs_dir():
-      raise ValueError('Cannot not use --%s and --%s at the same time'
-                       %(_FLAG_NAME_TRACE_DIR,
-                         _FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR))
-    if TensorTracer.use_test_undeclared_outputs_dir():
-      self._trace_dir = os.environ.get(_TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR)
-
   def _set_report_file(self):
     """Sets the path of the output report file."""
-
-    found, self._report_file_path = TensorTracer.get_flag_value(
-        _FLAG_NAME_REPORT_FILE)
-    if found and self._report_file_path \
-       and TensorTracer.use_test_undeclared_outputs_dir():
-      if os.path.isabs(self._report_file_path):
-        raise ValueError('If use_test_undeclared_outputs_dir is set,'
-                         'report_file_path cannot be an absolute path (%s)'
-                         %self._report_file_path)
-      outputs_dir = os.environ.get(_TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR)
-      self._report_file_path = os.path.join(outputs_dir,
-                                            self._report_file_path)
-    if not self._report_file_path:
+    if not self._parameters.report_file_path:
       self._report_file = None
       return
     try:
-      self._report_file = gfile.Open(self._report_file_path, 'w')
+      self._report_file = gfile.Open(self._parameters.report_file_path, 'w')
     except IOError as e:
       raise e
 
@@ -697,56 +434,67 @@ class TensorTracer(object):
     if self._report_file:
       self._report_file.close()
 
-  def _set_op_range(self):
-    """Sets the index range of the Ops that we will consider tracing."""
-
-    found, op_range = TensorTracer.get_flag_value(_FLAG_NAME_OP_RANGE)
-    if not found or not op_range:
-      self._op_range = (-1, -1)  # this means including all ops.
-      return
-    match = _OP_RANGE_PAT.match(op_range)
-    if not match:
-      self._op_range = (-1, -1)  # this means including all ops.
-      return
-    self._op_range = (int(match.group(1)), int(match.group(2)))
-
   def _inside_op_range(self, idx):
     """Return True if the given index is inside the selected range."""
 
-    if idx < self._op_range[0]:
+    if idx < self._parameters.op_range[0]:
       return False
-    return self._op_range[1] < 0 or idx <= self._op_range[1]
-
-  def _set_excluded_opnames(self):
-    self._excluded_opname_re_list = TensorTracer.flag_value_to_re_list(
-        _FLAG_NAME_EXCLUDED_OPNAMES)
-
-  def _set_excluded_optypes(self):
-    self._excluded_optype_re_list = TensorTracer.flag_value_to_re_list(
-        _FLAG_NAME_EXCLUDED_OPTYPES)
-
-  def _set_included_opnames(self):
-    self._included_opname_re_list = TensorTracer.flag_value_to_re_list(
-        _FLAG_NAME_INCLUDED_OPNAMES)
-
-  def _set_included_optypes(self):
-    self._included_optype_re_list = TensorTracer.flag_value_to_re_list(
-        _FLAG_NAME_INCLUDED_OPTYPES)
+    return (self._parameters.op_range[1] < 0 or
+            idx <= self._parameters.op_range[1])
 
   def _is_user_included_op(self, op):
-    for opname_re in self._included_opname_re_list:
-      if opname_re.match(op.name):
+    """Checks whether the op is included in the tensor tracer flags.
+
+    Args:
+      op: tf Operation
+    Returns:
+      True, if the op is included.
+      An op is included if:
+      - Its op name is given in included_opnames
+      - Its op type is given in included_optypes
+      - The op is at most _trace_ops_before_included hops before an included op
+      - The op is at most _trace_ops_after_included hops after an included op
+    """
+
+    def _is_op_or_any_neighbor_included(op, check_before=0, check_after=0):
+      """Helper function to check if op is included or not."""
+      if op.name in self._included_op_full_names:
         return True
-    for optype_re in self._included_optype_re_list:
-      if optype_re.match(op.type):
-        return True
-    return False
+      for opname_re in self._parameters.included_opname_re_list:
+        if opname_re.match(op.name):
+          self._included_op_full_names.add(op.name)
+          return True
+
+      for optype_re in self._parameters.included_optype_re_list:
+        if optype_re.match(op.type):
+          self._included_op_full_names.add(op.name)
+          return True
+
+      if check_after > 0:
+        for out_tensor in op.outputs:
+          for consumer in out_tensor.consumers():
+            if _is_op_or_any_neighbor_included(consumer, check_after - 1, 0):
+              self._included_op_full_names.add(op.name)
+              return True
+      if check_before > 0:
+        for input_tensor in op.inputs:
+          if _is_op_or_any_neighbor_included(input_tensor.op,
+                                             0,
+                                             check_before - 1):
+            self._included_op_full_names.add(op.name)
+            return True
+      return False
+    # check_after and check_before are swapped below, as below operation
+    # checks the distance from an arbitrary op to included ops.
+    return _is_op_or_any_neighbor_included(
+        op, self._parameters.trace_ops_after_included,
+        self._parameters.trace_ops_before_included)
 
   def _is_user_excluded_op(self, op):
-    for opname_re in self._excluded_opname_re_list:
+    for opname_re in self._parameters.excluded_opname_re_list:
       if opname_re.match(op.name):
         return True
-    for optype_re in self._excluded_optype_re_list:
+    for optype_re in self._parameters.excluded_optype_re_list:
       if optype_re.match(op.type):
         return True
     return False
@@ -754,14 +502,15 @@ class TensorTracer(object):
   def _use_tensor_values_cache(self):
     """Returns True if immediate tensors should be first saved to a cache."""
 
-    if self._trace_mode not in set([_TRACE_MODE_NAN_INF,
-                                    _TRACE_MODE_NORM, _TRACE_MODE_MAX_ABS]):
+    if self._parameters.trace_mode not in set([
+        tensor_tracer_flags.TRACE_MODE_NAN_INF,
+        tensor_tracer_flags.TRACE_MODE_NORM,
+        tensor_tracer_flags.TRACE_MODE_MAX_ABS]):
       return False
-    if self._trace_dir and _trace_files_need_precreated(self._trace_dir):
+    if (self._parameters.trace_dir and
+        _trace_files_need_precreated(self._parameters.trace_dir)):
       return True
-    if TensorTracer.use_compact_trace():
-      return True
-    return False
+    return self._parameters.use_compact_trace
 
   def _save_tensor_value_to_cache_op(self, graph, cache_idx, updates):
     """Returns an Op that will save the given updates to an entry in the cache."""
@@ -785,9 +534,16 @@ class TensorTracer(object):
     self._write_report('%s %s\n'%(_MARKER_SECTION_BEGIN, _SECTION_NAME_CONFIG))
     self._write_report('%s %s\n'%(_FIELD_NAME_VERSION, self._version))
     self._write_report('%s %s\n'%(_FIELD_NAME_DEVICE, self._device_type))
-    self._write_report('%s %s\n'%(_FIELD_NAME_TRACE_MODE, self._trace_mode))
-    self._write_report('%s %s\n'%(_FIELD_NAME_SUBMODE, self._submode))
-    self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS, self._num_replicas))
+    self._write_report('%s %s\n'%(_FIELD_NAME_TRACE_MODE,
+                                  self._parameters.trace_mode))
+    self._write_report('%s %s\n'%(_FIELD_NAME_SUBMODE,
+                                  self._parameters.submode))
+    if self._parameters.included_cores:
+      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
+                                    len(self._parameters.included_cores)))
+    else:
+      self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS,
+                                    self._num_replicas))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_REPLICAS_PER_HOST,
                                   self._num_replicas_per_host))
     self._write_report('%s %s\n'%(_FIELD_NAME_NUM_HOSTS, self._num_hosts))
@@ -827,7 +583,9 @@ class TensorTracer(object):
     for i in range(0, len(tensor_list)):
       tensor = tensor_list[i]
       line = '%d "%s"'%(i, tensor.name)
-      for consumer_op in tensor.consumers():
+      consumers = tensor.consumers()
+      consumers.sort(key=lambda op: op.name)
+      for consumer_op in consumers:
         if consumer_op.name not in opname_idx_map:
           raise ValueError(
               'consumer_op %s is not in opname_idx_map'%consumer_op.name)
@@ -905,18 +663,41 @@ class TensorTracer(object):
       output_tensor = array_ops.reshape(output_tensor, [1])
       return output_tensor
 
-    if self._trace_mode == _TRACE_MODE_NAN_INF:
+    def _detect_inf_nan_producer(tensor):
+      """Checks if the tensor is the first NaN/Inf tensor in the computation path."""
+      if tensor.op.inputs:
+        inp_check = [
+            _detect_nan_inf(inp_tensor) for inp_tensor in tensor.op.inputs
+        ]
+        is_any_input_inf_nan = math_ops.add_n(inp_check)
+      else:
+        is_any_input_inf_nan = constant_op.constant(0, dtypes.bool)
+      is_current_tensor_inf_nan = _detect_nan_inf(tensor)
+      # An op is NaN/INF producer only when all inputs are nan/inf free (
+      # is_any_input_inf_nan = 0), and its output has nan/inf (
+      # is_current_tensor_inf_nan=1). Below will be 1 if op nan/inf is producer.
+      is_nan_producer = is_current_tensor_inf_nan - is_any_input_inf_nan
+      is_nan_producer = math_ops.reduce_any(is_nan_producer > 0)
+      return is_nan_producer
+
+    if (self._parameters.trace_mode ==
+        tensor_tracer_flags.TRACE_MODE_FULL_IF_NAN):
+      return _detect_inf_nan_producer(tensor)
+    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NAN_INF:
       return _detect_nan_inf(tensor)
-    if self._trace_mode == _TRACE_MODE_PART_TENSOR:
+    if (self._parameters.trace_mode ==
+        tensor_tracer_flags.TRACE_MODE_PART_TENSOR):
       return tensor
-    if self._trace_mode == _TRACE_MODE_FULL_TENSOR:
+    if (self._parameters.trace_mode ==
+        tensor_tracer_flags.TRACE_MODE_FULL_TENSOR):
       return tensor
-    if self._trace_mode == _TRACE_MODE_NORM:
+    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_NORM:
       return _show_norm(tensor)
-    if self._trace_mode == _TRACE_MODE_MAX_ABS:
+    if self._parameters.trace_mode == tensor_tracer_flags.TRACE_MODE_MAX_ABS:
       return _show_max_abs(tensor)
     raise RuntimeError(
-        'Tensor trace fun for %s is not yet implemented' % self._trace_mode)
+        'Tensor trace fun for %s is not yet implemented'
+        % self._parameters.trace_mode)
 
   def _make_tensor_trace_fun(self, tensor_name):
     """Makes the tensor tracing function called by outside compilation.
@@ -948,7 +729,7 @@ class TensorTracer(object):
                     self._tensorname_idx_map.
       """
 
-      if self._submode == _SUBMODE_BRIEF:
+      if self._parameters.is_brief_mode():
         if tensor_name not in self._tensorname_idx_map:
           raise ValueError(
               'Tensor name %s is not in the tensorname_idx_map'%tensor_name)
@@ -956,8 +737,8 @@ class TensorTracer(object):
       else:
         msg = '"%s"'%tensor_name
 
-      if self._trace_dir:
-        output_path = os.path.join(self._trace_dir, _TRACE_FILE_NAME)
+      if self._parameters.trace_dir:
+        output_path = os.path.join(self._parameters.trace_dir, _TRACE_FILE_NAME)
         output_stream = _OUTPUT_STREAM_ESCAPE + output_path
       else:
         output_stream = sys.stderr
@@ -978,20 +759,54 @@ class TensorTracer(object):
 
       return _print_tensor(tensor_name, -1, tensor, tensor)
 
-    if self._trace_mode == _TRACE_MODE_PART_TENSOR:
+    def _show_full_tensors(tensor):
+      """Prints the full tensor values for the tensors that are _trace_stack_size hops away from a given tensor."""
+
+      def _get_distance_k_tensors(k_before=0):
+        """Returns the tensors that are at most k_before hops away from the tensor."""
+        if k_before < 0:
+          return []
+        visited_tensors = {tensor: 0}
+        visitor_queue = [tensor]
+        head = 0
+        while head < len(visitor_queue):
+          current_tensor = visitor_queue[head]
+          head += 1
+          distance = visited_tensors[current_tensor]
+          if distance == k_before:
+            break
+          for input_tensor in current_tensor.op.inputs:
+            if input_tensor in visited_tensors:
+              continue
+            visitor_queue.append(input_tensor)
+            visited_tensors[input_tensor] = distance + 1
+        return visitor_queue
+
+      tensors_to_print = _get_distance_k_tensors(
+          self._parameters.trace_stack_size)
+      print_ops = [_print_tensor(t.name, -1, t, t) for t in tensors_to_print]
+      with ops.control_dependencies(print_ops):
+        return constant_op.constant(True)
+
+    if (self._parameters.trace_mode ==
+        tensor_tracer_flags.TRACE_MODE_FULL_IF_NAN):
+      return _show_full_tensors
+    if (self._parameters.trace_mode ==
+        tensor_tracer_flags.TRACE_MODE_PART_TENSOR):
       return _show_part_tensor
-    # The input tensor has a shape of "[1]" for _TRACE_MODE_NAN_INF,
-    # _TRACE_MODE_NORM, and _TRACE_MODE_MAX_ABS, as related computations are
+    # The input tensor has a shape of "[1]" for TRACE_MODE_NAN_INF,
+    # TRACE_MODE_NORM, and TRACE_MODE_MAX_ABS, as related computations are
     # performed within TPUs and only their results are transferred to CPU.
     # Simply, print the full tensor for these trace modes.
-    if self._trace_mode in [
-        _TRACE_MODE_NAN_INF, _TRACE_MODE_NORM, _TRACE_MODE_FULL_TENSOR,
-        _TRACE_MODE_MAX_ABS
-    ]:
+    if self._parameters.trace_mode in [
+        tensor_tracer_flags.TRACE_MODE_NAN_INF,
+        tensor_tracer_flags.TRACE_MODE_NORM,
+        tensor_tracer_flags.TRACE_MODE_FULL_TENSOR,
+        tensor_tracer_flags.TRACE_MODE_MAX_ABS]:
       return _show_full_tensor
 
     raise RuntimeError('Tensor trace fun for %s is not yet implemented'
-                       %self._trace_mode)
+                       %self._parameters.trace_mode)
 
   def _skip_op(self, op_id, op, user_included, user_excluded,
                in_exec_path=True):
@@ -1018,7 +833,7 @@ class TensorTracer(object):
       self._instrument_records[op.name] = TensorTracer.reason(
           op_id, _REASON_OUTSIDE_OP_RANGE)
       return True
-    if TensorTracer.less_interesting_op(op):
+    if self._less_interesting_op(op):
       self._instrument_records[op.name] = TensorTracer.reason(
           op_id, _REASON_LESS_INTERESTING_OP)
       return True
@@ -1063,8 +878,10 @@ class TensorTracer(object):
     if not out_tensor.get_shape().is_fully_defined():
       # If trace mode is nan-inf, norm or max, then the tensor will be reduced
       # to a scalar before the outside compilation call.
-      if self._trace_mode in [
-          _TRACE_MODE_NAN_INF, _TRACE_MODE_NORM, _TRACE_MODE_MAX_ABS
+      if self._parameters.trace_mode in [
+          tensor_tracer_flags.TRACE_MODE_NAN_INF,
+          tensor_tracer_flags.TRACE_MODE_NORM,
+          tensor_tracer_flags.TRACE_MODE_MAX_ABS
       ]:
         self._instrument_records[out_tensor.name] = TensorTracer.reason(
             op_id, _REASON_TENSOR_GET_TRACED)
@@ -1076,14 +893,19 @@ class TensorTracer(object):
     rank = len(out_tensor.shape)
     if rank < 1:
       # scalar
-      if TensorTracer.unsafe_scalar_trace(out_tensor.op):
-        self._instrument_records[out_tensor.name] = TensorTracer.reason(
-            op_id, _REASON_UNSAFE_SCALAR)
-        return True
+      if self._parameters.trace_scalar_ops:
+        if TensorTracer.unsafe_scalar_trace(out_tensor.op):
+          self._instrument_records[out_tensor.name] = TensorTracer.reason(
+              op_id, _REASON_UNSAFE_SCALAR)
+          return True
+        else:
+          self._instrument_records[out_tensor.name] = TensorTracer.reason(
+              op_id, _REASON_SCALAR_GET_TRACED)
+          return False
       else:
         self._instrument_records[out_tensor.name] = TensorTracer.reason(
-            op_id, _REASON_SCALAR_GET_TRACED)
-        return False
+            op_id, _REASON_SKIP_SCALAR)
+        return True
     else:
       # tensor
       self._instrument_records[out_tensor.name] = TensorTracer.reason(
@@ -1169,23 +991,23 @@ class TensorTracer(object):
   def _check_trace_files(self):
     """Checks if any requirements for trace files are satisfied."""
 
-    if not self._trace_dir:
+    if not self._parameters.trace_dir:
       # traces will be written to stderr. No need to check trace files.
       return
-    if _trace_files_need_precreated(self._trace_dir):
+    if _trace_files_need_precreated(self._parameters.trace_dir):
       for replica_id in range(0, self._num_replicas):
         trace_file_path = os.path.join(
-            self._trace_dir,
+            self._parameters.trace_dir,
             _COMPACT_TRACE_FILE_PREFIX) + '%d'%replica_id
         if not gfile.Exists(trace_file_path):
           raise RuntimeError(
               '%s must be pre-created with the '
               'appropriate properties.'%trace_file_path)
     else:
-      if not gfile.Exists(self._trace_dir):
-        gfile.MkDir(self._trace_dir)
-        if not gfile.Exists(self._trace_dir):
-          raise RuntimeError('Failed to create %s'%self._trace_dir)
+      if not gfile.Exists(self._parameters.trace_dir):
+        gfile.MkDir(self._parameters.trace_dir)
+        if not gfile.Exists(self._parameters.trace_dir):
+          raise RuntimeError('Failed to create %s'%self._parameters.trace_dir)
 
   def _pre_tracing(self, graph, fetches):
     """Work needs to be done prior to TPU or CPU tracing."""
@@ -1262,8 +1084,8 @@ class TensorTracer(object):
             replica_id_str = replica_id
           else:
             replica_id_str = '%d'%replica_id
-          if self._trace_dir:
-            output_path = os.path.join(self._trace_dir,
+          if self._parameters.trace_dir:
+            output_path = os.path.join(self._parameters.trace_dir,
                                        _COMPACT_TRACE_FILE_PREFIX) \
                                        + replica_id_str
             output_stream = _OUTPUT_STREAM_ESCAPE + output_path
@@ -1461,8 +1283,10 @@ class TensorTracer(object):
     current_control_flow_context = graph._get_control_flow_context()
     # pylint: enable=protected-access
 
+    sorted_exec_op_list = list(exec_op_set)
+    sorted_exec_op_list.sort(key=lambda op: op.name)
     # Trace ops only if they are in the execution path.
-    for op in exec_op_set:
+    for op in sorted_exec_op_list:
       for i in range(len(op.outputs)):
         out_tensor = op.outputs[i]
         tensor_name = out_tensor.name
@@ -1496,12 +1320,36 @@ class TensorTracer(object):
           trace_op = self._save_tensor_value_to_cache_op(graph,
                                                          cache_idx,
                                                          processed_out_tensor)
-        elif on_tpu:
-          trace_op = tpu.outside_compilation(
-              self._make_tensor_trace_fun(tensor_name), processed_out_tensor)
         else:
-          trace_fun = self._make_tensor_trace_fun(tensor_name)
-          trace_op = trace_fun(processed_out_tensor)
+
+          def tpu_wrap_trace_fn(tensor, out_tensor_name):
+            """Wraps the trace_fn with outside compilation if on TPUs."""
+            tensor_trace_fn = self._make_tensor_trace_fun(out_tensor_name)
+            if on_tpu:
+              return tpu.outside_compilation(tensor_trace_fn, tensor)
+            else:
+              return tensor_trace_fn(tensor)
+
+          def conditional_trace_fn(predicate_tensor, out_tensor, trace_fn,
+                                   out_tensor_name):
+            """Creates a cond op that traces the out_tensor if predicate is satisfied."""
+            return control_flow_ops.cond(
+                predicate_tensor, lambda: trace_fn(out_tensor, out_tensor_name),
+                lambda: constant_op.constant(False)).op
+
+          if self._parameters.is_conditional_trace:
+            trace_op = conditional_trace_fn(processed_out_tensor, out_tensor,
+                                            tpu_wrap_trace_fn, tensor_name)
+          elif self._parameters.included_cores:
+            should_print = constant_op.constant(False)
+            for core in self._parameters.included_cores:
+              should_print = gen_math_ops.logical_or(
+                  should_print, gen_math_ops.equal(self._replica_id, core))
+            trace_op = conditional_trace_fn(should_print, processed_out_tensor,
+                                            tpu_wrap_trace_fn, tensor_name)
+
+          else:
+            trace_op = tpu_wrap_trace_fn(processed_out_tensor, tensor_name)
 
         if is_a_fetched_tensor:
           tracing_ops.append(trace_op)
@@ -1581,15 +1429,15 @@ class TensorTracer(object):
       # Checks for the assumption in _generate_flush_cache_op().
       raise RuntimeError('num_replicas_per_host (%d) is '
                          'greater than 8'%self._num_replicas_per_host)
-    if self._graph_dump_path:
-      graph_io.write_graph(graph, self._graph_dump_path,
+    if self._parameters.graph_dump_path:
+      graph_io.write_graph(graph, self._parameters.graph_dump_path,
                            'graph_before_tt.pbtxt')
     with graph.as_default():
       self._add_replica_id_to_graph()
       tensor_fetches = self._trace_execution(graph, tensor_fetches, op_fetches,
                                              on_tpu=True)
-    if self._graph_dump_path:
-      graph_io.write_graph(graph, self._graph_dump_path,
+    if self._parameters.graph_dump_path:
+      graph_io.write_graph(graph, self._parameters.graph_dump_path,
                            'graph_after_tt.pbtxt')
     return tensor_fetches
 
@@ -1624,15 +1472,13 @@ class TensorTracer(object):
     self._num_replicas_per_host = 1
     self._num_hosts = 1
     self._replica_id = 0
-    if self._graph_dump_path:
-      graph_io.write_graph(graph, self._graph_dump_path,
+    if self._parameters.graph_dump_path:
+      graph_io.write_graph(graph, self._parameters.graph_dump_path,
                            'graph_before_tt.pbtxt')
     with graph.as_default():
       tensor_fetches = self._trace_execution(graph, tensor_fetches, op_fetches,
                                              on_tpu=False)
-    if self._graph_dump_path:
-      graph_io.write_graph(graph, self._graph_dump_path,
+    if self._parameters.graph_dump_path:
+      graph_io.write_graph(graph, self._parameters.graph_dump_path,
                            'graph_after_tt.pbtxt')
     return tensor_fetches
-
-

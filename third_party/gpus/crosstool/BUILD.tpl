@@ -1,3 +1,8 @@
+# This file is expanded from a template by cuda_configure.bzl
+# Update cuda_configure.bzl#verify_build_defines when adding new variables.
+
+load(":cc_toolchain_config.bzl", "cc_toolchain_config")
+
 licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
@@ -35,12 +40,9 @@ cc_toolchain(
     name = "cc-compiler-local",
     all_files = "%{linker_files}",
     compiler_files = ":empty",
-    cpu = "local",
     dwp_files = ":empty",
-    dynamic_runtime_libs = [":empty"],
     linker_files = "%{linker_files}",
     objcopy_files = ":empty",
-    static_runtime_libs = [":empty"],
     strip_files = ":empty",
     # To support linker flags that need to go to the start of command line
     # we need the toolchain to support parameter files. Parameter files are
@@ -48,36 +50,71 @@ cc_toolchain(
     # regular options will be left of them.
     supports_param_files = 1,
     toolchain_identifier = "local_linux",
+    toolchain_config = ":cc-compiler-local-config",
+)
+
+cc_toolchain_config(
+    name = "cc-compiler-local-config",
+    cpu = "local",
+    builtin_include_directories = [%{cxx_builtin_include_directories}],
+    extra_no_canonical_prefixes_flags = [%{extra_no_canonical_prefixes_flags}],
+    host_compiler_path = "%{host_compiler_path}",
+    host_compiler_prefix = "%{host_compiler_prefix}",
+    host_compiler_warnings = [%{host_compiler_warnings}],
+    host_unfiltered_compile_flags = [%{unfiltered_compile_flags}],
+    linker_bin_path = "%{linker_bin_path}",
 )
 
 cc_toolchain(
     name = "cc-compiler-darwin",
     all_files = "%{linker_files}",
     compiler_files = ":empty",
-    cpu = "darwin",
     dwp_files = ":empty",
-    dynamic_runtime_libs = [":empty"],
     linker_files = "%{linker_files}",
     objcopy_files = ":empty",
-    static_runtime_libs = [":empty"],
     strip_files = ":empty",
     supports_param_files = 0,
     toolchain_identifier = "local_darwin",
+    toolchain_config = ":cc-compiler-local-darwin",
+)
+
+cc_toolchain_config(
+    name = "cc-compiler-local-darwin",
+    cpu = "darwin",
+    builtin_include_directories = [%{cxx_builtin_include_directories}],
+    extra_no_canonical_prefixes_flags = [%{extra_no_canonical_prefixes_flags}],
+    host_compiler_path = "%{host_compiler_path}",
+    host_compiler_prefix = "%{host_compiler_prefix}",
+    host_compiler_warnings = [%{host_compiler_warnings}],
+    host_unfiltered_compile_flags = [%{unfiltered_compile_flags}],
+    linker_bin_path = "%{linker_bin_path}",
 )
 
 cc_toolchain(
     name = "cc-compiler-windows",
     all_files = "%{win_linker_files}",
     compiler_files = ":empty",
-    cpu = "x64_windows",
     dwp_files = ":empty",
-    dynamic_runtime_libs = [":empty"],
     linker_files = "%{win_linker_files}",
     objcopy_files = ":empty",
-    static_runtime_libs = [":empty"],
     strip_files = ":empty",
     supports_param_files = 1,
     toolchain_identifier = "local_windows",
+    toolchain_config = ":cc-compiler-windows-config",
+)
+
+cc_toolchain_config(
+    name = "cc-compiler-windows-config",
+    cpu = "x64_windows",
+    builtin_include_directories = [%{cxx_builtin_include_directories}],
+    msvc_cl_path = "%{msvc_cl_path}",
+    msvc_env_include = "%{msvc_env_include}",
+    msvc_env_lib = "%{msvc_env_lib}",
+    msvc_env_path = "%{msvc_env_path}",
+    msvc_env_tmp = "%{msvc_env_tmp}",
+    msvc_lib_path = "%{msvc_lib_path}",
+    msvc_link_path = "%{msvc_link_path}",
+    msvc_ml_path = "%{msvc_ml_path}",
 )
 
 filegroup(

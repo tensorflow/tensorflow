@@ -121,9 +121,9 @@ Status FusedIrEmitter::HandleGetTupleElement(
     }
 
     // Lookup tuple element pointer.
-    return llvm_ir::EmitGetTupleElement(
-        get_tuple_element->shape(), get_tuple_element->tuple_index(),
-        /*alignment=*/1, tuple_ptr, b_, module_);
+    return llvm_ir::EmitGetTupleElement(get_tuple_element->shape(),
+                                        get_tuple_element->tuple_index(),
+                                        /*alignment=*/1, tuple_ptr, b_);
   };
 
   if (!get_tuple_element->shape().IsTuple()) {
@@ -295,9 +295,9 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
     total += entry.second;
   }
 
-  // Check that the code duplication has at most a factor of 8 (where 8 is an
+  // Check that the code duplication has at most a factor of 15 (where 15 is an
   // arbitrary constant that seems to work).
-  return total > 8 * index_usage_count.size();
+  return total > 15 * index_usage_count.size();
 }
 
 }  // namespace xla

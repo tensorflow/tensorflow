@@ -61,9 +61,6 @@ using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
-using tensorflow::Env;
-using tensorflow::WriteStringToFile;
-using tensorflow::io::JoinPath;
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -120,7 +117,7 @@ class NodeFilter {
 // We arbitrarily set this as the boundary between "large" and "small"
 // instructions.
 bool IsSmall(const HloInstruction* instr) {
-  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE_TYPE) ||
       ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
     return true;
   }
@@ -947,6 +944,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kPower:
@@ -1042,6 +1040,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
+    case HloOpcode::kPartitionId:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
@@ -1461,6 +1460,9 @@ string WrapDotInHtml(absl::string_view dot) {
     var css_data = ''
     if (results !== null) {
         css_data = results[1].replace(/\s*data:.*\s*,/,''); // Strip content-type field.
+        // CSS inside DOT is URL-escaped, so we must unescape it
+        // before we can insert it into SVG.
+        css_data = unescape(css_data);
         dot_data = data.replace(cssregex, ''); // Remove the stylesheet
     }
 

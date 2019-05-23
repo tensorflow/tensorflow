@@ -84,12 +84,11 @@ class KernelThunk : public Thunk {
   // Describes how to load this kernel. ExecuteOnStream reuses this loader
   // specification for all executions.
   mutable tensorflow::mutex mutex_;
-  std::unique_ptr<se::MultiKernelLoaderSpec> loader_spec_ GUARDED_BY(mutex_);
 
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
-  std::unordered_map<se::StreamExecutor*, se::KernelBase> kernel_cache_
-      GUARDED_BY(mutex_);
+  std::unordered_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
+      kernel_cache_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

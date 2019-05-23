@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -57,6 +58,8 @@ class Gauge {
   GaugeCell<ValueType>* GetCell(const Labels&... labels) {
     return &default_gauge_cell_;
   }
+
+  Status GetStatus() { return Status::OK(); }
 
  private:
   Gauge() {}

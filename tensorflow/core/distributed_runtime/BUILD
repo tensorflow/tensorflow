@@ -98,8 +98,10 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -127,6 +129,7 @@ cc_library(
     hdrs = ["session_mgr.h"],
     deps = [
         ":graph_mgr",
+        ":remote_device",
         ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
@@ -197,14 +200,15 @@ tf_cuda_library(
     deps = [
         ":graph_mgr",
         ":partial_run_mgr",
+        ":recent_request_ids",
         ":rendezvous_mgr_interface",
         ":session_mgr",
         ":tensor_coding",
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:device_tracer",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:profiler_session",
     ],
 )
 
@@ -334,6 +338,7 @@ cc_library(
         ":call_options",
         ":master_env",
         ":message_wrappers",
+        ":request_id",
         ":scheduler",
         ":worker_cache",
         ":worker_interface",
@@ -429,6 +434,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -565,6 +571,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -25,6 +25,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 import unittest
 
 from absl.testing import parameterized
@@ -35,11 +36,15 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
+from tensorflow.python.training import checkpoint_management
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -279,7 +284,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-    filepath = os.path.join(temp_dir, 'checkpoint')
+    filepath = os.path.join(temp_dir, 'checkpoint.h5')
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
         train_samples=TRAIN_SAMPLES,
         test_samples=TEST_SAMPLES,
@@ -432,6 +437,241 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         monitor=monitor,
         save_best_only=save_best_only,
         mode='unknown')
+
+    # Case 6: `ModelCheckpoint` with a combination of `save_freq` and `period`.
+    # Though `period` is deprecated, we're testing it for
+    # backward-compatibility.
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath, monitor=monitor, mode=mode, save_freq='epoch', period=5)
+    ]
+    assert not os.path.exists(filepath.format(epoch=0))
+    assert not os.path.exists(filepath.format(epoch=5))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=10,
+        verbose=1)
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=2))
+    assert not os.path.exists(filepath.format(epoch=3))
+    assert not os.path.exists(filepath.format(epoch=4))
+    assert os.path.exists(filepath.format(epoch=5))
+    assert not os.path.exists(filepath.format(epoch=6))
+    assert os.path.exists(filepath.format(epoch=10))
+    os.remove(filepath.format(epoch=5))
+    os.remove(filepath.format(epoch=10))
+
+    # Case 7: `ModelCheckpoint` with an integer `save_freq`
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode,
+            save_freq=30,
+            period=100)  # The period should be ignored (this test tests this).
+    ]
+    assert not os.path.exists(filepath.format(epoch=3))
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=2,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=10,
+        verbose=1)
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=2))
+    assert os.path.exists(filepath.format(epoch=3))
+    assert not os.path.exists(filepath.format(epoch=4))
+    assert not os.path.exists(filepath.format(epoch=5))
+    assert os.path.exists(filepath.format(epoch=6))
+    assert not os.path.exists(filepath.format(epoch=7))
+    assert not os.path.exists(filepath.format(epoch=8))
+    assert os.path.exists(filepath.format(epoch=9))
+    os.remove(filepath.format(epoch=3))
+    os.remove(filepath.format(epoch=6))
+    os.remove(filepath.format(epoch=9))
+
+    # Case 8: `ModelCheckpoint` with valid and invalid save_freq argument.
+    with self.assertRaisesRegexp(ValueError, 'Unrecognized save_freq'):
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          mode=mode,
+          save_freq='invalid_save_freq')
+    # The following should not raise ValueError.
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode=mode,
+        save_freq='epoch')
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode=mode,
+        save_freq=3)
+
+  def _run_load_weights_on_restart_test_common_iterations(self):
+
+    def get_input_datasets():
+      # Simple training input.
+      train_input = [[1]] * 16
+      train_label = [[0]] * 16
+      ds = dataset_ops.Dataset.from_tensor_slices((train_input, train_label))
+      return ds.batch(8, drop_remainder=True)
+
+    class Bias(base_layer.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+      def call(self, inputs):
+        return inputs + self.bias
+
+    # Very simple bias model to eliminate randomness.
+    optimizer = gradient_descent.SGD(0.1)
+    model = sequential.Sequential()
+    model.add(Bias(input_shape=(1,)))
+    model.compile(loss='mae', optimizer=optimizer, metrics=['mae'])
+    train_ds = get_input_datasets()
+
+    temp_dir = self.get_temp_dir()
+    filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
+    initial_epochs = 3
+
+    # The filepath shouldn't exist at the beginning.
+    self.assertFalse(os.path.exists(filepath))
+    callback = keras.callbacks.ModelCheckpoint(
+        filepath=filepath, save_weights_only=True)
+    model.fit(train_ds, epochs=initial_epochs, callbacks=[callback])
+
+    # The files should exist after fitting with callback.
+    for epoch in range(initial_epochs):
+      self.assertTrue(os.path.exists(filepath.format(epoch=epoch + 1)))
+    self.assertFalse(os.path.exists(filepath.format(epoch=initial_epochs + 1)))
+    self.assertEqual(
+        callback._get_most_recently_modified_file_matching_pattern(filepath),
+        filepath.format(epoch=initial_epochs))
+
+    model.fit(train_ds, epochs=1)
+    weights_after_one_more_epoch = model.get_weights()
+
+    # The filepath should continue to exist after fitting without callback.
+    for epoch in range(initial_epochs):
+      self.assertTrue(os.path.exists(filepath.format(epoch=epoch + 1)))
+
+    return model, train_ds, filepath, weights_after_one_more_epoch
+
+  @staticmethod
+  def get_ModelCheckpoint_load_weights_on_restart_true_test(save_weights_only):
+
+    def func(self):
+      (model, train_ds, filepath, weights_after_one_more_epoch
+      ) = self._run_load_weights_on_restart_test_common_iterations()
+
+      # Sleep for some short time period ensuring the files are created with
+      # a different time (in MacOS OSS the granularity is only 1 second).
+      time.sleep(2)
+      callback = keras.callbacks.ModelCheckpoint(
+          filepath=filepath,
+          save_weights_only=save_weights_only,
+          load_weights_on_restart=True)
+      model.fit(train_ds, epochs=1, callbacks=[callback])
+      weights_after_model_restoring_and_one_more_epoch = model.get_weights()
+
+      self.assertEqual(
+          callback._get_most_recently_modified_file_matching_pattern(filepath),
+          filepath.format(epoch=1))
+
+      model.fit(
+          train_ds,
+          epochs=1,
+          callbacks=[
+              keras.callbacks.ModelCheckpoint(
+                  filepath=filepath,
+                  save_weights_only=save_weights_only,
+                  load_weights_on_restart=True)
+          ])
+      weights_with_one_final_extra_epoch = model.get_weights()
+
+      # Asserting the weights one epoch after initial fitting and another epoch
+      # after that are closed, if a ModelCheckpoint with
+      # load_weights_on_restart=True is given (so the model is restored at the
+      # beginning of training).
+      self.assertAllClose(weights_after_one_more_epoch,
+                          weights_after_model_restoring_and_one_more_epoch)
+
+      self.assertNotAllClose(weights_after_one_more_epoch,
+                             weights_with_one_final_extra_epoch)
+
+    return func
+
+  @staticmethod
+  def get_ModelCheckpoint_load_weights_on_restart_false_test(save_weights_only):
+
+    def func(self):
+      (model, train_ds, filepath, weights_after_one_more_epoch
+      ) = self._run_load_weights_on_restart_test_common_iterations()
+
+      model.fit(
+          train_ds,
+          epochs=1,
+          callbacks=[
+              keras.callbacks.ModelCheckpoint(
+                  filepath=filepath, save_weights_only=save_weights_only)
+          ])
+      weights_after_model_restoring_and_one_more_epoch = model.get_weights()
+
+      # Asserting the weights one epoch after initial fitting and another epoch
+      # after that are different, if a ModelCheckpoint with
+      # load_weights_on_restart=False is given (so the model is not restored at
+      # the beginning of training).
+      self.assertNotAllClose(weights_after_one_more_epoch,
+                             weights_after_model_restoring_and_one_more_epoch)
+
+    return func
+
+  test_model_checkpoint_load_weights_on_restart_true_save_weights_only_true = \
+        get_ModelCheckpoint_load_weights_on_restart_true_test.__func__(True)
+
+  test_model_checkpoint_load_weights_on_restart_true_save_weights_only_false = \
+        get_ModelCheckpoint_load_weights_on_restart_true_test.__func__(False)
+
+  test_model_checkpoint_load_weights_on_restart_false_save_weights_only_true = \
+        get_ModelCheckpoint_load_weights_on_restart_false_test.__func__(True)
+
+  test_model_checkpoint_load_weights_on_restart_false_save_weights_only_false \
+        = get_ModelCheckpoint_load_weights_on_restart_false_test.__func__(False)
+
+  def test_ModelCheckpoint_override_if_file_exist(self):
+    (model, train_ds, filepath,
+     _) = self._run_load_weights_on_restart_test_common_iterations()
+
+    # Sleep for some short time period to ensure the files are created with
+    # a different time (in MacOS OSS the granularity is only 1 second).
+    time.sleep(2)
+    callback = keras.callbacks.ModelCheckpoint(
+        filepath=filepath, save_weights_only=True)
+    model.load_weights(
+        callback._get_most_recently_modified_file_matching_pattern(filepath))
+    weights_before_additional_fit = model.get_weights()
+    model.fit(train_ds, epochs=1, callbacks=[callback])
+    model.load_weights(
+        callback._get_most_recently_modified_file_matching_pattern(filepath))
+    weights_after_additional_fit = model.get_weights()
+
+    self.assertNotAllClose(weights_before_additional_fit,
+                           weights_after_additional_fit)
 
   def test_EarlyStopping(self):
     with self.cached_session():
@@ -1045,7 +1285,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1164,6 +1405,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
+    model_type = testing_utils.get_model_type()
 
     model.fit(
         x,
@@ -1182,7 +1424,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.histograms),
+        self._strip_layer_names(summary_file.histograms, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
@@ -1194,6 +1436,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(
         self.logdir, histogram_freq=1, write_images=True)
+    model_type = testing_utils.get_model_type()
 
     model.fit(
         x,
@@ -1212,14 +1455,14 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.histograms),
+        self._strip_layer_names(summary_file.histograms, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.images),
+        self._strip_layer_names(summary_file.images, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
@@ -1228,7 +1471,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
 
-  def _strip_layer_names(self, summaries):
+  def _strip_layer_names(self, summaries, model_type):
     """Deduplicate summary names modulo layer prefix.
 
     This removes the first slash-component of each tag name: for
@@ -1236,6 +1479,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
     Args:
       summaries: A `set` of `_ObservedSummary` values.
+      model_type: The model type currently being tested.
 
     Returns:
       A new `set` of `_ObservedSummary` values with layer prefixes
@@ -1245,7 +1489,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     for summary in summaries:
       if '/' not in summary.tag:
         raise ValueError('tag has no layer name: %r' % summary.tag)
-      new_tag = summary.tag.split('/', 1)[1]
+      start_from = 2 if 'subclass' in model_type else 1
+      new_tag = '/'.join(summary.tag.split('/')[start_from:])
       result.add(summary._replace(tag=new_tag))
     return result
 
@@ -1270,7 +1515,8 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    opt = gradient_descent.SGD(learning_rate=0.001)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def fitModelAndAssertKerasModelWritten(self, model):
@@ -1381,6 +1627,99 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
     # Enabled trace only on the 10000th batch, thus it should be empty.
     self.assertEmpty(summary_file.tensors)
+
+
+class MostRecentlyModifiedFileMatchingPatternTest(test.TestCase):
+
+  def test_get_most_recently_modified_file_matching_pattern(self):
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.batch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      with open(file_path, 'w') as f:
+        # Ensure there are some intervals between file creation.
+        time.sleep(2)
+        f.write('foo bar')
+    # Ensure the files have been actually written.
+    self.assertEqual(
+        set([
+            os.path.join(test_dir, file_name)
+            for file_name in os.listdir(test_dir)
+        ]), set(file_paths))
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(None)
+        ._get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-1])
+
+  def test_some_file_not_matching_pattern(self):
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}.h5'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    file_paths = [
+        os.path.join(test_dir, file_name) for file_name in
+        ['f.batch03epoch02.h5', 'f.batch02epoch02.h5', 'f.baatch01epoch01.h5']
+    ]
+    for file_path in file_paths:
+      with open(file_path, 'w') as f:
+        # Ensure there are some intervals between file creation.
+        time.sleep(2)
+        f.write('foo bar')
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(None)
+        ._get_most_recently_modified_file_matching_pattern(path_pattern),
+        file_paths[-2])
+
+  def test_get_same_file_if_file_name_equals_pattern(self):
+    file_name = 'f.batch02.h5'
+    test_dir = self.get_temp_dir()
+    file_path = os.path.join(test_dir, file_name)
+    with open(file_path, 'w') as f:
+      f.write('foo bar')
+    self.assertEqual(os.path.join(test_dir, os.listdir(test_dir)[0]), file_path)
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(
+            None)._get_most_recently_modified_file_matching_pattern(file_path),
+        file_path)
+
+  def test_get_none_if_file_does_not_exist(self):
+    file_name = 'f.batch02.h5'
+    test_dir = self.get_temp_dir()
+    file_path = os.path.join(test_dir, file_name)
+    self.assertLen(os.listdir(test_dir), 0)
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(
+            None)._get_most_recently_modified_file_matching_pattern(file_path),
+        None)
+
+  def test_using_checkpoint_management_latest_checkpoint(self):
+    file_pattern = 'f.batch{batch:02d}epoch{epoch:02d}'
+    ckpt_file_name = 'f.batchXepochY'
+    test_dir = self.get_temp_dir()
+    path_pattern = os.path.join(test_dir, file_pattern)
+    ckpt_file_path = os.path.join(test_dir, ckpt_file_name)
+    with open(ckpt_file_path, 'w') as f:
+      f.write('dummy ckpt')
+    checkpoint_management.update_checkpoint_state_internal(
+        test_dir, ckpt_file_path)
+
+    file_paths = [
+        os.path.join(test_dir, file_name)
+        for file_name in ['f.batch03epoch02', 'f.batch02epoch02']
+    ]
+    for file_path in file_paths:
+      with open(file_path, 'w') as f:
+        f.write('foo bar')
+
+    # The result returned from checkpoint_management.latest_checkpoint takes
+    # priority, so even if it was written earlier, we should still return that.
+    self.assertEqual(
+        keras.callbacks.ModelCheckpoint(None)
+        ._get_most_recently_modified_file_matching_pattern(path_pattern),
+        ckpt_file_path)
 
 
 if __name__ == '__main__':

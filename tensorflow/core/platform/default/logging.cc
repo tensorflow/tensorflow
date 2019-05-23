@@ -141,7 +141,7 @@ struct StringData {
 using VmoduleMap = std::unordered_map<StringData, int, StringData::Hasher>;
 
 // Returns a mapping from module name to VLOG level, derived from the
-// TF_CPP_VMOUDLE environment variable; ownership is transferred to the caller.
+// TF_CPP_VMODULE environment variable; ownership is transferred to the caller.
 VmoduleMap* VmodulesMapFromEnv() {
   // The value of the env var is supposed to be of the form:
   //    "foo=1,bar=2,baz=3"

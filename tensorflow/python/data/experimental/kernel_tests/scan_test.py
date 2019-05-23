@@ -30,7 +30,10 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
@@ -94,6 +97,83 @@ class ScanTest(test_base.DatasetTestBase):
         self.assertEqual(expected, self.evaluate(next_element()).values[0])
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element())
+
+  def testTensorArraySimple(self):
+
+    def scan_fn(ta, x):
+      return (ta.write(ta.size(), x), ta.stack())
+
+    start = tensor_array_ops.TensorArray(
+        size=0,
+        element_shape=[],
+        dtype=dtypes.int64,
+        dynamic_size=True)
+    start = start.write(0, -1)
+
+    ds = dataset_ops.Dataset.range(5).apply(scan_ops.scan(start, scan_fn))
+
+    self.assertDatasetProduces(
+        ds,
+        expected_output=[
+            [-1],
+            [-1, 0],
+            [-1, 0, 1],
+            [-1, 0, 1, 2],
+            [-1, 0, 1, 2, 3],
+        ],
+        requires_initialization=True,
+        num_test_iterations=2)
+
+  def testTensorArrayWithCondReset(self):
+
+    def empty():
+      return tensor_array_ops.TensorArray(
+          size=0, element_shape=[], dtype=dtypes.int64, dynamic_size=True)
+
+    def scan_fn(ta, x):
+      updated = ta.write(ta.size(), x)
+      next_iter = control_flow_ops.cond(
+          math_ops.equal(x % 3, 0), empty, lambda: updated)
+      return (next_iter, updated.stack())
+
+    start = empty()
+    start = start.write(0, -1)
+
+    ds = dataset_ops.Dataset.range(6).apply(scan_ops.scan(start, scan_fn))
+
+    self.assertDatasetProduces(
+        ds,
+        expected_output=[
+            [-1, 0],
+            [1],
+            [1, 2],
+            [1, 2, 3],
+            [4],
+            [4, 5],
+        ],
+        requires_initialization=True,
+        num_test_iterations=2)
+
+  def testTensorArrayWithCondResetByExternalCaptureBreaks(self):
+
+    empty_ta = tensor_array_ops.TensorArray(
+        size=0, element_shape=[], dtype=dtypes.int64, dynamic_size=True)
+
+    def scan_fn(ta, x):
+      updated = ta.write(ta.size(), x)
+      # Here, capture empty_ta from outside the function.  However, it may be
+      # either a TF1-style TensorArray or an Eager-style TensorArray.
+      next_iter = control_flow_ops.cond(
+          math_ops.equal(x % 3, 0), lambda: empty_ta, lambda: updated)
+      return (next_iter, updated.stack())
+
+    start = empty_ta
+    start = start.write(0, -1)
+
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        r"construct a new TensorArray inside the function"):
+      dataset_ops.Dataset.range(6).apply(scan_ops.scan(start, scan_fn))
 
   def testChangingStateShape(self):
     # Test the fixed-point shape invariant calculations: start with

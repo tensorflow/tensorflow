@@ -262,7 +262,7 @@ class _DefinedFunction(object):
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
-    self._sub_functions = dict()  # Constructed with _definition or _c_func
+    self._sub_functions = {}  # Constructed with _definition or _c_func
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
@@ -352,6 +352,21 @@ class _DefinedFunction(object):
     if self._definition is not None or self._c_func is not None:
       return
 
+    # Copy variable collections (by reference) from the parent graph such that
+    # name based variable sharing (e.g. via tf.make_template) works between the
+    # func graph and parent graph.
+    variable_keys = []
+    variable_keys.extend(ops.GraphKeys._VARIABLE_COLLECTIONS)  # pylint: disable=protected-access
+    variable_keys.append(vs._VARSTORE_KEY)  # pylint: disable=protected-access
+
+    collections_ref = {}
+    parent_collections_ref = ops.get_default_graph()._collections  # pylint: disable=protected-access
+    for key in variable_keys:
+      if key not in parent_collections_ref:
+        parent_collections_ref[key] = collections_ref[key] = []
+      else:
+        collections_ref[key] = parent_collections_ref[key]
+
     temp_graph = func_graph_from_py_func(
         self._func,
         self._arg_names,
@@ -359,6 +374,7 @@ class _DefinedFunction(object):
         self._func_name,
         self._capture_by_value,
         self._caller_device,
+        collections_ref=collections_ref,
         whitelisted_stateful_ops=self._whitelisted_stateful_ops,
         capture_resource_var_by_value=self._capture_resource_var_by_value)
 
@@ -755,12 +771,12 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def create_op(self, op_type, inputs, data_types, **kwargs):
+  def create_op(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
-    return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
-                                             **kwargs)
+    return super(_FuncGraph, self).create_op(op_type, inputs,
+                                             dtypes=dtypes, **kwargs)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
@@ -1014,13 +1030,7 @@ def _call(sig, *inputs, **kwargs):
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
   op = g.create_op(
-      func_name,
-      list(inputs),
-      output_types,
-      name=name,
-      attrs=attrs,
-      op_def=sig,
-      compute_shapes=False)
+      func_name, list(inputs), output_types, name=name, attrs=attrs, op_def=sig)
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]
@@ -1155,6 +1165,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   noinline = kwargs.pop("noinline", None)
   if noinline is not None:
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+
+  # For compatibility with previous behavior, Defun does not perform shape
+  # inference through its function call operations.
+  attrs["_disable_call_shape_inference"] = attr_value_pb2.AttrValue(b=True)
 
   compiled = kwargs.pop("compiled", None)
   separate_compiled_gradients = kwargs.pop("separate_compiled_gradients", None)

@@ -22,6 +22,7 @@ import os
 
 from tensorflow.core.protobuf.cluster_pb2 import ClusterDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
 
@@ -38,7 +39,7 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
   follows:
   ```python
   # Enable eager execution, and connect to the remote host.
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
   tf.contrib.eager.connect_to_remote_host("exampleaddr.com:9876")
 
   with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
@@ -63,10 +64,14 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
   if remote_host.startswith(grpc_prefix):
     remote_host = remote_host[len(grpc_prefix):]
 
+  local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
+
   cluster_def = ClusterDef()
   job_def = cluster_def.job.add()
   job_def.name = job_name
-  job_def.tasks[0] = "127.0.0.1:0"
+  # TODO(fishx): Update this to make sure remote worker has valid ip address
+  # to connect with local.
+  job_def.tasks[0] = "localhost:{}".format(local_port)
   job_def.tasks[1] = remote_host
 
   server_def = ServerDef(

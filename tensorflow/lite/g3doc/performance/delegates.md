@@ -52,7 +52,6 @@ Based on the previous section, to add a delegate, we need to do the following:
 
 To see it in code, let's define a delegate and call it "MyDelegate," which can execute Conv2D and Mean operations faster.
 
-
 ```
 // This is where the execution of the operations or whole graph happens.
 // The class below has an empty implementation just as a guideline
@@ -95,7 +94,7 @@ TfLiteRegistration GetMyDelegateNodeRegistration() {
   kernel_registration.free = [](TfLiteContext* context, void* buffer) -> void {
     delete reinterpret_cast<MyDelegate*>(buffer);
   };
-  delegate_registration.init = [](TfLiteContext* context, const char* buffer,
+  kernel_registration.init = [](TfLiteContext* context, const char* buffer,
                                    size_t) -> void* {
     // In the node init phase, initialize MyDelegate instance
     const TfLiteDelegateParams* delegate_params =
@@ -205,4 +204,3 @@ delete my_delegate;
 
 
 ```
-

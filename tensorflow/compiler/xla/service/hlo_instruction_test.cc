@@ -1331,6 +1331,16 @@ TEST_F(HloInstructionTest, Stringification) {
             "%dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} "
             "%transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}");
 
+  auto options2 = HloPrintOptions()
+                      .set_print_metadata(false)
+                      .set_print_operand_shape(false)
+                      .set_print_percent(false)
+                      .set_include_layout_in_shapes(false);
+
+  EXPECT_EQ(dot->ToString(options2),
+            "dot = f32[5,20] dot(x, transpose), "
+            "lhs_contracting_dims={1}, rhs_contracting_dims={0}");
+
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
@@ -1757,6 +1767,20 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
   EXPECT_THAT(
       clone->precision_config().operand_precision(),
       ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
+}
+
+TEST_F(HloInstructionTest, PreserveOuterDimensionPartitionsOnClone) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  ENTRY test {
+    ROOT iota = f32[100] iota(), iota_dimension=1, outer_dimension_partitions={0, 50}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  auto* iota = module->entry_computation()->root_instruction();
+
+  auto clone = iota->Clone();
+  EXPECT_THAT(clone->outer_dimension_partitions(),
+              ::testing::ElementsAre(0, 50));
 }
 
 }  // namespace

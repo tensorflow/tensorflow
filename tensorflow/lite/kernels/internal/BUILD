@@ -168,13 +168,45 @@ config_setting(
 )
 
 cc_library(
+    name = "common",
+    srcs = [],
+    hdrs = ["common.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":types",
+        "@gemmlowp//:fixedpoint",
+    ] + select({
+        ":haswell": tflite_deps_intel,
+        ":ios_x86_64": tflite_deps_intel,
+        ":k8": tflite_deps_intel,
+        ":x86": tflite_deps_intel,
+        ":x86_64": tflite_deps_intel,
+        ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "optimized_base",
     srcs = [],
     hdrs = [
         "common.h",
+        "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
+        "optimized/depthwiseconv_multithread.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
+        "optimized/im2col_utils.h",
+        "optimized/integer_ops/add.h",
+        "optimized/integer_ops/conv.h",
+        "optimized/integer_ops/depthwise_conv.h",
+        "optimized/integer_ops/depthwise_conv_3x3_filter.h",
+        "optimized/integer_ops/fully_connected.h",
+        "optimized/integer_ops/mul.h",
+        "optimized/integer_ops/pooling.h",
+        "optimized/integer_ops/softmax.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
@@ -184,10 +216,16 @@ cc_library(
         ":types",
         ":reference_base",
         ":round",
+        ":tensor",
         ":tensor_utils",
         "//third_party/eigen3",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:tflite_with_ruy",
+        "//tensorflow/lite/kernels:cpu_backend_threadpool",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -206,16 +244,20 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
+        "optimized/im2col_utils.h",
         "optimized/legacy_optimized_ops.h",
         "optimized/optimized_ops.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":optimized_base",
         ":quantization_util",
         ":strided_slice_logic",
+        ":tensor",
         ":tensor_utils",
         ":types",
         ":legacy_types",
@@ -224,6 +266,9 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:cpu_backend_threadpool",
+        "//tensorflow/lite/kernels:cpu_backend_gemm",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -251,6 +296,8 @@ cc_library(
         ":optimized_base",
         ":tensor",
         ":types",
+        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
         "//third_party/eigen3",
     ],
@@ -310,6 +357,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
@@ -321,10 +369,12 @@ cc_library(
         "reference/integer_ops/l2normalization.h",
         "reference/integer_ops/log_softmax.h",
         "reference/integer_ops/logistic.h",
+        "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
+        "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],
@@ -332,8 +382,11 @@ cc_library(
         ":quantization_util",
         ":round",
         ":strided_slice_logic",
+        ":tensor",
         ":types",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
+        "//third_party/eigen3",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
@@ -354,10 +407,12 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
+        "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],
@@ -366,7 +421,9 @@ cc_library(
         ":round",
         ":strided_slice_logic",
         ":legacy_types",
+        ":tensor",
         ":types",
+        "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:op_macros",
@@ -391,6 +448,7 @@ cc_library(
     ],
     deps = [
         ":types",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
     ],
 )
@@ -404,6 +462,7 @@ cc_library(
     ],
     deps = [
         ":types",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
     ],
 )
@@ -448,7 +507,8 @@ cc_library(
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:op_macros",
         "@arm_neon_2_x86_sse",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
     ],
 )
 
@@ -477,6 +537,7 @@ cc_library(
         "mfcc_mel_filterbank.h",
         "spectrogram.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
@@ -504,7 +565,8 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "@arm_neon_2_x86_sse",
         "//tensorflow/lite/kernels:op_macros",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
+        "@gemmlowp//:profiler",
     ] + select({
         ":aarch64": [
             ":neon_tensor_utils",
@@ -609,9 +671,26 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
+        "//tensorflow/lite/experimental/ruy:context",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@gemmlowp",
+    ],
+)
+
+cc_test(
+    name = "depthwiseconv_per_channel_quantized_test",
+    srcs = [
+        "depthwiseconv_per_channel_quantized_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -645,7 +724,7 @@ cc_test(
     srcs = [
         "softmax_quantized_test.cc",
     ],
-    shard_count = 3,
+    shard_count = 4,
     deps = [
         ":optimized_base",
         ":quantization_util",
@@ -668,6 +747,40 @@ cc_test(
         "nomac",
         "tflite_not_portable",
     ],
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "//tensorflow/lite:string",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "averagepool_quantized_test",
+    timeout = "long",
+    srcs = [
+        "averagepool_quantized_test.cc",
+    ],
+    shard_count = 1,
+    deps = [
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        "//tensorflow/lite:string",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "maxpool_quantized_test",
+    timeout = "long",
+    srcs = [
+        "maxpool_quantized_test.cc",
+    ],
+    shard_count = 1,
     deps = [
         ":optimized_base",
         ":quantization_util",

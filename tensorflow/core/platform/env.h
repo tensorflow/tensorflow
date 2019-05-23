@@ -251,13 +251,13 @@ class Env {
   // provide a routine to get the absolute time.
 
   /// \brief Returns the number of nano-seconds since the Unix epoch.
-  virtual uint64 NowNanos() { return envTime->NowNanos(); }
+  virtual uint64 NowNanos() const { return env_time_->NowNanos(); }
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() { return envTime->NowMicros(); }
+  virtual uint64 NowMicros() const { return env_time_->NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64 NowSeconds() { return envTime->NowSeconds(); }
+  virtual uint64 NowSeconds() const { return env_time_->NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
@@ -327,7 +327,7 @@ class Env {
  private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
-  EnvTime* envTime = EnvTime::Default();
+  EnvTime* env_time_ = EnvTime::Default();
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -338,7 +338,7 @@ class EnvWrapper : public Env {
  public:
   /// Initializes an EnvWrapper that delegates all calls to *t
   explicit EnvWrapper(Env* t) : target_(t) {}
-  virtual ~EnvWrapper();
+  ~EnvWrapper() override;
 
   /// Returns the target to which this Env forwards all calls
   Env* target() const { return target_; }
@@ -361,7 +361,7 @@ class EnvWrapper : public Env {
     return target_->MatchPath(path, pattern);
   }
 
-  uint64 NowMicros() override { return target_->NowMicros(); }
+  uint64 NowMicros() const override { return target_->NowMicros(); }
   void SleepForMicroseconds(int64 micros) override {
     target_->SleepForMicroseconds(micros);
   }

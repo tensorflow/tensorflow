@@ -688,7 +688,7 @@ TEST_F(HloCostAnalysisTest, Scatter) {
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
-  EXPECT_EQ(analysis.bytes_accessed(), 4 * (2 + 2 * (2 * 3)));
+  EXPECT_EQ(analysis.bytes_accessed(), 4 * (2 + 3 * (2 * 3)));
 }
 }  // namespace
 }  // namespace xla

@@ -65,6 +65,7 @@ py_test(
     name = "xla_test_test",
     size = "small",
     srcs = ["xla_test_test.py"],
+    python_version = "PY2",
     deps = [
         ":xla_test",
     ],
@@ -260,6 +261,23 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "cond_test",
+    size = "small",
+    srcs = ["cond_test.py"],
+    disabled_backends = ["cpu_ondemand"],  # b/129021699
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
@@ -280,6 +298,11 @@ tf_xla_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
+    disabled_backends = [
+        # TODO(b/129396575): Fails on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -436,10 +459,6 @@ tf_xla_py_test(
     name = "extract_image_patches_op_test",
     size = "small",
     srcs = ["extract_image_patches_op_test.py"],
-    tags = [
-        "manual",
-        "notap",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -482,7 +501,7 @@ tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
-    shard_count = 3,
+    shard_count = 6,
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -853,6 +872,8 @@ tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
+    tags = ["config-cuda-only"],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -873,6 +894,7 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
         "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/kernel_tests/random:util",
     ],
 )
 
@@ -887,6 +909,7 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
         "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/kernel_tests/random:util",
     ],
 )
 
@@ -896,6 +919,8 @@ tf_xla_py_test(
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
+    tags = ["config-cuda-only"],
+    use_xla_device = False,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -929,7 +954,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "ternary_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ternary_ops_test.py"],
     deps = [
         ":xla_test",
@@ -1049,7 +1074,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
-    shard_count = 5,
+    shard_count = 1,
     # Times out in fastbuild mode.
     tags = ["optonly"],
     deps = [
