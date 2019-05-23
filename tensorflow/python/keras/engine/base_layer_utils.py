@@ -152,7 +152,7 @@ def make_variable(name,
       collections=collections,
       synchronization=synchronization,
       aggregation=aggregation,
-      shape=variable_shape if variable_shape.rank else None)
+      shape=variable_shape if variable_shape else None)
 
 
 def collect_previous_mask(input_tensors):
