@@ -169,6 +169,8 @@ class Device {
   }
 
  private:
+  Status SynchronizeAllActivity();
+
   bool use_multiple_streams_;
   bool synchronous_deallocation_;
   bool asynchronous_;

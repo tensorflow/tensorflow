@@ -162,10 +162,25 @@ Device::Device(se::StreamExecutor* executor, bool use_multiple_streams,
 }
 
 Device::~Device() {
+  Status status = SynchronizeAllActivity();
+  if (!status.ok()) {
+    LOG(ERROR) << "Error when closing device: " << status;
+  }
+}
+
+Status Device::SynchronizeAllActivity() {
+  Status status;
+  // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
+  // suffice. However on the Host platform SynchronizeAllActivity is a dummy
+  // implementation that doesn't actually block. To make sure activity has
+  // stopped, also block on the compute stream. If SynchronizeAllActivity is
+  // fixed, we could remove the BlockHostUntilDone call.
+  status.Update(compute_stream_->BlockHostUntilDone());
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
   if (!ok) {
-    LOG(ERROR) << "SynchronizeAllActivity failed when destroying Device.";
+    status.Update(Unknown("SynchronizeAllActivity failed."));
   }
+  return status;
 }
 
 void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
