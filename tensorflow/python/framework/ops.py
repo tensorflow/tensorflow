@@ -3515,13 +3515,6 @@ class Graph(object):
 
     # Add function to graph
     # pylint: disable=protected-access
-    # Handle functions created without using the C API. TODO(apassos,skyewm)
-    # remove this when all functions are generated using the C API by default
-    # as this will be unnecessary.
-    if not function._c_func:
-      serialized = function.definition.SerializeToString()
-      c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-      function._c_func = c_api_util.ScopedTFFunction(c_func)
     gradient = (
         function._grad_func._c_func.func if function._grad_func else None)
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
