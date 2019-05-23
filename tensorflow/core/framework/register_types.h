@@ -216,7 +216,6 @@ limitations under the License.
   TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m) TF_CALL_complex64(m) \
       TF_CALL_complex128(m) TF_CALL_bool(m) TF_CALL_string(m)             \
           TF_CALL_QUANTIZED_TYPES(m)
-#if TF_WITH_GPU_ENABLED_INT_OPS
 // Need 3 levels to expand couter macro properly
 #define TF_GPU_INT_OPS_UNIQ_HELPER(ctr, include_exclude, ...) \
   TF_GPU_INT_OPS_HELPER(ctr, include_exclude, __VA_ARGS__)
@@ -236,7 +235,6 @@ limitations under the License.
 #define TF_INCLUDE_IF_WITH_EXTRA_TYPES(include_exclude, ...) \
   TF_GPU_INT_OPS_UNIQ_HELPER(__COUNTER__, include_exclude, __VA_ARGS__)
 
-#endif
 #define TF_IF_WITH_EXTRA_TYPES(x, y)      \
   TF_INCLUDE_IF_WITH_EXTRA_TYPES(true, y) \
   x

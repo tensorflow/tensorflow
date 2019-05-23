@@ -288,7 +288,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
             "-fno-exceptions",
             "-ftemplate-depth=900",
         ]) +
-        if_cuda(["-DGOOGLE_CUDA=1","-DTF_WITH_GPU_ENABLED_INT_OPS=1"]) +
+        if_cuda(["-DGOOGLE_CUDA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
