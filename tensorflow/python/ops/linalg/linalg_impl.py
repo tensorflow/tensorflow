@@ -70,7 +70,7 @@ def logdet(matrix, name=None):
   # Compute the determinant of a matrix while reducing the chance of over- or
   underflow:
   A = ... # shape 10 x 10
-  det = tf.exp(tf.logdet(A))  # scalar
+  det = tf.exp(tf.linalg.logdet(A))  # scalar
   ```
 
   Args:
