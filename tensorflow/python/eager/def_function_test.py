@@ -448,6 +448,31 @@ class DefFunctionTest(test.TestCase):
         re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
       failing_function()
 
+  def testNonUniqueNamesGetConcreteFunction(self):
+    @def_function.function
+    def non_unique_arg_names(x, **kwargs):
+      a, b, c = x
+      d = kwargs['d']
+      return a + b + c + d
+
+    concrete = non_unique_arg_names.get_concrete_function(
+        (tensor_spec.TensorSpec(None, dtypes.float32),
+         tensor_spec.TensorSpec(None, dtypes.float32),
+         tensor_spec.TensorSpec(None, dtypes.float32)),
+        d=tensor_spec.TensorSpec(None, dtypes.float32))
+    self.assertAllClose(
+        10.,
+        concrete(x=constant_op.constant(1.),
+                 x_1=constant_op.constant(2.),
+                 x_2=constant_op.constant(3.),
+                 d=constant_op.constant(4.)))
+    self.assertAllClose(
+        10.,
+        concrete(constant_op.constant(1.),
+                 constant_op.constant(2.),
+                 constant_op.constant(3.),
+                 constant_op.constant(4.)))
+
   def testVariableCreatorScope(self):
     created_variables = []
     captured_variables = []
