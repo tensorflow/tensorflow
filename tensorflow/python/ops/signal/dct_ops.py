@@ -30,8 +30,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
   """Checks that DCT/IDCT arguments are compatible and well formed."""
-  if n is not None:
-    raise NotImplementedError("The DCT length argument is not implemented.")
   if axis != -1:
     raise NotImplementedError("axis must be -1. Got: %s" % axis)
   if dct_type not in (1, 2, 3):
