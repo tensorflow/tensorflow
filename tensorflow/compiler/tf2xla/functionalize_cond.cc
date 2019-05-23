@@ -918,10 +918,16 @@ string Conditional::name() const {
 
 Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
                                           int port) {
+  NodeBuilder id_builder(replacee->name(), "Identity");
+  id_builder.Input(if_node, port);
+  string outside_compilation;
+  if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    id_builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   Node* id;
-  TF_RETURN_IF_ERROR(NodeBuilder(replacee->name(), "Identity")
-                         .Input(if_node, port)
-                         .Finalize(graph_, &id));
+  TF_RETURN_IF_ERROR(id_builder.Finalize(graph_, &id));
   state_map_.ResetCondId(id, state_map_.LookupCondId(if_node));
   state_map_.ResetAncestorId(id, state_map_.LookupAncestorId(if_node));
   return Status::OK();
