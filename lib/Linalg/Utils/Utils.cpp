@@ -34,7 +34,6 @@ using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
-using namespace llvm;
 
 mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
     ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> ranges) {
@@ -68,78 +67,17 @@ ValueHandle LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
   return ValueHandle::null();
 }
 
-SmallVector<Value *, 8> mlir::getRanges(Operation *op) {
+SmallVector<Value *, 8> mlir::linalg::getViewSizes(LinalgOp &linalgOp) {
   SmallVector<Value *, 8> res;
-  if (auto view = dyn_cast<ViewOp>(op)) {
-    res.append(view.getIndexings().begin(), view.getIndexings().end());
-  } else if (auto slice = dyn_cast<SliceOp>(op)) {
-    for (auto *i : slice.getIndexings())
-      if (i->getType().isa<RangeType>())
-        res.push_back(i);
-  } else {
-    for (auto *v : op->getOperands()) {
-      if (v->getType().isa<ViewType>()) {
-        if (auto *vOp = v->getDefiningOp()) {
-          auto tmp = getRanges(vOp);
-          res.append(tmp.begin(), tmp.end());
-        } else {
-          llvm_unreachable("Needs an operation to extract ranges from a view");
-        }
-      }
-    }
+  using dim = ValueBuilder<linalg::DimOp>;
+  for (auto v : linalgOp.getInputsAndOutputs()) {
+    ViewType t = v->getType().cast<ViewType>();
+    for (unsigned i = 0; i < t.getRank(); ++i)
+      res.push_back(dim(v, i));
   }
   return res;
 }
 
-// Implementation details:
-//   1. Checks whether `ranges` define a new View by performing an equality
-//      check between the range ssa-values and the operands of
-//      `viewDefiningOp`.
-//   2. If all ranges happen to be equal, op creation is elided and the
-//      original result is returned instead.
-//   3. Otherwise, creates a SliceOp with the new `ranges`.
-// This is used to abstract away the creation of a SliceOp.
-Value *mlir::createOrReturnView(FuncBuilder *b, Location loc,
-                                Operation *viewDefiningOp,
-                                ArrayRef<Value *> ranges) {
-  if (auto view = dyn_cast<ViewOp>(viewDefiningOp)) {
-    auto indexings = view.getIndexings();
-    if (std::equal(indexings.begin(), indexings.end(), ranges.begin()))
-      return view.getResult();
-    return b->create<SliceOp>(loc, view.getResult(), ranges);
-  }
-  auto slice = cast<SliceOp>(viewDefiningOp);
-  unsigned idxRange = 0;
-  SmallVector<Value *, 4> newIndexings;
-  bool elide = true;
-  for (auto indexing : slice.getIndexings()) {
-    if (indexing->getType().isa<RangeType>()) {
-      elide &= (indexing != ranges[idxRange]);
-      newIndexings.push_back(ranges[idxRange++]);
-    } else
-      newIndexings.push_back(indexing);
-  }
-  if (elide)
-    return slice.getResult();
-  return b->create<SliceOp>(loc, slice.getBaseView(), newIndexings);
-}
-
-Value *mlir::extractRangePart(Value *range, RangePart part) {
-  assert(range->getType().isa<RangeType>() && "expected range type");
-  if (range->getDefiningOp()) {
-    if (auto r = dyn_cast_or_null<RangeOp>(range->getDefiningOp())) {
-      switch (part) {
-      case RangePart::Min:
-        return r.min();
-      case RangePart::Max:
-        return r.max();
-      case RangePart::Step:
-        return r.step();
-      }
-    }
-  }
-  llvm_unreachable("need operations to extract range parts");
-}
 // Folding eagerly is necessary to abide by affine.for static step requirement.
 // We must propagate constants on the steps as aggressively as possible.
 // Returns nullptr if folding is not trivially feasible.
@@ -167,10 +105,10 @@ static Value *emitOrFoldComposedAffineApply(FuncBuilder *b, Location loc,
   return b->create<AffineApplyOp>(loc, map, operands);
 }
 
-SmallVector<Value *, 4> mlir::applyMapToValues(FuncBuilder *b, Location loc,
-                                               AffineMap map,
-                                               ArrayRef<Value *> values,
-                                               FunctionConstants &state) {
+SmallVector<Value *, 4>
+mlir::linalg::applyMapToValues(FuncBuilder *b, Location loc, AffineMap map,
+                               ArrayRef<Value *> values,
+                               FunctionConstants &state) {
   SmallVector<Value *, 4> res;
   res.reserve(map.getNumResults());
   unsigned numDims = map.getNumDims();
@@ -182,17 +120,6 @@ SmallVector<Value *, 4> mlir::applyMapToValues(FuncBuilder *b, Location loc,
     res.push_back(emitOrFoldComposedAffineApply(b, loc, map, values, state));
   }
   return res;
-}
-
-SmallVector<Value *, 4> mlir::applyMapToRangePart(FuncBuilder *b, Location loc,
-                                                  AffineMap map,
-                                                  ArrayRef<Value *> ranges,
-                                                  RangePart part,
-                                                  FunctionConstants &state) {
-  SmallVector<Value *, 4> rangeParts(ranges.size());
-  llvm::transform(ranges, rangeParts.begin(),
-                  [&](Value *range) { return extractRangePart(range, part); });
-  return applyMapToValues(b, loc, map, rangeParts, state);
 }
 
 Value *FunctionConstants::getOrCreateIndex(int64_t v) {

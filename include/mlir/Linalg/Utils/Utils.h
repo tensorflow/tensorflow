@@ -42,6 +42,9 @@ private:
 
 } // namespace edsc
 
+namespace linalg {
+class LinalgOp;
+
 /// Helper class to memoize the creation of redundant constants within a given
 /// function.
 class FunctionConstants {
@@ -54,40 +57,10 @@ private:
   llvm::SmallDenseMap<int64_t, Value *> map;
 };
 
-/// Abstracts away the extraction of values of RangeType from the actual op
-/// implementation. For each operand of `op`:
-///   1. If it is of RangeType, appends it to the result.
-///   2. If it is of ViewType, further differentiates between:
-///      a. Views that have a defining op, in which cases it appends the ranges
-///         of the defining op.
-///      b. Views that do not have a defining op, in which case it materializes
-///         new range extraction ops to retrieve the range. This is not yet
-///         implemented and depends on future operations (e.g. extract_range).
-/// Precedence is given to a. over b. because it allows propagating existing
-/// values instead of creating new, duplicate, values.
-// TODO(ntv): Implement range extraction ops.
-SmallVector<Value *, 8> getRanges(Operation *op);
-
-/// Returns a value of ViewType at `b`, `loc` by applying the `ranges` to
-/// `viewDefiningOp`. This creates a new op unless `viewDefiningOp` already has
-/// the same exact `ranges`, in which case its (unique) result is returned.
-Value *createOrReturnView(FuncBuilder *b, Location loc,
-                          Operation *viewDefiningOp,
-                          llvm::ArrayRef<Value *> ranges);
-
-/// Returns the min/max/step from a RangeType value, depending on `part`:
-///   1. If `range` comes from a range defining op, this just returns the proper
-///      operand.
-///   2. Otherwise (e.g. if range is a function parameter), it materializes new
-///      part extraction ops to retrieve the min/max/step. This is not yet
-///      implemented and depends on future operations (e.g. extract_min, ...).
-/// Precedence is given to 1. over 2. because it allows propagating existing
-/// values instead of creating new, duplicate, values.
-/// This is used to abstract away the extraction of the min/max/step from a
-/// RangeType value.
-// TODO(ntv): Implement range extraction ops.
-enum class RangePart { Min = 0, Max, Step };
-Value *extractRangePart(Value *range, RangePart part);
+// Returns the linearized list of all view dimensions in a linalgOp. Applying
+// the inverse, concatenated loopToOperandRangeMaps to this list allows the
+// derivation of loop ranges for any linalgOp.
+SmallVector<Value *, 8> getViewSizes(LinalgOp &linalgOp);
 
 /// Returns the values obtained by applying `map` to the list of values.
 /// Performs simplifications and foldings where possible.
@@ -96,14 +69,7 @@ SmallVector<Value *, 4> applyMapToValues(FuncBuilder *b, Location loc,
                                          ArrayRef<Value *> values,
                                          FunctionConstants &state);
 
-/// Returns the values obtained by applying `map` to the list of range parts
-/// extracted from `ranges`. Performs simplifications and foldings where
-/// possible.
-SmallVector<Value *, 4> applyMapToRangePart(FuncBuilder *b, Location loc,
-                                            AffineMap map,
-                                            ArrayRef<Value *> ranges,
-                                            RangePart part,
-                                            FunctionConstants &state);
+} // namespace linalg
 } // namespace mlir
 
 #endif // MLIR_LINALG_UTILS_H_

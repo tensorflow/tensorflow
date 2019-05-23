@@ -50,20 +50,6 @@ static SmallVector<Value *, 4> emitLoopRanges(FuncBuilder *b, Location loc,
   return res;
 }
 
-// Returns the linearized list of all view dimensions in a linalgOp. Appliying
-// the inverse, concatenated loopToOperandRangeMaps to this list allows the
-// derivation of loop ranges for any linalgOp.
-static SmallVector<Value *, 8> getViewSizes(LinalgOp &linalgOp) {
-  SmallVector<Value *, 8> res;
-  using dim = ValueBuilder<linalg::DimOp>;
-  for (auto v : linalgOp.getInputsAndOutputs()) {
-    ViewType t = v->getType().cast<ViewType>();
-    for (unsigned i = 0; i < t.getRank(); ++i)
-      res.push_back(dim(v, i));
-  }
-  return res;
-}
-
 static void emitLinalgOpAsLoops(LinalgOp &linalgOp, FunctionConstants &state) {
   FuncBuilder b(linalgOp.getOperation());
   ScopedContext scope(b, linalgOp.getOperation()->getLoc());

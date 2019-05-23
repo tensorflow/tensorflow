@@ -239,8 +239,6 @@ LogicalResult mlir::linalg::SliceOp::verify() {
   if (llvm::empty(getOperands()))
     return emitOpError(
         "requires at least a view operand followed by 'rank' indices");
-  if (!dyn_cast_or_null<ViewOp>(getOperand(0)->getDefiningOp()))
-    return emitOpError("first operand must come from a ViewOp");
   unsigned rank = getBaseViewRank();
   if (llvm::size(getIndexings()) != rank) {
     return emitOpError("requires at least a view operand followed by ")
