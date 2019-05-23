@@ -127,7 +127,7 @@ Status ClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << options.target
           << " (this: " << this << ")";
   WorkerInterface* wi =
-      worker_session_->worker_cache->CreateWorker(options.target);
+      worker_session_->worker_cache->GetOrCreateWorker(options.target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
