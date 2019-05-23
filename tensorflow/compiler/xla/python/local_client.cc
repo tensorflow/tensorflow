@@ -571,6 +571,26 @@ PyLocalBuffer::DestructureTuple() {
   return results;
 }
 
+Status PyLocalBuffer::BlockHostUntilReady() {
+  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::BlockHostUntilReady");
+  std::shared_ptr<PySharedDeviceBuffer> device_buffer = DeviceBuffer();
+  if (!device_buffer) {
+    return InvalidArgument("BlockHostUntilReady() called on invalid buffer.");
+  }
+
+  client_->py_ref_manager().CollectGarbage();
+  py::gil_scoped_release gil_release;
+
+  // This code waits at least until the buffer is ready, but it may wait longer
+  // if there are other device to host transfers scheduled. If this proves to
+  // be an issue, we could either use a separate stream for this purpose, or
+  // poll for the buffer definition events.
+  se::Stream* stream =
+      client_->device(device_buffer->device_ordinal()).device_to_host_stream();
+  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
+  return stream->BlockHostUntilDone();
+}
+
 PyLocalExecutable::PyLocalExecutable(
     std::shared_ptr<LocalExecutable> executable,
     DeviceAssignment device_assignment, std::shared_ptr<PyLocalClient> client)

@@ -360,6 +360,8 @@ class Buffer(object):
   # def delete(self):
   # def destructure(self) -> [Buffer]
   # def is_deleted(self) -> bool:
+  # def block_host_until_ready(self):
+  #    """Blocks the calling thread until the buffer is ready on device."""
   #
   # TODO(phawkins): remove Buffer and its static methods completely, have
   # clients call methods on Backend to create buffers.

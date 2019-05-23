@@ -520,6 +520,13 @@ class BufferTest(ComputationTest):
     self.assertEqual(xla_shape.dimensions(), (1, 2))
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
+  def testBlockHostUntilReadyWorks(self):
+    arg = np.array([[1., 2.]], np.float32)
+    arg_buffer = xla_client.Buffer.from_pyval(arg)
+    arg_buffer.block_host_until_ready()
+    # This test merely checks that nothing goes awry when we call
+    # block_host_until_ready(); it's difficult to test anything else.
+
 
 class SingleOpTest(ComputationTest):
   """Tests for single ops.
