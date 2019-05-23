@@ -1860,7 +1860,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
 
   @property
   def _is_graph_tensor(self):
-    return hasattr(self._values, "graph")
+    return hasattr(self._row_splits, "graph")
 
   def consumers(self):
     return self._consumers()
