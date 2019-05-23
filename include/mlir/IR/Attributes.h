@@ -388,10 +388,6 @@ public:
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::Function;
   }
-
-  /// This function is used by the internals of the Function class to update the
-  /// type of the function attribute for 'value'.
-  static void resetType(Function *value);
 };
 
 /// A base attribute that represents a reference to a vector or tensor constant.
