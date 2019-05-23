@@ -173,7 +173,7 @@ const NnApi LoadNnApi() {
       LOAD_FUNCTION_RENAME(cutils_handle, ASharedMemory_create,
                            "ashmem_create_region");
     } else {
-      NNAPI_LOG("nnapi error: unable to open neither libraries %s and %d",
+      NNAPI_LOG("nnapi error: unable to open neither libraries %s and %s",
                 "libandroid.so", "libcutils.so");
     }
   }
