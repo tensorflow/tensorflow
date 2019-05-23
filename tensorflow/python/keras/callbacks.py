@@ -1723,6 +1723,8 @@ class TensorBoard(Callback):
         w_img = array_ops.transpose(w_img, perm=[2, 0, 1])
         shape = K.int_shape(w_img)
       w_img = array_ops.reshape(w_img, [shape[0], shape[1], shape[2], 1])
+    elif len(shape) != 4:
+      raise ValueError('Invalid shape: {}'.format(repr(shape)))
 
     shape = K.int_shape(w_img)
     # Not possible to handle 3D convnets etc.
