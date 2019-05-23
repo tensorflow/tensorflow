@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import fold_batch_norms
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -167,7 +168,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2d(self):
-    self._RunTestOverParameters(self._TestFoldConv2d)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldConv2d)
 
   def testMultipleLayerConv2d(self,
                               relu=nn_ops.relu,
@@ -337,7 +339,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldConv2dUnknownShape(self):
-    self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldConv2dUnknownShape)
 
   def _TestFoldFullyConnectedLayer(
       self, relu, relu_op_name, with_bypass, has_scaling, fused_batch_norm,
@@ -432,7 +435,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldFullyConnectedLayer(self):
-    self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldFullyConnectedLayer)
 
   def _TestFoldDepthwiseConv2d(self, relu, relu_op_name, with_bypass,
                                has_scaling, fused_batch_norm,
@@ -543,7 +547,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldDepthwiseConv2d(self):
-    self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
 
   def _TestFoldAtrousConv2d(self, relu, relu_op_name, with_bypass, has_scaling,
                             fused_batch_norm, freeze_batch_norm_delay,
@@ -660,7 +665,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
       self.assertFalse('//' in op.name, 'Double slash in op %s' % op.name)
 
   def testFoldAtrousConv2d(self):
-    self._RunTestOverParameters(self._TestFoldAtrousConv2d)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestFoldAtrousConv2d)
 
   def _TestCompareFoldAndUnfolded(self,
                                   relu,
@@ -733,7 +739,8 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     self.assertAllClose(unfolded_backward, folded_backward, atol=1e-3)
 
   def testCompareFoldAndUnfolded(self):
-    self._RunTestOverParameters(self._TestCompareFoldAndUnfolded)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverParameters(self._TestCompareFoldAndUnfolded)
 
   def _BatchNormParams(self, scale=True, fused=False):
     return {

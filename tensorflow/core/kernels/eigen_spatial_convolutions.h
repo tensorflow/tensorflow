@@ -18,11 +18,57 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+// Note the following header is used in both TF and TFLite. Particularly, it's
+// used for float TFLite Conv2D.
+#include "tensorflow/core/kernels/eigen_spatial_convolutions-inl.h"
+
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 
 namespace Eigen {
 namespace internal {
+
+// After we vectorized all loads from the underlying tensor using Packet ops, we
+// have to finalize coefficients that do not fit into a packet.
+template <typename Scalar, typename DataMapper, int packet_size,
+          bool masked_load_store>
+struct FinalizeDataMapperCoeffs {
+  EIGEN_ALWAYS_INLINE static Index finalize(Scalar* block,
+                                            const DataMapper& rhs,
+                                            Index base_idx, Index depth,
+                                            Index max_depth, bool pad = false) {
+    const Index num_coeffs = max_depth - depth;
+    eigen_assert(num_coeffs <= packet_size);
+
+    for (; depth < max_depth; ++depth) {
+      *block = pad ? Scalar(0) : rhs.coeffNoPadding(depth, base_idx);
+      ++block;
+    }
+
+    return num_coeffs;
+  }
+};
+
+template <typename Scalar, typename DataMapper, int packet_size>
+struct FinalizeDataMapperCoeffs<Scalar, DataMapper, packet_size,
+                                /*masked_load_store=*/true> {
+  EIGEN_ALWAYS_INLINE static Index finalize(Scalar* block,
+                                            const DataMapper& rhs,
+                                            Index base_idx, Index depth,
+                                            Index max_depth, bool pad = false) {
+    Index num_coeffs = max_depth - depth;
+    eigen_assert(num_coeffs <= packet_size);
+    if (num_coeffs == 0) return 0;
+
+    using Packet = typename packet_traits<Scalar>::type;
+    Packet p = pad ? pset1<Packet>(Scalar(0))
+                   : rhs.partialPacketNoPadding(depth, base_idx, num_coeffs);
+    internal::pstoreu(block, p, mask<Packet>(0, num_coeffs));
+
+    return num_coeffs;
+  }
+};
+
 // Pack a block of the right input matrix (in our case it's always a
 // "virtual matrix" constructed from extracted image patches) in contiguous
 // block in column-major storage order. Knowing the properties of the
@@ -55,6 +101,12 @@ struct gemm_pack_colmajor_block<
 
   typedef SubMapper DataMapper;
   typedef typename packet_traits<Scalar>::type Packet;
+
+  using CoeffFinalizer = FinalizeDataMapperCoeffs<
+      Scalar, DataMapper, packet_size,
+      TensorEvaluatorHasPartialPacket<typename DataMapper::TensorEvaluatorT,
+                                      Packet, Index>::value &&
+          unpacket_traits<Packet>::masked_store_available>;
 
   EIGEN_DONT_INLINE
   void operator()(Scalar* block, const DataMapper rhs, StorageIndex rows,
@@ -149,12 +201,14 @@ struct gemm_pack_colmajor_block<
               block += packet_size;
               k += packet_size;
             }
-            for (; d < max_depth; d++) {
-              eigen_assert(k < peeled_k);
-              *block = rhs.coeffNoPadding(d, base_idx);
-              ++block;
-              ++k;
-            }
+
+            eigen_assert(k <= peeled_k);
+            const Index num_coeffs =
+                CoeffFinalizer::finalize(block, rhs, base_idx, d, max_depth);
+
+            k += num_coeffs;
+            block += num_coeffs;
+            eigen_assert(k <= peeled_k);
           }
 
           // Go to the next column.
@@ -190,9 +244,9 @@ struct gemm_pack_colmajor_block<
             }
 
           } else {
-            const StorageIndex max_vectorized_depth = max_depth - packet_size;
+            const StorageIndex vectorized_depth = max_depth - packet_size;
             StorageIndex d = start_depth;
-            for (; d < max_vectorized_depth; d += packet_size) {
+            for (; d <= vectorized_depth; d += packet_size) {
               eigen_assert(k < peeled_k);
               const Packet p = pad ? pset1<Packet>(Scalar(0))
                                    : rhs.packetNoPadding(d, base_idx);
@@ -200,12 +254,14 @@ struct gemm_pack_colmajor_block<
               block += packet_size;
               k += packet_size;
             }
-            for (; d < max_depth; d++) {
-              eigen_assert(k < peeled_k);
-              *block = pad ? Scalar(0) : rhs.coeffNoPadding(d, base_idx);
-              ++block;
-              ++k;
-            }
+
+            eigen_assert(k <= peeled_k);
+            const Index num_coeffs = CoeffFinalizer::finalize(
+                block, rhs, base_idx, d, max_depth, pad);
+
+            k += num_coeffs;
+            block += num_coeffs;
+            eigen_assert(k <= peeled_k);
           }
         }
       }
@@ -221,12 +277,7 @@ struct gemm_pack_colmajor_block<
     }
   }
 };
-}  // end namespace internal
-}  // end namespace Eigen
+}  // namespace internal
+}  // namespace Eigen
 #endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-
-// Note the following header is used in both TF and TFLite. Particularly, it's
-// used for float TFLite Conv2D.
-#include "tensorflow/core/kernels/eigen_spatial_convolutions-inl.h"
-
 #endif  // TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_

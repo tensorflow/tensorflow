@@ -261,6 +261,9 @@ py_test(
     name = "tensor_signature_test",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # b/130760310
+    ],
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",

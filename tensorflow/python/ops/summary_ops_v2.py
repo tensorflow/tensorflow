@@ -304,11 +304,11 @@ def initialize(
   which can happen before or after this function is called.
 
   Args:
-    graph: A `tf.Graph` or `tf.GraphDef` to output to the writer.
+    graph: A `tf.Graph` or `tf.compat.v1.GraphDef` to output to the writer.
       This function will not write the default graph by default. When
       writing to an event log file, the associated step will be zero.
     session: So this method can call `tf.Session.run`. This defaults
-      to `tf.get_default_session`.
+      to `tf.compat.v1.get_default_session`.
 
   Raises:
     RuntimeError: If  the current thread has no default
@@ -510,13 +510,16 @@ def _nothing():
   return constant_op.constant(False)
 
 
-def all_summary_ops():
-  """Graph-mode only. Returns all summary ops.
+@tf_export(v1=["summary.all_v2_summary_ops"])
+def all_v2_summary_ops():
+  """Returns all V2-style summary ops defined in the current default graph.
 
-  Please note this excludes `tf.summary.graph` ops.
+  This includes ops from TF 2.0 tf.summary and TF 1.x tf.contrib.summary (except
+  for `tf.contrib.summary.graph` and `tf.contrib.summary.import_event`), but
+  does *not* include TF 1.x tf.summary ops.
 
   Returns:
-    The summary ops.
+    List of summary ops, or None if called under eager execution.
   """
   if context.executing_eagerly():
     return None
@@ -638,8 +641,12 @@ def write(tag, tensor, step=None, metadata=None, name=None):
         with ops.control_dependencies([write_summary_op]):
           return constant_op.constant(True)
 
-    return smart_cond.smart_cond(
-        _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+    with ops.device("cpu:0"):
+      op = smart_cond.smart_cond(
+          _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+      if not context.executing_eagerly():
+        ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
+      return op
 
 
 @tf_export("summary.experimental.write_raw_pb", v1=[])
@@ -686,8 +693,12 @@ def write_raw_pb(tensor, step=None, name=None):
         with ops.control_dependencies([raw_summary_op]):
           return constant_op.constant(True)
 
-    return smart_cond.smart_cond(
-        _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+    with ops.device("cpu:0"):
+      op = smart_cond.smart_cond(
+          _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+      if not context.executing_eagerly():
+        ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
+      return op
 
 
 def summary_writer_function(name, tensor, function, family=None):
@@ -756,7 +767,7 @@ def scalar(name, tensor, family=None, step=None):
       `int8`, `uint16`, `half`, `uint32`, `uint64`.
     family: Optional, the summary's family.
     step: The `int64` monotonic step variable, which defaults
-      to `tf.train.get_global_step`.
+      to `tf.compat.v1.train.get_global_step`.
 
   Returns:
     The created `tf.Operation` or a `tf.no_op` if summary writing has
@@ -836,14 +847,14 @@ def graph(param, step=None, name=None):
   TensorBoard.
 
   When not using eager execution mode, the user should consider passing
-  the `graph` parameter to `tf.contrib.summary.initialize` instead of
+  the `graph` parameter to `tf.compat.v1.summary.initialize` instead of
   calling this function. Otherwise special care needs to be taken when
   using the graph to record the graph.
 
   Args:
     param: A `tf.Tensor` containing a serialized graph proto. When
       eager execution is enabled, this function will automatically
-      coerce `tf.Graph`, `tf.GraphDef`, and string types.
+      coerce `tf.Graph`, `tf.compat.v1.GraphDef`, and string types.
     step: The global step variable. This doesn't have useful semantics
       for graph summaries, but is used anyway, due to the structure of
       event log files. This defaults to the global step.
@@ -875,7 +886,7 @@ _graph = graph  # for functions with a graph parameter
 
 
 def import_event(tensor, name=None):
-  """Writes a `tf.Event` binary proto.
+  """Writes a `tf.compat.v1.Event` binary proto.
 
   This can be used to import existing event logs into a new summary writer sink.
   Please note that this is lower level than the other summary functions and
@@ -883,7 +894,7 @@ def import_event(tensor, name=None):
 
   Args:
     tensor: A `tf.Tensor` of type `string` containing a serialized
-      `tf.Event` proto.
+      `tf.compat.v1.Event` proto.
     name: A name for the operation (optional).
 
   Returns:
@@ -1009,10 +1020,12 @@ def run_metadata(name, data, step=None):
   with summary_scope(name,
                      "graph_run_metadata_summary",
                      [data, step]) as (tag, _):
+    with ops.device("cpu:0"):
+      tensor = constant_op.constant(data.SerializeToString(),
+                                    dtype=dtypes.string)
     return write(
         tag=tag,
-        tensor=constant_op.constant(
-            data.SerializeToString(), dtype=dtypes.string),
+        tensor=tensor,
         step=step,
         metadata=summary_metadata)
 
@@ -1050,10 +1063,12 @@ def run_metadata_graphs(name, data, step=None):
   with summary_scope(name,
                      "graph_run_metadata_graph_summary",
                      [data, step]) as (tag, _):
+    with ops.device("cpu:0"):
+      tensor = constant_op.constant(data.SerializeToString(),
+                                    dtype=dtypes.string)
     return write(
         tag=tag,
-        tensor=constant_op.constant(
-            data.SerializeToString(), dtype=dtypes.string),
+        tensor=tensor,
         step=step,
         metadata=summary_metadata)
 
@@ -1096,9 +1111,11 @@ def keras_model(name, data, step=None):
     return False
 
   with summary_scope(name, "graph_keras_model", [data, step]) as (tag, _):
+    with ops.device("cpu:0"):
+      tensor = constant_op.constant(json_string, dtype=dtypes.string)
     return write(
         tag=tag,
-        tensor=constant_op.constant(json_string, dtype=dtypes.string),
+        tensor=tensor,
         step=step,
         metadata=summary_metadata)
 

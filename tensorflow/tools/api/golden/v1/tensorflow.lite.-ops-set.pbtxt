@@ -9,4 +9,8 @@ tf_class {
     name: "TFLITE_BUILTINS"
     mtype: "<enum \'OpsSet\'>"
   }
+  member {
+    name: "TFLITE_BUILTINS_INT8"
+    mtype: "<enum \'OpsSet\'>"
+  }
 }

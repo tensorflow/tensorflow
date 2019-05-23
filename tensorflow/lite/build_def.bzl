@@ -33,7 +33,10 @@ def tflite_copts():
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
+            "-Wno-comment",
+            "-Wno-ignored-attributes",
             "-Wno-sign-compare",
+            "-Wno-unknown-pragmas",
         ],
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
@@ -247,6 +250,7 @@ def generated_test_models():
         "elu",
         "equal",
         "exp",
+        "embedding_lookup",
         "expand_dims",
         "eye",
         "fill",
@@ -307,6 +311,7 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
+        "round",
         "rsqrt",
         "shape",
         "sigmoid",
@@ -346,7 +351,6 @@ def generated_test_models_failing(conversion_mode):
     if conversion_mode == "toco-flex":
         return [
             "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
-            "unroll_batch_matmul",  # TODO(b/123030774): Fails in 1.13 tests.
             "unidirectional_sequence_lstm",
             "unidirectional_sequence_rnn",
         ]

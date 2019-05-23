@@ -158,8 +158,8 @@ class KerasSumTest(test.TestCase):
     self.assertEqual(600., self.evaluate(restore_sum.result()))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class KerasMeanTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class KerasMeanTest(keras_parameterized.TestCase):
 
   # TODO(b/120949004): Re-enable garbage collection check
   # @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
@@ -293,6 +293,43 @@ class KerasMeanTest(test.TestCase):
     self.evaluate(restore_update)
     self.assertEqual(200., self.evaluate(restore_mean.result()))
     self.assertEqual(3, self.evaluate(restore_mean.count))
+
+  def test_multiple_instances(self):
+    m = metrics.Mean()
+    m2 = metrics.Mean()
+
+    self.assertEqual(m.name, 'mean')
+    self.assertEqual(m2.name, 'mean')
+
+    self.assertEqual([v.name for v in m.variables],
+                     testing_utils.get_expected_metric_variable_names(
+                         ['total', 'count']))
+    self.assertEqual([v.name for v in m2.variables],
+                     testing_utils.get_expected_metric_variable_names(
+                         ['total', 'count'], name_suffix='_1'))
+
+    self.evaluate(variables.variables_initializer(m.variables))
+    self.evaluate(variables.variables_initializer(m2.variables))
+
+    # check initial state
+    self.assertEqual(self.evaluate(m.total), 0)
+    self.assertEqual(self.evaluate(m.count), 0)
+    self.assertEqual(self.evaluate(m2.total), 0)
+    self.assertEqual(self.evaluate(m2.count), 0)
+
+    # check __call__()
+    self.assertEqual(self.evaluate(m(100)), 100)
+    self.assertEqual(self.evaluate(m.total), 100)
+    self.assertEqual(self.evaluate(m.count), 1)
+    self.assertEqual(self.evaluate(m2.total), 0)
+    self.assertEqual(self.evaluate(m2.count), 0)
+
+    self.assertEqual(self.evaluate(m2([63, 10])), 36.5)
+    self.assertEqual(self.evaluate(m2.total), 73)
+    self.assertEqual(self.evaluate(m2.count), 2)
+    self.assertEqual(self.evaluate(m.result()), 100)
+    self.assertEqual(self.evaluate(m.total), 100)
+    self.assertEqual(self.evaluate(m.count), 1)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -897,6 +934,15 @@ class TopKCategoricalAccuracyTest(test.TestCase):
     result = a_obj(y_true, y_pred)
     self.assertEqual(0.5, self.evaluate(result))  # only 1 sample matches.
 
+  def test_weighted(self):
+    a_obj = metrics.TopKCategoricalAccuracy(k=2)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    y_true = constant_op.constant([[0, 1, 0], [1, 0, 0], [0, 0, 1]])
+    y_pred = constant_op.constant([[0, 0.9, 0.1], [0, 0.9, 0.1], [0, 0.9, 0.1]])
+    sample_weight = constant_op.constant((1.0, 0.0, 1.0))
+    result = a_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(1.0, self.evaluate(result), atol=1e-5)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class SparseTopKCategoricalAccuracyTest(test.TestCase):
@@ -934,6 +980,15 @@ class SparseTopKCategoricalAccuracyTest(test.TestCase):
     self.evaluate(variables.variables_initializer(a_obj.variables))
     result = a_obj(y_true, y_pred)
     self.assertEqual(0.5, self.evaluate(result))  # only 1 sample matches.
+
+  def test_weighted(self):
+    a_obj = metrics.SparseTopKCategoricalAccuracy(k=2)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    y_true = constant_op.constant([1, 0, 2])
+    y_pred = constant_op.constant([[0, 0.9, 0.1], [0, 0.9, 0.1], [0, 0.9, 0.1]])
+    sample_weight = constant_op.constant((1.0, 0.0, 1.0))
+    result = a_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(1.0, self.evaluate(result), atol=1e-5)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1141,8 +1196,8 @@ class MeanIoUTest(test.TestCase):
     self.assertEqual(m_obj2.num_classes, 2)
 
   def test_unweighted(self):
-    y_pred = constant_op.constant([0, 1, 0, 1], dtype=dtypes.float32)
-    y_true = constant_op.constant([0, 0, 1, 1])
+    y_pred = [0, 1, 0, 1]
+    y_true = [0, 0, 1, 1]
 
     m_obj = metrics.MeanIoU(num_classes=2)
     self.evaluate(variables.variables_initializer(m_obj.variables))

@@ -31,7 +31,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:histogram_ops",
         "//tensorflow/python:init_ops",
@@ -44,6 +43,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/ops/distributions",
     ],
 )
@@ -51,6 +51,7 @@ py_library(
 py_test(
     name = "classification_test",
     srcs = ["python/metrics/classification_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",
@@ -64,6 +65,7 @@ py_test(
     name = "histogram_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/histogram_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":metrics_py",
@@ -78,6 +80,7 @@ py_test(
 py_test(
     name = "metric_ops_test",
     srcs = ["python/ops/metric_ops_test.py"],
+    python_version = "PY2",
     shard_count = 30,
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
@@ -103,6 +106,7 @@ py_test(
     name = "metric_ops_large_test",
     size = "large",
     srcs = ["python/ops/metric_ops_large_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
     deps = [

@@ -43,6 +43,7 @@ class OpKernelContext;
 class Tensor;
 class TensorBuffer;
 class TensorCApi;
+class TensorCord;
 class TensorDescription;
 class TensorProto;
 class Var;
@@ -237,7 +238,8 @@ class Tensor {
     return true;
 #else
     void* ptr = base<void>();
-    return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
+    return dtype() == DT_STRING ||
+           (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
 #endif
   }
 
@@ -606,6 +608,7 @@ class Tensor {
 
   friend class DMAHelper;
   friend class TensorCApi;
+  friend class TensorCord;            // For access to buf_
   friend class TensorReference;       // For access to buf_
   friend class VariableOp;            // For access to set_shape
   friend class AutoReloadVariableOp;  // For access to set_shape

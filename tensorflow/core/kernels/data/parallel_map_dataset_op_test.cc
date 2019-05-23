@@ -334,7 +334,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, GetNext) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 TEST_F(ParallelMapDatasetOpTest, DatasetNodeName) {
@@ -769,7 +769,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {
   }
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*expect_items_equal*/ test_case.sloppy));
+                           /*compare_order*/ !test_case.sloppy));
 }
 
 TEST_F(ParallelMapDatasetOpTest, InvalidNumParallelCalls) {

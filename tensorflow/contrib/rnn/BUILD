@@ -12,12 +12,12 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_custom_op_library",
     "tf_cc_test",
-    "tf_py_test",
+    "tf_custom_op_library",
     "tf_gen_op_libs",
-    "tf_kernel_library",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
+    "tf_py_test",
 )
 
 cc_library(
@@ -99,6 +99,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["optonly"],
     xla_enabled = True,
 )
 
@@ -345,6 +346,7 @@ tf_kernel_library(
 py_binary(
     name = "checkpoint_convert",
     srcs = ["python/tools/checkpoint_convert.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":checkpoint_convert_lib"],
 )
@@ -368,6 +370,7 @@ py_test(
     name = "checkpoint_convert_test",
     size = "small",
     srcs = ["python/tools/checkpoint_convert_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [

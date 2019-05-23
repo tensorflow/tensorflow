@@ -306,12 +306,39 @@ class DistributionTestBase(test.TestCase):
 
     return _input_fn
 
+  def _test_input_fn_iterable(
+      self, strategy, input_fn, expected_values, ignore_order=False):
+    if not context.executing_eagerly():
+      self.skipTest("Only supported with eager execution.")
+
+    assert_same = self.assertCountEqual if ignore_order else self.assertEqual
+
+    iterable = strategy.experimental_distribute_datasets_from_function(input_fn)
+    iterator = iter(iterable)
+
+    for expected_value in expected_values:
+      computed_value = self.evaluate(
+          list(strategy.experimental_local_results(next(iterator))))
+      assert_same(expected_value, computed_value)
+
+    with self.assertRaises(StopIteration):
+      self.evaluate(strategy.experimental_local_results(next(iterator)))
+
+    # After re-initializing the iterator, should be able to iterate again.
+    iterator = iter(iterable)
+
+    for expected_value in expected_values:
+      computed_value = self.evaluate(
+          list(strategy.experimental_local_results(next(iterator))))
+      assert_same(expected_value, computed_value)
+
   def _test_input_fn_iterator(self,
                               iterator,
                               devices,
                               expected_values,
                               sess=None,
-                              test_reinitialize=True):
+                              test_reinitialize=True,
+                              ignore_order=False):
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
     evaluate(iterator.initialize())
 
@@ -319,7 +346,10 @@ class DistributionTestBase(test.TestCase):
       next_element = iterator.get_next()
       computed_value = evaluate(
           [values.select_replica(r, next_element) for r in range(len(devices))])
-      self.assertEqual(expected_value, computed_value)
+      if ignore_order:
+        self.assertCountEqual(expected_value, computed_value)
+      else:
+        self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
@@ -335,7 +365,10 @@ class DistributionTestBase(test.TestCase):
         computed_value = evaluate([
             values.select_replica(r, next_element) for r in range(len(devices))
         ])
-        self.assertEqual(expected_value, computed_value)
+        if ignore_order:
+          self.assertCountEqual(expected_value, computed_value)
+        else:
+          self.assertEqual(expected_value, computed_value)
 
   def _test_global_step_update(self, strategy):
     with strategy.scope():

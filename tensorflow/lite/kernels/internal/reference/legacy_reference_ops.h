@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/legacy_types.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
@@ -420,6 +421,26 @@ void FullyConnected(const float* input_data, const Dims<4>& input_dims,
                  output_data, output_dims);
 }
 
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext*) {
+  FullyConnected(params, input_shape, input_data, filter_shape, filter_data,
+                 bias_shape, bias_data, output_shape, output_data);
+}
+
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    int16* output_data, gemmlowp::GemmContext*) {
+  FullyConnected(params, input_shape, input_data, filter_shape, filter_data,
+                 bias_shape, bias_data, output_shape, output_data);
+}
+
 inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                            int32 input_offset, const uint8* filter_data,
                            const Dims<4>& filter_dims, int32 filter_offset,
@@ -468,6 +489,19 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
                  bias_data, DimsToShape(output_dims), output_data,
                  gemmlowp_context);
+}
+
+inline void ShuffledFullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& weights_shape,
+    const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    int16* output_data, uint8* shuffled_input_workspace_data,
+    gemmlowp::GemmContext*) {
+  ShuffledFullyConnected(params, input_shape, input_data, weights_shape,
+                         shuffled_weights_data, bias_shape, bias_data,
+                         output_shape, output_data,
+                         shuffled_input_workspace_data);
 }
 
 inline void ShuffledFullyConnected(

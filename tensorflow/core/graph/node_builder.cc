@@ -116,7 +116,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;
   if (!errors_.empty()) {
-    return errors::InvalidArgument(str_util::Join(errors_, "\n"));
+    return errors::InvalidArgument(absl::StrJoin(errors_, "\n"));
   }
 
   NodeDef node_def;

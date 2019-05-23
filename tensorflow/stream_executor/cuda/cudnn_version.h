@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/strings/str_cat.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -29,9 +29,8 @@ struct CudnnVersion {
   CudnnVersion(int major, int minor, int patch)
       : major_version(major), minor_version(minor), patch_level(patch) {}
 
-  tensorflow::string ToString() const {
-    return tensorflow::strings::StrCat(major_version, ".", minor_version, ".",
-                                       patch_level);
+  std::string ToString() const {
+    return absl::StrCat(major_version, ".", minor_version, ".", patch_level);
   }
 
   int major_version;

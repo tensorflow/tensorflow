@@ -38,7 +38,9 @@ manual_symbol_renames = {
     "tf.estimator.inputs":
         "tf.compat.v1.estimator.inputs",
     "tf.extract_image_patches":
-        "tf.image.extract_image_patches",
+        "tf.image.extract_patches",
+    "tf.image.extract_image_patches":
+        "tf.image.extract_patches",
     "tf.gfile.Copy":
         "tf.io.gfile.copy",
     "tf.gfile.DeleteRecursively":
@@ -67,6 +69,22 @@ manual_symbol_renames = {
         "tf.io.gfile.stat",
     "tf.gfile.Walk":
         "tf.io.gfile.walk",
+    "tf.contrib.cluster_resolver.ClusterResolver":
+        "tf.distribute.cluster_resolver.ClusterResolver",
+    "tf.contrib.cluster_resolver.GceClusterResolver":
+        "tf.distribute.cluster_resolver.GCEClusterResolver",
+    "tf.contrib.cluster_resolver.KubernetesClusterResolver":
+        "tf.distribute.cluster_resolver.KubernetesClusterResolver",
+    "tf.contrib.cluster_resolver.SimpleClusterResolver":
+        "tf.distribute.cluster_resolver.SimpleClusterResolver",
+    "tf.contrib.cluster_resolver.SlurmClusterResolver":
+        "tf.distribute.cluster_resolver.SlurmClusterResolver",
+    "tf.contrib.cluster_resolver.TFConfigClusterResolver":
+        "tf.distribute.cluster_resolver.TFConfigClusterResolver",
+    "tf.contrib.cluster_resolver.TPUClusterResolver":
+        "tf.distribute.cluster_resolver.TPUClusterResolver",
+    "tf.contrib.cluster_resolver.UnionClusterResolver":
+        "tf.distribute.cluster_resolver.UnionClusterResolver",
     "tf.contrib.data.AUTOTUNE":
         "tf.data.experimental.AUTOTUNE",
     "tf.contrib.data.Counter":
@@ -157,6 +175,8 @@ manual_symbol_renames = {
         "tf.CriticalSection",
     "tf.contrib.framework.is_tensor":
         "tf.is_tensor",
+    "tf.contrib.framework.load_variable":
+        "tf.train.load_variable",
     "tf.contrib.framework.nest.assert_same_structure":
         "tf.nest.assert_same_structure",
     "tf.contrib.framework.nest.flatten":
@@ -199,16 +219,62 @@ manual_symbol_renames = {
         "tf.sort",
     "tf.contrib.framework.argsort":
         "tf.argsort",
+    "tf.contrib.summary.all_summary_ops":
+        "tf.compat.v1.summary.all_v2_summary_ops",
+    "tf.contrib.summary.always_record_summaries":
+        "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.audio":
         "tf.compat.v2.summary.audio",
+    "tf.contrib.summary.create_file_writer":
+        "tf.compat.v2.summary.create_file_writer",
+    "tf.contrib.summary.flush":
+        "tf.compat.v2.summary.flush",
+    "tf.contrib.summary.generic":
+        "tf.compat.v2.summary.write",
     "tf.contrib.summary.histogram":
         "tf.compat.v2.summary.histogram",
     "tf.contrib.summary.image":
         "tf.compat.v2.summary.image",
     "tf.contrib.summary.initialize":
         "tf.compat.v1.summary.initialize",
+    "tf.contrib.summary.never_record_summaries":
+        "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.scalar":
         "tf.compat.v2.summary.scalar",
+    "tf.contrib.tpu.CrossShardOptimizer":
+        "tf.compat.v1.tpu.CrossShardOptimizer",
+    "tf.contrib.tpu.InputPipelineConfig":
+        "tf.compat.v1.estimator.tpu.InputPipelineConfig",
+    "tf.contrib.tpu.RunConfig":
+        "tf.compat.v1.estimator.tpu.RunConfig",
+    "tf.contrib.tpu.TPUConfig":
+        "tf.compat.v1.estimator.tpu.TPUConfig",
+    "tf.contrib.tpu.TPUEstimator":
+        "tf.compat.v1.estimator.tpu.TPUEstimator",
+    "tf.contrib.tpu.TPUEstimatorSpec":
+        "tf.compat.v1.estimator.tpu.TPUEstimatorSpec",
+    "tf.contrib.tpu.batch_parallel":
+        "tf.compat.v1.tpu.batch_parallel",
+    "tf.contrib.tpu.bfloat16_scope":
+        "tf.compat.v1.tpu.bfloat16_scope",
+    "tf.contrib.tpu.core":
+        "tf.compat.v1.tpu.core",
+    "tf.contrib.tpu.cross_replica_sum":
+        "tf.compat.v1.tpu.cross_replica_sum",
+    "tf.contrib.tpu.initialize_system":
+        "tf.compat.v1.tpu.initialize_system",
+    "tf.contrib.tpu.outside_compilation":
+        "tf.compat.v1.tpu.outside_compilation",
+    "tf.contrib.tpu.replicate":
+        "tf.compat.v1.tpu.replicate",
+    "tf.contrib.tpu.rewrite":
+        "tf.compat.v1.tpu.rewrite",
+    "tf.contrib.tpu.shard":
+        "tf.compat.v1.tpu.shard",
+    "tf.contrib.tpu.shutdown_system":
+        "tf.compat.v1.tpu.shutdown_system",
+    "tf.contrib.training.checkpoints_iterator":
+        "tf.train.checkpoints_iterator",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
     "tf.manip.batch_to_space_nd":
@@ -270,8 +336,6 @@ manual_symbol_renames = {
         "tf.compat.v1.nn.fused_batch_norm",
     "tf.nn.softmax_cross_entropy_with_logits_v2":
         "tf.nn.softmax_cross_entropy_with_logits",
-    "tf.nn.sigmoid_cross_entropy_with_logits":
-        "tf.nn.sigmoid_cross_entropy_with_logits",
     "tf.losses.Reduction.MEAN":
         "tf.compat.v1.losses.Reduction.MEAN",
     "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
@@ -464,10 +528,6 @@ manual_symbol_renames = {
         "tf.nn.conv2d_transpose",
     "tf.test.compute_gradient":
         "tf.compat.v1.test.compute_gradient",
-    "tf.xla.experimental.compile":
-        "tf.xla.experimental.compile",
-    "tf.xla.experimental.jit_scope":
-        "tf.xla.experimental.jit_scope",
 }
 # pylint: enable=line-too-long
 

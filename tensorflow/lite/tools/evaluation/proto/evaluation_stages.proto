@@ -17,6 +17,10 @@ syntax = "proto2";
 
 package tflite.evaluation;
 
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "tflite.evaluation";
+
 // Defines the functionality executed by an EvaluationStage.
 //
 // Next ID: 5
@@ -88,6 +92,7 @@ message TfliteInferenceParams {
   enum Delegate {
     NONE = 0;
     NNAPI = 1;
+    GPU = 2;
   }
   optional Delegate delegate = 2;
   // Number of threads available to the TFLite Interpreter.

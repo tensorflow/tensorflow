@@ -2405,7 +2405,7 @@ class Cropping2D(Layer):
   model.add(Cropping2D(cropping=((2, 2), (4, 4)),
                        input_shape=(28, 28, 3)))
   # now model.output_shape == (None, 24, 20, 3)
-  model.add(Conv2D(64, (3, 3), padding='same))
+  model.add(Conv2D(64, (3, 3), padding='same'))
   model.add(Cropping2D(cropping=((2, 2), (2, 2))))
   # now model.output_shape == (None, 20, 16. 64)
   ```

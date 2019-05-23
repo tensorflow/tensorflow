@@ -169,6 +169,16 @@ class PrintV2Test(test.TestCase):
       self.assertTrue((expected + "\n") in printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
+  def testPrintTwoTensorsDifferentSep(self):
+    with self.cached_session():
+      tensor = math_ops.range(10)
+      with self.captureWritesToStream(sys.stderr) as printed:
+        print_op = logging_ops.print_v2(tensor, tensor * 10, sep="<separator>")
+        self.evaluate(print_op)
+      expected = "[0 1 2 ... 7 8 9]<separator>[0 10 20 ... 70 80 90]"
+      self.assertIn(expected + "\n", printed.contents())
+
+  @test_util.run_in_graph_and_eager_modes()
   def testPrintPlaceholderGeneration(self):
     with self.cached_session():
       tensor = math_ops.range(10)
@@ -206,6 +216,16 @@ class PrintV2Test(test.TestCase):
         self.evaluate(print_op)
       expected = "scalar"
       self.assertTrue((expected + "\n") in printed.contents())
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testPrintStringScalarDifferentEnd(self):
+    with self.cached_session():
+      tensor = ops.convert_to_tensor("scalar")
+      with self.captureWritesToStream(sys.stderr) as printed:
+        print_op = logging_ops.print_v2(tensor, end="<customend>")
+        self.evaluate(print_op)
+      expected = "scalar<customend>"
+      self.assertIn(expected, printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintComplexTensorStruct(self):

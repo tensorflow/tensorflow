@@ -20,8 +20,8 @@ exports_files([
 load(
     "//tensorflow:tensorflow.bzl",
     "if_ios",
-    "tf_generate_proto_text_sources",
     "tf_cc_test",
+    "tf_generate_proto_text_sources",
 )
 
 # For platform specific build config

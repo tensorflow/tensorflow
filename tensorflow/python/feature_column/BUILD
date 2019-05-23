@@ -232,12 +232,16 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
 )
 
 py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
