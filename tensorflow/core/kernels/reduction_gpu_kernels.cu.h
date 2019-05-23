@@ -595,7 +595,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                      int extent_x, int extent_y, Op op, T init,
                                      const gpuStream_t& cu_stream) {
   int rows_per_warp = TF_RED_WARPSIZE / extent_y;
-  dim3 block_dim(TF_RED_WARPSIZE, std::min(Eigen::divup(extent_x, rows_per_warp), TF_RED_WARPSIZE), 1);
+  dim3 block_dim(TF_RED_WARPSIZE, std::min(Eigen::divup(extent_x, rows_per_warp), (1024/TF_RED_WARPSIZE)), 1);
   dim3 grid_dim(1,
                 Eigen::divup(static_cast<unsigned int>(extent_x),
                              rows_per_warp * block_dim.y),
@@ -637,7 +637,7 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                        int extent_x, int extent_y, Op op,
                                        T init, const gpuStream_t& cu_stream) {
-  dim3 block_dim(TF_RED_WARPSIZE, std::min(extent_x, TF_RED_WARPSIZE), 1);
+  dim3 block_dim(TF_RED_WARPSIZE, std::min(extent_x, (1024/TF_RED_WARPSIZE)), 1);
   dim3 grid_dim((extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
 
   if (grid_dim.x < 16) grid_dim.y = std::min((extent_x + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, TF_RED_WARPSIZE);
