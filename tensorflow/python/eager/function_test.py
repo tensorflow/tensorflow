@@ -2226,6 +2226,40 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEqual(y_value, 3.0)
 
+  def testSwapImplementationInEager(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    context.context().set_optimizer_experimental_options(
+        {'min_graph_nodes': -1, 'implementation_selector': True})
+
+    # TODO(b/133178886): Remove _noinline=True once the function is not default
+    # inlined in eager mode with api_implements attribute.
+    @function.defun_with_attributes(
+        attributes={'api_implements': 'foo',
+                    'api_preferred_device': 'CPU',
+                    '_noinline': True})
+    def on_cpu(x):
+      return x + 2
+
+    # TODO(b/133178886): Remove _noinline=True once the function is not default
+    # inlined in eager mode with api_implements attribute.
+    @function.defun_with_attributes(
+        attributes={'api_implements': 'foo',
+                    'api_preferred_device': 'GPU',
+                    '_noinline': True})
+    def on_gpu(x):
+      return x + 4
+
+    @function.defun
+    def run_on_cpu(t):
+      function.register(on_cpu, t)
+      with ops.device('CPU:0'):
+        return on_gpu(t)
+
+    # Expect to run the on_cpu branch, regardless whether gpu is available.
+    self.assertEqual(run_on_cpu(constant_op.constant(1)).numpy(), 3)
+
   def testDefunFunctionSeparateGraphs(self):
     with context.graph_mode():
 
