@@ -681,10 +681,17 @@ Status SegmentGraph(const Graph* tf_graph,
               << " with parent=" << segment_root << ":" << s;
     }
 
-    // Don't use small segments.
-    if (static_cast<int>(segment_nodes.size()) < options.minimum_segment_size) {
+    const int num_effective_nodes = std::count_if(
+        segment_nodes.begin(), segment_nodes.end(), [](const Node* node) {
+          static auto noops =
+              new std::set<string>{"Identity", "Snapshot", "StopGradient"};
+          return noops->count(node->type_string()) == 0;
+        });
+
+    // Don't use segments whose number of effective nodes is small.
+    if (num_effective_nodes < options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
-              << segment_nodes.size() << " nodes, dropping";
+              << num_effective_nodes << " effective nodes, dropping";
       continue;
     }
 

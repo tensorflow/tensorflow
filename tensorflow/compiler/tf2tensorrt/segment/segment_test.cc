@@ -262,6 +262,23 @@ TEST_F(SegmentTest, BigIfElse) {
           {{"add0", "add1"}, {"add3", "add4", "add5", "add6", "add7"}});
 }
 
+TEST_F(SegmentTest, IdentityOps) {
+  Scope s = Scope::NewRootScope();
+  auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT);
+  auto identity0 = ops::Identity(s.WithOpName("identity0"), feed);
+  auto identity1 = ops::Identity(s.WithOpName("identity1"), identity0);
+  auto identity2 = ops::Identity(s.WithOpName("identity2"), identity1);
+  auto identity3 = ops::Identity(s.WithOpName("identity3"), identity2);
+  Graph g(OpRegistry::Global());
+  TF_EXPECT_OK(s.ToGraph(&g));
+
+  const std::set<string> all_identities = {"identity0", "identity1",
+                                           "identity2", "identity3"};
+  // Identity ops are not counted as effective ops in the segment, so no segment
+  // will be formed in this case.
+  RunTest(&g, all_identities, all_identities, all_identities, {});
+}
+
 }  // namespace test
 }  // namespace segment
 }  // namespace tensorrt
