@@ -39,13 +39,13 @@ def quant_QuantizedType :
 // A primitive type that can represent a real value. This is either a
 // floating point value or a quantized type.
 def quant_RealPrimitiveType :
-    Type<Or<[Float.predicate, quant_QuantizedType.predicate]>,
+    Type<Or<[AnyFloat.predicate, quant_QuantizedType.predicate]>,
     "real valued primitive (float or quantized type)">;
 
 // A primitive type that can represent a storage value. This is either an
 // integer or quantized type.
 def quant_StoragePrimitiveType :
-    Type<Or<[Integer.predicate, quant_QuantizedType.predicate]>,
+    Type<Or<[AnyInteger.predicate, quant_QuantizedType.predicate]>,
     "quantized storage primitive (integer or quantized type)">;
 
 // A primitive or container of RealPrimitiveType.

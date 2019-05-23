@@ -283,7 +283,7 @@ class AnyTypeOf<list<Type> allowedTypes, string description = ""> : Type<
 
 // Integer types.
 // Any integer type irrespective of its width.
-def Integer : Type<CPred<"$_self.isa<IntegerType>()">, "integer">;
+def AnyInteger : Type<CPred<"$_self.isa<IntegerType>()">, "integer">;
 
 // Index type.
 def Index : Type<CPred<"$_self.isa<IndexType>()">, "index">;
@@ -309,7 +309,7 @@ def I64 : I<64>;
 // Floating point types.
 
 // Any float type irrespective of its width.
-def Float : Type<CPred<"$_self.isa<FloatType>()">, "floating-point">;
+def AnyFloat : Type<CPred<"$_self.isa<FloatType>()">, "floating-point">;
 
 // Float type of a specific width.
 class F<int width>
@@ -438,13 +438,13 @@ class TupleOf<Type t> :
 
 // Type constraint for integer-like types: integers, indices, vectors of
 // integers, tensors of integers.
-def IntegerLike : TypeConstraint<Or<[Integer.predicate, Index.predicate,
-        VectorOf<[Integer]>.predicate, TensorOf<[Integer]>.predicate]>,
+def IntegerLike : TypeConstraint<Or<[AnyInteger.predicate, Index.predicate,
+        VectorOf<[AnyInteger]>.predicate, TensorOf<[AnyInteger]>.predicate]>,
     "integer-like">;
 
 // Type constraint for float-like types: floats, vectors or tensors thereof.
-def FloatLike : TypeConstraint<Or<[Float.predicate,
-        VectorOf<[Float]>.predicate, TensorOf<[Float]>.predicate]>,
+def FloatLike : TypeConstraint<Or<[AnyFloat.predicate,
+        VectorOf<[AnyFloat]>.predicate, TensorOf<[AnyFloat]>.predicate]>,
     "floating-point-like">;
 
 
