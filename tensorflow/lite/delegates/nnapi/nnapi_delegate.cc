@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
 #include <cstdarg>
+#include <cstdint>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/builtin_op_data.h"
@@ -161,6 +164,16 @@ ANeuralNetworksDevice* GetDeviceHandle(const char* device_name_ptr) {
     }
   }
   return device_handle;
+}
+
+// Compute the hash of a TfLiteIntArray.
+uint64_t GetHash(const TfLiteIntArray* int_array) {
+  constexpr auto kHashConst = 0x9e3779b97f4a7800ULL;
+  uint64_t result = 0;
+  for (auto i : TfLiteIntArrayView(int_array)) {
+    result = result ^ (i + kHashConst + (result << 10) + (result >> 4));
+  }
+  return result;
 }
 }  // namespace
 
@@ -1294,8 +1307,9 @@ class NNAPIDelegateKernel {
       nodes_.push_back(node_index);
     }
 
-    const char* device_name_ptr =
-        StatefulNnApiDelegate::GetOptions(params->delegate).accelerator_name;
+    const auto delegate_options =
+        StatefulNnApiDelegate::GetOptions(params->delegate);
+    const char* device_name_ptr = delegate_options.accelerator_name;
     // user specified an acclelerator to use.
     if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
         device_name_ptr != nullptr) {
@@ -1331,8 +1345,7 @@ class NNAPIDelegateKernel {
                                                                &compilation));
       }
 
-      auto preference = StatefulNnApiDelegate::GetOptions(params->delegate)
-                            .execution_preference;
+      auto preference = delegate_options.execution_preference;
       if (preference !=
           StatefulNnApiDelegate::Options::ExecutionPreference::kUndefined) {
         const int preference_result =
@@ -1345,6 +1358,37 @@ class NNAPIDelegateKernel {
         RETURN_TFLITE_ERROR_IF_NN_ERROR(context, preference_result);
       }
 
+      const char* cache_dir = delegate_options.cache_dir;
+      const char* model_token = delegate_options.model_token;
+      if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+          cache_dir && model_token) {
+        // Compilation caching could be enabled, try construct the uint8 token.
+        // TODO(133342794): use a generic token generator class.
+        uint64_t token_parts[4];
+        // bits from model_token.
+        token_parts[0] = std::hash<std::string>{}(model_token);
+        // bits from params->nodes_to_replace.
+        token_parts[1] = GetHash(params->nodes_to_replace);
+        // bits from params->input_tensors.
+        token_parts[2] = GetHash(params->input_tensors);
+        // bits from params->output_tensors.
+        token_parts[3] = GetHash(params->output_tensors);
+        // NNAPI requires the token to be 256bit long.
+        std::vector<uint8_t> nnapi_cache_token(32, 0);
+        // Copy the token bits.
+        uint8_t* p = reinterpret_cast<uint8_t*>(token_parts);
+        for (int i = 0; i < 4 * sizeof(uint64_t); i++) {
+          nnapi_cache_token[i] = p[i];
+        }
+        const int set_caching_result =
+            nnapi_->ANeuralNetworksCompilation_setCaching(
+                compilation, cache_dir, nnapi_cache_token.data());
+        if (set_caching_result != ANEURALNETWORKS_NO_ERROR) {
+          nnapi_->ANeuralNetworksCompilation_free(compilation);
+          compilation = nullptr;
+        }
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(context, set_caching_result);
+      }
       const int finish_result =
           nnapi_->ANeuralNetworksCompilation_finish(compilation);
       if (finish_result != ANEURALNETWORKS_NO_ERROR) {
@@ -1749,6 +1793,12 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
   if (options.accelerator_name) {
     delegate_data_.accelerator_name = options.accelerator_name;
   }
+  if (options.cache_dir) {
+    delegate_data_.cache_dir = options.cache_dir;
+  }
+  if (options.model_token) {
+    delegate_data_.model_token = options.model_token;
+  }
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -1766,6 +1816,12 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.accelerator_name = delegate_data->accelerator_name.empty()
                                  ? nullptr
                                  : delegate_data->accelerator_name.c_str();
+  options.cache_dir = delegate_data->cache_dir.empty()
+                          ? nullptr
+                          : delegate_data->cache_dir.c_str();
+  options.model_token = delegate_data->model_token.empty()
+                            ? nullptr
+                            : delegate_data->model_token.c_str();
   return options;
 }
 
