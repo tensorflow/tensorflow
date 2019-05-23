@@ -262,6 +262,21 @@ void DiagnosticEngine::emit(Diagnostic diag) {
 }
 
 //===----------------------------------------------------------------------===//
+// ScopedDiagnosticHandler
+//===----------------------------------------------------------------------===//
+
+ScopedDiagnosticHandler::ScopedDiagnosticHandler(MLIRContext *ctx)
+    : existingHandler(ctx->getDiagEngine().getHandler()), ctx(ctx) {}
+ScopedDiagnosticHandler::ScopedDiagnosticHandler(
+    MLIRContext *ctx, const DiagnosticEngine::HandlerTy &handler)
+    : ScopedDiagnosticHandler(ctx) {
+  ctx->getDiagEngine().setHandler(handler);
+}
+ScopedDiagnosticHandler::~ScopedDiagnosticHandler() {
+  ctx->getDiagEngine().setHandler(existingHandler);
+}
+
+//===----------------------------------------------------------------------===//
 // SourceMgrDiagnosticHandler
 //===----------------------------------------------------------------------===//
 namespace mlir {
@@ -328,7 +343,8 @@ static llvm::SourceMgr::DiagKind getDiagKind(DiagnosticSeverity kind) {
 
 SourceMgrDiagnosticHandler::SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr,
                                                        MLIRContext *ctx)
-    : mgr(mgr), impl(new SourceMgrDiagnosticHandlerImpl()) {
+    : ScopedDiagnosticHandler(ctx), mgr(mgr),
+      impl(new SourceMgrDiagnosticHandlerImpl()) {
   // Register a simple diagnostic handler.
   ctx->getDiagEngine().setHandler(
       [this](Diagnostic diag) { emitDiagnostic(diag); });

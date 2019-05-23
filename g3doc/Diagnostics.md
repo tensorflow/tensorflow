@@ -178,6 +178,29 @@ diagnostic handler with the [`DiagnosticEngine`](#diagnostic-engine).
 Recognizing the many users will want the same handler functionality, MLIR
 provides several common diagnostic handlers for immediate use.
 
+### Scoped Diagnostic Handler
+
+This diagnostic handler is a simple RAII class that saves and restores the
+current diagnostic handler registered to a given context. This class can be
+either be used directly, or in conjunction with a derived diagnostic handler.
+
+```c++
+// Construct the handler directly.
+MLIRContext context;
+ScopedDiagnosticHandler scopedHandler(&context, [](Diagnostic diag) {
+  ...
+});
+
+// Use this handler in conjunction with another.
+class MyDerivedHandler : public ScopedDiagnosticHandler {
+  MyDerivedHandler(MLIRContext *ctx) : ScopedDiagnosticHandler(ctx) {
+    ctx->getDiagEngine().setHandler([&](Diagnostic diag) {
+      ...
+    });
+  }
+};
+```
+
 ### SourceMgr Diagnostic Handler
 
 This diagnostic handler is a wrapper around an llvm::SourceMgr instance. It
@@ -269,9 +292,6 @@ with the 'orderID'. The thread that is processing 'a' should set the orderID to
 '0'; the thread processing 'b' should set it to '1'; and so on and so forth.
 This provides a way for the handler to deterministically order the diagnostics
 that it receives given the thread that it is receiving on.
-
-Note: This handler automatically saves and restores the current handler
-registered with the context.
 
 A simple example is shown below:
 

@@ -444,6 +444,36 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
+// ScopedDiagnosticHandler
+//===----------------------------------------------------------------------===//
+
+/// This diagnostic handler is a simple RAII class that saves and restores the
+/// current diagnostic handler registered to a given context. This class can
+/// be either be used directly, or in conjunction with a derived diagnostic
+/// handler.
+class ScopedDiagnosticHandler {
+public:
+  ScopedDiagnosticHandler(MLIRContext *ctx);
+  ScopedDiagnosticHandler(MLIRContext *ctx,
+                          const DiagnosticEngine::HandlerTy &handler);
+  ~ScopedDiagnosticHandler();
+
+  /// Propagate a diagnostic to the existing diagnostic handler.
+  void propagateDiagnostic(Diagnostic diag) {
+    if (existingHandler)
+      existingHandler(std::move(diag));
+  }
+
+private:
+  /// The existing diagnostic handler registered with the context at the time of
+  /// construction.
+  DiagnosticEngine::HandlerTy existingHandler;
+
+  /// The context to register the handler back to.
+  MLIRContext *ctx;
+};
+
+//===----------------------------------------------------------------------===//
 // SourceMgrDiagnosticHandler
 //===----------------------------------------------------------------------===//
 
@@ -452,7 +482,7 @@ struct SourceMgrDiagnosticHandlerImpl;
 } // end namespace detail
 
 /// This class is a utility diagnostic handler for use with llvm::SourceMgr.
-class SourceMgrDiagnosticHandler {
+class SourceMgrDiagnosticHandler : public ScopedDiagnosticHandler {
 public:
   SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr, MLIRContext *ctx);
   ~SourceMgrDiagnosticHandler();
