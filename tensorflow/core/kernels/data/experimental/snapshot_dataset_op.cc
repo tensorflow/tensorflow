@@ -140,13 +140,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, AsGraphDef(ctx, input, SerializationContext({}), &graph_def));
 
-    // TODO(frankchn): Find a better way than SerializeToStringDeterministic()
+    // TODO(frankchn): Find a better way than DeterministicProtoHash64()
     // This is not deterministic across different builds of binaries right now.
-    string graph_def_serialized;
-    SerializeToStringDeterministic(graph_def, &graph_def_serialized);
-
     string graph_fingerprint = strings::StrCat(
-        strings::Hex(Fingerprint64(graph_def_serialized), strings::kZeroPad16));
+        strings::Hex(DeterministicProtoHash64(graph_def), strings::kZeroPad16));
 
     *output =
         new Dataset(ctx, input, path, graph_fingerprint, reader_path_prefix_,
