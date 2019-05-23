@@ -336,6 +336,10 @@ public:
                     ArrayRef<Value *> operands) {
     return impl->create(builder, loc, operands);
   }
+  Operation::operand_range getInputsAndOutputs() {
+    auto range = this->getOperation()->getOperands();
+    return {range.begin(), range.begin() + getNumInputsAndOutputs()};
+  }
 
 private:
   struct Concept {

@@ -89,8 +89,16 @@ Value *createOrReturnView(FuncBuilder *b, Location loc,
 enum class RangePart { Min = 0, Max, Step };
 Value *extractRangePart(Value *range, RangePart part);
 
+/// Returns the values obtained by applying `map` to the list of values.
+/// Performs simplifications and foldings where possible.
+SmallVector<Value *, 4> applyMapToValues(FuncBuilder *b, Location loc,
+                                         AffineMap map,
+                                         ArrayRef<Value *> values,
+                                         FunctionConstants &state);
+
 /// Returns the values obtained by applying `map` to the list of range parts
-/// extracted from `ranges`.
+/// extracted from `ranges`. Performs simplifications and foldings where
+/// possible.
 SmallVector<Value *, 4> applyMapToRangePart(FuncBuilder *b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> ranges,

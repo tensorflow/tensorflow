@@ -24,49 +24,55 @@
 #include "mlir/Linalg/Passes.h"
 #include "mlir/Linalg/Utils/Utils.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
-
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
-using namespace llvm;
 
 // Creates a number of ranges equal to the number of results in `map`.
 // The returned ranges correspond to the loop ranges, in the proper order, for
 // which new loops will be created.
-static SmallVector<Value *, 4> makeLoopRanges(FuncBuilder *b, Location loc,
+static SmallVector<Value *, 4> emitLoopRanges(FuncBuilder *b, Location loc,
                                               AffineMap map,
-                                              ArrayRef<Value *> allOpRanges,
+                                              ArrayRef<Value *> allViewSizes,
                                               FunctionConstants &state) {
-  // Apply `map` to get mins/maxes/steps in loop order.
-  auto mins =
-      applyMapToRangePart(b, loc, map, allOpRanges, RangePart::Min, state);
-  auto maxes =
-      applyMapToRangePart(b, loc, map, allOpRanges, RangePart::Max, state);
-  auto steps =
-      applyMapToRangePart(b, loc, map, allOpRanges, RangePart::Step, state);
-
+  // Apply `map` to get view sizes in loop order.
+  auto sizes = applyMapToValues(b, loc, map, allViewSizes, state);
   // Create a new range with the applied tile sizes.
   SmallVector<Value *, 4> res;
-  for (unsigned idx = 0, e = steps.size(); idx < e; ++idx)
-    res.push_back(b->create<RangeOp>(loc, mins[idx], maxes[idx], steps[idx]));
+  for (unsigned idx = 0, e = map.getNumResults(); idx < e; ++idx) {
+    res.push_back(b->create<RangeOp>(loc, state.getOrCreateIndex(0), sizes[idx],
+                                     state.getOrCreateIndex(1)));
+  }
+  return res;
+}
+
+// Returns the linearized list of all view dimensions in a linalgOp. Appliying
+// the inverse, concatenated loopToOperandRangeMaps to this list allows the
+// derivation of loop ranges for any linalgOp.
+static SmallVector<Value *, 8> getViewSizes(LinalgOp &linalgOp) {
+  SmallVector<Value *, 8> res;
+  using dim = ValueBuilder<linalg::DimOp>;
+  for (auto v : linalgOp.getInputsAndOutputs()) {
+    ViewType t = v->getType().cast<ViewType>();
+    for (unsigned i = 0; i < t.getRank(); ++i)
+      res.push_back(dim(v, i));
+  }
   return res;
 }
 
 static void emitLinalgOpAsLoops(LinalgOp &linalgOp, FunctionConstants &state) {
   FuncBuilder b(linalgOp.getOperation());
   ScopedContext scope(b, linalgOp.getOperation()->getLoc());
-  auto loopRanges = makeLoopRanges(
+  auto loopRanges = emitLoopRanges(
       scope.getBuilder(), scope.getLocation(),
       // The flattened loopToOperandRangesMaps is expected to be an invertible
       // permutation map (which is asserted in the inverse calculation).
       inversePermutation(concatAffineMaps(loopToOperandRangesMaps(linalgOp))),
-      getRanges(linalgOp.getOperation()), state);
+      getViewSizes(linalgOp), state);
 
   SmallVector<IndexHandle, 4> parallelIvs(linalgOp.getNumParallelLoops());
   SmallVector<IndexHandle, 4> reductionIvs(linalgOp.getNumReductionLoops());

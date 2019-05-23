@@ -167,16 +167,10 @@ static Value *emitOrFoldComposedAffineApply(FuncBuilder *b, Location loc,
   return b->create<AffineApplyOp>(loc, map, operands);
 }
 
-SmallVector<Value *, 4> mlir::applyMapToRangePart(FuncBuilder *b, Location loc,
-                                                  AffineMap map,
-                                                  ArrayRef<Value *> ranges,
-                                                  RangePart part,
-                                                  FunctionConstants &state) {
-  SmallVector<Value *, 4> rangeParts(ranges.size());
-
-  llvm::transform(ranges, rangeParts.begin(),
-                  [&](Value *range) { return extractRangePart(range, part); });
-
+SmallVector<Value *, 4> mlir::applyMapToValues(FuncBuilder *b, Location loc,
+                                               AffineMap map,
+                                               ArrayRef<Value *> values,
+                                               FunctionConstants &state) {
   SmallVector<Value *, 4> res;
   res.reserve(map.getNumResults());
   unsigned numDims = map.getNumDims();
@@ -185,10 +179,20 @@ SmallVector<Value *, 4> mlir::applyMapToRangePart(FuncBuilder *b, Location loc,
   // folding occurs eagerly. Otherwise, an affine.apply operation is emitted.
   for (auto expr : map.getResults()) {
     AffineMap map = AffineMap::get(numDims, 0, expr, {});
-    res.push_back(
-        emitOrFoldComposedAffineApply(b, loc, map, rangeParts, state));
+    res.push_back(emitOrFoldComposedAffineApply(b, loc, map, values, state));
   }
   return res;
+}
+
+SmallVector<Value *, 4> mlir::applyMapToRangePart(FuncBuilder *b, Location loc,
+                                                  AffineMap map,
+                                                  ArrayRef<Value *> ranges,
+                                                  RangePart part,
+                                                  FunctionConstants &state) {
+  SmallVector<Value *, 4> rangeParts(ranges.size());
+  llvm::transform(ranges, rangeParts.begin(),
+                  [&](Value *range) { return extractRangePart(range, part); });
+  return applyMapToValues(b, loc, map, rangeParts, state);
 }
 
 Value *FunctionConstants::getOrCreateIndex(int64_t v) {
