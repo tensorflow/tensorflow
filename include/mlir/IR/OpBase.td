@@ -414,23 +414,34 @@ def F64MemRef  : MemRefOf<[F64]>;
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
 
-// TODO(b/132952417) Make this accept a list of types like the classes above.
-// A Tuple that only holds elements of a certain type. This cannot inherit from
-// ContainerType because tuples do not always have a single element type that
-// could be retrieved with elementTypeCall.
-class TupleOf<Type t> :
-    Type<And<[
-        IsTupleTypePred,
-        Concat<
-            [{
-              llvm::all_of(
-                $_self.cast<TupleType>().getTypes(),
-                [](Type t) {
-                  return
-            }],
-            SubstLeaves<"$_self", "t", t.predicate>,
-            "; })">
-    ]>, "tuple">;
+// TODO(b/130358239) Support typed tuples of arbitrary nesting.
+
+// A container type that has other types embedded in it, but (unlike
+// ContainerType) can hold elements with a mix of types. Requires a call that
+// produces a list of all elements' types.
+class MixedContainerType<Type etype, Pred containerPred, code elementTypesCall,
+                         string descr> :
+    Type<
+        And<[
+            containerPred,
+            Concat<
+                "llvm::all_of(" # elementTypesCall # ", [](Type t) { return ",
+                SubstLeaves<"$_self", "t", etype.predicate>,
+                "; })"
+            >
+        ]>,
+        descr # " with any combination of " # etype.description # " values"> {
+  // The type of elements in the container.
+  Type elementType = etype;
+
+  // Call to retrieve.
+  code getElementTypesCall = elementTypesCall;
+}
+
+// A Tuple that holds a mix of elements of the allowed types.
+class TupleOf<list<Type> allowedTypes>
+    : MixedContainerType<AnyTypeOf<allowedTypes>, IsTupleTypePred,
+                         "$_self.cast<TupleType>().getTypes()", "tuple">;
 
 //===----------------------------------------------------------------------===//
 // Common type constraints

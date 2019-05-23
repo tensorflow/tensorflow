@@ -46,4 +46,12 @@ def VUVFoldTwoResultOp : Pattern<(VUVTwoResultOp $input), [
         (replaceWithValue $input)
       ]>;
 
+//===----------------------------------------------------------------------===//
+// Test Types
+//===----------------------------------------------------------------------===//
+
+def TupleOp : TEST_Op<"tuple_32_bit"> {
+  let results = (outs TupleOf<[I32, F32]>);
+}
+
 #endif // TEST_OPS
