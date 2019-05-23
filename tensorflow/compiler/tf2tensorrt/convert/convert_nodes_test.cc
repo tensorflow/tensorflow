@@ -2023,14 +2023,14 @@ void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
   const NodeDef node_def =
       GetBinaryOpNodeDef<OpType>("input1", "input2", dtype);
   if (operand_1_is_tensor) {
-    test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/1,
+    test->AddTestTensor("input1", /*dims=*/{1, 2}, /*batch_size=*/2,
                         TfDataTypeToTrt(dtype));
   } else {
     test->AddTestWeights("input1", /*dims=*/{1, 2},
                          /*values=*/std::vector<CType>{CType(3), CType(6)});
   }
   if (operand_2_is_tensor) {
-    test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/1,
+    test->AddTestTensor("input2", /*dims=*/{2, 1}, /*batch_size=*/2,
                         TfDataTypeToTrt(dtype));
   } else {
     test->AddTestWeights("input2", /*dims=*/{2, 1},
@@ -2040,14 +2040,16 @@ void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
 
   DataVec input_data;
   if (operand_1_is_tensor) {
-    input_data.push_back({"input1",
-                          test::AsTensor<CType>({CType(3), CType(6)})});
+    input_data.push_back(
+        {"input1",
+         test::AsTensor<CType>({CType(3), CType(6), CType(3), CType(6)})});
   }
   if (operand_2_is_tensor) {
-    input_data.push_back({"input2",
-                          test::AsTensor<CType>({CType(2), CType(3)})});
+    input_data.push_back(
+        {"input2",
+         test::AsTensor<CType>({CType(2), CType(3), CType(2), CType(3)})});
   }
-  DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
+  DataVec output_data{{"my_binary", ConstructTensor<CType>(8)}};
   // Check output dims.
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_binary", &output));
@@ -2055,33 +2057,41 @@ void TestBinaryOp(OpConverterTest* test, bool operand_1_is_tensor,
   ExpectTrtDimsEqualsArray({2, 2}, output.tensor()->getDimensions());
   // After broadcasting first input becomes {3, 6, 3, 6} and second input
   // becomes {2, 3, 2, 3}.
-  test->BuildAndRun(input_data, &output_data, dtype == DT_HALF
-                                                  ? TrtPrecisionMode::FP16
-                                                  : TrtPrecisionMode::FP32);
+  test->BuildAndRun(
+      input_data, &output_data,
+      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32,
+      /*batch_size=*/2);
   if (node_def.op() == "Add") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(5), CType(8), CType(6), CType(9)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({5, 8, 6, 9, 5, 8, 6, 9})));
   } else if (node_def.op() == "Sub") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(1), CType(4), CType(0), CType(3)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({1, 4, 0, 3, 1, 4, 0, 3})));
   } else if (node_def.op() == "Mul") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(6), CType(12), CType(9), CType(18)));
+                ElementsAreArray(
+                    CastTestVector<int, CType>({6, 12, 9, 18, 6, 12, 9, 18})));
   } else if (node_def.op() == "Div") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(1.5), CType(3), CType(1), CType(2)));
+                ElementsAreArray(CastTestVector<float, CType>(
+                    {1.5, 3, 1, 2, 1.5, 3, 1, 2})));
   } else if (node_def.op() == "RealDiv") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(1.5), CType(3), CType(1), CType(2)));
+                ElementsAreArray(CastTestVector<float, CType>(
+                    {1.5, 3, 1, 2, 1.5, 3, 1, 2})));
   } else if (node_def.op() == "Minimum") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(2), CType(2), CType(3), CType(3)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({2, 2, 3, 3, 2, 2, 3, 3})));
   } else if (node_def.op() == "Maximum") {
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAre(CType(3), CType(6), CType(3), CType(6)));
+    EXPECT_THAT(
+        GetSpanForData<CType>(output_data[0]),
+        ElementsAreArray(CastTestVector<int, CType>({3, 6, 3, 6, 3, 6, 3, 6})));
   } else if (node_def.op() == "Pow") {
     ExpectArrayNear(
-        std::vector<CType>{CType(9), CType(36), CType(27), CType(216)},
+        CastTestVector<int, CType>({9, 36, 27, 216, 9, 36, 27, 216}),
         GetSpanForData<CType>(output_data[0]));
   } else {
     ASSERT_TRUE(false);
@@ -2139,14 +2149,14 @@ TEST_F(OpConverterTest, ConvertBinary) {
                                        operand_2_is_tensor);
       // FP16 tests
       // TODO(tmorris): Use templates to avoid duplication.
-      TestBinaryOp<ops::Add, DT_FLOAT>(this, operand_1_is_tensor,
-                                       operand_2_is_tensor);
-      TestBinaryOp<ops::Sub, DT_FLOAT>(this, operand_1_is_tensor,
-                                       operand_2_is_tensor);
-      TestBinaryOp<ops::Mul, DT_FLOAT>(this, operand_1_is_tensor,
-                                       operand_2_is_tensor);
-      TestBinaryOp<ops::Div, DT_FLOAT>(this, operand_1_is_tensor,
-                                       operand_2_is_tensor);
+      TestBinaryOp<ops::Add, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+      TestBinaryOp<ops::Sub, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+      TestBinaryOp<ops::Mul, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
+      TestBinaryOp<ops::Div, DT_HALF>(this, operand_1_is_tensor,
+                                      operand_2_is_tensor);
       TestBinaryOp<ops::RealDiv, DT_HALF>(this, operand_1_is_tensor,
                                           operand_2_is_tensor);
       TestBinaryOp<ops::Minimum, DT_HALF>(this, operand_1_is_tensor,
