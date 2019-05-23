@@ -32,6 +32,8 @@ def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
   """Checks that DCT/IDCT arguments are compatible and well formed."""
   if axis != -1:
     raise NotImplementedError("axis must be -1. Got: %s" % axis)
+  if n is not None and n < 1:
+    raise ValueError("n should be an integer greater than 1 or None")
   if dct_type not in (1, 2, 3):
     raise ValueError("Only Types I, II and III (I)DCT are supported.")
   if dct_type == 1:
@@ -81,7 +83,8 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 
   Raises:
     ValueError: If `type` is not `1`, `2` or `3`, `axis` is
-      not `-1`, or `norm` is not `None` or `'ortho'`.
+      not `-1`, `n` is not `None` or greater than 0, 
+      or `norm` is not `None` or `'ortho'`.
     ValueError: If `type` is `1` and `norm` is `ortho`.
 
   [dct]: https://en.wikipedia.org/wiki/Discrete_cosine_transform
