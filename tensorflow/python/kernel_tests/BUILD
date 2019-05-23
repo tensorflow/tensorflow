@@ -237,7 +237,7 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_windows_gpu",
+        "no_gpu",  # TODO(b/131773093): Re-enable.
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
     xla_enable_strict_auto_jit = True,
