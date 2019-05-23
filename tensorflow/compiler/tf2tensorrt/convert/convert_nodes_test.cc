@@ -1005,8 +1005,10 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
     }
   };
 
-  // Both inputs are weights. This should be handled by constfold grappler.
-  symmetric_test({1}, {1}, kIsNotTensor, kIsNotTensor, {1}, {1});
+  // Both inputs are weights.
+  symmetric_test(
+      {1}, {1}, kIsNotTensor, kIsNotTensor, {}, {}, error::INVALID_ARGUMENT,
+      "Broadcasting requires at least one of the operands be tensors");
 
   // One tensor and one weights.
   symmetric_test({1, 1, 1}, {2}, kIsTensor, kIsNotTensor, {1, 1, 1}, {1, 1, 2});
@@ -1014,7 +1016,6 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
   symmetric_test({1, 3, 2}, {1}, kIsTensor, kIsNotTensor, {1, 3, 2}, {1, 1, 1});
   symmetric_test({1, 1, 1}, {2, 3}, kIsTensor, kIsNotTensor, {1, 1, 1},
                  {1, 2, 3});
-  symmetric_test({1, 1, 1}, {2, 3}, kIsTensor, kIsTensor, {1, 1, 1}, {1, 2, 3});
   symmetric_test({1, 1, 1}, {2, 3, 4}, kIsTensor, kIsNotTensor, {1, 1, 1},
                  {2, 3, 4});
   symmetric_test({1, 1, 1}, {1, 2, 3, 4}, kIsTensor, kIsNotTensor, {1, 1, 1},
@@ -1022,21 +1023,37 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
   symmetric_test({1, 3, 4}, {1, 2, 1, 4}, kIsTensor, kIsNotTensor, {1, 3, 4},
                  {2, 1, 4});
   symmetric_test({1, 1, 1}, {2, 1, 1, 1}, kIsTensor, kIsNotTensor, {}, {},
-                 error::INVALID_ARGUMENT,
-                 "Cannot broadcast weights with non-trivial batch dimension");
+                 error::INVALID_ARGUMENT, "Infeasible broadcast scheme");
   symmetric_test({1, 1, 1}, {2, 1, 1, 1}, kIsTensor, kIsNotTensor, {}, {},
-                 error::INVALID_ARGUMENT,
-                 "Cannot broadcast weights with non-trivial batch dimension",
+                 error::INVALID_ARGUMENT, "Infeasible broadcast scheme",
                  /*operand_1_batch_size=*/2);
-  symmetric_test({1, 1, 1}, {1, 1, 1, 1, 1}, kIsTensor, kIsNotTensor,
-                 {1, 1, 1, 1}, {1, 1, 1, 1});
+  symmetric_test({1, 1, 1}, {1, 1, 1, 1, 1}, kIsTensor, kIsNotTensor, {}, {},
+                 error::INVALID_ARGUMENT,
+                 "Broadcasting beyond batch dimension is not supported "
+                 "(tensor #dims 4 vs broadcast #dims 5)");
+  symmetric_test({3}, {1, 1, 3}, kIsTensor, kIsNotTensor, {}, {},
+                 error::INVALID_ARGUMENT,
+                 "Broadcasting beyond batch dimension is not supported "
+                 "(tensor #dims 2 vs broadcast #dims 3)",
+                 /*operand_1_batch_size=*/2);
 
   // Both inputs are tensors.
-  symmetric_test({1, 1, 1}, {1, 1}, kIsTensor, kIsTensor, {1, 1, 1}, {1, 1, 1});
+  symmetric_test({1, 1, 1}, {1, 1}, kIsTensor, kIsTensor, {}, {},
+                 error::INVALID_ARGUMENT,
+                 "Broadcasting beyond batch dimension is not supported "
+                 "(tensor #dims 3 vs broadcast #dims 4)");
+  symmetric_test({1, 3}, {3}, kIsTensor, kIsTensor, {}, {},
+                 error::INVALID_ARGUMENT,
+                 "Broadcasting beyond batch dimension is not supported "
+                 "(tensor #dims 2 vs broadcast #dims 3)");
   symmetric_test({1, 3, 4}, {2, 1, 4}, kIsTensor, kIsTensor, {1, 3, 4},
                  {2, 1, 4});
-  symmetric_test({1, 1, 1}, {1, 1, 1, 1}, kIsTensor, kIsTensor, {1, 1, 1, 1},
-                 {1, 1, 1, 1});
+  symmetric_test({1, 1, 1}, {1, 1, 1, 1}, kIsTensor, kIsTensor, {}, {},
+                 error::INVALID_ARGUMENT,
+                 "Broadcasting beyond batch dimension is not supported "
+                 "(tensor #dims 4 vs broadcast #dims 5)");
+  symmetric_test({2, 3}, {7, 5}, kIsTensor, kIsTensor, {}, {},
+                 error::INVALID_ARGUMENT, "Infeasible broadcast scheme");
 }
 
 TEST_F(ConverterTest, CreateConstantLayer) {

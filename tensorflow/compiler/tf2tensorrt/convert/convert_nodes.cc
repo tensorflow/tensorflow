@@ -390,70 +390,78 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims) {
   // TensorRT Elementwise op supports broadcast but requires both tensor to be
-  // of Identical rank.
-  // This function broadcasts the lower rank dimension across the higher rank
-  // one.
-  (*operand_l_new_dims) = operand_l.GetTrtDims();
-  (*operand_r_new_dims) = operand_r.GetTrtDims();
-
-  // Weights may include a dimension which must be broadcasted against a
-  // tensor's batch dimension. This occurs when the rank of the weights is
-  // larger than the rank of the tensor. Example:
-  // t: [1, 1] w/ implicit batch size of 1
-  // w: [1, 1, 1]
-  ///    ^ this dimension in w needs to be broadcasted against t's batch dim.
-  // where the output in TRT is expected to be 2D, not 3D.
-  if (operand_l.is_weights() &&
-      operand_l_new_dims->nbDims > operand_r_new_dims->nbDims) {
-    if (operand_l_new_dims->d[0] != 1) {
-      return errors::InvalidArgument(
-          "Cannot broadcast weights with non-trivial batch dimension");
-    }
-    TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_l_new_dims));
-  }
-  if (operand_r.is_weights() &&
-      operand_r_new_dims->nbDims > operand_l_new_dims->nbDims) {
-    if (operand_r_new_dims->d[0] != 1) {
-      return errors::InvalidArgument(
-          "Cannot broadcast weights with non-trivial batch dimension");
-    }
-    TF_RETURN_IF_ERROR(RemoveBatchDimension(operand_r_new_dims));
+  // of Identical rank
+  //
+  // We consider case of:
+  //   1. operand_l to be a Tensor & operand_r to be a Const;
+  //   2. operand_l to be a Tensor & operand_r to be a Tensor;
+  // note: const op const (constant folding) should fallback to TensorFlow
+  //
+  // broadcast scheme:
+  //       T:  1 3 5    (tensor would not have batch dimension)
+  //       W:  1 1 3 1  (weight would have all explicit dimensions)
+  // i. fill in explicit dimensions
+  //    -> T: -1 1 3 5  (we put a -1 for batch dimension)
+  //    -> W:  1 1 3 1
+  // ii. compare broadcast feasibility
+  //
+  // We cannot support the following since TensorRT does not allow manipulation
+  // on batch dimension, we cannot generate output with proper shape
+  //    T: 3 5 1
+  //    W: 1 1 1  1 3 5 1
+  // -> T: 1 1 1 -1 3 5 1
+  // -> W: 1 1 1  1 3 5 1
+  // ***************************************************************************
+  if (!operand_l.is_tensor() && !operand_r.is_tensor()) {
+    return errors::InvalidArgument(
+        "Broadcasting requires at least one of the operands be tensors");
   }
 
-  const nvinfer1::Dims* higher_rank =
-      (operand_l_new_dims->nbDims > operand_r_new_dims->nbDims)
-          ? operand_l_new_dims
-          : operand_r_new_dims;
-  nvinfer1::Dims* lower_rank =
-      (operand_l_new_dims->nbDims <= operand_r_new_dims->nbDims)
-          ? operand_l_new_dims
-          : operand_r_new_dims;
+  const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
+  auto compute_output_dims = [](const TRT_TensorOrWeights& input,
+                                int broadcast_num_dims, int* output_dims_array,
+                                nvinfer1::Dims* output_dims) {
+    const nvinfer1::Dims input_dims = input.GetTrtDims();
+    std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
+    std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
+              output_dims_array + broadcast_num_dims - input_dims.nbDims);
+    if (input.is_tensor()) {
+      const int true_input_dims = input_dims.nbDims + 1;
+      if (true_input_dims < broadcast_num_dims) {
+        return errors::InvalidArgument(
+            "Broadcasting beyond batch dimension is not supported ",
+            "(tensor #dims ", true_input_dims, " vs broadcast #dims ",
+            broadcast_num_dims, ")");
+      }
+      // Set the batch dimension to -1, since batch size is not supposed to
+      // be broadcasted.
+      output_dims_array[0] = -1;
+      }
+    // Copy to output dimensions (stripping the batch dimension).
+    output_dims->nbDims = broadcast_num_dims - 1;
+    std::copy(output_dims_array + 1, output_dims_array + broadcast_num_dims,
+              output_dims->d);
+    return Status::OK();
+    };
 
-  // Broadcasts low_rank over high_rank in-place by inserting ones at the front
-  // of low_rank so the ranks match.
-  constexpr auto broadcast_dims = [](const nvinfer1::Dims& high_rank,
-                                     const nvinfer1::Dims& low_rank) {
-    nvinfer1::Dims ret{high_rank.nbDims};
-    std::fill(ret.d, ret.d + ret.nbDims, 1);
-    int num_leading_ones = high_rank.nbDims - low_rank.nbDims;
-    std::copy(low_rank.d, low_rank.d + low_rank.nbDims,
-              ret.d + num_leading_ones);
-    return ret;
-  };
-
-  (*lower_rank) = broadcast_dims(*higher_rank, *lower_rank);
-  VLOG(2) << "Broadcasted operands to [L] " << DebugString(*operand_l_new_dims)
-          << " and [R] " << DebugString(*operand_r_new_dims);
+  // Compute the output dimensions.
+  const int broadcast_num_dims =
+      std::max(operand_l.GetTrtDims().nbDims + (operand_l.is_tensor() ? 1 : 0),
+              operand_r.GetTrtDims().nbDims + (operand_r.is_tensor() ? 1 : 0));
+  int output_l[max_nb_dims], output_r[max_nb_dims];
+  TF_RETURN_IF_ERROR(compute_output_dims(operand_l, broadcast_num_dims,
+                                        output_l, operand_l_new_dims));
+  TF_RETURN_IF_ERROR(compute_output_dims(operand_r, broadcast_num_dims,
+                                        output_r, operand_r_new_dims));
 
   // Compare broadcast feasibility
-  for (int i = 0; i < operand_r_new_dims->nbDims; ++i) {
-    if ((operand_l_new_dims->d[i] != operand_r_new_dims->d[i]) &&
-        (operand_l_new_dims->d[i] != 1) && (operand_r_new_dims->d[i] != 1)) {
+  for (int i = 0; i < broadcast_num_dims; ++i) {
+    if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
+        (output_r[i] != 1)) {
       return errors::InvalidArgument(
-          "Infeasible broadcast scheme (batch_dim: ", operand_l_new_dims->d[0],
-          ", ", DebugString(*operand_l_new_dims), " vs batch_dim: ",
-          operand_r_new_dims->d[0], ", ", DebugString(*operand_r_new_dims),
-          ")");
+      "Infeasible broadcast scheme (", "batch_dim: ", output_l[0], ", ",
+      DebugString(*operand_l_new_dims), " vs ", "batch_dim: ", output_r[0],
+      ", ", DebugString(*operand_r_new_dims), ")");
     }
   }
   return Status::OK();
