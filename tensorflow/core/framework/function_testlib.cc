@@ -91,23 +91,6 @@ FunctionDef IsZero() {
       });
 }
 
-FunctionDef IsZeroV2() {
-  const Tensor kZero = test::AsScalar<int64>(0);
-  return FDH::Define(
-      // Name
-      "IsZeroV2",
-      // Args
-      {"x: int64"},
-      // Return values
-      {"equal: bool"},
-      // Attr def
-      {},
-      {
-          {{"zero"}, "Const", {}, {{"value", kZero}, {"dtype", DT_INT64}}},
-          {{"equal"}, "Equal", {"x", "zero"}, {{"T", DT_INT64}}},
-      });
-}
-
 FunctionDef RandomUniform() {
   const Tensor kZero = test::AsScalar<int64>(0);
 
@@ -589,9 +572,9 @@ FunctionDef MakeFilterDataset() {
       // Name
       "FilterDataset",
       // Args
-      {"input_dataset:variant"},
+      {"input_dataset: variant"},
       // Return values
-      {"y:variant"},
+      {"y: variant"},
       // Attr def
       {"predicate: func", "Targuments: list(type) >= 0",
        "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
@@ -605,12 +588,32 @@ FunctionDef MakeFilterDataset() {
          {"output_shapes", "$output_shapes"}}}});
 }
 
+FunctionDef MakePrefetchDataset() {
+  return FDH::Define(
+      // Name
+      "PrefetchDataset",
+      // Args
+      {"input_dataset: variant", "buffer_size: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1",
+       "slack_period: int = 0"},
+      // Nodes
+      {{{"y"},
+        "PrefetchDataset",
+        {"input_dataset", "buffer_size"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"},
+         {"slack_period", "$slack_period"}}}});
+}
+
 FunctionDef MakeRangeDataset() {
   return FDH::Define(
       // Name
       "MakeRangeDataset",
       // Args
-      {"start:int64", "stop:int64", "step:int64"},
+      {"start: int64", "stop: int64", "step: int64"},
       // Return values
       {"y:variant"},
       // Attr def
@@ -623,14 +626,68 @@ FunctionDef MakeRangeDataset() {
          {"output_shapes", "$output_shapes"}}}});
 }
 
+FunctionDef MakeRepeatDataset() {
+  return FDH::Define(
+      // Name
+      "RepeatDataset",
+      // Args
+      {"input_dataset: variant", "count: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "RepeatDataset",
+        {"input_dataset", "count"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeSkipDataset() {
+  return FDH::Define(
+      // Name
+      "SkipDataset",
+      // Args
+      {"input_dataset: variant", "count: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "SkipDataset",
+        {"input_dataset", "count"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeTakeDataset() {
+  return FDH::Define(
+      // Name
+      "TakeDataset",
+      // Args
+      {"input_dataset: variant", "count: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "TakeDataset",
+        {"input_dataset", "count"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
 FunctionDef MakeTensorSliceDataset() {
   return FDH::Define(
       // Name
       "MakeTensorSliceDataset",
       // Args
-      {"x:Toutput_types"},
+      {"x: Toutput_types"},
       // Return values
-      {"y:variant"},
+      {"y: variant"},
       // Attr def
       {"Toutput_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
       // Nodes

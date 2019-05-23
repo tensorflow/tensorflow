@@ -102,9 +102,6 @@ FunctionDef NonZero();
 // x: T -> bool.
 FunctionDef IsZero();
 
-// x: int64 -> bool.
-FunctionDef IsZeroV2();
-
 // x: T -> int64
 FunctionDef RandomUniform();
 
@@ -141,8 +138,20 @@ FunctionDef RandomUniformLess();
 // input_dataset:variant -> y: FilterDatasetOp::Dataset
 FunctionDef MakeFilterDataset();
 
+// input_dataset:variant, buffer_size:int64 -> y: PrefetchDatasetOp::Dataset
+FunctionDef MakePrefetchDataset();
+
 // start:int64, stop:int64, step:int64 -> y: RangeDatasetOp::Dataset
 FunctionDef MakeRangeDataset();
+
+// input_dataset:variant, count:int64 -> y: RepeatDatasetOp::Dataset
+FunctionDef MakeRepeatDataset();
+
+// input_dataset:variant, count:int64 -> y: SkipDataset::Dataset
+FunctionDef MakeSkipDataset();
+
+// input_dataset:variant, count:int64 -> y: TakeDataset::Dataset
+FunctionDef MakeTakeDataset();
 
 // x:T -> y: TensorSliceDatasetOp::Dataset
 FunctionDef MakeTensorSliceDataset();

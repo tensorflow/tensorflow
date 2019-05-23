@@ -289,16 +289,15 @@ Status DatasetOpsTestBase::RunOpKernel(OpKernel* op_kernel,
   return context->status();
 }
 
-Status GetOpSig(const string& op, const OpDef** sig) {
-  return OpRegistry::Global()->LookUpOpDef(op, sig);
-}
-
 Status DatasetOpsTestBase::RunFunction(
     const FunctionDef& fdef, test::function::Attrs attrs,
     const std::vector<Tensor>& args,
     const GraphConstructorOptions& graph_options, std::vector<Tensor*> rets) {
   std::unique_ptr<Executor> exec;
   InstantiationResult result;
+  auto GetOpSig = [](const string& op, const OpDef** sig) {
+    return OpRegistry::Global()->LookUpOpDef(op, sig);
+  };
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, GetOpSig, &result));
 
   DataTypeVector arg_types = result.arg_types;
