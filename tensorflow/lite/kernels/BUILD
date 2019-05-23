@@ -8,11 +8,18 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
-# Enables usage of ruy in TF Lite kernels.
+# Enables usage of ruy in TFLite kernels.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy",
+    name = "tflite_with_ruy_explicit_true",
     define_values = {"tflite_with_ruy": "true"},
+)
+
+# Disables usage of ruy in TFLite kernels.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "tflite_with_ruy_explicit_false",
+    define_values = {"tflite_with_ruy": "false"},
 )
 
 # Suppress warnings that are introduced by Eigen Tensor.
@@ -102,6 +109,22 @@ cc_test(
 )
 
 cc_library(
+    name = "tflite_with_ruy",
+    hdrs = [
+        "tflite_with_ruy.h",
+    ],
+    defines = select({
+        ":tflite_with_ruy_explicit_true": [
+            "TFLITE_WITH_RUY_EXPLICIT_TRUE",
+        ],
+        ":tflite_with_ruy_explicit_false": [
+            "TFLITE_WITH_RUY_EXPLICIT_FALSE",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "cpu_backend_context",
     srcs = [
         "cpu_backend_context.cc",
@@ -110,13 +133,8 @@ cc_library(
         "cpu_backend_context.h",
     ],
     copts = tflite_copts(),
-    defines = select({
-        "//tensorflow/lite/kernels:tflite_with_ruy": [
-            "TFLITE_WITH_RUY",
-        ],
-        "//conditions:default": [],
-    }),
     deps = [
+        ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
@@ -133,6 +151,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
+        ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:types",
         ":cpu_backend_context",
         # For now this unconditionally depends on both ruy and gemmlowp.
@@ -158,22 +177,19 @@ cc_test(
 cc_library(
     name = "cpu_backend_gemm",
     srcs = [
-        "cpu_backend_gemm_ruy.h",
         "cpu_backend_gemm_custom_gemv.h",
-    ] + select({
-        "//tensorflow/lite/kernels:tflite_with_ruy": [],
-        "//conditions:default": [
-            "cpu_backend_gemm_gemmlowp.h",
-            "cpu_backend_gemm_eigen.h",
-            "cpu_backend_gemm_eigen.cc",
-        ],
-    }),
+        "cpu_backend_gemm_eigen.cc",
+        "cpu_backend_gemm_eigen.h",
+        "cpu_backend_gemm_gemmlowp.h",
+        "cpu_backend_gemm_ruy.h",
+    ],
     hdrs = [
         "cpu_backend_gemm.h",
         "cpu_backend_gemm_params.h",
     ],
     copts = tflite_copts(),
     deps = [
+        ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/kernels/internal:common",
         ":cpu_backend_context",
@@ -384,6 +400,7 @@ cc_library(
         ":lstm_eval",
         ":op_macros",
         ":padding",
+        ":tflite_with_ruy",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
@@ -639,6 +656,7 @@ cc_test(
     deps = [
         ":builtin_ops",
         ":test_main",
+        ":tflite_with_ruy",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_absl//absl/memory",

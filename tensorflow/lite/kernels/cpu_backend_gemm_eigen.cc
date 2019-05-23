@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/tflite_with_ruy.h"
+
+#ifndef TFLITE_WITH_RUY
+
 #include "tensorflow/lite/kernels/cpu_backend_gemm_eigen.h"
 
 // See b/131835803: in TFLite code, because eigen_spatial_convolutions.h does
@@ -75,3 +79,5 @@ void GemmImplUsingEigen::Run(
 }  // namespace detail
 }  // namespace cpu_backend_gemm
 }  // namespace tflite
+
+#endif  // not TFLITE_WITH_RUY
