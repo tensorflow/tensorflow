@@ -69,7 +69,10 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     input: A `[..., samples]` `float32` `Tensor` containing the signals to
       take the DCT of.
     type: The DCT type to perform. Must be 1, 2 or 3.
-    n: For future expansion. The length of the transform. Must be `None`.
+    n: The length of the transform. If length is less than sequence length, 
+      only the first n elements of the sequence are considered for the DCT. 
+      If n is greater than the sequence length, zeros are padded and then
+      the DCT is computed as usual.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
     norm: The normalization to apply. `None` for no normalization or `'ortho'`
       for orthonormal normalization.
