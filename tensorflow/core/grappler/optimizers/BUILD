@@ -810,6 +810,7 @@ tf_cc_test_mkl(
     name = "mkl_remapper_test",
     srcs = ["mkl_remapper_test.cc"],
     tags = [
+        "no_mac",
         "no_oss",
     ],
     deps = [
