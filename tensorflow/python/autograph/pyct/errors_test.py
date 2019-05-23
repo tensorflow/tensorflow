@@ -18,41 +18,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import textwrap
-
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.platform import test
 
 
 class ErrorMetadataBaseTest(test.TestCase):
 
-  def test_get_message_when_frame_info_is_none(self):
+  def test_get_message_when_frame_info_code_is_none(self):
     callsite_tb = [
-        ('<string>',
+        ('/usr/local/python/foo.py',
          96,
-         'adjust_hsv_in_yiq',
+         'fake_function_name',
          None),
-        ('/usr/local/python/framework/ops.py',
+        ('/usr/local/python/two.py',
          1874,
-         '_create_c_op',
+         'another_function_name',
          'raise ValueError(str(e))')]
-    cause_message = "ValueError: Shape must be at least rank 3."
+    cause_message = 'ValueError: Just a test.'
     em = errors.ErrorMetadataBase(
         callsite_tb=callsite_tb,
         cause_metadata=None,
         cause_message=cause_message,
         source_map={})
-    expected = """
-    in converted code:
-
-        <string>:96 adjust_hsv_in_yiq
-        /usr/local/python/framework/ops.py:1874 _create_c_op
-            raise ValueError(str(e))
-
-        ValueError: Shape must be at least rank 3.
-    """
-    self.assertEqual(textwrap.dedent(expected).strip(),
-                     em.get_message().strip())
+    self.assertRegex(
+        em.get_message(),
+        r'fake_function(.|\n)*another_function(.|\n)*Just a test')
 
 
 if __name__ == '__main__':
