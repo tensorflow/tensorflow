@@ -62,7 +62,7 @@ cc_library(
     name = "arena_planner",
     srcs = ["arena_planner.cc"],
     hdrs = ["arena_planner.h"],
-    copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
+    copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":graph_info",
         ":memory_planner",
