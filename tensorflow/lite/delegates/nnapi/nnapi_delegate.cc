@@ -962,8 +962,8 @@ class NNAPIDelegateKernel {
             const int output_height = output.dims->data[1];
             const int output_width = output.dims->data[2];
             // TfLiteResizeBilinearParams's |align_corners| is ignored.
-            mapping_args.builder->AddScalarInt32Operand(output_width);
             mapping_args.builder->AddScalarInt32Operand(output_height);
+            mapping_args.builder->AddScalarInt32Operand(output_width);
             return ANEURALNETWORKS_RESIZE_BILINEAR;
           };
         }
