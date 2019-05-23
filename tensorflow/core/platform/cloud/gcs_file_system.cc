@@ -890,13 +890,13 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
 }
 
 // A helper function to actually read the data from GCS.
-Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
+Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
                                         size_t n, char* buffer,
                                         size_t* bytes_transferred) {
   *bytes_transferred = 0;
 
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(filename, false, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(CreateHttpRequest(&request),
@@ -909,7 +909,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.read);
 
   if (stats_ != nullptr) {
-    stats_->RecordBlockLoadRequest(filename, offset);
+    stats_->RecordBlockLoadRequest(fname, offset);
   }
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
@@ -921,7 +921,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
           << offset << " of size: " << bytes_read;
 
   if (stats_ != nullptr) {
-    stats_->RecordBlockRetrieved(filename, offset, bytes_read);
+    stats_->RecordBlockRetrieved(fname, offset, bytes_read);
   }
 
   throttle_.RecordResponse(bytes_read);
@@ -929,11 +929,11 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   if (bytes_read < n) {
     // Check stat cache to see if we encountered an interrupted read.
     GcsFileStat stat;
-    if (stat_cache_->Lookup(filename, &stat)) {
+    if (stat_cache_->Lookup(fname, &stat)) {
       if (offset + bytes_read < stat.base.length) {
         return errors::Internal(strings::Printf(
-            "File contents are inconsistent for file: %s @ %lu.",
-            filename.c_str(), offset));
+            "File contents are inconsistent for file: %s @ %lu.", fname.c_str(),
+            offset));
       }
       VLOG(2) << "Successful integrity check for: gs://" << bucket << "/"
               << object << " @ " << offset;

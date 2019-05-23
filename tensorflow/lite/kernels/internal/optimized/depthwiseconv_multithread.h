@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
+#include "tensorflow/lite/kernels/tflite_with_ruy.h"
 
 namespace tflite {
 namespace optimized_ops {

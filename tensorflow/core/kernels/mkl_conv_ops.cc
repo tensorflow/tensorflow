@@ -629,6 +629,7 @@ class MklConvOp : public OpKernel {
       std::shared_ptr<ConvFwdPd> conv_fwd_pd = conv_fwd->GetPrimitiveDesc();
       AllocateOutputTensor(context, *conv_fwd_pd, dst_dims_mkl_order, tf_fmt,
                            &dst_tensor);
+
       Tensor* filter_out_tensor = nullptr;
       if (emit_filter_output) {
         AllocateFilterOutputTensor(context, *conv_fwd_pd,
@@ -762,6 +763,7 @@ class MklConvOp : public OpKernel {
     // In PadwithFusedConv OP, pad is the fourth index.
     input_index_pad_ = 3;
   }
+  void set_fuse_add(bool fuse_add) { fuse_add_ = fuse_add; }
 
   // This method is for the base class MklConvOp, which handles the
   // floating point implementation of Conv. The quantized conv implementations
@@ -777,6 +779,7 @@ class MklConvOp : public OpKernel {
     // Add fusions as post ops
     // NOTE: Fusion of BiasAdd is handled directly inside MklConvOp by
     // checking `fuse_biasadd_` flag.
+    if (fuse_add_) params.post_op_params.push_back({"sum", {1.0}});
     if (fuse_relu_) params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
   }
 
@@ -818,6 +821,34 @@ class MklConvOp : public OpKernel {
 
     AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                               output_tf_shape, output_mkl_shape);
+    if (fuse_add_) {
+      const Tensor& add_tensor = MklGetInput(context, kInputIndex_Add);
+      MklDnnShape add_mkl_shape;
+      GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
+
+      // Check if need reorder
+      if (add_mkl_shape == output_mkl_shape) {
+        CHECK((*output_tensor)->CopyFrom(add_tensor, output_tf_shape));
+      } else {
+        auto add_md =
+            add_mkl_shape.IsMklTensor()
+                ? add_mkl_shape.GetMklLayout()
+                : memory::desc(output_dims_mkl_order, MklDnnType<Toutput>(),
+                               output_mkl_shape.GetTfDataFormat());
+        auto add_pd = memory::primitive_desc(add_md, this->cpu_engine_);
+        void* add_buf = static_cast<void*>(
+            const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
+        void* dst_buf =
+            static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
+        auto add = new memory(add_pd, add_buf);
+        auto dst = new memory(dst_pd, dst_buf);
+        auto reorder_desc = mkldnn::reorder::primitive_desc(add_pd, dst_pd);
+
+        std::vector<mkldnn::primitive> net;
+        net.push_back(mkldnn::reorder(reorder_desc, *add, *dst));
+        stream(stream::kind::eager).submit(net).wait();
+      }
+    }
   }
 
   engine cpu_engine_ = engine(engine::cpu, 0);
@@ -837,10 +868,12 @@ class MklConvOp : public OpKernel {
   bool fuse_biasadd_ = bias_enabled;
   bool fuse_relu_ = false;
   bool fuse_pad_ = pad_enabled;
+  bool fuse_add_ = false;
 
   int input_index_pad_ = 2;
 
   const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
+  const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
   const int kDilationH = 0, kDilationW = 1;
 
@@ -1028,6 +1061,21 @@ class MklFusedConvOp
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      this->set_fuse_relu(true);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",

@@ -780,6 +780,19 @@ class ReduceDatasetOp : public AsyncOpKernel {
         ctx->SetStatus(status);
         return;
       }
+
+      OP_REQUIRES_ASYNC(ctx, state.size() == output_types_.size(),
+                        errors::InvalidArgument(
+                            "The number of result elements does not match "
+                            "the size of output types: ",
+                            state.size(), " vs. ", output_types_.size()),
+                        done);
+      OP_REQUIRES_ASYNC(ctx, state.size() == output_shapes_.size(),
+                        errors::InvalidArgument(
+                            "The number of result elements does not match "
+                            "the size of output shapes: ",
+                            state.size(), " vs. ", output_shapes_.size()),
+                        done);
       for (int i = 0; i < state.size(); ++i) {
         OP_REQUIRES_ASYNC(
             ctx, state[i].dtype() == output_types_[i],

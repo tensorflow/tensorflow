@@ -878,6 +878,7 @@ cc_library(
     name = "shaped_buffer",
     srcs = ["shaped_buffer.cc"],
     hdrs = ["shaped_buffer.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",

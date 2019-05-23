@@ -180,7 +180,11 @@ py_library(
         "//tensorflow/python/compiler",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:monitoring",
@@ -1388,6 +1392,7 @@ tf_py_test(
     main = "framework/contrib_test.py",
     tags = [
         "no_pip",
+        "no_windows",
     ],
 )
 

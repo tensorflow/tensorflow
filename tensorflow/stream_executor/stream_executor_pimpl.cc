@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
@@ -872,11 +873,9 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
-  port::StatusOr<StreamExecutor *> stream_executor_or =
-      GetStreamExecutor(device_ordinal);
-  TF_RETURN_IF_ERROR(stream_executor_or.status());
-  DeviceMemoryBase result =
-      stream_executor_or.ValueOrDie()->AllocateArray<uint8>(size);
+  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+                      GetStreamExecutor(device_ordinal));
+  DeviceMemoryBase result = executor->AllocateArray<uint8>(size);
   if (size > 0 && result == nullptr) {
     return tensorflow::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",
@@ -893,12 +892,11 @@ port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
 port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
                                                        DeviceMemoryBase mem) {
   if (!mem.is_null()) {
-    port::StatusOr<StreamExecutor *> stream_executor_or =
-        GetStreamExecutor(device_ordinal);
-    TF_RETURN_IF_ERROR(stream_executor_or.status());
+    TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+                        GetStreamExecutor(device_ordinal));
     VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
                                   mem.opaque(), device_ordinal);
-    stream_executor_or.ValueOrDie()->Deallocate(&mem);
+    executor->Deallocate(&mem);
   }
   return port::Status::OK();
 }

@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_GL_SYNC_H_
 
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
+#include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
 
 namespace tflite {
@@ -75,9 +77,27 @@ class GlSync {
 // Waits until GPU is done with processing.
 Status GlSyncWait();
 
-// Performs active waiting by spinning a thread and checking sync status. It
-// leads to shorter wait time (up to tens of ms) but consumes more CPU.
+// Waits until all comands are flushed and then performs active waiting by
+// spinning a thread and checking sync status. It leads to shorter wait time
+// (up to tens of ms) but consumes more CPU.
 Status GlActiveSyncWait();
+
+// Performs the best available minimum latency finish. A calling thread is not
+// going to sleep keeping active busy wait.
+// 1) CPU checks the value in the buffer that is going to be written by GPU. The
+//    persistent buffer is used if the extension is available.
+// 2) glSync is checked for the signalling state in a loop.
+// 3) glFinish() is performed if all other methods are not available
+class GlShaderSync {
+ public:
+  static Status NewSync(GlShaderSync* gl_sync);
+  GlShaderSync() {}
+  Status Wait();
+
+ private:
+  GlProgram flag_program_;
+  GlPersistentBuffer flag_buffer_;
+};
 
 }  // namespace gl
 }  // namespace gpu

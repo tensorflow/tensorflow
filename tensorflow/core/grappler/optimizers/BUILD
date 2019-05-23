@@ -1,6 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # Platform specific build config
@@ -789,6 +790,25 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "remapper_test",
     srcs = ["remapper_test.cc"],
+    deps = [
+        ":remapper",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_remapper_test",
+    srcs = ["mkl_remapper_test.cc"],
     deps = [
         ":remapper",
         "//tensorflow/cc:cc_ops",

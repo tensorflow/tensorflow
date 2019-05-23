@@ -232,7 +232,10 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
 )
 
 py_test(

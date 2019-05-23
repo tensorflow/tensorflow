@@ -1950,7 +1950,8 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
 
-  // Add padding.
+// Before TRT 5.1.3, we have to calculate padding ourselves.
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   std::vector<std::pair<int, int>> padding;
   if (attrs.get<string>("padding") == "SAME") {
     nvinfer1::DimsHW effective_kernel_size = kernel_size;
@@ -1977,12 +1978,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     padding = {{0, 0}, {0, 0}};
   }
 
-// TensorRT 5.1 added support for asymmetric padding. Due to a bug in 5.1.2, we
-// can only use asymmetric padding in convolutions with 5.1.3+.
-#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
+  // Handle asymmetric padding. TensorRT 5.1 added support for asymmetric
+  // padding via setPrePadding and setPostPadding. Due to a bug in 5.1.2, we can
+  // only use asymmetric padding in convolutions with 5.1.3+. But in 5.1.3, we
+  // will always use setPaddingMode for simplicity.
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
-    // Handle asymmetric padding.
     auto pad_layer = params->converter->network()->addPadding(
         *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
@@ -2005,20 +2006,13 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setStride(stride);
 // TensorRT 5.1.3 added support for padding modes.
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
+    // VALID padding is the default TRT behavior.
     if (attrs.get<string>("padding") == "SAME") {
-      VLOG(2) << "Using SAME padding";
       // SAME_UPPER means that post padding is preferred.
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
-    // For VALID padding, we need to manually set the padding.
-    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
-    layer->setPostPadding(
-        nvinfer1::DimsHW{padding[0].second, padding[1].second});
-    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
-            << " and post-padding to: " << DebugString(layer->getPostPadding());
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
-    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
 #endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
@@ -2032,17 +2026,10 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     layer->setStride(stride);
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
     if (attrs.get<string>("padding") == "SAME") {
-      VLOG(2) << "Using SAME padding";
       layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
     }
-    layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
-    layer->setPostPadding(
-        nvinfer1::DimsHW{padding[0].second, padding[1].second});
-    VLOG(2) << "Set pre-padding to: " << DebugString(layer->getPrePadding())
-            << " and post-padding to: " << DebugString(layer->getPostPadding());
 #else
     layer->setPadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
-    VLOG(2) << "Set padding to: " << DebugString(layer->getPadding());
 #endif
     layer->setName(node_def.name().c_str());
     layer->setNbGroups(num_groups);
@@ -2776,6 +2763,8 @@ Status ConvertPool(OpConverterParams* params) {
   const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
   const nvinfer1::DimsHW ksize(tf_kernel[h_index], tf_kernel[w_index]);
 
+// Before TRT 5.1.3, we have to calculate padding ourselves.
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   auto tensor_dim = tensor->getDimensions();
   std::vector<std::pair<int, int>> padding;
   if (padding_type == "SAME") {
@@ -2788,13 +2777,13 @@ Status ConvertPool(OpConverterParams* params) {
   } else if (padding_type == "VALID") {
     padding = {{0, 0}, {0, 0}};
   }
-
-// TensorRT 5.1 added support for asymmetric padding.
+#endif
+// TensorRT 5.1 added support for asymmetric padding. Before that, we need an
+// extra padding layer.
 #if !IS_TRT_VERSION_GE(5, 1, 0, 0)
+  // Asymmetric padding case.
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
-    VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
-            << padding[1].first << padding[1].second;
     auto pad_layer = params->converter->network()->addPadding(
         *tensor, nvinfer1::DimsHW(padding[0].first, padding[1].first),
         nvinfer1::DimsHW(padding[0].second, padding[1].second));
@@ -2816,16 +2805,13 @@ Status ConvertPool(OpConverterParams* params) {
                                                         layer->getOutput(0));
 
   layer->setStride(stride);
-// TensorRT 5.1.3 added support for padding modes.
 #if IS_TRT_VERSION_GE(5, 1, 3, 0)
+  // VALID padding is the default TRT behavior.
   if (attrs.get<string>("padding") == "SAME") {
     // SAME_UPPER means that post padding is preferred.
     layer->setPaddingMode(nvinfer1::PaddingMode::kSAME_UPPER);
   }
-#endif
-// TensorRT 5.1 has support for asymmetric padding.
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
-  // If padding mode is not SAME, then these values will be used instead.
+#elif IS_TRT_VERSION_GE(5, 1, 0, 0)
   layer->setPrePadding(nvinfer1::DimsHW{padding[0].first, padding[1].first});
   layer->setPostPadding(nvinfer1::DimsHW{padding[0].second, padding[1].second});
 #else

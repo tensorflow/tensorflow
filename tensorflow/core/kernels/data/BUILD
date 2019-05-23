@@ -982,6 +982,28 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "reduce_dataset_op_test",
+    size = "small",
+    srcs = ["reduce_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":range_dataset_op",
+        ":stats_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:function_ops",
+    ],
+)
+
 tf_kernel_library(
     name = "multi_device_iterator_ops",
     srcs = ["multi_device_iterator_ops.cc"],

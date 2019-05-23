@@ -74,11 +74,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   string BuildTraceMeName() override {
-    int64 parallelism;
-    {
-      tf_shared_lock l(*mu_);
-      parallelism = num_parallel_calls_->value;
-    }
+    // NOTE: We do not synchronize the following access to num_parallel_calls_
+    // to minimize the tracing overhead.
+    int64 parallelism = num_parallel_calls_->value;
     return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
   }
 

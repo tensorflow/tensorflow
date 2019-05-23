@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow {
 
@@ -36,11 +37,11 @@ class XlaPlatformInfo {
  public:
   XlaPlatformInfo() : device_type_("") {}
   XlaPlatformInfo(XlaPlatformInfo&&) = default;
-  explicit XlaPlatformInfo(const DeviceType device_type,
-                           se::Platform::Id platform_id,
-                           const XlaDevice::Metadata* xla_device_metadata,
-                           std::unique_ptr<XlaAllocator> xla_allocator,
-                           se::DeviceMemoryAllocator* device_allocator)
+  explicit XlaPlatformInfo(
+      const DeviceType device_type, se::Platform::Id platform_id,
+      const XlaDevice::Metadata* xla_device_metadata,
+      std::unique_ptr<se::TfAllocatorAdapter> xla_allocator,
+      se::DeviceMemoryAllocator* device_allocator)
       : device_type_(device_type),
         platform_id_(platform_id),
         xla_device_metadata_(xla_device_metadata),
@@ -84,8 +85,8 @@ class XlaPlatformInfo {
   // then device_allocator_ is the xla::Backend's memory allocator and
   // xla_allocator_ is null.  If the op is placed on a regular CPU or GPU device
   // then device_allocator_ is null and xla_allocator_ points to an appropriate
-  // XlaAllocator instance.
-  std::unique_ptr<XlaAllocator> xla_allocator_;
+  // se::TfAllocatorAdapter instance.
+  std::unique_ptr<se::TfAllocatorAdapter> xla_allocator_;
   se::DeviceMemoryAllocator* device_allocator_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);

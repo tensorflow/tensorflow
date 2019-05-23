@@ -3981,10 +3981,6 @@ tf_module {
     argspec: "args=[\'args\', \'device_ordinal\', \'Tout\', \'f\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "TPUReplicate"
-    argspec: "args=[\'inputs\', \'broadcast_inputs\', \'variables\', \'guaranteed_constants\', \'computation\', \'num_replicas\', \'output_types\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'None\'], "
-  }
-  member_method {
     name: "TPUReplicateMetadata"
     argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'None\'], "
   }

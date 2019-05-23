@@ -853,21 +853,7 @@ def strided_slice(input_,
       """Closure that holds all the arguments to create an assignment."""
 
       if var is None:
-        if name is None:
-          name = parent_name + "_strided_slice_update"
-
-        return gen_array_ops.tensor_strided_slice_update(
-            input=var,
-            begin=begin,
-            end=end,
-            strides=strides,
-            value=val,
-            name=name,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            ellipsis_mask=ellipsis_mask,
-            new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask)
+        raise ValueError("Sliced assignment is only supported for variables")
       else:
         if name is None:
           name = parent_name + "_assign"
@@ -3446,8 +3432,16 @@ def gather(params,
   if compat.forward_compatible(2019, 6, 10):
     if axis is None:
       axis = batch_dims
-    return gen_array_ops.gather_v2(
-        params, indices, axis, batch_dims=batch_dims, name=name)
+    if axis != 0:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, batch_dims=batch_dims, name=name)
+    try:
+      # TODO(apassos) find a less bad way of detecting resource variables
+      # without introducing a circular dependency.
+      return params.sparse_read(indices, name=name)
+    except AttributeError:
+      return gen_array_ops.gather_v2(
+          params, indices, axis, name=name)
 
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):

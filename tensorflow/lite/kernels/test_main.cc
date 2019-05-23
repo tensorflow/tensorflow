@@ -24,7 +24,7 @@ namespace {
 void InitKernelTest(int* argc, char** argv) {
   bool use_nnapi = false;
   std::vector<tflite::Flag> flags = {
-      tflite::Flag::CreateFlag("--use_nnapi", &use_nnapi, "Use NNAPI"),
+      tflite::Flag::CreateFlag("use_nnapi", &use_nnapi, "Use NNAPI"),
   };
   tflite::Flags::Parse(argc, const_cast<const char**>(argv), flags);
 

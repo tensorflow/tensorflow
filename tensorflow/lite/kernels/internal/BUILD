@@ -223,6 +223,7 @@ cc_library(
         "@gemmlowp//:profiler",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:cpu_backend_context",
+        "//tensorflow/lite/kernels:tflite_with_ruy",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
     ] + select({

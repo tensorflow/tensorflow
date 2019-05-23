@@ -76,6 +76,7 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
   # Note that synchronization "ON_READ" implies trainable=False.
   return variable_scope.variable(
       lambda: array_ops.zeros(shape, dtype),
+      trainable=False,
       collections=[
           ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
       ],

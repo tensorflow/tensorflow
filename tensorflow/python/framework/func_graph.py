@@ -301,6 +301,7 @@ class FuncGraph(ops.Graph):
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
         if self._distribution_strategy_stack:
+          self._device_function_stack = self._device_function_stack.copy()
           self._add_device_to_stack(context.context().device_name)
       else:
         if (self._distribution_strategy_stack
