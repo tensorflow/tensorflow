@@ -383,6 +383,7 @@ cc_library(
     name = "curand_plugin",
     srcs = if_cuda_is_configured(["cuda_rng.cc"]),
     hdrs = if_cuda_is_configured(["cuda_rng.h"]),
+    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation",
         ":cuda_gpu_executor",
