@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops/dot_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/mapping_helper.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/visitor_subcomputation.h"
 
 #include <poplar/OptionFlags.hpp>
@@ -66,6 +67,8 @@ struct CompilerResources {
   bool merge_infeed_io_copies;
 
   std::map<std::string, TensorMap> tensor_maps;
+
+  LinearMapperState linear_mapping_state;
 
   conv_graph_caching::ConvolutionGraphCache conv_graph_cache;
 
