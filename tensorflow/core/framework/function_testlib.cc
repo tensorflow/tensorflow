@@ -567,47 +567,6 @@ FunctionDef RandomUniformLess() {
          {"shrink_axis_mask", 0}}}});
 }
 
-FunctionDef MakeFilterDataset() {
-  return FDH::Define(
-      // Name
-      "FilterDataset",
-      // Args
-      {"input_dataset: variant"},
-      // Return values
-      {"y: variant"},
-      // Attr def
-      {"predicate: func", "Targuments: list(type) >= 0",
-       "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
-      // Nodes
-      {{{"y"},
-        "FilterDataset",
-        {"input_dataset"},
-        {{"predicate", "$predicate"},
-         {"Targuments", "$Targuments"},
-         {"output_types", "$output_types"},
-         {"output_shapes", "$output_shapes"}}}});
-}
-
-FunctionDef MakePrefetchDataset() {
-  return FDH::Define(
-      // Name
-      "PrefetchDataset",
-      // Args
-      {"input_dataset: variant", "buffer_size: int64"},
-      // Return values
-      {"y:variant"},
-      // Attr def
-      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1",
-       "slack_period: int = 0"},
-      // Nodes
-      {{{"y"},
-        "PrefetchDataset",
-        {"input_dataset", "buffer_size"},
-        {{"output_types", "$output_types"},
-         {"output_shapes", "$output_shapes"},
-         {"slack_period", "$slack_period"}}}});
-}
-
 FunctionDef MakeRangeDataset() {
   return FDH::Define(
       // Name
@@ -622,42 +581,6 @@ FunctionDef MakeRangeDataset() {
       {{{"y"},
         "RangeDataset",
         {"start", "stop", "step"},
-        {{"output_types", "$output_types"},
-         {"output_shapes", "$output_shapes"}}}});
-}
-
-FunctionDef MakeRepeatDataset() {
-  return FDH::Define(
-      // Name
-      "RepeatDataset",
-      // Args
-      {"input_dataset: variant", "count: int64"},
-      // Return values
-      {"y:variant"},
-      // Attr def
-      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
-      // Nodes
-      {{{"y"},
-        "RepeatDataset",
-        {"input_dataset", "count"},
-        {{"output_types", "$output_types"},
-         {"output_shapes", "$output_shapes"}}}});
-}
-
-FunctionDef MakeSkipDataset() {
-  return FDH::Define(
-      // Name
-      "SkipDataset",
-      // Args
-      {"input_dataset: variant", "count: int64"},
-      // Return values
-      {"y:variant"},
-      // Attr def
-      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
-      // Nodes
-      {{{"y"},
-        "SkipDataset",
-        {"input_dataset", "count"},
         {{"output_types", "$output_types"},
          {"output_shapes", "$output_shapes"}}}});
 }

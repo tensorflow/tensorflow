@@ -1054,13 +1054,9 @@ tf_cc_test(
     deps = [
         ":dataset_test_base",
         ":dataset_utils",
-        ":filter_dataset_op",
         ":iterator_ops",
         ":optimize_dataset_op",
-        ":prefetch_dataset_op",
         ":range_dataset_op",
-        ":repeat_dataset_op",
-        ":skip_dataset_op",
         ":take_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1069,7 +1065,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:functional_ops",
     ],
 )
 
