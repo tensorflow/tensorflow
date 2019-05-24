@@ -2,9 +2,10 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow/compiler/xla/client:friends"])
+package(
+    default_visibility = ["//tensorflow/compiler/xla/client:friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(

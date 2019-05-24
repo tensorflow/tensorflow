@@ -9,10 +9,9 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(":build_defs.bzl", "runtime_copts")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
