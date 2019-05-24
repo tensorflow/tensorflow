@@ -270,7 +270,7 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if is_in_call_context() or all(
+  if call_context().in_call or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
@@ -278,30 +278,9 @@ def needs_keras_history(tensors):
   return uses_keras_history(tensors)
 
 
-def is_in_call_context():
-  """Returns true if inside of a model/layer '__call__'."""
-  return getattr(_call_context, 'in_call', False)
-
-
-def is_in_frozen_context():
-  """Returns if currently executing inside a `call` of a frozen Layer.
-
-  A Layer is considered frozen if `layer.trainable=False`.
-
-  Returns:
-    Whether currently inside the `call` of a frozen Layer.
-  """
-  return getattr(_call_context, 'frozen', False)
-
-
 def is_in_keras_graph():
   """Returns if currently executing inside of a Keras graph."""
-  # Returns True even if in a subgraph of the Keras graph, such as those
-  # created by control flow ops.
-  if context.executing_eagerly():
-    return False
-  return (getattr(backend.get_graph(), 'name', None) == 'keras_graph' or
-          getattr(_call_context, 'in_keras_graph', False))
+  return call_context().in_keras_graph
 
 
 def is_in_eager_or_tf_function():
@@ -372,34 +351,66 @@ def mark_checked(tensors):
   nest.map_structure(_mark_checked, tensors)
 
 
-@tf_contextlib.contextmanager
-def call_context(layer, build_graph):
-  """Scope that marks when we are currently inside a Layer/Model's `call`.
+def call_context():
+  """Returns currently active `CallContext`."""
+  if getattr(_call_context, 'call_context', None) is None:
+    _call_context.call_context = CallContext()
+  return _call_context.call_context
 
-  Args:
-    layer: The current layer we are entering.
-    build_graph: True if the layer is building a graph to handle symbolic
-      inputs, False if the layer is processing eager inputs eagerly.
 
-  Yields:
-    A scope in the new call context.
+class CallContext(object):
+  """Keeps track of properties currently inside a Layer/Model's `call`.
+
+  Attributes:
+    layer: The `Layer` whose `call` is currently active.
+    inputs: The inputs to the currently active `Layer`.
+    frozen: Whether currently executing inside a `Layer` with `trainable` set to
+      `False`.
+    in_call: Whether currently inside the `call` of a Layer.
+    in_keras_graph: Whether executing inside the Keras Graph.
   """
-  was_in_call = is_in_call_context()
-  was_frozen = is_in_frozen_context()
-  was_in_keras_graph = getattr(_call_context, 'in_keras_graph', False)
-  _call_context.in_call = True
-  _call_context.in_keras_graph = (
-      was_in_keras_graph or
-      (build_graph and
-       getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
-  if not layer.trainable:
-    _call_context.frozen = True
-  try:
-    yield
-  finally:
-    _call_context.in_call = was_in_call
-    _call_context.frozen = was_frozen
-    _call_context.in_keras_graph = was_in_keras_graph
+
+  def __init__(self):
+    self.layer = None
+    self.inputs = None
+    self.frozen = False
+    self.in_call = False
+    self._in_keras_graph = False
+
+  @tf_contextlib.contextmanager
+  def enter(self, layer, inputs, build_graph):
+    """Push a Layer and its inputs and state onto the current call context."""
+    prev_layer = self.layer
+    prev_inputs = self.inputs
+    prev_frozen = self.frozen
+    prev_in_call = self.in_call
+    prev_in_keras_graph = self._in_keras_graph
+
+    self.layer = layer
+    self.inputs = inputs
+    self.frozen = self.frozen or not layer.trainable
+    self.in_call = True
+    self._in_keras_graph = (
+        self._in_keras_graph or
+        (build_graph and
+         getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+    try:
+      yield
+    finally:
+      self.layer = prev_layer
+      self.inputs = prev_inputs
+      self.frozen = prev_frozen
+      self.in_call = prev_in_call
+      self._in_keras_graph = prev_in_keras_graph
+
+  @property
+  def in_keras_graph(self):
+    # Returns True even if in a subgraph of the Keras graph, such as those
+    # created by control flow ops.
+    if context.executing_eagerly():
+      return False
+    return (self._in_keras_graph or
+            getattr(backend.get_graph(), 'name', None) == 'keras_graph')
 
 
 def training_arg_passed_to_call(argspec, args, kwargs):
