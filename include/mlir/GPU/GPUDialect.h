@@ -125,7 +125,7 @@ public:
                     KernelDim3 blockSize, ArrayRef<Value *> kernelOperands);
 
   /// The kernel function specified by the operation's `kernel` attribute.
-  Function *kernel();
+  StringRef kernel();
   /// The number of operands passed to the kernel function.
   unsigned getNumKernelOperands();
   /// The i-th operand passed to the kernel function.

@@ -436,13 +436,12 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
 }
 
 static void print(OpAsmPrinter *p, CallOp op) {
-  *p << "call ";
-  p->printFunctionReference(op.getCallee());
-  *p << '(';
+  *p << "call " << op.getAttr("callee") << '(';
   p->printOperands(op.getOperands());
   *p << ')';
   p->printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"callee"});
-  *p << " : " << op.getCallee()->getType();
+  *p << " : ";
+  p->printType(op.getCalleeType());
 }
 
 static LogicalResult verify(CallOp op) {
@@ -475,9 +474,13 @@ static LogicalResult verify(CallOp op) {
   return success();
 }
 
-Function *CallOp::getCallee() {
-  auto name = getAttrOfType<FunctionAttr>("callee").getValue();
-  return getOperation()->getFunction()->getModule()->getNamedFunction(name);
+FunctionType CallOp::getCalleeType() {
+  SmallVector<Type, 4> resultTypes(getOperation()->getResultTypes());
+  SmallVector<Type, 8> argTypes;
+  argTypes.reserve(getNumOperands());
+  for (auto *operand : getArgOperands())
+    argTypes.push_back(operand->getType());
+  return FunctionType::get(argTypes, resultTypes, getContext());
 }
 
 //===----------------------------------------------------------------------===//

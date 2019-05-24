@@ -228,7 +228,8 @@ def CallOp : Std_Op<"call"> {
   }]>];
 
   let extraClassDeclaration = [{
-    Function *getCallee();
+    StringRef getCallee() { return callee(); }
+    FunctionType getCalleeType();
 
     /// Get the argument operands to the called function.
     operand_range getArgOperands() {

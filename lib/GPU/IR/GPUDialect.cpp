@@ -315,10 +315,8 @@ void LaunchFuncOp::build(Builder *builder, OperationState *result,
         blockSize.x, blockSize.y, blockSize.z, kernelOperands);
 }
 
-Function *LaunchFuncOp::kernel() {
-  auto kernelAttr = getAttr(getKernelAttrName()).cast<FunctionAttr>();
-  return getOperation()->getFunction()->getModule()->getNamedFunction(
-      kernelAttr.getValue());
+StringRef LaunchFuncOp::kernel() {
+  return getAttrOfType<FunctionAttr>(getKernelAttrName()).getValue();
 }
 
 unsigned LaunchFuncOp::getNumKernelOperands() {
@@ -337,7 +335,8 @@ LogicalResult LaunchFuncOp::verify() {
     return emitOpError("attribute 'kernel' must be a function");
   }
 
-  Function *kernelFunc = this->kernel();
+  auto *module = getOperation()->getFunction()->getModule();
+  Function *kernelFunc = module->getNamedFunction(kernel());
   if (!kernelFunc)
     return emitError() << "kernel function '" << kernelAttr << "' is undefined";
 
