@@ -68,8 +68,8 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     input: A `[..., samples]` `float32` `Tensor` containing the signals to
       take the DCT of.
     type: The DCT type to perform. Must be 1, 2 or 3.
-    n: The length of the transform. If length is less than sequence length, 
-      only the first n elements of the sequence are considered for the DCT. 
+    n: The length of the transform. If length is less than sequence length,
+      only the first n elements of the sequence are considered for the DCT.
       If n is greater than the sequence length, zeros are padded and then
       the DCT is computed as usual.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
@@ -82,7 +82,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 
   Raises:
     ValueError: If `type` is not `1`, `2` or `3`, `axis` is
-      not `-1`, `n` is not `None` or greater than 0, 
+      not `-1`, `n` is not `None` or greater than 0,
       or `norm` is not `None` or `'ortho'`.
     ValueError: If `type` is `1` and `norm` is `ortho`.
 
@@ -95,13 +95,13 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
 
     seq_len = (tensor_shape.dimension_value(input.shape[-1])
-                or _array_ops.shape(input)[-1])
+               or _array_ops.shape(input)[-1])
     if n is not None:
       if n <= seq_len:
         input = input[..., 0:n]
       else:
         rank = len(input.shape)
-        padding = [[0,0] for i in range(rank)]
+        padding = [[0, 0] for i in range(rank)]
         padding[rank-1][1] = n - seq_len
         padding = _ops.convert_to_tensor(padding, dtype=_dtypes.int32)
         input = _array_ops.pad(input, paddings=padding)

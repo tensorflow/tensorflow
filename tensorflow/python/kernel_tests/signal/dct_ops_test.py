@@ -48,18 +48,18 @@ def _modify_input_for_dct(signals, n=None):
   signal = np.array(signals)
   if n is None or n == signal.shape[-1]:
     signal_mod = signal
-  elif n>=1:
+  elif n >= 1:
     signal_len = signal.shape[-1]
-    if n<=signal_len:
-      signal_mod = signal[...,0:n]
+    if n <= signal_len:
+      signal_mod = signal[..., 0:n]
     else:
       output_shape = list(signal.shape)
       output_shape[-1] = n
       signal_mod = np.zeros(output_shape)
-      signal_mod[...,0:signal.shape[-1]] = signal
+      signal_mod[..., 0:signal.shape[-1]] = signal
   if n:
-    assert (signal_mod.shape[-1]==n)
-  return signal_mod 
+    assert signal_mod.shape[-1] == n
+  return signal_mod
 
 
 def _np_dct1(signals, n=None, norm=None):
@@ -104,7 +104,6 @@ def _np_dct3(signals, n=None, norm=None):
   # https://github.com/scipy/scipy/blob/v0.15.1/scipy/fftpack/src/dct.c.src
   signals_mod = _modify_input_for_dct(signals, n=n)
   dct_size = signals_mod.shape[-1]
-  
   signals_mod = np.array(signals_mod)  # make a copy so we can modify
   if norm == "ortho":
     signals_mod[..., 0] *= np.sqrt(4.0 / dct_size)
