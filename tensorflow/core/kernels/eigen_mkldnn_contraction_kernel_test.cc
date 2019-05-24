@@ -166,7 +166,7 @@ TEST(EigenMkldnnTest, MkldnnGemmQInt8xQUInt8) {
   rhs.setRandom();
   // NOTE: 's8*u8 + s8*u8 -> s16' saturation might lead to incorrect results. In
   // practice in FusedConv2DBiasActivationKernel we use 7 bit inputs.
-  rhs.clip(0, 127);
+  rhs = rhs.clip(0, 127);
 
   Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
   contract_dims[0].first = 1;
