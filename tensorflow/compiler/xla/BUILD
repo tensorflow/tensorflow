@@ -881,6 +881,26 @@ tf_cc_test(
         ],
 )
 
+cc_library(
+    name = "refcounting_hash_map",
+    hdrs = ["refcounting_hash_map.h"],
+    deps = [
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "refcounting_hash_map_test",
+    srcs = ["refcounting_hash_map_test.cc"],
+    deps = [
+        ":refcounting_hash_map",
+        ":test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
