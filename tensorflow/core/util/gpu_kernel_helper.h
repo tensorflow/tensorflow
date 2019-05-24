@@ -160,7 +160,7 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
 // Aliased in gpu_device_functions.h
 #endif
 
-namespace cuda_helper {
+namespace gpu_helper {
 template <typename T, typename OutType = int32>
 __device__ OutType upper_bound(const T* first, OutType count, T val) {
   const T* orig = first;
@@ -201,7 +201,12 @@ __device__ OutType lower_bound(const T* first, OutType count, T val) {
   return first - orig;
 }
 
-}  // namespace cuda_helper
+}  // namespace gpu_helper
+
+#ifndef TENSORFLOW_USE_ROCM
+namespace cuda_helper = gpu_helper;
+#endif
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
