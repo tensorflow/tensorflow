@@ -49,7 +49,7 @@ class TriangularSolveThunk : public Thunk {
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

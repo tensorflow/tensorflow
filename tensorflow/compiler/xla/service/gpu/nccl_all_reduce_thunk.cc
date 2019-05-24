@@ -509,7 +509,7 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
 
 Status NcclAllReduceThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& run_id, HloExecutionProfiler* profiler) {
   auto* global_rendezvous = GetGlobalRendezvous();
 
   ParticipantData participant;
@@ -553,7 +553,7 @@ NcclAllReduceThunk::~NcclAllReduceThunk() {
 
 Status NcclAllReduceThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& run_id, HloExecutionProfiler* profiler) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");
