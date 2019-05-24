@@ -29,6 +29,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/Ops.h"
+#include "mlir/Transforms/LoopFusionUtils.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
@@ -1810,6 +1811,13 @@ public:
                                   dstLoadOpInsts, dstStoreOpInsts, &sliceState,
                                   &bestDstLoopDepth, maximalFusion))
             continue;
+          // TODO(andydavis) Remove assert and surrounding code when
+          // canFuseLoops is fully functional.
+          FusionResult result = mlir::canFuseLoops(
+              cast<AffineForOp>(srcNode->op), cast<AffineForOp>(dstNode->op),
+              bestDstLoopDepth, /*srcSlice=*/nullptr);
+          assert(result.value == FusionResult::Success);
+          (void)result;
 
           // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
           auto sliceLoopNest = mlir::insertBackwardComputationSlice(

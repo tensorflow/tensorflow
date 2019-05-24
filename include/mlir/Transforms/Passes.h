@@ -116,6 +116,9 @@ FunctionPassBase *createMemRefDataFlowOptPass();
 /// Creates a pass to strip debug information from a function.
 FunctionPassBase *createStripDebugInfoPass();
 
+/// Creates a pass which tests loop fusion utilities.
+FunctionPassBase *createTestLoopFusionPass();
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H
