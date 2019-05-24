@@ -133,11 +133,6 @@ void PickReasonableMultiplier(
     should_use_per_channel = false;
   }
 
-  // TODO(b/132878669): Support padding.
-  if (params.padding_values.width != 0 || params.padding_values.height != 0) {
-    should_use_per_channel = false;
-  }
-
   int base_multiplier;
   int base_shift;
   QuantizeMultiplier(output_multiplier, &base_multiplier, &base_shift);
