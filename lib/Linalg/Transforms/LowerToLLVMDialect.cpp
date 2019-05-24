@@ -316,7 +316,7 @@ class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
-    auto elementTy = lowering.convertType(*op->getResultTypes().begin());
+    auto elementTy = lowering.convertType(*op->result_type_begin());
     Value *viewDescriptor = operands[0];
     ArrayRef<Value *> indices = operands.drop_front();
     auto ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);

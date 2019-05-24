@@ -60,8 +60,7 @@ void injectGpuIndexOperations(Location loc, Function &kernelFunc) {
 // Outline the `gpu.launch` operation body into a kernel function.
 Function *outlineKernelFunc(Module &module, gpu::LaunchOp &launchOp) {
   Location loc = launchOp.getLoc();
-  SmallVector<Type, 4> kernelOperandTypes;
-  launchOp.getKernelOperandTypes(kernelOperandTypes);
+  SmallVector<Type, 4> kernelOperandTypes(launchOp.getKernelOperandTypes());
   FunctionType type =
       FunctionType::get(kernelOperandTypes, {}, module.getContext());
   std::string kernelFuncName =

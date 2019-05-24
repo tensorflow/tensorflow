@@ -220,10 +220,10 @@ void ModuleState::visitAttribute(Attribute attr) {
 
 void ModuleState::visitOperation(Operation *op) {
   // Visit all the types used in the operation.
-  for (auto *operand : op->getOperands())
-    visitType(operand->getType());
-  for (auto *result : op->getResults())
-    visitType(result->getType());
+  for (auto type : op->getOperandTypes())
+    visitType(type);
+  for (auto type : op->getResultTypes())
+    visitType(type);
 
   // Visit each of the attributes.
   for (auto elt : op->getAttrs())

@@ -284,8 +284,8 @@ static LogicalResult verify(AllocOp op) {
         "operand count does not equal dimension plus symbol operand count");
 
   // Verify that all operands are of type Index.
-  for (auto *operand : op.getOperands())
-    if (!operand->getType().isIndex())
+  for (auto operandType : op.getOperandTypes())
+    if (!operandType.isIndex())
       return op.emitOpError("requires operands to be of type Index");
   return success();
 }
@@ -475,11 +475,8 @@ static LogicalResult verify(CallOp op) {
 }
 
 FunctionType CallOp::getCalleeType() {
-  SmallVector<Type, 4> resultTypes(getOperation()->getResultTypes());
-  SmallVector<Type, 8> argTypes;
-  argTypes.reserve(getNumOperands());
-  for (auto *operand : getArgOperands())
-    argTypes.push_back(operand->getType());
+  SmallVector<Type, 4> resultTypes(getResultTypes());
+  SmallVector<Type, 8> argTypes(getOperandTypes());
   return FunctionType::get(argTypes, resultTypes, getContext());
 }
 

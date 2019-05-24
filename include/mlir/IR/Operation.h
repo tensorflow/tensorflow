@@ -34,6 +34,7 @@ class BlockAndValueMapping;
 class Location;
 class MLIRContext;
 class OperandIterator;
+class OperandTypeIterator;
 struct OperationState;
 class ResultIterator;
 class ResultTypeIterator;
@@ -198,6 +199,13 @@ public:
 
   OpOperand &getOpOperand(unsigned idx) { return getOpOperands()[idx]; }
 
+  // Support operand type iteration.
+  using operand_type_iterator = OperandTypeIterator;
+  using operand_type_range = llvm::iterator_range<operand_type_iterator>;
+  operand_type_iterator operand_type_begin();
+  operand_type_iterator operand_type_end();
+  operand_type_range getOperandTypes();
+
   //===--------------------------------------------------------------------===//
   // Results
   //===--------------------------------------------------------------------===//
@@ -226,9 +234,10 @@ public:
 
   // Support result type iteration.
   using result_type_iterator = ResultTypeIterator;
+  using result_type_range = llvm::iterator_range<result_type_iterator>;
   result_type_iterator result_type_begin();
   result_type_iterator result_type_end();
-  llvm::iterator_range<result_type_iterator> getResultTypes();
+  result_type_range getResultTypes();
 
   //===--------------------------------------------------------------------===//
   // Attributes
@@ -500,6 +509,19 @@ public:
   Value *operator*() const { return this->object->getOperand(this->index); }
 };
 
+/// This class implements the operand type iterators for the Operation
+/// class in terms of operand_iterator->getType().
+class OperandTypeIterator final
+    : public llvm::mapped_iterator<OperandIterator, Type (*)(Value *)> {
+  static Type unwrap(Value *value) { return value->getType(); }
+
+public:
+  /// Initializes the operand type iterator to the specified operand iterator.
+  OperandTypeIterator(OperandIterator it)
+      : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {
+  }
+};
+
 // Implement the inline operand iterator methods.
 inline auto Operation::operand_begin() -> operand_iterator {
   return operand_iterator(this, 0);
@@ -511,6 +533,18 @@ inline auto Operation::operand_end() -> operand_iterator {
 
 inline auto Operation::getOperands() -> operand_range {
   return {operand_begin(), operand_end()};
+}
+
+inline auto Operation::operand_type_begin() -> operand_type_iterator {
+  return operand_type_iterator(operand_begin());
+}
+
+inline auto Operation::operand_type_end() -> operand_type_iterator {
+  return operand_type_iterator(operand_end());
+}
+
+inline auto Operation::getOperandTypes() -> operand_type_range {
+  return {operand_type_begin(), operand_type_end()};
 }
 
 /// This class implements the result iterators for the Operation class
@@ -559,8 +593,7 @@ inline auto Operation::result_type_end() -> result_type_iterator {
   return result_type_iterator(result_end());
 }
 
-inline auto Operation::getResultTypes()
-    -> llvm::iterator_range<result_type_iterator> {
+inline auto Operation::getResultTypes() -> result_type_range {
   return {result_type_begin(), result_type_end()};
 }
 

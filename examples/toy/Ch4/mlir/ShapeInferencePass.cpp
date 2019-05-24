@@ -226,8 +226,8 @@ public:
       // Find the next operation ready for inference, that is an operation
       // with all operands already resolved (non-generic).
       auto nextop = llvm::find_if(opWorklist, [](mlir::Operation *op) {
-        return llvm::all_of(op->getOperands(), [](mlir::Value *v) {
-          return !v->getType().cast<ToyArrayType>().isGeneric();
+        return llvm::all_of(op->getOperandTypes(), [](mlir::Type ty) {
+          return !ty.cast<ToyArrayType>().isGeneric();
         });
       });
       if (nextop == opWorklist.end())
@@ -308,9 +308,8 @@ public:
         if (!mangledCallee) {
           // Can't find the target, this is where we queue the request for the
           // callee and stop the inference for the current function now.
-          std::vector<mlir::Type> funcArgs;
-          for (auto operand : op->getOperands())
-            funcArgs.push_back(operand->getType());
+          std::vector<mlir::Type> funcArgs(op->operand_type_begin(),
+                                           op->operand_type_end());
           funcWorklist.push_back(
               {callee, std::move(mangledName), std::move(funcArgs)});
           return mlir::success();

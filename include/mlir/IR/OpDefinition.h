@@ -328,6 +328,8 @@ template <typename ConcreteType, template <typename> class TraitType>
 struct MultiOperandTraitBase : public TraitBase<ConcreteType, TraitType> {
   using operand_iterator = Operation::operand_iterator;
   using operand_range = Operation::operand_range;
+  using operand_type_iterator = Operation::operand_type_iterator;
+  using operand_type_range = Operation::operand_type_range;
 
   /// Return the number of operands.
   unsigned getNumOperands() { return this->getOperation()->getNumOperands(); }
@@ -346,6 +348,17 @@ struct MultiOperandTraitBase : public TraitBase<ConcreteType, TraitType> {
   }
   operand_iterator operand_end() { return this->getOperation()->operand_end(); }
   operand_range getOperands() { return this->getOperation()->getOperands(); }
+
+  /// Operand type access.
+  operand_type_iterator operand_type_begin() {
+    return this->getOperation()->operand_type_begin();
+  }
+  operand_type_iterator operand_type_end() {
+    return this->getOperation()->operand_type_end();
+  }
+  operand_type_range getOperandTypes() {
+    return this->getOperation()->getOperandTypes();
+  }
 };
 } // end namespace detail
 
@@ -447,6 +460,8 @@ template <typename ConcreteType, template <typename> class TraitType>
 struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
   using result_iterator = Operation::result_iterator;
   using result_range = Operation::result_range;
+  using result_type_iterator = Operation::result_type_iterator;
+  using result_type_range = Operation::result_type_range;
 
   /// Return the number of results.
   unsigned getNumResults() { return this->getOperation()->getNumResults(); }
@@ -468,6 +483,17 @@ struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
   }
   result_iterator result_end() { return this->getOperation()->result_end(); }
   result_range getResults() { return this->getOperation()->getResults(); }
+
+  /// Result type access.
+  result_type_iterator result_type_begin() {
+    return this->getOperation()->result_type_begin();
+  }
+  result_type_iterator result_type_end() {
+    return this->getOperation()->result_type_end();
+  }
+  result_type_range getResultTypes() {
+    return this->getOperation()->getResultTypes();
+  }
 };
 } // end namespace detail
 
@@ -477,7 +503,6 @@ template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {
 public:
   Value *getResult() { return this->getOperation()->getResult(0); }
-
   Type getType() { return getResult()->getType(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in

@@ -177,11 +177,8 @@ static ParseResult parseAllocaOp(OpAsmParser *parser, OperationState *result) {
 //===----------------------------------------------------------------------===//
 
 static void printGEPOp(OpAsmPrinter *p, GEPOp &op) {
-  SmallVector<Type, 8> types;
-  for (auto *operand : op.getOperands())
-    types.push_back(operand->getType());
-  auto funcTy =
-      FunctionType::get(types, op.getResult()->getType(), op.getContext());
+  SmallVector<Type, 8> types(op.getOperandTypes());
+  auto funcTy = FunctionType::get(types, op.getType(), op.getContext());
 
   *p << op.getOperationName() << ' ' << *op.base() << '[';
   p->printOperands(std::next(op.operand_begin()), op.operand_end());
@@ -326,11 +323,9 @@ static void printCallOp(OpAsmPrinter *p, CallOp &op) {
   p->printOptionalAttrDict(op.getAttrs(), {"callee"});
 
   // Reconstruct the function MLIR function type from operand and result types.
-  SmallVector<Type, 1> resultTypes(op.getOperation()->getResultTypes());
-  SmallVector<Type, 8> argTypes;
-  argTypes.reserve(op.getNumOperands());
-  for (auto *operand : llvm::drop_begin(op.getOperands(), isDirect ? 0 : 1))
-    argTypes.push_back(operand->getType());
+  SmallVector<Type, 1> resultTypes(op.getResultTypes());
+  SmallVector<Type, 8> argTypes(
+      llvm::drop_begin(op.getOperandTypes(), isDirect ? 0 : 1));
 
   *p << " : " << FunctionType::get(argTypes, resultTypes, op.getContext());
 }

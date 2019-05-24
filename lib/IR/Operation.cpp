@@ -593,11 +593,7 @@ Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper,
     }
   }
 
-  SmallVector<Type, 8> resultTypes;
-  resultTypes.reserve(getNumResults());
-  for (auto *result : getResults())
-    resultTypes.push_back(result->getType());
-
+  SmallVector<Type, 8> resultTypes(getResultTypes());
   unsigned numRegions = getNumRegions();
   auto *newOp = Operation::create(getLoc(), getName(), operands, resultTypes,
                                   attrs, successors, numRegions,
@@ -718,8 +714,8 @@ static Type getTensorOrVectorElementType(Type type) {
 }
 
 LogicalResult OpTrait::impl::verifyOperandsAreIntegerLike(Operation *op) {
-  for (auto *operand : op->getOperands()) {
-    auto type = getTensorOrVectorElementType(operand->getType());
+  for (auto opType : op->getOperandTypes()) {
+    auto type = getTensorOrVectorElementType(opType);
     if (!type.isIntOrIndex())
       return op->emitOpError() << "requires an integer or index type";
   }
@@ -727,8 +723,8 @@ LogicalResult OpTrait::impl::verifyOperandsAreIntegerLike(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifyOperandsAreFloatLike(Operation *op) {
-  for (auto *operand : op->getOperands()) {
-    auto type = getTensorOrVectorElementType(operand->getType());
+  for (auto opType : op->getOperandTypes()) {
+    auto type = getTensorOrVectorElementType(opType);
     if (!type.isa<FloatType>())
       return op->emitOpError("requires a float type");
   }
@@ -742,8 +738,8 @@ LogicalResult OpTrait::impl::verifySameTypeOperands(Operation *op) {
     return success();
 
   auto type = op->getOperand(0)->getType();
-  for (unsigned i = 1; i < nOperands; ++i)
-    if (op->getOperand(i)->getType() != type)
+  for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1))
+    if (opType != type)
       return op->emitOpError() << "requires all operands to have the same type";
   return success();
 }
@@ -798,13 +794,13 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultShape(Operation *op) {
     return failure();
 
   auto type = op->getOperand(0)->getType();
-  for (unsigned i = 0, e = op->getNumResults(); i < e; ++i) {
-    if (failed(verifyShapeMatch(op->getResult(i)->getType(), type)))
+  for (auto resultType : op->getResultTypes()) {
+    if (failed(verifyShapeMatch(resultType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
-  for (unsigned i = 1, e = op->getNumOperands(); i < e; ++i) {
-    if (failed(verifyShapeMatch(op->getOperand(i)->getType(), type)))
+  for (auto opType : llvm::drop_begin(op->getOperandTypes(), 1)) {
+    if (failed(verifyShapeMatch(opType, type)))
       return op->emitOpError()
              << "requires the same shape for all operands and results";
   }
@@ -849,13 +845,13 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
     return failure();
 
   auto type = op->getResult(0)->getType();
-  for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
-    if (op->getResult(i)->getType() != type)
+  for (auto resultType : llvm::drop_begin(op->getResultTypes(), 1)) {
+    if (resultType != type)
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }
-  for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
-    if (op->getOperand(i)->getType() != type)
+  for (auto opType : op->getOperandTypes()) {
+    if (opType != type)
       return op->emitOpError()
              << "requires the same type for all operands and results";
   }
@@ -905,8 +901,8 @@ LogicalResult OpTrait::impl::verifyIsTerminator(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifyResultsAreBoolLike(Operation *op) {
-  for (auto *result : op->getResults()) {
-    auto elementType = getTensorOrVectorElementType(result->getType());
+  for (auto resultType : op->getResultTypes()) {
+    auto elementType = getTensorOrVectorElementType(resultType);
     bool isBoolType = elementType.isInteger(1);
     if (!isBoolType)
       return op->emitOpError() << "requires a bool result type";
@@ -916,19 +912,17 @@ LogicalResult OpTrait::impl::verifyResultsAreBoolLike(Operation *op) {
 }
 
 LogicalResult OpTrait::impl::verifyResultsAreFloatLike(Operation *op) {
-  for (auto *result : op->getResults())
-    if (!getTensorOrVectorElementType(result->getType()).isa<FloatType>())
+  for (auto resultType : op->getResultTypes())
+    if (!getTensorOrVectorElementType(resultType).isa<FloatType>())
       return op->emitOpError() << "requires a floating point type";
 
   return success();
 }
 
 LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
-  for (auto *result : op->getResults()) {
-    auto type = getTensorOrVectorElementType(result->getType());
-    if (!type.isIntOrIndex())
+  for (auto resultType : op->getResultTypes())
+    if (!getTensorOrVectorElementType(resultType).isIntOrIndex())
       return op->emitOpError() << "requires an integer or index type";
-  }
   return success();
 }
 

@@ -262,17 +262,6 @@ protected:
   LLVM::LLVMDialect &dialect;
 };
 
-// Given a range of MLIR typed objects, return a list of their types.
-template <typename T>
-SmallVector<Type, 4> getTypes(llvm::iterator_range<T> range) {
-  SmallVector<Type, 4> types;
-  types.reserve(llvm::size(range));
-  for (auto operand : range) {
-    types.push_back(operand->getType());
-  }
-  return types;
-}
-
 // Basic lowering implementation for one-to-one rewriting from Standard Ops to
 // LLVM Dialect Ops.
 template <typename SourceOp, typename TargetOp>
@@ -288,8 +277,8 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
     Type packedType;
     if (numResults != 0) {
-      packedType =
-          this->lowering.packFunctionResults(getTypes(op->getResults()));
+      packedType = this->lowering.packFunctionResults(
+          llvm::to_vector<4>(op->getResultTypes()));
       assert(packedType && "type conversion failed, such operation should not "
                            "have been matched");
     }
@@ -832,7 +821,8 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
 
     // Otherwise, we need to pack the arguments into an LLVM struct type before
     // returning.
-    auto packedType = lowering.packFunctionResults(getTypes(op->getOperands()));
+    auto packedType =
+        lowering.packFunctionResults(llvm::to_vector<4>(op->getOperandTypes()));
 
     Value *packed = rewriter.create<LLVM::UndefOp>(op->getLoc(), packedType);
     for (unsigned i = 0; i < numArguments; ++i) {
