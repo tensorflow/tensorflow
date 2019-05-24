@@ -95,6 +95,17 @@ py_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "context_test",
+    size = "small",
+    srcs = ["context_test.py"],
+    additional_deps = [
+        ":context",
+        ":test",
     ],
 )
 

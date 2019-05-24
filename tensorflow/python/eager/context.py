@@ -22,8 +22,9 @@ import collections
 import contextlib
 import copy
 import random
-import six
 import threading
+import numpy
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -359,7 +360,11 @@ class Context(object):
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
     self._seed = seed
-    self._rng = random.Random(self._seed)
+    if isinstance(seed, (list, numpy.ndarray)):
+      hashable_seed = str(seed)
+    else:
+      hashable_seed = seed
+    self._rng = random.Random(hashable_seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tensorflow.TFE_ContextClearCaches(self._context_handle)
