@@ -27,13 +27,12 @@ from tensorflow.python.ops import math_ops as _math_ops
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.util.tf_export import tf_export
 
-
 def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
   """Checks that DCT/IDCT arguments are compatible and well formed."""
   if axis != -1:
     raise NotImplementedError("axis must be -1. Got: %s" % axis)
   if n is not None and n < 1:
-    raise ValueError("n should be an integer greater than 1 or None")
+    raise ValueError("n should be a positive integer or None")
   if dct_type not in (1, 2, 3):
     raise ValueError("Only Types I, II and III (I)DCT are supported.")
   if dct_type == 1:
