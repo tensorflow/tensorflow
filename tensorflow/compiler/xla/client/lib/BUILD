@@ -472,11 +472,6 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
-    # Blacklisted because the tests are flaky.
-    blacklisted_backends = [
-        "cpu",
-        "gpu",
-    ],
     real_hardware_only = True,
     shard_count = 10,
     tags = ["optonly"],
