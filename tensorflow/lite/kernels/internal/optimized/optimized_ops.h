@@ -5471,6 +5471,212 @@ inline void ResizeNearestNeighbor(
   }
 }
 
+template <typename input_type, typename output_type>
+inline void Requantize(const input_type* input_data, int32_t size,
+                       int32_t effective_scale_multiplier,
+                       int32_t effective_scale_shift, int32_t input_zeropoint,
+                       int32_t output_zeropoint, output_type* output_data) {
+  reference_ops::Requantize(input_data, size, effective_scale_multiplier,
+                            effective_scale_shift, input_zeropoint,
+                            output_zeropoint, output_data);
+}
+
+#ifdef USE_NEON
+
+inline void MultiplyByQuantizedMultiplier4Rows(
+    int32x4_t input_val_1, int32x4_t input_val_2, int32x4_t input_val_3,
+    int32x4_t input_val_4, int32_t multiplier, int32_t left_shifted_one,
+    int32_t right_shift, int32x4_t* result_val_1, int32x4_t* result_val_2,
+    int32x4_t* result_val_3, int32x4_t* result_val_4) {
+  using gemmlowp::RoundingDivideByPOT;
+  using gemmlowp::SaturatingRoundingDoublingHighMul;
+  int32x4_t left_shifted_one_dup = vdupq_n_s32(left_shifted_one);
+  *result_val_1 = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vmulq_s32(input_val_1, left_shifted_one_dup), multiplier),
+      right_shift);
+  *result_val_2 = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vmulq_s32(input_val_2, left_shifted_one_dup), multiplier),
+      right_shift);
+  *result_val_3 = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vmulq_s32(input_val_3, left_shifted_one_dup), multiplier),
+      right_shift);
+  *result_val_4 = RoundingDivideByPOT(
+      SaturatingRoundingDoublingHighMul(
+          vmulq_s32(input_val_4, left_shifted_one_dup), multiplier),
+      right_shift);
+}
+
+#endif
+
+template <>
+inline void Requantize<int8_t, uint8_t>(const int8_t* input_data, int32_t size,
+                                        int32_t effective_scale_multiplier,
+                                        int32_t effective_scale_shift,
+                                        int32_t input_zeropoint,
+                                        int32_t output_zeropoint,
+                                        uint8_t* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Requantize/Int8ToUint8");
+
+  static constexpr int32_t kMinOutput = std::numeric_limits<uint8_t>::min();
+  static constexpr int32_t kMaxOutput = std::numeric_limits<uint8_t>::max();
+
+  int i = 0;
+#ifdef USE_NEON
+  // Constants.
+  int32x4_t input_zero_point_dup = vdupq_n_s32(-input_zeropoint);
+  int32x4_t output_zero_point_dup = vdupq_n_s32(output_zeropoint);
+  int32x4_t min_val_dup = vdupq_n_s32(kMinOutput);
+  int32x4_t max_val_dup = vdupq_n_s32(kMaxOutput);
+
+  // Left shift & right shift unconditionally.
+  int32_t left_shifted_one =
+      effective_scale_shift > 0 ? 1 << effective_scale_shift : 1;
+  int32_t right_shift = effective_scale_shift > 0 ? 0 : -effective_scale_shift;
+
+  for (; i <= size - 16; i += 16) {
+    int8x16_t input_vec = vld1q_s8(input_data + i);
+    int16x8_t first_half = vmovl_s8(vget_low_s8(input_vec));
+    int16x8_t second_half = vmovl_s8(vget_high_s8(input_vec));
+    int32x4_t input_val_1 = vmovl_s16(vget_low_s16(first_half));
+    int32x4_t input_val_2 = vmovl_s16(vget_high_s16(first_half));
+    int32x4_t input_val_3 = vmovl_s16(vget_low_s16(second_half));
+    int32x4_t input_val_4 = vmovl_s16(vget_high_s16(second_half));
+    input_val_1 = vaddq_s32(input_val_1, input_zero_point_dup);
+    input_val_2 = vaddq_s32(input_val_2, input_zero_point_dup);
+    input_val_3 = vaddq_s32(input_val_3, input_zero_point_dup);
+    input_val_4 = vaddq_s32(input_val_4, input_zero_point_dup);
+
+    int32x4_t result_val_1, result_val_2, result_val_3, result_val_4;
+    MultiplyByQuantizedMultiplier4Rows(
+        input_val_1, input_val_2, input_val_3, input_val_4,
+        effective_scale_multiplier, left_shifted_one, right_shift,
+        &result_val_1, &result_val_2, &result_val_3, &result_val_4);
+
+    result_val_1 = vaddq_s32(result_val_1, output_zero_point_dup);
+    result_val_2 = vaddq_s32(result_val_2, output_zero_point_dup);
+    result_val_3 = vaddq_s32(result_val_3, output_zero_point_dup);
+    result_val_4 = vaddq_s32(result_val_4, output_zero_point_dup);
+    result_val_1 = vmaxq_s32(vminq_s32(result_val_1, max_val_dup), min_val_dup);
+    result_val_2 = vmaxq_s32(vminq_s32(result_val_2, max_val_dup), min_val_dup);
+    result_val_3 = vmaxq_s32(vminq_s32(result_val_3, max_val_dup), min_val_dup);
+    result_val_4 = vmaxq_s32(vminq_s32(result_val_4, max_val_dup), min_val_dup);
+
+    uint32x4_t result_val_1_unsigned = vreinterpretq_u32_s32(result_val_1);
+    uint32x4_t result_val_2_unsigned = vreinterpretq_u32_s32(result_val_2);
+    uint32x4_t result_val_3_unsigned = vreinterpretq_u32_s32(result_val_3);
+    uint32x4_t result_val_4_unsigned = vreinterpretq_u32_s32(result_val_4);
+
+    uint16x4_t narrowed_val_1 = vqmovn_u32(result_val_1_unsigned);
+    uint16x4_t narrowed_val_2 = vqmovn_u32(result_val_2_unsigned);
+    uint16x4_t narrowed_val_3 = vqmovn_u32(result_val_3_unsigned);
+    uint16x4_t narrowed_val_4 = vqmovn_u32(result_val_4_unsigned);
+    uint16x8_t output_first_half = vcombine_u16(narrowed_val_1, narrowed_val_2);
+    uint16x8_t output_second_half =
+        vcombine_u16(narrowed_val_3, narrowed_val_4);
+    uint8x8_t narrowed_first_half = vqmovn_u16(output_first_half);
+    uint8x8_t narrowed_second_half = vqmovn_u16(output_second_half);
+    uint8x16_t result = vcombine_u8(narrowed_first_half, narrowed_second_half);
+    vst1q_u8(output_data + i, result);
+  }
+
+#endif
+  for (; i < size; ++i) {
+    const int32_t input = input_data[i] - input_zeropoint;
+    const int32_t output =
+        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
+                                      effective_scale_shift) +
+        output_zeropoint;
+    const int32_t clamped_output =
+        std::max(std::min(output, kMaxOutput), kMinOutput);
+    output_data[i] = static_cast<uint8_t>(clamped_output);
+  }
+}
+
+template <>
+inline void Requantize<uint8_t, int8_t>(const uint8_t* input_data, int32_t size,
+                                        int32_t effective_scale_multiplier,
+                                        int32_t effective_scale_shift,
+                                        int32_t input_zeropoint,
+                                        int32_t output_zeropoint,
+                                        int8_t* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Requantize/UInt8ToInt8");
+
+  static constexpr int32_t kMinOutput = std::numeric_limits<int8_t>::min();
+  static constexpr int32_t kMaxOutput = std::numeric_limits<int8_t>::max();
+
+  int i = 0;
+#ifdef USE_NEON
+  // Constants.
+  int32x4_t input_zero_point_dup = vdupq_n_s32(-input_zeropoint);
+  int32x4_t output_zero_point_dup = vdupq_n_s32(output_zeropoint);
+  int32x4_t min_val_dup = vdupq_n_s32(kMinOutput);
+  int32x4_t max_val_dup = vdupq_n_s32(kMaxOutput);
+
+  // Left shift & right shift unconditionally.
+  int32_t left_shifted_one =
+      effective_scale_shift > 0 ? 1 << effective_scale_shift : 1;
+  int32_t right_shift = effective_scale_shift > 0 ? 0 : -effective_scale_shift;
+
+  for (; i <= size - 16; i += 16) {
+    uint8x16_t input_vec = vld1q_u8(input_data + i);
+    uint16x8_t first_half = vmovl_u8(vget_low_u8(input_vec));
+    uint16x8_t second_half = vmovl_u8(vget_high_u8(input_vec));
+    int32x4_t input_val_1 =
+        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(first_half)));
+    int32x4_t input_val_2 =
+        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(first_half)));
+    int32x4_t input_val_3 =
+        vreinterpretq_s32_u32(vmovl_u16(vget_low_u16(second_half)));
+    int32x4_t input_val_4 =
+        vreinterpretq_s32_u32(vmovl_u16(vget_high_u16(second_half)));
+    input_val_1 = vaddq_s32(input_val_1, input_zero_point_dup);
+    input_val_2 = vaddq_s32(input_val_2, input_zero_point_dup);
+    input_val_3 = vaddq_s32(input_val_3, input_zero_point_dup);
+    input_val_4 = vaddq_s32(input_val_4, input_zero_point_dup);
+
+    int32x4_t result_val_1, result_val_2, result_val_3, result_val_4;
+    MultiplyByQuantizedMultiplier4Rows(
+        input_val_1, input_val_2, input_val_3, input_val_4,
+        effective_scale_multiplier, left_shifted_one, right_shift,
+        &result_val_1, &result_val_2, &result_val_3, &result_val_4);
+
+    result_val_1 = vaddq_s32(result_val_1, output_zero_point_dup);
+    result_val_2 = vaddq_s32(result_val_2, output_zero_point_dup);
+    result_val_3 = vaddq_s32(result_val_3, output_zero_point_dup);
+    result_val_4 = vaddq_s32(result_val_4, output_zero_point_dup);
+    result_val_1 = vmaxq_s32(vminq_s32(result_val_1, max_val_dup), min_val_dup);
+    result_val_2 = vmaxq_s32(vminq_s32(result_val_2, max_val_dup), min_val_dup);
+    result_val_3 = vmaxq_s32(vminq_s32(result_val_3, max_val_dup), min_val_dup);
+    result_val_4 = vmaxq_s32(vminq_s32(result_val_4, max_val_dup), min_val_dup);
+
+    int16x4_t narrowed_val_1 = vqmovn_s32(result_val_1);
+    int16x4_t narrowed_val_2 = vqmovn_s32(result_val_2);
+    int16x4_t narrowed_val_3 = vqmovn_s32(result_val_3);
+    int16x4_t narrowed_val_4 = vqmovn_s32(result_val_4);
+    int16x8_t output_first_half = vcombine_s16(narrowed_val_1, narrowed_val_2);
+    int16x8_t output_second_half = vcombine_s16(narrowed_val_3, narrowed_val_4);
+    int8x8_t narrowed_first_half = vqmovn_s16(output_first_half);
+    int8x8_t narrowed_second_half = vqmovn_s16(output_second_half);
+    int8x16_t result = vcombine_s8(narrowed_first_half, narrowed_second_half);
+    vst1q_s8(output_data + i, result);
+  }
+
+#endif
+  for (; i < size; ++i) {
+    const int32_t input = input_data[i] - input_zeropoint;
+    const int32_t output =
+        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
+                                      effective_scale_shift) +
+        output_zeropoint;
+    const int32_t clamped_output =
+        std::max(std::min(output, kMaxOutput), kMinOutput);
+    output_data[i] = static_cast<int8_t>(clamped_output);
+  }
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 
