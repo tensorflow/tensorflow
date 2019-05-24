@@ -414,8 +414,6 @@ def F64MemRef  : MemRefOf<[F64]>;
 // This represents a generic tuple without any constraints on element type.
 def AnyTuple : Type<IsTupleTypePred, "tuple">;
 
-// TODO(b/130358239) Support typed tuples of arbitrary nesting.
-
 // A container type that has other types embedded in it, but (unlike
 // ContainerType) can hold elements with a mix of types. Requires a call that
 // produces a list of all elements' types.
@@ -442,6 +440,20 @@ class MixedContainerType<Type etype, Pred containerPred, code elementTypesCall,
 class TupleOf<list<Type> allowedTypes>
     : MixedContainerType<AnyTypeOf<allowedTypes>, IsTupleTypePred,
                          "$_self.cast<TupleType>().getTypes()", "tuple">;
+
+// A Tuple with arbitrary nesting, where all elements are a mix of the allowed
+// types.
+class NestedTupleOf<list<Type> allowedTypes> :
+    MixedContainerType<AnyTypeOf<allowedTypes>, IsTupleTypePred,
+                       // TODO(b/133502599) Make it possible to use a C++ helper
+                       [{
+                         [&](){
+                           SmallVector<Type, 10> fTypes;
+                           $_self.cast<TupleType>().getFlattenedTypes(fTypes);
+                           return fTypes;
+                         }()
+                       }],
+                       "nested tuple">;
 
 //===----------------------------------------------------------------------===//
 // Common type constraints

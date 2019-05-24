@@ -416,5 +416,18 @@ TupleType TupleType::get(ArrayRef<Type> elementTypes, MLIRContext *context) {
 /// Return the elements types for this tuple.
 ArrayRef<Type> TupleType::getTypes() const { return getImpl()->getTypes(); }
 
+/// Accumulate the types contained in this tuple and tuples nested within it.
+/// Note that this only flattens nested tuples, not any other container type,
+/// e.g. a tuple<i32, tensor<i32>, tuple<f32, tuple<i64>>> is flattened to
+/// (i32, tensor<i32>, f32, i64)
+void TupleType::getFlattenedTypes(SmallVectorImpl<Type> &types) {
+  for (Type type : getTypes()) {
+    if (auto nestedTuple = type.dyn_cast<TupleType>())
+      nestedTuple.getFlattenedTypes(types);
+    else
+      types.push_back(type);
+  }
+}
+
 /// Return the number of element types.
 unsigned TupleType::size() const { return getImpl()->size(); }

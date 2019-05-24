@@ -481,6 +481,12 @@ public:
   /// Return the elements types for this tuple.
   ArrayRef<Type> getTypes() const;
 
+  /// Accumulate the types contained in this tuple and tuples nested within it.
+  /// Note that this only flattens nested tuples, not any other container type,
+  /// e.g. a tuple<i32, tensor<i32>, tuple<f32, tuple<i64>>> is flattened to
+  /// (i32, tensor<i32>, f32, i64)
+  void getFlattenedTypes(SmallVectorImpl<Type> &types);
+
   /// Return the number of held types.
   unsigned size() const;
 

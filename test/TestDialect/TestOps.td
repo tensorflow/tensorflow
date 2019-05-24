@@ -54,4 +54,8 @@ def TupleOp : TEST_Op<"tuple_32_bit"> {
   let results = (outs TupleOf<[I32, F32]>);
 }
 
+def NestedTupleOp : TEST_Op<"nested_tuple_32_bit"> {
+  let results = (outs NestedTupleOf<[I32, F32]>);
+}
+
 #endif // TEST_OPS
