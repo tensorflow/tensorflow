@@ -41,12 +41,29 @@ def try_import(name):  # pylint: disable=invalid-name
 
 fftpack = try_import("scipy.fftpack")
 
+def _modify_input_for_dct(signal, n=None):
+  """ This is a supporting function for the numpy implementation
+  of DCT operations. If n < signal size, it returns the first n elements,
+  else it pads the signal with zeros.  """
+  if n is None:
+    return signal
+  else:
+    signal_len = signal.shape[-1]
+    if n<=signal_len:
+      signal_mod = signal[...,0:n]
+    else:
+      signal_mod = np.zeros(signal.shape)
+      signal_mod[...,0:n] = signal
 
-def _np_dct1(signals, norm=None):
+  return signal_mod 
+
+
+def _np_dct1(signals, n=None, norm=None):
   """Computes the DCT-I manually with NumPy."""
   # X_k = (x_0 + (-1)**k * x_{N-1} +
   #       2 * sum_{n=0}^{N-2} x_n * cos(\frac{pi}{N-1} * n * k)  k=0,...,N-1
   del norm
+  signals = _modify_input_for_dct(signals, n=n)
   dct_size = signals.shape[-1]
   dct = np.zeros_like(signals)
   for k in range(dct_size):
@@ -59,6 +76,7 @@ def _np_dct1(signals, norm=None):
 def _np_dct2(signals, norm=None):
   """Computes the DCT-II manually with NumPy."""
   # X_k = sum_{n=0}^{N-1} x_n * cos(\frac{pi}{N} * (n + 0.5) * k)  k=0,...,N-1
+  signals = _modify_input_for_dct(signals, n=n)
   dct_size = signals.shape[-1]
   dct = np.zeros_like(signals)
   for k in range(dct_size):
@@ -81,6 +99,7 @@ def _np_dct3(signals, norm=None):
   # SciPy's `dct` has a scaling factor of 2.0 which we follow.
   # https://github.com/scipy/scipy/blob/v0.15.1/scipy/fftpack/src/dct.c.src
   dct_size = signals.shape[-1]
+  signals = _modify_input_for_dct(signals, n=n)
   signals = np.array(signals)  # make a copy so we can modify
   if norm == "ortho":
     signals[..., 0] *= np.sqrt(4.0 / dct_size)
