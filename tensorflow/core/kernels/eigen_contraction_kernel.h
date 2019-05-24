@@ -307,6 +307,54 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
   StorageIndex nc_;
 };
 
+template <typename StorageIndex, int sharding_type>
+class TensorContractionBlocking<Eigen::QInt32, Eigen::QInt8, Eigen::QUInt8,
+                                StorageIndex, sharding_type> {
+  // TODO(ezhulenev): Define proper gebp_traits in Eigen for quantized types?
+
+  // Default Eigen block heuristics for `QInt8xQUInt8 -> QInt32` are wrong.
+  // Mostly because gebp_traits are not correctly defined. But we know that we
+  // are going to use s8u8s32_gemm from MKL-DNN, so we use float heuristics, and
+  // adjust them to work well with MKL-DNN.
+  using LhsScalar = Eigen::QInt8;
+  using RhsScalar = Eigen::QUInt8;
+  using ResScalar = Eigen::QInt32;
+
+  // Multiply default choice of block size along M, N and K dimensions.
+  static constexpr float kScaleM = 1.5;
+  static constexpr float kScaleN = 1.5;
+  static constexpr float kScaleK = 1.5;
+
+ public:
+  TensorContractionBlocking(StorageIndex k, StorageIndex m, StorageIndex n,
+                            StorageIndex num_threads = 1)
+      : kc_(k), mc_(m), nc_(n) {
+    // 1. Compute block sizes using default Eigen heuristics for float.
+    if (sharding_type == ShardByCol) {
+      computeProductBlockingSizes<float, float, 1>(kc_, mc_, nc_, num_threads);
+    } else {
+      computeProductBlockingSizes<float, float, 1>(kc_, nc_, mc_, num_threads);
+    }
+
+    // If dimensions do not pass basic sanity checks return immediately.
+    if (kc_ <= 0 || mc_ <= 0 || nc_ <= 0) return;
+
+    // 2. And refine them to work well with mkldnn gemm.
+    mc_ = (std::min)(m, static_cast<StorageIndex>(mc_ * kScaleM));
+    nc_ = (std::min)(n, static_cast<StorageIndex>(nc_ * kScaleN));
+    kc_ = (std::min)(k, static_cast<StorageIndex>(kc_ * kScaleK));
+  }
+
+  EIGEN_ALWAYS_INLINE StorageIndex kc() const { return kc_; }
+  EIGEN_ALWAYS_INLINE StorageIndex mc() const { return mc_; }
+  EIGEN_ALWAYS_INLINE StorageIndex nc() const { return nc_; }
+
+ private:
+  StorageIndex kc_;
+  StorageIndex mc_;
+  StorageIndex nc_;
+};
+
 // If the Lhs or Rhs Tensor expressions are already evaluated and have access to
 // raw data, we can skip packing step and setup pointers and a stride to the
 // underlying memory buffer and pass them directly to Gemm.
