@@ -240,10 +240,10 @@ public:
   LogicalResult convertFunction(Function *f);
 
   /// Converts the given region starting from the entry block and following the
-  /// block successors. Returns failure on error, success otherwise.
-  template <typename RegionParent>
+  /// block successors. Returns failure on error, success otherwise. Prints
+  /// error messages at `loc`.
   LogicalResult convertRegion(DialectConversionRewriter &rewriter,
-                              Region &region, RegionParent *parent);
+                              Region &region, Location loc);
 
   /// Converts a block by traversing its operations sequentially, attempting to
   /// match a pattern. If there is no match, recurses the operations regions if
@@ -299,7 +299,8 @@ FunctionConverter::convertBlock(DialectConversionRewriter &rewriter,
 
     // Traverse any held regions.
     for (auto &region : op.getRegions())
-      if (!region.empty() && failed(convertRegion(rewriter, region, &op)))
+      if (!region.empty() &&
+          failed(convertRegion(rewriter, region, op.getLoc())))
         return failure();
   }
 
@@ -313,10 +314,9 @@ FunctionConverter::convertBlock(DialectConversionRewriter &rewriter,
   return success();
 }
 
-template <typename RegionParent>
 LogicalResult
 FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
-                                 Region &region, RegionParent *parent) {
+                                 Region &region, Location loc) {
   assert(!region.empty() && "expected non-empty region");
 
   // Create the arguments of each of the blocks in the region. If a type
@@ -325,7 +325,7 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
   if (dialectConversion) {
     for (Block &block : region)
       for (auto *arg : block.getArguments())
-        if (failed(convertArgument(rewriter, arg, parent->getLoc())))
+        if (failed(convertArgument(rewriter, arg, loc)))
           return failure();
   }
 
@@ -338,7 +338,8 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
   // If some blocks are not reachable through successor chains, they should have
   // been removed by the DCE before this.
   if (visitedBlocks.size() != std::distance(region.begin(), region.end()))
-    return parent->emitError("unreachable blocks were not converted");
+    return rewriter.getContext()->emitError(loc)
+           << "unreachable blocks were not converted";
   return success();
 }
 
@@ -349,7 +350,7 @@ LogicalResult FunctionConverter::convertFunction(Function *f) {
 
   // Rewrite the function body.
   DialectConversionRewriter rewriter(f);
-  if (failed(convertRegion(rewriter, f->getBody(), f))) {
+  if (failed(convertRegion(rewriter, f->getBody(), f->getLoc()))) {
     // Reset any of the generated rewrites.
     rewriter.discardRewrites();
     return failure();
