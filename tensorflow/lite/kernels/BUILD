@@ -109,18 +109,27 @@ cc_test(
 )
 
 cc_library(
-    name = "tflite_with_ruy",
-    hdrs = [
-        "tflite_with_ruy.h",
-    ],
-    defines = select({
-        ":tflite_with_ruy_explicit_true": [
-            "TFLITE_WITH_RUY_EXPLICIT_TRUE",
-        ],
-        ":tflite_with_ruy_explicit_false": [
-            "TFLITE_WITH_RUY_EXPLICIT_FALSE",
-        ],
+    name = "tflite_with_ruy_enabled",
+    defines = ["TFLITE_WITH_RUY"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "tflite_with_ruy_default",
+    visibility = ["//visibility:private"],
+    deps = select({
+        # TODO(b/133306271): Enable for ARM64 after validating performance.
+        "//tensorflow:android_arm64": [],
         "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "tflite_with_ruy",
+    deps = select({
+        ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
+        ":tflite_with_ruy_explicit_false": [],
+        "//conditions:default": [":tflite_with_ruy_default"],
     }),
 )
 
@@ -400,7 +409,6 @@ cc_library(
         ":lstm_eval",
         ":op_macros",
         ":padding",
-        ":tflite_with_ruy",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
@@ -656,7 +664,6 @@ cc_test(
     deps = [
         ":builtin_ops",
         ":test_main",
-        ":tflite_with_ruy",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_absl//absl/memory",
