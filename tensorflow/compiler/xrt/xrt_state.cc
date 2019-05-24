@@ -104,7 +104,8 @@ Status AllocateScopedShapedBuffer(
     // Move our buffer into shaped_buffer, which takes ownership of it.
     index_to_buffer.second = buffer.Release();
     VLOG(2) << "Allocated buffer at " << index_to_buffer.second.opaque()
-            << " index " << index_to_buffer.first.ToString();
+            << " index " << index_to_buffer.first.ToString() << " (" << size
+            << " bytes)";
   }
 
   TF_RETURN_IF_ERROR(
@@ -134,10 +135,9 @@ XRTBufferAllocation::~XRTBufferAllocation() {
     GetAllocStats()->ReportFree(device_ordinal_, allocation_.size());
   }
   // Deallocate explicitly allows allocation_ to be null.
-  Status s = allocator_->Deallocate(device_ordinal_, allocation_);
-  // Nothing to do but check fail here if memory datastructures are corrupted.
-  CHECK(s.ok());
-  VLOG(2) << "Freed buffer at " << allocation_.opaque();
+  TF_CHECK_OK(allocator_->Deallocate(device_ordinal_, allocation_));
+  VLOG(2) << "Freed buffer at " << allocation_.opaque() << " ("
+          << allocation_.size() << " bytes)";
 }
 
 const se::DeviceMemoryBase& XRTBufferAllocation::allocation() {
