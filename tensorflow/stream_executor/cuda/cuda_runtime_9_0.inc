@@ -437,11 +437,11 @@ extern __host__ cudaError_t CUDARTAPI cudaEventElapsedTime(float *ms,
 }
 
 extern __host__ cudaError_t CUDARTAPI
-cudaLaunchKernel(const void *func, dim3 gridDim, dim3 blockDim, void **args,
+GpuLaunchKernel(const void *func, dim3 gridDim, dim3 blockDim, void **args,
                  size_t sharedMem, cudaStream_t stream) {
   using FuncPtr = cudaError_t(CUDARTAPI *)(const void *, dim3, dim3, void **,
                                            size_t, cudaStream_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudaLaunchKernel");
+  static auto func_ptr = LoadSymbol<FuncPtr>("GpuLaunchKernel");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(func, gridDim, blockDim, args, sharedMem, stream);
 }

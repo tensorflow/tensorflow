@@ -666,10 +666,9 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
       num_outputs, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  GPU_LAUNCH_KERNEL(kernel,
-           dim3(config.block_count), dim3(block_dim), shared_memory_size,
-           device.stream(),
-           args, input, filter, output);
+  TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
+                              shared_memory_size, device.stream(), args, input,
+                              filter, output));
   return Status::OK();
 }
 
@@ -759,10 +758,10 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                                       kKnownDepthMultiplier < 0
                                   ? std::numeric_limits<int>::max()
                                   : device.getNumGpuMultiProcessors();
-  GPU_LAUNCH_KERNEL(kernel,
-           dim3(std::min(max_block_count, config.block_count)),
-           dim3(config.thread_per_block), 0, device.stream(),
-           args, input, filter, output, num_outputs);
+  TF_CHECK_OK(GpuLaunchKernel(kernel,
+                              std::min(max_block_count, config.block_count),
+                              config.thread_per_block, 0, device.stream(), args,
+                              input, filter, output, num_outputs));
 
   return Status::OK();
 }
@@ -978,9 +977,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
-  GPU_LAUNCH_KERNEL(kernel, dim3(config.block_count),
-                    dim3(config.thread_per_block), 0, device.stream(), args,
-                    out_backprop, filter, in_backprop, num_in_backprop);
+  TF_CHECK_OK(GpuLaunchKernel(
+      kernel, config.block_count, config.thread_per_block, 0, device.stream(),
+      args, out_backprop, filter, in_backprop, num_in_backprop));
   return Status::OK();
 }
 
@@ -1635,10 +1634,9 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
       num_out_backprop, device, kernel, shared_memory_size,
       block_dim.x * block_dim.y * block_dim.z);
-  GPU_LAUNCH_KERNEL(kernel,
-           dim3(config.block_count), dim3(block_dim), shared_memory_size,
-           device.stream(),
-           args, out_backprop, input, filter_backprop);
+  TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
+                              shared_memory_size, device.stream(), args,
+                              out_backprop, input, filter_backprop));
   return Status::OK();
 }
 
@@ -1739,9 +1737,9 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_out_backprop, device, kernel, 0, 0);
-  GPU_LAUNCH_KERNEL(kernel,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, device.stream(),
-      args, out_backprop, input, filter_backprop, num_out_backprop);
+  TF_CHECK_OK(GpuLaunchKernel(
+      kernel, config.block_count, config.thread_per_block, 0, device.stream(),
+      args, out_backprop, input, filter_backprop, num_out_backprop));
   return Status::OK();
 }
 

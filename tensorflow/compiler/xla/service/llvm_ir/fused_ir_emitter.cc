@@ -81,7 +81,8 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
-  unsigned int global_address_space = gpu::GetGlobalMemoryAddressSpace(module_);
+  unsigned global_address_space =
+      gpu::GetGlobalMemoryAddressSpace(*module_);
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
     const Literal& literal = constant->literal();
     llvm::Constant* initializer =

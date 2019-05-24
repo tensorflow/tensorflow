@@ -26,6 +26,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 
 namespace tflite {
 
@@ -34,6 +36,7 @@ namespace {
 using cpu_backend_gemm::Gemm;
 using cpu_backend_gemm::GemmParams;
 using cpu_backend_gemm::MatrixParams;
+using cpu_backend_gemm::QuantizationFlavor;
 
 template <typename Scalar>
 std::string ToString(const std::vector<Scalar>& vector) {
@@ -125,9 +128,11 @@ void Clamp(const std::vector<Scalar>& src, Scalar clamp_min, Scalar clamp_max,
   }
 }
 
-template <typename AccumScalar, typename DstScalar>
-void Clamp(const GemmParams<AccumScalar, DstScalar>& src, DstScalar clamp_min,
-           DstScalar clamp_max, GemmParams<AccumScalar, DstScalar>* dst) {
+template <typename AccumScalar, typename DstScalar,
+          QuantizationFlavor quantization_flavor>
+void Clamp(const GemmParams<AccumScalar, DstScalar, quantization_flavor>& src,
+           DstScalar clamp_min, DstScalar clamp_max,
+           GemmParams<AccumScalar, DstScalar, quantization_flavor>* dst) {
   *dst = src;
   dst->clamp_min = clamp_min;
   dst->clamp_max = clamp_max;
@@ -236,14 +241,14 @@ void CheckErrorForAccumulation(int accumulation_depth,
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
-          typename DstScalar>
+          typename DstScalar, QuantizationFlavor quantization_flavor>
 void PerformGemmThenCompareResultsThenAgainWithClamping(
     const MatrixParams<LhsScalar>& lhs_params,
     const std::vector<LhsScalar>& lhs_data,
     const MatrixParams<RhsScalar>& rhs_params,
     const std::vector<RhsScalar>& rhs_data,
     const MatrixParams<DstScalar>& dst_params, std::vector<DstScalar>* dst_data,
-    const GemmParams<AccumScalar, DstScalar>& params,
+    const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
     const std::vector<DstScalar>& expected,
     CpuBackendContext* cpu_backend_context) {
   const int accumulation_depth = lhs_params.cols;
@@ -253,7 +258,7 @@ void PerformGemmThenCompareResultsThenAgainWithClamping(
                                          expected);
   DstScalar expected_median = Median(expected);
   std::vector<DstScalar> expected_with_clamp;
-  GemmParams<AccumScalar, DstScalar> params_with_clamp;
+  GemmParams<AccumScalar, DstScalar, quantization_flavor> params_with_clamp;
   DstScalar clamp_min, clamp_max;
 
   clamp_min = std::numeric_limits<DstScalar>::lowest();
@@ -383,28 +388,42 @@ void TestSomeGemm(int rows, int depth, int cols,
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = rows;
   lhs_params.cols = depth;
-  if (!use_golden && !std::is_floating_point<LhsScalar>::value) {
-    lhs_params.zero_point = random_engine() % 8;
+  if (!std::is_floating_point<LhsScalar>::value) {
+    lhs_params.zero_point = 1;
+    if (!use_golden) {
+      lhs_params.zero_point += random_engine() % 8;
+    }
   }
 
   MatrixParams<RhsScalar> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.rows = depth;
   rhs_params.cols = cols;
-  if (!use_golden && !std::is_floating_point<RhsScalar>::value) {
-    rhs_params.zero_point = random_engine() % 8;
+  if (!std::is_floating_point<RhsScalar>::value) {
+    rhs_params.zero_point = 1;
+    if (!use_golden) {
+      rhs_params.zero_point += random_engine() % 8;
+    }
   }
 
   MatrixParams<DstScalar> dst_params;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.rows = rows;
   dst_params.cols = cols;
-  if (!use_golden && !std::is_floating_point<DstScalar>::value) {
-    dst_params.zero_point = random_engine() % 8;
+  if (!std::is_floating_point<DstScalar>::value) {
+    dst_params.zero_point = 1;
+    if (!use_golden) {
+      dst_params.zero_point += random_engine() % 8;
+    }
   }
 
   GemmParams<AccumScalar, DstScalar> params;
-  params.bias = bias_data.data();
+  if (use_golden || !std::is_floating_point<AccumScalar>::value ||
+      (random_engine() % 2)) {
+    // cpu_backend_gemm supports bias=null only in the float path. Test that
+    // in 50% of float testcases.
+    params.bias = bias_data.data();
+  }
   if (!std::is_floating_point<AccumScalar>::value) {
     // some large int32 value. Not being a multiple of a large
     // power of two helps testing rounding behavior.
@@ -444,9 +463,14 @@ void TestSomeGemm(int rows, int depth, int cols,
         rows, params.multiplier_fixedpoint);
     std::vector<int> multiplier_exponent_perchannel(rows,
                                                     params.multiplier_exponent);
-    GemmParams<AccumScalar, DstScalar> params_perchannel = params;
-    params_perchannel.multiplier_fixedpoint = 0;
-    params_perchannel.multiplier_exponent = 0;
+    static constexpr QuantizationFlavor perchannel_flavor =
+        std::is_floating_point<AccumScalar>::value
+            ? QuantizationFlavor::kFloatingPoint
+            : QuantizationFlavor::kIntegerWithPerRowMultiplier;
+    GemmParams<AccumScalar, DstScalar, perchannel_flavor> params_perchannel;
+    params_perchannel.bias = params.bias;
+    params_perchannel.clamp_min = params.clamp_min;
+    params_perchannel.clamp_max = params.clamp_max;
     params_perchannel.multiplier_fixedpoint_perchannel =
         multiplier_fixedpoint_perchannel.data();
     params_perchannel.multiplier_exponent_perchannel =
@@ -464,7 +488,7 @@ TEST(CpuBackendGemmSimpleTestAgainstGolden, Float) {
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Uint8) {
   TestSomeGemm<std::uint8_t, std::uint8_t, std::int32_t, std::uint8_t>(
-      5, 2, 3, {3, 7, 11, 16, 20, 7, 16, 24, 33, 41, 10, 24, 37, 50, 63});
+      5, 2, 3, {2, 4, 6, 7, 9, 3, 10, 16, 22, 29, 4, 15, 26, 37, 48});
 }
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8) {
@@ -474,7 +498,7 @@ TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8) {
 
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8Int16) {
   TestSomeGemm<std::int8_t, std::int8_t, std::int32_t, std::int16_t>(
-      3, 5, 4, {32, 76, 120, 75, 191, 306, 118, 306, 493, 162, 421, 680});
+      3, 5, 4, {19, 48, 77, 48, 149, 250, 76, 249, 422, 105, 350, 595});
 }
 
 template <typename tLhsScalar, typename tRhsScalar, typename tAccumScalar,
@@ -510,7 +534,8 @@ typedef ::testing::Types<
     TypesTuple<float, float, float, float>,
     TypesTuple<std::uint8_t, std::uint8_t, std::int32_t, std::uint8_t>,
     TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int8_t>,
-    TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int16_t>>
+    TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int16_t>,
+    TypesTuple<std::uint8_t, std::uint8_t, std::int32_t, std::int8_t>>
     CpuBackendGemmTestInstantiations;
 
 TYPED_TEST_SUITE(CpuBackendGemmTest, CpuBackendGemmTestInstantiations);
@@ -525,7 +550,7 @@ TYPED_TEST(CpuBackendGemmTest, Square) {
 
 TYPED_TEST(CpuBackendGemmTest, SquarePowerOfTwo) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 64; size <= 128; size++) {
+  for (int size = 64; size <= 128; size *= 2) {
     shapes.push_back(std::make_tuple(size, size, size));
   }
   TestRandomGemms<TypeParam>(shapes);
@@ -549,7 +574,7 @@ TYPED_TEST(CpuBackendGemmTest, VectorTimesMatrix) {
 
 TYPED_TEST(CpuBackendGemmTest, MatrixTimesNarrow) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size < 100; size++) {
+  for (int size = 1; size < 50; size++) {
     shapes.push_back(std::make_tuple(size, size, 2));
     shapes.push_back(std::make_tuple(size, size, 3));
     shapes.push_back(std::make_tuple(size, size, 4));
@@ -587,7 +612,7 @@ TYPED_TEST(CpuBackendGemmTest, InnerProduct) {
 
 TYPED_TEST(CpuBackendGemmTest, OuterProduct) {
   std::vector<std::tuple<int, int, int>> shapes;
-  for (int size = 1; size < 200; size++) {
+  for (int size = 1; size < 100; size++) {
     shapes.push_back(std::make_tuple(size, 1, size));
   }
   TestRandomGemms<TypeParam>(shapes);

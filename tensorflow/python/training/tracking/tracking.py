@@ -150,11 +150,18 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class TrackableResource(base.Trackable):
-  """Base class for all resources that need to be tracked."""
+class CapturableResource(base.Trackable):
+  """Holds a Tensor which a tf.function can capture.
+
+  `CapturableResource`s are discovered by traversing the graph of object
+  attributes, e.g. during `tf.saved_model.save`. They are excluded from the
+  scope-based tracking of `TrackableResource`; generally things that require
+  initialization should inherit from `TrackableResource` instead of
+  `CapturableResource` directly.
+  """
 
   def __init__(self, device=""):
-    """Initialize the `TrackableResource`.
+    """Initialize the `CapturableResource`.
 
     Args:
       device: A string indicating a required placement for this resource,
@@ -162,10 +169,6 @@ class TrackableResource(base.Trackable):
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
     """
-    global _RESOURCE_TRACKER_STACK
-    for resource_tracker in _RESOURCE_TRACKER_STACK:
-      resource_tracker.add_resource(self)
-
     self._resource_handle = None
     self._resource_device = device
 
@@ -201,6 +204,24 @@ class TrackableResource(base.Trackable):
         "_create_resource": _creator,
         "_initialize": _initializer,
     }
+
+
+class TrackableResource(CapturableResource):
+  """Adds scope tracking to CapturableResource."""
+
+  def __init__(self, device=""):
+    """Initialize the `TrackableResource`.
+
+    Args:
+      device: A string indicating a required placement for this resource,
+        e.g. "CPU" if this resource must be created on a CPU device. A blank
+        device allows the user to place resource creation, so generally this
+        should be blank unless the resource only makes sense on one device.
+    """
+    global _RESOURCE_TRACKER_STACK
+    for resource_tracker in _RESOURCE_TRACKER_STACK:
+      resource_tracker.add_resource(self)
+    super(TrackableResource, self).__init__(device=device)
 
 
 class TrackableAsset(base.Trackable):

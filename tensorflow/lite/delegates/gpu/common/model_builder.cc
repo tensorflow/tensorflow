@@ -1746,6 +1746,90 @@ class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
   }
 };
 
+class SpaceToBatchOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    return OkStatus();
+  }
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    auto* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SPACE_TO_BATCH);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    SpaceToBatchAttributes sb_attr;
+    Tensor<Linear, DataType::INT32> block;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &block));
+    if (block.shape.v != 2) {
+      return InternalError("Space has to be HxW.");
+    }
+    sb_attr.block.h = block.data[0];
+    sb_attr.block.w = block.data[1];
+
+    Tensor<HW, DataType::INT32> padding;
+    RETURN_IF_ERROR(reader->ReadTensor(2, &padding));
+    auto padding_shape = padding.shape;
+
+    if (padding_shape.h != 2 && padding_shape.w != 2) {
+      return InternalError("Space has to be HxW.");
+    }
+
+    sb_attr.padding.prepended.h = padding.data[0];
+    sb_attr.padding.prepended.w = padding.data[2];
+
+    sb_attr.padding.appended.h = padding.data[1];
+    sb_attr.padding.appended.w = padding.data[3];
+
+    node->operation.attributes = std::move(sb_attr);
+    return OkStatus();
+  }
+};
+
+class BatchToSpaceOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    return OkStatus();
+  }
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    auto* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::BATCH_TO_SPACE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    BatchToSpaceAttributes bs_attr;
+    Tensor<Linear, DataType::INT32> block;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &block));
+    if (block.shape.v != 2) {
+      return InternalError("Space has to be HxW.");
+    }
+    bs_attr.block.h = block.data[0];
+    bs_attr.block.w = block.data[1];
+
+    Tensor<HW, DataType::INT32> crop;
+    RETURN_IF_ERROR(reader->ReadTensor(2, &crop));
+    auto crop_shape = crop.shape;
+    if (crop_shape.h != 2 && crop_shape.w != 2) {
+      return InternalError("Space has to be HxW.");
+    }
+
+    bs_attr.crop.prepended.h = crop.data[0];
+    bs_attr.crop.prepended.w = crop.data[2];
+
+    bs_attr.crop.appended.h = crop.data[1];
+    bs_attr.crop.appended.w = crop.data[3];
+
+    node->operation.attributes = std::move(bs_attr);
+    return OkStatus();
+  }
+};
+
 class UnsupportedOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,

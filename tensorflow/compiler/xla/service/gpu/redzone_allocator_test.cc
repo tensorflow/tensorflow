@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -38,11 +41,13 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
 
   // XXX FIXME devise a way to cope with multiple platforms
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("ROCM").ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
+          .ValueOrDie();
   se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, kRedzoneSize,
-                             kRedzonePattern);
+  HloModuleConfig config;
+  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
+                             kRedzoneSize, kRedzonePattern);
 
   se::Stream stream(stream_exec);
   stream.Init();
@@ -102,6 +107,28 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   modify_redzone(lhs_redzone, /*offset=*/kRedzoneSize - 1, "lhs");
   modify_redzone(rhs_redzone, /*offset=*/0, "rhs");
   modify_redzone(rhs_redzone, /*offset=*/kRedzoneSize - 1, "rhs");
+}
+
+// Older CUDA compute capabilities (<= 2.0) have a limitation that grid
+// dimension X cannot be larger than 65535.
+//
+// Make sure we can launch kernels on sizes larger than that, given that the
+// maximum number of threads per block is 1024.
+TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
+  // Make sure the redzone size would require grid dimension > 65535.
+  constexpr int64 kRedzoneSize = 65535 * 1024 + 1;
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
+          .ValueOrDie();
+  se::StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
+  HloModuleConfig config;
+  se::StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, config,
+                             kRedzoneSize, /*redzone_pattern=*/-1);
+  se::Stream stream(stream_exec);
+  stream.Init();
+  (void)allocator.AllocateBytes(&stream, /*byte_size=*/1);
+  TF_EXPECT_OK(allocator.CheckRedzones(&stream));
 }
 
 }  // namespace

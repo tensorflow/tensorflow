@@ -52,6 +52,11 @@ class XrtBuffer {
       const std::shared_ptr<XrtContext>& context, int xrt_device_ordinal,
       const xla::LiteralSlice& literal);
 
+  // Builds a new XrtBuffer tuple from its constituent parts.
+  static xla::StatusOr<std::shared_ptr<XrtBuffer>> MakeTuple(
+      const std::shared_ptr<XrtContext>& context,
+      const std::vector<std::shared_ptr<XrtBuffer>>& elements);
+
   // Converts an XrtBuffer to an XLA literal, copying the buffer from the remote
   // host. Blocks until the buffer is available.
   xla::StatusOr<xla::Literal> ToLiteral() const;
@@ -61,8 +66,6 @@ class XrtBuffer {
 
   // Destructures a tuple-shaped buffer into its constituent pieces.
   xla::StatusOr<std::vector<std::shared_ptr<XrtBuffer>>> DestructureTuple();
-
-  // TODO(phawkins): add a static method for building tuples of buffers.
 
   // TODO(phawkins): add a mechanism for converting XrtBuffers into remote
   // tensors and vice-versa for TF interoperability.
@@ -78,6 +81,7 @@ class XrtBuffer {
   XrtBuffer& operator=(XrtBuffer&&) = default;
 
   const XrtTensorHandle& handle() const { return handle_; }
+  const xla::Shape& shape() const { return shape_; }
 
  private:
   // Tensor that contains the XRT allocation ID.

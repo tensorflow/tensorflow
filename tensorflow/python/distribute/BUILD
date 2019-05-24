@@ -195,7 +195,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_lib",
     ],
 )
 
@@ -203,6 +203,9 @@ py_test(
     name = "distribute_coordinator_test",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",  # b/131691139
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -342,7 +345,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_lib",
     ],
 )
 
@@ -563,6 +566,16 @@ py_library(
     ],
 )
 
+py_library(
+    name = "model_combinations",
+    srcs = ["model_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":combinations",
+        ":simple_models",
+    ],
+)
+
 py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
@@ -694,6 +707,9 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
+    tags = [
+        "no_pip",  # b/131691139
+    ],
 )
 
 py_library(
@@ -753,19 +769,20 @@ distribute_py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "moving_averages_test",
     srcs = ["moving_averages_test.py"],
-    additional_deps = [
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python/eager:test",
+    main = "moving_averages_test.py",
+    deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -793,6 +810,7 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_pip",  # b/131691139
     ],
     deps = [
         ":mirrored_strategy",
@@ -845,6 +863,7 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_pip",  # b/131691139
     ],
     deps = [
         ":single_loss_example",
@@ -908,6 +927,7 @@ cuda_py_test(
         # PR400 is submitted
         "no_rocm",
         "no_cuda",
+        "no_pip",  # b/131691139
         "no_windows_gpu",  # TODO(b/130551176)
     ],
 )
@@ -941,5 +961,39 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":strategy_combinations",
         "//tensorflow/python:layers",
+    ],
+)
+
+py_library(
+    name = "model_collection_base",
+    srcs = ["model_collection/model_collection_base.py"],
+)
+
+py_library(
+    name = "simple_models",
+    srcs = ["model_collection/simple_models.py"],
+    deps = [
+        ":model_collection_base",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
+    name = "saved_model_test",
+    size = "medium",
+    srcs = ["saved_model_test.py"],
+    main = "saved_model_test.py",
+    tags = [
+        "no_pip",  # b/131691139
+    ],
+    deps = [
+        ":combinations",
+        ":model_combinations",
+        ":strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model",
+        "//third_party/py/numpy",
     ],
 )

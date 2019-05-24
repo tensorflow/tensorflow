@@ -76,7 +76,7 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
   GpuLaunchConfig cfg = GetGpuLaunchConfig(work_element_count, d,
-                                             FillKernel<Distribution>, 0, 0);
+                                            FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
 #if GOOGLE_CUDA
@@ -84,10 +84,10 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 #else // TENSORFLOW_USE_ROCM#
   hipMemcpyToSymbol(HIP_SYMBOL(thread_counter), &zero, sizeof(int));
 #endif
-  GPU_LAUNCH_KERNEL(FillKernel<Distribution>, cfg.block_count,
+  TF_CHECK_OK(GpuLaunchKernel(FillKernel<Distribution>, cfg.block_count,
                                cfg.thread_per_block, 0, d.stream(),
                                dist, state_size, output_size,
-                               state_data, output_data);
+                               state_data, output_data));
 }
 
 // Precondition: there is only 1 block and 1 thread.
@@ -98,8 +98,8 @@ __global__ void SkipKernel(int64 delta, StateElementType* state_data) {
 
 void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d, int64 delta,
                                            Tensor* state_tensor) {
-  GPU_LAUNCH_KERNEL(SkipKernel, 1, 1, 0, d.stream(),
-      delta, state_tensor->flat<StateElementType>().data());
+  TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(),
+      delta, state_tensor->flat<StateElementType>().data()));
 }
 
 // Explicit instantiation of the GPU distributions functors.

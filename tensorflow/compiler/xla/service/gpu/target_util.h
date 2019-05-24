@@ -76,8 +76,12 @@ llvm::Value* EmitCallToTargetFunction(
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
 // Obtain the target specific address space for global variables
-unsigned int GetGlobalMemoryAddressSpace(llvm::Module* module);
-unsigned int GetSharedMemoryAddressSpace(llvm::Module* module);
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
+unsigned GetSharedMemoryAddressSpace(const llvm::Module& module);
+
+// Annotate the kernel as GPU kernel according to the GPU target.
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                           llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla

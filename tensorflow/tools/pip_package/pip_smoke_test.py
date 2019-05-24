@@ -36,7 +36,6 @@ BUILD_BLACKLIST = [
     "tensorflow/lite/delegates/gpu",
     "tensorflow/lite/delegates/gpu/metal",
     "tensorflow/lite/delegates/gpu/metal/kernels",
-    "tensorflow/lite/examples/android",
     "tensorflow/lite/experimental/objc",
     "tensorflow/lite/experimental/swift",
 ]

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if git diff --name-only HEAD^ HEAD | grep -q "ci_build"
+then
+  echo "Start a new build"
+else
+  echo "No dependency changes, abort build"
+  exit 1
+fi

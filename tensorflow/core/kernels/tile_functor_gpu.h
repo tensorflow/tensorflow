@@ -74,10 +74,10 @@ void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in) {
   const T* p = in.flat<T>().data();
   T* q = out->flat<T>().data();
   GpuLaunchConfig cfg = GetGpuLaunchConfig(out_nelem, d);
-  GPU_LAUNCH_KERNEL(TileKernel<T>,
-      dim3(cfg.block_count), dim3(cfg.thread_per_block), 0, d.stream(),
-      cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
-      ndims, q);
+  TF_CHECK_OK(
+      GpuLaunchKernel(TileKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
+                       d.stream(), cfg.virtual_thread_count, p,
+                       reinterpret_cast<const int32*>(dev_buf), ndims, q));
   // Safe to deallocate immediately after the kernel launch.
   d.deallocate(dev_buf);
 }
@@ -85,6 +85,6 @@ void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in) {
 }  // end namespace internal
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_GPU_H_

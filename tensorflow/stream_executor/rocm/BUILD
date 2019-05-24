@@ -126,6 +126,7 @@ cc_library(
         ":rocm_kernel",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor/gpu:gpu_executor_header",
+        "@com_google_absl//absl/memory",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ]),

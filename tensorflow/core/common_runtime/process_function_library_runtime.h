@@ -307,6 +307,7 @@ class ProcessFunctionLibraryRuntime {
 
   Env* const env_;
   const DeviceMgr* const device_mgr_;
+  DeviceSet device_set_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
 

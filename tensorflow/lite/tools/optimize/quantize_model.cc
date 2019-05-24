@@ -260,8 +260,7 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
 // outpus must have the same scale and zero point. The other ones with
 // constraints(averagepool, maxpool, gather, softmax, tanh etc) are handled in
 // QuantizeWeightsAndInput.
-TfLiteStatus ApplyConstraints(flatbuffers::FlatBufferBuilder* builder,
-                              ModelT* model, ErrorReporter* error_reporter) {
+TfLiteStatus ApplyConstraints(ModelT* model, ErrorReporter* error_reporter) {
   for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -540,8 +539,7 @@ TfLiteStatus QuantizeOpOutput(ModelT* model, int32_t subgraph_idx,
 
 // Quantize inputs and weights.
 // Because of ops such as lstm, still need to do per op, instead of weights.
-TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
-                                        ModelT* model, bool allow_float,
+TfLiteStatus QuantizeWeightsInputOutput(ModelT* model, bool allow_float,
                                         ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
@@ -576,8 +574,7 @@ TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
 }
 
 // Quantize bias.
-TfLiteStatus QuantizeBiases(flatbuffers::FlatBufferBuilder* builder,
-                            ModelT* model, ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeBiases(ModelT* model, ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -636,9 +633,9 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& output_type, bool allow_float,
                            ErrorReporter* error_reporter) {
   TF_LITE_ENSURE_STATUS(
-      QuantizeWeightsInputOutput(builder, model, allow_float, error_reporter));
-  TF_LITE_ENSURE_STATUS(ApplyConstraints(builder, model, error_reporter));
-  TF_LITE_ENSURE_STATUS(QuantizeBiases(builder, model, error_reporter));
+      QuantizeWeightsInputOutput(model, allow_float, error_reporter));
+  TF_LITE_ENSURE_STATUS(ApplyConstraints(model, error_reporter));
+  TF_LITE_ENSURE_STATUS(QuantizeBiases(model, error_reporter));
   utils::SetOperatorCodeVersion(model);
   TF_LITE_ENSURE_STATUS(
       SetInputAndOutputTypes(model, input_type, output_type, error_reporter));

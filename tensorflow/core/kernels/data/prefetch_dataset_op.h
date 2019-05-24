@@ -25,7 +25,11 @@ namespace data {
 class PrefetchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit PrefetchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    if (ctx->HasAttr("slack_period")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("slack_period", &slack_period_));
+    }
+  }
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -33,6 +37,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
+  int64 slack_period_ = 0;
 };
 
 }  // namespace data

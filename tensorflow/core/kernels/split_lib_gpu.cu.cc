@@ -198,17 +198,18 @@ __global__ void SplitVOpKernel_fixed(const T* input, int32 prefix_dim_size,
 }
 
 template <typename T>
-  void SplitOpGPULaunch<T>:: Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
-           int32 split_dim_size, int32 suffix_dim_size,
-           const GpuDeviceArrayStruct<T*>& output_ptr_data) {
-    GpuLaunchConfig config = GetGpuLaunchConfig(
-        prefix_dim_size * split_dim_size * suffix_dim_size, d);
+void SplitOpGPULaunch<T>::Run(const Eigen::GpuDevice& d, const T* input,
+                              int32 prefix_dim_size, int32 split_dim_size,
+                              int32 suffix_dim_size,
+                              const GpuDeviceArrayStruct<T*>& output_ptr_data) {
+  GpuLaunchConfig config = GetGpuLaunchConfig(
+      prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
-    GPU_LAUNCH_KERNEL(SplitOpKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        input, prefix_dim_size, split_dim_size, suffix_dim_size,
-        output_ptr_data);
-  }
+  TF_CHECK_OK(GpuLaunchKernel(SplitOpKernel<T>, config.block_count,
+                               config.thread_per_block, 0, d.stream(), input,
+                               prefix_dim_size, split_dim_size, suffix_dim_size,
+                               output_ptr_data));
+}
 
 template <typename T, typename IntType>
 void SplitVOpGPULaunch<T, IntType>::Run(
@@ -220,10 +221,10 @@ void SplitVOpGPULaunch<T, IntType>::Run(
     GpuLaunchConfig config =
         GetGpuLaunchConfig(total_rows * total_cols, gpu_device);
 
-    GPU_LAUNCH_KERNEL(SplitVOpKernel_fixed<T>,
-                      dim3(config.block_count), dim3(config.thread_per_block), 0,
-                      gpu_device.stream(),
-                      input_ptr, total_rows, total_cols, output_ptr_data);
+    TF_CHECK_OK(GpuLaunchKernel(SplitVOpKernel_fixed<T>, config.block_count,
+                                config.thread_per_block, 0, gpu_device.stream(),
+                                input_ptr, total_rows, total_cols,
+                                output_ptr_data));
   } else {
     auto config = GetGpu2DLaunchConfig(total_cols, total_rows, gpu_device);
     IntType smem_max = gpu_device.sharedMemPerBlock();
@@ -233,15 +234,15 @@ void SplitVOpGPULaunch<T, IntType>::Run(
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
-      GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, true>),
-                        dim3(config.block_count), dim3(config.thread_per_block),
-                        smem_usage, gpu_device.stream(), input_ptr, output_scan,
-                        total_rows, total_cols, output_ptr_data);
+      TF_CHECK_OK(GpuLaunchKernel(
+          split_v_kernel<T, IntType, true>, config.block_count,
+          config.thread_per_block, smem_usage, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
     } else {
-      GPU_LAUNCH_KERNEL((split_v_kernel<T, IntType, false>),
-                        dim3(config.block_count), dim3(config.thread_per_block),
-                        0, gpu_device.stream(), input_ptr, output_scan, total_rows,
-                        total_cols, output_ptr_data);
+      TF_CHECK_OK(GpuLaunchKernel(
+          split_v_kernel<T, IntType, false>, config.block_count,
+          config.thread_per_block, 0, gpu_device.stream(), input_ptr,
+          output_scan, total_rows, total_cols, output_ptr_data));
     }
   }
 }

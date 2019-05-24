@@ -98,10 +98,6 @@ class SquareLinearOperatorKroneckerTest(
         shape_info((3, 6, 6), factors=[(3, 1, 1), (1, 2, 2), (1, 3, 3)]),
     ]
 
-  @staticmethod
-  def tests_to_skip():
-    return ["det", "inverse", "solve", "solve_with_broadcast"]
-
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):

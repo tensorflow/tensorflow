@@ -27,6 +27,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -465,3 +466,90 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
 
     grad_a.set_shape(a_shape)
     return grad_a
+
+
+@ops.RegisterGradient("TridiagonalSolve")
+def _TridiagonalSolveGrad(op, grad):
+  """Gradient for TridiagonalSolveGrad."""
+  diags = op.inputs[0]
+  x = op.outputs[0]
+
+  # Transposing the matrix within tridiagonal_solve kernel by interchanging
+  # superdiagonal and subdiagonal wouldn't work on GPU due to mismatch with
+  # paddings required by cusparse*gtsv routines.
+  # So constructing the transposed matrix in Python.
+  diags_transposed = _TransposeTridiagonalMatrix(diags)
+
+  grad_rhs = linalg_ops.tridiagonal_solve(diags_transposed, grad)
+  grad_diags = -_MatmulExtractingThreeDiagonals(grad_rhs, x)
+  return grad_diags, grad_rhs
+
+
+def _TransposeTridiagonalMatrix(diags):
+  """Transposes a tridiagonal matrix.
+
+  Args:
+    diags: the diagonals of the input matrix in the compact form (see
+      linalg_ops.tridiagonal_solve).
+
+  Returns:
+    Diagonals of the transposed matrix in the compact form.
+  """
+
+  diag = diags[..., 1, :]
+
+  if diags.shape.is_fully_defined():
+    # For fully defined tensor we can concat with a tensor of zeros, which is
+    # faster than using array_ops.pad().
+    zeros = array_ops.zeros(list(diags.shape[:-2]) + [1], dtype=diags.dtype)
+    superdiag = array_ops.concat((diags[..., 2, 1:], zeros), axis=-1)
+    subdiag = array_ops.concat((zeros, diags[..., 0, :-1]), axis=-1)
+  else:
+    rank = array_ops.rank(diags)
+    zeros = array_ops.zeros((rank - 2, 2), dtype=dtypes.int32)
+    superdiag_pad = array_ops.concat((zeros, array_ops.constant([[0, 1]])),
+                                     axis=0)
+    superdiag = array_ops.pad(diags[..., 2, 1:], superdiag_pad)
+    subdiag_pad = array_ops.concat((zeros, array_ops.constant([[1, 0]])),
+                                   axis=0)
+    subdiag = array_ops.pad(diags[..., 0, :-1], subdiag_pad)
+  return array_ops.stack([superdiag, diag, subdiag], axis=-2)
+
+
+def _MatmulExtractingThreeDiagonals(x, y_tr):
+  """Multiplies matrices and extracts three diagonals from the product.
+
+  With sizes M x K and K x M, this function takes O(MK) time and O(M) space,
+  while using math_ops.matmul, and then extracting the diagonals would take
+  O(M^2 K) time and O(M^2) space.
+
+  Args:
+    x: first matrix
+    y_tr: second matrix transposed
+
+  Returns:
+    Diagonals of the product in compact format (see
+    linalg_ops.tridiagonal_solve)
+
+  """
+  diag = math_ops.reduce_sum(x * y_tr, axis=-1)
+
+  if y_tr.shape.is_fully_defined():
+    zeros = array_ops.zeros(
+        list(x.shape[:-2]) + [1, x.shape[-1]], dtype=x.dtype)
+    superdiag = math_ops.reduce_sum(
+        x * array_ops.concat((y_tr[..., 1:, :], zeros), axis=-2), axis=-1)
+    subdiag = math_ops.reduce_sum(
+        x * array_ops.concat((zeros, y_tr[..., :-1, :]), axis=-2), axis=-1)
+  else:
+    rank = array_ops.rank(y_tr)
+    zeros = array_ops.zeros((rank - 2, 2), dtype=dtypes.int32)
+    superdiag_pad = array_ops.concat(
+        (zeros, array_ops.constant([[0, 1], [0, 0]])), axis=0)
+    superdiag = math_ops.reduce_sum(
+        x * array_ops.pad(y_tr[..., 1:, :], superdiag_pad), axis=-1)
+    subdiag_pad = array_ops.concat(
+        (zeros, array_ops.constant([[1, 0], [0, 0]])), axis=0)
+    subdiag = math_ops.reduce_sum(
+        x * array_ops.pad(y_tr[..., :-1, :], subdiag_pad), axis=-1)
+  return array_ops.stack([superdiag, diag, subdiag], axis=-2)

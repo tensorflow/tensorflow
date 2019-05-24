@@ -20,13 +20,13 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
 
 #include <vector>
-#include "tensorflow/stream_executor/platform/port.h"
 
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
+#include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {

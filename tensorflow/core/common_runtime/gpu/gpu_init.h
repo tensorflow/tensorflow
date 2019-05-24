@@ -19,12 +19,6 @@ limitations under the License.
 #include <string>
 #include "tensorflow/core/lib/core/status.h"
 
-#if GOOGLE_CUDA
-#define GPU_PLATFORM_NAME "CUDA"
-#elif TENSORFLOW_USE_ROCM
-#define GPU_PLATFORM_NAME "ROCM"
-#endif
-
 namespace stream_executor {
 class Platform;
 }  // namespace stream_executor

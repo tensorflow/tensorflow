@@ -19,6 +19,9 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/util/gpu_cuda_alias.h"
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
+#endif
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
@@ -31,18 +34,6 @@ limitations under the License.
 #define TF_RED_WARPSIZE 32
 #elif TENSORFLOW_USE_ROCM
 #define TF_RED_WARPSIZE 64
-#endif
-
-#if GOOGLE_CUDA
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
-                          stream, ...)                                        \
-  TF_CHECK_OK(CudaLaunchKernel(kernel, block_count, threads_per_block,        \
-                               shared_mem, stream, __VA_ARGS__));
-#elif TENSORFLOW_USE_ROCM
-#define GPU_LAUNCH_KERNEL(kernel, block_count, threads_per_block, shared_mem, \
-                          stream, ...)                                        \
-  hipLaunchKernelGGL(kernel, block_count, threads_per_block, shared_mem,      \
-                     stream, __VA_ARGS__);
 #endif
 
 // Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
@@ -71,6 +62,39 @@ using gpuError_t = hipError_t;
 #endif
 
 namespace tensorflow {
+// Launches a GPU kernel through GpuLaunchKernel in Cuda environment, or
+// hipLaunchKernel in ROCm environment with the given arguments.
+//
+// The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
+template <typename... Ts, typename... Args>
+Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
+                        size_t shared_memory_size_bytes, gpuStream_t stream,
+                        Args... arguments) {
+  static_assert(detail::NoneIsReference<Ts...>(),
+                "Kernels with reference arguments have undefined behaviour.");
+#if GOOGLE_CUDA
+  auto func_ptr = absl::bit_cast<const void*>(function);
+  // Cast arguments and forward them as an array of pointers.
+  auto args_tuple = std::tuple<Ts...>(arguments...);
+  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
+  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
+                                 shared_memory_size_bytes, stream);
+  if (result != cudaSuccess) {
+    return errors::Internal(cudaGetErrorString(result));
+  }
+#elif TENSORFLOW_USE_ROCM
+  hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
+                     stream, std::forward<Args>(arguments)...);
+#endif
+  return Status::OK();
+}
+
+// Perfect forwarding to make GpuLaunchKernel available to both ROCm and Cuda builds
+template <typename... Args>
+auto CudaLaunchKernel(Args&&... args) -> decltype(GpuLaunchKernel(std::forward<Args>(args)...)) {
+  return GpuLaunchKernel(std::forward<Args>(args)...);
+}
+
 __host__ __device__ inline tensorflow::bfloat16 GpuLdg(
     const tensorflow::bfloat16* address) {
   tensorflow::bfloat16 return_value;

@@ -71,20 +71,19 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
     CHECK_EQ(diag.dimension(1), minsize);
     if (batch_size == 0 || minsize == 0) return;
     if (input.data() == output.data()) {
-      GpuLaunchConfig config =
-          GetGpuLaunchConfig(batch_size * minsize, device);
-      GPU_LAUNCH_KERNEL(MatrixSetDiagKernel<Scalar>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          device.stream(),
-          config.virtual_thread_count, m, n, minsize, diag.data(),
-          output.data());
+      GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * minsize, device);
+      TF_CHECK_OK(GpuLaunchKernel(MatrixSetDiagKernel<Scalar>,
+                                   config.block_count, config.thread_per_block,
+                                   0, device.stream(),
+                                   config.virtual_thread_count, m, n, minsize,
+                                   diag.data(), output.data()));
     } else {
       GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * m * n, device);
-      GPU_LAUNCH_KERNEL(MatrixCopyInputAndSetDiagKernel<Scalar>,
-          dim3(config.block_count), dim3(config.thread_per_block), 0,
-          device.stream(),
-          config.virtual_thread_count, m, n, minsize, input.data(),
-          diag.data(), output.data());
+      TF_CHECK_OK(GpuLaunchKernel(MatrixCopyInputAndSetDiagKernel<Scalar>,
+                                   config.block_count, config.thread_per_block,
+                                   0, device.stream(),
+                                   config.virtual_thread_count, m, n, minsize,
+                                   input.data(), diag.data(), output.data()));
     }
   }
 };

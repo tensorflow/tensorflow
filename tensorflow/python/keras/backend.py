@@ -95,6 +95,9 @@ _SESSION = threading.local()
 # either train mode (learning_phase == 1) or test mode (learning_phase == 0).
 _GRAPH_LEARNING_PHASES = weakref.WeakKeyDictionary()
 
+# This dictionary holds a mapping {graph: set_of_freezable_variables}.
+# Each set tracks objects created via `freezable_variable` in the graph.
+_FREEZABLE_VARS = weakref.WeakKeyDictionary()
 
 # _DUMMY_EAGER_GRAPH is used as a key in _GRAPH_LEARNING_PHASES.
 # We keep a separate reference to it to make sure it does not get removed from
@@ -222,19 +225,21 @@ def clear_session():
   global _GRAPH_VARIABLES  # pylint: disable=global-variable-not-assigned
   global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
   global _GRAPH
+  global _FREEZABLE_VARS
   _GRAPH = None
   ops.reset_default_graph()
   reset_uids()
   _SESSION.session = None
   graph = get_graph()
   with graph.as_default():
-    with ops.name_scope(''):
+    with name_scope(''):
       phase = array_ops.placeholder_with_default(
           False, shape=(), name='keras_learning_phase')
     _GRAPH_LEARNING_PHASES = {}
     _GRAPH_LEARNING_PHASES[graph] = phase
     _GRAPH_VARIABLES.pop(graph, None)
     _GRAPH_TF_OPTIMIZERS.pop(graph, None)
+    _FREEZABLE_VARS.pop(graph, None)
 
 
 @keras_export('keras.backend.manual_variable_initialization')
@@ -289,7 +294,7 @@ def symbolic_learning_phase():
   graph = get_graph()
   with graph.as_default():
     if graph not in _GRAPH_LEARNING_PHASES:
-      with ops.name_scope(''):
+      with name_scope(''):
         phase = array_ops.placeholder_with_default(
             False, shape=(), name='keras_learning_phase')
       _GRAPH_LEARNING_PHASES[graph] = phase
@@ -694,7 +699,32 @@ def to_dense(tensor):
     return tensor
 
 
-name_scope = ops.name_scope
+@keras_export('keras.backend.name_scope', v1=[])
+def name_scope(name):
+  """A context manager for use when defining a Python op.
+
+  This context manager pushes a name scope, which will make the name of all
+  operations added within it have a prefix.
+
+  For example, to define a new Python op called `my_op`:
+
+  ```python
+  def my_op(a):
+    with tf.name_scope("MyOp") as scope:
+      a = tf.convert_to_tensor(a, name="a")
+      # Define some computation that uses `a`.
+      return foo_op(..., name=scope)
+  ```
+
+  When executed, the Tensor `a` will have the name `MyOp/a`.
+
+  Args:
+    name: The prefix to use on all names created within the name scope.
+
+  Returns:
+    Name scope context manager.
+  """
+  return ops.name_scope_v2(name)
 
 
 @keras_export('keras.backend.variable')
@@ -924,6 +954,55 @@ def is_placeholder(x):
     return x.op.type == 'Placeholder'
   except AttributeError:
     return False
+
+
+def freezable_variable(value, shape=None, name=None):
+  """A tensor-like object whose value can be updated only up until execution.
+
+  After creating the freezable variable, you can update its value by calling
+  `var.update_value(new_value)` (similar to a regular variable).
+  Unlike an actual variable, the value used during execution is the current
+  value at the time the execution function (`backend.function()`) was created.
+
+  This is an internal API, expected to be temporary. It is used to implement a
+  mutable `trainable` property for `BatchNormalization` layers, with a frozen
+  value after model compilation.
+
+  We don't use a plain variable in this case because we need the value used
+  in a specific model to be frozen after `compile` has been called
+  (e.g. GAN use case).
+
+  Arguments:
+    value: The initial value for the tensor-like object.
+    shape: The shape for the tensor-like object (cannot be changed).
+    name: The name for the tensor-like object.
+
+  Returns:
+    A tensor-like object with a static value that can be updated via
+    `x.update_value(new_value)`, up until creating an execution function
+    (afterwards the value is fixed).
+  """
+  graph = get_graph()
+  with graph.as_default():
+    x = array_ops.placeholder_with_default(
+        value, shape=shape, name=name)
+    x._initial_value = value
+    x._current_value = value
+
+    def update_value(new_value):
+      x._current_value = new_value
+
+    def get_value():
+      return x._current_value
+
+    x.update_value = update_value
+    x.get_value = get_value
+
+    global _FREEZABLE_VARS
+    if graph not in _FREEZABLE_VARS:
+      _FREEZABLE_VARS[graph] = weakref.WeakSet()
+    _FREEZABLE_VARS[graph].add(x)
+  return x
 
 
 @keras_export('keras.backend.shape')
@@ -1346,21 +1425,20 @@ def cast(x, dtype):
   Returns:
       Keras tensor with dtype `dtype`.
 
-  Example:
+  Examples:
+      Cast a float32 variable to a float64 tensor
+
   ```python
-      >>> from keras import backend as K
-      >>> input = K.placeholder((2, 3), dtype='float32')
-      >>> input
-      <tf.Tensor 'Placeholder_2:0' shape=(2, 3) dtype=float32>
-      # It doesn't work in-place as below.
-      >>> K.cast(input, dtype='float16')
-      <tf.Tensor 'Cast_1:0' shape=(2, 3) dtype=float16>
-      >>> input
-      <tf.Tensor 'Placeholder_2:0' shape=(2, 3) dtype=float32>
-      # you need to assign it.
-      >>> input = K.cast(input, dtype='float16')
-      >>> input
-      <tf.Tensor 'Cast_2:0' shape=(2, 3) dtype=float16>
+      >>> import tensorflow as tf
+      >>> from tensorflow.keras import backend as K
+      >>> input = K.ones(shape=(1,3))
+      >>> print(input)
+      >>> cast_input = K.cast(input, dtype='float64')
+      >>> print(cast_input)
+
+      <tf.Variable 'Variable:0' shape=(1, 3) dtype=float32,
+           numpy=array([[1., 1., 1.]], dtype=float32)>
+      tf.Tensor([[1. 1. 1.]], shape=(1, 3), dtype=float64)
   ```
   """
   return math_ops.cast(x, dtype)
@@ -2637,6 +2715,17 @@ def batch_flatten(x):
 
   Returns:
       A tensor.
+
+  Examples:
+    Flattening a 3D tensor to 2D by collapsing the last dimension.
+
+  ```python
+      >>> from tensorflow.keras import backend as K
+      >>> x_batch = K.ones(shape=(2, 3, 4, 5))
+      >>> x_batch_flatten = K.batch_flatten(x_batch)
+      >>> K.int_shape(x_batch_flatten)
+      (2, 60)
+  ```
   """
   x = array_ops.reshape(x, array_ops.stack([-1, prod(shape(x)[1:])]))
   return x
@@ -3209,6 +3298,9 @@ class EagerExecutionFunction(object):
           # `update.op` may have been None in certain cases.
           updates_ops.append(update)
 
+    self._freezable_vars_to_feed = []
+    self._freezable_vars_values = []
+    freezable_vars_from_keras_graph = _FREEZABLE_VARS.get(global_graph, {})
     with _scratch_graph() as exec_graph:
       global_graph = get_graph()
       if source_graph not in (exec_graph, global_graph):
@@ -3229,6 +3321,18 @@ class EagerExecutionFunction(object):
         legacy_update_ops = [(lifted_map[p], lifted_map.get(p_new, p_new))
                              for p, p_new in legacy_update_ops]
 
+        # Keep track of the value to feed to any "freezable variables"
+        # created in this graph.
+        for old_op, new_op in lifted_map.items():
+          if old_op in freezable_vars_from_keras_graph:
+            frozen_var = old_op
+            if frozen_var._initial_value != frozen_var._current_value:
+              # We only feed a frozen_variable if its value has changed;
+              # otherwise it can rely on the default value of the
+              # underlying placeholder_with_default.
+              self._freezable_vars_to_feed.append(new_op)
+              self._freezable_vars_values.append(frozen_var._current_value)
+
     # Consolidate updates
     with exec_graph.as_default():
       outputs = cast_variables_to_tensor(outputs)
@@ -3237,14 +3341,16 @@ class EagerExecutionFunction(object):
           updates_ops.append(state_ops.assign(p, p_new))
 
       self.inputs, self.outputs = inputs, outputs
+      self._input_references = self.inputs + self._freezable_vars_to_feed
       with ops.control_dependencies(updates_ops):
         self.outputs[0] = array_ops.identity(self.outputs[0])
 
-      exec_graph.inputs = self.inputs + list(exec_graph.captures.values())
+      exec_graph.inputs = self._input_references + list(
+          exec_graph.captures.values())
       exec_graph.outputs = self.outputs
       graph_fn = eager_function.ConcreteFunction(exec_graph)
 
-    graph_fn._num_positional_args = len(self.inputs)
+    graph_fn._num_positional_args = len(self._input_references)
     graph_fn._arg_keywords = []
     self._graph_fn = graph_fn
 
@@ -3258,9 +3364,11 @@ class EagerExecutionFunction(object):
               x.op.inputs[0])
 
   def __call__(self, inputs):
-    inputs = nest.flatten(inputs)
+    input_values = nest.flatten(inputs)
+    if self._freezable_vars_values:
+      input_values = input_values + self._freezable_vars_values
     converted_inputs = []
-    for tensor, value in zip(self.inputs, inputs):
+    for tensor, value in zip(self._input_references, input_values):
       if value is None:
         # Assume `value` is a placeholder with default
         value = self._placeholder_default_values.get(tensor, None)
@@ -5376,6 +5484,8 @@ if not os.path.exists(_config_path):
 
 def in_multi_worker_mode():
   """Whether we are operating in a Multi-Worker setting."""
+  # TODO(rchao): Consider a warning if user uses multiple `model` method
+  # calls in multi-worker setting.
   tf_config = json.loads(os.environ.get('TF_CONFIG', '{}'))
   cluster_spec = server_lib.ClusterSpec(tf_config.get('cluster', {}))
   return tf_config and 'master' not in cluster_spec.jobs

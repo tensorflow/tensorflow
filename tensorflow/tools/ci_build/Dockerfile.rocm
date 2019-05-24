@@ -71,12 +71,7 @@ RUN apt-get update --allow-insecure-repositories && \
 #RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
 
 # Build HIP from source
-# roc-2.3.x branch as base + cherry-pick the merge commit for PR 981 (hipModuleGetGlobal fix)
-# the git config is required for the git cherry-pick command...
-RUN cd $HOME && git clone -b roc-2.3.x https://github.com/ROCm-Developer-Tools/HIP.git && \
-    cd $HOME/HIP && \
-    git cherry-pick --no-commit 4b7177ac4225c32ed0b02096a83b78fab0b9347a && \
-    mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
+# RUN cd $HOME && git clone -b <> https://github.com/ROCm-Developer-Tools/HIP.git && cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
 # Roll back OpenCL toolset to ROCm2.2 base
 RUN cd $HOME && wget http://repo.radeon.com/rocm/apt/2.2/pool/main/r/rocm-opencl/rocm-opencl_1.2.0-2019030702_amd64.deb && \

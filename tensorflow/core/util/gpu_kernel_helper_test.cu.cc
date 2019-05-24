@@ -274,7 +274,7 @@ TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
   unsigned* failure_count;
   ASSERT_EQ(cudaMallocManaged(&failure_count, sizeof(unsigned)), cudaSuccess);
   *failure_count = 0;
-  TF_EXPECT_OK(CudaLaunchKernel(CudaShuffleGetSrcLaneTest, 1, 32, 0, nullptr,
+  TF_EXPECT_OK(GpuLaunchKernel(CudaShuffleGetSrcLaneTest, 1, 32, 0, nullptr,
                                 failure_count));
   ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
   ASSERT_EQ(*failure_count, 0);

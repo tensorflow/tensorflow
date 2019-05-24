@@ -89,9 +89,9 @@ template <typename T>
 void RangeInit(const GPUDevice& d, const T start, const T delta,
                const int32 size, typename TTypes<T>::Flat out) {
   GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
-  GPU_LAUNCH_KERNEL(RangeInitKernel<T>, dim3(config.block_count),
-          dim3(config.thread_per_block), 0, d.stream(),
-          start, delta, size, out.data());
+  TF_CHECK_OK(GpuLaunchKernel(RangeInitKernel<T>, config.block_count,
+                               config.thread_per_block, 0, d.stream(), start,
+                               delta, size, out.data()));
 }
 
 // Given *num_runs pairs (key, value), this function moves the value
@@ -104,20 +104,20 @@ void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
   // For wrong inputs, we may have out_size < *num_runs. In this case we will
   // only handle the first out_size values.
   GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
-  GPU_LAUNCH_KERNEL(MoveValuesKernel, dim3(config.block_count),
-          dim3(config.thread_per_block), 0, d.stream(), keys, values,
-          num_runs, out_size, out);
+  TF_CHECK_OK(GpuLaunchKernel(MoveValuesKernel, config.block_count,
+                               config.thread_per_block, 0, d.stream(), keys,
+                               values, num_runs, out_size, out));
 }
 
 template <typename T>
 void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
                       T* out, int64 gather_dim_size, int64 indices_size,
                       int64 slice_size, int64 out_size) {
-  GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);  
-  GPU_LAUNCH_KERNEL((GatherOpKernel<T, int32, true>),
-          dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-          params, indices, out, gather_dim_size, indices_size, slice_size,
-          out_size);
+  GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
+  TF_CHECK_OK(GpuLaunchKernel(
+      GatherOpKernel<T, int32, true>, config.block_count,
+      config.thread_per_block, 0, d.stream(), params, indices, out,
+      gather_dim_size, indices_size, slice_size, out_size));
 }
 
 struct IdentityOp {

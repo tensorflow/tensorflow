@@ -10,7 +10,11 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_kernel_library",
+    "tf_cc_test",
+)
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
@@ -52,6 +56,25 @@ cc_library(
 cc_library(
     name = "tree_helper",
     hdrs = ["tree_helper.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "tree_helper_test",
+    srcs = ["tree_helper_test.cc"],
+    deps = [
+        ":tree_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_kernel_library(
@@ -72,6 +95,7 @@ tf_kernel_library(
         ":tree_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -84,6 +108,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
+        "//third_party/eigen3",
     ],
 )
 

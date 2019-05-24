@@ -62,10 +62,10 @@ struct UnaryClipOp<GPUDevice, T> {
                   typename TTypes<T>::Flat &out_flat) const {
     GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
 
-    GPU_LAUNCH_KERNEL(UnaryClipCustomKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
-            out_flat.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        UnaryClipCustomKernel<T>, config.block_count, config.thread_per_block,
+        0, d.stream(), in0_flat.size(), in0_flat.data(), in1_flat.data(),
+        in2_flat.data(), out_flat.data()));
   }
 };
 
@@ -78,10 +78,10 @@ struct BinaryRightClipOp<GPUDevice, T> {
                   typename TTypes<T>::Flat &out_flat) const {
     GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
 
-    GPU_LAUNCH_KERNEL(BinaryRightClipCustomKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
-            out_flat.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        BinaryRightClipCustomKernel<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), in0_flat.size(),
+        in0_flat.data(), in1_flat.data(), in2_flat.data(), out_flat.data()));
   }
 };
 
@@ -94,10 +94,10 @@ struct BinaryLeftClipOp<GPUDevice, T> {
                   typename TTypes<T>::Flat &out_flat) const {
     GpuLaunchConfig config = GetGpuLaunchConfig(in0_flat.size(), d);
 
-    GPU_LAUNCH_KERNEL(BinaryLeftClipCustomKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
-            out_flat.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        BinaryLeftClipCustomKernel<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), in0_flat.size(),
+        in0_flat.data(), in1_flat.data(), in2_flat.data(), out_flat.data()));
   }
 };
 

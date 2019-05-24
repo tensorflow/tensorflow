@@ -293,7 +293,6 @@ tf_cuda_cc_test(
         "//conditions:default": [],
     }),
     tags = [
-        "no_oss",  # http://b/119522529
         "noasan",
     ],
     # We must ensure that the dependencies can be dynamically linked since

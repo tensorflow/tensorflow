@@ -52,13 +52,14 @@ def xla_device_name():
 
 
 ALGS = [random.RNG_ALG_PHILOX, random.RNG_ALG_THREEFRY]
+INTS = [dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64]
 
 
 # TODO(wangpeng): use parametrized tests to test both ThreeFry and Philox
 class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
   """Test cases for stateful random-number generator operators."""
 
-  _ints = [dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64]
+  _ints = INTS
   _floats = [dtypes.bfloat16, dtypes.float32]
 
   @parameterized.parameters(ALGS)
@@ -200,6 +201,20 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       gen.uniform_full_int(shape=(size,), dtype=dtypes.uint64)
       self.assertAllEqual([(size+1)//2-1, counter_high+1, key],
                           gen.state.read_value())
+
+  @parameterized.parameters(INTS)
+  @test_util.run_v2_only
+  def testXLAEqualsCPU(self, dtype):
+    """Tests that XLA and CPU kernels generate the same integers."""
+    seed = 1234
+    shape = [315, 49]
+    with ops.device("/device:CPU:0"):
+      cpu = (random.Generator(seed=seed, algorithm=random.RNG_ALG_PHILOX)
+             .uniform_full_int(shape=shape, dtype=dtype))
+    with ops.device(xla_device_name()):
+      xla = (random.Generator(seed=seed, algorithm=random.RNG_ALG_PHILOX)
+             .uniform_full_int(shape=shape, dtype=dtype))
+    self.assertAllEqual(cpu, xla)
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.

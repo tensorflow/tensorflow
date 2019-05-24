@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",  # @unused
     "tf_cc_test",  # @unused
+    "py_test",
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -27,6 +28,7 @@ py_library(
 py_test(
     name = "ast_edits_test",
     srcs = ["ast_edits_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":ast_edits",
@@ -39,6 +41,7 @@ py_test(
 py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [":tf_upgrade_lib"],
 )
@@ -53,7 +56,11 @@ py_library(
 py_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":tf_upgrade_lib",
         "//tensorflow/python:client_testlib",
@@ -85,14 +92,31 @@ py_library(
 )
 
 py_library(
+    name = "module_deprecations_v2",
+    srcs = ["module_deprecations_v2.py"],
+    deps = [":ast_edits"],
+)
+
+py_library(
     name = "tf_upgrade_v2_lib",
     srcs = ["tf_upgrade_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":all_renames_v2",
         ":ast_edits",
+        ":module_deprecations_v2",
         ":reorders_v2",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tf_upgrade_v2_safety_lib",
+    srcs = ["tf_upgrade_v2_safety.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ast_edits",
+        ":module_deprecations_v2",
     ],
 )
 
@@ -100,17 +124,20 @@ py_binary(
     name = "tf_upgrade_v2",
     srcs = ["tf_upgrade_v2_main.py"],
     main = "tf_upgrade_v2_main.py",
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":ast_edits",
         ":ipynb",
         ":tf_upgrade_v2_lib",
+        ":tf_upgrade_v2_safety_lib",
     ],
 )
 
 py_test(
     name = "tf_upgrade_v2_test",
     srcs = ["tf_upgrade_v2_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":tf_upgrade_v2_lib",
@@ -123,6 +150,18 @@ py_test(
         "@six_archive//:six",
     ],
     tags = ["no_rocm_v2"],
+)
+
+py_test(
+    name = "tf_upgrade_v2_safety_test",
+    srcs = ["tf_upgrade_v2_safety_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tf_upgrade_v2_safety_lib",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
 )
 
 # Keep for reference, this test will succeed in 0.11 but fail in 1.0
@@ -155,6 +194,7 @@ py_test(
     name = "test_file_v1_0",
     size = "small",
     srcs = ["test_file_v1_0.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -180,6 +220,7 @@ py_test(
     name = "test_file_v1_12",
     size = "small",
     srcs = ["testdata/test_file_v1_12.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -191,10 +232,12 @@ py_test(
     name = "test_file_v2_0",
     size = "small",
     srcs = ["test_file_v2_0.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
+    tags = ["no_rocm_v2"],
 )
 
 exports_files(

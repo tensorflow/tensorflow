@@ -20,8 +20,6 @@ limitations under the License.
 
 #include <stddef.h>
 #include "tensorflow/stream_executor/platform/port.h"
-
-#include "cuda/include/cuda.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -90,8 +88,8 @@ class GpuDriver {
   // Creates a new event associated with the given context.
   // result is an outparam owned by the caller and must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g450687e75f3ff992fe01662a43d9d3db
-  static port::Status CreateEvent(GpuContext* context, GpuEventHandle* result,
-                                  EventFlags flags);
+  static port::Status InitEvent(GpuContext* context, GpuEventHandle* result,
+                                EventFlags flags);
 
   // Destroys *event and turns it into a nullptr. event may not be null, but
   // *event may be, via cuEventDestroy

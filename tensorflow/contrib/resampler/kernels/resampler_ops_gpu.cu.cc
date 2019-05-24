@@ -120,10 +120,10 @@ struct Resampler2DFunctor<GPUDevice, T> {
         batch_size * num_sampling_points * data_channels;
     ::tensorflow::GpuLaunchConfig config =
         GetGpuLaunchConfig(output_data_size, d);
-     GPU_LAUNCH_KERNEL(
+     TF_CHECK_OK(GpuLaunchKernel(
         Resampler2DKernel<T>, config.block_count, config.thread_per_block, 0,
         d.stream(), data, warp, output, batch_size, data_height, data_width,
-        data_channels, num_sampling_points);
+        data_channels, num_sampling_points));
   }
 };
 
@@ -255,23 +255,23 @@ struct ResamplerGrad2DFunctor<GPUDevice, T> {
 
     GpuLaunchConfig config =
        GetGpuLaunchConfig(grad_warp_size, d);
-     GPU_LAUNCH_KERNEL(
+     TF_CHECK_OK(GpuLaunchKernel(
         SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
-        grad_warp_size, grad_warp);
+        grad_warp_size, grad_warp));
 
     config = ::tensorflow::GetGpuLaunchConfig(grad_data_size, d);
-    GPU_LAUNCH_KERNEL(
+    TF_CHECK_OK(GpuLaunchKernel(
         SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
-        grad_data_size, grad_data);
+        grad_data_size, grad_data));
 
     const int resampler_output_size =
         batch_size * num_sampling_points * data_channels;
     config = ::tensorflow::GetGpuLaunchConfig(resampler_output_size, d);
-    GPU_LAUNCH_KERNEL(ResamplerGrad2DKernel<T>, config.block_count,
+    TF_CHECK_OK(GpuLaunchKernel(ResamplerGrad2DKernel<T>, config.block_count,
                                  config.thread_per_block, 0, d.stream(), data,
                                  warp, grad_output, grad_data, grad_warp,
                                  batch_size, data_height, data_width,
-                                 data_channels, num_sampling_points);
+                                 data_channels, num_sampling_points));
   }
 };
 

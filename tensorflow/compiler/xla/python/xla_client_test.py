@@ -315,10 +315,11 @@ class ComputationsWithConstantsTest(ComputationTest):
     c.CustomCall(
         b"test_subtract_f32",
         operands=(c.ConstantF32Scalar(1.25), c.ConstantF32Scalar(0.5)),
-        shape_with_layout=xla_client.Shape.array_shape(np.float32, (), ()),
+        shape_with_layout=xla_client.Shape.array_shape(
+            np.dtype(np.float32), (), ()),
         operand_shapes_with_layout=(
-            xla_client.Shape.array_shape(np.float32, (), ()),
-            xla_client.Shape.array_shape(np.float32, (), ()),
+            xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
+            xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
         ))
     self._ExecuteAndCompareClose(c, expected=0.75)
 
@@ -1183,6 +1184,23 @@ class SingleOpTest(ComputationTest):
     c.Cholesky(c.Constant(np.dot(l, l.T)))
     self._ExecuteAndCompareClose(c, expected=l, rtol=1e-4)
 
+  def testSort(self):
+    keys = np.array([[2, 4, 1, 3], [3, 1, 4, 2]], dtype=np.float32)
+    c = self._NewComputation()
+    c.Sort(c.Constant(keys))
+    self._ExecuteAndCompareClose(
+        c, expected=np.array([[1, 2, 3, 4], [1, 2, 3, 4]], dtype=np.float32))
+
+  def testSortKeyVal(self):
+    keys = np.array([[2, 4, 1, 3], [3, 1, 4, 2]], dtype=np.float32)
+    values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
+    c = self._NewComputation()
+    c.SortKeyVal(c.Constant(keys), c.Constant(values), dimension=0)
+    result = c.Build().Compile().ExecuteWithPythonValues()
+    self.assertIsInstance(result, tuple)
+    np.testing.assert_allclose(result[0], [[2, 1, 1, 2], [3, 4, 4, 3]])
+    np.testing.assert_equal(result[1], [[0, 5, 2, 7], [4, 1, 6, 3]])
+
   def testQR(self):
     a = np.array(
         [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
@@ -1262,6 +1280,33 @@ class SingleOpTest(ComputationTest):
     g = self._Execute(c, ())
     expected = np.array([[[[2, 7]]], [[[5, 6]]]], dtype=np.int32)
     np.testing.assert_allclose(g, expected, rtol=1e-4)
+
+  def testFft(self):
+    shape = [2, 3, 4, 5]
+    rng = np.random.RandomState(0)
+    a = rng.randn(*shape) + 1.0j * rng.randn(*shape)
+    a = a.astype(np.complex64)
+    # FFT
+    c = self._NewComputation()
+    c.Fft(c.Constant(a), xla_client.FftType.FFT, shape[-3:])
+    self._ExecuteAndCompareClose(c, expected=np.fft.fftn(a, axes=(1, 2, 3)),
+                                 rtol=1e-4)
+    # IFFT
+    c = self._NewComputation()
+    c.Fft(c.Constant(a), xla_client.FftType.IFFT, shape[-3:])
+    self._ExecuteAndCompareClose(c, expected=np.fft.ifftn(a, axes=(1, 2, 3)),
+                                 rtol=1e-4)
+    # RFFT
+    b = rng.randn(*shape).astype(np.float32)
+    c = self._NewComputation()
+    c.Fft(c.Constant(b), xla_client.FftType.RFFT, shape[-3:])
+    self._ExecuteAndCompareClose(c, expected=np.fft.rfftn(b, axes=(1, 2, 3)),
+                                 rtol=1e-4)
+    # IRFFT
+    c = self._NewComputation()
+    c.Fft(c.Constant(a), xla_client.FftType.IRFFT, [3, 4, 8])
+    self._ExecuteAndCompareClose(c, expected=np.fft.irfftn(a, axes=(1, 2, 3)),
+                                 rtol=1e-4)
 
 
 class EmbeddedComputationsTest(ComputationTest):
@@ -1701,7 +1746,7 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    c.Infeed(xla_client.Shape.from_pyval(to_infeed[0]))
+    c.Infeed(xla_client.shape_from_pyval(to_infeed[0]))
     compiled_c = c.Build().Compile()
     for item in to_infeed:
       xla_client.transfer_to_infeed(item)
@@ -1713,7 +1758,7 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedThenOutfeedS32(self):
     to_round_trip = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    x = c.Infeed(xla_client.Shape.from_pyval(to_round_trip[0]))
+    x = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
     c.Outfeed(x)
 
     compiled_c = c.Build().Compile()
@@ -1723,7 +1768,7 @@ class EmbeddedComputationsTest(ComputationTest):
       execution.start()
       xla_client.transfer_to_infeed(want)
       got = xla_client.transfer_from_outfeed(
-          xla_client.Shape.from_pyval(to_round_trip[0]))
+          xla_client.shape_from_pyval(to_round_trip[0]))
       execution.join()
       self.assertEqual(want, got)
 
@@ -1759,7 +1804,9 @@ class ErrorTest(ComputationTest):
     c.ClearOpMetadata()
 
     options = xla_client.CompileOptions()
-    options.argument_layouts = [xla_client.Shape.array_shape(np.float32, [])]
+    options.argument_layouts = [
+        xla_client.Shape.array_shape(np.dtype(np.float32), [])
+    ]
 
     def TestFun():
       return c.Build().Compile(compile_options=options)

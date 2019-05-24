@@ -594,6 +594,8 @@ class Converter {
 
 // Map of all supported UnaryOperations
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
+// Map of all supported ActivationTypes
+const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
 
 }  // namespace convert
 }  // namespace tensorrt

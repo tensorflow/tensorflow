@@ -1,3 +1,9 @@
+# Release 1.13.3
+
+## Bug Fixes and Other Changes
+* The 1.13.3 whl package is built the ROCm2.4 user-bit environment
+
+
 # Release 1.12.2
 
 ## Bug Fixes and Other Changes

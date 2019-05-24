@@ -35,6 +35,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
+from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -129,6 +130,18 @@ class Network(base_layer.Layer):
     def call(self, inputs):
       return self.layer1(inputs)
   ```
+
+  Allowed args in `super().__init__`:
+    name: String name of the model.
+    dynamic: (Subclassed models only) Set this to `True` if your model should
+      only be run eagerly, and should not be used to generate a static
+      computation graph. This attribute is automatically set for Functional API
+      models.
+    trainable: Boolean, whether the model's variables should be trainable.
+    dtype: (Subclassed models only) Default dtype of the model's weights (
+      default of `None` means use the type of the first input). This attribute
+      has no effect on Functional API models, which do not have weights of their
+      own.
   """
 
   # See tf.Module for the usage of this property.
@@ -166,7 +179,7 @@ class Network(base_layer.Layer):
   # checkpoints, but may cause "all Python objects matched" assertions to fail
   # (in which case less strict assertions may be substituted if necessary).
   @trackable.no_automatic_dependency_tracking
-  def _base_init(self, name=None):
+  def _base_init(self, name=None, **kwargs):
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
@@ -174,14 +187,18 @@ class Network(base_layer.Layer):
     # self.losses
     # self.updates
 
+    generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic'})
+
     self._init_set_name(name, zero_based=True)
     self._activity_regularizer = None
     # This acts just like the `trainable` attribute of any layer instance.
-    # It does not affect users of the underlying layers, only users of the
-    # Network instance.
-    self.trainable = True
+    self._trainable = kwargs.get('trainable', True)
+    # This attribute has no effect if the model is created using the Functional
+    # API. Instead, `model.dynamic` is determined based on the internal layers.
+    self._dynamic = kwargs.get('dynamic', False)
     self._is_compiled = False
     self._expects_training_arg = False
+    self._layers = []
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
@@ -210,7 +227,7 @@ class Network(base_layer.Layer):
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
       # A Network does not create weights of its own, thus has no dtype.
-    self._dtype = None
+    self._dtype = kwargs.get('dtype', None)
 
     # All layers in order of horizontal graph traversal.
     # Entries are unique. Includes input and output layers.
@@ -230,7 +247,11 @@ class Network(base_layer.Layer):
     self._mixed_precision_policy = policy.Policy('infer')
 
   @trackable.no_automatic_dependency_tracking
-  def _init_graph_network(self, inputs, outputs, name=None):
+  def _init_graph_network(self, inputs, outputs, name=None, **kwargs):
+    generic_utils.validate_kwargs(
+        kwargs, {'trainable'},
+        'Functional models may only specify `name` and `trainable` keyword '
+        'arguments during initialization. Got an unexpected argument:')
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Normalize and set self.inputs, self.outputs.
@@ -246,18 +267,14 @@ class Network(base_layer.Layer):
     if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
       base_layer_utils.create_keras_history(self._nested_outputs)
 
-    self._base_init(name=name)
+    self._base_init(name=name, **kwargs)
     self._validate_graph_inputs_and_outputs()
 
-    self._compute_previous_mask = (
-        'mask' in tf_inspect.getfullargspec(self.call).args or
-        hasattr(self, 'compute_mask'))
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
-    self._dynamic = False
     # `_expects_training_arg` is True since the `training` argument is always
     # present in the signature of the `call` method of a graph network.
     self._expects_training_arg = True
@@ -347,10 +364,9 @@ class Network(base_layer.Layer):
     self.output_names = uniquified
 
   @trackable.no_automatic_dependency_tracking
-  def _init_subclassed_network(self, name=None, dynamic=False):
-    self._base_init(name=name)
+  def _init_subclassed_network(self, name=None, **kwargs):
+    self._base_init(name=name, **kwargs)
     self._is_graph_network = False
-    self._dynamic = dynamic
     call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
@@ -495,6 +511,10 @@ class Network(base_layer.Layer):
       weights += layer.weights
     weights += (self._trainable_weights + self._non_trainable_weights)
     return weights
+
+  @property
+  def _should_compute_mask(self):
+    return self._is_graph_network and super(Network, self)._should_compute_mask
 
   def compute_mask(self, inputs, mask):
     if not self._is_graph_network:
@@ -1214,6 +1234,23 @@ class Network(base_layer.Layer):
     constructor. See the documentation of `tf.train.Checkpoint` and
     `tf.keras.Model` for details.
 
+    While the formats are the same, do not mix `save_weights` and
+    `tf.train.Checkpoint`. Checkpoints saved by `Model.save_weights` should be
+    loaded using `Model.load_weights`. Checkpoints saved using
+    `tf.train.Checkpoint.save` should be restored using the corresponding
+    `tf.train.Checkpoint.restore`. Prefer `tf.train.Checkpoint` over
+    `save_weights` for training checkpoints.
+
+    The TensorFlow format matches objects and variables by starting at a root
+    object, `self` for `save_weights`, and greedily matching attribute
+    names. For `Model.save` this is the `Model`, and for `Checkpoint.save` this
+    is the `Checkpoint` even if the `Checkpoint` has a model attached. This
+    means saving a `tf.keras.Model` using `save_weights` and loading into a
+    `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
+    the `Model`'s variables. See the [guide to training
+    checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for details
+    on the TensorFlow format.
+
     Arguments:
         filepath: String, path to the file to save the weights to. When saving
             in TensorFlow format, this is the prefix used for checkpoint files
@@ -1269,6 +1306,11 @@ class Network(base_layer.Layer):
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
         saving.save_weights_to_hdf5_group(f, self.layers)
+        # TODO(rchao): Save this attribute in a decoupled checkpoint file
+        # that is solely for the purpose of fault tolerance.
+        if self._ckpt_saved_epoch is not None:
+          f.attrs[callbacks.CKPT_SAVED_EPOCH] = str(
+              self._ckpt_saved_epoch).encode('utf8')
     else:
       if context.executing_eagerly():
         session = None
@@ -1368,6 +1410,12 @@ class Network(base_layer.Layer):
     with h5py.File(filepath, 'r') as f:
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
+      # TODO(rchao): Load this attribute from a decoupled metadata+checkpoint
+      # file that is solely for the purpose of fault tolerance. Decide if we
+      # should use TF or HDF5 format for the metadata.
+      if callbacks.CKPT_SAVED_EPOCH in f.attrs:
+        self._ckpt_saved_epoch = f.attrs[callbacks.CKPT_SAVED_EPOCH].decode(
+            'utf8')
       if by_name:
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:

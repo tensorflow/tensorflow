@@ -192,7 +192,8 @@ llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
       llvm::ArrayType::get(elem_ty, GetTileSizeForDimension(DimX) + 1),
       GetTileSizeForDimension(DimY));
   llvm::Module* module = b_->GetInsertBlock()->getModule();
-  unsigned shared_memory_address_space = gpu::GetSharedMemoryAddressSpace(module);
+  unsigned shared_memory_address_space =
+      gpu::GetSharedMemoryAddressSpace(*module);
   return llvm_ir::AllocateSharedMemoryTile(module,
                                            buffer_type, buffer_name,
                                            shared_memory_address_space);

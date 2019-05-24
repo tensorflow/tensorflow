@@ -891,6 +891,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
       break;
     }
+    case HloOpcode::kPartitionId: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreatePartitionId());
+      break;
+    }
     case HloOpcode::kReshape: {
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -1459,6 +1468,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands)) {
         return false;
       }
+      if (!ShapeUtil::IsScalar(operands[0]->shape())) {
+        return Error(lexer_.GetLoc(), "The first operand must be a scalar");
+      }
       const bool branch_index_is_bool =
           operands[0]->shape().element_type() == PRED;
       if (branch_index_is_bool) {
@@ -1467,6 +1479,10 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         attrs["false_computation"] = {
             /*required=*/true, AttrTy::kHloComputation, &false_computation};
       } else {
+        if (operands[0]->shape().element_type() != S32) {
+          return Error(lexer_.GetLoc(),
+                       "The first operand must be a scalar of PRED or S32");
+        }
         attrs["branch_computations"] = {/*required=*/true,
                                         AttrTy::kBracedHloComputationList,
                                         &branch_computations};
@@ -4135,6 +4151,14 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     if (!ParseInstruction(&builder, &root_name)) {
       return false;
     }
+  }
+
+  if (lexer_.GetKind() != TokKind::kEof) {
+    Error(
+        lexer_.GetLoc(),
+        "Syntax error:\nExpected eof after parsing single instruction.  Did "
+        "you mean to write an HLO module and forget the \"HloModule\" header?");
+    return false;
   }
 
   module->AddEntryComputation(builder.Build());
