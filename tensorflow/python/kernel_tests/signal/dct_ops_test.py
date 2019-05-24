@@ -165,7 +165,6 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     with spectral_ops_test_util.fft_kernel_label_map():
       with self.session(use_gpu=True):
         signals = np.random.rand(*shape).astype(np.float32)
-        print(signals)
         n = np.random.randint(1, 2*signals.shape[-1])
         n = np.random.choice([None, n])
         # Normalization not implemented for orthonormal.
