@@ -126,28 +126,16 @@ void PickReasonableMultiplier(
                        bias_shape_inference, bias_data, output_shape_inference,
                        &output_multiplier);
 
-  bool should_use_per_channel = true;
-
-  // TODO(b/132879305): Support stride == 2 per-channel case.
-  if (params.stride_width == 2 || params.stride_height == 2) {
-    should_use_per_channel = false;
-  }
-
   int base_multiplier;
   int base_shift;
   QuantizeMultiplier(output_multiplier, &base_multiplier, &base_shift);
   for (int i = 0; i < output_depth; ++i) {
-    if (should_use_per_channel) {
-      // multipliers typically range in [2^30 ; 2^31 - 1].
-      // Values in [0, 2^30 - 1] are normally unused, but harmless.
-      // Thus a good way to randomize multipliers is to subtract from them
-      // a random value smaller than 2^30 but still significant compared to it.
-      output_multiplier_ptr[i] = base_multiplier - (std::rand() % (1 << 26));
-      output_shift_ptr[i] = base_shift - 1 + (std::rand() % 4);
-    } else {
-      output_multiplier_ptr[i] = base_multiplier;
-      output_shift_ptr[i] = base_shift;
-    }
+    // multipliers typically range in [2^30 ; 2^31 - 1].
+    // Values in [0, 2^30 - 1] are normally unused, but harmless.
+    // Thus a good way to randomize multipliers is to subtract from them
+    // a random value smaller than 2^30 but still significant compared to it.
+    output_multiplier_ptr[i] = base_multiplier - (std::rand() % (1 << 26));
+    output_shift_ptr[i] = base_shift - 1 + (std::rand() % 4);
   }
 }
 
