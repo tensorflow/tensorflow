@@ -502,8 +502,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                          run_params.use_calibration, node.name)
 
         has_calibration_data = len(node.attr["calibration_data"].s)
-        if (IsQuantizationMode(run_params.precision_mode) and
-            run_params.use_calibration and graph_state == GraphState.INFERENCE):
+        if (IsQuantizationWithCalibration(run_params) and
+            graph_state == GraphState.INFERENCE):
           self.assertTrue(has_calibration_data, node.name)
         else:
           self.assertFalse(has_calibration_data, node.name)
@@ -588,8 +588,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                 config_no_trt, GraphState.ORIGINAL)
 
     # Run calibration if necessary.
-    if (IsQuantizationMode(run_params.precision_mode) and
-        run_params.use_calibration):
+    if IsQuantizationWithCalibration(run_params):
       infer_saved_model_dir = self._GetCalibratedInferGraph(
           run_params, saved_model_dir, inputs_data)
       self._VerifyGraphDef(run_params, saved_model_dir, infer_saved_model_dir,

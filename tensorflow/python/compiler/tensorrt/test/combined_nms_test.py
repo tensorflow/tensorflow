@@ -31,11 +31,6 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
   """Test for CombinedNMS op in TF-TRT."""
 
   def GraphFn(self, boxes, scores):
-    # Parameters
-    batch_size = 1
-    num_boxes = 200
-    num_classes = 2
-    q = 1
     max_output_size_per_class = 3
     max_total_size = 3
     score_threshold = 0.1
@@ -65,6 +60,13 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     ]
 
   def GetParams(self):
+    # Parameters
+    q = 1
+    batch_size = 1
+    num_boxes = 200
+    num_classes = 2
+    max_total_size = 3
+
     boxes_shape = [batch_size, num_boxes, q, 4]
     scores_shape = [batch_size, num_boxes, num_classes]
     nmsed_boxes_shape = [batch_size, max_total_size, 4]
@@ -88,6 +90,12 @@ class CombinedNmsTest(trt_test.TfTrtIntegrationTestBase):
     }
 
   def ShouldRunTest(self, run_params):
+    # There is no CombinedNonMaxSuppression op for GPU at the moment, so
+    # calibration will fail.
+    # TODO(laigd): fix this.
+    if trt_test.IsQuantizationMode(run_params.precision_mode):
+      return False
+
     # Only run for TRT 5.1 and above.
     ver = get_linked_tensorrt_version()
     return ver[0] > 5 or (ver[0] == 5 and ver[1] >= 1)
