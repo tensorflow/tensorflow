@@ -19,6 +19,7 @@ add_llvm_library(MLIRTransforms
   TestConstantFold.cpp
   Utils/FoldUtils.cpp
   Utils/GreedyPatternRewriteDriver.cpp
+  Utils/LoopFusionUtils.cpp
   Utils/LoopUtils.cpp
   Utils/Utils.cpp
   Vectorization
