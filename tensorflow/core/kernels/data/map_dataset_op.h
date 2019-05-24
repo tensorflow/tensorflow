@@ -28,15 +28,17 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
                            std::vector<Tensor>, std::vector<Tensor>*)>;
 
-  static constexpr char kDatasetType[] = "Map";
-  static constexpr char kInputDataset[] = "input_dataset";
-  static constexpr char kOtherArguments[] = "other_arguments";
-  static constexpr char kF[] = "f";
-  static constexpr char kTarguments[] = "Targuments";
-  static constexpr char kOutputTypes[] = "output_types";
-  static constexpr char kOutputShapes[] = "output_shapes";
-  static constexpr char kUseInterOpParallelism[] = "use_inter_op_parallelism";
-  static constexpr char kPreserveCardinality[] = "preserve_cardinality";
+  // MSVC 14.0 limitation requires the consts.
+  static constexpr const char kDatasetType[] = "Map";
+  static constexpr const char kInputDataset[] = "input_dataset";
+  static constexpr const char kOtherArguments[] = "other_arguments";
+  static constexpr const char kF[] = "f";
+  static constexpr const char kTarguments[] = "Targuments";
+  static constexpr const char kOutputTypes[] = "output_types";
+  static constexpr const char kOutputShapes[] = "output_shapes";
+  static constexpr const char kUseInterOpParallelism[] =
+      "use_inter_op_parallelism";
+  static constexpr const char kPreserveCardinality[] = "preserve_cardinality";
 
   explicit MapDatasetOp(OpKernelConstruction* ctx) : UnaryDatasetOpKernel(ctx) {
     FunctionMetadata::Params params;

@@ -24,12 +24,13 @@ namespace data {
 
 class PrefetchDatasetOp : public UnaryDatasetOpKernel {
  public:
-  static constexpr char kDatasetType[] = "Prefetch";
-  static constexpr char kInputDataset[] = "input_dataset";
-  static constexpr char kBufferSize[] = "buffer_size";
-  static constexpr char kOutputTypes[] = "output_types";
-  static constexpr char kOutputShapes[] = "output_shapes";
-  static constexpr char kSlackPeriod[] = "slack_period";
+  // MSVC 14.0 limitation requires the consts.
+  static constexpr const char kDatasetType[] = "Prefetch";
+  static constexpr const char kInputDataset[] = "input_dataset";
+  static constexpr const char kBufferSize[] = "buffer_size";
+  static constexpr const char kOutputTypes[] = "output_types";
+  static constexpr const char kOutputShapes[] = "output_shapes";
+  static constexpr const char kSlackPeriod[] = "slack_period";
 
   explicit PrefetchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {

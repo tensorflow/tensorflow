@@ -23,12 +23,13 @@ namespace data {
 
 class RangeDatasetOp : public DatasetOpKernel {
  public:
-  static constexpr char kDatasetType[] = "Range";
-  static constexpr char kStart[] = "start";
-  static constexpr char kStop[] = "stop";
-  static constexpr char kStep[] = "step";
-  static constexpr char kOutputTypes[] = "output_types";
-  static constexpr char kOutputShapes[] = "output_shapes";
+  // MSVC 14.0 limitation requires the consts.
+  static constexpr const char kDatasetType[] = "Range";
+  static constexpr const char kStart[] = "start";
+  static constexpr const char kStop[] = "stop";
+  static constexpr const char kStep[] = "step";
+  static constexpr const char kOutputTypes[] = "output_types";
+  static constexpr const char kOutputShapes[] = "output_shapes";
 
   explicit RangeDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 
