@@ -1105,6 +1105,10 @@ tf_module {
     argspec: "args=[\'dimension\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "disable_control_flow_v2"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "disable_eager_execution"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -1147,6 +1151,10 @@ tf_module {
   member_method {
     name: "einsum"
     argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "enable_control_flow_v2"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "enable_eager_execution"

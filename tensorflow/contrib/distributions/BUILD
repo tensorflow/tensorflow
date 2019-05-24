@@ -94,7 +94,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/contrib/learn",
-        "//tensorflow/contrib/learn:head_test",
+        "//tensorflow/contrib/learn:head_test_lib",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",

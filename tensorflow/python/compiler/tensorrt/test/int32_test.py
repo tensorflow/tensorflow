@@ -23,7 +23,6 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -31,30 +30,21 @@ from tensorflow.python.platform import test
 
 
 class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
+  """Test exclusion of ops which are not supported in INT32 mode by TF-TRT"""
 
   def _ConstOp(self, shape, dtype):
     return constant_op.constant(np.random.randn(*shape), dtype=dtype)
 
+  def GraphFn(self, x):
+    dtype = x.dtype
+    b = self._ConstOp((4, 10), dtype)
+    x = math_ops.matmul(x, b)
+    b = self._ConstOp((10,), dtype)
+    x = nn.bias_add(x, b)
+    return array_ops.identity(x, name='output_0')
+
   def GetParams(self):
-    """Test exclusion of ops which are not supported in INT32 mode by TF-TRT"""
-    input_name = 'input'
-    output_name = 'output'
-    input_dims = [100, 4]
-    dtype = dtypes.int32
-    g = ops.Graph()
-    with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      b = self._ConstOp((4, 10), dtype)
-      x = math_ops.matmul(x, b)
-      b = self._ConstOp((10,), dtype)
-      x = nn.bias_add(x, b)
-      x = array_ops.identity(x, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[[100, 10]]])
+    return self.BuildParams(self.GraphFn, dtypes.int32, [[100, 4]], [[100, 10]])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""

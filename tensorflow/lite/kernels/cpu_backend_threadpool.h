@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/tflite_with_ruy.h"
 
 #ifdef TFLITE_WITH_RUY
 #include "tensorflow/lite/experimental/ruy/context.h"

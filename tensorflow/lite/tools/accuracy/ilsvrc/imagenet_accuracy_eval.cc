@@ -213,9 +213,10 @@ int Main(int argc, char* argv[]) {
   evaluator->EvaluateModel();
 
   if (!proto_output_file_path.empty()) {
-    std::ofstream proto_out_file(proto_output_file_path, std::ios::out);
+    std::ofstream proto_out_file(proto_output_file_path,
+                                 std::ios::out | std::ios::binary);
     TopkAccuracyEvalMetrics metrics = results_writer.AggregatedMetrics();
-    proto_out_file << metrics.DebugString();
+    proto_out_file << metrics.SerializeAsString();
     proto_out_file.close();
   }
 

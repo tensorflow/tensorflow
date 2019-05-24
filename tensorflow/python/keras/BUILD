@@ -1440,6 +1440,7 @@ tf_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 4,
+    tags = ["no_oss"],
 )
 
 tf_py_test(

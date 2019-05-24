@@ -269,6 +269,8 @@ renames = {
         'tf.compat.dimension_at_index',
     'tf.dimension_value':
         'tf.compat.dimension_value',
+    'tf.disable_control_flow_v2':
+        'tf.compat.v1.disable_control_flow_v2',
     'tf.disable_eager_execution':
         'tf.compat.v1.disable_eager_execution',
     'tf.disable_resource_variables':
@@ -321,6 +323,8 @@ renames = {
         'tf.math.divide_no_nan',
     'tf.dtypes.as_string':
         'tf.strings.as_string',
+    'tf.enable_control_flow_v2':
+        'tf.compat.v1.enable_control_flow_v2',
     'tf.enable_eager_execution':
         'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables':

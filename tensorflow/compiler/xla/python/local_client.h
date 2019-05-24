@@ -169,6 +169,8 @@ class Device {
   }
 
  private:
+  Status SynchronizeAllActivity();
+
   bool use_multiple_streams_;
   bool synchronous_deallocation_;
   bool asynchronous_;
@@ -292,6 +294,10 @@ class PyLocalBuffer {
 
   // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> DestructureTuple();
+
+  // Blocks the host until the buffer's value has been computed and is ready for
+  // immediate use on the device. Useful in particular for timing benchmarks.
+  Status BlockHostUntilReady();
 
  private:
   const std::shared_ptr<PyLocalClient> client_;

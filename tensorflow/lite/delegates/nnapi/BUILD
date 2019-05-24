@@ -2,7 +2,6 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 licenses(["notice"])  # Apache 2.0
@@ -21,7 +20,6 @@ cc_library(
         ],
     }),
     hdrs = ["nnapi_delegate.h"],
-    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",

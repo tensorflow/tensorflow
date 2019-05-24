@@ -165,7 +165,8 @@ class ErrorMetadataBase(object):
           frame_info.function_name,
           ' *' if frame_info.converted else '',
       ))
-      lines.append('        {}'.format(frame_info.code.strip()))
+      if frame_info.code:
+        lines.append('        {}'.format(frame_info.code.strip()))
     lines.append('')
 
     message_lines = self.cause_message.split('\n')

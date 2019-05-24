@@ -1602,3 +1602,58 @@ def should_run_validation(validation_freq, epoch):
     raise ValueError('`validation_freq` must be an Integer or '
                      '`collections.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
+
+
+class TrainingLoop(object):
+  """TrainingLoop is a wrapper class around the training logic.
+
+  This class is trying to encapsulate the different logic of fit/eval/predict
+  with regard to different data input and model condition.
+
+  Note that TrainingLoop is stateless, which means it doesn't contain any
+  internal field and can be reused with different model and inputs.
+  """
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    """Train the model with the inputs and targets."""
+    raise NotImplementedError()
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    """Returns the loss value & metrics values for the model in test mode."""
+    raise NotImplementedError()
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    raise NotImplementedError()

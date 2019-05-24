@@ -512,13 +512,6 @@ class Converter {
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
 
-  // Return OK if the broadcast scheme is supported and compute the shapes after
-  // broadcasting.
-  Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
-                              const TRT_TensorOrWeights& operand_r,
-                              nvinfer1::Dims* operand_l_new_dims,
-                              nvinfer1::Dims* operand_r_new_dims) const;
-
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
@@ -591,6 +584,13 @@ class Converter {
   friend class ConverterTest;
   friend class OpConverterTest;
 };
+
+// Return OK if the broadcast scheme is supported and compute the shapes after
+// broadcasting.
+Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                            const TRT_TensorOrWeights& operand_r,
+                            nvinfer1::Dims* operand_l_new_dims,
+                            nvinfer1::Dims* operand_r_new_dims);
 
 // Map of all supported UnaryOperations
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();

@@ -316,9 +316,14 @@ class EagerContext : public core::RefCounted {
   std::function<void(std::function<void()>)> runner_;
 
   mutex cache_mu_;
+  struct RegisteredFunction : public core::RefCounted {
+    ~RegisteredFunction() override {}
+
+    std::unique_ptr<std::vector<Fprint128>> cached_kernel_keys;
+  };
   std::unordered_map<Fprint128, KernelAndDevice*, Fprint128Hasher> kernel_cache_
       GUARDED_BY(cache_mu_);
-  std::unordered_map<string, std::vector<Fprint128>*> active_functions_
+  std::unordered_map<string, RegisteredFunction*> registered_functions_
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.

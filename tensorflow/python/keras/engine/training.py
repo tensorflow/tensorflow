@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
@@ -427,6 +426,30 @@ class Model(network.Network):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
+  def _select_training_loop(self, inputs):
+    """Select training loop for fit/eval/predict based on the inputs."""
+    # Case 1: distribution strategy.
+    if self._distribution_strategy:
+      if K.in_multi_worker_mode():
+        return training_distributed.DistributionMultiWorkerTrainingLoop()
+      else:
+        return training_distributed.DistributionSingleWorkerTrainingLoop()
+
+    # Case 2: generator-like. Input is Python generator, or Sequence object,
+    # or a non-distributed Dataset or iterator in eager execution.
+    if data_utils.is_generator_or_sequence(inputs):
+      return training_generator.GeneratorOrSequenceTrainingLoop()
+    if training_utils.is_eager_dataset_or_iterator(inputs):
+      return training_generator.EagerDatasetOrIteratorTrainingLoop()
+
+    # Case 3: Symbolic tensors or Numpy array-like.
+    # This includes Datasets and iterators in graph mode (since they
+    # generate symbolic tensors).
+    if self.run_eagerly:
+      return training_generator.GeneratorLikeTrainingLoop()
+    else:
+      return training_arrays.ArrayLikeTrainingLoop()
+
   def fit(self,
           x=None,
           y=None,
@@ -592,194 +615,33 @@ class Model(network.Network):
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
-          'The `nb_epoch` argument in `fit` '
-          'has been renamed `epochs`.')
+          'The `nb_epoch` argument in `fit` has been renamed `epochs`.')
       epochs = kwargs.pop('nb_epoch')
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
     self._assert_compile_was_called()
 
-    # Case 1: distribution strategy.
-    if self._distribution_strategy:
-      if K.in_multi_worker_mode():
-        # Multi-Worker mode runs the Keras training loop on multiple
-        # servers via the Distribute Coordinator.
-        def _worker_fn(_):
-          """Run training inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils \
-              .filter_distributed_callbacks(callbacks)
-          return training_distributed.fit_distributed(
-              self,
-              x=x,
-              y=y,
-              batch_size=batch_size,
-              epochs=epochs,
-              verbose=verbose,
-              callbacks=filtered_callbacks,
-              validation_split=validation_split,
-              validation_data=validation_data,
-              shuffle=shuffle,
-              class_weight=class_weight,
-              sample_weight=sample_weight,
-              initial_epoch=initial_epoch,
-              steps_per_epoch=steps_per_epoch,
-              validation_steps=validation_steps,
-              validation_freq=validation_freq)
-
-        # Independent worker only for now.
-        return dc.run_distribute_coordinator(
-            _worker_fn,
-            self._distribution_strategy,
-            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-      else:
-        return training_distributed.fit_distributed(
-            self,
-            x=x,
-            y=y,
-            batch_size=batch_size,
-            epochs=epochs,
-            verbose=verbose,
-            callbacks=callbacks,
-            validation_split=validation_split,
-            validation_data=validation_data,
-            shuffle=shuffle,
-            class_weight=class_weight,
-            sample_weight=sample_weight,
-            initial_epoch=initial_epoch,
-            steps_per_epoch=steps_per_epoch,
-            validation_steps=validation_steps,
-            validation_freq=validation_freq)
-
-    batch_size = self._validate_or_infer_batch_size(
-        batch_size, steps_per_epoch, x)
-
-    # Case 2: generator-like. Input is Python generator, or Sequence object,
-    # or a non-distributed Dataset or iterator in eager execution.
-    if data_utils.is_generator_or_sequence(x):
-      training_utils.check_generator_arguments(
-          y, sample_weight, validation_split=validation_split)
-      return self.fit_generator(
-          x,
-          steps_per_epoch=steps_per_epoch,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          class_weight=class_weight,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch)
-    if training_utils.is_eager_dataset_or_iterator(x):
-      # Make sure that y, sample_weights, validation_split are not passed.
-      training_utils.validate_dataset_input(x, y, sample_weight,
-                                            validation_split)
-      if (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
-          and shuffle):
-        training_utils.verify_dataset_shuffled(x)
-
-      return self.fit_generator(
-          x,
-          steps_per_epoch=steps_per_epoch,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          class_weight=class_weight,
-          workers=0,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch)
-
-    # Case 3: Symbolic tensors or Numpy array-like.
-    # This includes Datasets and iterators in graph mode (since they
-    # generate symbolic tensors).
-    x, y, sample_weights = self._standardize_user_data(
-        x,
-        y,
-        sample_weight=sample_weight,
-        class_weight=class_weight,
+    func = self._select_training_loop(x)
+    return func.fit(
+        self,
+        x=x,
+        y=y,
         batch_size=batch_size,
-        check_steps=True,
-        steps_name='steps_per_epoch',
-        steps=steps_per_epoch,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
         validation_split=validation_split,
-        shuffle=shuffle)
-
-    # Prepare validation data.
-    if validation_data:
-      val_x, val_y, val_sample_weights = self._unpack_validation_data(
-          validation_data)
-      val_x, val_y, val_sample_weights = self._standardize_user_data(
-          val_x,
-          val_y,
-          sample_weight=val_sample_weights,
-          batch_size=batch_size,
-          steps=validation_steps,
-          steps_name='validation_steps')
-    elif validation_split and 0. < validation_split < 1.:
-      if training_utils.has_symbolic_tensors(x):
-        raise ValueError('If your data is in the form of symbolic tensors, '
-                         'you cannot use `validation_split`.')
-      if hasattr(x[0], 'shape'):
-        split_at = int(x[0].shape[0] * (1. - validation_split))
-      else:
-        split_at = int(len(x[0]) * (1. - validation_split))
-      x, val_x = (slice_arrays(x, 0, split_at), slice_arrays(x, split_at))
-      y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
-      if sample_weights:
-        sample_weights, val_sample_weights = (
-            slice_arrays(sample_weights, 0, split_at),
-            slice_arrays(sample_weights, split_at),
-        )
-      else:
-        val_sample_weights = None
-    else:
-      if validation_steps:
-        raise ValueError('`validation_steps` should not be specified if '
-                         '`validation_data` is None.')
-      val_x = None
-      val_y = None
-      val_sample_weights = None
-
-    if self.run_eagerly:
-      return training_generator.fit_generator(
-          self, (x, y, sample_weights),
-          steps_per_epoch=steps_per_epoch,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          workers=0,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch,
-          steps_name='steps_per_epoch')
-    else:
-      return training_arrays.fit_loop(
-          self,
-          x,
-          y,
-          sample_weights=sample_weights,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          val_inputs=val_x,
-          val_targets=val_y,
-          val_sample_weights=val_sample_weights,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          steps_name='steps_per_epoch')
+        validation_data=validation_data,
+        shuffle=shuffle,
+        class_weight=class_weight,
+        sample_weight=sample_weight,
+        initial_epoch=initial_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
 
   def evaluate(self,
                x=None,
@@ -870,96 +732,19 @@ class Model(network.Network):
     _keras_api_gauge.get_cell('evaluate').set(True)
     self._assert_compile_was_called()
 
-    # Case 1: distribution strategy.
-    if self._distribution_strategy:
-      if K.in_multi_worker_mode():
-        # Multi-Worker mode runs the Keras evaluation loop on multiple
-        # servers via the Distribute Coordinator.
-        def _worker_fn(_):
-          """Run evaluation inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils \
-              .filter_distributed_callbacks(callbacks)
-          return training_distributed.evaluate_distributed(
-              self,
-              x=x,
-              y=y,
-              batch_size=batch_size,
-              verbose=verbose,
-              sample_weight=sample_weight,
-              steps=steps,
-              callbacks=filtered_callbacks)
-
-        # Independent worker only for now.
-        return dc.run_distribute_coordinator(
-            _worker_fn,
-            self._distribution_strategy,
-            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-      else:
-        return training_distributed.evaluate_distributed(
-            self,
-            x=x,
-            y=y,
-            batch_size=batch_size,
-            verbose=verbose,
-            sample_weight=sample_weight,
-            steps=steps,
-            callbacks=callbacks)
-
-    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
-
-    # Case 2: generator-like. Input is Python generator, or Sequence object,
-    # or a non-distributed Dataset or iterator in eager execution.
-    if data_utils.is_generator_or_sequence(x):
-      training_utils.check_generator_arguments(y, sample_weight)
-      return self.evaluate_generator(
-          x,
-          steps=steps,
-          verbose=verbose,
-          callbacks=callbacks,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing)
-    if training_utils.is_eager_dataset_or_iterator(x):
-      # Make sure that y, sample_weights are not passed.
-      training_utils.validate_dataset_input(x, y, sample_weight)
-      return training_generator.evaluate_generator(
-          self, x,
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-
-    # Case 3: Symbolic tensors or Numpy array-like.
-    # This includes Datasets and iterators in graph mode (since they
-    # generate symbolic tensors).
-    x, y, sample_weights = self._standardize_user_data(
-        x,
-        y,
-        sample_weight=sample_weight,
+    func = self._select_training_loop(x)
+    return func.evaluate(
+        self,
+        x=x,
+        y=y,
         batch_size=batch_size,
-        check_steps=True,
-        steps_name='steps',
-        steps=steps)
-
-    if self.run_eagerly:
-      return training_generator.evaluate_generator(
-          self, (x, y, sample_weights),
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-    else:
-      return training_arrays.test_loop(
-          self,
-          inputs=x,
-          targets=y,
-          sample_weights=sample_weights,
-          batch_size=batch_size,
-          verbose=verbose,
-          steps=steps,
-          callbacks=callbacks)
+        verbose=verbose,
+        sample_weight=sample_weight,
+        steps=steps,
+        callbacks=callbacks,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
 
   def predict(self,
               x,
@@ -1023,61 +808,18 @@ class Model(network.Network):
             that is not a multiple of the batch size.
     """
     _keras_api_gauge.get_cell('predict').set(True)
-    # Case 1: distribution strategy.
-    if self._distribution_strategy:
-      return training_distributed.predict_distributed(self,
-                                                      x=x,
-                                                      batch_size=batch_size,
-                                                      verbose=verbose,
-                                                      steps=steps,
-                                                      callbacks=callbacks)
 
-    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
-
-    # Case 2: generator-like. Input is Python generator, or Sequence object,
-    # or a non-distributed Dataset or iterator in eager execution.
-    if data_utils.is_generator_or_sequence(x):
-      return self.predict_generator(
-          x,
-          steps=steps,
-          verbose=verbose,
-          callbacks=callbacks,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing)
-    if training_utils.is_eager_dataset_or_iterator(x):
-      return training_generator.predict_generator(
-          self,
-          x,
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-
-    # Case 3: Symbolic tensors or Numpy array-like.
-    # This includes Datasets and iterators in graph mode (since they
-    # generate symbolic tensors).
-    x, _, _ = self._standardize_user_data(
-        x, check_steps=True, steps_name='steps', steps=steps)
-
-    if self.run_eagerly:
-      return training_generator.predict_generator(
-          self,
-          x,
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-    else:
-      return training_arrays.predict_loop(
-          self,
-          x,
-          batch_size=batch_size,
-          verbose=verbose,
-          steps=steps,
-          callbacks=callbacks)
+    func = self._select_training_loop(x)
+    return func.predict(
+        self,
+        x=x,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
 
   def reset_metrics(self):
     """Resets the state of metrics."""
@@ -1555,6 +1297,40 @@ class Model(network.Network):
         use_multiprocessing=use_multiprocessing,
         verbose=verbose,
         callbacks=callbacks)
+
+  def _split_training_and_validation_data(self, x, y, sample_weights,
+                                          validation_split):
+    """Split input data into train/eval section based on validation_split."""
+    if training_utils.has_symbolic_tensors(x):
+      raise ValueError('If your data is in the form of symbolic tensors, '
+                       'you cannot use `validation_split`.')
+    if hasattr(x[0], 'shape'):
+      split_at = int(x[0].shape[0] * (1. - validation_split))
+    else:
+      split_at = int(len(x[0]) * (1. - validation_split))
+    x, val_x = (slice_arrays(x, 0, split_at), slice_arrays(x, split_at))
+    y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
+    if sample_weights:
+      sample_weights, val_sample_weights = (
+          slice_arrays(sample_weights, 0, split_at),
+          slice_arrays(sample_weights, split_at),
+      )
+    else:
+      val_sample_weights = None
+    return x, y, sample_weights, val_x, val_y, val_sample_weights
+
+  def _prepare_validation_data(self, validation_data, batch_size,
+                               validation_steps):
+    """Unpack and check the validation data."""
+    val_x, val_y, val_sample_weights = self._unpack_validation_data(
+        validation_data)
+    return self._standardize_user_data(
+        val_x,
+        val_y,
+        sample_weight=val_sample_weights,
+        batch_size=batch_size,
+        steps=validation_steps,
+        steps_name='validation_steps')
 
   def _validate_compile_param_for_distribution_strategy(
       self, run_eagerly, sample_weight_mode, target_tensors, weighted_metrics):

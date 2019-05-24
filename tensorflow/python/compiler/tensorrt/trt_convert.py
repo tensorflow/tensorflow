@@ -1000,14 +1000,6 @@ class TrtGraphConverterV2(object):
     """
     assert self._converted
 
-    @def_function.function
-    def _dump_trt_cache(resource_name, filename):
-      gen_trt_ops.dump_trt_engine_cache(
-          container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
-          resource_name=resource_name,
-          filename=filename,
-          delete_cache_after_dump=True)
-
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.
     engine_asset_dir = tempfile.mkdtemp()
@@ -1022,7 +1014,11 @@ class TrtGraphConverterV2(object):
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
       try:
-        _dump_trt_cache(canonical_engine_name, filename)
+        gen_trt_ops.dump_trt_engine_cache(
+            container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
+            resource_name=canonical_engine_name,
+            filename=filename,
+            delete_cache_after_dump=True)
       except errors.NotFoundError:
         # If user haven't run the function to populate the engine, it's fine,
         # and we don't need to track any serialized TRT engines.

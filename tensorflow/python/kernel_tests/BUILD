@@ -237,7 +237,7 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_windows_gpu",
+        "no_gpu",  # TODO(b/131773093): Re-enable.
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
     xla_enable_strict_auto_jit = True,
@@ -2535,7 +2535,10 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows",
+        "no_windows_gpu",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 

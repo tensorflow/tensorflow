@@ -33,10 +33,7 @@ def tflite_copts():
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
-            "-Wno-comment",
-            "-Wno-ignored-attributes",
             "-Wno-sign-compare",
-            "-Wno-unknown-pragmas",
         ],
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
