@@ -680,7 +680,6 @@ void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
                                     cu_stream);
   } else if (extent_y <= 4096) {
     LaunchColumnReduction_LTE4096Cols(ctx, out, in, extent_x, extent_y, op,
-
                                       init, cu_stream);
   } else {
     int threads_per_block = 128;
