@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/versions.pb.h"
 
 namespace tensorflow {
 namespace data {
