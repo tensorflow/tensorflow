@@ -844,6 +844,13 @@ table Buffer {
   data:[ubyte] (force_align: 16);
 }
 
+table Metadata {
+  // A human readable string to uniquely identify a Metadata.
+  name:string;
+  // An index to the buffers table.
+  buffer:uint;
+}
+
 table Model {
   // Version of the schema.
   version:uint;
@@ -866,8 +873,12 @@ table Model {
   // their buffer.
   buffers:[Buffer];
 
-  // Metadata about the model.  Indirects into the existings buffers list.
+  // Metadata about the model. Indirects into the existings buffers list.
+  // Deprecated, prefer to use metadata field.
   metadata_buffer:[int];
+
+  // Metadata about the model.
+  metadata:[Metadata];
 }
 
 root_type Model;
