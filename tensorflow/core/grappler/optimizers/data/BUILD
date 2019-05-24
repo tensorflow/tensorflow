@@ -1,13 +1,14 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
-package(default_visibility = [
-    "//tensorflow/core/grappler/optimizers/data:__subpackages__",
-    "//tensorflow/core/kernels/data:__pkg__",
-    "//tensorflow/core/kernels/data/experimental:__pkg__",
-])
+package(
+    default_visibility = [
+        "//tensorflow/core/grappler/optimizers/data:__subpackages__",
+        "//tensorflow/core/kernels/data:__pkg__",
+        "//tensorflow/core/kernels/data/experimental:__pkg__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "data",
