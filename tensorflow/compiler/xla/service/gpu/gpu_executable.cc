@@ -119,7 +119,8 @@ Status GpuExecutable::ExecuteThunks(
       op_annotation.emplace(
           thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical()),
           absl::StrCat("#tf_op=", hlo->metadata().op_name(),
-                       ",hlo_op=", hlo->name(), "#"));
+                       ",hlo_op=", hlo->name(),
+                       ",hlo_module=", hlo->GetModule()->name(), "#"));
     }
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
