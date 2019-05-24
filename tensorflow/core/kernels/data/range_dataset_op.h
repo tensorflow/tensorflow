@@ -23,7 +23,6 @@ namespace data {
 
 class RangeDatasetOp : public DatasetOpKernel {
  public:
-  // MSVC 14.0 limitation requires the consts.
   static constexpr const char kDatasetType[] = "Range";
   static constexpr const char kStart[] = "start";
   static constexpr const char kStop[] = "stop";

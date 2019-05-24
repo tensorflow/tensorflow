@@ -24,7 +24,6 @@ namespace data {
 
 class PrefetchDatasetOp : public UnaryDatasetOpKernel {
  public:
-  // MSVC 14.0 limitation requires the consts.
   static constexpr const char kDatasetType[] = "Prefetch";
   static constexpr const char kInputDataset[] = "input_dataset";
   static constexpr const char kBufferSize[] = "buffer_size";

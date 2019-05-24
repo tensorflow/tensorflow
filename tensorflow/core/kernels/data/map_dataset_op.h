@@ -28,7 +28,6 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
                            std::vector<Tensor>, std::vector<Tensor>*)>;
 
-  // MSVC 14.0 limitation requires the consts.
   static constexpr const char kDatasetType[] = "Map";
   static constexpr const char kInputDataset[] = "input_dataset";
   static constexpr const char kOtherArguments[] = "other_arguments";
