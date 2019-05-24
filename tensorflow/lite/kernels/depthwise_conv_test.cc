@@ -1819,9 +1819,6 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
 
   // Invoke and verify output.
   m.Invoke();
-  for (int i = 0; i < 72; ++i) {
-    printf("%d,", static_cast<int>(m.GetDequantizedOutput()[i]));
-  }
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray(ArrayFloatNear({
