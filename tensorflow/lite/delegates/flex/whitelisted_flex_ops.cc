@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/toco/tflite/whitelisted_flex_ops.h"
+#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 
 #include <set>
 
-namespace toco {
 namespace tflite {
+namespace flex {
 
 bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
   static const std::set<std::string>* whitelisted_flex_ops =
@@ -473,5 +473,5 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
          whitelisted_flex_ops->end();
 }
 
+}  // namespace flex
 }  // namespace tflite
-}  // namespace toco

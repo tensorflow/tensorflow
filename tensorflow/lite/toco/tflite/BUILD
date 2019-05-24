@@ -14,8 +14,6 @@ cc_library(
     name = "operator",
     srcs = [
         "operator.cc",
-        "whitelisted_flex_ops.cc",
-        "whitelisted_flex_ops.h",
     ],
     hdrs = [
         "builtin_operator.h",
@@ -31,6 +29,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
+        "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
         "//tensorflow/lite/toco:model",

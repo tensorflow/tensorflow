@@ -2,7 +2,8 @@
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(default_visibility = [
-    "//visibility:private",
+    "//tensorflow/compiler/mlir/lite:__subpackages__",
+    "//tensorflow/lite/toco/tflite:__subpackages__",
 ])
 
 licenses(["notice"])  # Apache 2.0
@@ -239,5 +240,15 @@ tf_cc_test(
         "//tensorflow/lite:string",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "whitelisted_flex_ops_lib",
+    srcs = [
+        "whitelisted_flex_ops.cc",
+    ],
+    hdrs = [
+        "whitelisted_flex_ops.h",
     ],
 )
