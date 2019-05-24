@@ -418,6 +418,11 @@ table FullyConnectedOptions {
 
   // Parameters for FullyConnected version 2 or above.
   weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
+
+  // Parameters for FullyConnected version 5 or above.
+  // If set to true, then the number of dimension is preserved. Furthermore,
+  // all but the last dimension of the input and output shapes will be equal.
+  keep_num_dims: bool;
 }
 
 table SoftmaxOptions {
