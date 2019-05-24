@@ -192,24 +192,6 @@ def _lift_unlifted_variables(graph, variable_holder):
         mutable_collection[index] = lifted_variables.get(current, current)
 
 
-def _lift_sparse_tensor(orig_sparse_tensor, lift_map):
-  """
-  Args:
-    orig_sparse_tensor: SparseTensors object whose underlying dense Tensors
-      reside in a different graph
-    lift_map: Map (as returned by `lift_to_graph`) from tensors in the other
-      graph to tensors in the current graph.
-  Returns:
-    A new copy of `orig_sparse_tensor` whose underlying dense tensors are in
-    the current graph
-  """
-  return sparse_tensor.SparseTensor(
-      indices=lift_map[orig_sparse_tensor.indices],
-      values=lift_map[orig_sparse_tensor.values],
-      dense_shape=lift_map[orig_sparse_tensor.dense_shape]
-  )
-
-
 # TODO(allenl): make this trackable
 class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
