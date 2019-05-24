@@ -1089,6 +1089,11 @@ def _AggregateIndexedSlicesGradients(grads):
     if any(isinstance(g, ops.Tensor) for g in grads):
       return math_ops.add_n(grads)
 
+    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
+    # int64. It is to make sure the inputs of `concat` all have same the data
+    # type.
+    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
+
     grads = [_HandleNestedIndexedSlices(x) for x in grads]  # pylint: disable=protected-access
     # Form IndexedSlices out of the concatenated values and indices.
     concat_grad = ops.IndexedSlices(
