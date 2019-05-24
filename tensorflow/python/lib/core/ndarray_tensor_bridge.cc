@@ -218,7 +218,7 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
     Py_DECREF(releaser);
     return errors::Unknown("Python array refused to use memory.");
   }
-  *result = PyArray_Return(np_array);
+  *result = reinterpret_cast<PyObject*>(np_array);
   return Status::OK();
 }
 

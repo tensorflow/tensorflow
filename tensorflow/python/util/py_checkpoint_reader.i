@@ -115,7 +115,7 @@ static PyObject* CheckpointReader_GetTensor(
       Set_TF_Status_from_Status(status, s);
     }
   }
-  return py_obj;
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_obj));
 }
 %}
 

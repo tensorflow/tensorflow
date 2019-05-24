@@ -653,7 +653,7 @@ static PyObject* EagerTensor_numpy(EagerTensor* self) {
             dims.size(), dims.data(), data, t->dtype(), [copy] { delete copy; },
             &ret)
             .ok()) {
-      return ret;
+      return PyArray_Return(reinterpret_cast<PyArrayObject*>(ret));
     }
   }
 
@@ -662,7 +662,7 @@ static PyObject* EagerTensor_numpy(EagerTensor* self) {
     Py_XDECREF(ret);
     return nullptr;
   } else {
-    return ret;
+    return PyArray_Return(reinterpret_cast<PyArrayObject*>(ret));
   }
 }
 
