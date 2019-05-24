@@ -124,7 +124,7 @@ __arithmetic_expression {
   ROOT subtract.19.49.clone = f32[1,1024] subtract(divide.19.48.clone, arg_0.8)
 }
 
-cluster_1  {
+_cluster_1  {
   arg2.19.2 = f16[4] parameter(2)
   call.3 = f16[4] fusion(), kind=kCustom, calls=_pop_op_wide_const
   arg1.19.1 = f16[1,1024] parameter(1)
@@ -308,7 +308,7 @@ __arithmetic_expression {
   ROOT subtract.19.49.clone = f32[1,1024] subtract(divide.19.48.clone, arg_0.8)
 }
 
-loop_body {
+_loop_body {
   p = (s32[], f16[1,16,16,4], f16[1,1024], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) parameter(0)
   counter = s32[] get-tuple-element(p), index=0
   arg0.19.0 = f16[1,16,16,4] get-tuple-element(p), index=1
@@ -365,7 +365,7 @@ loop_body {
 __repeat {
   repeat_count = s32[] parameter(0)
   input_tuple = (s32[], f16[1,16,16,4], f16[1,1024], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) parameter(1)
-  ROOT call = (s32[], f16[1,16,16,4], f16[1,1024], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) call(input_tuple), to_apply=loop_body
+  ROOT call = (s32[], f16[1,16,16,4], f16[1,1024], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) call(input_tuple), to_apply=_loop_body
 }
 
 ENTRY in {
@@ -512,7 +512,7 @@ __arithmetic_expression {
   ROOT subtract.19.49.clone = f32[1,1024] subtract(divide.19.48.clone, arg_0.8)
 }
 
-loop_body {
+_loop_body {
   p = (s32[], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) parameter(0)
   counter = s32[] get-tuple-element(p), index=0
   arg2.19.2 = f16[4] get-tuple-element(p), index=1
@@ -572,7 +572,7 @@ loop_body {
 __repeat {
   repeat_count = s32[] parameter(0)
   input_tuple = (s32[], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) parameter(1)
-  ROOT call = (s32[], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) call(input_tuple), to_apply=loop_body
+  ROOT call = (s32[], f16[4], f16[5,5,64,4], f16[64], f16[7,7,4,64]) call(input_tuple), to_apply=_loop_body
 }
 
 ENTRY in {

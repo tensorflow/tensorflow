@@ -117,14 +117,14 @@ class MappingTest(test_util.TensorFlowTestCase):
                   slice_layout = tensor
 
             self.assertEqual(len(bcast_layout[7]), 1)
-            self.assertEqual(bcast_layout[7][0], [0, 1024])
+            self.assertEqual(bcast_layout[7][0], [272, 1024])
 
-            # The pad contains 512+32 elements on tile 0,
-            # and one region with 32 elements on each other tile
-            self.assertEqual(len(pad_layout[7]), 16)
-            self.assertEqual(pad_layout[7][0], [0, 544])
-            for tile in range(1, 16):
-              self.assertEqual(pad_layout[7][tile], [tile, 32])
+            # The pad contains 512 elements on tile 0,
+            # and one region with 32 elements on tiles 256-271
+            self.assertEqual(len(pad_layout[7]), 17)
+            self.assertEqual(pad_layout[7][0], [0, 512])
+            for idx in range(1, 16):
+              self.assertEqual(pad_layout[7][idx], [255 + idx, 32])
 
             # The slice contains 4 elements on 256 tiles
             self.assertEqual(len(slice_layout[7]), 256)

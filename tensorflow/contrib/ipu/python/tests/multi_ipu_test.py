@@ -77,9 +77,8 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
             for tile in tensor[7]:
               tiles.add(tile[0])
 
-          self.assertEqual(len(tiles), 2)
-          self.assertTrue(0 in tiles)
-          self.assertTrue(1216 in tiles)
+          self.assertEqual(len(tiles), 3)
+          self.assertEqual(tiles, set((0, 1, 1216)))
 
   def testMultipleConfigureIpuShouldFail(self):
     def my_graph(pa, pb, pc):
@@ -194,9 +193,8 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
             for tile in tensor[7]:
               tiles.add(tile[0])
 
-          self.assertEqual(len(tiles), 2)
-          self.assertTrue(0 in tiles)
-          self.assertTrue(1216 in tiles)
+          self.assertEqual(len(tiles), 5)
+          self.assertEqual(tiles, set((0, 1, 2, 1216, 1217)))
 
   def testMultiIpuTraining(self):
     def my_graph(inp, lab):

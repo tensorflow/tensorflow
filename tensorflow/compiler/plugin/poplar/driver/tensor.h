@@ -54,7 +54,9 @@ StatusOr<poplar::Tensor> AddScatterTensor(poplar::Graph& graph,
 
 StatusOr<poplar::Tensor> AddPlainTensor(poplar::Graph& graph,
                                         const std::string& debug_name,
-                                        const xla::Shape& shape);
+                                        const xla::Shape& shape,
+                                        CompilerResources& resources,
+                                        bool offset = true);
 
 StatusOr<poplar::Tensor> AddNormScaleTensor(
     poplar::Graph& graph, const std::string& debug_name,
