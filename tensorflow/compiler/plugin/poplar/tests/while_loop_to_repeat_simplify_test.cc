@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -33,7 +34,8 @@ namespace {
 using WhileLoopToRepeatSimplifyTest = HloTestBase;
 
 /* Note that you should always run WhileLoopConstantSinking and
-   WhileLoopConditionSimplify before the WhileLoopToRepeatSimplify pass. */
+   WhileLoopConditionSimplify before the HloPassFix<WhileLoopToRepeatSimplify>
+   pass. */
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32) {
   const char* const hlo_string = R"(
@@ -41,16 +43,16 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   add = s32[] add(p_body.0, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
@@ -65,7 +67,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -83,16 +85,16 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   add = s32[] subtract(p_body.0, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(0)
   ROOT result = pred[] compare(p_cond.0, const), direction=GE
 }
@@ -107,7 +109,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -125,16 +127,16 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   add = s32[] subtract(p_body.0, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(0)
   ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
@@ -149,7 +151,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -167,16 +169,16 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   add = s32[] add(p_body.0, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(999)
   ROOT result = pred[] compare(p_cond.0, const), direction=LE
 }
@@ -191,7 +193,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -209,16 +211,16 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   add = s32[] add(p_body.0, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(999)
   ROOT result = pred[] compare(p_cond.0, const), direction=LE
 }
@@ -233,7 +235,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_FALSE(changed);
 }
@@ -244,15 +246,15 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   add = s32[] add(p_body.0, p_body.1)
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(999)
   ROOT result = pred[] compare(p_cond.0, const), direction=LE
 }
@@ -267,7 +269,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_FALSE(changed);
 }
@@ -278,16 +280,16 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (f32[],f32[]) parameter(0)
-  p_body.0 = f32[] get-tuple-element((f32[],f32[]) p_body), index=0
+  p_body.0 = f32[] get-tuple-element(p_body), index=0
   const = f32[] constant(2)
   add = f32[] add(p_body.0, const)
-  p_body.1 = f32[] get-tuple-element((f32[],f32[]) p_body), index=1
+  p_body.1 = f32[] get-tuple-element(p_body), index=1
   ROOT root = (f32[],f32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (f32[],f32[]) parameter(0)
-  p_cond.0 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=0
+  p_cond.0 = f32[] get-tuple-element(p_cond), index=0
   const = f32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
@@ -302,7 +304,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -320,16 +322,16 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   add = s32[] add(p_body.0, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
@@ -344,7 +346,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -373,17 +375,17 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   neg = s32[] negate(const)
   add = s32[] add(p_body.0, neg)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
@@ -398,7 +400,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -427,17 +429,17 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (u32[],u32[]) parameter(0)
-  p_body.0 = u32[] get-tuple-element((u32[],u32[]) p_body), index=0
+  p_body.0 = u32[] get-tuple-element(p_body), index=0
   const = u32[] constant(1)
   neg = u32[] negate(const)
   add = u32[] add(p_body.0, neg)
-  p_body.1 = u32[] get-tuple-element((u32[],u32[]) p_body), index=1
+  p_body.1 = u32[] get-tuple-element(p_body), index=1
   ROOT root = (u32[],u32[]) tuple(add, p_body.1)
 }
 
 condition {
   p_cond = (u32[],u32[]) parameter(0)
-  p_cond.0 = u32[] get-tuple-element((u32[],u32[]) p_cond), index=0
+  p_cond.0 = u32[] get-tuple-element(p_cond), index=0
   const = u32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
@@ -452,7 +454,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -481,18 +483,18 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[],s32[]) p_body), index=0
-  p_body.2 = s32[] get-tuple-element((s32[],s32[],s32[]) p_body), index=2
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
+  p_body.2 = s32[] get-tuple-element(p_body), index=2
   const = s32[] constant(1)
   add1 = s32[] add(p_body.0, const)
   add2 = s32[] add(p_body.2, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[],s32[]) tuple(add1, p_body.1, add2)
 }
 
 condition {
   p_cond = (s32[],s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
@@ -508,7 +510,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -543,20 +545,20 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[],u8[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=0
-  p_body.2 = u8[] get-tuple-element((s32[],s32[],u8[]) p_body), index=2
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
+  p_body.2 = u8[] get-tuple-element(p_body), index=2
   const = s32[] constant(1)
   const1 = u8[] constant(1)
   neg = u8[] negate(const1)
   add1 = s32[] add(p_body.0, const)
   add2 = u8[] add(p_body.2, neg)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[],u8[]) tuple(add1, p_body.1, add2)
 }
 
 condition {
   p_cond = (s32[],s32[],u8[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
@@ -572,7 +574,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -606,27 +608,27 @@ HloModule ModuleWithWhile
 
 body1 {
   p_body = (s32[],s32[],u8[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=0
-  p_body.2 = u8[] get-tuple-element((s32[],s32[],u8[]) p_body), index=2
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
+  p_body.2 = u8[] get-tuple-element(p_body), index=2
   const = s32[] constant(1)
   const1 = u8[] constant(1)
   neg = u8[] negate(const1)
   add1 = s32[] add(p_body.0, const)
   add2 = u8[] add(p_body.2, neg)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[],u8[]) tuple(add1, p_body.1, add2)
 }
 
 condition1 {
   p_cond = (s32[],s32[],u8[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 body2 {
   p_body = (u8[]) parameter(0)
-  p_body.0 = u8[] get-tuple-element((u8[]) p_body), index=0
+  p_body.0 = u8[] get-tuple-element(p_body), index=0
   const = u8[] constant(1)
   add = u8[] add(p_body.0, const)
   ROOT root = (u8[]) tuple(add)
@@ -634,7 +636,7 @@ body2 {
 
 condition2 {
   p_cond = (u8[]) parameter(0)
-  p_cond.0 = u8[] get-tuple-element((u8[]) p_cond), index=0
+  p_cond.0 = u8[] get-tuple-element(p_cond), index=0
   const = u8[] constant(200)
   ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
@@ -645,13 +647,13 @@ ENTRY entry {
   const_2 = u8[] constant(5)
   repeat_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
   while = (s32[],s32[],u8[]) while(repeat_init), condition=condition1, body=body1
-  ROOT gte = u8[] get-tuple-element((s32[],s32[],u8[]) while), index=2
+  ROOT gte = u8[] get-tuple-element(while), index=2
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -668,27 +670,27 @@ HloModule ModuleWithWhile
 
 body1 {
   p_body = (s32[],s32[],u8[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=0
-  p_body.2 = u8[] get-tuple-element((s32[],s32[],u8[]) p_body), index=2
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
+  p_body.2 = u8[] get-tuple-element(p_body), index=2
   const = s32[] constant(1)
   const1 = u8[] constant(1)
   neg = u8[] negate(const1)
   add1 = s32[] add(p_body.0, const)
   add2 = u8[] add(p_body.2, neg)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   ROOT root = (s32[],s32[],u8[]) tuple(add1, p_body.1, add2)
 }
 
 condition1 {
   p_cond = (s32[],s32[],u8[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 body2 {
   p_body = (u8[]) parameter(0)
-  p_body.0 = u8[] get-tuple-element((u8[]) p_body), index=0
+  p_body.0 = u8[] get-tuple-element(p_body), index=0
   const = u8[] constant(1)
   add = u8[] add(p_body.0, const)
   ROOT root = (u8[]) tuple(add)
@@ -696,7 +698,7 @@ body2 {
 
 condition2 {
   p_cond = (u8[]) parameter(0)
-  p_cond.0 = u8[] get-tuple-element((u8[]) p_cond), index=0
+  p_cond.0 = u8[] get-tuple-element(p_cond), index=0
   const = u8[] constant(255)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
@@ -707,16 +709,16 @@ ENTRY entry {
   const_2 = u8[] constant(5)
   repeat_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
   while = (s32[],s32[],u8[]) while(repeat_init), condition=condition1, body=body1
-  gte = u8[] get-tuple-element((s32[],s32[],u8[]) while), index=2
+  gte = u8[] get-tuple-element(while), index=2
   repeat_init1 = (u8[]) tuple(gte)
   while1 = (u8[]) while(repeat_init1), condition=condition2, body=body2
-  ROOT gte1 = u8[] get-tuple-element((u8[]) while1), index=0
+  ROOT gte1 = u8[] get-tuple-element(while1), index=0
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -733,17 +735,17 @@ HloModule ModuleWithWhile
 
 body {
   p_body = (s32[],s32[]) parameter(0)
-  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
   const = s32[] constant(1)
   add = s32[] add(p_body.0, const)
-  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
   add2 = s32[] add(p_body.1, add)
   ROOT root = (s32[],s32[]) tuple(add, add2)
 }
 
 condition {
   p_cond = (s32[],s32[]) parameter(0)
-  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
   const = s32[] constant(10)
   ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
@@ -758,7 +760,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  WhileLoopToRepeatSimplify wltrs;
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
   EXPECT_TRUE(changed);
 
@@ -778,6 +780,65 @@ ENTRY entry {
   int64 loop_start =
       LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
   EXPECT_EQ(loop_start, 0);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest, LoopInLoop) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body1 {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
+  const = s32[] constant(1)
+  add1 = s32[] add(p_body.0, const)
+  neg1 = s32[] negate(p_body.1)
+  ROOT root = (s32[],s32[]) tuple(add1, neg1)
+}
+
+condition1 {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
+}
+
+body2 {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element(p_body), index=0
+  p_body.1 = s32[] get-tuple-element(p_body), index=1
+  const = s32[] constant(1)
+  add = s32[] add(p_body.0, const)
+  const_0 = s32[] constant(0)
+  repeat_init1 = (s32[],s32[]) tuple(const_0, p_body.1)
+  while1 = (s32[],s32[]) while(repeat_init1), condition=condition1, body=body1
+  gte.1 = s32[] get-tuple-element(while1), index=1
+  ROOT root = (s32[],s32[]) tuple(add, gte.1)
+}
+
+condition2 {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element(p_cond), index=0
+  const = s32[] constant(255)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] parameter(0)
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  while = (s32[],s32[]) while(repeat_init), condition=condition2, body=body2
+  ROOT gte1 = s32[] get-tuple-element(while), index=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  HloPassFix<WhileLoopToRepeatSimplify> wltrs;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  EXPECT_EQ(module->computation_count(), 3);
 }
 
 }  // namespace
