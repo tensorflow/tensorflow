@@ -211,7 +211,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
       test_obj.assertAllClose(
           history_after_one_more_epoch.history,
-          history_after_loading_weight_and_one_more_epoch.history)
+          history_after_loading_weight_and_one_more_epoch.history,
+          rtol=6e-6)
 
     # Verify the temp files are indeed removed (no trace left behind).
     for filepath in filepaths:
@@ -243,7 +244,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     # restoring are closed.
     test_obj.assertAllClose(
         history_after_one_more_epoch.history,
-        history_after_model_restoring_and_one_more_epoch.history)
+        history_after_model_restoring_and_one_more_epoch.history,
+        rtol=5e-6)
 
     history_one_more_epoch_without_model_restoring = model.fit(
         x=train_ds, epochs=1, steps_per_epoch=steps)
@@ -606,7 +608,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     def assert_all_elements_are_identical(list_to_check):
       first_item = list_to_check[0]
       for item in list_to_check[1:]:
-        self.assertAllClose(first_item, item, rtol=1e-5, atol=1e-5)
+        self.assertAllClose(first_item, item, rtol=2e-5, atol=1e-5)
 
     # Important: the results from preemption interrupted and non-interrupted
     # cases should give the same final results.

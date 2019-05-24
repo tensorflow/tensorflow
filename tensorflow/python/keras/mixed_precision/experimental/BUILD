@@ -117,6 +117,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -140,4 +141,5 @@ cuda_py_test(
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
     ],
+    xla_enable_strict_auto_jit = True,
 )

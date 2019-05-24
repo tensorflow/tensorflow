@@ -240,6 +240,7 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

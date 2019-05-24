@@ -1272,6 +1272,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -3828,4 +3829,5 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
+    xla_enable_strict_auto_jit = True,
 )

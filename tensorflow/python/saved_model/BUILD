@@ -397,6 +397,7 @@ cuda_py_test(
     ],
     shard_count = 10,
     tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
