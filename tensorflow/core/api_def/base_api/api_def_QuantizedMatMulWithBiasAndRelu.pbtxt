@@ -4,7 +4,7 @@ op {
   in_arg {
     name: "a"
     description: <<END
-A matrix to be multiplied and must be a two-dimensional tensor of type `quint8`.
+A matrix to be multiplied. Must be a two-dimensional tensor of type `quint8`.
 END
   }
   in_arg {

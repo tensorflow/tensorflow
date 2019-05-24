@@ -17,11 +17,14 @@ limitations under the License.
 // relu and requantization fusion support utilizing mkldnn u8s8s32 inner
 // product API. Right now, this version can support
 //   - Input: quantized as uint8 via either MIN_FIRST or SCALE mode.
-//   - Weight: quantized to int8 via SCALE model.
-//   - Bias: float32/int32. When int32 it is quantized according to input and
+//            SCALE mode is selected when input is guaranteed to be non-
+//            negative, e.g., MatMul is fed by Relu. Otherwise, MIN_FIRST is
+//            selected.
+//   - Weight: quantized to int8 via SCALE mode.
+//   - Bias: float32/int32. For int32, it is quantized according to input and
 //           filter min-max values.
 // Other than that, this op does not support other input combination yet.
-// When input is quantized to uint8 via MIN_FIRST, bias need compensation.
+// When input is quantized to uint8 via MIN_FIRST, bias needs compensation.
 // The detailed algorithm is illustrated as below:
 //
 // A𝑓32 is the original fp32 activation 2D tensor.
@@ -30,8 +33,9 @@ limitations under the License.
 // MaxAbs(A𝑓32) is the maximum absolute scalar value of A𝑓32.
 // Qa is the quantization scale for activation.
 // Au8 is the quantized unsigned int8 activation tensor.
-// With SCALE quantization, Qa and Au8 can be calculated as below:
-//    Qa = 255.0 / MaxAbs(A𝑓32)
+// With SCALE quantization (used for non-negative A𝑓32), Qa and Au8 can be
+// calculated as below:
+//    Qa = 255.0 / Max(A𝑓32)
 //    Au8 = round(Qa * A𝑓32).
 // With MIN_FIRST quantization, Q'a and A'u8 can be calculated as below:
 //    Q'a = 255.0 / (Max(A𝑓32) – Min(A𝑓32))
@@ -73,16 +77,15 @@ limitations under the License.
 //    Note that 1' * 1 = ones(A𝑓32).
 //
 // The QuantizedMatMulWithBiasAndRelu op does the same calucation as above
-// except
-// adding relu function for the 32bit integer output.
+// except adding relu function for the 32bit integer output.
 //
-// TQuantizedMatMulWithBiasAndReluAndRequantize op do one more requantize
-// calculation based on above. The requantize scale Qr is calulated from
+// The QuantizedMatMulWithBiasAndReluAndRequantize op do one more requantize
+// calculation based on above. The requantize scale Qr is calculated from
 // offline calibration.
 //    Qr = 255 / MaxAbs(X𝑓32)
 //    Xu8 = Qr * Xs32
 //
-// More information of this implmentation can be referred from
+// More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
 #ifdef INTEL_MKL
 
@@ -189,7 +192,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     memory::format src_fmt;
     memory::format weight_fmt;
 
-    // MKLDNN memory
+    // MKL-DNN memory
     std::shared_ptr<mkldnn::memory> src_mem;
     std::shared_ptr<mkldnn::memory> weight_mem;
     std::shared_ptr<mkldnn::memory> bias_mem;
@@ -461,7 +464,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       memory::dims src_dims, weight_dims;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
-      // Get shapes of input tensors in MKLDNN order
+      // Get shapes of input tensors in MKL-DNN order
       auto src_tf_shape = src_mkl_shape.IsMklTensor()
                               ? src_mkl_shape.GetTfShape()
                               : src_tensor.shape();
@@ -487,7 +490,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
 
       // If input is in MKL layout, then simply take input layout; otherwise,
       // construct input TF layout. For TF layout, although input shape
-      // (src_dims) required is in MKLDNN order, the layout is Tensorflow's
+      // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout depending on data format.
       auto src_md =
           src_mkl_shape.IsMklTensor()
@@ -495,7 +498,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
               : memory::desc(src_dims, MklDnnType<Tinput>(), input_output_fmt);
       src.SetUsrMem(src_md, &src_tensor);
 
-      // Although weight shape (weight_dims) required is in MKLDNN order,
+      // Although weight shape (weight_dims) required is in MKL-DNN order,
       // the layout is TensorFlow's layout.
       auto weight_md = weight_mkl_shape.IsMklTensor()
                            ? weight_mkl_shape.GetMklLayout()
