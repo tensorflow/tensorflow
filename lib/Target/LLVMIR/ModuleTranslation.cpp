@@ -110,6 +110,11 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
     }
     return llvm::ConstantVector::get(constants);
   }
+  if (auto stringAttr = attr.dyn_cast<StringAttr>()) {
+    return llvm::ConstantDataArray::get(
+        llvmModule->getContext(), ArrayRef<char>{stringAttr.getValue().data(),
+                                                 stringAttr.getValue().size()});
+  }
   mlirModule.getContext()->emitError(loc, "unsupported constant value");
   return nullptr;
 }

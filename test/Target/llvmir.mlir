@@ -819,3 +819,9 @@ func @intpointerconversion(%arg0 : !llvm.i32) -> !llvm.i32 {
   llvm.return %2 : !llvm.i32
 }
 
+func @stringconstant() -> !llvm<"i8*"> {
+  %1 = llvm.constant("Hello world!") : !llvm<"i8*">
+  // CHECK: ret [12 x i8] c"Hello world!"
+  llvm.return %1 : !llvm<"i8*">
+}
+
