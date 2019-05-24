@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/const_init.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
@@ -66,8 +67,8 @@ std::atomic_int_fast64_t correlation_id_generator(0);
 
 }  // namespace
 
-template <typename BeginCallT, typename CompleteCallT,
-          typename ReturnT, typename... BeginArgsT>
+template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
+          typename... BeginArgsT>
 class ScopedTracer {
  public:
   ScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
@@ -104,7 +105,7 @@ class ScopedTracer {
 
   StreamExecutor *stream_exec_;
   CompleteCallT complete_call_;
-  const ReturnT* result_;
+  const ReturnT *result_;
   int64 correlation_id_;
 };
 
@@ -119,9 +120,9 @@ MakeScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
       std::forward<BeginArgsT>(begin_args)...);
 }
 
-#define SCOPED_TRACE(LOC, ...)                                      \
-  auto tracer = MakeScopedTracer(this, &LOC ## Begin,               \
-                                 &LOC ## Complete, ## __VA_ARGS__);
+#define SCOPED_TRACE(LOC, ...) \
+  auto tracer =                \
+      MakeScopedTracer(this, &LOC##Begin, &LOC##Complete, ##__VA_ARGS__);
 
 /* static */ absl::Mutex StreamExecutor::static_mu_{absl::kConstInit};
 
@@ -784,8 +785,7 @@ void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
 void StreamExecutor::CreateAllocRecord(void *opaque, uint64 bytes) {
   if (FLAGS_check_device_leaks && opaque != nullptr && bytes != 0) {
     absl::MutexLock lock(&mu_);
-    mem_allocs_[opaque] = AllocRecord{
-        bytes, ""};
+    mem_allocs_[opaque] = AllocRecord{bytes, ""};
     mem_alloc_bytes_ += bytes;
   }
 }
