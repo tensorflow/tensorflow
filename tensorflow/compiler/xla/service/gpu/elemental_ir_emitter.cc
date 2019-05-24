@@ -99,9 +99,10 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
       output_type = F32;
       TF_FALLTHROUGH_INTENDED;
     case F32:
-      StrAppend(&munged_callee, "f");
+      StrAppend(&munged_callee, "_f32");
       break;
     case F64:
+      StrAppend(&munged_callee, "_f64");
       break;
     default:
       return Unimplemented("Bad type for libdevice math call: %s",
@@ -308,11 +309,10 @@ llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::amdgcn_workitem_id_x,
                                    {}, {}, b_),
       b_->getInt32Ty(), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block = IntCast(
-      GpuElementalIrEmitter::EmitDeviceFunctionCall("__ockl_get_local_size",
-                             {b_->getInt32(0)},
-                             {U32}, U64, {}),
-      b_->getInt32Ty(), /*isSigned=*/true, "threads_per_block");
+  llvm::Value* threads_per_block =
+      IntCast(GpuElementalIrEmitter::EmitDeviceFunctionCall(
+                  "__ockl_get_local_size", {b_->getInt32(0)}, {U32}, U64, {}),
+              b_->getInt32Ty(), /*isSigned=*/true, "threads_per_block");
 
   return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
 }
