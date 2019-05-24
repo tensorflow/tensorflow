@@ -36,17 +36,16 @@ class Operation;
 class Type;
 class Value;
 
-/// Base class for the dialect conversion patterns that require type changes.
-/// Specific conversions must derive this class and implement least one
-/// `rewrite` method.
+/// Base class for the conversion patterns that require type changes. Specific
+/// conversions must derive this class and implement least one `rewrite` method.
 /// NOTE: These conversion patterns can only be used with the 'apply*' methods
 /// below.
-class DialectConversionPattern : public RewritePattern {
+class ConversionPattern : public RewritePattern {
 public:
-  /// Construct an DialectConversionPattern.  `rootName` must correspond to the
+  /// Construct an ConversionPattern.  `rootName` must correspond to the
   /// canonical name of the first operation matched by the pattern.
-  DialectConversionPattern(StringRef rootName, PatternBenefit benefit,
-                           MLIRContext *ctx)
+  ConversionPattern(StringRef rootName, PatternBenefit benefit,
+                    MLIRContext *ctx)
       : RewritePattern(rootName, benefit, ctx) {}
 
   /// Hook for derived classes to implement matching. Dialect conversion
@@ -60,7 +59,7 @@ public:
   /// operation matched by the pattern, `operands` is a list of rewritten values
   /// that are passed to this operation, `rewriter` can be used to emit the new
   /// operations. This function must be reimplemented if the
-  /// DialectConversionPattern ever needs to replace an operation that does not
+  /// ConversionPattern ever needs to replace an operation that does not
   /// have successors. This function should not fail. If some specific cases of
   /// the operation are not supported, these cases should not be matched.
   virtual void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -74,7 +73,7 @@ public:
   /// of (potentially rewritten) successor blocks, `operands` is a list of lists
   /// of rewritten values passed to each of the successors, co-indexed with
   /// `destinations`, `rewriter` can be used to emit the new operations. It must
-  /// be reimplemented if the DialectConversionPattern ever needs to replace a
+  /// be reimplemented if the ConversionPattern ever needs to replace a
   /// terminator operation that has successors. This function should not fail
   /// the pass. If some specific cases of the operation are not supported,
   /// these cases should not be matched.

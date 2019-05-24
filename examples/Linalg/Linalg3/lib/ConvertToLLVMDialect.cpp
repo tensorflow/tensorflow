@@ -51,11 +51,10 @@ static ArrayAttr makePositionAttr(FuncBuilder &builder,
 namespace {
 // Common functionality for Linalg LoadOp and StoreOp conversion to the
 // LLVM IR Dialect.
-template <typename Op>
-class LoadStoreOpConversion : public DialectConversionPattern {
+template <typename Op> class LoadStoreOpConversion : public ConversionPattern {
 public:
   explicit LoadStoreOpConversion(MLIRContext *context)
-      : DialectConversionPattern(Op::getOperationName(), 1, context) {}
+      : ConversionPattern(Op::getOperationName(), 1, context) {}
   using Base = LoadStoreOpConversion<Op>;
 
   // Compute the pointer to an element of the buffer underlying the view given

@@ -49,7 +49,7 @@ public:
       SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) { /*...*/ }
 
   // This gets called once to set up operation converters.
-  llvm::DenseSet<DialectConversionPattern *>
+  llvm::DenseSet<ConversionPattern *>
   initConverters(MLIRContext *context) override {
     RewriteListBuilder<MulOpConversion, PrintOpConversion,
                        TransposeOpConversion>::build(allocator, context);
@@ -65,14 +65,14 @@ Individual operation converters are following this pattern:
 ```c++
 /// Lower a toy.add to an affine loop nest.
 ///
-/// This class inherit from `DialectConversionPattern` and override `rewrite`,
+/// This class inherit from `ConversionPattern` and override `rewrite`,
 /// similarly to the PatternRewriter introduced in the previous chapter.
 /// It will be called by the DialectConversion framework (see `LateLowering`
 /// class below).
-class AddOpConversion : public DialectConversionPattern {
+class AddOpConversion : public ConversionPattern {
 public:
   explicit AddOpConversion(MLIRContext *context)
-      : DialectConversionPattern(toy::AddOp::getOperationName(), 1, context) {}
+      : ConversionPattern(toy::AddOp::getOperationName(), 1, context) {}
 
   /// Lower the `op` by generating IR using the `rewriter` builder. The builder
   /// is setup with a new function, the `operands` array has been populated with

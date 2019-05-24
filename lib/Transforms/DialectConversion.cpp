@@ -90,7 +90,7 @@ constexpr StringLiteral ArgConverter::kCastName;
 // DialectConversionRewriter
 //===----------------------------------------------------------------------===//
 
-/// This class implements a pattern rewriter for DialectConversionPattern
+/// This class implements a pattern rewriter for ConversionPattern
 /// patterns. It automatically performs remapping of replaced operation values.
 struct DialectConversionRewriter final : public PatternRewriter {
   /// This class represents one requested operation replacement via 'replaceOp'.
@@ -182,15 +182,15 @@ struct DialectConversionRewriter final : public PatternRewriter {
 } // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
-// DialectConversionPattern
+// ConversionPattern
 //===----------------------------------------------------------------------===//
 
 /// Rewrite the IR rooted at the specified operation with the result of this
 /// pattern.  If an unexpected error is encountered (an internal compiler
 /// error), it is emitted through the normal MLIR diagnostic hooks and the IR is
 /// left in a valid state.
-void DialectConversionPattern::rewrite(Operation *op,
-                                       PatternRewriter &rewriter) const {
+void ConversionPattern::rewrite(Operation *op,
+                                PatternRewriter &rewriter) const {
   SmallVector<Value *, 4> operands;
   auto &dialectRewriter = static_cast<DialectConversionRewriter &>(rewriter);
   dialectRewriter.remapValues(op->getOperands(), operands);

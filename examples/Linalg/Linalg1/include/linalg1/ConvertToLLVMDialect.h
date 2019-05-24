@@ -24,8 +24,8 @@
 #include <memory>
 
 namespace mlir {
+class ConversionPattern;
 class DialectConversion;
-class DialectConversionPattern;
 class MLIRContext;
 class Module;
 class RewritePattern;

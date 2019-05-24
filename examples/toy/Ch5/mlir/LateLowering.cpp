@@ -77,14 +77,14 @@ Value *memRefTypeCast(FuncBuilder &builder, Value *val) {
 
 /// Lower a toy.add to an affine loop nest.
 ///
-/// This class inherit from `DialectConversionPattern` and override `rewrite`,
+/// This class inherit from `ConversionPattern` and override `rewrite`,
 /// similarly to the PatternRewriter introduced in the previous chapter.
 /// It will be called by the DialectConversion framework (see `LateLowering`
 /// class below).
-class AddOpConversion : public DialectConversionPattern {
+class AddOpConversion : public ConversionPattern {
 public:
   explicit AddOpConversion(MLIRContext *context)
-      : DialectConversionPattern(toy::AddOp::getOperationName(), 1, context) {}
+      : ConversionPattern(toy::AddOp::getOperationName(), 1, context) {}
 
   /// Lower the `op` by generating IR using the `rewriter` builder. The builder
   /// is setup with a new function, the `operands` array has been populated with
@@ -126,11 +126,10 @@ public:
 
 /// Lowers `toy.print` to a loop nest calling `printf` on every individual
 /// elements of the array.
-class PrintOpConversion : public DialectConversionPattern {
+class PrintOpConversion : public ConversionPattern {
 public:
   explicit PrintOpConversion(MLIRContext *context)
-      : DialectConversionPattern(toy::PrintOp::getOperationName(), 1, context) {
-  }
+      : ConversionPattern(toy::PrintOp::getOperationName(), 1, context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
@@ -225,11 +224,10 @@ private:
 };
 
 /// Lowers constant to a sequence of store in a buffer.
-class ConstantOpConversion : public DialectConversionPattern {
+class ConstantOpConversion : public ConversionPattern {
 public:
   explicit ConstantOpConversion(MLIRContext *context)
-      : DialectConversionPattern(toy::ConstantOp::getOperationName(), 1,
-                                 context) {}
+      : ConversionPattern(toy::ConstantOp::getOperationName(), 1, context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
@@ -269,11 +267,10 @@ public:
 };
 
 /// Lower transpose operation to an affine loop nest.
-class TransposeOpConversion : public DialectConversionPattern {
+class TransposeOpConversion : public ConversionPattern {
 public:
   explicit TransposeOpConversion(MLIRContext *context)
-      : DialectConversionPattern(toy::TransposeOp::getOperationName(), 1,
-                                 context) {}
+      : ConversionPattern(toy::TransposeOp::getOperationName(), 1, context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
@@ -302,11 +299,10 @@ public:
 };
 
 // Lower toy.return to standard return operation.
-class ReturnOpConversion : public DialectConversionPattern {
+class ReturnOpConversion : public ConversionPattern {
 public:
   explicit ReturnOpConversion(MLIRContext *context)
-      : DialectConversionPattern(toy::ReturnOp::getOperationName(), 1,
-                                 context) {}
+      : ConversionPattern(toy::ReturnOp::getOperationName(), 1, context) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
