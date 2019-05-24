@@ -26,8 +26,8 @@ import os
 import pdb
 import re
 import sys
-import traceback
 import textwrap
+import traceback
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
