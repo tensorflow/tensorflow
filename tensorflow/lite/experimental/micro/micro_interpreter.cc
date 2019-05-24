@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
 
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/experimental/micro/compatibility.h"
 
@@ -67,8 +68,6 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       tensor_allocator_(tensor_allocator),
       error_reporter_(error_reporter),
       initialization_status_(kTfLiteOk) {
-  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
-      model->buffers();
   auto* subgraphs = model->subgraphs();
   if (subgraphs->size() != 1) {
     error_reporter->Report("Only 1 subgraph is currently supported.\n");
@@ -83,14 +82,40 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.tensors =
       reinterpret_cast<TfLiteTensor*>(tensor_allocator_->AllocateMemory(
           sizeof(TfLiteTensor) * context_.tensors_size, 4));
+
+  initialization_status_ = AllocateInputAndActTensors();
+  if (initialization_status_ != kTfLiteOk) {
+    return;
+  }
+
+  context_.impl_ = static_cast<void*>(this);
+  context_.GetExecutionPlan = nullptr;
+  context_.ResizeTensor = nullptr;
+  context_.ReportError = ReportOpError;
+  context_.AddTensors = nullptr;
+  context_.GetNodeAndRegistration = nullptr;
+  context_.ReplaceNodeSubsetsWithDelegateKernels = nullptr;
+  context_.recommended_num_threads = 1;
+  context_.GetExternalContext = nullptr;
+  context_.SetExternalContext = nullptr;
+
+  initialization_status_ = AllocateTemporaryTensors();
+  if (initialization_status_ != kTfLiteOk) {
+    return;
+  }
+}
+
+TfLiteStatus MicroInterpreter::AllocateInputAndActTensors() {
+  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
+      model_->buffers();
   for (int i = 0; i < subgraph_->inputs()->Length(); ++i) {
     const int tensor_index = subgraph_->inputs()->Get(i);
     const auto* tensor = tensors_->Get(tensor_index);
-    initialization_status_ = tensor_allocator_->AllocateTensor(
-        *tensor, 0, operators_->Length(), buffers, error_reporter,
+    const TfLiteStatus status = tensor_allocator_->AllocateTensor(
+        *tensor, 0, operators_->Length(), buffers, error_reporter_,
         &context_.tensors[tensor_index]);
-    if (initialization_status_ != kTfLiteOk) {
-      return;
+    if (status != kTfLiteOk) {
+      return status;
     }
   }
 
@@ -120,11 +145,11 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       }
       const auto* tensor = tensors_->Get(tensor_index);
       if (!tensor->is_variable()) {
-        initialization_status_ = tensor_allocator_->AllocateTensor(
-            *tensor, create_before, destroy_after, buffers, error_reporter,
+        const TfLiteStatus status = tensor_allocator_->AllocateTensor(
+            *tensor, create_before, destroy_after, buffers, error_reporter_,
             &context_.tensors[tensor_index]);
-        if (initialization_status_ != kTfLiteOk) {
-          return;
+        if (status != kTfLiteOk) {
+          return status;
         }
         first_created[tensor_index] = i;
       }
@@ -135,24 +160,21 @@ MicroInterpreter::MicroInterpreter(const Model* model,
     const auto* tensor = tensors_->Get(i);
     const bool is_read_only = (first_created[i] == -1) && (last_used[i] != -1);
     if (tensor->is_variable() || is_read_only) {
-      initialization_status_ = tensor_allocator_->AllocateTensor(
-          *tensor, 0, operators_->Length(), buffers, error_reporter,
+      const TfLiteStatus status = tensor_allocator_->AllocateTensor(
+          *tensor, 0, operators_->Length(), buffers, error_reporter_,
           &context_.tensors[i]);
-      if (initialization_status_ != kTfLiteOk) {
-        return;
+      if (status != kTfLiteOk) {
+        return status;
       }
     }
   }
-  context_.impl_ = static_cast<void*>(this);
-  context_.GetExecutionPlan = nullptr;
-  context_.ResizeTensor = nullptr;
-  context_.ReportError = ReportOpError;
-  context_.AddTensors = nullptr;
-  context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceNodeSubsetsWithDelegateKernels = nullptr;
-  context_.recommended_num_threads = 1;
-  context_.GetExternalContext = nullptr;
-  context_.SetExternalContext = nullptr;
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroInterpreter::AllocateTemporaryTensors() {
+  // TBD(wangtz) : Implement this method.
+  return kTfLiteOk;
 }
 
 TfLiteStatus MicroInterpreter::Invoke() {
