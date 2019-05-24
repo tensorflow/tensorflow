@@ -29,9 +29,10 @@ class ContextTest(test.TestCase):
   def testSetGlobalSeed(self):
     c = context.Context()
     c._set_global_seed(123)
-    c._set_global_seed([1, 2])
-    c._set_global_seed((1, 2))
-    c._set_global_seed(np.asarray([11, 22], dtype=np.int64))
+    for t in [np.int32, np.int64, np.uint32, np.uint64]:
+      c._set_global_seed(t(123))
+      c._set_global_seed(np.array(123, dtype=t))
+      c._set_global_seed(ops.convert_to_tensor(123, dtype=t))
 
 
 if __name__ == '__main__':

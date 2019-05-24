@@ -23,7 +23,7 @@ import contextlib
 import copy
 import random
 import threading
-import numpy
+import numpy as np
 import six
 
 from tensorflow.core.protobuf import config_pb2
@@ -360,11 +360,14 @@ class Context(object):
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
     self._seed = seed
-    if isinstance(seed, (list, numpy.ndarray)):
-      hashable_seed = str(seed)
-    else:
-      hashable_seed = seed
-    self._rng = random.Random(hashable_seed)
+    # `random.Random(seed)` needs `seed` to be hashable, while values of type
+    # e.g. `np.int64` or `np.ndarray` are not. We use `int(...)` to convert them
+    # to int.
+    try:
+      hash(seed)
+    except TypeError:
+      seed = int(np.array(seed))
+    self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tensorflow.TFE_ContextClearCaches(self._context_handle)
