@@ -31,6 +31,7 @@ import json
 import os
 import shutil
 import subprocess
+from future.builtins import bytes
 
 
 def parse_branch_ref(filename):
