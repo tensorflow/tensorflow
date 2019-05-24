@@ -856,20 +856,14 @@ internal::StreamExecutorInterface *StreamExecutor::implementation() {
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     StreamExecutor *executor)
     : DeviceMemoryAllocator(executor->platform()) {
-  stream_executors_[executor->device_ordinal()] = executor;
+  stream_executors_ = {executor};
 }
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     const Platform *platform,
     absl::Span<StreamExecutor *const> stream_executors)
-    : DeviceMemoryAllocator(platform) {
-  int device_ordinal = -1;
-  for (StreamExecutor *executor : stream_executors) {
-    // Stream executor `Init` method which sets the device ordinal
-    // might not be called yet.
-    stream_executors_[++device_ordinal] = executor;
-  }
-}
+    : DeviceMemoryAllocator(platform),
+      stream_executors_(stream_executors.begin(), stream_executors.end()) {}
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
@@ -907,12 +901,14 @@ StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
     return tensorflow::errors::InvalidArgument(absl::StrFormat(
         "device ordinal value (%d) must be non-negative", device_ordinal));
   }
-  if (stream_executors_[device_ordinal] == nullptr) {
-    return tensorflow::errors::NotFound(
-        absl::StrFormat("Device %s:%d present but not supported",
-                        platform()->Name(), device_ordinal));
+  for (StreamExecutor *se : stream_executors_) {
+    if (se->device_ordinal() == device_ordinal) {
+      return se;
+    }
   }
-  return stream_executors_[device_ordinal];
+  return tensorflow::errors::NotFound(
+      absl::StrFormat("Device %s:%d present but not supported",
+                      platform()->Name(), device_ordinal));
 }
 
 bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
