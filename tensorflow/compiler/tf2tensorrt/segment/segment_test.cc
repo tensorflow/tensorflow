@@ -77,7 +77,7 @@ class SegmentTest : public ::testing::Test {
     EXPECT_EQ(expected_segments.size(), segments.size());
     for (int i = 0; i < segments.size(); ++i) {
       std::set<string> segment_node_names;
-      for (const Node* node : segments[i].first) {
+      for (const Node* node : segments[i]) {
         segment_node_names.insert(node->name());
       }
       const auto& expected = expected_segments[i];

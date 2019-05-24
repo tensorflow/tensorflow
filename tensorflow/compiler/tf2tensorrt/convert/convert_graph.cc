@@ -251,13 +251,11 @@ Status GetEngineInfo(const Graph* g,
   info->engine_name = StrCat(scope_name, info->engine_name);
   VLOG(1) << "Converted TensorRT candidate segment '" << info->engine_name
           << "' to a GraphDef";
-  // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
   } else if (segment_devices.size() > 1) {
-    LOG(WARNING) << "Detected multiple(" << segment_devices.size()
-                 << ") devices for the segment. Picking first one to continue "
-                 << "but this shouldn't have happened";
+    LOG(WARNING) << "Detected multiple (" << segment_devices.size()
+                 << ") devices for the segment. Picking first one to continue.";
     info->device = *segment_devices.begin();
   } else {
     VLOG(1) << "No device is assigned to the segment. "
@@ -750,8 +748,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     EngineInfo curr_engine;
     curr_engine.engine_name = StrCat("TRTEngineOp_", t);
     Status status =
-        GetEngineInfo(&graph, *params.graph_properties, curr_segment.first,
-                      node_map, reverse_topo_order, &curr_engine);
+        GetEngineInfo(&graph, *params.graph_properties, curr_segment, node_map,
+                      reverse_topo_order, &curr_engine);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to get engine info for segment " << t << ": "
                    << status;
@@ -776,7 +774,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
 
     engine_bytes_size.push_back(curr_engine.segment_graph_def.ByteSizeLong());
     total_engine_bytes_size += engine_bytes_size.back();
-    total_num_nodes_in_segments += curr_segment.first.size();
+    total_num_nodes_in_segments += curr_segment.size();
     engine_segments.push_back(std::move(curr_engine));
     converted_segments.push_back(std::move(curr_segment));
 
@@ -806,7 +804,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     engine.max_workspace_size_bytes =
         params.max_workspace_size_bytes *
         (engine_bytes_size.at(i) / total_engine_bytes_size +
-         converted_segments.at(i).first.size() / total_num_nodes_in_segments) /
+         converted_segments.at(i).size() / total_num_nodes_in_segments) /
         2.0;
     VLOG(1) << "Assigned " << engine.max_workspace_size_bytes << " bytes to "
             << engine.engine_name;
@@ -828,9 +826,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
                       alloc.get(), &engine_nodes);
 
-    string msg = StrCat("TensorRT node ", engine.engine_name,
-                        " added for segment ", i, " consisting of ",
-                        converted_segments.at(i).first.size(), " nodes");
+    string msg =
+        StrCat("TensorRT node ", engine.engine_name, " added for segment ", i,
+               " consisting of ", converted_segments.at(i).size(), " nodes");
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
     } else {
@@ -839,7 +837,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";
-      for (const Node* node : converted_segments.at(i).first) {
+      for (const Node* node : converted_segments.at(i)) {
         StrAppend(&msg, node->name(), ", ");
       }
       VLOG(1) << msg;
@@ -848,7 +846,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
     if (status.ok()) {
-      for (const Node* node : converted_segments.at(i).first) {
+      for (const Node* node : converted_segments.at(i)) {
         graph.RemoveNode(const_cast<Node*>(node));
       }
     }

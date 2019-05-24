@@ -695,24 +695,19 @@ Status SegmentGraph(const Graph* tf_graph,
       continue;
     }
 
-    // TODO(sami): Make segmenter placement aware once trtscopes are in place
     const auto& dev_itr = device_maps.find(segment_root);
     if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
       VLOG(1) << "No device assigned to segment " << segments->size();
-      segments->emplace_back(std::make_pair(segment_nodes, string()));
     } else if (dev_itr->second.size() > 1) {
-      string s("Segment ");
-      StrAppend(&s, segments->size(), " has multiple devices attached: ");
+      string s = StrCat("Segment ", segments->size(),
+                        " has multiple devices attached: ");
       for (const auto& dev : dev_itr->second) {
         StrAppend(&s, dev, ", ");
       }
-      LOG(WARNING) << s << " choosing " << *(dev_itr->second.begin());
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
-    } else {
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
+      LOG(WARNING) << s;
     }
+
+    segments->emplace_back(segment_nodes);
   }
   if (VLOG_IS_ON(1)) {
     for (const auto& d : device_maps) {
