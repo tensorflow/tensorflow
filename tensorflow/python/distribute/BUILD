@@ -1022,6 +1022,9 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_saved_model_test.py"],
     main = "keras_saved_model_test.py",
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
