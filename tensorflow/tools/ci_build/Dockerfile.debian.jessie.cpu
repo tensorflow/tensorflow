@@ -7,6 +7,7 @@ COPY install/*.sh /install/
 RUN /install/install_bootstrap_deb_packages.sh
 RUN echo "deb http://archive.debian.org/debian jessie-backports main" | \
     tee -a /etc/apt/sources.list
+RUN echo "Acquire::Check-Valid-Until no;" > /etc/apt/apt.conf.d/99no-check-valid-until
 # Workaround bug in Jessie backport repository deb packages
 # http://serverfault.com/questions/830636/cannot-install-openjdk-8-jre-headless-on-debian-jessie
 RUN apt-get update && \
