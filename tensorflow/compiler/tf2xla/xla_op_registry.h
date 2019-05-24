@@ -116,9 +116,12 @@ class XlaOpRegistry {
     // If we should cluster operations returning DT_VARIANT.
     bool cluster_variant_ops = false;
 
-    // Whether ops known to be slow or to have correctness issues should be
+    // Whether ops known to be slow should be auto-clustered.
+    bool cluster_slow_ops = false;
+
+    // Whether ops known to have numerical accuracy issues should be
     // auto-clustered.
-    bool cluster_slow_and_inaccurate_ops = false;
+    bool cluster_inaccurate_ops = false;
   };
 
   // Registers an XLA backend. `compilation_device_name` is the name of the
