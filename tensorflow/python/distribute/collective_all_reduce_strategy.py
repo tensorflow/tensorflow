@@ -170,8 +170,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    logging.info("CollectiveAllReduceStrategy with local_devices = %r",
-                 local_devices)
+    logging.info("Single-worker CollectiveAllReduceStrategy with local_devices "
+                 "= %r, communication = %s", local_devices, self._communication)
 
   def _initialize_multi_worker(self, cluster_resolver):
     """Initializes the object for multi-worker training."""
