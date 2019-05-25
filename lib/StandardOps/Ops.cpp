@@ -492,14 +492,9 @@ struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
                                      PatternRewriter &rewriter) const override {
     auto indirectCall = cast<CallIndirectOp>(op);
 
-    // Check that the callee is a constant operation.
-    Attribute callee;
-    if (!matchPattern(indirectCall.getCallee(), m_Constant(&callee)))
-      return matchFailure();
-
-    // Check that the constant callee is a function.
-    FunctionAttr calledFn = callee.dyn_cast<FunctionAttr>();
-    if (!calledFn)
+    // Check that the callee is a constant callee.
+    FunctionAttr calledFn;
+    if (!matchPattern(indirectCall.getCallee(), m_Constant(&calledFn)))
       return matchFailure();
 
     // Replace with a direct call.
