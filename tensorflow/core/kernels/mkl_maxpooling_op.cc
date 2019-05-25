@@ -409,13 +409,13 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   REGISTER_KERNEL_BUILDER(Name("_MklMaxPool3D")                     \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklMaxPoolingOp<CPUDevice, T>);           \
+               .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+               MklMaxPoolingOp<CPUDevice, T>);                      \
   REGISTER_KERNEL_BUILDER(Name("_MklMaxPool3DGrad")                 \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklMaxPoolingGradOp<CPUDevice, T>);
+               .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+               MklMaxPoolingGradOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_MAXPOOL3D_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL3D_KERNELS);
@@ -424,13 +424,13 @@ TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL3D_KERNELS);
   REGISTER_KERNEL_BUILDER(Name("_MklMaxPool")                       \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklMaxPoolingOp<CPUDevice, T>);           \
+               .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+               MklMaxPoolingOp<CPUDevice, T>);                      \
   REGISTER_KERNEL_BUILDER(Name("_MklMaxPoolGrad")                   \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklMaxPoolingGradOp<CPUDevice, T>);
+               .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+               MklMaxPoolingGradOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_MAXPOOL_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_MAXPOOL_KERNELS);

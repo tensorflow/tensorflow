@@ -255,12 +255,13 @@ class MklConv2DCustomBackpropBiasOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(MklConv2DCustomBackpropBiasOp);
 };
 
-#define REGISTER_CPU_KERNELS(T)                                     \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBiasBackpropBias")    \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConv2DCustomBackpropBiasOp<CPUDevice, T>);
+#define REGISTER_CPU_KERNELS(T)                                \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklConv2DWithBiasBackpropBias")                   \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+      MklConv2DCustomBackpropBiasOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS

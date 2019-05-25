@@ -268,21 +268,25 @@ class MklReshapeOp : public OpKernel {
   }
 };
 
-#define REGISTER_MKL_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklReshape")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .HostMemory("shape")                  \
-                              .TypeConstraint<T>("T")               \
-                              .TypeConstraint<int32>("Tshape")      \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklReshapeOp<CPUDevice, T>);              \
-  REGISTER_KERNEL_BUILDER(Name("_MklReshape")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .HostMemory("shape")                  \
-                              .TypeConstraint<T>("T")               \
-                              .TypeConstraint<int64>("Tshape")      \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklReshapeOp<CPUDevice, T>);
+
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklReshape")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .HostMemory("shape")                                 \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<int32>("Tshape")                     \
+          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+      MklReshapeOp<CPUDevice, T>);                             \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklReshape")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .HostMemory("shape")                                 \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<int64>("Tshape")                     \
+          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+      MklReshapeOp<CPUDevice, T>);
+
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU

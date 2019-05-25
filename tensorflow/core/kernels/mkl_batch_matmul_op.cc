@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -219,13 +220,13 @@ class BatchMatMulMkl : public OpKernel {
   }
 };
 
-#define REGISTER_BATCH_MATMUL_MKL(TYPE)                                   \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),   \
-      BatchMatMulMkl<CPUDevice, TYPE>)                                    \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<CPUDevice, TYPE>)
+#define REGISTER_BATCH_MATMUL_MKL(TYPE)                   \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklBatchMatMul")                             \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<TYPE>("T")                      \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      BatchMatMulMkl<CPUDevice, TYPE>)
 
 #ifdef ENABLE_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);

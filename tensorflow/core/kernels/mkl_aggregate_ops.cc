@@ -241,12 +241,11 @@ class MklAddNOp : public OpKernel {
   }
 };
 
-#define REGISTER_MKL_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklAddN")                          \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklAddNOp<CPUDevice, T>);
+#define REGISTER_MKL_CPU(T)                                             \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("_MklAddN").Device(DEVICE_CPU).TypeConstraint<T>("T").Label( \
+          mkl_op_registry::kMklLayoutDependantOpLabel),                 \
+      MklAddNOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);

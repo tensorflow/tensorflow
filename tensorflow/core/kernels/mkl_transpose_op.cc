@@ -22,6 +22,7 @@ limitations under the License.
 #include "mkl_trans.h"
 #endif
 
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
 
@@ -248,6 +249,24 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                             perm, out);
 }
 
+#define REGISTER(T)                                       \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklTranspose")                               \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .HostMemory("perm")                             \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklTransposeCpuOp);                                 \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklConjugateTranspose")                      \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .HostMemory("perm")                             \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+      MklConjugateTransposeCpuOp);
+
+TF_CALL_ALL_TYPES(REGISTER)
+#undef REGISTER
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

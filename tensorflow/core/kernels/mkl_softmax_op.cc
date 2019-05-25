@@ -182,12 +182,13 @@ class MklSoftmaxOp : public OpKernel {
 
 /* Register DNN kernels for supported operations and supported types - right now
  * it is only Softmax and f32 */
-#define REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES(type)          \
-  REGISTER_KERNEL_BUILDER(Name("_MklSoftmax")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklSoftmaxOp<CPUDevice, type>);
+#define REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES(type)     \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklSoftmax")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+      MklSoftmaxOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow

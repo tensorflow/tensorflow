@@ -18,6 +18,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb_text.h"
 
 namespace tensorflow {
 // Since our ops are going to produce and also consume N addition tensors
@@ -38,7 +39,10 @@ namespace tensorflow {
 // appropriate position based on selected ordering. For contiguous ordering,
 // we need to know the total number of tensors (parameter total).
 //
-typedef enum { TENSORS_INTERLEAVED, TENSORS_CONTIGUOUS } MklTfTensorOrdering;
+typedef enum {
+  TENSORS_INTERLEAVED,
+  TENSORS_CONTIGUOUS
+} MklTfTensorOrdering;
 // NOTE: Currently, we use contiguous ordering. If you change this, then you
 // would need to change Mkl op definitions in nn_ops.cc.
 static const MklTfTensorOrdering kTensorOrdering = TENSORS_CONTIGUOUS;
@@ -73,10 +77,23 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
 }
 
 namespace mkl_op_registry {
-static const char* kMklOpLabel = "MklOp";
-static const char* kMklOpLabelPattern = "label='MklOp'";
+// MKL operators whose kernel is registered with 'MklLayoutDependantOp' label
+// (e.g., MklConv2D) understand input tensors in MKL layout. These operators
+// get additional meta-tensors for actual input tensors.
+static const char* kMklLayoutDependantOpLabel = "MklLayoutDependantOp";
+static const char* kMklLayoutDependantOpLabelPattern =
+    "label='MklLayoutDependantOp'";
+// MKL operators whose kernel is registered with 'MklNameChangeOp' label
+// (e.g., MklMatMul, MklTranspose) do not understand input tensors in MKL
+// layout. These operators do not get additional meta-tensors. The signature of
+// these operators is same as the original TensorFlow operator that they
+// correspond to. So these ops just go through name change during graph rewrite
+// pass.
+static const char* kMklNameChangeOpLabel = "MklNameChangeOp";
+static const char* kMklNameChangeOpLabelPattern = "label='MklNameChangeOp'";
 static const char* kMklQuantizedOpLabel = "QuantizedMklOp";
 static const char* kMklQuantizedOpLabelPattern = "label='QuantizedMklOp'";
+
 // Prefix that we add to Tensorflow op name to construct Mkl op name.
 static const char* const kMklOpPrefix = "_Mkl";
 
@@ -85,13 +102,14 @@ static const char* const kMklOpPrefix = "_Mkl";
 inline string GetMklOpName(const string& name) {
   return string(kMklOpPrefix) + name;
 }
-
-// Check whether opname with type T is registered as MKL-compliant.
+// Check whether opname with type T is registered as MKL operator
+// that can accept input tensors in MKL layout.
 //
 // @input: name of the op
 // @input: T datatype to be used for checking op
-// @return: true if opname is registered as Mkl op; false otherwise
-static inline bool IsMklOp(const string& op_name, DataType T) {
+// @return: true if opname is registered as Mkl-layout dependant op;
+// false otherwise
+static inline bool IsMklLayoutDependantOp(const string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
 
   // Restrict quantized ops to QUINT8 and QINT8 for now
@@ -99,7 +117,7 @@ static inline bool IsMklOp(const string& op_name, DataType T) {
     return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
   }
   // Restrict regular ops to FLOAT
-  if (kernel.find(kMklOpLabelPattern) != string::npos) {
+  if (kernel.find(kMklLayoutDependantOpLabelPattern) != string::npos) {
     return (T == DT_FLOAT);
   }
   return false;
@@ -108,7 +126,7 @@ static inline bool IsMklOp(const string& op_name, DataType T) {
 // TODO(mdfaijul): QuantizedConv2D is registered with input: QUINT8
 // filter:QINT8 for mkldnn integration. First a dummy kernel is created
 // and then it is replaced by an actual kernel.
-static inline bool IsMklOp(const string& op_name, DataType Tinput,
+static inline bool IsMklLayoutDependantOp(const string& op_name, DataType Tinput,
                            DataType Tfilter) {
   string kernel = KernelsRegisteredForOp(op_name);
 
@@ -118,6 +136,39 @@ static inline bool IsMklOp(const string& op_name, DataType Tinput,
   }
   return false;
 }
+
+// Check whether opname with type T is registered as an MKL operator that
+// will go thru name change.
+//
+// @input: name of the op
+// @input: T datatype to be used for checking op
+// @return: true if opname is registered as Mkl op that will go thru name
+// change; false otherwise
+static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
+  string kernel = KernelsRegisteredForOp(op_name);
+  // String returned by KernelsRegisteredForOp looks like below:
+  //
+  // Op = _MklMatMul, kernels =
+  // device='CPU'; label='MklNameChangeOp'; T in [DT_COMPLEX128]
+  // device='CPU'; label='MklNameChangeOp'; T in [DT_COMPLEX64]
+  // device='CPU'; label='MklNameChangeOp'; T in [DT_DOUBLE]
+  // device='CPU'; label='MklNameChangeOp'; T in [DT_FLOAT]
+
+  // Now we just construct a search string to match what we are looking for.
+  string search_string = kMklNameChangeOpLabelPattern;
+  search_string += string(";") + string(" T in [");
+  search_string += EnumName_DataType(T) + string("]");
+
+  return kernel.find(search_string) != string::npos;
+}
+
+// Check if the operator with 'op_name' and type 'T' is an MKL operator that
+// will either understand input tensors in MKL layout or will go thru name
+// rewrite that some operators go thru.
+static inline bool IsMklOp(const string& op_name, DataType T) {
+  return IsMklLayoutDependantOp(op_name, T) || IsMklNameChangeOp(op_name, T);
+}
+
 
 // Check whether opname with type T is registered as MKL-compliant and
 // is element-wise.
