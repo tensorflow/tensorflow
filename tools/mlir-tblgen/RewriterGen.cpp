@@ -674,20 +674,16 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
 
   // Then we build the new op corresponding to this DAG node.
 
-  // TODO: this is a hack to support various constant ops. We are assuming
-  // all of them have no operands and one attribute here. Figure out a better
-  // way to do this.
-  bool isConstOp =
-      resultOp.getNumOperands() == 0 && resultOp.getNumNativeAttributes() == 1;
-
   bool isSameValueType = resultOp.hasTrait("SameOperandsAndResultType");
   bool isBroadcastable = resultOp.hasTrait("BroadcastableTwoOperandsOneResult");
   bool useFirstAttr = resultOp.hasTrait("FirstAttrDerivedResultType");
 
-  if (isConstOp || isSameValueType || isBroadcastable || useFirstAttr) {
+  if (isSameValueType || isBroadcastable || useFirstAttr || depth > 0) {
     os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc", resultValue,
                             resultOp.getQualCppClassName());
   } else {
+    // If depth == 0 we can use the equivalence of the source and target root
+    // ops in the pattern to determine the return type.
     std::string resultType = formatv("op->getResult({0})", resultIndex).str();
 
     os.indent(4) << formatv(
