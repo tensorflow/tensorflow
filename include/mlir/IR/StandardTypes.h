@@ -192,38 +192,38 @@ public:
   /// Return the element type.
   Type getElementType() const;
 
-  /// If an element type is an integer or a float, return its width.  Abort
-  /// otherwise.
+  /// If an element type is an integer or a float, return its width. Otherwise,
+  /// abort.
   unsigned getElementTypeBitWidth() const;
 
-  /// If this is ranked tensor or vector type, return the number of elements. If
-  /// it is an unranked tensor, abort.
+  /// If this is a ranked type, return the number of elements. Otherwise, abort.
   unsigned getNumElements() const;
 
-  /// If this is ranked tensor or vector type, return the rank. If it is an
-  /// unranked tensor, return -1.
+  /// If this is a ranked type, return the rank. Otherwise, return -1.
   int64_t getRank() const;
 
-  /// If this is ranked tensor or vector type, return the shape. If it is an
-  /// unranked tensor, abort.
+  /// Whether or not this is a ranked type. Vector and ranked tensors have a
+  /// rank, while unranked tensors do not.
+  bool hasRank() const;
+
+  /// If this is a ranked type, return the shape. Otherwise, abort.
   ArrayRef<int64_t> getShape() const;
 
-  /// If this is unranked tensor or any dimension has unknown size (<0),
-  /// it doesn't have static shape. If all dimensions have known size (>= 0),
-  /// it has static shape.
+  /// If this is unranked type or any dimension has unknown size (<0), it
+  /// doesn't have static shape. If all dimensions have known size (>= 0), it
+  /// has static shape.
   bool hasStaticShape() const;
 
-  /// If this is ranked tensor or vector type, return the size of the specified
-  /// dimension. It aborts if the tensor is unranked (this can be checked by
-  /// the getRank call method).
+  /// If this is ranked type, return the size of the specified dimension.
+  /// Otherwise, abort.
   int64_t getDimSize(unsigned i) const;
 
   /// Get the total amount of bits occupied by a value of this type.  This does
   /// not take into account any memory layout or widening constraints, e.g. a
   /// vector<3xi57> is reported to occupy 3x57=171 bit, even though in practice
   /// it will likely be stored as in a 4xi64 vector register.  Fail an assertion
-  /// if the size cannot be computed statically, i.e. if the tensor has a
-  /// dynamic shape or if its elemental type does not have a known bit width.
+  /// if the size cannot be computed statically, i.e. if the type has a dynamic
+  /// shape or if its elemental type does not have a known bit width.
   int64_t getSizeInBits() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.

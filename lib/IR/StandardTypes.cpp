@@ -116,48 +116,29 @@ unsigned ShapedType::getElementTypeBitWidth() const {
 }
 
 unsigned ShapedType::getNumElements() const {
-  switch (getKind()) {
-  case StandardTypes::Vector:
-  case StandardTypes::RankedTensor: {
-    assert(hasStaticShape() && "expected type to have static shape");
-    auto shape = getShape();
-    unsigned num = 1;
-    for (auto dim : shape)
-      num *= dim;
-    return num;
-  }
-  default:
-    llvm_unreachable("not a ShapedType or not ranked");
-  }
+  assert(hasStaticShape() && "expected type to have static shape");
+  auto shape = getShape();
+  unsigned num = 1;
+  for (auto dim : shape)
+    num *= dim;
+  return num;
 }
 
-/// If this is ranked tensor or vector type, return the rank. If it is an
-/// unranked tensor, return -1.
 int64_t ShapedType::getRank() const {
-  switch (getKind()) {
-  case StandardTypes::Vector:
-  case StandardTypes::RankedTensor:
-    return getShape().size();
-  case StandardTypes::UnrankedTensor:
-    return -1;
-  default:
-    llvm_unreachable("not a ShapedType");
-  }
+  return hasRank() ? getShape().size() : -1;
 }
+
+bool ShapedType::hasRank() const { return !isa<UnrankedTensorType>(); }
 
 int64_t ShapedType::getDimSize(unsigned i) const {
-  switch (getKind()) {
-  case StandardTypes::Vector:
-  case StandardTypes::RankedTensor:
+  if (hasRank())
     return getShape()[i];
-  default:
-    llvm_unreachable("not a ShapedType or not ranked");
-  }
+  llvm_unreachable("not a ShapedType or not ranked");
 }
 
-// Get the number of number of bits require to store a value of the given vector
-// or tensor types.  Compute the value recursively since tensors are allowed to
-// have vectors as elements.
+/// Get the number of bits require to store a value of the given shaped type.
+/// Compute the value recursively since tensors are allowed to have vectors as
+/// elements.
 int64_t ShapedType::getSizeInBits() const {
   assert(hasStaticShape() &&
          "cannot get the bit size of an aggregate with a dynamic shape");
@@ -185,7 +166,7 @@ ArrayRef<int64_t> ShapedType::getShape() const {
 }
 
 bool ShapedType::hasStaticShape() const {
-  if (isa<UnrankedTensorType>())
+  if (!hasRank())
     return false;
   return llvm::none_of(getShape(), [](int64_t i) { return i < 0; });
 }
