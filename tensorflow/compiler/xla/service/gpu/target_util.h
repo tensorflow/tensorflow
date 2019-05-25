@@ -49,6 +49,10 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
+// Annotate the kernel as GPU kernel according to the GPU target.
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                           llvm::IRBuilder<>* b);
+
 }  // namespace gpu
 }  // namespace xla
 
