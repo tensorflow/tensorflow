@@ -9,6 +9,6 @@ END
   summary: "Add all input tensors element wise."
   ```python
   `x` is an input tensor with value [9, 7, 10]
-  tf.add_n(x) ==> 26
+  tf.math.add_n(x) ==> 26
   ```
 }

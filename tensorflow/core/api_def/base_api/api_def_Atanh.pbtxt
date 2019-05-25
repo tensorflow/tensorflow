@@ -8,8 +8,8 @@ op {
   input is 1, output will be infinity. Values outside the range will have
   `nan` as output.
   ```python
-  x = tf.constant([-1, -0.5, 1, 0, 0.5, 10], dtype = tf.float32)
-  tf.atanh(x, name ='atanh') ==> [-inf -0.54930615 inf  0. 0.54930615 nan]
+  x = tf.constant([-1, -0.5, 1, 0, 0.5, 10])
+  tf.math.atanh(x, name ='atanh') ==> [-inf -0.54930615 inf  0. 0.54930615 nan]
   ```
 END
 }
