@@ -119,26 +119,16 @@ public:
   }
 };
 
-// The conversion class from Toy IR Dialect to a mix of Linalg and LLVM.
-class EarlyLowering : public DialectConversion {
-protected:
-  // Initialize the list of converters.
-  void initConverters(OwningRewritePatternList &patterns,
-                      MLIRContext *context) override {
-    RewriteListBuilder<MulOpConversion>::build(patterns, context);
-  }
-};
-
 /// This is lowering to Linalg the parts that are computationally intensive
 /// (like matmul for example...) while keeping the rest of the code in the Toy
 /// dialect.
-struct EarlyLoweringPass : public ModulePass<EarlyLoweringPass> {
-  void runOnModule() override {
-    EarlyLowering lowering;
-    if (failed(applyConverter(getModule(), lowering))) {
-      getModule().getContext()->emitError(
-          mlir::UnknownLoc::get(getModule().getContext()),
-          "Error lowering Toy\n");
+struct EarlyLoweringPass : public FunctionPass<EarlyLoweringPass> {
+  void runOnFunction() override {
+    OwningRewritePatternList patterns;
+    RewriteListBuilder<MulOpConversion>::build(patterns, &getContext());
+    if (failed(applyConversionPatterns(getFunction(), std::move(patterns)))) {
+      getContext().emitError(mlir::UnknownLoc::get(&getContext()),
+                             "Error lowering Toy\n");
       signalPassFailure();
     }
   }
@@ -147,9 +137,4 @@ struct EarlyLoweringPass : public ModulePass<EarlyLoweringPass> {
 
 namespace toy {
 Pass *createEarlyLoweringPass() { return new EarlyLoweringPass(); }
-
-std::unique_ptr<mlir::DialectConversion> makeToyEarlyLowering() {
-  return llvm::make_unique<EarlyLowering>();
-}
-
 } // namespace toy

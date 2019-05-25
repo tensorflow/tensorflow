@@ -383,45 +383,25 @@ public:
   }
 };
 
-void linalg::getDescriptorConverters(mlir::OwningRewritePatternList &patterns,
-                                     mlir::MLIRContext *context) {
+void linalg::populateLinalg1ToLLVMConversionPatterns(
+    mlir::OwningRewritePatternList &patterns, mlir::MLIRContext *context) {
   RewriteListBuilder<DropConsumer, RangeOpConversion, SliceOpConversion,
                      ViewOpConversion>::build(patterns, context);
 }
 
 namespace {
-// The conversion class from Linalg to LLVMIR.
-class Lowering : public LLVMLowering {
-public:
-  explicit Lowering(std::function<void(mlir::OwningRewritePatternList &patterns,
-                                       mlir::MLIRContext *context)>
-                        conversions)
-      : setup(conversions) {}
-
-protected:
-  // Initialize the list of converters.
-  void initAdditionalConverters(OwningRewritePatternList &patterns) override {
-    setup(patterns, llvmDialect->getContext());
-  }
+/// A type conversion class that converts Linalg and Std types to LLVM.
+struct LinalgTypeConverter : public LLVMTypeConverter {
+  using LLVMTypeConverter::LLVMTypeConverter;
 
   // This gets called for block and region arguments, and attributes.
-  Type convertAdditionalType(Type t) override {
+  Type convertType(Type t) override {
+    if (auto result = LLVMTypeConverter::convertType(t))
+      return result;
     return linalg::convertLinalgType(t);
   }
-
-private:
-  // Conversion setup.
-  std::function<void(mlir::OwningRewritePatternList &patterns,
-                     mlir::MLIRContext *context)>
-      setup;
 };
 } // end anonymous namespace
-
-std::unique_ptr<mlir::DialectConversion> linalg::makeLinalgToLLVMLowering(
-    std::function<void(mlir::OwningRewritePatternList &, mlir::MLIRContext *)>
-        initer) {
-  return llvm::make_unique<Lowering>(initer);
-}
 
 void linalg::convertToLLVM(mlir::Module &module) {
   // Remove affine constructs if any by using an existing pass.
@@ -433,8 +413,12 @@ void linalg::convertToLLVM(mlir::Module &module) {
 
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
-  Lowering lowering(getDescriptorConverters);
-  auto r = applyConverter(module, lowering);
+  LinalgTypeConverter converter(module.getContext());
+  OwningRewritePatternList patterns;
+  populateStdToLLVMConversionPatterns(converter, patterns);
+  populateLinalg1ToLLVMConversionPatterns(patterns, module.getContext());
+
+  auto r = applyConversionPatterns(module, converter, std::move(patterns));
   (void)r;
   assert(succeeded(r) && "conversion failed");
 }

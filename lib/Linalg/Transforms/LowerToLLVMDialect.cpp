@@ -64,7 +64,8 @@ using llvm_select = ValueBuilder<LLVM::SelectOp>;
 using icmp = ValueBuilder<LLVM::ICmpOp>;
 
 template <typename T>
-static LLVMType getPtrToElementType(T containerType, LLVMLowering &lowering) {
+static LLVMType getPtrToElementType(T containerType,
+                                    LLVMTypeConverter &lowering) {
   return lowering.convertType(containerType.getElementType())
       .template cast<LLVMType>()
       .getPointerTo();
@@ -78,7 +79,7 @@ static LLVMType getPtrToElementType(T containerType, LLVMLowering &lowering) {
 //   - an F32 type is converted into an LLVM float type
 //   - a Buffer, Range or View is converted into an LLVM structure type
 //     containing the respective dynamic values.
-static Type convertLinalgType(Type t, LLVMLowering &lowering) {
+static Type convertLinalgType(Type t, LLVMTypeConverter &lowering) {
   auto *context = t.getContext();
   auto int64Ty = lowering.convertType(IntegerType::get(64, context))
                      .cast<LLVM::LLVMType>();
@@ -152,7 +153,7 @@ static ArrayAttr positionAttr(Builder &builder, ArrayRef<int> position) {
 class BufferAllocOpConversion : public LLVMOpLowering {
 public:
   explicit BufferAllocOpConversion(MLIRContext *context,
-                                   LLVMLowering &lowering_)
+                                   LLVMTypeConverter &lowering_)
       : LLVMOpLowering(BufferAllocOp::getOperationName(), context, lowering_) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -207,7 +208,7 @@ public:
 class BufferDeallocOpConversion : public LLVMOpLowering {
 public:
   explicit BufferDeallocOpConversion(MLIRContext *context,
-                                     LLVMLowering &lowering_)
+                                     LLVMTypeConverter &lowering_)
       : LLVMOpLowering(BufferDeallocOp::getOperationName(), context,
                        lowering_) {}
 
@@ -241,7 +242,7 @@ public:
 // BufferSizeOp creates a new `index` value.
 class BufferSizeOpConversion : public LLVMOpLowering {
 public:
-  BufferSizeOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+  BufferSizeOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(BufferSizeOp::getOperationName(), context, lowering_) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -256,7 +257,7 @@ public:
 // DimOp creates a new `index` value.
 class DimOpConversion : public LLVMOpLowering {
 public:
-  explicit DimOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+  explicit DimOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(linalg::DimOp::getOperationName(), context, lowering_) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -277,7 +278,8 @@ namespace {
 // LLVM IR Dialect.
 template <typename Op> class LoadStoreOpConversion : public LLVMOpLowering {
 public:
-  explicit LoadStoreOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+  explicit LoadStoreOpConversion(MLIRContext *context,
+                                 LLVMTypeConverter &lowering_)
       : LLVMOpLowering(Op::getOperationName(), context, lowering_) {}
   using Base = LoadStoreOpConversion<Op>;
 
@@ -327,7 +329,7 @@ class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
 // RangeOp creates a new range descriptor.
 class RangeOpConversion : public LLVMOpLowering {
 public:
-  explicit RangeOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+  explicit RangeOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(RangeOp::getOperationName(), context, lowering_) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -354,7 +356,7 @@ public:
 class RangeIntersectOpConversion : public LLVMOpLowering {
 public:
   explicit RangeIntersectOpConversion(MLIRContext *context,
-                                      LLVMLowering &lowering_)
+                                      LLVMTypeConverter &lowering_)
       : LLVMOpLowering(RangeIntersectOp::getOperationName(), context,
                        lowering_) {}
 
@@ -397,7 +399,7 @@ public:
 
 class SliceOpConversion : public LLVMOpLowering {
 public:
-  explicit SliceOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+  explicit SliceOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(SliceOp::getOperationName(), context, lowering_) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -494,7 +496,7 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
 
 class ViewOpConversion : public LLVMOpLowering {
 public:
-  explicit ViewOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+  explicit ViewOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(ViewOp::getOperationName(), context, lowering_) {}
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
@@ -550,7 +552,7 @@ public:
 // DotOp creates a new range descriptor.
 class DotOpConversion : public LLVMOpLowering {
 public:
-  explicit DotOpConversion(MLIRContext *context, LLVMLowering &lowering_)
+  explicit DotOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(DotOp::getOperationName(), context, lowering_) {}
 
   static StringRef libraryFunctionName() { return "linalg_dot"; }
@@ -574,24 +576,29 @@ public:
 
 namespace {
 // The conversion class from Linalg to LLVMIR.
-class Lowering : public LLVMLowering {
-protected:
-  void initAdditionalConverters(OwningRewritePatternList &patterns) override {
-    RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
-                       BufferSizeOpConversion, DimOpConversion, DotOpConversion,
-                       LoadOpConversion, RangeOpConversion,
-                       RangeIntersectOpConversion, SliceOpConversion,
-                       StoreOpConversion,
-                       ViewOpConversion>::build(patterns,
-                                                llvmDialect->getContext(),
-                                                *this);
-  }
+struct LinalgTypeConverter : LLVMTypeConverter {
+  using LLVMTypeConverter::LLVMTypeConverter;
 
-  Type convertAdditionalType(Type t) override {
+  Type convertType(Type t) override {
+    if (auto result = LLVMTypeConverter::convertType(t))
+      return result;
     return convertLinalgType(t, *this);
   }
 };
 } // end anonymous namespace
+
+/// Populate the given list with patterns that convert from Linalg to LLVM.
+static void
+populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
+                                       OwningRewritePatternList &patterns,
+                                       MLIRContext *ctx) {
+  RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
+                     BufferSizeOpConversion, DimOpConversion, DotOpConversion,
+                     LoadOpConversion, RangeOpConversion,
+                     RangeIntersectOpConversion, SliceOpConversion,
+                     StoreOpConversion, ViewOpConversion>::build(patterns, ctx,
+                                                                 converter);
+}
 
 namespace {
 struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
@@ -608,8 +615,12 @@ void LowerLinalgToLLVMPass::runOnModule() {
     signalPassFailure();
 
   // Convert to the LLVM IR dialect using the converter defined above.
-  Lowering lowering;
-  if (failed(applyConverter(module, lowering)))
+  OwningRewritePatternList patterns;
+  LinalgTypeConverter converter(&getContext());
+  populateStdToLLVMConversionPatterns(converter, patterns);
+  populateLinalgToLLVMConversionPatterns(converter, patterns, &getContext());
+
+  if (failed(applyConversionPatterns(module, converter, std::move(patterns))))
     signalPassFailure();
 }
 

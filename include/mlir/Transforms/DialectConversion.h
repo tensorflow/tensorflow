@@ -95,32 +95,11 @@ private:
   using RewritePattern::rewrite;
 };
 
-/// Base class for dialect conversion interface.  Specific converters must
+/// Base class for type conversion interface. Specific converters must
 /// derive this class and implement the pure virtual functions.
-///
-/// The module conversion proceeds as follows.
-/// 1. Call `initConverters` to obtain a set of conversions to apply, given the
-///    current MLIR context.
-/// 2. For each function in the module do the following.
-//    a. Create a new function with the same name and convert its signature
-//       using `convertType`.
-//    b. For each block in the function, create a block in the function with
-//       its arguments converted using `convertType`.
-//    c. Traverse blocks in DFS-preorder of successors starting from the entry
-//       block (if any), and convert individual operations as follows.  Pattern
-//       match against the list of conversions.  On the first match, call
-//       `rewrite` for the operations, and advance to the next iteration.  If no
-//       match is found, replicate the operation as is.
-class DialectConversion {
+class TypeConverter {
 public:
-  virtual ~DialectConversion() = default;
-
-  /// Derived classes must implement this hook to produce a set of conversion
-  /// patterns to apply.  They may use `mlirContext` to obtain registered
-  /// dialects or operations.  This will be called in the beginning of the
-  /// conversion.
-  virtual void initConverters(OwningRewritePatternList &patterns,
-                              MLIRContext *mlirContext) = 0;
+  virtual ~TypeConverter() = default;
 
   /// Derived classes must reimplement this hook if they need to convert
   /// block or function argument types or function result types.  If the target
@@ -157,11 +136,12 @@ public:
       SmallVectorImpl<NamedAttributeList> &convertedArgAttrs);
 };
 
-/// Convert the given module with the provided dialect conversion object.
-/// If conversion fails for a specific function, those functions remains
-/// unmodified.
+/// Convert the given module with the provided conversion patterns and type
+/// conversion object. If conversion fails for specific functions, those
+/// functions remains unmodified.
 LLVM_NODISCARD
-LogicalResult applyConverter(Module &module, DialectConversion &converter);
+LogicalResult applyConversionPatterns(Module &module, TypeConverter &converter,
+                                      OwningRewritePatternList &&patterns);
 
 /// Convert the given function with the provided conversion patterns. This will
 /// convert as many of the operations within 'fn' as possible given the set of

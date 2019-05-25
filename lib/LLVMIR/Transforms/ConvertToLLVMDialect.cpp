@@ -40,13 +40,19 @@
 
 using namespace mlir;
 
+LLVMTypeConverter::LLVMTypeConverter(MLIRContext *ctx)
+    : llvmDialect(ctx->getRegisteredDialect<LLVM::LLVMDialect>()) {
+  assert(llvmDialect && "LLVM IR dialect is not registered");
+  module = &llvmDialect->getLLVMModule();
+}
+
 // Get the LLVM context.
-llvm::LLVMContext &LLVMLowering::getLLVMContext() {
+llvm::LLVMContext &LLVMTypeConverter::getLLVMContext() {
   return module->getContext();
 }
 
 // Extract an LLVM IR type from the LLVM IR dialect type.
-LLVM::LLVMType LLVMLowering::unwrap(Type type) {
+LLVM::LLVMType LLVMTypeConverter::unwrap(Type type) {
   if (!type)
     return nullptr;
   auto *mlirContext = type.getContext();
@@ -57,18 +63,20 @@ LLVM::LLVMType LLVMLowering::unwrap(Type type) {
   return wrappedLLVMType;
 }
 
-LLVM::LLVMType LLVMLowering::getIndexType() {
+LLVM::LLVMType LLVMTypeConverter::getIndexType() {
   return LLVM::LLVMType::getIntNTy(
       llvmDialect, module->getDataLayout().getPointerSizeInBits());
 }
 
-Type LLVMLowering::convertIndexType(IndexType type) { return getIndexType(); }
+Type LLVMTypeConverter::convertIndexType(IndexType type) {
+  return getIndexType();
+}
 
-Type LLVMLowering::convertIntegerType(IntegerType type) {
+Type LLVMTypeConverter::convertIntegerType(IntegerType type) {
   return LLVM::LLVMType::getIntNTy(llvmDialect, type.getWidth());
 }
 
-Type LLVMLowering::convertFloatType(FloatType type) {
+Type LLVMTypeConverter::convertFloatType(FloatType type) {
   switch (type.getKind()) {
   case mlir::StandardTypes::F32:
     return LLVM::LLVMType::getFloatTy(llvmDialect);
@@ -91,7 +99,7 @@ Type LLVMLowering::convertFloatType(FloatType type) {
 // argument and result types.  If MLIR Function has zero results, the LLVM
 // Function has one VoidType result.  If MLIR Function has more than one result,
 // they are into an LLVM StructType in their order of appearance.
-Type LLVMLowering::convertFunctionType(FunctionType type) {
+Type LLVMTypeConverter::convertFunctionType(FunctionType type) {
   // Convert argument types one by one and check for errors.
   SmallVector<LLVM::LLVMType, 8> argTypes;
   for (auto t : type.getInputs()) {
@@ -119,7 +127,7 @@ Type LLVMLowering::convertFunctionType(FunctionType type) {
 // LLVM stucture type, where the first element of the structure type is a
 // pointer to the elemental type of the MemRef and the following N elements are
 // values of the Index type, one for each of N dynamic dimensions of the MemRef.
-Type LLVMLowering::convertMemRefType(MemRefType type) {
+Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   LLVM::LLVMType elementType = unwrap(convertType(type.getElementType()));
   if (!elementType)
     return {};
@@ -138,7 +146,7 @@ Type LLVMLowering::convertMemRefType(MemRefType type) {
 }
 
 // Convert a 1D vector type to an LLVM vector type.
-Type LLVMLowering::convertVectorType(VectorType type) {
+Type LLVMTypeConverter::convertVectorType(VectorType type) {
   if (type.getRank() != 1) {
     auto *mlirContext = llvmDialect->getContext();
     mlirContext->emitError(UnknownLoc::get(mlirContext),
@@ -153,7 +161,7 @@ Type LLVMLowering::convertVectorType(VectorType type) {
 }
 
 // Dispatch based on the actual type.  Return null type on error.
-Type LLVMLowering::convertStandardType(Type type) {
+Type LLVMTypeConverter::convertStandardType(Type type) {
   if (auto funcType = type.dyn_cast<FunctionType>())
     return convertFunctionType(funcType);
   if (auto intType = type.dyn_cast<IntegerType>())
@@ -175,7 +183,7 @@ Type LLVMLowering::convertStandardType(Type type) {
 // Convert the element type of the memref `t` to to an LLVM type using
 // `lowering`, get a pointer LLVM type pointing to the converted `t`, wrap it
 // into the MLIR LLVM dialect type and return.
-static Type getMemRefElementPtrType(MemRefType t, LLVMLowering &lowering) {
+static Type getMemRefElementPtrType(MemRefType t, LLVMTypeConverter &lowering) {
   auto elementType = t.getElementType();
   auto converted = lowering.convertType(elementType);
   if (!converted)
@@ -184,7 +192,7 @@ static Type getMemRefElementPtrType(MemRefType t, LLVMLowering &lowering) {
 }
 
 LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
-                               LLVMLowering &lowering_)
+                               LLVMTypeConverter &lowering_)
     : ConversionPattern(rootOpName, /*benefit=*/1, context),
       lowering(lowering_) {}
 
@@ -197,7 +205,7 @@ class LLVMLegalizationPattern : public LLVMOpLowering {
 public:
   // Construct a conversion pattern.
   explicit LLVMLegalizationPattern(LLVM::LLVMDialect &dialect_,
-                                   LLVMLowering &lowering_)
+                                   LLVMTypeConverter &lowering_)
       : LLVMOpLowering(SourceOp::getOperationName(), dialect_.getContext(),
                        lowering_),
         dialect(dialect_) {}
@@ -895,20 +903,9 @@ void mlir::LLVM::ensureDistinctSuccessors(Module *m) {
   }
 }
 
-// Create a set of converters that live in the pass object by passing them a
-// reference to the LLVM IR dialect.  Store the module associated with the
-// dialect for further type conversion.
-void LLVMLowering::initConverters(OwningRewritePatternList &patterns,
-                                  MLIRContext *mlirContext) {
-  llvmDialect = mlirContext->getRegisteredDialect<LLVM::LLVMDialect>();
-  if (!llvmDialect) {
-    mlirContext->emitError(UnknownLoc::get(mlirContext),
-                           "LLVM IR dialect is not registered");
-    return;
-  }
-
-  module = &llvmDialect->getLLVMModule();
-
+/// Collect a set of patterns to convert from the Standard dialect to LLVM.
+void mlir::populateStdToLLVMConversionPatterns(
+    LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
   // FIXME: this should be tablegen'ed
   RewriteListBuilder<
       AddFOpLowering, AddIOpLowering, AndOpLowering, AllocOpLowering,
@@ -918,25 +915,15 @@ void LLVMLowering::initConverters(OwningRewritePatternList &patterns,
       LoadOpLowering, MemRefCastOpLowering, MulFOpLowering, MulIOpLowering,
       OrOpLowering, RemISOpLowering, RemIUOpLowering, RemFOpLowering,
       ReturnOpLowering, SelectOpLowering, StoreOpLowering, SubFOpLowering,
-      SubIOpLowering, XOrOpLowering>::build(patterns, *llvmDialect, *this);
-  initAdditionalConverters(patterns);
+      SubIOpLowering, XOrOpLowering>::build(patterns, *converter.getDialect(),
+                                            converter);
 }
 
 // Convert types using the stored LLVM IR module.
-Type LLVMLowering::convertType(Type t) {
-  if (auto result = convertStandardType(t))
-    return result;
-  if (auto result = convertAdditionalType(t))
-    return result;
-
-  auto *mlirContext = llvmDialect->getContext();
-  mlirContext->emitError(UnknownLoc::get(mlirContext))
-      << "unsupported type: " << t;
-  return {};
-}
+Type LLVMTypeConverter::convertType(Type t) { return convertStandardType(t); }
 
 // Create an LLVM IR structure type if there is more than one result.
-Type LLVMLowering::packFunctionResults(ArrayRef<Type> types) {
+Type LLVMTypeConverter::packFunctionResults(ArrayRef<Type> types) {
   assert(!types.empty() && "expected non-empty list of type");
 
   if (types.size() == 1)
@@ -955,7 +942,7 @@ Type LLVMLowering::packFunctionResults(ArrayRef<Type> types) {
 }
 
 // Convert function signatures using the stored LLVM IR module.
-FunctionType LLVMLowering::convertFunctionSignatureType(
+FunctionType LLVMTypeConverter::convertFunctionSignatureType(
     FunctionType type, ArrayRef<NamedAttributeList> argAttrs,
     SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) {
 
@@ -983,35 +970,24 @@ FunctionType LLVMLowering::convertFunctionSignatureType(
 }
 
 namespace {
-// Make sure LLVM conversion pass errors out on the unsupported types instead
-// of keeping them as is and resulting in a more cryptic verifier error.
-class LLVMStandardLowering : public LLVMLowering {
-protected:
-  Type convertAdditionalType(Type) override { return {}; }
-};
-} // namespace
-
 /// A pass converting MLIR Standard operations into the LLVM IR dialect.
-class LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
-public:
+struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
   // Run the dialect converter on the module.
   void runOnModule() override {
     Module &m = getModule();
     LLVM::ensureDistinctSuccessors(&m);
-    if (failed(applyConverter(m, impl)))
+
+    LLVMTypeConverter converter(&getContext());
+    OwningRewritePatternList patterns;
+    populateStdToLLVMConversionPatterns(converter, patterns);
+    if (failed(applyConversionPatterns(m, converter, std::move(patterns))))
       signalPassFailure();
   }
-
-private:
-  LLVMStandardLowering impl;
 };
+} // end anonymous namespace
 
 ModulePassBase *mlir::createConvertToLLVMIRPass() {
   return new LLVMLoweringPass();
-}
-
-std::unique_ptr<DialectConversion> mlir::createStdToLLVMConverter() {
-  return llvm::make_unique<LLVMLowering>();
 }
 
 static PassRegistration<LLVMLoweringPass>

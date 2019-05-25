@@ -316,16 +316,8 @@ public:
 
 /// This is the main class registering our individual converter classes with
 /// the DialectConversion framework in MLIR.
-class LateLowering : public DialectConversion {
+class ToyTypeConverter : public TypeConverter {
 protected:
-  /// Initialize the list of converters.
-  void initConverters(OwningRewritePatternList &patterns,
-                      MLIRContext *context) override {
-    RewriteListBuilder<AddOpConversion, PrintOpConversion, ConstantOpConversion,
-                       TransposeOpConversion,
-                       ReturnOpConversion>::build(patterns, context);
-  }
-
   /// Convert a Toy type, this gets called for block and region arguments, and
   /// attributes.
   Type convertType(Type t) override {
@@ -339,13 +331,20 @@ protected:
 /// and is targeting LLVM otherwise.
 struct LateLoweringPass : public ModulePass<LateLoweringPass> {
   void runOnModule() override {
+    ToyTypeConverter typeConverter;
+    OwningRewritePatternList toyPatterns;
+    RewriteListBuilder<AddOpConversion, PrintOpConversion, ConstantOpConversion,
+                       TransposeOpConversion,
+                       ReturnOpConversion>::build(toyPatterns, &getContext());
+
     // Perform Toy specific lowering.
-    LateLowering lowering;
-    if (failed(applyConverter(getModule(), lowering))) {
+    if (failed(applyConversionPatterns(getModule(), typeConverter,
+                                       std::move(toyPatterns)))) {
       getModule().getContext()->emitError(
           UnknownLoc::get(getModule().getContext()), "Error lowering Toy\n");
       signalPassFailure();
     }
+
     // At this point the IR is almost using only standard and affine dialects.
     // A few things remain before we emit LLVM IR. First to reuse as much of
     // MLIR as possible we will try to lower everything to the standard and/or
@@ -432,9 +431,4 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
 
 namespace toy {
 Pass *createLateLoweringPass() { return new LateLoweringPass(); }
-
-std::unique_ptr<DialectConversion> makeToyLateLowering() {
-  return llvm::make_unique<LateLowering>();
-}
-
 } // namespace toy

@@ -45,15 +45,8 @@ mlir::Type convertLinalgType(mlir::Type t);
 /// dialect to the LLVM IR dialect. The LLVM IR dialect must be registered. This
 /// function can be used to apply multiple conversion patterns in the same pass.
 /// It does not have to be called explicitly before the conversion.
-void getDescriptorConverters(mlir::OwningRewritePatternList &patterns,
-                             mlir::MLIRContext *context);
-
-/// Create a DialectConversion from the Linalg dialect to the LLVM IR dialect.
-/// The conversion is set up to convert types and function signatures using
-/// `convertLinalgType` and obtains operation converters by calling `initer`.
-std::unique_ptr<mlir::DialectConversion> makeLinalgToLLVMLowering(
-    std::function<void(mlir::OwningRewritePatternList &, mlir::MLIRContext *)>
-        initer);
+void populateLinalg1ToLLVMConversionPatterns(
+    mlir::OwningRewritePatternList &patterns, mlir::MLIRContext *context);
 
 /// Convert the Linalg dialect types and RangeOp, ViewOp and SliceOp operations
 /// to the LLVM IR dialect types and operations in the given `module`.  This is

@@ -19,6 +19,7 @@
 #define MLIR_LLVMIR_TRANSFORMS_H_
 
 #include <memory>
+#include <vector>
 
 namespace llvm {
 class Module;
@@ -26,16 +27,20 @@ class Module;
 
 namespace mlir {
 class DialectConversion;
+class LLVMTypeConverter;
 class Module;
 class ModulePassBase;
+class RewritePattern;
 class Type;
+
+using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 
 /// Creates a pass to convert Standard dialects into the LLVMIR dialect.
 ModulePassBase *createConvertToLLVMIRPass();
 
-/// Creates a dialect converter from the standard dialect to the LLVM IR
-/// dialect and transfers ownership to the caller.
-std::unique_ptr<DialectConversion> createStdToLLVMConverter();
+/// Collect a set of patterns to convert from the Standard dialect to LLVM.
+void populateStdToLLVMConversionPatterns(LLVMTypeConverter &converter,
+                                         OwningRewritePatternList &patterns);
 
 namespace LLVM {
 /// Make argument-taking successors of each block distinct.  PHI nodes in LLVM

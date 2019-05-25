@@ -37,15 +37,16 @@ namespace mlir {
 namespace LLVM {
 class LLVMDialect;
 class LLVMType;
-}
+} // namespace LLVM
 
-/// Conversion from the Standard dialect to the LLVM IR dialect.  Provides hooks
-/// for derived classes to extend the conversion.
-class LLVMLowering : public DialectConversion {
+/// Conversion from types in the Standard dialect to the LLVM IR dialect.
+class LLVMTypeConverter : public TypeConverter {
 public:
+  LLVMTypeConverter(MLIRContext *ctx);
+
   /// Convert types to LLVM IR.  This calls `convertAdditionalType` to convert
   /// non-standard or non-builtin types.
-  Type convertType(Type t) override final;
+  Type convertType(Type t) override;
 
   /// Convert a non-empty list of types to be returned from a function into a
   /// supported LLVM IR type.  In particular, if more than one values is
@@ -60,22 +61,6 @@ public:
   LLVM::LLVMDialect *getDialect() { return llvmDialect; }
 
 protected:
-  /// Add a set of converters to the given pattern list. Store the module
-  /// associated with the dialect for further type conversion.
-  void initConverters(OwningRewritePatternList &patterns,
-                      MLIRContext *mlirContext) override final;
-
-  /// Derived classes can override this function to initialize custom converters
-  /// in addition to the existing converters from Standard operations.  It will
-  /// be called after the `module` and `llvmDialect` have been made available.
-  virtual void initAdditionalConverters(OwningRewritePatternList &patterns) {}
-
-  /// Derived classes can override this function to convert custom types.  It
-  /// will be called by convertType if the default conversion from standard and
-  /// builtin types fails.  Derived classes can thus call convertType whenever
-  /// they need type conversion that supports both default and custom types.
-  virtual Type convertAdditionalType(Type t) { return t; }
-
   /// Convert function signatures to LLVM IR.  In particular, convert functions
   /// with multiple results into functions returning LLVM IR's structure type.
   /// Use `convertType` to convert individual argument and result types.
@@ -83,8 +68,6 @@ protected:
       FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
       SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) override final;
 
-  /// Storage for the conversion patterns.
-  llvm::BumpPtrAllocator converterStorage;
   /// LLVM IR module used to parse/create types.
   llvm::Module *module;
   LLVM::LLVMDialect *llvmDialect;
@@ -138,12 +121,12 @@ private:
 class LLVMOpLowering : public ConversionPattern {
 public:
   LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
-                 LLVMLowering &lowering);
+                 LLVMTypeConverter &lowering);
 
 protected:
   // Back-reference to the lowering class, used to call type and function
   // conversions accounting for potential extensions.
-  LLVMLowering &lowering;
+  LLVMTypeConverter &lowering;
 };
 
 } // namespace mlir

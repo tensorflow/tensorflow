@@ -26,6 +26,7 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
+#include "mlir/LLVMIR/LLVMLowering.h"
 #include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -122,13 +123,23 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
   }
 };
 
+/// A type conversion class that converts Linalg and Std types to LLVM.
+struct LinalgTypeConverter : public LLVMTypeConverter {
+  using LLVMTypeConverter::LLVMTypeConverter;
+
+  // This gets called for block and region arguments, and attributes.
+  Type convertType(Type t) override {
+    if (auto result = LLVMTypeConverter::convertType(t))
+      return result;
+    return linalg::convertLinalgType(t);
+  }
+};
 } // end anonymous namespace
 
 // Helper function that allocates the descriptor converters and adds load/store
 // coverters to the list.
-static void getConversions(mlir::OwningRewritePatternList &patterns,
-                           mlir::MLIRContext *context) {
-  linalg::getDescriptorConverters(patterns, context);
+static void populateLinalg3ToLLVMConversionPatterns(
+    mlir::OwningRewritePatternList &patterns, mlir::MLIRContext *context) {
   RewriteListBuilder<LoadOpConversion, StoreOpConversion>::build(patterns,
                                                                  context);
 }
@@ -141,8 +152,15 @@ void linalg::convertLinalg3ToLLVM(Module &module) {
   (void)rr;
   assert(succeeded(rr) && "affine loop lowering failed");
 
-  auto lowering = makeLinalgToLLVMLowering(getConversions);
-  auto r = applyConverter(module, *lowering);
+  // Convert Linalg ops to the LLVM IR dialect using the converter defined
+  // above.
+  LinalgTypeConverter converter(module.getContext());
+  OwningRewritePatternList patterns;
+  populateStdToLLVMConversionPatterns(converter, patterns);
+  populateLinalg1ToLLVMConversionPatterns(patterns, module.getContext());
+  populateLinalg3ToLLVMConversionPatterns(patterns, module.getContext());
+
+  auto r = applyConversionPatterns(module, converter, std::move(patterns));
   (void)r;
   assert(succeeded(r) && "conversion failed");
 }

@@ -227,16 +227,16 @@ void ConversionPattern::rewrite(Operation *op,
 //===----------------------------------------------------------------------===//
 namespace {
 // This class converts a single function using the given pattern matcher. If a
-// DialectConversion object is also provided, then the types of block arguments
-// will be converted using the appropriate 'convertType' calls.
+// TypeConverter object is provided, then the types of block arguments will be
+// converted using the appropriate 'convertType' calls.
 class FunctionConverter {
 public:
   explicit FunctionConverter(MLIRContext *ctx, RewritePatternMatcher &matcher,
-                             DialectConversion *conversion = nullptr)
-      : dialectConversion(conversion), matcher(matcher) {}
+                             TypeConverter *conversion = nullptr)
+      : typeConverter(conversion), matcher(matcher) {}
 
   /// Converts the given function to the dialect using hooks defined in
-  /// `dialectConversion`. Returns failure on error, success otherwise.
+  /// `typeConverter`. Returns failure on error, success otherwise.
   LogicalResult convertFunction(Function *f);
 
   /// Converts the given region starting from the entry block and following the
@@ -260,7 +260,7 @@ public:
                                 BlockArgument *arg, Location loc);
 
   /// Pointer to a specific dialect conversion info.
-  DialectConversion *dialectConversion;
+  TypeConverter *typeConverter;
 
   /// The matcher to use when converting operations.
   RewritePatternMatcher &matcher;
@@ -270,7 +270,7 @@ public:
 LogicalResult
 FunctionConverter::convertArgument(DialectConversionRewriter &rewriter,
                                    BlockArgument *arg, Location loc) {
-  auto convertedType = dialectConversion->convertType(arg->getType());
+  auto convertedType = typeConverter->convertType(arg->getType());
   if (!convertedType)
     return arg->getContext()->emitError(loc)
            << "could not convert block argument of type : " << arg->getType();
@@ -322,7 +322,7 @@ FunctionConverter::convertRegion(DialectConversionRewriter &rewriter,
   // Create the arguments of each of the blocks in the region. If a type
   // converter was not provided, then we don't need to change any of the block
   // types.
-  if (dialectConversion) {
+  if (typeConverter) {
     for (Block &block : region)
       for (auto *arg : block.getArguments())
         if (failed(convertArgument(rewriter, arg, loc)))
@@ -362,12 +362,12 @@ LogicalResult FunctionConverter::convertFunction(Function *f) {
 }
 
 //===----------------------------------------------------------------------===//
-// DialectConversion
+// TypeConverter
 //===----------------------------------------------------------------------===//
 
 // Create a function type with arguments and results converted, and argument
 // attributes passed through.
-FunctionType DialectConversion::convertFunctionSignatureType(
+FunctionType TypeConverter::convertFunctionSignatureType(
     FunctionType type, ArrayRef<NamedAttributeList> argAttrs,
     SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) {
   SmallVector<Type, 8> arguments;
@@ -412,16 +412,15 @@ struct ConvertedFunction {
 };
 } // end anonymous namespace
 
-/// Convert the given module with the provided dialect conversion object.
-/// If conversion fails for a specific function, those functions remains
-/// unmodified.
-LogicalResult mlir::applyConverter(Module &module,
-                                   DialectConversion &converter) {
+/// Convert the given module with the provided conversion patterns and type
+/// conversion object. If conversion fails for specific functions, those
+/// functions remains unmodified.
+LogicalResult
+mlir::applyConversionPatterns(Module &module, TypeConverter &converter,
+                              OwningRewritePatternList &&patterns) {
   // Grab the conversion patterns from the converter and create the pattern
   // matcher.
   MLIRContext *context = module.getContext();
-  OwningRewritePatternList patterns;
-  converter.initConverters(patterns, context);
   RewritePatternMatcher matcher(std::move(patterns));
 
   // Try to convert each of the functions within the module. Defer updating the
