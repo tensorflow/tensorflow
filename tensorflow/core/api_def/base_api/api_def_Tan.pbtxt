@@ -1,4 +1,13 @@
 op {
   graph_op_name: "Tan"
   summary: "Computes tan of x element-wise."
+  description: << END
+  Given an input tensor, this function computes tangent of every
+  element in the tensor. Input range is (-infinity, infinity) and
+  output range is (-infinity, infinity).
+  ```python
+  x = tf.constant([-9, -0.5, 1, 1.2, 200, 10000])
+  tf.tan(x, name ='tan') ==> [ 0.45231566 -0.5463025   1.5574077   2.572152   -1.7925274   0.32097113]
+  ```
+EOD
 }

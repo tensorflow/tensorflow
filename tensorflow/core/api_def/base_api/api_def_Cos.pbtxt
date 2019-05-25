@@ -1,4 +1,13 @@
 op {
   graph_op_name: "Cos"
   summary: "Computes cos of x element-wise."
+  description: << END
+  Given an input tensor, this function computes cosine of every
+  element in the tensor. Input range is (-infinity, infinity) and
+  output range is [-1,1].
+  ```python
+  x = tf.constant([-9, -0.5, 1, 1.2, 200, 10000])
+  tf.cos(x) ==> [-0.91113025  0.87758255  0.5403023   0.3623577   0.48718768 -0.95215535]
+  ```
+END
 }
