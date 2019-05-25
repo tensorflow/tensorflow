@@ -652,7 +652,7 @@ class MklDnnShape {
         << "SetTfLayout2D: Number of dimensions does not"
            "match with dimension array";
     data_.dimension_ = dims;
-    for (size_t ii = 0; ii < dims; ii++) {
+    for (size_t ii = 0; ii < dims; ++ii) {
       data_.sizes_[ii] = sizes[ii];
     }
     data_.tf_data_format_ = format;

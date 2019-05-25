@@ -30,7 +30,6 @@ limitations under the License.
 // A𝑓32 is the original fp32 activation 2D tensor.
 // Min(A𝑓32) is the minimum scalar value of A𝑓32.
 // Max(A𝑓32) is the maximum scalar value of A𝑓32.
-// MaxAbs(A𝑓32) is the maximum absolute scalar value of A𝑓32.
 // Qa is the quantization scale for activation.
 // Au8 is the quantized unsigned int8 activation tensor.
 // With SCALE quantization (used for non-negative A𝑓32), Qa and Au8 can be
@@ -58,6 +57,7 @@ limitations under the License.
 // With MIN_FIRST quantization of activation, the scaled bias tensor with
 // compensation, B's32, is calculated as below:
 //      B's32 = Q'a * Qw * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1 * W𝑓32
+//            = Q'a * Qw * B𝑓32 + Q'a * Min(A𝑓32) * 1 * Ws8.
 // where, 1 denotes a row vector matching the outermost dim of W𝑓32.
 //
 // The QuantizedMatMulWithBias op calculates 32bit integer output as below:
@@ -76,14 +76,14 @@ limitations under the License.
 //         = Q'a * Qw * X𝑓32.
 //    Note that 1' * 1 = ones(A𝑓32).
 //
-// The QuantizedMatMulWithBiasAndRelu op does the same calucation as above
+// The QuantizedMatMulWithBiasAndRelu op does the same calculation as above
 // except adding relu function for the 32bit integer output.
 //
-// The QuantizedMatMulWithBiasAndReluAndRequantize op do one more requantize
-// calculation based on above. The requantize scale Qr is calculated from
-// offline calibration.
-//    Qr = 255 / MaxAbs(X𝑓32)
-//    Xu8 = Qr * Xs32
+// The QuantizedMatMulWithBiasAndReluAndRequantize op does one more step of
+// requantize calculation based on above. The requantize scale Qr is calculated
+// from offline calibration.
+//    Qr = 255 / Max(X𝑓32)
+//    Xu8 = Qr * X𝑓32
 //
 // More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
@@ -133,6 +133,7 @@ struct MklDnnMatMulFwdParams {
         bias_dims(bias_dims),
         dst_dims(dst_dims) {}
 };
+
 // With quantization, input, weight, bias, and output can have different types.
 // So we use different template parameters for each type.
 // TODO(intel-tf): The template type "T" is currently used to match the
@@ -210,7 +211,6 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     // Inner-product primitive
     std::shared_ptr<mkldnn::primitive> matmul_fwd;
-
     std::shared_ptr<mkldnn::stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
 
@@ -251,10 +251,8 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.fwd_desc.reset(new inner_product_forward::desc(
         prop_kind::forward_inference, *context_.src_md, *context_.weight_md,
         *context_.bias_md, *context_.dst_md));
-
     context_.fwd_pd.reset(new inner_product_forward::primitive_desc(
         *context_.fwd_desc, cpu_engine_));
-
     // Check if there is any fusion as post-ops
     auto const& post_op_params = matmul_fwd_params.post_op_params;
     mkldnn::primitive_attr post_ops_attr;
@@ -349,7 +347,6 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
             .SetMklDnnMatMulFwd(mkldnn_matmul_fwd_dims, matmul_fwd);
       }
     }
-
     return matmul_fwd;
   }
 
@@ -388,7 +385,6 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
         return string("not_a_key");
       }
     }
-
     return key_creator.GetKey();
   }
 
@@ -441,6 +437,10 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       mode_ = QUANTIZE_MODE_MIN_FIRST;
     } else if (mode_string == "SCALED") {
       mode_ = QUANTIZE_MODE_SCALED;
+    } else {
+      context->CtxFailure(errors::InvalidArgument(
+          "Quantization mode must be either MIN_FIRST or SCALED, but received ",
+          mode_string));
     }
   }
 
@@ -454,7 +454,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       MklDnnShape src_mkl_shape, weight_mkl_shape;
       GetMklShape(context, kInputIndexSrc, &src_mkl_shape);
       GetMklShape(context, kInputIndexWeight, &weight_mkl_shape);
-      OP_REQUIRES(context, weight_mkl_shape.IsMklTensor() == false,
+      OP_REQUIRES(context, !weight_mkl_shape.IsMklTensor(),
                   errors::InvalidArgument("Weight should not be in "
                                           "MKL Layout"));
 
@@ -564,26 +564,17 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
           context,
           errors::Aborted("Operation received an exception:", error_msg));
     }
-
-    // Compute additional outputs: min/max scalars.
-    const float min_input = context->input(3).flat<float>()(0);
-    const float max_input = context->input(4).flat<float>()(0);
-    const float min_weight = context->input(5).flat<float>()(0);
-    const float max_weight = context->input(6).flat<float>()(0);
-
     float min_output_value;
     float max_output_value;
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
       // This is the case the inner-product and requantization are fused.
-      // "min_freezed_output" and "max_freezed_output" are the actual range
-      // for the output
+      // "min_freezed_output" and "max_freezed_output" are the requested range
+      // for the output.
       min_output_value = context->input(7).flat<float>()(0);
       max_output_value = context->input(8).flat<float>()(0);
     } else {
-      MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
-          min_input, max_input, min_weight, max_weight, &min_output_value,
-          &max_output_value);
+      ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
     }
 
     Tensor* output_min = nullptr;
@@ -600,6 +591,18 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
   }
 
  protected:
+  void ComputeOutputRangeForInt32(OpKernelContext* context,
+                                  float* min_output_value,
+                                  float* max_output_value) {
+    const float min_input = context->input(3).flat<float>()(0);
+    const float max_input = context->input(4).flat<float>()(0);
+    const float min_weight = context->input(5).flat<float>()(0);
+    const float max_weight = context->input(6).flat<float>()(0);
+    MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
+        min_input, max_input, min_weight, max_weight, min_output_value,
+        max_output_value);
+  }
+
   virtual void ExtendMklDnnMatMulFwdParams(OpKernelContext* context,
                                            MklDnnMatMulFwdParams& params) {
     // Append data type names of input, weight, bias, and output.
@@ -612,20 +615,13 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
     // quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
         std::is_same<Toutput, qint8>::value) {
-      const float min_input = context->input(3).flat<float>()(0);
-      const float max_input = context->input(4).flat<float>()(0);
-      const float min_weight = context->input(5).flat<float>()(0);
-      const float max_weight = context->input(6).flat<float>()(0);
-      const float min_freezed_output = context->input(7).flat<float>()(0);
-      const float max_freezed_output = context->input(8).flat<float>()(0);
-
       float min_output_value;
       float max_output_value;
-      MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
-          min_input, max_input, min_weight, max_weight, &min_output_value,
-          &max_output_value);
+      ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
       float scale_int32 =
           std::max(std::abs(min_output_value), std::abs(max_output_value));
+      const float min_freezed_output = context->input(7).flat<float>()(0);
+      const float max_freezed_output = context->input(8).flat<float>()(0);
       float scale_eightbit =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
       float scale = 1.0;
@@ -642,7 +638,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
 
   // This function handles bias conversion and compensation for MIN_FIRST and
   // SCALE mode. If input is quantized via MIN_FIRST,
-  //   Bs32 = Qa * Qw * B𝑓32 + Qa * Min(A𝑓32) Ws8 * 1.
+  //  B's32 = Q'a * Qw * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1 * W𝑓32
   // If input is quantized via SCALE,
   //   Bs32 = Qa * Qw * B𝑓32.
   Tbias* GetBiasHandle(
@@ -650,7 +646,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
           mkldnn_matmul_fwd_pd,
       const Tensor& bias_tensor, const Tensor& weight_tensor) {
-    // If the bias is int32, it means the bias is already converted offline.
+    // If the bias is qint32, it means the bias is already converted offline.
     // and it can be added to matmul output directly.
     if (std::is_same<Tbias, qint32>::value) {
       return static_cast<Tbias*>(
@@ -664,8 +660,9 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
 
       std::vector<mkldnn::primitive> net;
       float out_scale;
-      // If the bias is float and input quantize is MIN_FIRST bias has to be
-      // compensated with Bs32 = Qa * Qw * B𝑓32 + Qa * Min(A𝑓32) Ws8 * 1.
+      // If the bias is float and input quantize is MIN_FIRST, bias has to be
+      // compensated with B's32 = Q'a * Qw * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1 *
+      // W𝑓32.
       if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
         int k = weight_tensor.dim_size(0);
         int n = weight_tensor.dim_size(1);
@@ -695,12 +692,11 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
 
         return reinterpret_cast<Tbias*>(comp_bias_);
 
-      } else {
+      } else if (mode_ == QUANTIZE_MODE_SCALED) {
         // If the bias is float and input quantize is SCALE, bias has to be
         // compensated with Bs32 = Qa * Qw * Bf32.
-        out_scale = 255.0 * 127.0 /
-                    (std::max(std::abs(max_input), std::abs(min_input)) *
-                     std::max(std::abs(max_weight), std::abs(min_weight)));
+        out_scale = 255.0 * 127.0 / max_input *
+                    std::max(std::abs(max_weight), std::abs(min_weight));
 
         std::vector<float> scales;
         scales.push_back(out_scale);
@@ -719,6 +715,10 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
             mkldnn::reorder(reorder_desc, *input_bias_, *scaled_bias_));
         stream(stream::kind::eager).submit(net).wait();
         return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
+      } else {
+        context->CtxFailure(
+            errors::InvalidArgument("Quantization mode must be"
+                                    "either MIN_FIRST or SCALED."));
       }
     }
   }
@@ -756,7 +756,9 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
   // Buffer to save the compensated bias
   float* comp_bias_ = nullptr;
 
-  const int kInputIndexSrc = 0, kInputIndexWeight = 1, kInputIndexBias = 2;
+  const int kInputIndexSrc = 0;
+  const int kInputIndexWeight = 1;
+  const int kInputIndexBias = 2;
   const int kOutputIndexDst = 0;
 
   int mode_;
@@ -821,7 +823,6 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRelu")
                             .TypeConstraint<qint8>("T2")
                             .TypeConstraint<qint32>("Toutput"),
                         NoOp);
-
 // Register NoOp kernel for QuantizedIPWithBiasAndReluAndRequantize
 // to get a python interface. This kernel will be replaced by an MKL kernel
 // during graph-optimization pass.
@@ -829,14 +830,7 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndReluAndRequantize")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T1")
                             .TypeConstraint<qint8>("T2")
-                            .TypeConstraint<qint32>("Tbias")
-                            .TypeConstraint<quint8>("Toutput"),
-                        NoOp);
-REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndReluAndRequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T1")
-                            .TypeConstraint<qint8>("T2")
-                            .TypeConstraint<float>("Tbias")
+                            .TypeConstraint("Tbias", {DT_QINT32, DT_FLOAT})
                             .TypeConstraint<quint8>("Toutput"),
                         NoOp);
 
@@ -849,7 +843,6 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<qint32>("Toutput")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklDnnQuantizedMatMulReluOp<CPUDevice, quint8, qint8, float, qint32>);
-
 // Register a templatized implementation of
 // _MklQuantizedMatMulWithBiasAndReluAndRequantize.
 REGISTER_KERNEL_BUILDER(
@@ -872,4 +865,5 @@ REGISTER_KERNEL_BUILDER(
     MklDnnQuantizedMatMulReluOp<CPUDevice, quint8, qint8, float, quint8>);
 
 }  // namespace tensorflow
+
 #endif  // INTEL_MKL
