@@ -977,7 +977,31 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):  
               'keras.losses.kullback_leibler_divergence',
               'keras.losses.kld',
               'keras.losses.KLD')
-def kullback_leibler_divergence(y_true, y_pred):  # pylint: disable=missing-docstring
+def kullback_leibler_divergence(y_true, y_pred):
+  """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
+
+  `loss = y_true * log(y_true / y_pred)`
+
+  See: https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
+
+  Usage:
+
+  ```python
+  loss = tf.keras.losses.KLD([.4, .9, .2], [.5, .8, .12])
+  print('Loss: ', loss.numpy())  # Loss: 0.11891246
+  ```
+
+  Args:
+    y_true: Tensor of true targets.
+    y_pred: Tensor of predicted targets.
+
+  Returns:
+    A `Tensor` with loss.
+
+  Raises:
+      TypeError: If `y_true` cannot be cast to the `y_pred.dtype`.
+
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = K.clip(y_true, K.epsilon(), 1)
