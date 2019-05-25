@@ -946,12 +946,12 @@ void OpEmitter::genVerifier() {
                     &fctx.withSelf("this->getOperation()->get" +
                                    Twine(isOperand ? "Operand" : "Result") +
                                    "(" + Twine(index) + ")->getType()"))
-           << "))\n";
+           << ")) {\n";
       body << "    return emitOpError(\"" << (isOperand ? "operand" : "result")
            << " #" << index
            << (description.empty() ? " type precondition failed"
                                    : " must be " + Twine(description))
-           << "\");\n";
+           << "\");\n  }\n";
     }
   };
 
