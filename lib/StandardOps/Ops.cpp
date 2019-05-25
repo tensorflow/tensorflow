@@ -81,7 +81,7 @@ template <typename T> static LogicalResult verifyCastOp(T op) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
-  addOperations<CondBranchOp, DmaStartOp, DmaWaitOp, LoadOp, StoreOp,
+  addOperations<CondBranchOp, DmaStartOp, DmaWaitOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -1698,23 +1698,15 @@ OpFoldResult ExtractElementOp::fold(ArrayRef<Attribute> operands) {
 // LoadOp
 //===----------------------------------------------------------------------===//
 
-void LoadOp::build(Builder *builder, OperationState *result, Value *memref,
-                   ArrayRef<Value *> indices) {
-  auto memrefType = memref->getType().cast<MemRefType>();
-  result->addOperands(memref);
-  result->addOperands(indices);
-  result->types.push_back(memrefType.getElementType());
-}
-
-void LoadOp::print(OpAsmPrinter *p) {
-  *p << "load " << *getMemRef() << '[';
-  p->printOperands(getIndices());
+static void print(OpAsmPrinter *p, LoadOp op) {
+  *p << "load " << *op.getMemRef() << '[';
+  p->printOperands(op.getIndices());
   *p << ']';
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getMemRefType();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getMemRefType();
 }
 
-ParseResult LoadOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType type;
@@ -1730,23 +1722,16 @@ ParseResult LoadOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->addTypeToList(type.getElementType(), result->types));
 }
 
-LogicalResult LoadOp::verify() {
-  if (getNumOperands() == 0)
-    return emitOpError("expected a memref to load from");
+static LogicalResult verify(LoadOp op) {
+  if (op.getType() != op.getMemRefType().getElementType())
+    return op.emitOpError("result type must match element type of memref");
 
-  auto memRefType = getMemRef()->getType().dyn_cast<MemRefType>();
-  if (!memRefType)
-    return emitOpError("first operand must be a memref");
+  if (op.getMemRefType().getRank() != op.getNumOperands() - 1)
+    return op.emitOpError("incorrect number of indices for load");
 
-  if (getType() != memRefType.getElementType())
-    return emitOpError("result type must match element type of memref");
-
-  if (memRefType.getRank() != getNumOperands() - 1)
-    return emitOpError("incorrect number of indices for load");
-
-  for (auto *idx : getIndices())
+  for (auto *idx : op.getIndices())
     if (!idx->getType().isIndex())
-      return emitOpError("index to load must have 'index' type");
+      return op.emitOpError("index to load must have 'index' type");
 
   // TODO: Verify we have the right number of indices.
 
@@ -1982,24 +1967,16 @@ OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
 // StoreOp
 //===----------------------------------------------------------------------===//
 
-void StoreOp::build(Builder *builder, OperationState *result,
-                    Value *valueToStore, Value *memref,
-                    ArrayRef<Value *> indices) {
-  result->addOperands(valueToStore);
-  result->addOperands(memref);
-  result->addOperands(indices);
-}
-
-void StoreOp::print(OpAsmPrinter *p) {
-  *p << "store " << *getValueToStore();
-  *p << ", " << *getMemRef() << '[';
-  p->printOperands(getIndices());
+static void print(OpAsmPrinter *p, StoreOp op) {
+  *p << "store " << *op.getValueToStore();
+  *p << ", " << *op.getMemRef() << '[';
+  p->printOperands(op.getIndices());
   *p << ']';
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << getMemRefType();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.getMemRefType();
 }
 
-ParseResult StoreOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType storeValueInfo;
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
@@ -2018,25 +1995,18 @@ ParseResult StoreOp::parse(OpAsmParser *parser, OperationState *result) {
       parser->resolveOperands(indexInfo, affineIntTy, result->operands));
 }
 
-LogicalResult StoreOp::verify() {
-  if (getNumOperands() < 2)
-    return emitOpError("expected a value to store and a memref");
-
-  // Second operand is a memref type.
-  auto memRefType = getMemRef()->getType().dyn_cast<MemRefType>();
-  if (!memRefType)
-    return emitOpError("second operand must be a memref");
-
+static LogicalResult verify(StoreOp op) {
   // First operand must have same type as memref element type.
-  if (getValueToStore()->getType() != memRefType.getElementType())
-    return emitOpError("first operand must have same type memref element type");
+  if (op.getValueToStore()->getType() != op.getMemRefType().getElementType())
+    return op.emitOpError(
+        "first operand must have same type memref element type");
 
-  if (getNumOperands() != 2 + memRefType.getRank())
-    return emitOpError("store index operand count not equal to memref rank");
+  if (op.getNumOperands() != 2 + op.getMemRefType().getRank())
+    return op.emitOpError("store index operand count not equal to memref rank");
 
-  for (auto *idx : getIndices())
+  for (auto *idx : op.getIndices())
     if (!idx->getType().isIndex())
-      return emitOpError("index to load must have 'index' type");
+      return op.emitOpError("index to load must have 'index' type");
 
   // TODO: Verify we have the right number of indices.
 

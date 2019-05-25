@@ -487,6 +487,45 @@ def ExtractElementOp : Std_Op<"extract_element", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
+def LoadOp : Std_Op<"load"> {
+  let summary = "load operation";
+  let description = [{
+    The "load" op reads an element from a memref specified by an index list. The
+    output of load is a new value with the same type as the elements of the
+    memref. The arity of indices is the rank of the memref (i.e., if the memref
+    loaded from is of rank 3, then 3 indices are required for the load following
+    the memref identifier). For example:
+
+      %3 = load %0[%1, %1] : memref<4x4xi32>
+  }];
+
+  let arguments = (ins AnyMemRef:$memref, Variadic<Index>:$indices);
+  let results = (outs AnyType);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState *result, Value *memref,"
+    "ArrayRef<Value *> indices = {}", [{
+      auto memrefType = memref->getType().cast<MemRefType>();
+      result->addOperands(memref);
+      result->addOperands(indices);
+      result->types.push_back(memrefType.getElementType());
+  }]>];
+
+  let extraClassDeclaration = [{
+    Value *getMemRef() { return getOperand(0); }
+    void setMemRef(Value *value) { setOperand(0, value); }
+    MemRefType getMemRefType() {
+      return getMemRef()->getType().cast<MemRefType>();
+    }
+
+    operand_range getIndices() {
+      return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
+    }
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
 def MemRefCastOp : CastOp<"memref_cast"> {
   let summary = "memref cast operation";
   let description = [{
@@ -614,6 +653,44 @@ def SubFOp : FloatArithmeticOp<"subf"> {
 def SubIOp : IntArithmeticOp<"subi"> {
   let summary = "integer subtraction operation";
   let hasFolder = 1;
+}
+
+def StoreOp : Std_Op<"store"> {
+  let summary = "store operation";
+  let description = [{
+    The "store" op writes an element to a memref specified by an index list.
+    The arity of indices is the rank of the memref (i.e. if the memref being
+    stored to is of rank 3, then 3 indices are required for the store following
+    the memref identifier). The store operation does not produce a result.
+
+    In the following example, the ssa value '%v' is stored in memref '%A' at
+    indices [%i, %j]:
+      store %v, %A[%i, %j] : memref<4x128xf32, (d0, d1) -> (d0, d1), 0>
+  }];
+
+  let arguments = (ins AnyType:$value, AnyMemRef:$memref, Variadic<Index>:$indices);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState *result, Value *valueToStore, Value *memref", [{
+      result->addOperands(valueToStore);
+      result->addOperands(memref);
+  }]>];
+
+  let extraClassDeclaration = [{
+      Value *getValueToStore() { return getOperand(0); }
+
+      Value *getMemRef() { return getOperand(1); }
+      void setMemRef(Value *value) { setOperand(1, value); }
+      MemRefType getMemRefType() {
+        return getMemRef()->getType().cast<MemRefType>();
+      }
+
+      operand_range getIndices() {
+        return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
+      }
+  }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TensorCastOp : CastOp<"tensor_cast"> {
