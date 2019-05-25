@@ -459,6 +459,12 @@ class NestedTupleOf<list<Type> allowedTypes> :
 // Common type constraints
 //===----------------------------------------------------------------------===//
 
+// Type constraint for bool-like types: bools, vectors of bools, tensors of
+// bools.
+def BoolLike : TypeConstraint<Or<[I1.predicate, VectorOf<[I1]>.predicate,
+                                  TensorOf<[I1]>.predicate]>,
+    "bool-like">;
+
 // Type constraint for integer-like types: integers, indices, vectors of
 // integers, tensors of integers.
 def IntegerLike : TypeConstraint<Or<[AnyInteger.predicate, Index.predicate,
@@ -824,6 +830,8 @@ def Commutative      : NativeOpTrait<"IsCommutative">;
 def FloatLikeResults : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.
 def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
+// Op has the same operand type.
+def SameOperandType  : NativeOpTrait<"SameTypeOperands">;
 // Op has same operand and result shape.
 def SameValueShape   : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.

@@ -37,9 +37,6 @@ public:
   StandardOpsDialect(MLIRContext *context);
 };
 
-#define GET_OP_CLASSES
-#include "mlir/StandardOps/Ops.h.inc"
-
 /// The predicate indicates the type of the comparison to perform:
 /// (in)equality; (un)signed less/greater than (or equal to).
 enum class CmpIPredicate {
@@ -59,49 +56,6 @@ enum class CmpIPredicate {
   UGE,
   // Number of predicates.
   NumPredicates
-};
-
-/// The "cmpi" operation compares its two operands according to the integer
-/// comparison rules and the predicate specified by the respective attribute.
-/// The predicate defines the type of comparison: (in)equality, (un)signed
-/// less/greater than (or equal to).  The operands must have the same type, and
-/// this type must be an integer type, a vector or a tensor thereof.  The result
-/// is an i1, or a vector/tensor thereof having the same shape as the inputs.
-/// Since integers are signless, the predicate also explicitly indicates
-/// whether to interpret the operands as signed or unsigned integers for
-/// less/greater than comparisons.  For the sake of readability by humans,
-/// custom assembly form for the operation uses a string-typed attribute for
-/// the predicate.  The value of this attribute corresponds to lower-cased name
-/// of the predicate constant, e.g., "slt" means "signed less than".  The string
-/// representation of the attribute is merely a syntactic sugar and is converted
-/// to an integer attribute by the parser.
-///
-///   %r1 = cmpi "eq" %0, %1 : i32
-///   %r2 = cmpi "slt" %0, %1 : tensor<42x42xi64>
-///   %r3 = "std.cmpi"(%0, %1){predicate: 0} : (i8, i8) -> i1
-class CmpIOp
-    : public Op<CmpIOp, OpTrait::OperandsAreIntegerLike,
-                OpTrait::SameTypeOperands, OpTrait::NOperands<2>::Impl,
-                OpTrait::OneResult, OpTrait::ResultsAreBoolLike,
-                OpTrait::SameOperandsAndResultShape, OpTrait::HasNoSideEffect> {
-public:
-  using Op::Op;
-
-  CmpIPredicate getPredicate() {
-    return (CmpIPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())
-        .getInt();
-  }
-
-  static StringRef getOperationName() { return "std.cmpi"; }
-  static StringRef getPredicateAttrName() { return "predicate"; }
-  static CmpIPredicate getPredicateByName(StringRef name);
-
-  static void build(Builder *builder, OperationState *result, CmpIPredicate,
-                    Value *lhs, Value *rhs);
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  LogicalResult verify();
-  OpFoldResult fold(ArrayRef<Attribute> operands);
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -135,49 +89,8 @@ enum class CmpFPredicate {
   NumPredicates
 };
 
-/// The "cmpf" operation compares its two operands according to the float
-/// comparison rules and the predicate specified by the respective attribute.
-/// The predicate defines the type of comparison: (un)orderedness, (in)equality
-/// and signed less/greater than (or equal to) as well as predicates that are
-/// always true or false.  The operands must have the same type, and this type
-/// must be a float type, or a vector or tensor thereof.  The result is an i1,
-/// or a vector/tensor thereof having the same shape as the inputs. Unlike cmpi,
-/// the operands are always treated as signed. The u prefix indicates
-/// *unordered* comparison, not unsigned comparison, so "une" means unordered or
-/// not equal. For the sake of readability by humans, custom assembly form for
-/// the operation uses a string-typed attribute for the predicate.  The value of
-/// this attribute corresponds to lower-cased name of the predicate constant,
-/// e.g., "one" means "ordered not equal".  The string representation of the
-/// attribute is merely a syntactic sugar and is converted to an integer
-/// attribute by the parser.
-///
-///   %r1 = cmpf "oeq" %0, %1 : f32
-///   %r2 = cmpf "ult" %0, %1 : tensor<42x42xf64>
-///   %r3 = "std.cmpf"(%0, %1) {predicate: 0} : (f8, f8) -> i1
-class CmpFOp
-    : public Op<CmpFOp, OpTrait::OperandsAreFloatLike,
-                OpTrait::SameTypeOperands, OpTrait::NOperands<2>::Impl,
-                OpTrait::OneResult, OpTrait::ResultsAreBoolLike,
-                OpTrait::SameOperandsAndResultShape, OpTrait::HasNoSideEffect> {
-public:
-  using Op::Op;
-
-  CmpFPredicate getPredicate() {
-    return (CmpFPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())
-        .getInt();
-  }
-
-  static StringRef getOperationName() { return "std.cmpf"; }
-  static StringRef getPredicateAttrName() { return "predicate"; }
-  static CmpFPredicate getPredicateByName(StringRef name);
-
-  static void build(Builder *builder, OperationState *result, CmpFPredicate,
-                    Value *lhs, Value *rhs);
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  LogicalResult verify();
-  OpFoldResult fold(ArrayRef<Attribute> operands);
-};
+#define GET_OP_CLASSES
+#include "mlir/StandardOps/Ops.h.inc"
 
 /// The "cond_br" operation represents a conditional branch operation in a
 /// function. The operation takes variable number of operands and produces
@@ -571,36 +484,6 @@ public:
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-};
-
-/// The "select" operation chooses one value based on a binary condition
-/// supplied as its first operand. If the value of the first operand is 1, the
-/// second operand is chosen, otherwise the third operand is chosen. The second
-/// and the third operand must have the same type. The operation applies
-/// elementwise to vectors and tensors.  The shape of all arguments must be
-/// identical. For example, the maximum operation is obtained by combining
-/// "select" with "cmpi" as follows.
-///
-///   %2 = cmpi "gt" %0, %1 : i32         // %2 is i1
-///   %3 = select %2, %0, %1 : i32
-///
-class SelectOp : public Op<SelectOp, OpTrait::NOperands<3>::Impl,
-                           OpTrait::OneResult, OpTrait::HasNoSideEffect> {
-public:
-  using Op::Op;
-
-  static StringRef getOperationName() { return "std.select"; }
-  static void build(Builder *builder, OperationState *result, Value *condition,
-                    Value *trueValue, Value *falseValue);
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-  LogicalResult verify();
-
-  Value *getCondition() { return getOperand(0); }
-  Value *getTrueValue() { return getOperand(1); }
-  Value *getFalseValue() { return getOperand(2); }
-
-  OpFoldResult fold(ArrayRef<Attribute> operands);
 };
 
 /// The "store" op writes an element to a memref specified by an index list.

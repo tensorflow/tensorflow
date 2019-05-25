@@ -782,6 +782,8 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
   // Either both or neither type should be shaped.
   if (!sType1)
     return success(!sType2);
+  if (!sType2)
+    return failure();
 
   if (!sType1.hasRank() || !sType2.hasRank())
     return success();

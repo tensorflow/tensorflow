@@ -218,7 +218,7 @@ func @func_with_ops(i32, i32) {
 // Integer comparisons are not recognized for float types.
 func @func_with_ops(f32, f32) {
 ^bb0(%a : f32, %b : f32):
-  %r = cmpi "eq", %a, %b : f32 // expected-error {{op requires an integer or index type}}
+  %r = cmpi "eq", %a, %b : f32 // expected-error {{operand #0 must be integer-like}}
 }
 
 // -----
@@ -226,7 +226,7 @@ func @func_with_ops(f32, f32) {
 // Result type must be boolean like.
 func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
-  %r = "std.cmpi"(%a, %b) {predicate: 0} : (i32, i32) -> i32 // expected-error {{op requires a bool result type}}
+  %r = "std.cmpi"(%a, %b) {predicate: 0} : (i32, i32) -> i32 // expected-error {{op result #0 must be bool-like}}
 }
 
 // -----
@@ -259,7 +259,7 @@ func @func_with_ops(i32, i32, i32) {
 
 func @func_with_ops(i32, i32, i32) {
 ^bb0(%cond : i32, %t : i32, %f : i32):
-  // expected-error@+1 {{elemental type i1}}
+  // expected-error@+1 {{op operand #0 must be bool-like}}
   %r = "std.select"(%cond, %t, %f) : (i32, i32, i32) -> i32
 }
 
@@ -275,7 +275,7 @@ func @func_with_ops(i1, i32, i64) {
 
 func @func_with_ops(i1, vector<42xi32>, vector<42xi32>) {
 ^bb0(%cond : i1, %t : vector<42xi32>, %f : vector<42xi32>):
-  // expected-error@+1 {{requires the condition to have the same shape as arguments}}
+  // expected-error@+1 {{requires the same shape for all operands and results}}
   %r = "std.select"(%cond, %t, %f) : (i1, vector<42xi32>, vector<42xi32>) -> vector<42xi32>
 }
 
@@ -283,7 +283,7 @@ func @func_with_ops(i1, vector<42xi32>, vector<42xi32>) {
 
 func @func_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
 ^bb0(%cond : i1, %t : tensor<42xi32>, %f : tensor<?xi32>):
-  // expected-error@+1 {{'true' and 'false' arguments to be of the same type}}
+  // expected-error@+1 {{ op requires the same shape for all operands and results}}
   %r = "std.select"(%cond, %t, %f) : (i1, tensor<42xi32>, tensor<?xi32>) -> tensor<42xi32>
 }
 
@@ -291,7 +291,7 @@ func @func_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
 
 func @func_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
 ^bb0(%cond : tensor<?xi1>, %t : tensor<42xi32>, %f : tensor<42xi32>):
-  // expected-error@+1 {{requires the condition to have the same shape as arguments}}
+  // expected-error@+1 {{requires the same shape for all operands and results}}
   %r = "std.select"(%cond, %t, %f) : (tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) -> tensor<42xi32>
 }
 
@@ -566,13 +566,13 @@ func @cmpf_generic_no_predicate_attr(%a : f32, %b : f32) {
 // -----
 
 func @cmpf_wrong_type(%a : i32, %b : i32) {
-  %r = cmpf "oeq", %a, %b : i32 // expected-error {{op requires a float type}}
+  %r = cmpf "oeq", %a, %b : i32 // expected-error {{operand #0 must be floating-point-like}}
 }
 
 // -----
 
 func @cmpf_generic_wrong_result_type(%a : f32, %b : f32) {
-  // expected-error@+1 {{op requires a bool result type}}
+  // expected-error@+1 {{result #0 must be bool-like}}
   %r = "std.cmpf"(%a, %b) {predicate: 0} : (f32, f32) -> f32
 }
 

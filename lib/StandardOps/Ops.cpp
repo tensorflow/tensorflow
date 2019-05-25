@@ -81,8 +81,7 @@ template <typename T> static LogicalResult verifyCastOp(T op) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*name=*/"std", context) {
-  addOperations<CmpFOp, CmpIOp, CondBranchOp, DmaStartOp, DmaWaitOp, LoadOp,
-                SelectOp, StoreOp,
+  addOperations<CondBranchOp, DmaStartOp, DmaWaitOp, LoadOp, StoreOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -597,33 +596,6 @@ static Type getI1SameShape(Builder *build, Type type) {
   return res;
 }
 
-static inline bool isI1(Type type) {
-  return type.isa<IntegerType>() && type.cast<IntegerType>().getWidth() == 1;
-}
-
-template <typename Ty>
-static inline bool implCheckI1SameShape(Ty pattern, Type type) {
-  auto specificType = type.dyn_cast<Ty>();
-  if (!specificType)
-    return true;
-  if (specificType.getShape() != pattern.getShape())
-    return true;
-  return !isI1(specificType.getElementType());
-}
-
-// Checks if "type" has the same shape (scalar, vector or tensor) as "pattern"
-// and contains i1.
-static bool checkI1SameShape(Type pattern, Type type) {
-  if (pattern.isIntOrIndexOrFloat())
-    return !isI1(type);
-  if (auto patternTensorType = pattern.dyn_cast<TensorType>())
-    return implCheckI1SameShape(patternTensorType, type);
-  if (auto patternVectorType = pattern.dyn_cast<VectorType>())
-    return implCheckI1SameShape(patternVectorType, type);
-
-  llvm_unreachable("unsupported type");
-}
-
 //===----------------------------------------------------------------------===//
 // CmpIOp
 //===----------------------------------------------------------------------===//
@@ -665,21 +637,21 @@ CmpIPredicate CmpIOp::getPredicateByName(StringRef name) {
       .Default(CmpIPredicate::NumPredicates);
 }
 
-void CmpIOp::build(Builder *build, OperationState *result,
-                   CmpIPredicate predicate, Value *lhs, Value *rhs) {
+static void buildCmpIOp(Builder *build, OperationState *result,
+                        CmpIPredicate predicate, Value *lhs, Value *rhs) {
   result->addOperands({lhs, rhs});
   result->types.push_back(getI1SameShape(build, lhs->getType()));
   result->addAttribute(
-      getPredicateAttrName(),
+      CmpIOp::getPredicateAttrName(),
       build->getI64IntegerAttr(static_cast<int64_t>(predicate)));
 }
 
-ParseResult CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCmpIOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   SmallVector<NamedAttribute, 4> attrs;
   Attribute predicateNameAttr;
   Type type;
-  if (parser->parseAttribute(predicateNameAttr, getPredicateAttrName(),
+  if (parser->parseAttribute(predicateNameAttr, CmpIOp::getPredicateAttrName(),
                              attrs) ||
       parser->parseComma() || parser->parseOperandList(ops, 2) ||
       parser->parseOptionalAttributeDict(attrs) ||
@@ -693,7 +665,7 @@ ParseResult CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Rewrite string attribute to an enum value.
   StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
-  auto predicate = getPredicateByName(predicateName);
+  auto predicate = CmpIOp::getPredicateByName(predicateName);
   if (predicate == CmpIPredicate::NumPredicates)
     return parser->emitError(parser->getNameLoc())
            << "unknown comparison predicate \"" << predicateName << "\"";
@@ -711,36 +683,37 @@ ParseResult CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-void CmpIOp::print(OpAsmPrinter *p) {
+static void print(OpAsmPrinter *p, CmpIOp op) {
   *p << "cmpi ";
 
   auto predicateValue =
-      getAttrOfType<IntegerAttr>(getPredicateAttrName()).getInt();
+      op.getAttrOfType<IntegerAttr>(CmpIOp::getPredicateAttrName()).getInt();
   assert(predicateValue >= static_cast<int>(CmpIPredicate::FirstValidValue) &&
          predicateValue < static_cast<int>(CmpIPredicate::NumPredicates) &&
          "unknown predicate index");
-  Builder b(getContext());
+  Builder b(op.getContext());
   auto predicateStringAttr =
       b.getStringAttr(getCmpIPredicateNames()[predicateValue]);
   p->printAttribute(predicateStringAttr);
 
   *p << ", ";
-  p->printOperand(getOperand(0));
+  p->printOperand(op.lhs());
   *p << ", ";
-  p->printOperand(getOperand(1));
-  p->printOptionalAttrDict(getAttrs(),
-                           /*elidedAttrs=*/{getPredicateAttrName()});
-  *p << " : " << getOperand(0)->getType();
+  p->printOperand(op.rhs());
+  p->printOptionalAttrDict(op.getAttrs(),
+                           /*elidedAttrs=*/{CmpIOp::getPredicateAttrName()});
+  *p << " : " << op.lhs()->getType();
 }
 
-LogicalResult CmpIOp::verify() {
-  auto predicateAttr = getAttrOfType<IntegerAttr>(getPredicateAttrName());
+static LogicalResult verify(CmpIOp op) {
+  auto predicateAttr =
+      op.getAttrOfType<IntegerAttr>(CmpIOp::getPredicateAttrName());
   if (!predicateAttr)
-    return emitOpError("requires an integer attribute named 'predicate'");
+    return op.emitOpError("requires an integer attribute named 'predicate'");
   auto predicate = predicateAttr.getInt();
   if (predicate < (int64_t)CmpIPredicate::FirstValidValue ||
       predicate >= (int64_t)CmpIPredicate::NumPredicates)
-    return emitOpError("'predicate' attribute value out of range");
+    return op.emitOpError("'predicate' attribute value out of range");
 
   return success();
 }
@@ -841,21 +814,21 @@ CmpFPredicate CmpFOp::getPredicateByName(StringRef name) {
       .Default(CmpFPredicate::NumPredicates);
 }
 
-void CmpFOp::build(Builder *build, OperationState *result,
-                   CmpFPredicate predicate, Value *lhs, Value *rhs) {
+static void buildCmpFOp(Builder *build, OperationState *result,
+                        CmpFPredicate predicate, Value *lhs, Value *rhs) {
   result->addOperands({lhs, rhs});
   result->types.push_back(getI1SameShape(build, lhs->getType()));
   result->addAttribute(
-      getPredicateAttrName(),
+      CmpFOp::getPredicateAttrName(),
       build->getI64IntegerAttr(static_cast<int64_t>(predicate)));
 }
 
-ParseResult CmpFOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCmpFOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> ops;
   SmallVector<NamedAttribute, 4> attrs;
   Attribute predicateNameAttr;
   Type type;
-  if (parser->parseAttribute(predicateNameAttr, getPredicateAttrName(),
+  if (parser->parseAttribute(predicateNameAttr, CmpFOp::getPredicateAttrName(),
                              attrs) ||
       parser->parseComma() || parser->parseOperandList(ops, 2) ||
       parser->parseOptionalAttributeDict(attrs) ||
@@ -869,7 +842,7 @@ ParseResult CmpFOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Rewrite string attribute to an enum value.
   StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
-  auto predicate = getPredicateByName(predicateName);
+  auto predicate = CmpFOp::getPredicateByName(predicateName);
   if (predicate == CmpFPredicate::NumPredicates)
     return parser->emitError(parser->getNameLoc(),
                              "unknown comparison predicate \"" + predicateName +
@@ -888,36 +861,37 @@ ParseResult CmpFOp::parse(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-void CmpFOp::print(OpAsmPrinter *p) {
+static void print(OpAsmPrinter *p, CmpFOp op) {
   *p << "cmpf ";
 
   auto predicateValue =
-      getAttrOfType<IntegerAttr>(getPredicateAttrName()).getInt();
+      op.getAttrOfType<IntegerAttr>(CmpFOp::getPredicateAttrName()).getInt();
   assert(predicateValue >= static_cast<int>(CmpFPredicate::FirstValidValue) &&
          predicateValue < static_cast<int>(CmpFPredicate::NumPredicates) &&
          "unknown predicate index");
-  Builder b(getContext());
+  Builder b(op.getContext());
   auto predicateStringAttr =
       b.getStringAttr(getCmpFPredicateNames()[predicateValue]);
   p->printAttribute(predicateStringAttr);
 
   *p << ", ";
-  p->printOperand(getOperand(0));
+  p->printOperand(op.lhs());
   *p << ", ";
-  p->printOperand(getOperand(1));
-  p->printOptionalAttrDict(getAttrs(),
-                           /*elidedAttrs=*/{getPredicateAttrName()});
-  *p << " : " << getOperand(0)->getType();
+  p->printOperand(op.rhs());
+  p->printOptionalAttrDict(op.getAttrs(),
+                           /*elidedAttrs=*/{CmpFOp::getPredicateAttrName()});
+  *p << " : " << op.lhs()->getType();
 }
 
-LogicalResult CmpFOp::verify() {
-  auto predicateAttr = getAttrOfType<IntegerAttr>(getPredicateAttrName());
+static LogicalResult verify(CmpFOp op) {
+  auto predicateAttr =
+      op.getAttrOfType<IntegerAttr>(CmpFOp::getPredicateAttrName());
   if (!predicateAttr)
-    return emitOpError("requires an integer attribute named 'predicate'");
+    return op.emitOpError("requires an integer attribute named 'predicate'");
   auto predicate = predicateAttr.getInt();
   if (predicate < (int64_t)CmpFPredicate::FirstValidValue ||
       predicate >= (int64_t)CmpFPredicate::NumPredicates)
-    return emitOpError("'predicate' attribute value out of range");
+    return op.emitOpError("'predicate' attribute value out of range");
 
   return success();
 }
@@ -1952,13 +1926,7 @@ static LogicalResult verify(ReturnOp op) {
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-void SelectOp::build(Builder *builder, OperationState *result, Value *condition,
-                     Value *trueValue, Value *falseValue) {
-  result->addOperands({condition, trueValue, falseValue});
-  result->addTypes(trueValue->getType());
-}
-
-ParseResult SelectOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseSelectOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<NamedAttribute, 4> attrs;
   Type type;
@@ -1979,25 +1947,20 @@ ParseResult SelectOp::parse(OpAsmParser *parser, OperationState *result) {
                  parser->addTypeToList(type, result->types));
 }
 
-void SelectOp::print(OpAsmPrinter *p) {
+static void print(OpAsmPrinter *p, SelectOp op) {
   *p << "select ";
-  p->printOperands(getOperation()->getOperands());
-  *p << " : " << getTrueValue()->getType();
-  p->printOptionalAttrDict(getAttrs());
+  p->printOperands(op.getOperands());
+  *p << " : " << op.getTrueValue()->getType();
+  p->printOptionalAttrDict(op.getAttrs());
 }
 
-LogicalResult SelectOp::verify() {
-  auto conditionType = getCondition()->getType();
-  auto trueType = getTrueValue()->getType();
-  auto falseType = getFalseValue()->getType();
+static LogicalResult verify(SelectOp op) {
+  auto trueType = op.getTrueValue()->getType();
+  auto falseType = op.getFalseValue()->getType();
 
   if (trueType != falseType)
-    return emitOpError(
+    return op.emitOpError(
         "requires 'true' and 'false' arguments to be of the same type");
-
-  if (checkI1SameShape(trueType, conditionType))
-    return emitOpError("requires the condition to have the same shape as "
-                       "arguments with elemental type i1");
 
   return success();
 }
