@@ -1383,7 +1383,7 @@ DenseElementsAttr Parser::parseDenseElementsAttr(ShapedType type) {
 ///
 ///   shaped-type ::= vector-type | tensor-type
 ///
-/// This method also checks the type has static shape and ranked.
+/// This method also checks the type has static shape.
 ShapedType Parser::parseShapedType() {
   auto elementType = parseType();
   if (!elementType)
@@ -1397,9 +1397,8 @@ ShapedType Parser::parseShapedType() {
   if (parseToken(Token::comma, "expected ','"))
     return nullptr;
 
-  if (!type.hasStaticShape() || type.getRank() == -1) {
-    return (emitError("shaped literal must be ranked and have static shape"),
-            nullptr);
+  if (!type.hasStaticShape()) {
+    return (emitError("shaped literal must have static shape"), nullptr);
   }
   return type;
 }

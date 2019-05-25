@@ -783,7 +783,7 @@ static LogicalResult verifyShapeMatch(Type type1, Type type2) {
   if (!sType1)
     return success(!sType2);
 
-  if (sType1.getRank() == -1 || sType2.getRank() == -1)
+  if (!sType1.hasRank() || !sType2.hasRank())
     return success();
 
   return success(sType1.getShape() == sType2.getShape());

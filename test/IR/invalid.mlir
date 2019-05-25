@@ -598,7 +598,7 @@ func @elementsattr_non_tensor_type() -> () {
 
 func @elementsattr_non_ranked() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<?xi32>, [4]>} : () -> () // expected-error {{shaped literal must be ranked and have static shape}}
+  "foo"(){bar: dense<tensor<?xi32>, [4]>} : () -> () // expected-error {{shaped literal must have static shape}}
 }
 
 // -----
