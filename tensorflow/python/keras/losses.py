@@ -667,7 +667,7 @@ class LogCosh(LossFunctionWrapper):
 
 @keras_export('keras.losses.KLDivergence')
 class KLDivergence(LossFunctionWrapper):
-  """Computes Kullback Leibler divergence loss between `y_true` and `y_pred`.
+  """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
 
   `loss = y_true * log(y_true / y_pred)`
 
@@ -678,7 +678,7 @@ class KLDivergence(LossFunctionWrapper):
   ```python
   k = tf.keras.losses.KLDivergence()
   loss = k([.4, .9, .2], [.5, .8, .12])
-  print('Loss: ', loss.numpy())  # Loss: -0.043
+  print('Loss: ', loss.numpy())  # Loss: 0.11891246
   ```
 
   Usage with tf.keras API:
