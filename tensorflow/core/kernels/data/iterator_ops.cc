@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -748,10 +749,13 @@ class ReduceDatasetOp : public AsyncOpKernel {
         delete raw_iterator;
         done();
       });
+      auto done = []() {};
 
       // Iterate through the input dataset.
       Status status;
       while (true) {
+        OP_REQUIRES_ASYNC(ctx, !ctx->cancellation_manager()->IsCancelled(),
+                          errors::Cancelled("Operation was cancelled"), done);
         std::vector<Tensor> next_input_element;
         bool end_of_input;
         status = raw_iterator->GetNext(&iter_ctx, &next_input_element,
