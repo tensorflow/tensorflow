@@ -79,7 +79,7 @@ void DiagnosticArgument::print(raw_ostream &os) const {
     os << getAsString();
     break;
   case DiagnosticArgumentKind::Type:
-    os << getAsType();
+    os << '\'' << getAsType() << '\'';
     break;
   case DiagnosticArgumentKind::Unsigned:
     os << getAsUnsigned();

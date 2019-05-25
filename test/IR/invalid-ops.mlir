@@ -34,7 +34,7 @@ func @constant() {
 
 func @constant_out_of_range() {
 ^bb:
-  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{requires attribute's type (i64) to match op's return type (i1)}}
+  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{requires attribute's type ('i64') to match op's return type ('i1')}}
   return
 }
 
@@ -42,7 +42,7 @@ func @constant_out_of_range() {
 
 func @constant_wrong_type() {
 ^bb:
-  %x = "std.constant"(){value: 10.} : () -> f32 // expected-error {{requires attribute's type (f64) to match op's return type (f32)}}
+  %x = "std.constant"(){value: 10.} : () -> f32 // expected-error {{requires attribute's type ('f64') to match op's return type ('f32')}}
   return
 }
 
