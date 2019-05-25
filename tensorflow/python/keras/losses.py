@@ -671,6 +671,8 @@ class KLDivergence(LossFunctionWrapper):
 
   `loss = y_true * log(y_true / y_pred)`
 
+  See: https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence
+
   Usage:
 
   ```python
