@@ -206,9 +206,6 @@ void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
   }
 
   switch (anchor->getTypeTransformRule()) {
-  default:
-    op->emitOpError("unsupported type transform rule");
-    break;
   case CAGAnchorNode::TypeTransformRule::Direct:
     anchor->getOp()->setOperand(anchor->getOperandIdx(), newTypedInputValue);
     break;
@@ -248,9 +245,6 @@ void InferQuantizedTypesPass::transformResultType(CAGResultAnchor *anchor,
   Value *replacedResultValue = nullptr;
   Value *newResultValue = nullptr;
   switch (anchor->getTypeTransformRule()) {
-  default:
-    op->emitOpError("unsupported type transform rule");
-    return;
   case CAGAnchorNode::TypeTransformRule::Direct:
     origResultValue->setType(newType);
     replacedResultValue = newResultValue = b.create<DequantizeCastOp>(

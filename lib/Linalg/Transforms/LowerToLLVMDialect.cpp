@@ -415,8 +415,7 @@ public:
       return positionAttr(rewriter, values);
     };
     // Helper function to obtain the ptr of the given `view`.
-    auto getViewPtr = [pos, &rewriter, this](ViewType type,
-                                             Value *view) -> Value * {
+    auto getViewPtr = [pos, this](ViewType type, Value *view) -> Value * {
       auto elementPtrTy = getPtrToElementType(type, lowering);
       return extractvalue(elementPtrTy, view, pos(0));
     };

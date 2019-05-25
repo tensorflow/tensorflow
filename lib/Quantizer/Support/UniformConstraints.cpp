@@ -124,7 +124,7 @@ private:
     os << "PropagateExplicitScale";
   }
   void propagate(SolverContext &solverContext,
-                 const TargetConfiguration &config) {
+                 const TargetConfiguration &config) override {
     DiscreteScaleZeroPointFact scaleZp;
 
     // Get scale/zp from all parents.
@@ -170,7 +170,7 @@ private:
   }
 
   void propagate(SolverContext &solverContext,
-                 const TargetConfiguration &config) {
+                 const TargetConfiguration &config) override {
     // First determine the required min/max range and type constraints.
     Location fusedLoc = UnknownLoc::get(&solverContext.getMlirContext());
     llvm::SmallBitVector enabledCandidateTypesMask(

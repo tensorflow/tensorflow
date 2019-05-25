@@ -26,8 +26,7 @@
 using namespace mlir;
 using namespace mlir::quantizer;
 
-TargetConfiguration::TargetConfiguration(SolverContext &context)
-    : context(context) {}
+TargetConfiguration::TargetConfiguration(SolverContext &context) {}
 
 void TargetConfiguration::addOpHandlerByName(StringRef name, OpHandlerFn fn) {
   opHandlers[name] = fn;

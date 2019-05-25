@@ -135,8 +135,6 @@ protected:
 private:
   void addRequireStatsOpByName(StringRef opName);
 
-  SolverContext &context;
-
   /// Vector of all candidate type constraints, indexed by ordinal.
   std::vector<CandidateQuantizedType> candidateTypes;
 

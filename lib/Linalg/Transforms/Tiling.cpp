@@ -50,22 +50,6 @@ static bool isZero(Value *v) {
          cast<ConstantIndexOp>(v->getDefiningOp()).getValue() == 0;
 }
 
-/// Returns a map that can be used to filter the zero values out of tileSizes.
-/// For example, if tileSizes contains `{v1, 0, v2}`, the returned map is:
-///
-/// ```{.mlir}
-///    (d0, d1, d2) -> (d0, d2)
-/// ```
-static AffineMap nonZeroMap(ArrayRef<Value *> tileSizes) {
-  SmallVector<AffineExpr, 4> exprs;
-  for (auto en : llvm::enumerate(tileSizes))
-    if (!isZero(en.value()))
-      exprs.push_back(getAffineDimExpr(en.index(), en.value()->getContext()));
-  assert(!exprs.empty() &&
-         "unexpected zero-only tile sizes, should have been handled earlier");
-  return AffineMap::get(tileSizes.size(), 0, exprs, {});
-}
-
 // Creates a number of ranges equal to the number of non-zero in `tileSizes`.
 // One for each loop of the LinalgOp that is tiled. The `tileSizes` argument has
 // one entry per surrounding loop. It uses zero as the convention that a

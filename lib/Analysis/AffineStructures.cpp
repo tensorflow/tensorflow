@@ -490,7 +490,8 @@ bool areIdsAligned(const FlatAffineConstraints &A,
 }
 
 /// Checks if the SSA values associated with `cst''s identifiers are unique.
-static bool areIdsUnique(const FlatAffineConstraints &cst) {
+static bool LLVM_ATTRIBUTE_UNUSED
+areIdsUnique(const FlatAffineConstraints &cst) {
   SmallPtrSet<Value *, 8> uniqueIds;
   for (auto id : cst.getIds()) {
     if (id.hasValue() && !uniqueIds.insert(id.getValue()).second)
