@@ -623,8 +623,8 @@ class Poisson(LossFunctionWrapper):
 
   ```python
   p = tf.keras.losses.Poisson()
-  loss = p([1, 9, 2], [4, 8, 12])
-  print('Loss: ', loss.numpy())  # Loss: -4.63
+  loss = p([1., 9., 2.], [4., 8., 12.])
+  print('Loss: ', loss.numpy())  # Loss: -0.35702705
   ```
 
   Usage with tf.keras API:
