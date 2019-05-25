@@ -6,8 +6,8 @@ op {
   element in the tensor. Input range is (-infinity, infinity) and
   output range is (-1,1).
   ```python
-  x = tf.constant([-5, -0.5, 1, 1.2, 2, 3])
-  [-0.99990916 -0.46211717  0.7615942   0.8336547   0.9640276   0.9950547 ]
+  x = tf.math.constant([-5, -0.5, 1, 1.2, 2, 3])
+  [-0.99990916 -0.46211717 0.7615942 0.8336547 0.9640276 0.9950547]
   ```
 END
 }
