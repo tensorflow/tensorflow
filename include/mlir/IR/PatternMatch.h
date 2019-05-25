@@ -184,12 +184,25 @@ public:
     return matchFailure();
   }
 
+  /// Return a list of operations that may be generated when rewriting an
+  /// operation instance with this pattern.
+  ArrayRef<OperationName> getGeneratedOps() const { return generatedOps; }
+
 protected:
   /// Patterns must specify the root operation name they match against, and can
   /// also specify the benefit of the pattern matching.
   RewritePattern(StringRef rootName, PatternBenefit benefit,
                  MLIRContext *context)
       : Pattern(rootName, benefit, context) {}
+  /// Patterns must specify the root operation name they match against, and can
+  /// also specify the benefit of the pattern matching. They can also specify
+  /// the names of operations that may be generated during a successful rewrite.
+  RewritePattern(StringRef rootName, ArrayRef<StringRef> generatedNames,
+                 PatternBenefit benefit, MLIRContext *context);
+
+  /// A list of the potential operations that may be generated when rewriting
+  /// an op with this pattern.
+  llvm::SmallVector<OperationName, 2> generatedOps;
 };
 
 //===----------------------------------------------------------------------===//

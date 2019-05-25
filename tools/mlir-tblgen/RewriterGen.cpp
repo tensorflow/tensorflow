@@ -153,6 +153,9 @@ private:
   // Emits the match() method.
   void emitMatchMethod(DagNode tree);
 
+  // Collects all of the operations within the given dag tree.
+  void collectOps(DagNode tree, llvm::SmallPtrSetImpl<const Operator *> &ops);
+
   // Emits the rewrite() method.
   void emitRewriteMethod();
 
@@ -443,6 +446,18 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
   os.indent(4) << "return matchSuccess(std::move(state));\n  }\n";
 }
 
+void PatternEmitter::collectOps(DagNode tree,
+                                llvm::SmallPtrSetImpl<const Operator *> &ops) {
+  // Check if this tree is an operation.
+  if (tree.isOperation())
+    ops.insert(&tree.getDialectOp(opMap));
+
+  // Recurse the arguments of the tree.
+  for (unsigned i = 0, e = tree.getNumArgs(); i != e; ++i)
+    if (auto child = tree.getArgAsNestedDag(i))
+      collectOps(child, ops);
+}
+
 void PatternEmitter::emit(StringRef rewriteName) {
   // Get the DAG tree for the source pattern
   DagNode tree = pattern.getSourcePattern();
@@ -454,14 +469,22 @@ void PatternEmitter::emit(StringRef rewriteName) {
     PrintFatalError(
         loc, "replacing op with variadic results not supported right now");
 
+  // Collect the set of result operations.
+  llvm::SmallPtrSet<const Operator *, 4> results;
+  for (unsigned i = 0, e = pattern.getNumResults(); i != e; ++i)
+    collectOps(pattern.getResultPattern(i), results);
+
   // Emit RewritePattern for Pattern.
   auto locs = pattern.getLocation();
   os << formatv("/* Generated from:\n\t{0:$[ instantiating\n\t]}\n*/\n",
                 make_range(locs.rbegin(), locs.rend()));
   os << formatv(R"(struct {0} : public RewritePattern {
-  {0}(MLIRContext *context) : RewritePattern("{1}", {2}, context) {{})",
-                rewriteName, rootName, pattern.getBenefit())
-     << "\n";
+  {0}(MLIRContext *context) : RewritePattern("{1}", {{)",
+                rewriteName, rootName);
+  interleaveComma(results, os, [&](const Operator *op) {
+    os << '"' << op->getOperationName() << '"';
+  });
+  os << formatv(R"(}, {0}, context) {{})", pattern.getBenefit()) << "\n";
 
   // Emit matched state.
   os << "  struct MatchedState : public PatternState {\n";

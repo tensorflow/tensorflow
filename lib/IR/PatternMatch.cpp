@@ -60,6 +60,20 @@ PatternMatchResult RewritePattern::match(Operation *op) const {
   llvm_unreachable("need to implement either match or matchAndRewrite!");
 }
 
+/// Patterns must specify the root operation name they match against, and can
+/// also specify the benefit of the pattern matching. They can also specify the
+/// names of operations that may be generated during a successful rewrite.
+RewritePattern::RewritePattern(StringRef rootName,
+                               ArrayRef<StringRef> generatedNames,
+                               PatternBenefit benefit, MLIRContext *context)
+    : Pattern(rootName, benefit, context) {
+  generatedOps.reserve(generatedNames.size());
+  std::transform(generatedNames.begin(), generatedNames.end(),
+                 std::back_inserter(generatedOps), [context](StringRef name) {
+                   return OperationName(name, context);
+                 });
+}
+
 PatternRewriter::~PatternRewriter() {
   // Out of line to provide a vtable anchor for the class.
 }

@@ -34,7 +34,7 @@ def : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
 
 // CHECK: struct GeneratedConvert0 : public RewritePattern
 
-// CHECK: GeneratedConvert0(MLIRContext *context) : RewritePattern("op_a", 1, context) {}
+// CHECK: GeneratedConvert0(MLIRContext *context) : RewritePattern("op_a", {"op_b"}, 1, context) {}
 
 // CHECK: struct MatchedState : public PatternState {
 // CHECK:   Value *input;

@@ -94,6 +94,10 @@ bool tblgen::DagNode::isNativeCodeCall() const {
   return false;
 }
 
+bool tblgen::DagNode::isOperation() const {
+  return !(isNativeCodeCall() || isVerifyUnusedValue() || isReplaceWithValue());
+}
+
 llvm::StringRef tblgen::DagNode::getNativeCodeTemplate() const {
   assert(isNativeCodeCall() && "the DAG leaf must be NativeCodeCall");
   return cast<llvm::DefInit>(node->getOperator())

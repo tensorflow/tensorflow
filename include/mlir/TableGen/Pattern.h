@@ -172,6 +172,9 @@ public:
   // Returns true if this DAG node is wrapping native code call.
   bool isNativeCodeCall() const;
 
+  // Returns true if this DAG node is an operation.
+  bool isOperation() const;
+
   // Returns the native code call template inside this DAG node.
   // Precondition: isNativeCodeCall()
   llvm::StringRef getNativeCodeTemplate() const;

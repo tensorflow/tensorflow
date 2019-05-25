@@ -26,9 +26,9 @@ def Z_AddOp : NS_Op<"add"> {
 def bena : Pat<(X_AddOp (X_AddOp $lhs, $rhs), $rhs), (Y_AddOp $lhs, $rhs, $rhs)>;
 
 // CHECK-LABEL: struct bena
-// CHECK: RewritePattern("x.add", 2, context) {}
+// CHECK: RewritePattern("x.add", {"x.add"}, 2, context) {}
 
 def benb : Pat<(X_AddOp $lhs, $rhs), (Z_AddOp $lhs), [(IfEqual $lhs, $rhs)], (addBenefit 100)>;
 
 // CHECK-LABEL: struct benb
-// CHECK: RewritePattern("x.add", 101, context) {}
+// CHECK: RewritePattern("x.add", {"x.add"}, 101, context) {}
