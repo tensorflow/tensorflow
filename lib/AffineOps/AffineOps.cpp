@@ -36,7 +36,7 @@ using llvm::dbgs;
 //===----------------------------------------------------------------------===//
 
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
-    : Dialect(/*name=*/"affine", context) {
+    : Dialect(getDialectNamespace(), context) {
   addOperations<AffineApplyOp, AffineForOp, AffineIfOp, AffineTerminatorOp>();
 }
 

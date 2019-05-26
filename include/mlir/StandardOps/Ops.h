@@ -35,6 +35,7 @@ class Builder;
 class StandardOpsDialect : public Dialect {
 public:
   StandardOpsDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "std"; }
 };
 
 /// The predicate indicates the type of the comparison to perform:

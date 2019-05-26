@@ -29,6 +29,7 @@ public:
   /// Create a new Dialect that is registered on construction and adds the
   /// relevant types and operations.
   explicit LinalgDialect(mlir::MLIRContext *context);
+  static llvm::StringRef getDialectNamespace() { return "linalg"; }
 
   /// Parse a type registered to this dialect.
   mlir::Type parseType(llvm::StringRef spec, mlir::Location loc) const override;

@@ -41,6 +41,7 @@ bool isTopLevelSymbol(Value *value);
 class AffineOpsDialect : public Dialect {
 public:
   AffineOpsDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "affine"; }
 };
 
 /// The "affine.apply" operation applies an affine map to a list of operands,

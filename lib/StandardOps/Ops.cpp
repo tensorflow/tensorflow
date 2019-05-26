@@ -80,7 +80,7 @@ template <typename T> static LogicalResult verifyCastOp(T op) {
 }
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
-    : Dialect(/*name=*/"std", context) {
+    : Dialect(getDialectNamespace(), context) {
   addOperations<CondBranchOp, DmaStartOp, DmaWaitOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
