@@ -2475,14 +2475,9 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
   builder.setInsertionPointToEnd(block);
 
   // Parse the list of operations that make up the body of the block.
-  while (getToken().isNot(Token::caret_identifier, Token::r_brace)) {
-    switch (getToken().getKind()) {
-    default:
-      if (parseOperation())
-        return failure();
-      break;
-    }
-  }
+  while (getToken().isNot(Token::caret_identifier, Token::r_brace))
+    if (parseOperation())
+      return failure();
 
   return success();
 }
