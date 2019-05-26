@@ -26,12 +26,12 @@ NOTE: this script is only used in opensource.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from builtins import bytes  # pylint: disable=redefined-builtin
 import argparse
 import json
 import os
 import shutil
 import subprocess
-from future.builtins import bytes
 
 
 def parse_branch_ref(filename):
