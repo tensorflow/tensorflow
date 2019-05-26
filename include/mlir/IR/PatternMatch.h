@@ -205,6 +205,53 @@ protected:
   llvm::SmallVector<OperationName, 2> generatedOps;
 };
 
+/// OpRewritePattern is a wrapper around RewritePattern that allows for
+/// matching and rewriting against an instance of a derived operation class as
+/// opposed to a raw Operation.
+template <typename SourceOp> struct OpRewritePattern : public RewritePattern {
+  /// Patterns must specify the root operation name they match against, and can
+  /// also specify the benefit of the pattern matching.
+  OpRewritePattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : RewritePattern(SourceOp::getOperationName(), benefit, context) {}
+
+  /// Wrappers around the RewritePattern methods that pass the derived op type.
+  void rewrite(Operation *op, std::unique_ptr<PatternState> state,
+               PatternRewriter &rewriter) const final {
+    rewrite(llvm::cast<SourceOp>(op), std::move(state), rewriter);
+  }
+  void rewrite(Operation *op, PatternRewriter &rewriter) const final {
+    rewrite(llvm::cast<SourceOp>(op), rewriter);
+  }
+  PatternMatchResult match(Operation *op) const final {
+    return match(llvm::cast<SourceOp>(op));
+  }
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const final {
+    return matchAndRewrite(llvm::cast<SourceOp>(op), rewriter);
+  }
+
+  /// Rewrite and Match methods that operate on the SourceOp type. These must be
+  /// overridden by the derived pattern class.
+  virtual void rewrite(SourceOp op, std::unique_ptr<PatternState> state,
+                       PatternRewriter &rewriter) const {
+    rewrite(op, rewriter);
+  }
+  virtual void rewrite(SourceOp op, PatternRewriter &rewriter) const {
+    llvm_unreachable("must override matchAndRewrite or a rewrite method");
+  }
+  virtual PatternMatchResult match(SourceOp op) const {
+    llvm_unreachable("must override match or matchAndRewrite");
+  }
+  virtual PatternMatchResult matchAndRewrite(SourceOp op,
+                                             PatternRewriter &rewriter) const {
+    if (auto matchResult = match(op)) {
+      rewrite(op, std::move(*matchResult), rewriter);
+      return matchSuccess();
+    }
+    return matchFailure();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // PatternRewriter class
 //===----------------------------------------------------------------------===//

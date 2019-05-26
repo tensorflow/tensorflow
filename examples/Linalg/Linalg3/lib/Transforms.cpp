@@ -248,12 +248,12 @@ namespace {
 /// mlir::StoreOp requires finding the proper indexing in the supporting MemRef.
 /// This is most easily achieved by calling emitAndReturnFullyComposedView to
 /// fold away all the SliceOp.
-template <typename LoadOrStoreOpTy> struct Rewriter : public RewritePattern {
-  explicit Rewriter(MLIRContext *context)
-      : RewritePattern(LoadOrStoreOpTy::getOperationName(), 1, context) {}
+template <typename LoadOrStoreOpTy>
+struct Rewriter : public OpRewritePattern<LoadOrStoreOpTy> {
+  using OpRewritePattern<LoadOrStoreOpTy>::OpRewritePattern;
 
   /// Performs the rewrite.
-  PatternMatchResult matchAndRewrite(Operation *op,
+  PatternMatchResult matchAndRewrite(LoadOrStoreOpTy op,
                                      PatternRewriter &rewriter) const override;
 };
 
@@ -270,9 +270,8 @@ struct LowerLinalgLoadStorePass
 
 template <>
 PatternMatchResult
-Rewriter<linalg::LoadOp>::matchAndRewrite(Operation *op,
+Rewriter<linalg::LoadOp>::matchAndRewrite(linalg::LoadOp load,
                                           PatternRewriter &rewriter) const {
-  auto load = cast<linalg::LoadOp>(op);
   SliceOp slice = dyn_cast<SliceOp>(load.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
                       : cast<ViewOp>(load.getView()->getDefiningOp());
@@ -280,15 +279,14 @@ Rewriter<linalg::LoadOp>::matchAndRewrite(Operation *op,
   ScopedContext scope(builder, load.getLoc());
   auto *memRef = view.getSupportingMemRef();
   auto operands = emitAndReturnLoadStoreOperands(load, view);
-  rewriter.replaceOpWithNewOp<mlir::LoadOp>(op, memRef, operands);
+  rewriter.replaceOpWithNewOp<mlir::LoadOp>(load, memRef, operands);
   return matchSuccess();
 }
 
 template <>
 PatternMatchResult
-Rewriter<linalg::StoreOp>::matchAndRewrite(Operation *op,
+Rewriter<linalg::StoreOp>::matchAndRewrite(linalg::StoreOp store,
                                            PatternRewriter &rewriter) const {
-  auto store = cast<linalg::StoreOp>(op);
   SliceOp slice = dyn_cast<SliceOp>(store.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
                       : cast<ViewOp>(store.getView()->getDefiningOp());
@@ -297,7 +295,7 @@ Rewriter<linalg::StoreOp>::matchAndRewrite(Operation *op,
   auto *valueToStore = store.getValueToStore();
   auto *memRef = view.getSupportingMemRef();
   auto operands = emitAndReturnLoadStoreOperands(store, view);
-  rewriter.replaceOpWithNewOp<mlir::StoreOp>(op, valueToStore, memRef,
+  rewriter.replaceOpWithNewOp<mlir::StoreOp>(store, valueToStore, memRef,
                                              operands);
   return matchSuccess();
 }

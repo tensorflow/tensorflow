@@ -38,26 +38,21 @@ namespace {
 
 /// Matches x -> [scast -> scast] -> y, replacing the second scast with the
 /// value of x if the casts invert each other.
-class RemoveRedundantStorageCastsRewrite : public RewritePattern {
+class RemoveRedundantStorageCastsRewrite
+    : public OpRewritePattern<StorageCastOp> {
 public:
-  RemoveRedundantStorageCastsRewrite(MLIRContext *context)
-      : RewritePattern(StorageCastOp::getOperationName(), 1, context) {}
+  using OpRewritePattern<StorageCastOp>::OpRewritePattern;
 
-  PatternMatchResult match(Operation *op) const override {
-    auto scastOp = cast<StorageCastOp>(op);
-    if (matchPattern(scastOp.arg(), m_Op<StorageCastOp>())) {
-      auto srcScastOp = cast<StorageCastOp>(scastOp.arg()->getDefiningOp());
-      if (srcScastOp.arg()->getType() == scastOp.getResult()->getType()) {
-        return matchSuccess();
-      }
-    }
-    return matchFailure();
-  }
+  PatternMatchResult matchAndRewrite(StorageCastOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (!matchPattern(op.arg(), m_Op<StorageCastOp>()))
+      return matchFailure();
+    auto srcScastOp = cast<StorageCastOp>(op.arg()->getDefiningOp());
+    if (srcScastOp.arg()->getType() != op.getType())
+      return matchFailure();
 
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    auto scastOp = cast<StorageCastOp>(op);
-    auto srcScastOp = cast<StorageCastOp>(scastOp.arg()->getDefiningOp());
     rewriter.replaceOp(op, srcScastOp.arg());
+    return matchSuccess();
   }
 };
 

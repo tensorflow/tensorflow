@@ -654,24 +654,21 @@ void mlir::canonicalizeMapAndOperands(
 namespace {
 /// Simplify AffineApply operations.
 ///
-struct SimplifyAffineApply : public RewritePattern {
-  SimplifyAffineApply(MLIRContext *context)
-      : RewritePattern(AffineApplyOp::getOperationName(), 1, context) {}
+struct SimplifyAffineApply : public OpRewritePattern<AffineApplyOp> {
+  using OpRewritePattern<AffineApplyOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op,
+  PatternMatchResult matchAndRewrite(AffineApplyOp apply,
                                      PatternRewriter &rewriter) const override {
-    auto apply = cast<AffineApplyOp>(op);
     auto map = apply.getAffineMap();
 
     AffineMap oldMap = map;
     SmallVector<Value *, 8> resultOperands(apply.getOperands());
     composeAffineMapAndOperands(&map, &resultOperands);
-    if (map != oldMap) {
-      rewriter.replaceOpWithNewOp<AffineApplyOp>(op, map, resultOperands);
-      return matchSuccess();
-    }
+    if (map == oldMap)
+      return matchFailure();
 
-    return matchFailure();
+    rewriter.replaceOpWithNewOp<AffineApplyOp>(apply, map, resultOperands);
+    return matchSuccess();
   }
 };
 } // end anonymous namespace.
@@ -1002,14 +999,11 @@ void AffineForOp::print(OpAsmPrinter *p) {
 
 namespace {
 /// This is a pattern to fold constant loop bounds.
-struct AffineForLoopBoundFolder : public RewritePattern {
-  /// The rootOpName is the name of the root operation to match against.
-  AffineForLoopBoundFolder(MLIRContext *context)
-      : RewritePattern(AffineForOp::getOperationName(), 1, context) {}
+struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
+  using OpRewritePattern<AffineForOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op,
+  PatternMatchResult matchAndRewrite(AffineForOp forOp,
                                      PatternRewriter &rewriter) const override {
-    auto forOp = cast<AffineForOp>(op);
     auto foldLowerOrUpperBound = [&forOp](bool lower) {
       // Check to see if each of the operands is the result of a constant.  If
       // so, get the value.  If not, ignore it.
@@ -1056,7 +1050,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
     // If any of the bounds were folded we return success.
     if (!folded)
       return matchFailure();
-    rewriter.updatedRootInPlace(op);
+    rewriter.updatedRootInPlace(forOp);
     return matchSuccess();
   }
 };
