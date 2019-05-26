@@ -28,6 +28,7 @@ set(LIBS
   MLIRPass
   MLIRQuantizerTransforms
   MLIRQuantOps
+  MLIRSPIRV
   MLIRStandardOps
   MLIRTransforms
   MLIRSupport
