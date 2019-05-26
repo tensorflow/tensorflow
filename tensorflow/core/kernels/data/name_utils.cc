@@ -23,7 +23,13 @@ namespace name_utils {
 ABSL_CONST_INIT const char kDelimiter[] = "::";
 
 string OpName(const string& dataset_type) {
-  if (dataset_type == "Map") {
+  if (dataset_type == "Concatenate") {
+    return "ConcatenateDataset";
+  } else if (dataset_type == "Filter") {
+    return "FilterDataset";
+  } else if (dataset_type == "FlatMap") {
+    return "FlatMapDataset";
+  } else if (dataset_type == "Map") {
     return "MapDataset";
   } else if (dataset_type == "Prefetch") {
     return "PrefetchDataset";
@@ -37,7 +43,7 @@ string OpName(const string& dataset_type) {
 string DatasetDebugString(const string& dataset_type,
                           std::initializer_list<StringPiece> args) {
   if (args.size() == 0) {
-    return strings::StrCat(dataset_type, "Op", kDelimiter, "Dataset");
+    return strings::StrCat(OpName(dataset_type), "Op", kDelimiter, "Dataset");
   }
 
   string debug_str;
