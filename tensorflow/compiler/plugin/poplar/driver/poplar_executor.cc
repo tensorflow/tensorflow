@@ -986,7 +986,7 @@ se::DeviceMemoryBase PoplarExecutor::ConstantOutputAllocation::GetAllocation(
   const auto& constant = constants_[output_index][flat_tensor_index];
   const int64 size(xla::ShapeUtil::ByteSizeOf(shape));
   se::DeviceMemoryBase allocated =
-      allocator->Allocate(ordinal, size, false).ConsumeValueOrDie().Forget();
+      allocator->Allocate(ordinal, size, false).ConsumeValueOrDie().Release();
   TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
   tc->size = size;
   tc->on_device = false;
@@ -1025,7 +1025,7 @@ se::DeviceMemoryBase PoplarExecutor::RemapOutputAllocation::GetAllocation(
     se::DeviceMemoryBase allocated =
         allocator->Allocate(ordinal, orig->size, false)
             .ConsumeValueOrDie()
-            .Forget();
+            .Release();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
 
     if (orig->on_device) {
@@ -1067,7 +1067,7 @@ se::DeviceMemoryBase PoplarExecutor::BufferOutputAllocation::GetAllocation(
   } else {
     // The output is not one of the inputs
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(ordinal, size, false).ConsumeValueOrDie().Forget();
+        allocator->Allocate(ordinal, size, false).ConsumeValueOrDie().Release();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
     tc->size = size;
     tc->on_device = output_info.IsStreaming() ? false : true;
@@ -1091,7 +1091,8 @@ se::DeviceMemoryBase PoplarExecutor::HandleOutputBuffer(
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(ordinal_, size, false).ConsumeValueOrDie().Forget();
+        allocator->Allocate(ordinal_, size, false)
+            .ConsumeValueOrDie().Release();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
 
     void** buf = reinterpret_cast<void**>(tc->data);
@@ -1141,7 +1142,8 @@ se::DeviceMemoryBase PoplarExecutor::GetOutputBuffer(
   }
   if (shape.IsTuple()) {
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(ordinal_, size, false).ConsumeValueOrDie().Forget();
+        allocator->Allocate(ordinal_, size, false)
+            .ConsumeValueOrDie().Release();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
     void** buf = reinterpret_cast<void**>(tc->data);
     for (void* ptr : ptrs) {

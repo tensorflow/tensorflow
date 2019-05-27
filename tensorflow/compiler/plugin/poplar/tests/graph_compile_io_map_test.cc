@@ -442,13 +442,13 @@ main {
 
   se::DeviceMemoryBase buf0 = allocator.Allocate(0, sizeof(float) * 2, false)
                                   .ConsumeValueOrDie()
-                                  .Forget();
+                                  .Release();
   se::DeviceMemoryBase buf1 = allocator.Allocate(0, sizeof(float) * 2, false)
                                   .ConsumeValueOrDie()
-                                  .Forget();
+                                  .Release();
   se::DeviceMemoryBase buf2 = allocator.Allocate(0, sizeof(float) * 2, false)
                                   .ConsumeValueOrDie()
-                                  .Forget();
+                                  .Release();
 
   float b0[2] = {1.0, 2.0};
   stream_executor->SynchronousMemcpyH2D(b0, sizeof(float) * 2, &buf0);
