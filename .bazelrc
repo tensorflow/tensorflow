@@ -101,6 +101,9 @@ build --spawn_strategy=standalone
 build --strategy=Genrule=standalone
 build -c opt
 
+# Make Bazel print out all options from rc files.
+build --announce_rc
+
 # Other build flags.
 build --define=grpc_no_ares=true
 
