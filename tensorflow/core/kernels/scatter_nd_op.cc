@@ -273,6 +273,7 @@ class ScatterNdUpdateOp : public OpKernel {
     if (dtype_ == DT_RESOURCE) {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      core::ScopedUnref scoped_unref(v);
       Tensor* t = v->tensor();
       params = *t;
       params_shape = params.shape();
