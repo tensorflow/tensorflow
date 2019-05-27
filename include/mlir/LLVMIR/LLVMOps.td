@@ -74,7 +74,7 @@ def LLVM_VoidResultTypeOpBuilder : OpBuilder<
   "Builder *builder, OperationState *result, Type resultType, "
   "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
   [{
-    auto llvmType = resultType.dyn_cast<LLVM::LLVMType>();
+    auto llvmType = resultType.dyn_cast<LLVM::LLVMType>(); (void)llvmType;
     assert(llvmType && "result must be an LLVM type");
     assert(llvmType.getUnderlyingType() &&
             llvmType.getUnderlyingType()->isVoidTy() &&
