@@ -318,13 +318,7 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 }
 
 bool IsSupportedActivation(const NodeDef& node) {
-// Temporarily disable fusing Relu6 and Elu if MKL is enabled.
-// TODO(Intel) Enable Relu6 and Elu fusion when MklConv2D supports them.
-#ifndef INTEL_MKL
   return IsRelu(node) || IsRelu6(node) || IsElu(node);
-#else
-  return IsRelu(node);
-#endif  // !INTEL_MKL
 }
 
 bool FindContractionWithBias(const RemapperContext& ctx,
@@ -885,8 +879,6 @@ void AddFusedContractionNode(
     absl::flat_hash_set<const NodeDef*>* invalidated_nodes) {
   // MKL version only support fusion for Conv2D
   DCHECK(IsConv2D(*matched.contraction));
-  // MKL version only support relu as activation
-  DCHECK(IsRelu(*matched.activation));
 
   NodeDef* fused_conv2d = optimized_graph->add_node();
   fused_conv2d->set_name(matched.activation->name());

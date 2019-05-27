@@ -198,6 +198,18 @@ class MklFusedConv2DOpTest : public OpsTestBase {
       next_op = ops::Relu(root.WithOpName(last_op), next_op);
     }
 
+    if (std::find(fused_ops.begin(), fused_ops.end(), "Relu6") !=
+        fused_ops.end()) {
+      last_op = "with_relu6";
+      next_op = ops::Relu(root.WithOpName(last_op), next_op);
+    }
+
+    if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
+        fused_ops.end()) {
+      last_op = "with_elu";
+      next_op = ops::Relu(root.WithOpName(last_op), next_op);
+    }
+
     CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
   }
 
@@ -251,25 +263,24 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                          int depth = kDepth, int image_width = kImageWidth,
                          int image_height = kImageHeight,
                          int image_batch_count = kImageBatchCount) {
-    const FusedGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, const std::vector<string>& fused_ops,
-               Tensor* out) {
-          RunConv2DUnfused(input_data, filter_data, bias_data, fused_ops, out);
-        };
+    const FusedGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, const std::vector<string>& fused_ops,
+        Tensor* out) {
+      RunConv2DUnfused(input_data, filter_data, bias_data, fused_ops, out);
+    };
 
-    const FusedGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, const std::vector<string>& fused_ops,
-               Tensor* out) {
-          std::vector<Tensor> fused_input = {bias_data};
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
-              fused_ops.end()) {
-            fused_input.push_back(input_data);
-          }
-          RunMklFusedConv2DOp(input_data, filter_data, fused_input, fused_ops,
-                              out);
-        };
+    const FusedGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, const std::vector<string>& fused_ops,
+        Tensor* out) {
+      std::vector<Tensor> fused_input = {bias_data};
+      if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
+          fused_ops.end()) {
+        fused_input.push_back(input_data);
+      }
+      RunMklFusedConv2DOp(input_data, filter_data, fused_input, fused_ops, out);
+    };
 
     CommonTestUtilities<T>::VerifyFusedTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,
@@ -283,7 +294,7 @@ class MklFusedConv2DWithBiasOpTest : public MklFusedConv2DOpTest<T> {};
 TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest);
 
 // -------------------------------------------------------------------------- //
-// Conv2D + BiasAdd + {Relu}                                                  //
+// Conv2D + BiasAdd + {Activation}                                            //
 // -------------------------------------------------------------------------- //
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolution) {
@@ -308,6 +319,30 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
   const int filter_size = 3;
   const int filter_count = 12;
   this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Relu"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndRelu6) {
+  const int filter_size = 1;
+  const int filter_count = 12;
+  this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Relu6"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu6) {
+  const int filter_size = 3;
+  const int filter_count = 12;
+  this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Relu6"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndElu) {
+  const int filter_size = 1;
+  const int filter_count = 12;
+  this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Elu"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndElu) {
+  const int filter_size = 3;
+  const int filter_count = 12;
+  this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Elu"});
 }
 
 TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAdd) {
@@ -336,12 +371,41 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddRelu) {
                           {"BiasAdd", "Add", "Relu"});
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolution,
-                           SpatialConvolution, OneByOneConvolutionAndRelu,
-                           SpatialConvolutionAndRelu, OneByOneConvolutionAndAdd,
-                           SpatialConvolutionAndAdd,
-                           OneByOneConvolutionAndAddRelu,
-                           SpatialConvolutionAndAddRelu);
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAddRelu6) {
+  const int filter_size = 1;
+  const int filter_count = 3;
+  this->VerifyFusedConv2D(filter_size, filter_count,
+                          {"BiasAdd", "Add", "Relu6"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddRelu6) {
+  const int filter_size = 3;
+  const int filter_count = 3;
+  this->VerifyFusedConv2D(filter_size, filter_count,
+                          {"BiasAdd", "Add", "Relu6"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, OneByOneConvolutionAndAddElu) {
+  const int filter_size = 1;
+  const int filter_count = 3;
+  this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Add", "Elu"});
+}
+
+TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddElu) {
+  const int filter_size = 3;
+  const int filter_count = 3;
+  this->VerifyFusedConv2D(filter_size, filter_count, {"BiasAdd", "Add", "Elu"});
+}
+
+REGISTER_TYPED_TEST_CASE_P(
+    MklFusedConv2DWithBiasOpTest, OneByOneConvolution, SpatialConvolution,
+    OneByOneConvolutionAndRelu, SpatialConvolutionAndRelu,
+    OneByOneConvolutionAndRelu6, SpatialConvolutionAndRelu6,
+    OneByOneConvolutionAndElu, SpatialConvolutionAndElu,
+    OneByOneConvolutionAndAdd, SpatialConvolutionAndAdd,
+    OneByOneConvolutionAndAddRelu, SpatialConvolutionAndAddRelu,
+    OneByOneConvolutionAndAddRelu6, SpatialConvolutionAndAddRelu6,
+    OneByOneConvolutionAndAddElu, SpatialConvolutionAndAddElu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedConv2DWithBiasOpTest,
@@ -532,19 +596,18 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
                                   int image_width = kImageWidth,
                                   int image_height = kImageHeight,
                                   int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default = [this](const Tensor& input_data,
-                                                  const Tensor& filter_data,
-                                                  const Tensor& bias_data,
-                                                  Tensor* out) {
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
       RunMklPadWithFusedConv2DAndBias(input_data, filter_data, bias_data, out);
     };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
-                                     {"BiasAdd"}, out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
+                                 {"BiasAdd"}, out);
+    };
 
     CommonTestUtilities<T>::VerifyBiasAddTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,
@@ -557,19 +620,19 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
       int filter_size, int filter_count, int depth = kDepth,
       int image_width = kImageWidth, int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklPadWithFusedConv2DAndBiasRelu(input_data, filter_data,
-                                              bias_data, out);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklPadWithFusedConv2DAndBiasRelu(input_data, filter_data, bias_data,
+                                          out);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
-                                     {"BiasAdd", "Relu"}, out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
+                                 {"BiasAdd", "Relu"}, out);
+    };
 
     CommonTestUtilities<T>::VerifyBiasAddTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,
