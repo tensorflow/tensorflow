@@ -29,7 +29,7 @@ namespace poplarplugin {
  * inserted into the map along with the number of iterations */
 class WhileLoopToRepeatSimplify : public HloModulePass {
  public:
-  WhileLoopToRepeatSimplify();
+  WhileLoopToRepeatSimplify() = default;
   ~WhileLoopToRepeatSimplify() override = default;
 
   absl::string_view name() const override {

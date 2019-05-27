@@ -92,9 +92,9 @@ cc_library(
         "driver/passes/inplace_finder.cc",
         "driver/passes/inplace_util.cc",
         "driver/passes/inter_ipu_copy_inserter.cc",
-        "driver/passes/norm_input_recomputation.cc",
         "driver/passes/not_supported_gather_expander.cc",
         "driver/passes/not_supported_scatter_expander.cc",
+        "driver/passes/recompute_instructions.cc",
         "driver/passes/replication_factor_to_constant.cc",
         "driver/passes/root_token_replacer.cc",
         "driver/passes/scheduler.cc",
@@ -158,9 +158,9 @@ cc_library(
         "driver/passes/inplace_finder.h",
         "driver/passes/inplace_util.h",
         "driver/passes/inter_ipu_copy_inserter.h",
-        "driver/passes/norm_input_recomputation.h",
         "driver/passes/not_supported_gather_expander.h",
         "driver/passes/not_supported_scatter_expander.h",
+        "driver/passes/recompute_instructions.h",
         "driver/passes/replication_factor_to_constant.h",
         "driver/passes/root_token_replacer.h",
         "driver/passes/scheduler.h",
@@ -973,8 +973,8 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "norm_input_recomputation_test",
-    srcs = ["tests/norm_input_recomputation_test.cc"],
+    name = "recomputation_test",
+    srcs = ["tests/recomputation_test.cc"],
     extra_copts = [
         "-fexceptions",
     ],
@@ -1558,7 +1558,7 @@ test_suite(
         "multi_run_test",
         "norm_graph_caching_sharded_test",
         "norm_graph_caching_test",
-        "norm_input_recomputation_test",
+        "recomputation_test",
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
         "pop_datastream_test",

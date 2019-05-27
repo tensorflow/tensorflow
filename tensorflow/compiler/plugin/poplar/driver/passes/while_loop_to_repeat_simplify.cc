@@ -359,58 +359,79 @@ HloInstruction* ConvertToRepeat(HloInstruction* while_inst,
   return repeat_call;
 }
 
+/**
+ * Remove computations from the HloModule that are not reachable from the entry
+ * computation.
+ */
+void PruneComputations(HloModule* module) {
+  // Find the reachable computations
+  absl::flat_hash_set<HloComputation*> reachable_comps;
+  reachable_comps.insert(module->entry_computation());
+
+  const auto sub_comps =
+      module->entry_computation()->MakeEmbeddedComputationsList();
+  reachable_comps.insert(sub_comps.begin(), sub_comps.end());
+
+  auto is_unreachable_pred = [&reachable_comps](HloComputation* computation) {
+    return reachable_comps.count(computation) == 0;
+  };
+
+  // Find the unreachable computations
+  auto unreachable_comps = module->MakeComputationPostOrder();
+  auto itr = absl::c_partition(unreachable_comps, is_unreachable_pred);
+  unreachable_comps.erase(itr, unreachable_comps.end());
+
+  // Remove the unreachable computations
+  for (auto computation : unreachable_comps) {
+    module->RemoveEmbeddedComputation(computation);
+  }
+}
+
 }  // namespace
 
-WhileLoopToRepeatSimplify::WhileLoopToRepeatSimplify() {}
-
 StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
-  // Get all the while instructions.
-  bool changed = false;
-  std::vector<HloInstruction*> while_insts;
+  // For each while instruction
   for (auto* comp : module->computations()) {
     for (auto* inst : comp->instructions()) {
       if (inst->opcode() == HloOpcode::kWhile) {
-        while_insts.push_back(inst);
+        HloInstruction* while_inst = inst;
+        // For each while loop, try and simplify the logic to convert the loop
+        // into a repeat.
+        auto statusor = ConvertWhileToRepeat(while_inst);
+        int64 count = 0;
+        bool simplified = false;
+        if (statusor.ok()) {
+          simplified = true;
+          count = statusor.ValueOrDie();
+        } else {
+          statusor.IgnoreError();
+
+          // Ignore the error and try the brute force method
+          auto op_count =
+              ComputeWhileLoopTripCount(while_inst, GetMaxLoopTripCount());
+          if (op_count) {
+            simplified = true;
+            count = *op_count;
+          }
+        }
+
+        if (simplified) {
+          HloInstruction* repeat_call = ConvertToRepeat(while_inst, count);
+          HloComputation* parent_computation = repeat_call->parent();
+          while_inst->ReplaceAllUsesWith(repeat_call);
+
+          VLOG(1) << "Simplified while loop " << while_inst->name()
+                  << " with a repeat of count " << count;
+
+          while_inst->parent()->RemoveInstructionAndUnusedOperands(while_inst);
+          PruneComputations(module);
+          return true;
+        }
       }
     }
   }
 
-  absl::flat_hash_set<HloInstruction*> while_insts_to_remove;
-  for (auto* while_inst : while_insts) {
-    // For each while loop, try and simplify the logic to convert the loop into
-    // a repeat.
-    auto statusor = ConvertWhileToRepeat(while_inst);
-    int64 count = 0;
-    bool simplified = false;
-    if (statusor.ok()) {
-      simplified = true;
-      count = statusor.ValueOrDie();
-    } else {
-      // Try the brute force method
-      auto op_count =
-          ComputeWhileLoopTripCount(while_inst, GetMaxLoopTripCount());
-      if (op_count) {
-        simplified = true;
-        count = *op_count;
-      }
-    }
-
-    if (simplified) {
-      HloInstruction* repeat_call = ConvertToRepeat(while_inst, count);
-      HloComputation* parent_computation = repeat_call->parent();
-      while_inst->ReplaceAllUsesWith(repeat_call);
-      VLOG(1) << "Simplified while loop " << while_inst->name()
-              << " with a repeat of count " << count;
-      while_insts_to_remove.insert(while_inst);
-      changed = true;
-    }
-  }
-
-  for (HloInstruction* while_inst : while_insts_to_remove) {
-    while_inst->parent()->RemoveInstructionAndUnusedOperands(while_inst);
-  }
-
-  return changed;
+  return false;
 }
 
 }  // namespace poplarplugin
