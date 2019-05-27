@@ -42,7 +42,7 @@ void TestOneDepthwiseConv(
                                reference_output_data.data());
   optimized_ops::DepthwiseConvImpl(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
-      bias_data, output_shape, output_data.data(), /*thread_start=*/0,
+      bias_data, output_shape, output_data.data(), nullptr, /*thread_start=*/0,
       /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
 
   double sum_abs_diff = 0;

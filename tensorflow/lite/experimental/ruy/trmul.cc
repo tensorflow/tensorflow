@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/block_map.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
-#include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/thread_pool.h"
 #include "tensorflow/lite/experimental/ruy/trace.h"
 

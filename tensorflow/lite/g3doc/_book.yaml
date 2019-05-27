@@ -32,12 +32,12 @@ upper_tabs:
       - heading: "Convert a model"
       - title: "TensorFlow Lite converter"
         path: /lite/convert/
+      - title: "Python API"
+        path: /lite/convert/python_api
       - title: "Command line examples"
         path: /lite/convert/cmdline_examples
       - title: "Command line reference"
         path: /lite/convert/cmdline_reference
-      - title: "Python API"
-        path: /lite/convert/python_api
       - title: "Convert quantized models"
         path: /lite/convert/quantization
 
@@ -81,6 +81,8 @@ upper_tabs:
         path: /lite/performance/gpu
       - title: "Advanced GPU"
         path: /lite/performance/gpu_advanced
+      - title: "Quantization specification"
+        path: /lite/performance/quantization_spec
 
       - heading: "Build TensorFlow Lite"
       - title: "Build for iOS"

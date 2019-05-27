@@ -370,6 +370,9 @@ REGISTER_OP("SnapshotDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("compression: string = ''")
+    .Attr("reader_path_prefix: string = ''")
+    .Attr("writer_path_prefix: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

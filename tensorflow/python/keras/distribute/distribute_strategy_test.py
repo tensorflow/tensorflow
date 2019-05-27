@@ -1193,12 +1193,14 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.one_device_strategy
           ],
           mode=['graph', 'eager'], cloning=[True, False]))
-  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
-  # restored.
-  def DISABLED_test_dataset_wrong_input_shape(self, distribution, cloning):
+  def test_dataset_wrong_input_shape(self, distribution, cloning, mode):
+    if cloning or mode == 'graph':
+      self.skipTest('TODO(b/120943676, b/120957836): Re-enable for cloning=True'
+                    ' once the validation code is restored.')
     with self.cached_session():
       with distribution.scope():
         # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
@@ -1229,10 +1231,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           ],
           mode=['graph', 'eager'],
           cloning=[True, False]))
-  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
-  # restored.
-  def DISABLED_test_dataset_no_batch_input_validation(self, distribution,
-                                                      cloning):
+  def test_dataset_no_batch_input_validation(self, distribution,
+                                             cloning, mode):
+    if cloning or mode == 'graph':
+      self.skipTest('TODO(b/120943676, b/120957836): Re-enable for cloning=True'
+                    ' once the validation code is restored.')
     with self.cached_session():
       with distribution.scope():
         model = get_model()
@@ -1241,12 +1244,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         model.compile(optimizer, loss, cloning=cloning)
 
       # User forgets to batch the dataset
-      inputs = np.zeros((10, 3), dtype=np.float32)
+      inputs = np.zeros((10, 6), dtype=np.float32)
       targets = np.zeros((10, 4), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
 
-      with self.assertRaisesRegexp(ValueError, 'expected input to have shape'):
+      with self.assertRaisesRegexp(ValueError, 'Call.*batch.*on.*Dataset'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(

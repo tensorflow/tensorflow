@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/core/subgraph.h"
 
-#include <complex>
-
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
@@ -283,6 +283,16 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // Ignore empty node replacement sets.
+  if (!nodes_to_replace->size) {
+    return kTfLiteOk;
+  }
+
+  TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+             "Replacing %d node(s) with delegate (%s) node.",
+             nodes_to_replace->size,
+             registration.custom_name ? registration.custom_name : "unknown");
+
   // Annotate the registration as DELEGATE op.
   registration.builtin_code = BuiltinOperator_DELEGATE;
 
@@ -444,40 +454,9 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
   TF_LITE_ENSURE(context_, bytes != nullptr);
   size_t count = 1;
   for (int k = 0; k < dims_size; k++) count *= dims[k];
-  switch (type) {
-    case kTfLiteFloat32:
-      *bytes = sizeof(float) * count;
-      break;
-    case kTfLiteInt16:
-      *bytes = sizeof(int16_t) * count;
-      break;
-    case kTfLiteInt32:
-      *bytes = sizeof(int32_t) * count;
-      break;
-    case kTfLiteUInt8:
-      *bytes = sizeof(uint8_t) * count;
-      break;
-    case kTfLiteInt64:
-      *bytes = sizeof(int64_t) * count;
-      break;
-    case kTfLiteBool:
-      *bytes = sizeof(bool) * count;
-      break;
-    case kTfLiteComplex64:
-      *bytes = sizeof(std::complex<float>) * count;
-      break;
-    case kTfLiteInt8:
-      *bytes = sizeof(int8_t) * count;
-      break;
-    case kTfLiteFloat16:
-      *bytes = sizeof(TfLiteFloat16) * count;
-      break;
-    default:
-      ReportError(
-          "Only float32, int8, int16, int32, int64, uint8, bool, complex64 "
-          "supported currently.");
-      return kTfLiteError;
-  }
+  size_t type_size = 0;
+  TF_LITE_ENSURE_OK(context_, GetSizeOfType(context_, type, &type_size));
+  *bytes = type_size * count;
   return kTfLiteOk;
 }
 

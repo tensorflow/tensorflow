@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 
+#include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -28,6 +30,8 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -92,8 +96,10 @@ class DatasetOpsTestBase : public ::testing::Test {
     DataTypeVector dtypes({tensorflow::DataTypeToEnum<T>::value});
     std::vector<PartialTensorShape> shapes({{}});
     NodeDef node_def = test::function::NDef(
-        node_name, "RangeDataset", {"start", "stop", "step"},
-        {{"output_types", dtypes}, {"output_shapes", shapes}});
+        node_name, name_utils::OpName(RangeDatasetOp::kDatasetType),
+        {RangeDatasetOp::kStart, RangeDatasetOp::kStop, RangeDatasetOp::kStep},
+        {{RangeDatasetOp::kOutputTypes, dtypes},
+         {RangeDatasetOp::kOutputShapes, shapes}});
 
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, range_op_kernel));
     return Status::OK();
@@ -213,6 +219,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::vector<std::unique_ptr<Tensor>> tensors_;  // Owns tensors.
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs.
+  std::unique_ptr<CancellationManager> cancellation_manager_;
 };
 
 }  // namespace data

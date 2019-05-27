@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -66,6 +67,56 @@ TFE_TensorHandle* NumpyToTensorHandle(PyObject* obj) {
                         cppstatus.error_message(), ").")
                         .c_str());
     return nullptr;
+  }
+}
+
+// Convert a TFE_TensorHandle to a Python numpy.ndarray object.
+// The two may share underlying storage so changes to one may reflect in the
+// other.
+PyObject* TensorHandleToNumpy(TFE_TensorHandle* handle) {
+  auto status = tensorflow::make_safe(TF_NewStatus());
+  const tensorflow::Tensor* t =
+      TFE_TensorHandleUnderlyingTensorInHostMemory(handle, status.get());
+  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
+    // TODO(slebedev): emit a better error message if a Tensor is on GPU?
+    return nullptr;
+  }
+
+  // HACK(slebedev): The following explains why TensorToNdarray never
+  // reuses the storage.
+  //
+  // TF_TensorToPyArray copies the storage unless its
+  // refcount is 1. For DT_STRING and DT_RESOURCE TF_TensorFromTensor
+  // has to copy so the refcount of the original storage is unchanged.
+  // However, if the storage can be reused by TF_TensorFromTensor its
+  // refcount is +1'd and hence TF_TensorToPyArray no longer can reuse it.
+  //
+  // Here we attempt a direct conversion without an intermediate TF_Tensor
+  // and fall-back to the slow path on failure.
+  PyObject* ret = nullptr;
+  if (t->dtype() != tensorflow::DT_STRING &&
+      t->dtype() != tensorflow::DT_RESOURCE) {
+    tensorflow::gtl::InlinedVector<npy_intp, 4> dims(t->dims());
+    for (int d = 0; d < t->dims(); ++d) {
+      dims[d] = t->dim_size(d);
+    }
+
+    auto* copy = new tensorflow::Tensor(*t);
+    char* data = const_cast<char*>(copy->tensor_data().data());
+    if (tensorflow::ArrayFromMemory(
+            dims.size(), dims.data(), data, t->dtype(), [copy] { delete copy; },
+            &ret)
+            .ok()) {
+      return ret;
+    }
+  }
+
+  auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
+  if (MaybeRaiseExceptionFromStatus(cppstatus, PyExc_RuntimeError)) {
+    Py_XDECREF(ret);
+    return nullptr;
+  } else {
+    return ret;
   }
 }
 
@@ -599,6 +650,7 @@ static int EagerTensor_settensor_shape(EagerTensor* self, PyObject* value,
   self->tensor_shape = value;
   return 0;
 }
+
 // Function `_copy_to_device`.
 static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
                                             PyObject* kwds) {
@@ -620,50 +672,10 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
 // other.
 // Note that if `self` is not on CPU, we raise an Exception.
 static PyObject* EagerTensor_numpy(EagerTensor* self) {
-  auto status = tensorflow::make_safe(TF_NewStatus());
-  const tensorflow::Tensor* t =
-      TFE_TensorHandleUnderlyingTensorInHostMemory(self->handle, status.get());
-  if (TF_GetCode(status.get()) != TF_OK) {
-    PyErr_SetString(PyExc_RuntimeError, TF_Message(status.get()));
-    return nullptr;
-  }
-
-  // HACK(slebedev): The following explains why TensorToNdarray never
-  // reuses the storage.
-  //
-  // TF_TensorToPyArray copies the storage unless its
-  // refcount is 1. For DT_STRING and DT_RESOURCE TF_TensorFromTensor
-  // has to copy so the refcount of the original storage is unchanged.
-  // However, if the storage can be reused by TF_TensorFromTensor its
-  // refcount is +1'd and hence TF_TensorToPyArray no longer can reuse it.
-  //
-  // Here we attempt a direct conversion without an intermediate TF_Tensor
-  // and fall-back to the slow path on failure.
-  PyObject* ret = nullptr;
-  if (t->dtype() != tensorflow::DT_STRING &&
-      t->dtype() != tensorflow::DT_RESOURCE) {
-    tensorflow::gtl::InlinedVector<npy_intp, 4> dims(t->dims());
-    for (int d = 0; d < t->dims(); ++d) {
-      dims[d] = t->dim_size(d);
-    }
-
-    auto* copy = new tensorflow::Tensor(*t);
-    char* data = const_cast<char*>(copy->tensor_data().data());
-    if (tensorflow::ArrayFromMemory(
-            dims.size(), dims.data(), data, t->dtype(), [copy] { delete copy; },
-            &ret)
-            .ok()) {
-      return ret;
-    }
-  }
-
-  auto cppstatus = tensorflow::TensorToNdarray(*t, &ret);
-  if (MaybeRaiseExceptionFromStatus(cppstatus, PyExc_RuntimeError)) {
-    Py_XDECREF(ret);
-    return nullptr;
-  } else {
-    return ret;
-  }
+  PyObject* ret = TensorHandleToNumpy(self->handle);
+  return (ret == nullptr)
+             ? nullptr
+             : PyArray_Return(reinterpret_cast<PyArrayObject*>(ret));
 }
 
 // Getter `device`.
@@ -737,6 +749,51 @@ static PyMethodDef EagerTensor_methods[] = {
     {nullptr, nullptr},
 };
 
+static int EagerTensor_getbuffer(EagerTensor* self, Py_buffer* view,
+                                 int flags) {
+  if ((flags & PyBUF_WRITABLE) == PyBUF_WRITABLE) {
+    PyErr_SetString(PyExc_BufferError, "EagerTensor is not writable.");
+    return -1;
+  }
+
+  auto status = tensorflow::make_safe(TF_NewStatus());
+  TFE_TensorHandle* handle =
+      TFE_TensorHandleMaybeCopyToHostCPU(self->handle, status.get());
+  if (TF_GetCode(status.get()) != TF_OK) {
+    PyErr_SetString(PyExc_BufferError,
+                    tensorflow::strings::StrCat("Error copying tensor to CPU:",
+                                                TF_Message(status.get()))
+                        .c_str());
+    return -1;
+  }
+
+  // TensorHandleToNumpy is zero-copy for everything but DT_RESOURCE and
+  // DT_STRING so the following is only slightly slower than a NumPy-free
+  // implementation.
+  auto py_array = tensorflow::make_safe(TensorHandleToNumpy(handle));
+  if (py_array == nullptr ||
+      PyObject_GetBuffer(py_array.get(), view, flags) < 0) {
+    return -1;
+  }
+
+  view->readonly = 1;
+
+  int num_dims = TFE_TensorHandleNumDims(handle, status.get());
+  if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_BufferError)) {
+    return -1;
+  }
+  DCHECK(view->ndim == num_dims);
+  return 0;
+}
+
+static PyBufferProcs EagerTensor_as_buffer = {
+#if PY_MAJOR_VERSION < 3
+    nullptr, nullptr, nullptr, nullptr,
+#endif
+    (getbufferproc)EagerTensor_getbuffer,
+    // Never called because getbufferproc delegates to NumPy.
+    (releasebufferproc) nullptr};
+
 // Note that here we are trying to dynamically create a new class as a subclass
 // of a "HEAPTYPE" class that is itself created in python code and passed in at
 // runtime. This is fairly atypical and undocumented.
@@ -764,6 +821,9 @@ static PyType_Slot EagerTensor_Type_slots[] = {
     {0, nullptr},
 };
 #else
+
+#define EAGER_TENSOR_TPFLAGS (Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_NEWBUFFER)
+
 // TODO(agarwal): support active_trace.
 static PyTypeObject _EagerTensorType = {
     // clang-format off
@@ -786,8 +846,8 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_str */
     nullptr,                            /* tp_getattro */
     nullptr,                            /* tp_setattro */
-    nullptr,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
+    &EagerTensor_as_buffer,             /* tp_as_buffer */
+    EAGER_TENSOR_TPFLAGS,               /* tp_flags */
     nullptr,                            /* tp_doc */
     nullptr,                            /* tp_traverse */
     nullptr,                            /* tp_clear */
@@ -946,6 +1006,7 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     return nullptr;
   }
   EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
+  EagerTensorType->tp_as_buffer = &EagerTensor_as_buffer;
 #else
   _EagerTensorType.tp_base = base_class_type;
 

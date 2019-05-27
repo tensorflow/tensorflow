@@ -23,6 +23,7 @@ load(
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
+_GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _ROCM_TOOLKIT_PATH = "ROCM_TOOLKIT_PATH"
 _TF_ROCM_VERSION = "TF_ROCM_VERSION"
 _TF_MIOPEN_VERSION = "TF_MIOPEN_VERSION"
@@ -33,6 +34,22 @@ _DEFAULT_ROCM_VERSION = ""
 _DEFAULT_MIOPEN_VERSION = ""
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _DEFAULT_ROCM_AMDGPU_TARGETS = ["gfx803", "gfx900"]
+
+def _get_win_rocm_defines(repository_ctx):
+    """Return CROSSTOOL defines for Windows"""
+
+    # Return fake vaules for Windows specific fields.
+    # This ensures the CROSSTOOL file parser is happy.
+    return {
+        "%{msvc_env_tmp}": "msvc_not_used",
+        "%{msvc_env_path}": "msvc_not_used",
+        "%{msvc_env_include}": "msvc_not_used",
+        "%{msvc_env_lib}": "msvc_not_used",
+        "%{msvc_cl_path}": "msvc_not_used",
+        "%{msvc_ml_path}": "msvc_not_used",
+        "%{msvc_link_path}": "msvc_not_used",
+        "%{msvc_lib_path}": "msvc_not_used",
+    }
 
 def find_cc(repository_ctx):
     """Find the C++ compiler."""
@@ -666,28 +683,61 @@ def _create_local_rocm_repository(repository_ctx):
 
     # Set up crosstool/
     cc = find_cc(repository_ctx)
-    host_compiler_includes = to_list_of_strings(
-        _host_compiler_includes(repository_ctx, cc),
-    )
-    rocm_defines = {
-        "%{linker_files}": ":empty",
-        "%{win_linker_files}": ":empty",
-        "%{cxx_builtin_include_directories}": to_list_of_strings(
-            host_compiler_includes + _rocm_include_path(
-                repository_ctx,
-                rocm_config,
-            ),
-        ),
-        "%{clang_path}": str(cc),
-        "%{unfiltered_compile_flags}": "\"-DTENSORFLOW_USE_ROCM\"",
-    }
 
-    # Set up crosstool/
+    host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc)
+
+    host_compiler_prefix = "/usr/bin"
+    if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
+        host_compiler_prefix = repository_ctx.os.environ[_GCC_HOST_COMPILER_PREFIX].strip()
+
+    rocm_defines = {}
+
+    rocm_defines["%{host_compiler_prefix}"] = host_compiler_prefix
+
+    rocm_defines["%{linker_bin_path}"] = "/opt/rocm/hcc/compiler/bin"
+
+    # For gcc, do not canonicalize system header paths; some versions of gcc
+    # pick the shortest possible path for system includes when creating the
+    # .d file - given that includes that are prefixed with "../" multiple
+    # time quickly grow longer than the root of the tree, this can lead to
+    # bazel's header check failing.
+    rocm_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
+
+    rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings(["-DTENSORFLOW_USE_ROCM", "-D__HIP_PLATFORM_HCC__", "-DEIGEN_USE_HIP"])
+
+    rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_rocm"
+
+    # # Enable a few more warnings that aren't part of -Wall.
+    # compiler_flag: "-Wunused-but-set-parameter"
+
+    # # But disable some that are problematic.
+    # compiler_flag: "-Wno-free-nonheap-object" # has false positives
+
+    rocm_defines["%{host_compiler_warnings}"] = to_list_of_strings(["-Wunused-but-set-parameter", "-Wno-free-nonheap-object"])
+
+    rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
+                                                                            _rocm_include_path(repository_ctx, rocm_config))
+
+    rocm_defines["%{linker_files}"] = "clang/bin/crosstool_wrapper_driver_rocm"
+
+    rocm_defines["%{win_linker_files}"] = ":empty"
+
+    # Add the dummy defines for windows...requried to pass the "verify_build_defines" check
+    rocm_defines.update(_get_win_rocm_defines(repository_ctx))
+
     verify_build_defines(rocm_defines)
+
+    # Only expand template variables in the BUILD file
     _tpl(repository_ctx, "crosstool:BUILD", rocm_defines)
 
     # No templating of cc_toolchain_config - use attributes and templatize the
     # BUILD file.
+    _tpl(
+        repository_ctx,
+        "crosstool:hipcc_cc_toolchain_config.bzl",
+        out = "crosstool/cc_toolchain_config.bzl",
+    )
+
     _tpl(
         repository_ctx,
         "crosstool:clang/bin/crosstool_wrapper_driver_rocm",
@@ -761,6 +811,7 @@ rocm_configure = repository_rule(
     implementation = _rocm_autoconf_impl,
     environ = [
         _GCC_HOST_COMPILER_PATH,
+        _GCC_HOST_COMPILER_PREFIX,
         "TF_NEED_ROCM",
         _ROCM_TOOLKIT_PATH,
         _TF_ROCM_VERSION,

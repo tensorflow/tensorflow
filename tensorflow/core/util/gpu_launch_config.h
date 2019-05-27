@@ -142,10 +142,12 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   config.block_count = block_count;
   return config;
 }
+#ifndef TENSORFLOW_USE_ROCM
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const Eigen::GpuDevice& d) {
   return GetGpuLaunchConfig(work_element_count, d);
 }
+#endif
 
 // Calculate the GPU launch config we should use for a kernel launch. This
 // variant takes the resource limits of func into account to maximize occupancy.
@@ -275,10 +277,12 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
       grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
   return config;
 }
+#ifndef TENSORFLOW_USE_ROCM
 inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                                 const Eigen::GpuDevice& d) {
   return GetGpu2DLaunchConfig(xdim, ydim, d);
 }
+#endif
 
 // Calculate the GPU 2D and 3D launch config we should use for a kernel launch.
 // This variant takes the resource limits of func into account to maximize
@@ -287,11 +291,11 @@ using Gpu3DLaunchConfig = Gpu2DLaunchConfig;
 CREATE_CUDA_TYPE_ALIAS(Gpu3DLaunchConfig, Cuda3DLaunchConfig);
 
 template <typename DeviceFunc>
-Cuda3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
-                                        const Eigen::GpuDevice& d,
-                                        DeviceFunc func,
-                                        size_t dynamic_shared_memory_size,
-                                        int block_size_limit) {
+Gpu3DLaunchConfig GetGpu3DLaunchConfig(int xdim, int ydim, int zdim,
+                                       const Eigen::GpuDevice& d,
+                                       DeviceFunc func,
+                                       size_t dynamic_shared_memory_size,
+                                       int block_size_limit) {
   Gpu3DLaunchConfig config;
 
   if (xdim <= 0 || ydim <= 0 || zdim <= 0) {

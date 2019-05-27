@@ -280,6 +280,7 @@ def _impl(ctx):
 
     preprocessor_defines_feature = feature(
         name = "preprocessor_defines",
+        enabled = True,
         flag_sets = [
             flag_set(
                 actions = [

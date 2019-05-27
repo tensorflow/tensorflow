@@ -150,7 +150,7 @@ class XlaBuilder {
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
   // OpMetadata attached until a call to ClearOpMetadata.
-  void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
+  void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
 
   // Clears the HloMetadata state.
   void ClearOpMetadata() { metadata_.Clear(); }

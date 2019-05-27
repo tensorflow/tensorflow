@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -895,6 +896,13 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   // Don't fold ops without outputs.
   if (op_def->output_arg_size() == 0) {
     return false;
+  }
+  // Don't fold DT_VARIANT outputs as this can cause problems with XLA compile.
+  // TODO(rmlarsen): Only do this for XLA_* devices.
+  for (const OpDef::ArgDef& output_arg : op_def->output_arg()) {
+    if (output_arg.type() == DT_VARIANT) {
+      return false;
+    }
   }
 
   // No need to (and don't) fold nodes that have no outgoing edges except

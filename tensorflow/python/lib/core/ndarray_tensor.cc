@@ -407,9 +407,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
                PyArray_NBYTES(py_array));
   }
 
-  // PyArray_Return turns rank 0 arrays into numpy scalars
-  *out_ndarray = PyArray_Return(
-      reinterpret_cast<PyArrayObject*>(safe_out_array.release()));
+  *out_ndarray = safe_out_array.release();
   return Status::OK();
 }
 

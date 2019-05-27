@@ -138,6 +138,7 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           graph.GetRegularFanin(MutableGraphView::InputPort(&node, 0));
       const MutableGraphView::OutputPort input2 =
           graph.GetRegularFanin(MutableGraphView::InputPort(&node, 1));
+      if (input1.node == nullptr || input2.node == nullptr) continue;
       if (!IsSize(*input1.node) || !IsSize(*input2.node)) {
         continue;
       }

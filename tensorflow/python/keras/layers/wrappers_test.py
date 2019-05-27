@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops.array_ops import concat
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import object_identity
@@ -591,10 +592,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       assert not layer.updates
       assert not layer.get_updates_for(None)
       assert not layer.get_updates_for(x)
-      layer.forward_layer.add_update(x_reachable_update, inputs=x)
-      layer.forward_layer.add_update(1, inputs=None)
-      layer.backward_layer.add_update(x_reachable_update, inputs=x)
-      layer.backward_layer.add_update(1, inputs=None)
+      # TODO(b/128684069): Remove when Wrapper sublayers are __call__'d.
+      with base_layer_utils.call_context().enter(layer, x, True):
+        layer.forward_layer.add_update(x_reachable_update, inputs=x)
+        layer.forward_layer.add_update(1, inputs=None)
+        layer.backward_layer.add_update(x_reachable_update, inputs=x)
+        layer.backward_layer.add_update(1, inputs=None)
       assert len(layer.updates) == 4
       assert len(layer.get_updates_for(None)) == 2
       assert len(layer.get_updates_for(x)) == 2

@@ -10,9 +10,8 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -1071,7 +1070,6 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    data = [":grpc_tensorflow_server.par"],
     grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.

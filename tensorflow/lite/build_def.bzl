@@ -247,6 +247,7 @@ def generated_test_models():
         "elu",
         "equal",
         "exp",
+        "embedding_lookup",
         "expand_dims",
         "eye",
         "fill",

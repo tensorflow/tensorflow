@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <numeric>
 
@@ -33,12 +33,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/util/work_sharder.h"
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/gpu_device_array.h"
 #include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -328,7 +328,7 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
   }
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Partial specialization for GPU
 template <typename T, typename Tlen>
@@ -436,7 +436,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     }
   }
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_SPLIT(type, len_type)                          \
   REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
@@ -456,7 +456,7 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
 #undef REGISTER_SPLIT_LEN
 #undef REGISTER_SPLIT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type, len_type)                            \
   REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
@@ -496,6 +496,6 @@ REGISTER_GPU_int32(int64);
 
 #undef REGISTER_GPU_int32
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

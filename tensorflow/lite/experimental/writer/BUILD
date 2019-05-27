@@ -3,9 +3,8 @@ package(
         "//visibility:public",
     ],
     features = ["-parse_headers"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 cc_binary(
     name = "option_writer_generator",

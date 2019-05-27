@@ -1957,14 +1957,14 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float ceil_clip = 0.0;
+  const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
   LayerNormLSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, ceil_clip, proj_clip,
+      /*use_projection_bias=*/false, cell_clip, proj_clip,
       {
           {n_batch, n_input},  // input tensor
 
@@ -2052,14 +2052,14 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float ceil_clip = 0.0;
+  const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
   HybridLayerNormLSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, ceil_clip, proj_clip,
+      /*use_projection_bias=*/false, cell_clip, proj_clip,
       {
           {n_batch, n_input},  // input tensor
 
@@ -2147,14 +2147,14 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float ceil_clip = 0.0;
+  const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
   HybridLayerNormLSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, ceil_clip, proj_clip,
+      /*use_projection_bias=*/false, cell_clip, proj_clip,
       {
           {n_batch, n_input},  // input tensor
 
@@ -2289,14 +2289,14 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float ceil_clip = 0.0;
+  const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
   LayerNormLSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, ceil_clip, proj_clip,
+      /*use_projection_bias=*/false, cell_clip, proj_clip,
       {
           {n_batch, n_input},  // input tensor
 
@@ -2379,14 +2379,14 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float ceil_clip = 0.0;
+  const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
   HybridLayerNormLSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, ceil_clip, proj_clip,
+      /*use_projection_bias=*/false, cell_clip, proj_clip,
       {
           {n_batch, n_input},  // input tensor
 
@@ -2470,14 +2470,14 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const int n_input = 5;
   const int n_cell = 4;
   const int n_output = 3;
-  const float ceil_clip = 0.0;
+  const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
   HybridLayerNormLSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false, ceil_clip, proj_clip,
+      /*use_projection_bias=*/false, cell_clip, proj_clip,
       {
           {n_batch, n_input},  // input tensor
 
@@ -2633,9 +2633,3 @@ TEST(LSTMOpModel, InvalidTypeTest) {
 #endif
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -9,10 +9,9 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load(":build_defs.bzl", "runtime_copts")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
@@ -905,6 +904,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],

@@ -200,7 +200,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
           input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
-      Device* host_cpu_device, const string& name)
+      Device* host_cpu_device, const string& name,
+      std::function<Rendezvous*(const int64)> rendezvous_creator)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         pflr_(pflr),
@@ -209,7 +210,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
         input_tensor_shapes_(std::move(input_tensor_shapes)),
         input_resource_dtypes_and_shapes_(
             std::move(input_resource_dtypes_and_shapes)),
-        name_(name) {}
+        name_(name),
+        rendezvous_creator_(std::move(rendezvous_creator)) {}
 
   virtual ~KernelAndDeviceFunc();
 
@@ -253,6 +255,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   DataTypeVector input_dtypes_;
   DataTypeVector output_dtypes_;
   string name_;
+
+  std::function<Rendezvous*(const int64)> rendezvous_creator_;
 };
 
 }  // namespace tensorflow
