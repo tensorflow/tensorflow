@@ -84,6 +84,27 @@ struct alignas(8) ClassID {
     return &id;
   }
 };
+
+/// Utilities for detecting if a given trait holds for some set of arguments
+/// 'Args'. For example, the given trait could be used to detect if a given type
+/// has a copy assignment operator:
+///   template<class T>
+///   using has_copy_assign_t = decltype(std::declval<T&>()
+///                                                 = std::declval<const T&>());
+///   bool fooHasCopyAssign = is_detected<has_copy_assign_t, FooClass>::value;
+namespace detail {
+template <typename...> using void_t = void;
+template <class, template <class...> class Op, class... Args> struct detector {
+  using value_t = std::false_type;
+};
+template <template <class...> class Op, class... Args>
+struct detector<void_t<Op<Args...>>, Op, Args...> {
+  using value_t = std::true_type;
+};
+} // end namespace detail
+
+template <template <class...> class Op, class... Args>
+using is_detected = typename detail::detector<void, Op, Args...>::value_t;
 } // end namespace mlir
 
 // Allow tuples to be usable as DenseMap keys.
