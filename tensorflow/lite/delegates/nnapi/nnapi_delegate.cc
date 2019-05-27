@@ -1377,7 +1377,7 @@ class NNAPIDelegateKernel {
         std::vector<uint8_t> nnapi_cache_token(32, 0);
         // Copy the token bits.
         uint8_t* p = reinterpret_cast<uint8_t*>(token_parts);
-        for (int i = 0; i < 4 * sizeof(uint64_t); i++) {
+        for (size_t i = 0; i < 4 * sizeof(uint64_t); i++) {
           nnapi_cache_token[i] = p[i];
         }
         const int set_caching_result =
