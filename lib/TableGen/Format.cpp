@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/TableGen/Format.h"
+#include <cctype>
 
 using namespace mlir;
 using namespace mlir::tblgen;
