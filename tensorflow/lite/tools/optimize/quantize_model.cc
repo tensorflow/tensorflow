@@ -370,9 +370,6 @@ TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
   OperatorT* op = subgraph->operators[*op_idx].get();
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
-  const int32_t tensor_idx = op->inputs[input_idx];
-  TensorT* tensor = subgraph->tensors[tensor_idx].get();
-  const bool is_input_quantized = utils::IsQuantized(subgraph, tensor_idx);
   if (input_idx >= op->inputs.size()) {
     error_reporter->Report(
         "Required input index %d is larger than the input length of op "
@@ -381,6 +378,9 @@ TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
         subgraph_idx);
     return kTfLiteError;
   }
+  const int32_t tensor_idx = op->inputs[input_idx];
+  TensorT* tensor = subgraph->tensors[tensor_idx].get();
+  const bool is_input_quantized = utils::IsQuantized(subgraph, tensor_idx);
   if (property.quantizable && !is_input_quantized) {
     // The operation is quantizable, but the input isn't yet quantized.
     if (utils::HasBuffer(model, subgraph, tensor_idx)) {
@@ -418,8 +418,7 @@ TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
     } else {
       error_reporter->Report(
           "Unable to find buffer or min/max value for input activation "
-          "%d "
-          "in %s in subgraph %d, node: %d",
+          "%d in %s in subgraph %d, node: %d",
           input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, *op_idx);
       return kTfLiteError;
     }

@@ -55,7 +55,7 @@ Status GetComputeCapability(PlatformGpuId gpu_id, int* cc_major,
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 }  // namespace

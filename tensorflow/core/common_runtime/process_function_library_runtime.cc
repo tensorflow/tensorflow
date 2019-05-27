@@ -741,8 +741,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   for (const auto& pair : subgraphs) {
     i += 1;
     const string& target = pair.first;
-    FunctionLibraryRuntime* target_flr = GetFLR(target);
-    const string& device_type = target_flr->device()->device_type();
+
+    const string& device_type =
+        device_set_.FindDeviceByName(target)->device_type();
     Graph* subgraph = pair.second.get();
 
     ComponentFunctionData* comp_data = &data->glue_[target];
@@ -793,6 +794,19 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
 
     const string& target = pair.first;
     FunctionLibraryRuntime* target_flr = GetFLR(target);
+    if (target_flr == nullptr) {
+      if (!comp_data.ret_indices_.empty()) {
+        return errors::Unimplemented(
+            "Currently, outputting tensors on remote devices is not supported. "
+            "The ",
+            comp_data.ret_indices_[0],
+            "-th return value of the function outputs to target_device: ",
+            target,
+            " Please copy the tensor to local device explicitly using "
+            "tf.identity and return the new Tensor instead.");
+      }
+      continue;
+    }
     Device* target_device = target_flr->device();
     const FunctionBody* fbody = target_flr->GetFunctionBody(comp_data.handle_);
     DCHECK(fbody != nullptr);
@@ -876,21 +890,26 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
       VLOG(1) << "Running component function on device " << target
               << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
-      flr->Run(
-          opts_copy, handle, comp_args, comp_rets,
-          [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
-            if (!status.ok()) {
-              VLOG(2) << "Component function execution failed: " << status;
-              refcounted_done->UpdateStatus(status);
-            } else {
-              for (int i = 0; i < comp_rets->size(); ++i) {
-                (*rets)[comp_data.ret_indices_[i]] = (*comp_rets)[i];
-              }
-            }
-            delete comp_rets;
-            // refcounted_done is thread-safe
-            refcounted_done->Unref();
-          });
+
+      flr->Run(opts_copy, handle, comp_args, comp_rets,
+               [comp_rets, rets, comp_data, refcounted_done,
+                data](const Status& status) {
+                 if (!status.ok()) {
+                   VLOG(2) << "Component function execution failed: " << status;
+                   const string function_and_msg = strings::StrCat(
+                       errors::FormatFunctionForError(data->function_name_),
+                       " ", status.error_message());
+                   refcounted_done->UpdateStatus(
+                       Status(status.code(), function_and_msg));
+                 } else {
+                   for (int i = 0; i < comp_rets->size(); ++i) {
+                     (*rets)[comp_data.ret_indices_[i]] = (*comp_rets)[i];
+                   }
+                 }
+                 delete comp_rets;
+                 // refcounted_done is thread-safe
+                 refcounted_done->Unref();
+               });
     } else {
       opts_copy.remote_execution = true;
 

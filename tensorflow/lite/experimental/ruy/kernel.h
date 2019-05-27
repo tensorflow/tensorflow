@@ -85,6 +85,11 @@ void RunKernel(Tuning tuning, const PMatrix& lhs, const PMatrix& rhs,
       &mdst);
 }
 
+// The signature of RunKernel is the same, regardless of template parameters.
+using RunKernelFn =
+    decltype(RunKernel<Path::kStandardCpp, std::int8_t, std::int8_t,
+                       std::int8_t, BasicSpec<std::int32_t, std::int8_t>>);
+
 // Copied from TF Lite code.
 inline std::int32_t MultiplyByQuantizedMultiplier(
     std::int32_t x, std::int32_t quantized_multiplier, int shift) {
@@ -218,6 +223,7 @@ RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
 #define RUY_ASM_FLAG_HAS_RHS_SUMS 0x4
 #define RUY_ASM_FLAG_HAS_PERCHANNEL 0x8
+#define RUY_ASM_FLAG_NEEDS_LEFT_SHIFT 0x10
 
 #define RUY_ASM_TYPE_ID_UINT8 1
 #define RUY_ASM_TYPE_ID_INT8 2
@@ -329,10 +335,14 @@ void MakeKernelParams8bit(const PackedMatrix<std::int8_t>& lhs,
   params->depth = depth;
   params->prod_zp_depth = lhs.zero_point * rhs.zero_point * depth;
   if (spec.multiplier_fixedpoint_perchannel) {
+    params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
     params->flags |= RUY_ASM_FLAG_HAS_PERCHANNEL;
     params->multiplier_fixedpoint = spec.multiplier_fixedpoint_perchannel;
     params->multiplier_exponent = spec.multiplier_exponent_perchannel;
   } else {
+    if (spec.multiplier_exponent > 0) {
+      params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
+    }
     params->multiplier_fixedpoint = params->multiplier_fixedpoint_buf;
     params->multiplier_exponent = params->multiplier_exponent_buf;
     for (int i = 0; i < LhsCols; i++) {

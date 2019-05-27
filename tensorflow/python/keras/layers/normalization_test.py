@@ -25,6 +25,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -212,6 +213,29 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     train_loss = train_step(test_data, test_targets)
     if context.executing_eagerly():
       self.assertAlmostEqual(test_loss.numpy(), train_loss.numpy())
+
+  def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.bn = keras.layers.BatchNormalization()
+
+      @def_function.function()
+      def call(self, x, training):
+        return self.bn(x, training=training)
+
+    with context.eager_mode():
+      model = MyModel()
+
+      for _ in range(10):
+        x = constant_op.constant(0.5, shape=[1, 1])
+        model(x, training=True)
+
+      # Make sure the moving mean and variance have been updated
+      self.assertAllClose(model.bn.moving_mean.numpy(), [0.047], atol=3e-3)
+      self.assertAllClose(model.bn.moving_variance.numpy(), [0.9], atol=3e-2)
 
 
 class BatchNormalizationV1Test(test.TestCase):

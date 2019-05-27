@@ -990,6 +990,16 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_1->attrs()),
                           "_xla_token_input_nodes", &token_input_nodes));
   EXPECT_EQ(token_input_nodes, expected_token_input_nodes_1);
+
+  // Check there is a control edge from host_compute_0 to host_compute_1.
+  bool has_control_edge = false;
+  for (const Edge *e : host_compute_1->in_edges()) {
+    if (e->IsControlEdge() && e->src() == host_compute_0) {
+      has_control_edge = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_control_edge);
 }
 
 TEST_F(ExtractOutsideCompilationForFunctionTest,
@@ -1062,5 +1072,15 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_1->attrs()),
                           "_xla_token_input_nodes", &token_input_nodes));
   EXPECT_EQ(token_input_nodes, expected_token_input_nodes_1);
+
+  // Check there is a control edge from host_compute_0 to host_compute_1.
+  bool has_control_edge = false;
+  for (const Edge *e : host_compute_1->in_edges()) {
+    if (e->IsControlEdge() && e->src() == host_compute_0) {
+      has_control_edge = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_control_edge);
 }
 }  // namespace tensorflow

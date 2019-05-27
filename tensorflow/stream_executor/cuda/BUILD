@@ -1,8 +1,6 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
@@ -19,13 +17,14 @@ load(
 )
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
 package_group(
     name = "friends",
     packages = stream_executor_friends(),
-)
-
-package(
-    default_visibility = [":friends"],
 )
 
 # Filegroup used to collect source files for the dependency check.
@@ -93,6 +92,24 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
+)
+
+cc_library(
+    name = "ptxas_utils",
+    srcs = if_cuda_is_configured(["ptxas_utils.cc"]),
+    hdrs = if_cuda_is_configured(["ptxas_utils.h"]),
+    deps = if_cuda_is_configured([
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        ":cuda_driver",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "//tensorflow/core:cuda_libdevice_path",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
+    ]) + ["@com_google_absl//absl/container:flat_hash_map"],
 )
 
 cc_library(
@@ -195,6 +212,9 @@ cc_library(
     srcs = if_cuda_is_configured(["cublas_stub.cc"]),
     textual_hdrs = glob(["cublas_*.inc"]),
     deps = if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -225,6 +245,9 @@ cc_library(
         ":cuda_helpers",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
@@ -326,6 +349,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:dnn",
@@ -364,6 +388,7 @@ cc_library(
     name = "curand_plugin",
     srcs = if_cuda_is_configured(["cuda_rng.cc"]),
     hdrs = if_cuda_is_configured(["cuda_rng.h"]),
+    visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation",
         ":cuda_gpu_executor",
@@ -401,6 +426,9 @@ cc_library(
     srcs = if_cuda_is_configured(["cusolver_stub.cc"]),
     textual_hdrs = ["cusolver_dense_10_0.inc"],
     deps = if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",

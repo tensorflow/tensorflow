@@ -412,7 +412,7 @@ inline bool Fast3x3FilterKernelSupported(
 
   if (quantization_type == QuantizationType::kPerChannelInt8) {
     for (int i = 0; i < output_depth; ++i) {
-      if (output_shift_ptr[i] <= 0) {
+      if (output_shift_ptr[i] > 0) {
         return false;
       }
     }

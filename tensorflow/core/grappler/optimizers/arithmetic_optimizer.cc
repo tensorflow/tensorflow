@@ -533,10 +533,10 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     using SigKV = decltype(shape_sig_to_inputs)::value_type;
     VLOG(3) << "Add/AddN group has " << shape_sig_to_inputs.size()
             << " unique shapes: "
-            << str_util::Join(shape_sig_to_inputs, ", ",
-                              [](string* out, SigKV p) {
-                                strings::StrAppend(out, p.first);
-                              });
+            << absl::StrJoin(shape_sig_to_inputs, ", ",
+                             [](string* out, SigKV p) {
+                               strings::StrAppend(out, p.first);
+                             });
 
     // Collect all the shapes from representative elements.
     std::vector<TensorShapeProto> shapes;
@@ -2032,7 +2032,7 @@ class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
   // GPU. The transpose might not be implemented for image.type, or
   // might be slower with image.type than with cast_dst_type.
   bool NodeIsOnCpuOrGpu(const NodeDef* node) const {
-    using str_util::StrContains;
+    using absl::StrContains;
 
     string task;
     string device;
@@ -2348,7 +2348,7 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
     string device;
     bool is_on_cpu =
         DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) &&
-        str_util::StrContains(device, DEVICE_CPU);
+        absl::StrContains(device, DEVICE_CPU);
 
     if (!is_complex || is_on_cpu) {
       NodeDef* new_square_node = AddCopyNode(optimized_node_name, node);
@@ -2968,7 +2968,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
     std::reverse(op_names.begin(), op_names.end());
 
     VLOG(2) << "Fuse unary ops: root=" << root->name() << " op_names=["
-            << str_util::Join(op_names, ", ") << "]";
+            << absl::StrJoin(op_names, ", ") << "]";
 
     NodeDef* composition_node = ctx().optimized_graph->add_node();
     composition_node->set_name(OptimizedNodeName(*root));
@@ -3010,7 +3010,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
 
   // UnaryOpsComposition is defined only for CPU.
   bool NodeIsOnCpu(const NodeDef& node) const {
-    using str_util::StartsWith;
+    using absl::StartsWith;
 
     string task;
     string device;
@@ -3601,7 +3601,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
-          << str_util::Join(pipeline.StageNames(), ", ");
+          << absl::StrJoin(pipeline.StageNames(), ", ");
 
   while (!nodes_to_simplify.Empty()) {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();

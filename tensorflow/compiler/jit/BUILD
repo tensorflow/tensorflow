@@ -1,4 +1,12 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        ":internal",
+        # BEGIN-GOOGLE-INTERNAL
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        # END-GOOGLE-INTERNAL
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -11,15 +19,6 @@ package_group(
     name = "friends",
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
-    ],
-)
-
-package(
-    default_visibility = [
-        ":internal",
-        # BEGIN-GOOGLE-INTERNAL
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
-        # END-GOOGLE-INTERNAL
     ],
 )
 
@@ -200,6 +199,7 @@ cc_library(
         "//tensorflow/core/kernels:host_constant_op",
         "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:logging_ops",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:queue_op",
         "//tensorflow/core/kernels:resource_variable_ops",
@@ -257,10 +257,8 @@ cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
-    # TODO(skyewm): remove this once XlaAllocator is factored out.
     visibility = [
         ":internal",
-        "//tensorflow/compiler/xla/python:__pkg__",
     ],
     deps = [
         ":common",

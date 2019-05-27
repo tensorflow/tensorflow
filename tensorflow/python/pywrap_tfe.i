@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 %include "tensorflow/python/platform/base.i"
+%include "tensorflow/c/tf_datatype.h"
+%include "tensorflow/c/tf_status.h"
 
 %ignore "";
 

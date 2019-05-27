@@ -23,6 +23,7 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
@@ -262,6 +263,8 @@ class TimeDistributed(Wrapper):
     if (hasattr(self.layer, 'activity_regularizer') and
         self.layer.activity_regularizer is not None):
       regularization_loss = self.layer.activity_regularizer(y)
+      base_layer_utils.check_graph_consistency(
+          regularization_loss, method='activity_regularizer')
       self.add_loss(regularization_loss, inputs)
     return y
 

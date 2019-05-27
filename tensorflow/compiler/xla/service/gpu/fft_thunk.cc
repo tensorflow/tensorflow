@@ -107,7 +107,7 @@ FftThunk::FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
       output_shape_(output_shape) {}
 
 Status FftThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                 se::Stream* stream,
+                                 se::Stream* stream, const RunId& /*run_id*/,
                                  HloExecutionProfiler* profiler) {
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type_);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape_);

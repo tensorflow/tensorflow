@@ -113,6 +113,13 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     return input_lib.get_distributed_dataset(dataset, self._input_workers,
                                              self._container_strategy())
 
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    return input_lib.DistributedDatasetsFromFunction(
+        dataset_fn,
+        self._input_workers,
+        [distribute_lib.InputContext()],
+        self._container_strategy())
+
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):

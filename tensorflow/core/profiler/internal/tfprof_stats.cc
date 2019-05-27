@@ -274,7 +274,7 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
   bool has_gpu_stream = false;
 
   for (const auto& dev_stat : run_meta->step_stats().dev_stats()) {
-    string dev = str_util::Lowercase(dev_stat.device());
+    string dev = absl::AsciiStrToLower(dev_stat.device());
     if (IsPlacedOnAccelerator(dev)) {
       has_gpu_scheduling = true;
       if (CountAsAcceleratorTime(dev)) {

@@ -630,7 +630,7 @@ def save(obj, export_dir, signatures=None):
   Example usage:
 
   ```python
-  class Adder(tf.train.Checkpoint):
+  class Adder(tf.Module):
 
     @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
     def add(self, x):
@@ -746,17 +746,6 @@ def save(obj, export_dir, signatures=None):
   producer. There are however other sources of incompatibilities which are not
   handled automatically, such as when the exported model contains operations
   which the consumer does not have definitions for.
-
-  The current implementation of `tf.saved_model.save` targets serving use-cases,
-  but omits information which will be necessary for the planned future
-  implementation of `tf.saved_model.load`. Exported models using the current
-  `save` implementation, and other existing SavedModels, will not be compatible
-  with `tf.saved_model.load` when it is implemented. Further, `save` will in the
-  future attempt to export `@tf.function`-decorated methods which it does not
-  currently inspect, so some objects which are exportable today will raise
-  exceptions on export in the future (e.g. due to complex/non-serializable
-  default arguments). Such backwards-incompatible API changes are expected only
-  prior to the TensorFlow 2.0 release.
 
   Args:
     obj: A trackable object to export.

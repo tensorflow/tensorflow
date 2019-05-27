@@ -23,6 +23,9 @@ limitations under the License.
 #include <type_traits>
 
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
+#include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/path.h"
 
 #ifdef __aarch64__
 #include <arm_neon.h>

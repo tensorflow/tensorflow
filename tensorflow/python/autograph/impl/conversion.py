@@ -52,7 +52,6 @@ from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -284,6 +283,8 @@ def _instantiate(entity, converted_entity_info, free_nonglobal_var_names):
   if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
     # Attach the default argument to the converted function.
     converted_entity.__defaults__ = entity.__defaults__
+    if hasattr(entity, '__kwdefaults__'):
+      converted_entity.__kwdefaults__ = entity.__kwdefaults__
 
   return converted_entity
 
@@ -345,8 +346,8 @@ def is_whitelisted_for_graph(o, check_call_override=True):
 
   if tf_inspect.isgeneratorfunction(o):
     logging.warn(
-        'Entity {} appears to be a generator function. It will not be converted'
-        ' by AutoGraph.'.format(o), 1)
+        'Entity %s appears to be a generator function. It will not be converted'
+        ' by AutoGraph.', o)
     logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
     return True
 
@@ -393,11 +394,6 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     # Due to the way they're constructed, namedtuple types cannot be converted
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
-    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
-      logging.warn(
-          'Entity {} looks like a namedtuple subclass. Its constructor will'
-          ' not be converted by AutoGraph, but if it has any custom methods,'
-          ' those will be.'.format(o), 1)
     logging.log(2, 'Whitelisted: %s: named tuple', o)
     return True
 
@@ -610,7 +606,8 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
     node, = nodes
 
   # TODO(znado): Place inside standard_analysis.
-  origin_info.resolve(node, source, f)
+  origin_info.resolve_entity(node, source, f)
+
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)
   namer = naming.Namer(namespace)
@@ -621,12 +618,7 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
       future_features=future_features,
       namespace=namespace)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  try:
-    node = node_to_graph(node, context)
-  except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-    logging.error(1, 'Error converting %s', f, exc_info=True)
-    raise errors.InternalError('conversion', e)
-    # TODO(mdan): Catch and rethrow syntax errors.
+  node = node_to_graph(node, context)
 
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())
@@ -676,8 +668,7 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
-  if context.program.options.uses(converter.Feature.LOGICAL_EXPRESSIONS):
-    node = converter.apply_(node, context, logical_expressions)
+  node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
   # TODO(mdan): If function scopes ever does more, the toggle will need moving.

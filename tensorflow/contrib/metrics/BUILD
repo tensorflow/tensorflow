@@ -2,14 +2,15 @@
 #   Contains ops for evaluation metrics and summary statistics.
 #   APIs here are meant to evolve over time.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//engedu/ml/tf_from_scratch:__pkg__",
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
-    "//tensorflow:internal",
-])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 

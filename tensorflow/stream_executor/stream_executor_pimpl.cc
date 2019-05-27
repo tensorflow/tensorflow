@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/const_init.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
@@ -65,8 +67,8 @@ std::atomic_int_fast64_t correlation_id_generator(0);
 
 }  // namespace
 
-template <typename BeginCallT, typename CompleteCallT,
-          typename ReturnT, typename... BeginArgsT>
+template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
+          typename... BeginArgsT>
 class ScopedTracer {
  public:
   ScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
@@ -103,7 +105,7 @@ class ScopedTracer {
 
   StreamExecutor *stream_exec_;
   CompleteCallT complete_call_;
-  const ReturnT* result_;
+  const ReturnT *result_;
   int64 correlation_id_;
 };
 
@@ -118,9 +120,9 @@ MakeScopedTracer(StreamExecutor *stream_exec, BeginCallT begin_call,
       std::forward<BeginArgsT>(begin_args)...);
 }
 
-#define SCOPED_TRACE(LOC, ...)                                      \
-  auto tracer = MakeScopedTracer(this, &LOC ## Begin,               \
-                                 &LOC ## Complete, ## __VA_ARGS__);
+#define SCOPED_TRACE(LOC, ...) \
+  auto tracer =                \
+      MakeScopedTracer(this, &LOC##Begin, &LOC##Complete, ##__VA_ARGS__);
 
 /* static */ absl::Mutex StreamExecutor::static_mu_{absl::kConstInit};
 
@@ -144,8 +146,7 @@ StreamExecutor::StreamExecutor(
       live_stream_count_(0),
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
-      memory_limit_bytes_(GetMemoryLimitBytes()),
-      allocator_(this) {
+      memory_limit_bytes_(GetMemoryLimitBytes()) {
   string name = absl::AsciiStrToLower(platform_->Name());
   if (name == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
@@ -784,8 +785,7 @@ void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
 void StreamExecutor::CreateAllocRecord(void *opaque, uint64 bytes) {
   if (FLAGS_check_device_leaks && opaque != nullptr && bytes != 0) {
     absl::MutexLock lock(&mu_);
-    mem_allocs_[opaque] = AllocRecord{
-        bytes, ""};
+    mem_allocs_[opaque] = AllocRecord{bytes, ""};
     mem_alloc_bytes_ += bytes;
   }
 }
@@ -855,8 +855,9 @@ internal::StreamExecutorInterface *StreamExecutor::implementation() {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     StreamExecutor *executor)
-    : DeviceMemoryAllocator(executor->platform()),
-      stream_executors_({executor}) {}
+    : DeviceMemoryAllocator(executor->platform()) {
+  stream_executors_ = {executor};
+}
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
     const Platform *platform,
@@ -866,15 +867,14 @@ StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
 
 port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
-  port::StatusOr<StreamExecutor *> stream_executor_or =
-      GetStreamExecutor(device_ordinal);
-  TF_RETURN_IF_ERROR(stream_executor_or.status());
-  DeviceMemoryBase result =
-      stream_executor_or.ValueOrDie()->AllocateArray<uint8>(size);
+  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+                      GetStreamExecutor(device_ordinal));
+  DeviceMemoryBase result = executor->AllocateArray<uint8>(size);
   if (size > 0 && result == nullptr) {
-    return tensorflow::errors::ResourceExhausted(
+    return tensorflow::errors::ResourceExhausted(absl::StrFormat(
         "Failed to allocate request for %s (%uB) on device ordinal %d",
-        tensorflow::strings::HumanReadableNumBytes(size), size, device_ordinal);
+        tensorflow::strings::HumanReadableNumBytes(size), size,
+        device_ordinal));
   }
   VLOG(3) << absl::StreamFormat(
       "Allocated %s (%uB) on device ordinal %d: %p",
@@ -886,12 +886,11 @@ port::StatusOr<OwningDeviceMemory> StreamExecutorMemoryAllocator::Allocate(
 port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
                                                        DeviceMemoryBase mem) {
   if (!mem.is_null()) {
-    port::StatusOr<StreamExecutor *> stream_executor_or =
-        GetStreamExecutor(device_ordinal);
-    TF_RETURN_IF_ERROR(stream_executor_or.status());
+    TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
+                        GetStreamExecutor(device_ordinal));
     VLOG(3) << absl::StreamFormat("Freeing %p on device ordinal %d",
                                   mem.opaque(), device_ordinal);
-    stream_executor_or.ValueOrDie()->Deallocate(&mem);
+    executor->Deallocate(&mem);
   }
   return port::Status::OK();
 }
@@ -899,20 +898,17 @@ port::Status StreamExecutorMemoryAllocator::Deallocate(int device_ordinal,
 port::StatusOr<StreamExecutor *>
 StreamExecutorMemoryAllocator::GetStreamExecutor(int device_ordinal) {
   if (device_ordinal < 0) {
-    return tensorflow::errors::InvalidArgument(
-        "device ordinal value (%d) must be non-negative", device_ordinal);
+    return tensorflow::errors::InvalidArgument(absl::StrFormat(
+        "device ordinal value (%d) must be non-negative", device_ordinal));
   }
-  if (device_ordinal >= stream_executors_.size()) {
-    return tensorflow::errors::InvalidArgument(
-        "device ordinal value (%d) >= number of devices (%u)", device_ordinal,
-        stream_executors_.size());
+  for (StreamExecutor *se : stream_executors_) {
+    if (se->device_ordinal() == device_ordinal) {
+      return se;
+    }
   }
-  if (stream_executors_[device_ordinal] == nullptr) {
-    return tensorflow::errors::NotFound(
-        absl::StrFormat("Device %s:%d present but not supported",
-                        platform()->Name(), device_ordinal));
-  }
-  return stream_executors_[device_ordinal];
+  return tensorflow::errors::NotFound(
+      absl::StrFormat("Device %s:%d present but not supported",
+                      platform()->Name(), device_ordinal));
 }
 
 bool StreamExecutorMemoryAllocator::AllowsAsynchronousDeallocation() const {
