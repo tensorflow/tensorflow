@@ -780,6 +780,9 @@ class _EagerTensorBase(Tensor):
     return int(maybe_arr)  # Must be a NumPy scalar.
 
   def __array__(self, dtype=None):
+    # This is only called if the buffer interface conversion failed.
+    # Remove once numpy/numpy#13507 is merged and released or py_function
+    # creates EagerTensors with a non-nullptr context.
     return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):

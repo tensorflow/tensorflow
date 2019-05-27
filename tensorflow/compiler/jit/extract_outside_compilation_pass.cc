@@ -1634,7 +1634,7 @@ Status ExtractOutsideCompilationForFunction(
   RewriteOutsideCompilationSubgraphFn rewrite_fn(
       xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name);
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
-      outside_compilation_attr_name, "", *fbody->graph, rewrite_fn,
+      outside_compilation_attr_name, *fbody->graph, rewrite_fn,
       /*reuse_existing_functions=*/true, &graph_out, fld));
 
   // Replace outside_compilation function nodes with HostCompute ops.

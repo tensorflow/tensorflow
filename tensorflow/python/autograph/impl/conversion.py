@@ -346,8 +346,8 @@ def is_whitelisted_for_graph(o, check_call_override=True):
 
   if tf_inspect.isgeneratorfunction(o):
     logging.warn(
-        'Entity {} appears to be a generator function. It will not be converted'
-        ' by AutoGraph.'.format(o), 1)
+        'Entity %s appears to be a generator function. It will not be converted'
+        ' by AutoGraph.', o)
     logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
     return True
 
@@ -394,11 +394,6 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     # Due to the way they're constructed, namedtuple types cannot be converted
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
-    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
-      logging.warn(
-          'Entity {} looks like a namedtuple subclass. Its constructor will'
-          ' not be converted by AutoGraph, but if it has any custom methods,'
-          ' those will be.'.format(o), 1)
     logging.log(2, 'Whitelisted: %s: named tuple', o)
     return True
 

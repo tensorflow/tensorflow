@@ -104,6 +104,24 @@ struct EdgePtrCompare {
   }
 };
 
+// TODO(laigd): instead of deciding the device here, the converter should accept
+// a device name as one of the conversion parameter so users can control on
+// which device they want to run the conversion.
+std::pair<TfGpuId, PlatformGpuId> GetFirstValidDeviceId() {
+  for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
+    TfGpuId tf_gpu_id(tf_gpu_id_value);
+    PlatformGpuId platform_gpu_id;
+    Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+    if (s.ok()) {
+      VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
+              << platform_gpu_id.value();
+      return std::make_pair(tf_gpu_id, platform_gpu_id);
+    }
+  }
+  LOG(ERROR) << "Could not find any TF GPUs";
+  return std::make_pair(TfGpuId(-1), PlatformGpuId(-1));
+}
+
 // Function to get subsegment information structure.
 Status GetEngineInfo(const Graph* g,
                      const grappler::GraphProperties& graph_properties,
@@ -128,27 +146,43 @@ Status GetEngineInfo(const Graph* g,
     if (segment_nodes.count(node) == 0) continue;
     auto node_device = node->requested_device();
     if (!node_device.empty()) {
-      // If device is CPU, treat as if no device was assigned. Don't add CPU to
-      // segment_device because that would cause a segfault in
-      // GetDeviceAndAllocator. This is because GetDeviceAndAllocator assumes
-      // any already set device is a GPU.
+      // If device is set, it means device placement may have been done before,
+      // so we need to assign a device for the TRTEngineOp to maintain the
+      // invariance.
+      // If the device is CPU in this case, it tries to find the first available
+      // GPU and use it as the device.
       DeviceNameUtils::ParsedName parsed_name;
-      DeviceNameUtils::ParseFullName(node_device, &parsed_name);
-      if (parsed_name.type == "CPU") {
-        VLOG(1) << "Node " << node->name() << " was assigned to the CPU. "
-                << "Attempting to place on GPU.";
+      const bool parse_succeeded =
+          DeviceNameUtils::ParseFullName(node_device, &parsed_name);
+      if (!parse_succeeded || (parse_succeeded && parsed_name.type == "CPU")) {
+        string msg;
+        if (!parse_succeeded) {
+          msg = StrCat("Failed to parse assigned device of node ", node->name(),
+                       ". ");
+        } else {
+          msg = StrCat("Node ", node->name(), " was assigned to the CPU. ");
+        }
+        VLOG(1) << msg << "Attempting to place on GPU.";
+        TfGpuId tf_gpu_id;
+        PlatformGpuId platform_gpu_id;
+        std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
+        if (tf_gpu_id.value() >= 0) {
+          parsed_name.type = "GPU";
+          parsed_name.id = tf_gpu_id.value();
+          segment_devices.insert(DeviceNameUtils::FullName(
+              parsed_name.job, parsed_name.replica, parsed_name.task,
+              parsed_name.type, parsed_name.id));
+        }
       } else {
         segment_devices.insert(node_device);
       }
+    } else if (node->has_assigned_device_name()) {
+      // It appears that nodes will not have assigned devices at this point in
+      // execution.
+      segment_devices.insert(node->assigned_device_name());
     } else {
-      if (node->has_assigned_device_name()) {
-        // It appears that nodes will not have assigned devices at this point in
-        // execution.
-        segment_devices.insert(node->assigned_device_name());
-      } else {
-        VLOG(2) << "Node " << node->name()
-                << " neither have requested device nor assigned device";
-      }
+      VLOG(2) << "Node " << node->name()
+              << " neither have requested device nor assigned device";
     }
     subgraph_nodes.push_back(node);
 
@@ -638,24 +672,17 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
   if (params.cluster == nullptr || params.cluster->GetDeviceSet() == nullptr ||
       engine.device.empty()) {
     // If device is not set, use the first found GPU device for the conversion.
-    for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
-      TfGpuId tf_gpu_id(tf_gpu_id_value);
-      PlatformGpuId platform_gpu_id;
-      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
-      if (s.ok()) {
-        VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-                << platform_gpu_id.value();
-        cuda_device_id = platform_gpu_id.value();
-        GPUOptions gpu_options;
-        // If the TF to Cuda gpu id mapping exist, the device and corresponding
-        // allocator must have been initialized already, so the
-        // GetGPUAllocator() call won't create a new allocator.
-        dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
-            gpu_options, tf_gpu_id, 1);
-        break;
-      }
-      LOG(ERROR) << "TF GPU with id " << tf_gpu_id_value << " does not exist "
-                 << s;
+    TfGpuId tf_gpu_id;
+    PlatformGpuId platform_gpu_id;
+    std::tie(tf_gpu_id, platform_gpu_id) = GetFirstValidDeviceId();
+    cuda_device_id = platform_gpu_id.value();
+    if (cuda_device_id >= 0) {
+      GPUOptions gpu_options;
+      // If the TF to Cuda gpu id mapping exist, the device and corresponding
+      // allocator must have been initialized already, so the
+      // GetGPUAllocator() call won't create a new allocator.
+      dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
+          gpu_options, tf_gpu_id, 1);
     }
     return std::make_pair(cuda_device_id, dev_allocator);
   }

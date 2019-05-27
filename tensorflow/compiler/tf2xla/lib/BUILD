@@ -1,9 +1,8 @@
 # Utilities for building XLA computations.
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 # Filegroup used to collect source files for dependency checking.

@@ -730,6 +730,15 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   const DataType type = params_->op_kernel->output_type(index);
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
+  if (attr.scope_id > 0) {
+    if (!allocated_scope_ids_.insert(attr.scope_id).second) {
+      return errors::Internal(
+          "OpKernel ", params_->op_kernel->name(),
+          " called allocate_output at index ", index, " with scope_id ",
+          attr.scope_id,
+          " more than once.  Try turning off the ScopedAllocator optimizer.");
+    }
+  }
   auto output_tensor = MakeUnique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
@@ -743,6 +752,22 @@ Status OpKernelContext::allocate_temp(
     DataType type, const TensorShape& shape, Tensor* out_temp,
     AllocatorAttributes allocator_attr,
     const AllocationAttributes& allocation_attr) {
+  if (allocator_attr.scope_id > 0) {
+    // We do not allow ScopedAllocator calls from allocate_temp.  Unlike
+    // allocate_persistent where we return an error if a kernel provides a
+    // meaningful scope_id, here we clear the scope_id and return a temporary
+    // buffer.  This is because it is legal for a kernel to call allocate_temp
+    // and then set_output with the temp tensor.
+    //
+    // We achieve memory correctness by forcing an allocation in set_output and
+    // copying over the tensor from the temp buffer.  Kernels which would like
+    // to avoid this performance penalty should switch to calling
+    // allocate_output.
+    VLOG(2) << "Warning: OpKernel " << params_->op_kernel->name()
+            << " called allocate_temp with scope_id " << allocator_attr.scope_id
+            << ".  Switch to allocate_output to avoid performance penalty.";
+    allocator_attr.scope_id = -1;
+  }
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
@@ -763,6 +788,13 @@ Status OpKernelContext::allocate_persistent(DataType type,
                                             PersistentTensor* out_persistent,
                                             Tensor** out_tensor,
                                             AllocatorAttributes attr) {
+  if (attr.scope_id > 0) {
+    // ScopedAllocator cannot be used for persistent tensors, because these
+    // tensors may persist across kernel invocations/steps, whereas the backing
+    // tensor for the scoped allocator will be reallocated every step.
+    return errors::Internal(
+        "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
+  }
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
@@ -807,22 +839,38 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
   DCHECK(!IsRefType(type));
   DCHECK_EQ(mutable_output(index), nullptr);
 
+  bool allocate_and_copy = false;
   const bool never_forward =
       (params_->forward_from_array != nullptr &&
        params_->forward_from_array[index] == Params::kNeverForward);
   if (never_forward) {
+    if (allocated_scope_ids_.find(output_alloc_attr(index).scope_id) ==
+        allocated_scope_ids_.end()) {
+      allocate_and_copy = true;
+    } else {
+      // The output at `index` must have been previously allocated via a call to
+      // `allocate_output(index, ...)`.  That call would ensure that we return
+      // the correct slice of the ScopedAllocated buffer, so we do not
+      // re-allocate and copy here.
+      LOG(WARNING)
+          << "OpKernel " << params_->op_kernel->name()
+          << " called both allocate_output and set_output with scope_id "
+          << output_alloc_attr(index).scope_id;
+    }
+  }
+
+  if (allocate_and_copy) {
     // This output was marked to not be forwarded either during graph
     // construction or grappler passes.  Force an allocation and copy input to
     // output.
-    AllocatorAttributes allocator_attributes = output_alloc_attr(index);
     VLOG(1) << "OpKernelContext set_output index " << index << " tensor "
             << tensor.DebugString() << " never_forward " << never_forward
             << " params_->forward_from_array[index] "
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
-            << allocator_attributes.scope_id;
+            << output_alloc_attr(index).scope_id;
     auto new_tensor = MakeUnique<Tensor>();
     Status s = allocate_tensor(type, tensor.shape(), new_tensor.get(),
-                               allocator_attributes);
+                               output_alloc_attr(index));
     TF_DCHECK_OK(s);
     device()->CopyTensorInSameDevice(&tensor, new_tensor.get(),
                                      op_device_context(), [](const Status&) {});

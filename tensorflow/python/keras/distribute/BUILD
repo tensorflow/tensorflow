@@ -5,9 +5,10 @@
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -267,6 +268,7 @@ cuda_py_test(
         "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -302,6 +304,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -323,6 +326,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/132384649): Flakily times out.
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -340,6 +344,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

@@ -52,7 +52,7 @@ CholeskyThunk::CholeskyThunk(const CholeskyOptions& options,
 
 Status CholeskyThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   VLOG(3) << "type=" << PrimitiveType_Name(type_)
           << " uplo=" << se::blas::UpperLowerString(uplo_)
           << " batch_size=" << batch_size_ << " n=" << n_

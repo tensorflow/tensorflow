@@ -113,7 +113,7 @@ class _CuDNNRNN(RNN):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_state:
       return [output] + states

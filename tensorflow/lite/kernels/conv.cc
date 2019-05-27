@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_support.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
-#include "tensorflow/lite/kernels/tflite_with_ruy.h"
 // b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
 #ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"

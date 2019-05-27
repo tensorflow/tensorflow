@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -80,13 +82,13 @@ class ScopedDeviceMemory {
 
   // Releases the memory that was provided in the constructor, through the
   // "parent" StreamExecutor.
-  ~ScopedDeviceMemory() { Free(); }
+  ~ScopedDeviceMemory() { TF_CHECK_OK(Free()); }
 
   // Moves ownership of the memory from other to this object.
   //
   // Postcondition: other == nullptr.
   ScopedDeviceMemory &operator=(ScopedDeviceMemory &&other) {
-    Free();
+    TF_CHECK_OK(Free());
     wrapped_ = other.Release();
     allocator_ = other.allocator_;
     device_ordinal_ = other.device_ordinal_;
@@ -132,7 +134,7 @@ class ScopedDeviceMemory {
   int device_ordinal() const { return device_ordinal_; }
 
   // Frees the existing memory, resets the wrapped memory to null.
-  void Free();
+  port::Status Free();
 
  private:
   DeviceMemory<ElemT> wrapped_;       // Value we wrap with scoped-release.
@@ -212,8 +214,8 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   //
   // Precondition: all stream_executors have different device ordinals.
   StreamExecutorMemoryAllocator(
-      const Platform* platform,
-      absl::Span<StreamExecutor* const> stream_executors);
+      const Platform *platform,
+      absl::Span<StreamExecutor *const> stream_executors);
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
                                               bool retry_on_failure) override;
@@ -228,23 +230,19 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  private:
   port::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal);
 
-  // A mapping from device ordinals to StreamExecutors, for each device of
-  // the allocator's platform type. If an element does not exist in the
-  // mapping, the device with the respective device ordinal is not supported
-  // by this allocator.
-  std::map<int, StreamExecutor *> stream_executors_;
+  // Available stream executors. Each stream executor has a different device
+  // ordinal.
+  std::vector<StreamExecutor *> stream_executors_;
 };
 
 template <typename ElemT>
-void ScopedDeviceMemory<ElemT>::Free() {
+port::Status ScopedDeviceMemory<ElemT>::Free() {
   if (!wrapped_.is_null()) {
-    DCHECK(allocator_ != nullptr);
-    auto status = allocator_->Deallocate(device_ordinal_, wrapped_);
-    if (!status.ok()) {
-      LOG(WARNING) << "Deallocating buffer " << wrapped_.opaque() << " failed";
-    }
+    CHECK(allocator_ != nullptr) << "Owning pointer in inconsistent state";
+    TF_RETURN_IF_ERROR(allocator_->Deallocate(device_ordinal_, wrapped_));
   }
   wrapped_ = DeviceMemory<ElemT>{};
+  return port::Status::OK();
 }
 
 }  // namespace stream_executor

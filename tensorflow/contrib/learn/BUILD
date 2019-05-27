@@ -1,17 +1,17 @@
 # Description:
 #   Contains TF Learn (aka Scikit Flow) sub-project with high level tensorflow API.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//engedu/ml/tf_from_scratch:__pkg__",
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-
-package(default_visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
-    "//tensorflow:internal",
-])
-
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 py_library(

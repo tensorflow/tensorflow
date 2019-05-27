@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 
+#include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -217,6 +219,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::vector<std::unique_ptr<Tensor>> tensors_;  // Owns tensors.
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs.
+  std::unique_ptr<CancellationManager> cancellation_manager_;
 };
 
 }  // namespace data

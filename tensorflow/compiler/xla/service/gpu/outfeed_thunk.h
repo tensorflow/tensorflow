@@ -39,7 +39,7 @@ class OutfeedThunk : public Thunk {
   OutfeedThunk& operator=(const OutfeedThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

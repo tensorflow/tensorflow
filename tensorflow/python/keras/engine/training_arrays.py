@@ -141,9 +141,6 @@ def model_iteration(model,
           inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
     input_iterator = _get_iterator(inputs, model._distribution_strategy)
 
-  if mode == ModeKeys.TRAIN:
-    _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
-
   # Enter tf.distribute.Strategy scope.
   if model._distribution_strategy:
     scope = distributed_training_utils.distributed_scope(
@@ -175,6 +172,7 @@ def model_iteration(model,
     # `ins` is a function when a distribute strategy is used in Eager mode.  In
     # that case `is_dataset` is True.  The code branches that have requirements
     # about the type of `ins` do not trigger in the distributed case.
+
   if not is_dataset:
     num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                      steps_per_epoch)
@@ -198,6 +196,14 @@ def model_iteration(model,
     val_iterator = _get_iterator(val_inputs, model._distribution_strategy)
     val_inputs = _prepare_feed_values(
         model, val_iterator, val_targets, val_sample_weights, ModeKeys.TEST)
+    # Get num steps for printing.
+    val_samples_or_steps = validation_steps
+  else:
+    # Get num samples for printing.
+    val_samples_or_steps = val_inputs and val_inputs[0].shape[0] or None
+
+  if mode == ModeKeys.TRAIN and verbose:
+    _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
 
   # Configure callbacks.
   count_mode = 'steps' if use_steps else 'samples'
@@ -445,11 +451,14 @@ def _get_model_feed(model, mode):
   return feed
 
 
-def _print_train_info(inputs, val_inputs, steps_per_epoch, verbose):
-  if (val_inputs and steps_per_epoch is None and verbose and inputs and
-      hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
-    print('Train on %d samples, validate on %d samples' %
-          (inputs[0].shape[0], val_inputs[0].shape[0]))
+def _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset):
+  increment = 'steps' if is_dataset else 'samples'
+  msg = 'Train on {0} {increment}'.format(
+      num_samples_or_steps, increment=increment)
+  if val_samples_or_steps:
+    msg += ', validate on {0} {increment}'.format(
+        val_samples_or_steps, increment=increment)
+  print(msg)
 
 
 def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):

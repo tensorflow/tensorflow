@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.platform import test
 
@@ -25,17 +27,19 @@ from tensorflow.python.platform import test
 class ErrorMetadataBaseTest(test.TestCase):
 
   def test_get_message_when_frame_info_code_is_none(self):
-    callsite_tb = [('/usr/local/python/foo.py', 96, 'fake_function_name', None),
-                   ('/usr/local/python/two.py', 1874, 'another_function_name',
-                    'raise ValueError(str(e))')]
-    cause_message = 'ValueError: Just a test.'
+    callsite_tb = [
+        ('/path/one.py', 11, 'test_fn_1', None),
+        ('/path/two.py', 171, 'test_fn_2', 'test code'),
+    ]
+    cause_message = 'Test message'
     em = errors.ErrorMetadataBase(
         callsite_tb=callsite_tb,
         cause_metadata=None,
         cause_message=cause_message,
         source_map={})
-    self.assertRegex(em.get_message(),
-                     r'fake_function(.|\n)*another_function(.|\n)*Just a test')
+    self.assertRegex(
+        em.get_message(),
+        re.compile('test_fn_1.*test_fn_2.*Test message', re.DOTALL))
 
 
 if __name__ == '__main__':

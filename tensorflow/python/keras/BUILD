@@ -5,9 +5,10 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -1247,13 +1248,14 @@ tf_py_test(
 
 tf_py_test(
     name = "training_arrays_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/training_arrays_test.py"],
     additional_deps = [
         ":keras",
         ":layers",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],

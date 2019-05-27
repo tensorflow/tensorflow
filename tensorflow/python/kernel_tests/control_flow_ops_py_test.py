@@ -1075,20 +1075,20 @@ class ControlFlowTest(test.TestCase):
       fn1 = lambda: array_ops.identity(v1)
       fn2 = lambda: array_ops.gather(v1, [1, 1])
       r = control_flow_ops.cond(pred, fn1, fn2)
+      # The following `grad` is a Tensor since it is the aggregation of an
+      # IndexedSlice and a Tensor. It is an `IndexedSlices` with control flow
+      # v2.
       grad = gradients_impl.gradients(r, [v1])[0]
       self.evaluate(variables.global_variables_initializer())
-      # Should just be [1, 1], but possibly a sparse representation
-      gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 1})
-      dense_gv = [
-          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
-      ]
-      self.assertAllEqual(dense_gv, [1.0, 1.0])
-      # Should be [0, 2], as the else forwards v1[1] twice
-      gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 3})
-      dense_gv = [
-          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
-      ]
-      self.assertAllEqual(dense_gv, [0.0, 2.0])
+
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        self.assertIsInstance(grad, ops.IndexedSlices)
+
+      grad_value = sess.run(grad, feed_dict={c: 1})
+      self.assertAllEqual(gradient_checker_v2._to_numpy(grad_value), [1.0, 1.0])
+
+      grad_value = sess.run(grad, feed_dict={c: 3})
+      self.assertAllEqual(gradient_checker_v2._to_numpy(grad_value), [0.0, 2.0])
 
   @test_util.run_deprecated_v1
   def testCondGrad_ResourceVarSparseRead(self):
@@ -2846,7 +2846,6 @@ class ControlFlowTest(test.TestCase):
     var = resource_variable_ops.ResourceVariable([1., 2., 3., 4.])
     self.evaluate(variables.global_variables_initializer())
     grad = self.evaluate(bar(var))
-    self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
   def testWhileGrad_ResourceVarInNestedFunctionCall(self):
@@ -2870,7 +2869,6 @@ class ControlFlowTest(test.TestCase):
     var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
     self.evaluate(variables.global_variables_initializer())
     grad = self.evaluate(bar(var))
-    self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
   def testWhileGrad_ResourceVarInLoopInFunctionCall(self):
@@ -2896,7 +2894,6 @@ class ControlFlowTest(test.TestCase):
     var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
     self.evaluate(variables.global_variables_initializer())
     grad = self.evaluate(bar(var))
-    self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
 
   def testWhileCondGrad_ResourceVarInFunctionCall(self):
@@ -2926,8 +2923,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWhileGrad_ResourceVarSparseRead(self):
-    # NOTE(skyewm): this test is interesting because the
-    # ResourceVariable.sparse_read gradient function returns an IndexedSlices.
+    # NOTE(skyewm): this test is interesting because the gradient is the
+    # aggregation result of IndexedSlices and Tensors.
     var = resource_variable_ops.ResourceVariable(np.ones(5),
                                                  dtype=dtypes.float32)
     r = control_flow_ops.while_loop(
@@ -2938,14 +2935,13 @@ class ControlFlowTest(test.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
     grad_val = self.evaluate(grad)
-    self.assertIsInstance(grad_val, ops.IndexedSlicesValue)
     arr = gradient_checker_v2._to_numpy(grad_val)
     self.assertAllEqual(arr, [0., 12., 0., 12., 0.])
 
   @test_util.run_deprecated_v1
   def testWhileGrad_MultiResourceVarSparseRead(self):
-    # NOTE(skyewm): this test is interesting because the
-    # ResourceVariable.sparse_read gradient function returns an IndexedSlices.
+    # NOTE(skyewm): this test is interesting because the gradient is the
+    # aggregation result of IndexedSlices and Tensors.
     var1 = resource_variable_ops.ResourceVariable(np.ones(5),
                                                   dtype=dtypes.float32)
     var2 = resource_variable_ops.ResourceVariable(np.ones(3),
@@ -2968,8 +2964,6 @@ class ControlFlowTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     var1_grad_val = self.evaluate(var1_grad)
     var2_grad_val = self.evaluate(var2_grad)
-    self.assertIsInstance(var1_grad_val, ops.IndexedSlicesValue)
-    self.assertIsInstance(var2_grad_val, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(var1_grad_val),
                         [0., 1., 0., 1., 0.])
     self.assertAllEqual(gradient_checker_v2._to_numpy(var2_grad_val),

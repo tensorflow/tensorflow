@@ -100,7 +100,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
   std::tie(operand_desc, scale_offset_desc) =
@@ -164,7 +164,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
   // The BatchNormTraining HLO outputs a tuple of three elements: output data,
@@ -250,7 +250,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
 

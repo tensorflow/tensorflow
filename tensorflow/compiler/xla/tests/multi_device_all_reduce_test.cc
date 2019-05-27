@@ -21,7 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 // Tests cross-GPU all-reduce operatons.
 //
@@ -208,6 +210,44 @@ XLA_TEST_F(MultiDeviceAllReduceTest, NcclChannelCaching) {
 
   executables[1].executable.reset();
   EXPECT_THAT(OpenNcclChannels(), IsEmpty());
+}
+
+// Runs the same executable many times concurrently.  The all-reduces should not
+// conflict with one another.
+XLA_TEST_F(MultiDeviceAllReduceTest, ManyConcurrentAllReduces) {
+  const int64 kNumElems = 1024;
+  const int64 kNumThreads = 200;
+  const int64 kRunsPerThread = 10;
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(2);
+  auto executable = test_runner_
+                        .CreateExecutable(MakeCrsModule(kNumElems, config),
+                                          /*run_hlo_passes=*/true)
+                        .ValueOrDie();
+  std::vector<int64> devices = {0, 1};
+  auto device_assn = MakeDeviceAssn(devices);
+
+  std::vector<float> input_vec(kNumElems);
+  absl::c_iota(input_vec, 0);
+  auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
+  HloRunner::ReplicatedExecuteOptions opts;
+  opts.num_replicas = devices.size();
+  opts.use_threads = true;
+  opts.arguments.push_back(&input_literal);
+
+  tensorflow::BlockingCounter done(kNumThreads * kRunsPerThread);
+  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), TestName(),
+                                      kNumThreads);
+  for (int64 i = 0; i < kNumThreads * kRunsPerThread; ++i) {
+    pool.Schedule([&] {
+      TF_ASSERT_OK(
+          test_runner_.ExecuteReplicated(executable.get(), opts, &device_assn)
+              .status());
+      done.DecrementCount();
+    });
+  }
+  done.Wait();
 }
 
 }  // namespace

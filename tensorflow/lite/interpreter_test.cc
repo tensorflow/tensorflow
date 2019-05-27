@@ -56,9 +56,6 @@ namespace {
 
 using ::testing::IsEmpty;
 
-// TODO(b/129561206): Reenable this test on fuchsia builds once the needed gtest
-// library is ported.
-#if !GTEST_OS_FUCHSIA
 // Make an interpreter that has no tensors and no nodes
 TEST(BasicInterpreter, ZeroInterpreter) {
   testing::internal::CaptureStderr();
@@ -77,7 +74,6 @@ TEST(BasicInterpreter, ZeroInterpreter) {
   Interpreter interpreter2;
   EXPECT_THAT(testing::internal::GetCapturedStderr(), IsEmpty());
 }
-#endif
 
 // Test various error conditions.
 TEST(BasicInterpreter, InvokeInvalidModel) {

@@ -745,7 +745,7 @@ class RNN(Layer):
       updates = []
       for state_, state in zip(nest.flatten(self.states), nest.flatten(states)):
         updates.append(state_ops.assign(state_, state))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs

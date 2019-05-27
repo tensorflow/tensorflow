@@ -1,6 +1,7 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Primary purpose of this config is to replace ::util::Status with our custom
 # light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides

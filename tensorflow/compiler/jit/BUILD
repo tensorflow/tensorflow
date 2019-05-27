@@ -1,4 +1,12 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        ":internal",
+        # BEGIN-GOOGLE-INTERNAL
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        # END-GOOGLE-INTERNAL
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -11,15 +19,6 @@ package_group(
     name = "friends",
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
-    ],
-)
-
-package(
-    default_visibility = [
-        ":internal",
-        # BEGIN-GOOGLE-INTERNAL
-        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
-        # END-GOOGLE-INTERNAL
     ],
 )
 

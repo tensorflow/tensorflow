@@ -82,12 +82,10 @@ Status GlSyncWait();
 // (up to tens of ms) but consumes more CPU.
 Status GlActiveSyncWait();
 
-// Performs the best available minimum latency finish. A calling thread is not
-// going to sleep keeping active busy wait.
-// 1) CPU checks the value in the buffer that is going to be written by GPU. The
-//    persistent buffer is used if the extension is available.
-// 2) glSync is checked for the signalling state in a loop.
-// 3) glFinish() is performed if all other methods are not available
+// CPU checks the value in the buffer that is going to be written by GPU. The
+// persistent buffer is used for the simultaneous access to the buffer by GPU
+// and CPU. The instance remains invalid if persistent buffer OpenGL extension
+// is not supported by the device.
 class GlShaderSync {
  public:
   static Status NewSync(GlShaderSync* gl_sync);

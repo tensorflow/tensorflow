@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 #include <vector>
+
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -399,6 +401,101 @@ TEST_F(OpKernelTest, InputDtype) {
   EXPECT_EQ(dtype, DT_INT32);
   delete ctx;
   delete params.device;
+}
+
+// A mock device that mimics the behavior of scoped allocator upon calling
+// GetAllocator with a positive scope_id.
+class ScopedAllocatorDevice : public DeviceBase {
+ public:
+  explicit ScopedAllocatorDevice(Env* env)
+      : DeviceBase(env),
+        scope_allocated_(false),
+        num_allocations_(0),
+        num_scoped_allocations_(0) {}
+
+  Allocator* GetAllocator(AllocatorAttributes attrs) override {
+    CHECK_LE(attrs.scope_id, 0);
+    num_allocations_++;
+    return cpu_allocator();
+  }
+
+  Allocator* GetScopedAllocator(AllocatorAttributes attrs,
+                                int64 /*step_id*/) override {
+    CHECK_GT(attrs.scope_id, 0);
+    num_scoped_allocations_++;
+    if (scope_allocated_) {
+      return nullptr;
+    } else {
+      scope_allocated_ = true;
+      return cpu_allocator();
+    }
+  }
+
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
+                              const DeviceContext* device_context,
+                              StatusCallback done) override {
+    CHECK(input_tensor->NumElements() == output_tensor->NumElements());
+    tensor::DeepCopy(*input_tensor, output_tensor);
+    done(Status::OK());
+  }
+
+  // Return the count of calls to GetAllocator or GetScopedAllocator, depending
+  // on when scoped is false or true respectively.  For testing purposes.
+  int num_allocations(bool scoped) {
+    if (scoped) {
+      return num_scoped_allocations_;
+    } else {
+      return num_allocations_;
+    }
+  }
+
+ private:
+  bool scope_allocated_;
+  int num_allocations_;
+  int num_scoped_allocations_;
+};
+
+// Test that a kernel which has an output marked for allocation via
+// ScopedAllocator, which calls allocate_temp and set_output, does the right
+// thing.  In this case, the expected behavior is for allocate_temp to return
+// a temporary buffer, and set_output to copy the contents of this temp buffer
+// into the ScopedAllocator slice.
+TEST_F(OpKernelTest, ScopedAllocationTest) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  params.record_tensor_accesses = false;
+  auto sa_device = absl::make_unique<ScopedAllocatorDevice>(env);
+  params.device = sa_device.get();
+  Status status;
+  std::unique_ptr<OpKernel> op(CreateOpKernel(
+      DEVICE_CPU, params.device, cpu_allocator(),
+      CreateNodeDef("Test4", {DT_FLOAT}), TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok());
+  params.op_kernel = op.get();
+  AllocatorAttributes alloc_attrs;
+  alloc_attrs.scope_id = 1;
+  std::vector<AllocatorAttributes> output_alloc_attrs({alloc_attrs});
+  params.output_attr_array = output_alloc_attrs.data();
+  std::vector<int> forward_from({OpKernelContext::Params::kNeverForward});
+  params.forward_from_array = forward_from.data();
+  auto ctx = absl::make_unique<OpKernelContext>(&params);
+
+  EXPECT_EQ(sa_device->num_allocations(false), 0);
+  EXPECT_EQ(sa_device->num_allocations(true), 0);
+  Tensor temp1;
+  TF_EXPECT_OK(
+      ctx->allocate_temp(DT_FLOAT, TensorShape({8}), &temp1, alloc_attrs));
+  EXPECT_EQ(sa_device->num_allocations(false), 1);
+  EXPECT_EQ(sa_device->num_allocations(true), 0);
+  Tensor temp2;
+  alloc_attrs.scope_id = -1;
+  TF_EXPECT_OK(
+      ctx->allocate_temp(DT_FLOAT, TensorShape({4}), &temp2, alloc_attrs));
+  EXPECT_EQ(sa_device->num_allocations(false), 2);
+  EXPECT_EQ(sa_device->num_allocations(true), 0);
+  ctx->set_output(0, temp1);
+  EXPECT_EQ(sa_device->num_allocations(false), 2);
+  EXPECT_EQ(sa_device->num_allocations(true), 1);
 }
 
 class OpKernelBuilderTest : public ::testing::Test {

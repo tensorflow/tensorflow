@@ -1,8 +1,9 @@
 # Tools and utilities that aid in XLA development and usage.
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow/compiler/xla:internal"])
+package(
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(

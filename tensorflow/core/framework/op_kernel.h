@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1290,6 +1291,9 @@ class OpKernelContext {
   mutable mutex mu_;  // mutable so const accessors can acquire the lock
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
+
+  // Keep track of calls to ScopeAllocator.
+  std::unordered_set<int32> allocated_scope_ids_;
 
   // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);

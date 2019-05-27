@@ -1,10 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//tensorflow/compiler:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")

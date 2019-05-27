@@ -970,11 +970,23 @@ class StrategyExtendedV2(object):
 
     ```
     with my_strategy.scope():
-      iterator = my_strategy.make_dataset_iterator(dataset)
-      session.run(iterator.initialize())
-      replica_train_ops = my_strategy.experimental_run_v2(
-          replica_fn, args=(iterator.get_next(),))
-      train_op = my_strategy.group(replica_train_ops)
+      @tf.function
+      def distribute_train_epoch(dataset):
+        def replica_fn(input):
+          # process input and return result
+          return result
+
+        total_result = 0
+        for x in dataset:
+          per_replica_result = my_strategy.experimental_run_v2(replica_fn,
+                                                               args=(x,))
+          total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
+                                             per_replica_result, axis=None)
+        return total_result
+
+      dist_dataset = my_strategy.experimental_distribute_dataset(dataset)
+      for _ in range(EPOCHS):
+        train_result = distribute_train_epoch(dist_dataset)
     ```
 
     This takes an ordinary `dataset` and `replica_fn` and runs it
@@ -983,6 +995,11 @@ class StrategyExtendedV2(object):
     using `my_strategy`'s policy, and library functions called by
     `replica_fn` can use the `get_replica_context()` API to get enhanced
     behavior in this case.
+
+    You can use the `reduce` API to aggregate results across replicas and use
+    this as a return value from one iteration over the distributed dataset. Or
+    you can use `tf.keras.metrics` such as loss, accuracy etc. to
+    accumulate metrics across steps in a given epoch.
 
   * If you want to write a distributed algorithm, you may use any of
     the `tf.distribute.Strategy` APIs inside a

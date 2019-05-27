@@ -789,6 +789,14 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
 
   Status GetFrameBasedTopologicalOrder(std::vector<Node*>* order);
 
+  bool IsRootEnter(const Node* n) const {
+    return IsEnter(n) && control_flow_info_[n->id()].parent_frame->IsSource();
+  }
+
+  bool IsRootExit(const Node* n) const {
+    return IsExit(n) && control_flow_info_[n->id()].parent_frame->IsSource();
+  }
+
   const Graph& graph_;
   absl::flat_hash_map<TensorId, Predicate*, TensorId::Hasher> predicate_map_;
   PredicateFactory predicate_factory_;
@@ -1133,12 +1141,11 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
   Node* src_node = graph_.source_node();
   for (const auto* node : graph_.op_nodes()) {
     const ControlFlowInfo& cf = control_flow_info_[node->id()];
-    bool is_root_level = cf.parent_frame == src_node;
-    if (IsEnter(node) && is_root_level) {
+    if (IsRootEnter(node)) {
       // Since we care only the root-level frame, full frame names are the same
       // as frame names.
       ++num_enters_for_frame[cf.frame_name];
-    } else if (IsExit(node) && is_root_level) {
+    } else if (IsRootExit(node)) {
       ++num_exits_for_frame[cf.frame_name];
     }
     // Edge NextIteration->Merge is counted before starting the traveral to
@@ -1183,11 +1190,10 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
       if (!out->IsOp()) continue;  // Skip Sink/Source nodes.
       if (num_ready_inputs[out->id()] != out->in_edges().size()) continue;
 
-      bool is_root_level = control_flow_info_[out_id].parent_frame == src_node;
       absl::string_view frame_name = control_flow_info_[out_id].frame_name;
-      if (IsEnter(out) && is_root_level) {
+      if (IsRootEnter(out)) {
         ready_enters_per_frame[frame_name].push_back(out);
-      } else if (IsExit(out) && is_root_level) {
+      } else if (IsRootExit(out)) {
         ready_exits.push_back(out);
       } else {
         ready.push_back(out);

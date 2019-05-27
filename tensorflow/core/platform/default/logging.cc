@@ -31,6 +31,23 @@ limitations under the License.
 #include <unordered_map>
 
 namespace tensorflow {
+
+void TFAddLogSink(TFLogSink* sink) {
+  // LogSink is not implemented.
+  // If necessary, one can add the log sink support as follows.
+  // 1. Define a global vector<TFLogSink> to keep track of all registered
+  //    TFLogSink objects. Protect the global vector with mutex to make it
+  //    thread-safe.
+  // 2. Add/remove elements from the global vector<TFLogSink> in TFAddLogSink
+  //    and TFRemoveLogSink function
+  // 3. Add logic in LogMessage::GenerateLogMessage() below to dispatch log
+  //    messages to all the registered log sinks.
+}
+
+void TFRemoveLogSink(TFLogSink* sink) {
+  // LogSink is not implemented.
+}
+
 namespace internal {
 
 #if defined(PLATFORM_POSIX_ANDROID)

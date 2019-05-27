@@ -35,12 +35,12 @@ namespace data {
 
 // Determines the fraction of slack time by which to delay prefetching of data.
 constexpr double kSleepFactor = 0.2;
-constexpr char PrefetchDatasetOp::kDatasetType[];
-constexpr char PrefetchDatasetOp::kInputDataset[];
-constexpr char PrefetchDatasetOp::kBufferSize[];
-constexpr char PrefetchDatasetOp::kOutputTypes[];
-constexpr char PrefetchDatasetOp::kOutputShapes[];
-constexpr char PrefetchDatasetOp::kSlackPeriod[];
+constexpr const char PrefetchDatasetOp::kDatasetType[];
+constexpr const char PrefetchDatasetOp::kInputDataset[];
+constexpr const char PrefetchDatasetOp::kBufferSize[];
+constexpr const char PrefetchDatasetOp::kOutputTypes[];
+constexpr const char PrefetchDatasetOp::kOutputShapes[];
+constexpr const char PrefetchDatasetOp::kSlackPeriod[];
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
