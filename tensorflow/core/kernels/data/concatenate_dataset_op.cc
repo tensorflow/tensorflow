@@ -30,6 +30,9 @@ constexpr const char ConcatenateDatasetOp::kAnotherDataset[];
 constexpr const char ConcatenateDatasetOp::kOutputTypes[];
 constexpr const char ConcatenateDatasetOp::kOutputShapes[];
 
+constexpr char kIndex[] = "i";
+constexpr char kInputImplUninitialized[] = "input_impl_uninitialized";
+
 class ConcatenateDatasetOp::Dataset : public DatasetBase {
  public:
   explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
@@ -140,12 +143,12 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), i_));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       } else {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("input_impl_uninitialized"), ""));
+            writer->WriteScalar(full_name(kInputImplUninitialized), ""));
       }
       return Status::OK();
     }
@@ -153,8 +156,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
-      if (reader->Contains(full_name("input_impl_uninitialized"))) {
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &i_));
+      if (reader->Contains(full_name(kInputImplUninitialized))) {
         input_impl_.reset();
         return Status::OK();
       }
@@ -215,6 +218,5 @@ namespace {
 REGISTER_KERNEL_BUILDER(Name("ConcatenateDataset").Device(DEVICE_CPU),
                         ConcatenateDatasetOp);
 }  // namespace
-
 }  // namespace data
 }  // namespace tensorflow

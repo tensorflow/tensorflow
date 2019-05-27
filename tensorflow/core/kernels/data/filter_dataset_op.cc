@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/kernels/data/filter_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
@@ -40,6 +39,10 @@ constexpr const char FilterDatasetOp::kPredicate[];
 constexpr const char FilterDatasetOp::kTarguments[];
 constexpr const char FilterDatasetOp::kOutputTypes[];
 constexpr const char FilterDatasetOp::kOutputShapes[];
+
+constexpr char kInputImplsEmpty[] = "input_impls_empty";
+constexpr char kFilteredElements[] = "filtered_elements";
+constexpr char kDroppedElements[] = "dropped_elements";
 
 class FilterDatasetOp::Dataset : public DatasetBase {
  public:
@@ -191,10 +194,10 @@ class FilterDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       else
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name("input_impls_empty"), ""));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("filtered_elements"),
+            writer->WriteScalar(full_name(kInputImplsEmpty), ""));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kFilteredElements),
                                              filtered_elements_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("dropped_elements"),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kDroppedElements),
                                              dropped_elements_));
       return Status::OK();
     }
@@ -202,13 +205,13 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (reader->Contains(full_name("input_impls_empty")))
+      if (reader->Contains(full_name(kInputImplsEmpty)))
         input_impl_.reset();
       else
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("filtered_elements"),
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kFilteredElements),
                                             &filtered_elements_));
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("dropped_elements"),
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kDroppedElements),
                                             &dropped_elements_));
       return Status::OK();
     }
@@ -239,6 +242,5 @@ namespace {
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),
                         FilterDatasetOp);
 }  // namespace
-
 }  // namespace data
 }  // namespace tensorflow
