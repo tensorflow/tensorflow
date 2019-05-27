@@ -48,7 +48,7 @@ TEST(UtilsTest, GetLocalGPUInfo) {
   EXPECT_EQ("GPU", properties.type());
 
   properties = GetLocalGPUInfo(PlatformGpuId(100));
-  EXPECT_EQ("GPU", properties.type());
+  EXPECT_EQ("UNKNOWN", properties.type());
 #endif
 }
 
