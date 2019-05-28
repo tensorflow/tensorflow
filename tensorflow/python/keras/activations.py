@@ -170,6 +170,14 @@ def tanh(x):
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
+  """Sigmoid activation function
+
+  Arguments:
+      x: Input tensor
+
+  Returns:
+      The sigmoid activation: `1 / (1 + exp(-x))`
+  """
   return nn.sigmoid(x)
 
 
