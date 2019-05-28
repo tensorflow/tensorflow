@@ -687,6 +687,51 @@ def depthwise_conv2d_v2(input,
                           name=name,
                           data_format=data_format)
 
+@tf_export("nn.depthwise_conv2d_transpose", v1=["nn.depthwise_conv2d_transpose"])
+def depthwise_conv2d_transpose(input,
+                        filter,
+                        output_shape,
+                        strides,
+                        padding="SAME",
+                        data_format="NHWC",
+                        dilations=None,
+                        name=None):
+  """The transpose of `depthwise_conv2d`.
+
+  This operation is sometimes called "deconvolution" after [Deconvolutional
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `depthwise_conv2d` rather than an
+  actual deconvolution.
+
+  Args:
+    input: 4-D with shape according to `data_format`.
+    filter: 4-D with shape
+      `[filter_height, filter_width, in_channels, channel_multiplier]`.
+    output_shape: A 1-D `Tensor` representing the output shape of the
+      deconvolution op.
+    strides: 1-D of size 4.  The stride of the sliding window for each
+      dimension of `input`.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `input`.
+  """
+  return gen_nn_ops.depthwise_conv2d_native_backprop_input(
+                          input_sizes=output_shape,
+                          filter=filter,
+                          out_backprop=input,
+                          strides=strides,
+                          padding=padding,
+                          data_format=data_format,
+                          dilations=dilations,
+                          name=name)
+
 # pylint: enable=redefined-builtin
 
 
