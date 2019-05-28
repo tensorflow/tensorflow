@@ -640,6 +640,9 @@ cc_library(
     srcs = ["cusolver_context.cc"],
     hdrs = ["cusolver_context.h"],
     deps = [
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
