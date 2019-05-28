@@ -32,7 +32,7 @@ Group normalization
 Group normalization is an alternative to batch normalization, and produces
 smaller and more optimized graphs.
 
-The original poplar on group normalization:
+The original paper on group normalization:
 `"Group Normalization", Yuxin Wu, Kaiming He <https://arxiv.org/abs/1803.08494>`_.
 
 See :py:func:`tensorflow.contrib.ipu.group_norm`.
