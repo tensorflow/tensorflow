@@ -77,4 +77,40 @@ def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
   let results = (outs AnyVectorOrTensor:$res);
 }
 
+//===----------------------------------------------------------------------===//
+// Test Patterns
+//===----------------------------------------------------------------------===//
+
+def OpA : TEST_Op<"op_a"> {
+  let arguments = (ins I32:$operand, I32Attr:$attr);
+  let results = (outs I32:$result);
+}
+
+def OpB : TEST_Op<"op_b"> {
+  let arguments = (ins I32:$operand, I32Attr:$attr);
+  let results = (outs I32:$result);
+}
+
+// Test named pattern.
+def TestNamedPatternRule : Pat<(OpA $input, $attr), (OpB $input, $attr)>;
+
+// Test with constant attr.
+def OpC : TEST_Op<"op_c">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+def : Pat<(OpC $input), (OpB $input, ConstantAttr<I32Attr, "17">:$attr)>;
+
+// Test with fused location.
+def : Pat<(OpA (OpA $input, $attr), $bttr), (OpB $input, $bttr)>;
+
+// Test added benefit.
+def OpD : TEST_Op<"op_d">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+def OpE : TEST_Op<"op_e">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+def OpF : TEST_Op<"op_f">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+def OpG : TEST_Op<"op_g">, Arguments<(ins I32:$arg)>, Results<(outs I32:$res)>;
+// Verify that bumping benefit results in selecting different op.
+def : Pat<(OpD $input), (OpE $input)>;
+def : Pat<(OpD $input), (OpF $input), [], (addBenefit 10)>;
+// Verify that patterns with more source nodes are selected before those with fewer.
+def : Pat<(OpG $input), (OpB $input, ConstantAttr<I32Attr, "20">:$attr)>;
+def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
+
 #endif // TEST_OPS

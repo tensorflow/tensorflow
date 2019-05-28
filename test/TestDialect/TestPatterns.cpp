@@ -24,13 +24,19 @@ namespace {
 #include "TestPatterns.inc"
 
 struct TestPatternDriver : public FunctionPass<TestPatternDriver> {
-  void runOnFunction() {
-    mlir::OwningRewritePatternList patterns;
-    populateWithGenerated(&getContext(), &patterns);
-    applyPatternsGreedily(getFunction(), std::move(patterns));
-  }
+  void runOnFunction() override;
 };
 } // end anonymous namespace
+
+void TestPatternDriver::runOnFunction() {
+  mlir::OwningRewritePatternList patterns;
+  populateWithGenerated(&getContext(), &patterns);
+
+  // Verify named pattern is generated with expected name.
+  RewriteListBuilder<TestNamedPatternRule>::build(patterns, &getContext());
+
+  applyPatternsGreedily(getFunction(), std::move(patterns));
+}
 
 static mlir::PassRegistration<TestPatternDriver>
     pass("test-patterns", "Run test dialect patterns");
