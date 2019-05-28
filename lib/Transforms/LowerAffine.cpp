@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Transforms/LowerAffine.h"
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/Builders.h"
@@ -243,10 +244,6 @@ Optional<SmallVector<Value *, 8>> static expandAffineMap(
 namespace {
 struct LowerAffinePass : public FunctionPass<LowerAffinePass> {
   void runOnFunction() override;
-
-  bool lowerAffineFor(AffineForOp forOp);
-  bool lowerAffineIf(AffineIfOp ifOp);
-  bool lowerAffineApply(AffineApplyOp op);
 };
 } // end anonymous namespace
 
@@ -319,7 +316,7 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 //      |   <code after the AffineForOp> |
 //      +--------------------------------+
 //
-bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
+static LogicalResult lowerAffineFor(AffineForOp forOp) {
   auto loc = forOp.getLoc();
   auto *forInst = forOp.getOperation();
 
@@ -356,7 +353,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   auto affDim = builder.getAffineDimExpr(0);
   auto stepped = expandAffineExpr(&builder, loc, affDim + affStep, iv, {});
   if (!stepped)
-    return true;
+    return failure();
   // We know we applied a one-dimensional map.
   builder.create<BranchOp>(loc, conditionBlock, stepped);
 
@@ -369,7 +366,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   auto lbValues = expandAffineMap(&builder, forInst->getLoc(),
                                   forOp.getLowerBoundMap(), operands);
   if (!lbValues)
-    return true;
+    return failure();
   Value *lowerBound =
       buildMinMaxReductionSeq(loc, CmpIPredicate::SGT, *lbValues, builder);
 
@@ -378,7 +375,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   auto ubValues = expandAffineMap(&builder, forInst->getLoc(),
                                   forOp.getUpperBoundMap(), operands);
   if (!ubValues)
-    return true;
+    return failure();
   Value *upperBound =
       buildMinMaxReductionSeq(loc, CmpIPredicate::SLT, *ubValues, builder);
   builder.create<BranchOp>(loc, conditionBlock, lowerBound);
@@ -392,7 +389,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
 
   // Ok, we're done!
   forOp.erase();
-  return false;
+  return success();
 }
 
 // Convert an "if" operation into a flow of basic blocks.
@@ -454,7 +451,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
 //      |   <code after the AffineIfOp>  |
 //      +--------------------------------+
 //
-bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
+static LogicalResult lowerAffineIf(AffineIfOp ifOp) {
   auto *ifInst = ifOp.getOperation();
   auto loc = ifInst->getLoc();
 
@@ -476,7 +473,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   if (!oldThenBlocks.empty()) {
     // We currently only handle one 'then' block.
     if (std::next(oldThenBlocks.begin()) != oldThenBlocks.end())
-      return true;
+      return failure();
 
     Block *oldThen = &oldThenBlocks.front();
 
@@ -495,7 +492,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   if (!oldElseBlocks.empty()) {
     // We currently only handle one 'else' block.
     if (std::next(oldElseBlocks.begin()) != oldElseBlocks.end())
-      return true;
+      return failure();
 
     auto *oldElse = &oldElseBlocks.front();
     elseBlock = new Block();
@@ -541,7 +538,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
                                         operandsRef.take_front(numDims),
                                         operandsRef.drop_front(numDims));
     if (!affResult)
-      return true;
+      return failure();
 
     // Compare the result of the apply and branch.
     auto comparisonOp = builder.create<CmpIOp>(
@@ -566,26 +563,26 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
 
   // Ok, we're done!
   ifInst->erase();
-  return false;
+  return success();
 }
 
 // Convert an "affine.apply" operation into a sequence of arithmetic
 // operations using the StandardOps dialect.  Return true on error.
-bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
+static LogicalResult lowerAffineApply(AffineApplyOp op) {
   FuncBuilder builder(op.getOperation());
   auto maybeExpandedMap =
       expandAffineMap(&builder, op.getLoc(), op.getAffineMap(),
                       llvm::to_vector<8>(op.getOperands()));
   if (!maybeExpandedMap)
-    return true;
+    return failure();
 
   Value *original = op.getResult();
   Value *expanded = (*maybeExpandedMap)[0];
   if (!expanded)
-    return true;
+    return failure();
   original->replaceAllUsesWith(expanded);
   op.erase();
-  return false;
+  return success();
 }
 
 // Entry point of the function convertor.
@@ -600,35 +597,37 @@ bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
 // Individual operations are simply appended to the end of the last basic block
 // of the current region.  The SESE invariant allows us to easily handle nested
 // structures of arbitrary complexity.
-//
-// During the conversion, we maintain a mapping between the Values present in
-// the original function and their Value images in the function under
-// construction.  When an Value is used, it gets replaced with the
-// corresponding Value that has been defined previously.  The value flow
-// starts with function arguments converted to basic block arguments.
-void LowerAffinePass::runOnFunction() {
+LogicalResult mlir::lowerAffineConstructs(Function &function) {
   SmallVector<Operation *, 8> instsToRewrite;
 
   // Collect all the For operations as well as AffineIfOps and AffineApplyOps.
   // We do this as a prepass to avoid invalidating the walker with our rewrite.
-  getFunction().walk([&](Operation *op) {
+  function.walk([&](Operation *op) {
     if (isa<AffineApplyOp>(op) || isa<AffineForOp>(op) || isa<AffineIfOp>(op))
       instsToRewrite.push_back(op);
   });
 
-  // Rewrite all of the ifs and fors.  We walked the operations in postorders,
+  // Rewrite all of the ifs and fors.  We walked the operations in postorder,
   // so we know that we will rewrite them in the reverse order.
   for (auto *op : llvm::reverse(instsToRewrite)) {
     if (auto ifOp = dyn_cast<AffineIfOp>(op)) {
-      if (lowerAffineIf(ifOp))
-        return signalPassFailure();
+      if (failed(lowerAffineIf(ifOp)))
+        return failure();
     } else if (auto forOp = dyn_cast<AffineForOp>(op)) {
-      if (lowerAffineFor(forOp))
-        return signalPassFailure();
-    } else if (lowerAffineApply(cast<AffineApplyOp>(op))) {
-      return signalPassFailure();
+      if (failed(lowerAffineFor(forOp)))
+        return failure();
+    } else if (failed(lowerAffineApply(cast<AffineApplyOp>(op)))) {
+      return failure();
     }
   }
+
+  return success();
+}
+
+// Run the affine lowering as a function pass.
+void LowerAffinePass::runOnFunction() {
+  if (failed(lowerAffineConstructs(getFunction())))
+    signalPassFailure();
 }
 
 /// Lowers If and For operations within a function into their lower level CFG
