@@ -141,6 +141,14 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
     }
   }
 
+  if (opcode == HloOpcode::kXor) {
+    if (inst->shape().element_type() == PRED) {
+      return popops::expr::BinaryOpType::NOT_EQUAL;
+    } else {
+      // return popops::expr::BinaryOpType::BITWISE_XOR;
+    }
+  }
+
   return tensorflow::errors::Unknown(
       StrCat("[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
 }
@@ -258,17 +266,12 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
         FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
     poplar::Tensor out;
-    if (inst->opcode() == HloOpcode::kXor) {
-      const bool is_predicate = inst->shape().element_type() == PRED;
-      popops::expr::BinaryOpType or_op =
-          is_predicate ? popops::expr::BinaryOpType::LOGICAL_OR
-                       : popops::expr::BinaryOpType::BITWISE_OR;
+    if (inst->opcode() == HloOpcode::kXor &&
+        inst->shape().element_type() != PRED) {
+      popops::expr::BinaryOpType or_op = popops::expr::BinaryOpType::BITWISE_OR;
       popops::expr::BinaryOpType and_op =
-          is_predicate ? popops::expr::BinaryOpType::LOGICAL_AND
-                       : popops::expr::BinaryOpType::BITWISE_AND;
-      popops::expr::UnaryOpType not_op =
-          is_predicate ? popops::expr::UnaryOpType::LOGICAL_NOT
-                       : popops::expr::UnaryOpType::BITWISE_NOT;
+          popops::expr::BinaryOpType::BITWISE_AND;
+      popops::expr::UnaryOpType not_op = popops::expr::UnaryOpType::BITWISE_NOT;
 
       poplar::Tensor or_out =
           popops::map(graph, or_op, lhs, rhs, seq, GetDebugName(inst));
@@ -278,6 +281,7 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
           popops::map(graph, not_op, and_out, seq, GetDebugName(inst));
       out =
           popops::map(graph, and_op, or_out, not_out, seq, GetDebugName(inst));
+
     } else {
       TF_ASSIGN_OR_RETURN(popops::expr::BinaryOpType op, LookupBinaryFn(inst));
       out = popops::map(graph, op, lhs, rhs, seq, GetDebugName(inst));
