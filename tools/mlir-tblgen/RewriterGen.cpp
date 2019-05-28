@@ -713,11 +713,13 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
 
   // Then we build the new op corresponding to this DAG node.
 
-  bool isSameValueType = resultOp.hasTrait("SameOperandsAndResultType");
+  bool isSameOperandsAndResultType =
+      resultOp.hasTrait("SameOperandsAndResultType");
   bool isBroadcastable = resultOp.hasTrait("BroadcastableTwoOperandsOneResult");
   bool useFirstAttr = resultOp.hasTrait("FirstAttrDerivedResultType");
 
-  if (isSameValueType || isBroadcastable || useFirstAttr || depth > 0) {
+  if (isSameOperandsAndResultType || isBroadcastable || useFirstAttr ||
+      depth > 0) {
     os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc", resultValue,
                             resultOp.getQualCppClassName());
   } else {

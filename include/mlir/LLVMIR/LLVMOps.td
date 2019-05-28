@@ -114,7 +114,7 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
 class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
                         list<OpTrait> traits = []> :
     LLVM_OneResultOp<mnemonic,
-           !listconcat([NoSideEffect, SameValueType], traits)>,
+           !listconcat([NoSideEffect, SameOperandsAndResultType], traits)>,
     Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>,
     LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);"> {
   let parser = [{ return impl::parseBinaryOp(parser, result); }];

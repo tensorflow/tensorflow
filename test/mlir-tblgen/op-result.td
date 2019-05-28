@@ -24,7 +24,7 @@ def OpA : NS_Op<"one_normal_result_op", []> {
 // CHECK:         if (!((this->getOperation()->getResult(0)->getType().isInteger(32))))
 // CHECK-NEXT:      return emitOpError("result #0 must be 32-bit integer");
 
-def OpB : NS_Op<"same_input_output_type_op", [SameValueType]> {
+def OpB : NS_Op<"same_input_output_type_op", [SameOperandsAndResultType]> {
   let arguments = (ins I32:$x);
   let results = (outs I32:$y);
 }
@@ -158,7 +158,7 @@ def OpJ : NS_Op<"one_variadic_among_multi_normal_results_op", []> {
 // Test that if the only operand is variadic, we acess the first value in the
 // pack to set result type
 // ---
-def OpK : NS_Op<"only_input_is_variadic_with_same_value_type_op", [SameValueType]> {
+def OpK : NS_Op<"only_input_is_variadic_with_same_value_type_op", [SameOperandsAndResultType]> {
   let arguments = (ins Variadic<AnyTensor>:$input);
   let results = (outs AnyTensor:$result);
 }

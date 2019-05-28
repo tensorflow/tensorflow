@@ -97,7 +97,7 @@ class fxpmath_Op<string mnemonic, list<OpTrait> traits> :
 // Some of these are temporary pending inclusion into a more core dialect.
 //===----------------------------------------------------------------------===//
 
-def fxpmath_ClampISOp : fxpmath_Op<"clampis", [NoSideEffect, SameValueType]> {
+def fxpmath_ClampISOp : fxpmath_Op<"clampis", [NoSideEffect, SameOperandsAndResultType]> {
   let summary =
       "Clamps a signed-integer like argument to a min/max range.";
   let description = [{
@@ -112,7 +112,7 @@ def fxpmath_ClampISOp : fxpmath_Op<"clampis", [NoSideEffect, SameValueType]> {
 
 def fxpmath_ConvertISOp :
     fxpmath_Op<"convertis",
-               [NoSideEffect, SameValueShape]> {
+               [NoSideEffect, SameOperandsAndResultShape]> {
   let summary =
       "Does an element-wise conversion from a signed integer to signed integer";
   let description = [{
@@ -125,7 +125,7 @@ def fxpmath_ConvertISOp :
 
 def fxpmath_ConvertISToFOp :
     fxpmath_Op<"convertistof",
-               [NoSideEffect, SameValueShape]> {
+               [NoSideEffect, SameOperandsAndResultShape]> {
   let summary =
       "Does an element-wise conversion from a signed integer to a float";
   let description = [{
@@ -140,7 +140,7 @@ def fxpmath_ConvertISToFOp :
 
 def fxpmath_VecScalarSaturatingRoundingDoublingHighMulISOp :
     fxpmath_Op<"vs_saturating_rounding_doubling_high_mulis",
-               [NoSideEffect, SameValueType]> {
+               [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Implements equivalent functionality to ARMv7 NEON VQRDMULH";
   let description = [{
     Equivalent to the ARMv7 NEON VQRDMULH instruction.
@@ -152,7 +152,7 @@ def fxpmath_VecScalarSaturatingRoundingDoublingHighMulISOp :
 }
 
 def fxpmath_RoundingDivideByPotISOp :
-    fxpmath_Op<"rounding_divide_by_potis", [NoSideEffect, SameValueType]> {
+    fxpmath_Op<"rounding_divide_by_potis", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
     Computes a rounding arithmetic right shift.
   }];

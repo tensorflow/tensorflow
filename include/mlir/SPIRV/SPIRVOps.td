@@ -69,7 +69,7 @@ class SPV_ScalarOrVectorOf<Type type> :
 class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<SPV_Dialect, mnemonic, traits>;
 
-def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameValueType]> {
+def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Floating-point multiplication of Operand 1 and Operand 2";
 
   let description = [{

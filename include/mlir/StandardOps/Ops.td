@@ -75,7 +75,7 @@ class CastOp<string mnemonic, list<OpTrait> traits = []> :
 // types.  Individual classes will have `lhs` and `rhs` accessor to operands.
 class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
     Op<Std_Dialect, mnemonic,
-       !listconcat(traits, [NoSideEffect, SameValueType])> {
+       !listconcat(traits, [NoSideEffect, SameOperandsAndResultType])> {
 
   let results = (outs AnyType);
 
@@ -278,7 +278,7 @@ def CallIndirectOp : Std_Op<"call_indirect"> {
   let hasCanonicalizer = 1;
 }
 
-def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameOperandType, SameValueShape]> {
+def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "integer comparison operation";
   let description = [{
     The "cmpi" operation compares its two operands according to the integer
@@ -323,7 +323,7 @@ def CmpIOp : Std_Op<"cmpi", [NoSideEffect, SameOperandType, SameValueShape]> {
   let hasFolder = 1;
 }
 
-def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameOperandType, SameValueShape]> {
+def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "floating-point comparison operation";
   let description = [{
     The "cmpf" operation compares its two operands according to the float
@@ -607,7 +607,7 @@ def ReturnOp : Std_Op<"return", [Terminator]> {
   >];
 }
 
-def SelectOp : Std_Op<"select", [NoSideEffect, SameValueShape]> {
+def SelectOp : Std_Op<"select", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "select operation";
   let description = [{
     The "select" operation chooses one value based on a binary condition

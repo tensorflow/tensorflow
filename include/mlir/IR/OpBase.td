@@ -827,15 +827,15 @@ def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
 def Commutative      : NativeOpTrait<"IsCommutative">;
 // Op results are float or vectors/tensors thereof.
-def FloatLikeResults : NativeOpTrait<"ResultsAreFloatLike">;
+def ResultsAreFloatLike : NativeOpTrait<"ResultsAreFloatLike">;
 // Op has no side effect.
 def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
 // Op has the same operand type.
-def SameOperandType  : NativeOpTrait<"SameTypeOperands">;
+def SameTypeOperands  : NativeOpTrait<"SameTypeOperands">;
 // Op has same operand and result shape.
-def SameValueShape   : NativeOpTrait<"SameOperandsAndResultShape">;
+def SameOperandsAndResultShape   : NativeOpTrait<"SameOperandsAndResultShape">;
 // Op has the same operand and result type.
-def SameValueType    : NativeOpTrait<"SameOperandsAndResultType">;
+def SameOperandsAndResultType    : NativeOpTrait<"SameOperandsAndResultType">;
 // Op has the same operand and result element type.
 def SameOperandsAndResultElementType :
   NativeOpTrait<"SameOperandsAndResultElementType">;

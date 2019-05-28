@@ -72,7 +72,7 @@ def SameOperandAndResultElementTypeOp : TEST_Op<"same_operand_and_result_type",
 }
 
 def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
-    [SameValueShape]> {
+    [SameOperandsAndResultShape]> {
   let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y);
   let results = (outs AnyVectorOrTensor:$res);
 }
