@@ -849,6 +849,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBias")
 REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
     .Input("a: T1")
     .Input("b: T2")
+    // TODO(intel-tf): Modify bias type as Tbias and add relevent attribute.
     .Input("bias: float")
     .Input("min_a: float")
     .Input("max_a: float")
