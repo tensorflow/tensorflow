@@ -32,7 +32,6 @@ class BlockAndValueMapping;
 class FunctionType;
 class MLIRContext;
 class Module;
-class ArgumentIterator;
 
 /// This is the base class for all of the MLIR function types.
 class Function : public llvm::ilist_node_with_parent<Function, Module> {
@@ -139,11 +138,13 @@ public:
     return getBlocks().front().getArgument(idx);
   }
 
-  // Supports non-const operand iteration.
-  using args_iterator = ArgumentIterator;
-  args_iterator args_begin();
-  args_iterator args_end();
-  llvm::iterator_range<args_iterator> getArguments();
+  // Supports argument iteration.
+  using args_iterator = Block::args_iterator;
+  args_iterator args_begin() { return front().args_begin(); }
+  args_iterator args_end() { return front().args_end(); }
+  llvm::iterator_range<args_iterator> getArguments() {
+    return {args_begin(), args_end()};
+  }
 
   //===--------------------------------------------------------------------===//
   // Attributes
@@ -318,41 +319,6 @@ private:
   void operator=(Function &) = delete;
   friend struct llvm::ilist_traits<Function>;
 };
-
-//===--------------------------------------------------------------------===//
-// ArgumentIterator
-//===--------------------------------------------------------------------===//
-
-/// This template implements the argument iterator in terms of getArgument(idx).
-class ArgumentIterator final
-    : public IndexedAccessorIterator<ArgumentIterator, Function,
-                                     BlockArgument> {
-public:
-  /// Initializes the result iterator to the specified index.
-  ArgumentIterator(Function *object, unsigned index)
-      : IndexedAccessorIterator<ArgumentIterator, Function, BlockArgument>(
-            object, index) {}
-
-  BlockArgument *operator*() const {
-    return this->object->getArgument(this->index);
-  }
-};
-
-//===--------------------------------------------------------------------===//
-// Function iterator methods.
-//===--------------------------------------------------------------------===//
-
-inline Function::args_iterator Function::args_begin() {
-  return args_iterator(this, 0);
-}
-
-inline Function::args_iterator Function::args_end() {
-  return args_iterator(this, getNumArguments());
-}
-
-inline llvm::iterator_range<Function::args_iterator> Function::getArguments() {
-  return {args_begin(), args_end()};
-}
 
 } // end namespace mlir
 
