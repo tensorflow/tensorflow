@@ -48,12 +48,6 @@ struct typelist_contains {
 template <typename same, typename first>
 struct typelist_contains<same, first> : std::is_same<same, first> {};
 
-/// This type trait is used to determine if an operation has a single result.
-template <typename OpType> struct IsSingleResult {
-  static const bool value = std::is_convertible<
-      OpType *, OpTrait::OneResult<typename OpType::ConcreteOpType> *>::value;
-};
-
 /// This class represents success/failure for operation parsing. It is
 /// essentially a simple wrapper class around LogicalResult that allows for
 /// explicit conversion to bool. This allows for the parser to chain together
