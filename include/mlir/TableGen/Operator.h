@@ -129,6 +129,9 @@ public:
   // requiring the raw MLIR trait here.
   bool hasTrait(llvm::StringRef trait) const;
 
+  // Returns the number of regions.
+  int getNumRegions() const;
+
   // Trait.
   using const_trait_iterator = const OpTrait *;
   const_trait_iterator trait_begin() const;
@@ -173,6 +176,9 @@ private:
 
   // The traits of the op.
   SmallVector<OpTrait, 4> traits;
+
+  // The number of regions of this op.
+  int numRegions = 0;
 
   // The number of native attributes stored in the leading positions of
   // `attributes`.

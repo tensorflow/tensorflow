@@ -742,6 +742,12 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
       }
     }
   }
+
+  // Create the correct number of regions
+  if (int numRegions = op.getNumRegions()) {
+    for (int i = 0; i < numRegions; ++i)
+      m.body() << "  (void)" << builderOpState << "->addRegion();\n";
+  }
 }
 
 void OpEmitter::genBuilder() {
@@ -820,6 +826,12 @@ void OpEmitter::genBuilder() {
        << "    " << builderOpState
        << "->addAttribute(pair.first, pair.second);\n";
 
+  // Create the correct number of regions
+  if (int numRegions = op.getNumRegions()) {
+    for (int i = 0; i < numRegions; ++i)
+      m.body() << "  (void)" << builderOpState << "->addRegion();\n";
+  }
+
   // 3. Deduced result types
 
   bool useOperandType = op.hasTrait("SameOperandsAndResultType");
@@ -883,9 +895,6 @@ void OpEmitter::genVerifier() {
   auto valueInit = def.getValueInit("verifier");
   CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
   bool hasCustomVerify = codeInit && !codeInit->getValue().empty();
-  if (!hasCustomVerify && op.getNumArgs() == 0 && op.getNumResults() == 0 &&
-      op.getNumPredOpTraits() == 0)
-    return;
 
   auto &method = opClass.newMethod("LogicalResult", "verify", /*params=*/"");
   auto &body = method.body();
@@ -971,6 +980,13 @@ void OpEmitter::genVerifier() {
                     t->getDescription());
     }
   }
+
+  // Verify this op has the correct number of regions
+  body << formatv(
+      "  if (this->getOperation()->getNumRegions() != {0}) \n    return "
+      "emitOpError(\"has incorrect number of regions: expected {0} but found "
+      "\") << this->getOperation()->getNumRegions();\n",
+      op.getNumRegions());
 
   if (hasCustomVerify)
     body << codeInit->getValue() << "\n";

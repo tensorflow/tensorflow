@@ -146,6 +146,8 @@ bool tblgen::Operator::hasTrait(StringRef trait) const {
   return false;
 }
 
+int tblgen::Operator::getNumRegions() const { return numRegions; }
+
 auto tblgen::Operator::trait_begin() const -> const_trait_iterator {
   return traits.begin();
 }
@@ -265,6 +267,11 @@ void tblgen::Operator::populateOpStructure() {
   traits.reserve(traitListInit->size());
   for (auto traitInit : *traitListInit)
     traits.push_back(OpTrait::create(traitInit));
+
+  // Handle regions
+  numRegions = def.getValueAsInt("numRegions");
+  if (numRegions < 0)
+    PrintFatalError(def.getLoc(), "numRegions cannot be negative");
 }
 
 ArrayRef<llvm::SMLoc> tblgen::Operator::getLoc() const { return def.getLoc(); }

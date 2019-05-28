@@ -916,6 +916,10 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // The list of results of the op. Default to 0 results.
   dag results = (outs);
 
+  // How many regions this op has.
+  // TODO(b/133479568): Enhance to support advanced region usage cases
+  int numRegions = 0;
+
   // Attribute getters can be added to the op by adding an Attr member
   // with the name and type of the attribute. E.g., adding int attribute
   // with name "value" and type "i32":

@@ -113,4 +113,12 @@ def : Pat<(OpD $input), (OpF $input), [], (addBenefit 10)>;
 def : Pat<(OpG $input), (OpB $input, ConstantAttr<I32Attr, "20">:$attr)>;
 def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
 
+//===----------------------------------------------------------------------===//
+// Test op regions
+//===----------------------------------------------------------------------===//
+
+def TwoRegionOp : TEST_Op<"two_region_op", []> {
+  let numRegions = 2;
+}
+
 #endif // TEST_OPS
