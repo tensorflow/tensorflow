@@ -39,8 +39,8 @@ cc_test(
     size = "small",
     srcs = ["bhwc_to_phwc4_test.cc"],
     linkopts = [
-        "-lGLESv3",
         "-lEGL",
+        "-lGLESv2",
     ],
     tags = [
         "local",
@@ -84,8 +84,8 @@ cc_test(
     size = "small",
     srcs = ["phwc4_to_bhwc_test.cc"],
     linkopts = [
-        "-lGLESv3",
         "-lEGL",
+        "-lGLESv2",
     ],
     tags = [
         "local",
