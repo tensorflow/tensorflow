@@ -404,6 +404,7 @@ HloInstructionDescription::HloInstructionDescription(
     case HloOpcode::kSubtract:
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -562,8 +563,7 @@ HloInstructionDescription::HloInstructionDescription(
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kTupleSelect:
-    case HloOpcode::kXor: {
+    case HloOpcode::kTupleSelect: {
       type_ = HloInstructionType::kNotInplace;
       break;
     }
