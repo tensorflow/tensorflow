@@ -187,6 +187,9 @@ tf_xla_py_test(
     name = "argminmax_test",
     size = "small",
     srcs = ["argminmax_test.py"],
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -406,6 +409,7 @@ tf_xla_py_test(
         "nomsan",
         "notsan",
         "optonly",  # Times out frequently in fastbuild mode.
+        "no_rocm",
     ],
     deps = [
         ":xla_test",
