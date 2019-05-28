@@ -74,6 +74,8 @@ upper_tabs:
         path: /lite/performance/post_training_quantization
       - title: "Post-training quantization example"
         path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
+      - title: "Post-training integer quantization example"
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_integer_quant.ipynb
         status: external
       - title: "Delegates"
         path: /lite/performance/delegates
