@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -28,24 +28,24 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-class GetSerializedResourceOp : public OpKernel {
+class GetCalibrationDataOp : public OpKernel {
  public:
-  explicit GetSerializedResourceOp(OpKernelConstruction* context)
+  explicit GetCalibrationDataOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
-  ~GetSerializedResourceOp() override {}
+  ~GetCalibrationDataOp() override {}
 
   void Compute(OpKernelContext* context) override {
     // TODO(laigd): it will allocate the tensor on the device and copy the
     // serialized string to that tensor, and later sess.run() will copy it back
     // to host. We need to optimize this.
-    const string& container = context->input(0).scalar<string>()();
-    const string& resource_name = context->input(1).scalar<string>()();
+    const string& resource_name = context->input(0).scalar<string>()();
 
     // Get the resource.
-    SerializableResourceBase* resource = nullptr;
+    TRTCalibrationResource* resource = nullptr;
     OP_REQUIRES_OK(context, context->resource_manager()->Lookup(
-                                container, resource_name, &resource));
+                                std::string(kCalibrationContainerName),
+                                resource_name, &resource));
     core::ScopedUnref sc(resource);
 
     // Serialize the resource as output.
@@ -59,8 +59,8 @@ class GetSerializedResourceOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("GetSerializedResourceOp").Device(DEVICE_GPU),
-                        GetSerializedResourceOp);
+REGISTER_KERNEL_BUILDER(Name("GetCalibrationDataOp").Device(DEVICE_GPU),
+                        GetCalibrationDataOp);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

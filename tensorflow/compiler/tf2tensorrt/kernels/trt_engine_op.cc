@@ -22,10 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/op.h"
@@ -96,7 +96,7 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
-                                      SerializableResourceBase** cr);
+                                      TRTCalibrationResource** cr);
 
   // Get engine for the input shape
   EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
@@ -286,8 +286,8 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
       ctx,
       ctx->resource_manager()->LookupOrCreate(
           "TF-TRT-Calibration", name(),
-          reinterpret_cast<SerializableResourceBase**>(&calib_res),
-          {[ctx, this](SerializableResourceBase** cr) -> Status {
+          reinterpret_cast<TRTCalibrationResource**>(&calib_res),
+          {[ctx, this](TRTCalibrationResource** cr) -> Status {
             return this->AllocateCalibrationResources(ctx, cr);
           }}),
       *helper);
@@ -542,7 +542,7 @@ EngineContext* TRTEngineOp::GetEngine(
   // Get engine cache.
   TRTEngineCacheResource* cache_res = nullptr;
   auto status = ctx->resource_manager()->LookupOrCreate(
-      "TF-TRT-Engine-Cache", string(resource_name), &cache_res,
+      std::string(kCalibrationContainerName), string(resource_name), &cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return Status::OK();
@@ -663,8 +663,8 @@ EngineContext* TRTEngineOp::GetEngine(
   return cache.at(engine_input_shapes).get();
 }
 
-Status TRTEngineOp::AllocateCalibrationResources(
-    OpKernelContext* ctx, SerializableResourceBase** cr) {
+Status TRTEngineOp::AllocateCalibrationResources(OpKernelContext* ctx,
+                                                 TRTCalibrationResource** cr) {
   auto cres = new TRTCalibrationResource();
   *cr = cres;
   // Get the allocator.

@@ -23,15 +23,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("GetSerializedResourceOp")
-    .Input("container: string")
+REGISTER_OP("GetCalibrationDataOp")
     .Input("resource_name: string")
     .Output("serialized_resource: string")
     .SetShapeFn(shape_inference::ScalarShape)
     .SetIsStateful()
     .Doc(R"doc(
-Gets a resource from a container managed by the resource manager and returns
-its serialized representation.
+Returns calibration data for the given resource name
 )doc");
 
 }  // namespace tensorflow

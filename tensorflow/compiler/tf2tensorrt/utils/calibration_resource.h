@@ -37,18 +37,15 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-class SerializableResourceBase : public ResourceBase {
- public:
-  virtual Status SerializeToString(string* serialized) = 0;
-};
+ABSL_CONST_INIT extern const absl::string_view kCalibrationContainerName;
 
-class TRTCalibrationResource : public SerializableResourceBase {
+class TRTCalibrationResource : public ResourceBase {
  public:
   ~TRTCalibrationResource() override;
 
   string DebugString() const override;
 
-  Status SerializeToString(string* serialized) override;
+  Status SerializeToString(string* serialized);
 
   // Lookup table for temporary staging areas of input tensors for calibration.
   std::unordered_map<string, std::pair<void*, size_t>> device_buffers_;
