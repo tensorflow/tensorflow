@@ -41,7 +41,7 @@ Status ForThunk::Initialize(const GpuExecutable& executable,
 }
 
 Status ForThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                 se::Stream* stream,
+                                 se::Stream* stream, const RunId& run_id,
                                  HloExecutionProfiler* profiler) {
   VLOG(2) << "Executing ForThunk with " << loop_limit_ << " iters for "
           << (hlo_instruction() ? hlo_instruction()->ToString() : "<null>");
@@ -49,8 +49,8 @@ Status ForThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   for (int64 i = 0; i < loop_limit_; ++i) {
     profiler->StartHloComputation();
     // Invoke loop body thunk sequence.
-    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(buffer_allocations,
-                                                             stream, profiler));
+    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(
+        buffer_allocations, stream, run_id, profiler));
     profiler->FinishHloComputation(hlo_instruction()->while_body());
   }
   return Status::OK();

@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace Eigen {
 class Allocator;
+class ThreadPoolInterface;
 }  // namespace Eigen
 namespace tensorflow {
 namespace thread {
@@ -119,6 +121,11 @@ class ThreadPool {
   // Returns current thread id between 0 and NumThreads() - 1, if called from a
   // thread in the pool. Returns -1 otherwise.
   int CurrentThreadId() const;
+
+  // If ThreadPool implementation is compatible with Eigen::ThreadPoolInterface,
+  // returns a non-null pointer. The caller does not own the object the returned
+  // pointer points to, and should not attempt to delete.
+  Eigen::ThreadPoolInterface* AsEigenThreadPool();
 
   struct Impl;
 

@@ -216,7 +216,7 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_QuantizeAndDequantize) {
   Node* found_node;
   Status s = FindNode(g, strings::StrCat(d->name(), "/QuantizeAndDequantizeV2"),
                       &found_node);
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "not found")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.
   TF_ASSERT_OK(
@@ -270,7 +270,7 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
   Node* found_node;
   Status s = FindNode(g, strings::StrCat(d->name(), "/FakeQuantWithMinMaxVars"),
                       &found_node);
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "not found")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.
   TF_ASSERT_OK(

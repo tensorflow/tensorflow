@@ -1,9 +1,10 @@
 # Description:
 # Contains ops for remote fused graph
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -37,6 +38,7 @@ py_test(
     name = "remote_fused_graph_ops_test",
     size = "small",
     srcs = ["python/ops/remote_fused_graph_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":remote_fused_graph_ops_py",

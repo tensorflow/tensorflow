@@ -37,7 +37,7 @@ SIGNATURE_ATTRIBUTE_NAME = "signatures"
 
 def _get_signature(function):
   if (isinstance(function, (defun.Function, def_function.Function)) and
-      function._input_signature is not None):  # pylint: disable=protected-access
+      function.input_signature is not None):
     function = function.get_concrete_function()
   if not isinstance(function, defun.ConcreteFunction):
     return None
@@ -136,7 +136,7 @@ def canonicalize_signatures(signatures):
 def _is_flat(sequence):
   sequence_flat = nest.flatten(sequence)
   try:
-    nest.assert_same_structure(sequence_flat, sequence)
+    nest.assert_same_structure(sequence_flat, sequence, check_types=False)
     return True
   except ValueError:
     return False

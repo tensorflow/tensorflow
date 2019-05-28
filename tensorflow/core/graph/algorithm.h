@@ -61,6 +61,11 @@ extern void DFS(const Graph& g, const std::function<void(Node*)>& enter,
 // If stable_comparator is set, a stable ordering of visit is achieved by
 // sorting a node's neighbors first before visiting them.
 // If edge_filter is set then ignores edges for which edge_filter returns false.
+extern void DFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
+                    const std::function<void(Node*)>& enter,
+                    const std::function<void(Node*)>& leave,
+                    const NodeComparator& stable_comparator = {},
+                    const EdgeFilter& edge_filter = {});
 extern void DFSFrom(const Graph& g, gtl::ArraySlice<const Node*> start,
                     const std::function<void(const Node*)>& enter,
                     const std::function<void(const Node*)>& leave,

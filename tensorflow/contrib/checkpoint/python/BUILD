@@ -1,6 +1,7 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -120,5 +121,4 @@ tf_py_test(
         "//tensorflow/python/keras:layers",
         "//tensorflow/python/training/tracking:util",
     ],
-    tags = ["no_oss"],  # b/124472244
 )

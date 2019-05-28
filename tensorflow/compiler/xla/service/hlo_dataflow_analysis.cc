@@ -149,7 +149,7 @@ string HloDataflowAnalysis::ToString() const {
   StrAppend(&out, "  Instruction value sets:\n");
   for (const HloComputation* computation : module_.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      StrAppend(&out, "    ", instruction->name(), ":\n");
+      StrAppend(&out, "Instruction: \n  ", instruction->name(), ":\n");
       if (instruction->shape().IsTuple()) {
         GetInstructionValueSet(instruction)
             .ForEachElement([this, &instruction, &out](
@@ -929,8 +929,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   for (const HloValue* value : GetValueSet(operand, index).values()) {
     for (const HloUse& use : value->uses()) {
       if (use.instruction == user) {
-        if (user->opcode() == HloOpcode::kFusion &&
-            user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+        if (user->IsLoopFusion()) {
           HloInstruction* fusion_param =
               user->fused_parameter(use.operand_number);
           const HloValue& value =
@@ -958,7 +957,6 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
 //
 // Returns true if:
 //
-//  * fusion is a loop or input fusion, AND
 //  * fusion_param is used by the root of dynamic-update-slice as the "base" of
 //    the update, i.e. the thing being updated, AND
 //  * all other uses of fusion_param are dynamic-slices that slice the same
@@ -977,13 +975,6 @@ static bool CanDoInPlaceDynamicUpdateSlice(HloInstruction* fusion,
   auto* fusion_param = fusion_param_value.instruction();
   CHECK_EQ(fusion_param->opcode(), HloOpcode::kParameter);
   CHECK_EQ(fusion_param->parent(), fusion->fused_instructions_computation());
-
-  // fusion must be a loop or input fusion.
-  auto kind = fusion->fusion_kind();
-  if (kind != HloInstruction::FusionKind::kLoop &&
-      kind != HloInstruction::FusionKind::kInput) {
-    return false;
-  }
 
   // fusion_param must be used by the root as the "base" of the
   // dynamic-update-slice.  The natural way to check this would be
@@ -1033,9 +1024,6 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (user->opcode() == HloOpcode::kFusion) {
-    if (fusion_can_share_buffer_ != nullptr) {
-      return fusion_can_share_buffer_(user, operand);
-    }
     // Get the parameter associated with 'operand';
     HloInstruction* fusion_param =
         user->fused_parameter(user->operand_index(operand));
@@ -1043,17 +1031,27 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     const HloValue& fusion_param_value =
         GetValueDefinedAt(fusion_param, operand_index);
 
+    // TODO(b/80315712): This code is in a bit of a weird intermediate state
+    // at the moment. The in-place DUS check really needs to be common to all
+    // backends, so it runs first. Then we run the backend-specific check if
+    // provided, or go through the target-indepdendent check if not.
+    // Unfortunately, the notionally "target-independent" path actually contains
+    // some target-specific code, so we can't run all of it *in addition* to the
+    // target-specific function, like the interface documentation says.
     if (user->fused_expression_root()->opcode() ==
         HloOpcode::kDynamicUpdateSlice) {
       return CanDoInPlaceDynamicUpdateSlice(user, fusion_param_value);
     }
 
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
+    if (fusion_can_share_buffer_ != nullptr) {
+      return fusion_can_share_buffer_(user, operand, user_index);
+    }
+
+    if (user->IsLoopFusion() || user->IsInputFusion()) {
       return AreTransitiveUsesElementwiseOrTuple(fusion_param);
     }
 
-    if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+    if (user->IsOutputFusion() &&
         user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 

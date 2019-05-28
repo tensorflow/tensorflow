@@ -39,6 +39,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "//tensorflow/c:c_api",
+            "//tensorflow/c/eager:c_api",
             "//tensorflow/core:all_kernels",
             "//tensorflow/core:direct_session",
             "//tensorflow/core:ops",

@@ -41,6 +41,20 @@ from tensorflow.python.platform import test
 @test_util.run_v1_only("b/123903858: Add eager and V2 test coverage")
 class MapDefunTest(test_base.DatasetTestBase):
 
+  def testNoIntraOpLimit(self):
+
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    def simple_fn(x):
+      return x * 2 + 3
+
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(
+        simple_fn, [elems], [dtypes.int32], [(2,)],
+        max_intra_op_parallelism=0)[0]
+    expected = elems * 2 + 3
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+
   def testMapDefunSimple(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -219,10 +233,6 @@ class MapDefunTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(r, feed_dict={p: 0})
 
-  def _assert_op_cancelled(self, sess, map_defun_op):
-    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
-      self.evaluate(map_defun_op)
-
   def testMapDefunWithParentCancellation(self):
     # Checks that a cancellation of the parent graph is threaded through to
     # MapDefunOp correctly.
@@ -238,7 +248,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       thread = self.checkedThread(
-          self._assert_op_cancelled, args=(sess, map_defun_op))
+          self.assert_op_cancelled, args=(map_defun_op,))
       thread.start()
       time.sleep(0.2)
       sess.close()

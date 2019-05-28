@@ -19,30 +19,11 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
-
-TEST(DatasetUtilsTest, ComputeMoveVector) {
-  struct TestCase {
-    std::vector<int> indices;
-    std::vector<bool> expected;
-  };
-
-  TestCase test_cases[] = {
-      TestCase{{}, {}},
-      TestCase{{1}, {true}},
-      TestCase{{1, 1}, {false, true}},
-      TestCase{{1, 2}, {true, true}},
-      TestCase{{1, 1, 2}, {false, true, true}},
-      TestCase{{1, 2, 2}, {true, false, true}},
-  };
-
-  for (auto& test_case : test_cases) {
-    EXPECT_EQ(test_case.expected, ComputeMoveVector(test_case.indices));
-  }
-}
 
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
   VariantTensorData data;
@@ -162,6 +143,13 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
       s.error_message());
+}
+
+TEST(DatasetUtilsTest, RunnerWithMaxParallelism) {
+  auto runner =
+      RunnerWithMaxParallelism([](const std::function<void()> fn) { fn(); }, 2);
+  auto fn = []() { ASSERT_EQ(GetPerThreadMaxParallelism(), 2); };
+  runner(fn);
 }
 }  // namespace
 }  // namespace data

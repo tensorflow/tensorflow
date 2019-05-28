@@ -156,14 +156,6 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
   return Status::OK();
 }
 
-bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
-  return window_dimension.size() == 1 && window_dimension.stride() == 1 &&
-         window_dimension.padding_low() == 0 &&
-         window_dimension.padding_high() == 0 &&
-         window_dimension.window_dilation() == 1 &&
-         window_dimension.base_dilation() == 1;
-}
-
 StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        const Window& window,
                                        PrimitiveType element_type,
@@ -205,7 +197,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           window.DebugString());
     }
 
-    if (base_shape.is_dynamic_dimension(i) && !IsTrivialWindowDimension(dim)) {
+    if (base_shape.is_dynamic_dimension(i) &&
+        !window_util::IsTrivialWindowDimension(dim)) {
       return Unimplemented(
           "Dynamic shape is not supported for non trivial window: %s",
           window_util::ToString(window));
@@ -313,6 +306,14 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
             "Expected element type in shape to be integral, floating or "
             "complex for %s operation; got %s.",
             HloOpcodeString(opcode), PrimitiveType_Name(shape.element_type()));
+      }
+      return shape;
+    case HloOpcode::kPopulationCount:
+      if (!ShapeUtil::ElementIsIntegral(shape)) {
+        return InvalidArgument(
+            "Expected an integral element type in argument to PopulationCount "
+            "operation; got %s.",
+            PrimitiveType_Name(shape.element_type()));
       }
       return shape;
     case HloOpcode::kSign:
@@ -631,10 +632,6 @@ Status ValidateDotDimensionNumbers(
   // Check if both element types are the same.
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return fail("Element types do not match.");
-  }
-
-  if ((lhs.rank() < 1) || (rhs.rank() < 1)) {
-    return fail("Dot only supports rank 1 or above.");
   }
 
   // Validate basic properties of dot dimension numbers.
@@ -988,12 +985,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe: {
+    case HloOpcode::kCompare: {
       TF_ASSIGN_OR_RETURN(const Shape& shape,
                           InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                                         broadcast_dimensions));
@@ -1721,11 +1713,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   if (batch_group_count > 1 && input_batch % kernel_output_features != 0) {
     return InvalidArgument(
-        "Expected output feature dimension (value %d) to be divisible by "
-        "input_batch (value %d) for batch group count %d; "
+        "Expected input batch (value %d) to be divisible by output feature "
+        "dimension size (value %d) for batch group count %d; "
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        kernel_output_features, input_batch, batch_group_count,
+        input_batch, kernel_output_features, batch_group_count,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
@@ -1742,7 +1734,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
+
   if (kernel_output_features % feature_group_count > 0) {
+    // A depthwise/grouped filter has the shape
+    // [space0, .. spaceN, GROUP_SIZE, NUM_OUTPUT_FEATURES]. When
+    // [space0, .. spaceN, GROUP_SIZE] is convolved with the input, a shape
+    // [space0, .. spaceN, feature_group_count] is formed. Therefore, the output
+    // feature count (which is equal to kernel output features) has to be a
+    // multiple of feature_group_count.
     return InvalidArgument(
         "Expected output feature dimension (value %d) to be divisible by "
         "feature_group_count (value %d); "
@@ -1861,12 +1860,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
-      if (ShapeUtil::IsZeroElementArray(in)) {
-        return in;
-      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
-      result.set_dimensions(result.dimensions_size() - 1,
-                            fft_length[fft_rank - 1] / 2 + 1);
+      // Preserve the size of zero-sized dimensions.
+      if (fft_length[fft_rank - 1] != 0) {
+        result.set_dimensions(result.dimensions_size() - 1,
+                              fft_length[fft_rank - 1] / 2 + 1);
+      }
       return result;
     }
     case IRFFT: {
@@ -1887,8 +1886,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
-      if (in.dimensions(in.dimensions_size() - 1) !=
-          fft_length[fft_rank - 1] / 2 + 1) {
+      // The size of zero-sized dimensions is preserved.
+      if ((in.dimensions(in.dimensions_size() - 1) != 0 ||
+           fft_length[fft_rank - 1] != 0) &&
+          in.dimensions(in.dimensions_size() - 1) !=
+              fft_length[fft_rank - 1] / 2 + 1) {
         return InvalidArgument(
             "IRFFT requires innermost dimension matches fft_length/2+1, but "
             "dimension %d is %d and should be %d.",
@@ -2541,7 +2543,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   };
 
   // Check the shapes of computation parameters and return types.
-  if (!ShapeUtil::Equal(condition.result(), ShapeUtil::MakeShape(PRED, {}))) {
+  if (!ShapeUtil::Compatible(condition.result(),
+                             ShapeUtil::MakeShape(PRED, {}))) {
     return InvalidArgument("Condition must return a boolean; got %s.",
                            shape_string());
   }
@@ -2561,8 +2564,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& branch_index,
     absl::Span<const ProgramShape> branch_computations,
     absl::Span<const Shape> branch_operands) {
-  if (!ShapeUtil::Equal(branch_index, ShapeUtil::MakeShape(PRED, {})) &&
-      !ShapeUtil::Equal(branch_index, ShapeUtil::MakeShape(S32, {}))) {
+  if (!ShapeUtil::Compatible(branch_index, ShapeUtil::MakeShape(PRED, {})) &&
+      !ShapeUtil::Compatible(branch_index, ShapeUtil::MakeShape(S32, {}))) {
     return InvalidArgument("branch_index must be bool or int32; got %s.",
                            ShapeUtil::HumanString(branch_index));
   }
@@ -2737,45 +2740,27 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
 }
 
-// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
-// "degenerate" cases, as with binary elementwise ops.
 /* static */ StatusOr<Shape> ShapeInference::InferClampShape(
     const Shape& min, const Shape& operand, const Shape& max) {
   TF_RETURN_IF_ERROR(ExpectArray(min, "clamp min"));
   TF_RETURN_IF_ERROR(ExpectArray(operand, "clamp operand"));
   TF_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
-  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(min, operand) ||
-      !ShapeUtil::SameElementTypeIgnoringFpPrecision(max, operand)) {
-    return InvalidArgument("Clamp with different operand types: %s, %s, %s.",
-                           ShapeUtil::HumanString(min),
-                           ShapeUtil::HumanString(operand),
-                           ShapeUtil::HumanString(max));
+
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand)) {
+    return InvalidArgument(
+        "Clamp with different shapes: %s, %s, %s.", ShapeUtil::HumanString(min),
+        ShapeUtil::HumanString(operand), ShapeUtil::HumanString(max));
   }
-  if (((ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
-        ShapeUtil::IsScalar(min)) &&
-       (ShapeUtil::CompatibleIgnoringFpPrecision(max, operand) ||
-        ShapeUtil::IsScalar(max)))) {
-    return operand;
-  }
-  if (ShapeUtil::IsScalar(operand)) {
-    if (ShapeUtil::CompatibleIgnoringFpPrecision(min, max)) {
-      return ShapeUtil::ChangeElementType(min, operand.element_type());
-    } else if (ShapeUtil::IsScalar(min)) {
-      return ShapeUtil::ChangeElementType(max, operand.element_type());
-    } else if (ShapeUtil::IsScalar(max)) {
-      return ShapeUtil::ChangeElementType(min, operand.element_type());
-    }
-  }
-  return Unimplemented("%s, %s <clamp> %s is not implemented.",
-                       min.ShortDebugString(), max.ShortDebugString(),
-                       operand.ShortDebugString());
+  return operand;
 }
 
-// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
-// "degenerate" cases, as with binary elementwise ops, as well as scalar
-// broadcast from all operands, not just the predicate.
 /* static */ StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
+  TF_RETURN_IF_ERROR(ExpectArray(pred, "select pred"));
+  TF_RETURN_IF_ERROR(ExpectArray(on_true, "select on-true"));
+  TF_RETURN_IF_ERROR(ExpectArray(on_false, "select on-false"));
+
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(on_true, on_false)) {
     return InvalidArgument(
         "Operands to select must be the same shape; got %s and %s.",
@@ -2786,31 +2771,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred));
   }
-  if (Shape::Equal()
-          .IgnoreElementType()
-          .IgnoreLayout()
-          .IgnoreDynamicDimension()(pred, on_true) ||
-      ShapeUtil::IsScalar(pred)) {
-    // By this stage we know that pred's element type is PRED. Therefore, this
-    // check restricts pred to be a PRED scalar, or a PRED array with the same
-    // dimensions as on_true and on_false.
-    Shape inferred_shape = ShapeUtil::ChangeElementType(
-        on_true, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
-
-    // Propagate dynamic dimensions if pred is not a scalar.
-    if (!ShapeUtil::IsScalar(pred)) {
-      for (int i = 0; i < inferred_shape.rank(); i++) {
-        if (pred.is_dynamic_dimension(i)) {
-          inferred_shape.set_dynamic_dimension(i, true);
-        }
-      }
-    }
-    return inferred_shape;
+  if (!Shape::Equal()
+           .IgnoreElementType()
+           .IgnoreLayout()
+           .IgnoreDynamicDimension()(pred, on_true)) {
+    return InvalidArgument(
+        "Operands to select and predicate must be the same shape; got %s and "
+        "%s.",
+        ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(pred));
   }
-  return InvalidArgument(
-      "Select operation with non-scalar predicate with dimensionality "
-      "different from the other operands: %s.",
-      ShapeUtil::HumanString(pred));
+
+  return ShapeUtil::ChangeElementType(
+      pred, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferTupleSelectShape(
@@ -2964,7 +2936,7 @@ static Status ValidateGatherDimensionNumbers(
     const GatherDimensionNumbers& gather_dim_numbers,
     absl::Span<const int64> slice_sizes) {
   TF_RETURN_IF_ERROR(
-      ExpectArray(input_shape, "input tensor operand gather op"));
+      ExpectArray(input_shape, "input tensor operand of gather op"));
   TF_RETURN_IF_ERROR(
       ExpectArray(start_indices_shape, "gather indices operand of gather op"));
 

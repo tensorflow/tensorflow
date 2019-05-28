@@ -61,13 +61,13 @@ class ParallelReader(io_ops.ReaderBase):
     If the `common_queue` is a shuffling queue, then the examples are shuffled.
 
     Usage:
-      common_queue = tf.RandomShuffleQueue(
+      common_queue = tf.queue.RandomShuffleQueue(
           capacity=256,
           min_after_dequeue=128,
           dtypes=[tf.string, tf.string])
-      p_reader = ParallelReader(tf.TFRecordReader, common_queue)
+      p_reader = ParallelReader(tf.compat.v1.TFRecordReader, common_queue)
 
-      common_queue = tf.FIFOQueue(
+      common_queue = tf.queue.FIFOQueue(
           capacity=256,
           dtypes=[tf.string, tf.string])
       p_reader = ParallelReader(readers, common_queue, num_readers=2)
@@ -77,7 +77,8 @@ class ParallelReader(io_ops.ReaderBase):
       reader_class: one of the io_ops.ReaderBase subclasses ex: TFRecordReader
       common_queue: a Queue to hold (key, value pairs) with `dtypes` equal to
         [tf.string, tf.string]. Must be one of the data_flow_ops.Queues
-        instances, ex. `tf.FIFOQueue()`, `tf.RandomShuffleQueue()`, ...
+        instances, ex. `tf.queue.FIFOQueue()`, `tf.queue.RandomShuffleQueue()`,
+        ...
       num_readers: a integer, number of instances of reader_class to create.
       reader_kwargs: an optional dict of kwargs to create the readers.
 
@@ -119,8 +120,8 @@ class ParallelReader(io_ops.ReaderBase):
     to the TF QueueRunners collection.
 
     Args:
-      queue: A Queue or a mutable string Tensor representing a handle
-        to a Queue, with string work items.
+      queue: A Queue or a mutable string Tensor representing a handle to a
+        Queue, with string work items.
       name: A name for the operation (optional).
 
     Returns:
@@ -143,8 +144,8 @@ class ParallelReader(io_ops.ReaderBase):
     `tf.errors.UnimplementedError` is raised.
 
     Args:
-      queue: A Queue or a mutable string Tensor representing a handle
-        to a Queue, with string work items.
+      queue: A Queue or a mutable string Tensor representing a handle to a
+        Queue, with string work items.
       num_records: Number of records to read.
       name: A name for the operation (optional).
 
@@ -218,14 +219,14 @@ def parallel_read(data_sources,
       /path/to/train@128, /path/to/train* or /tmp/.../train*
     reader_class: one of the io_ops.ReaderBase subclasses ex: TFRecordReader
     num_epochs: The number of times each data source is read. If left as None,
-        the data will be cycled through indefinitely.
+      the data will be cycled through indefinitely.
     num_readers: a integer, number of Readers to create.
     reader_kwargs: an optional dict, of kwargs for the reader.
     shuffle: boolean, whether should shuffle the files and the records by using
       RandomShuffleQueue as common_queue.
-    dtypes:  A list of types.  The length of dtypes must equal the number
-        of elements in each record. If it is None it will default to
-        [tf.string, tf.string] for (key, value).
+    dtypes:  A list of types.  The length of dtypes must equal the number of
+      elements in each record. If it is None it will default to [tf.string,
+      tf.string] for (key, value).
     capacity: integer, capacity of the common_queue.
     min_after_dequeue: integer, minimum number of records in the common_queue
       after dequeue. Needed for a good shuffle.
@@ -238,7 +239,10 @@ def parallel_read(data_sources,
   data_files = get_data_files(data_sources)
   with ops.name_scope(scope, 'parallel_read'):
     filename_queue = tf_input.string_input_producer(
-        data_files, num_epochs=num_epochs, shuffle=shuffle, seed=seed,
+        data_files,
+        num_epochs=num_epochs,
+        shuffle=shuffle,
+        seed=seed,
         name='filenames')
     dtypes = dtypes or [tf_dtypes.string, tf_dtypes.string]
     if shuffle:
@@ -252,8 +256,9 @@ def parallel_read(data_sources,
       common_queue = data_flow_ops.FIFOQueue(
           capacity=capacity, dtypes=dtypes, name='common_queue')
 
-    summary.scalar('fraction_of_%d_full' % capacity,
-                   math_ops.to_float(common_queue.size()) * (1. / capacity))
+    summary.scalar(
+        'fraction_of_%d_full' % capacity,
+        math_ops.cast(common_queue.size(), tf_dtypes.float32) * (1. / capacity))
 
     return ParallelReader(
         reader_class,

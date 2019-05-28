@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.platform import googletest
 
 
@@ -89,6 +90,32 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
           for x in random_arrays
       ]
       tf_val = math_ops.accumulate_n(random_tensors)
+      np_val = random_arrays[0]
+      for random_array in random_arrays[1:]:
+        np_val += random_array
+      self.assertAllClose(np_val, self.evaluate(tf_val))
+
+  # Test that AccumulateNV2 rewrite correctly add edges necessary to propagate
+  # while loop execution frame to all nodes.
+  def testAccumulateInsideWhileLoop(self):
+    with self.cached_session():
+      random_arrays = [
+          np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
+      ]
+      random_tensors = [
+          ops.convert_to_tensor(x, dtype=dtypes_lib.float32)
+          for x in random_arrays
+      ]
+
+      def cond_fn(i, acc, tensors):
+        del acc, tensors  # unused
+        return i < 1  # do just one iteration
+
+      def body_fn(i, acc, tensors):
+        return i + 1, acc + math_ops.accumulate_n(tensors), tensors
+
+      zeros = np.zeros((16, 16, 16, 16)).astype(np.float32)
+      _, tf_val, _ = while_loop_v1(cond_fn, body_fn, (0, zeros, random_tensors))
       np_val = random_arrays[0]
       for random_array in random_arrays[1:]:
         np_val += random_array

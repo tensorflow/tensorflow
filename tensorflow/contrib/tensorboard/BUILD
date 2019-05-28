@@ -1,9 +1,10 @@
 # Description:
 # TensorBoard module containing volatile or experimental code.
 
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -50,6 +51,7 @@ py_test(
     name = "projector_api_test",
     size = "small",
     srcs = ["plugins/projector/projector_api_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":projector",

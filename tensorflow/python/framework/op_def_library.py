@@ -759,31 +759,19 @@ class OpDefLibrary(object):
       del attrs  # attrs is no longer authoritative, use attr_protos instead
 
       # Determine output types (possibly using attrs)
-      output_types = []
       output_structure = []
       for arg in op_def.output_arg:
-        types = []
         if arg.number_attr:
           n = _AttrValue(attr_protos, arg.number_attr).i
-          if arg.type_attr:
-            types = [_AttrValue(attr_protos, arg.type_attr).type] * n
-          else:
-            types = [arg.type] * n
           output_structure.append(n)
         elif arg.type_attr:
           t = _AttrValue(attr_protos, arg.type_attr)
-          types = [t.type]
           output_structure.append(None)
         elif arg.type_list_attr:
           t = _AttrValue(attr_protos, arg.type_list_attr)
-          types = t.list.type
-          output_structure.append(len(types))
+          output_structure.append(len(t.list.type))
         else:
-          types = [arg.type]
           output_structure.append(None)
-        if arg.is_ref:
-          types = [dtypes.as_dtype(x)._as_ref for x in types]  # pylint: disable=protected-access
-        output_types.extend(types)
 
       if keywords:
         raise TypeError("apply_op() got unexpected keyword arguments: " +
@@ -795,7 +783,7 @@ class OpDefLibrary(object):
                               if arg.is_ref]
       with _MaybeColocateWith(must_colocate_inputs):
         # Add Op to graph
-        op = g.create_op(op_type_name, inputs, output_types, name=scope,
+        op = g.create_op(op_type_name, inputs, dtypes=None, name=scope,
                          input_types=input_types, attrs=attr_protos,
                          op_def=op_def)
       return output_structure, op_def.is_stateful, op

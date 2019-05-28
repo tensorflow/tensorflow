@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -126,6 +127,7 @@ class ListScheduler {
 
     // Create map containing the number of unscheduled uses (hlo instructions)
     // of each logical buffer.
+    unscheduled_use_count_.reserve(points_to_analysis.num_logical_buffers());
     for (auto* instruction : computation->instructions()) {
       for (auto* buffer :
            points_to_analysis.GetBuffersDefinedByInstruction(instruction)) {
@@ -205,6 +207,7 @@ class ListScheduler {
   // than not taking subcomputations into account at all. In the future, we may
   // improve accounting for subcomputation memory (b/65409243).
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
+    auto instruction = entry.instruction;
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
       auto buffer = kv->first;
@@ -216,7 +219,7 @@ class ListScheduler {
     // We only count the memory usage of the largest subcomputation, instead of
     // adding them all, because subcomputations won't execute in parallel.
     int64 max_subcomputation_bytes = 0;
-    for (const auto* c : entry.instruction->called_computations()) {
+    for (const auto* c : instruction->called_computations()) {
       auto it = memory_by_computation_.find(c);
       if (it != memory_by_computation_.end()) {
         int64 subcomputation_bytes = it->second;
@@ -226,10 +229,10 @@ class ListScheduler {
       }
     }
     int64 bytes_defined;
+    auto opcode = instruction->opcode();
     if (max_subcomputation_bytes > 0 &&
-        (entry.instruction->opcode() == HloOpcode::kWhile ||
-         entry.instruction->opcode() == HloOpcode::kCall ||
-         entry.instruction->opcode() == HloOpcode::kConditional)) {
+        (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
+         opcode == HloOpcode::kConditional)) {
       // The output buffer of while/call/conditional is always aliased with the
       // output buffer of the root instruction in the body. Don't double count.
       bytes_defined = max_subcomputation_bytes;
@@ -459,6 +462,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     sequence.push_back(hlo);
     return Status::OK();
   });
+  visitor.ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
       &visitor, [&extra_users, &total_sizes](const HloInstruction* a,
                                              const HloInstruction* b) {
@@ -611,11 +615,13 @@ StatusOr<bool> HloTrivialScheduler::Run(HloModule* module) {
     if (!computation->IsFusionComputation()) {
       HloInstructionSequence& computation_sequence =
           schedule.GetOrCreateSequence(computation);
-      TF_RETURN_IF_ERROR(computation->Accept(
+      FunctionVisitor visitor(
           [&computation_sequence](HloInstruction* instruction) {
             computation_sequence.push_back(instruction);
             return Status::OK();
-          }));
+          });
+      visitor.ReserveVisitStates(computation->instruction_count());
+      TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     }
   }
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));

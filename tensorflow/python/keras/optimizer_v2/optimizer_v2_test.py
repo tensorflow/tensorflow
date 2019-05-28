@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
@@ -537,6 +538,39 @@ class OptimizerTest(test.TestCase):
     new_step_value = self.evaluate(global_step)
     self.assertEqual(new_step_value, init_step_value + 1)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testOptimizerWithCallableVarList(self):
+    train_samples = 20
+    input_dim = 1
+    num_classes = 2
+    (x, y), _ = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=10,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+    y = keras.utils.to_categorical(y)
+
+    num_hidden = 1
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=num_hidden, num_classes=num_classes)
+    opt = adam.Adam()
+
+    loss = lambda: losses.mean_squared_error(model(x), y)
+    var_list = lambda: model.trainable_weights
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Weights for model .* have not yet been created'):
+      var_list()
+    train_op = opt.minimize(loss, var_list)
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual(
+          [[0.]], self.evaluate(opt.get_slot(var_list()[0], 'm')))
+      self.evaluate(train_op)
+    self.assertNotEqual(
+        [[0.]], self.evaluate(opt.get_slot(var_list()[0], 'm')))
+    self.assertLen(var_list(), 4)
+
   def testVarKey(self):
     with context.graph_mode():
       a = variables.Variable([1., 2.], name='var')
@@ -649,10 +683,10 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_tf.set_weights(model_k_v2.get_weights())
 
-      opt_k_v1 = optimizers.SGD(lr=0.001, momentum=0.9, nesterov=True)
+      opt_k_v1 = optimizers.SGD(momentum=0.9, nesterov=True)
       opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
       opt_tf = momentum.MomentumOptimizer(
-          learning_rate=0.001, momentum=0.9, use_nesterov=True)
+          learning_rate=0.01, momentum=0.9, use_nesterov=True)
 
       model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
       model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])

@@ -5,7 +5,7 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "gpu"
+    name: "optimizer"
     mtype: "<type \'module\'>"
   }
   member {

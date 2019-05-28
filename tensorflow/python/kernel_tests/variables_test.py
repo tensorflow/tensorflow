@@ -23,11 +23,13 @@ import operator
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -152,6 +154,22 @@ class VariablesTestCase(test.TestCase):
 
       self.evaluate(four)
       self.assertAllClose(4.0, self.evaluate(var))
+
+  def testAssignDifferentShapesEagerNotAllowed(self):
+    with context.eager_mode():
+      var = variables.Variable(np.zeros(shape=[1, 1]))
+      with self.assertRaisesRegexp(ValueError,
+                                   "Shapes.*and.*are incompatible"):
+        var.assign(np.zeros(shape=[2, 2]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignDifferentShapesAllowed(self):
+    var = variables.Variable(np.zeros(shape=[1, 1]),
+                             shape=tensor_shape.TensorShape(None))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(np.zeros(shape=[1, 1]), var.read_value())
+    self.evaluate(var.assign(np.zeros(shape=[2, 2])))
+    self.assertAllEqual(np.zeros(shape=[2, 2]), var.read_value())
 
   def testZeroSizeStringAssign(self):
     with self.cached_session() as sess:
@@ -538,6 +556,25 @@ class VariablesTestCase(test.TestCase):
           variables.Variable(variable_def=trainable_variable.to_proto())
           .trainable)
 
+  def testSynchronizationAndAggregationSaved(self):
+    with ops.Graph().as_default():
+      original_variable = variables.Variable(
+          initial_value=constant_op.constant(10.0),
+          synchronization=variables.VariableSynchronization.NONE,
+          aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
+      self.assertEqual(variables.VariableSynchronization.NONE,
+                       original_variable.synchronization)
+      self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                       original_variable.aggregation)
+
+      laundered = variables.Variable(
+          variable_def=original_variable.to_proto())
+      self.assertEqual(
+          variables.VariableSynchronization.NONE,
+          laundered.synchronization)
+      self.assertEqual(variables.VariableAggregationV2.ONLY_FIRST_REPLICA,
+                       laundered.aggregation)
+
   @test_util.run_deprecated_v1
   def testLoad(self):
     with self.cached_session():
@@ -562,6 +599,38 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(v.name, "foo/bar:0")
     with ops.get_default_graph().as_default():
       create_variable()
+
+  def testTrainableVariableV1(self):
+    v1 = variables.VariableV1(1.0)
+    self.assertEqual(True, v1.trainable)
+
+    v2 = variables.VariableV1(
+        1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    self.assertEqual(False, v2.trainable)
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Synchronization value can be set to VariableSynchronization.ON_READ "
+        "only for non-trainable variables"):
+      _ = variables.VariableV1(
+          1.0, trainable=True,
+          synchronization=variables.VariableSynchronization.ON_READ)
+
+  def testTrainableVariableV2(self):
+    v1 = variables.Variable(1.0)
+    self.assertEqual(True, v1.trainable)
+
+    v2 = variables.Variable(
+        1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    self.assertEqual(False, v2.trainable)
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Synchronization value can be set to VariableSynchronization.ON_READ "
+        "only for non-trainable variables"):
+      _ = variables.Variable(
+          1.0, trainable=True,
+          synchronization=variables.VariableSynchronization.ON_READ)
 
 
 class IsInitializedTest(test.TestCase):

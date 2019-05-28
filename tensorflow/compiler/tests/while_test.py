@@ -30,6 +30,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import map_fn
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -47,7 +49,7 @@ class WhileTest(xla_test.XLATestCase):
     def loop_cond(step):
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       with self.test_scope():
         loop_outputs = xla.while_loop([init_index], loop_cond, loop_body)
@@ -69,7 +71,7 @@ class WhileTest(xla_test.XLATestCase):
       del rsum
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       init_sum = array_ops.placeholder(dtypes.float32, [])
       with self.test_scope():
@@ -95,7 +97,7 @@ class WhileTest(xla_test.XLATestCase):
       del rsum
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       init_sum = array_ops.placeholder(dtypes.complex64, [])
       with self.test_scope():
@@ -121,7 +123,7 @@ class WhileTest(xla_test.XLATestCase):
       del x
       return step < 10
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       with self.test_scope():
         loop_outputs = xla.while_loop([init_index, 42], loop_cond, loop_body)
@@ -132,7 +134,7 @@ class WhileTest(xla_test.XLATestCase):
   def _testMaxItersSimple(self):
     if is_compile_on_demand():
       self.skipTest("list_ops are not supported in cpu_ondemand")
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
       v = constant_op.constant(1.0)
@@ -166,7 +168,7 @@ class WhileTest(xla_test.XLATestCase):
   def _testNestedWhileLoopWithMaxItersFromOuterContext(self):
     if is_compile_on_demand():
       self.skipTest("list_ops are not supported in cpu_ondemand")
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
       v = constant_op.constant(1.0)
@@ -223,6 +225,20 @@ class WhileTest(xla_test.XLATestCase):
   def testNestedWhileLoopWithMaxItersFromOuterContextV2(self):
     self._testNestedWhileLoopWithMaxItersFromOuterContext()
 
+  @test_util.enable_control_flow_v2
+  def testMap(self):
+    if is_compile_on_demand():
+      self.skipTest("list_ops are not supported in cpu_ondemand")
+    with self.session(), self.test_scope():
+      xla_context = control_flow_ops.XLAControlFlowContext()
+      xla_context.Enter()
+      nums = [1, 2, 3, 4, 5, 6]
+      elems = constant_op.constant(nums, name="data")
+      r = map_fn.map_fn(lambda x: math_ops.multiply(math_ops.add(x, 3), 2),
+                        elems)
+      self.assertAllEqual(r, np.array([(x + 3) * 2 for x in nums]))
+      xla_context.Exit()
+
 
 def is_compile_on_demand():
   return ("TF_XLA_FLAGS" in os.environ and
@@ -230,4 +246,6 @@ def is_compile_on_demand():
 
 
 if __name__ == "__main__":
+  os.environ["TF_XLA_FLAGS"] = ("--tf_xla_min_cluster_size=2 " +
+                                os.environ.get("TF_XLA_FLAGS", ""))
   test.main()

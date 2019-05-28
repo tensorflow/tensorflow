@@ -105,6 +105,15 @@ class AlgebraicSimplifier : public HloModulePass {
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
 
+  // Create constant from literal with tiles and element size updated in the
+  // constant's layout.
+  std::unique_ptr<HloInstruction> CreateConstantWithLayoutUpdated(
+      Literal literal) {
+    auto constant = HloInstruction::CreateConstant(std::move(literal));
+    UpdateLayout(constant->mutable_shape());
+    return constant;
+  }
+
  private:
   AlgebraicSimplifierOptions options_;
 };

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function as eager_def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -754,7 +755,7 @@ class FunctionalOpsTest(test.TestCase):
 
           def TestCondCapture(n, *args):
             del args
-            return math_ops.to_float(n) + v < 10
+            return math_ops.cast(n, dtypes.float32) + v < 10
 
           with self.assertRaises(ValueError):
             _ = functional_ops.While(
@@ -770,7 +771,7 @@ class FunctionalOpsTest(test.TestCase):
 
         @function.Defun(dtypes.int32, dtypes.float32)
         def Body(n, x):
-          return x + math_ops.to_float(n)
+          return x + math_ops.cast(n, dtypes.float32)
 
         xs = [
             # 1 + 2  + ... + 20
@@ -799,7 +800,7 @@ class FunctionalOpsTest(test.TestCase):
 
       @function.Defun(dtypes.int32, dtypes.float32, func_name="TestBody")
       def TestBody(n, x):
-        return x + math_ops.to_float(n)
+        return x + math_ops.cast(n, dtypes.float32)
 
       _ = functional_ops.For(
           1, 21, 1, [0.], TestBody, rewrite_with_while=True)[0]
@@ -817,15 +818,15 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32)
     def TestNullary(n):
-      v + math_ops.to_float(n)  # pylint: disable=expression-not-assigned
+      v + math_ops.cast(n, dtypes.float32)  # pylint: disable=expression-not-assigned
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def TestUnary(n, x):
-      return x + math_ops.to_float(n) + v
+      return x + math_ops.cast(n, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32, dtypes.float32)
     def TestBinary(n, x, x2):
-      return x + math_ops.to_float(n) + v, x2 + v
+      return x + math_ops.cast(n, dtypes.float32) + v, x2 + v
 
     for rewrite_with_while in (True, False):
       use_gpu = not rewrite_with_while
@@ -899,7 +900,7 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def Foo(i, v):
-      return math_ops.to_float(i) + v
+      return math_ops.cast(i, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def ReturnsTooManyArgs(unused_i, v):
@@ -942,6 +943,35 @@ class FunctionalOpsTest(test.TestCase):
 # TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
 # below test cases.
 class PartitionedCallTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testRemoteDeviceInPartitionedCallOp(self):
+    workers, _ = test_util.create_local_cluster(2, 0)
+
+    worker0_device = "/job:worker/replica:0/task:0/cpu:0"
+    worker1_device = "/job:worker/replica:0/task:1/cpu:0"
+
+    @eager_def_function.function
+    def f(a, b):
+      return a + b
+
+    with session.Session(workers[0].target) as sess:
+      with ops.device(worker0_device):
+        a = variable_scope.get_variable(
+            "a", initializer=constant_op.constant(1.), use_resource=True)
+      with ops.device(worker1_device):
+        b = variable_scope.get_variable(
+            "b", initializer=constant_op.constant(1.), use_resource=True)
+
+      sess.run(variables.global_variables_initializer())
+
+    config = config_pb2.ConfigProto()
+    config.experimental.share_cluster_devices_in_session = True
+
+    with session.Session(workers[0].target, config=config) as sess:
+      res = sess.run(f(a, b))
+
+    self.assertEqual(res, 2)
 
   @test_util.run_deprecated_v1
   def testBasicSingleDevice(self):

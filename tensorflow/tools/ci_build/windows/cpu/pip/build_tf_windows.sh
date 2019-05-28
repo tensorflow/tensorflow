@@ -138,8 +138,7 @@ bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
-  tensorflow/tools/pip_package:build_pip_package \
-  --incompatible_remove_native_http_archive=false || exit $?
+  tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -163,8 +162,12 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
+# TODO(pcloudy): remove --experimental_windows_native_test_wrapper once
+# native test wrapper is enabled by default.
+# https://github.com/bazelbuild/bazel/issues/6622
 bazel test --announce_rc --config=opt -k --test_output=errors \
   ${EXTRA_TEST_FLAGS} \
+  --experimental_windows_native_test_wrapper \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu --build_tests_only \

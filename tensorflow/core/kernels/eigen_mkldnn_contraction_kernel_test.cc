@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -142,6 +143,67 @@ TEST(EigenMkldnnTest, MkldnnGemm) {
     Scalar upper_bound = Scalar(1.01) * epsilon * k * sum;
 
     EXPECT_LE(delta, upper_bound);
+  }
+}
+
+TEST(EigenMkldnnTest, MkldnnGemmQInt8xQUInt8) {
+  // Mkldnn pack and gemm are used only in Tensor contractions, and it's
+  // guaranteed that Tensors will have ColMajor layout.
+  static const int Options = ColMajor;
+
+  using Tensor2dQInt8 = Eigen::Tensor<Eigen::QInt8, 2, Options, Index>;
+  using Tensor2dQUInt8 = Eigen::Tensor<Eigen::QUInt8, 2, Options, Index>;
+  using Tensor2dQInt32 = Eigen::Tensor<Eigen::QInt32, 2, Options, Index>;
+
+  int m = internal::random<int>(1, 1000);
+  int n = internal::random<int>(1, 1000);
+  int k = internal::random<int>(1, 1000);
+
+  Tensor2dQInt8 lhs(m, k);
+  lhs.setRandom();
+
+  Tensor2dQUInt8 rhs(k, n);
+  rhs.setRandom();
+  // NOTE: 's8*u8 + s8*u8 -> s16' saturation might lead to incorrect results. In
+  // practice in FusedConv2DBiasActivationKernel we use 7 bit inputs.
+  rhs = rhs.clip(0, 127);
+
+  Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims;
+  contract_dims[0].first = 1;
+  contract_dims[0].second = 0;
+
+  Tensor2dQInt32 res = lhs.contract(rhs, contract_dims);
+
+  // Compute matmul with Eigen::Matrix. We explicitly cast inputs to int32_t not
+  // to test QInt8->QInt32 type promotion during accumulation.
+  using Matrix = Eigen::Matrix<int32_t, Dynamic, Dynamic, ColMajor>;
+
+  Matrix lhs_mat(m, k);
+  Matrix rhs_mat(k, n);
+
+  for (int i = 0; i < m; ++i) {
+    for (int j = 0; j < k; ++j) {
+      lhs_mat(i, j) = static_cast<int32_t>(lhs(i, j));
+    }
+  }
+
+  for (int i = 0; i < k; ++i) {
+    for (int j = 0; j < n; ++j) {
+      rhs_mat(i, j) = static_cast<int32_t>(rhs(i, j));
+    }
+  }
+
+  Matrix matmul_result(m, n);
+  matmul_result.setZero();
+  matmul_result = lhs_mat * rhs_mat;
+
+  // Verify that results are equal.
+  for (Index i = 0; i < m; ++i) {
+    for (Index j = 0; j < n; ++j) {
+      Scalar gemm = res(i, j);
+      Scalar matmul = matmul_result(i, j);
+      EXPECT_EQ(gemm, matmul);
+    }
   }
 }
 

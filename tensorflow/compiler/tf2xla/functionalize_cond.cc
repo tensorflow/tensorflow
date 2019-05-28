@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 using xla::StatusOr;
 
@@ -735,7 +735,7 @@ Status Conditional::BuildIfNode(Graph* graph,
 
     VLOG(3) << "FunctionalizeControlFlow (" << branch_name[branch_index]
             << "): "
-            << dump_graph::DumpGraphToFile(
+            << DumpGraphToFile(
                    "functionalize_cond_body_" + branch_name[branch_index],
                    *bodies_[branch_index], nullptr);
 
@@ -918,10 +918,16 @@ string Conditional::name() const {
 
 Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
                                           int port) {
+  NodeBuilder id_builder(replacee->name(), "Identity");
+  id_builder.Input(if_node, port);
+  string outside_compilation;
+  if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    id_builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   Node* id;
-  TF_RETURN_IF_ERROR(NodeBuilder(replacee->name(), "Identity")
-                         .Input(if_node, port)
-                         .Finalize(graph_, &id));
+  TF_RETURN_IF_ERROR(id_builder.Finalize(graph_, &id));
   state_map_.ResetCondId(id, state_map_.LookupCondId(if_node));
   state_map_.ResetAncestorId(id, state_map_.LookupAncestorId(if_node));
   return Status::OK();
@@ -1516,9 +1522,8 @@ void FunctionalizeCond::DumpGraphWithCondState(const string& name) {
                             state_map_.AncestorStateToString(n)));
   }
   LOG(INFO) << "FunctionalizeControlFlow (" << name << "): "
-            << dump_graph::DumpGraphToFile(
-                   absl::StrCat("functionalize_cond_", name), *graph_,
-                   library_);
+            << DumpGraphToFile(absl::StrCat("functionalize_cond_", name),
+                               *graph_, library_);
 }
 
 void FunctionalizeCond::AddSwitchId(int switch_id) {

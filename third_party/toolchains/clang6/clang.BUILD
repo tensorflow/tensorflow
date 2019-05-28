@@ -152,11 +152,9 @@ cc_toolchain(
     compiler_files = ":compiler_files",
     cpu = "k8",
     dwp_files = ":dwp",
-    dynamic_runtime_libs = [":empty"],
     linker_files = ":linker_files",
     objcopy_files = ":objcopy",
     output_licenses = ["unencumbered"],
-    static_runtime_libs = [":empty"],
     strip_files = ":strip",
     supports_param_files = 1,
 )

@@ -1,11 +1,12 @@
 # Description:
 #   Contains packages used for creating and loading datasets.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
@@ -60,6 +61,7 @@ py_library(
 py_test(
     name = "dataset_data_provider_test",
     srcs = ["dataset_data_provider_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
@@ -98,6 +100,7 @@ py_test(
     name = "parallel_reader_test",
     size = "small",
     srcs = ["parallel_reader_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":parallel_reader",
@@ -130,6 +133,7 @@ py_test(
     name = "prefetch_queue_test",
     size = "small",
     srcs = ["prefetch_queue_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":prefetch_queue",
@@ -179,6 +183,7 @@ py_library(
 py_test(
     name = "tfexample_decoder_test",
     srcs = ["tfexample_decoder_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":tfexample_decoder",

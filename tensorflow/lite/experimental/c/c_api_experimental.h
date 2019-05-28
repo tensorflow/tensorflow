@@ -34,10 +34,9 @@ TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterResetVariableTensors(
 // caller should ensure that its contents (function pointers, etc...) remain
 // valid for the duration of the interpreter's lifetime. A common practice is
 // making the provided TFL_Registration instance static.
-void TFL_InterpreterOptionsAddBuiltinOp(TFL_InterpreterOptions* options,
-                                        TFL_BuiltinOperator op,
-                                        const TFL_Registration* registration,
-                                        int min_version, int max_version);
+TFL_CAPI_EXPORT void TFL_InterpreterOptionsAddBuiltinOp(
+    TFL_InterpreterOptions* options, TFL_BuiltinOperator op,
+    const TFL_Registration* registration, int min_version, int max_version);
 
 // Adds an op registration for a custom operator.
 //
@@ -45,10 +44,9 @@ void TFL_InterpreterOptionsAddBuiltinOp(TFL_InterpreterOptions* options,
 // caller should ensure that its contents (function pointers, etc...) remain
 // valid for the duration of the interpreter's lifetime. A common practice is
 // making the provided TFL_Registration instance static.
-void TFL_InterpreterOptionsAddCustomOp(TFL_InterpreterOptions* options,
-                                       const char* name,
-                                       const TFL_Registration* registration,
-                                       int min_version, int max_version);
+TFL_CAPI_EXPORT void TFL_InterpreterOptionsAddCustomOp(
+    TFL_InterpreterOptions* options, const char* name,
+    const TFL_Registration* registration, int min_version, int max_version);
 
 #ifdef __cplusplus
 }  // extern "C"

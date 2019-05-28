@@ -152,18 +152,19 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
         }
         if (input_tensors[0].NumElements() == 1) {
           // Single key lookup.
-          ::grpc::Status status;
-          auto pair = dataset()->table_->table().ReadRow(
-              input_tensors[0].scalar<string>()(), dataset()->filter_, status);
-          if (!status.ok()) {
-            return GrpcStatusToTfStatus(status);
+          ::google::cloud::StatusOr<
+              std::pair<bool, ::google::cloud::bigtable::Row>>
+              row = dataset()->table_->table().ReadRow(
+                  input_tensors[0].scalar<string>()(), dataset()->filter_);
+          if (!row.ok()) {
+            return GcpStatusToTfStatus(row.status());
           }
-          if (!pair.first) {
+          if (!row->first) {
             return errors::DataLoss("Row key '",
                                     input_tensors[0].scalar<string>()(),
                                     "' not found.");
           }
-          TF_RETURN_IF_ERROR(ParseRow(ctx, pair.second, out_tensors));
+          TF_RETURN_IF_ERROR(ParseRow(ctx, row->second, out_tensors));
         } else {
           // Batched get.
           return errors::Unimplemented(

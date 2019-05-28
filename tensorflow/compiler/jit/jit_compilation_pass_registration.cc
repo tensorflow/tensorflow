@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
+#include "tensorflow/compiler/jit/clone_constants_for_better_clustering.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 #include "tensorflow/compiler/jit/increase_dynamism_for_auto_jit_pass.h"
+#include "tensorflow/compiler/jit/introduce_floating_point_jitter_pass.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -30,6 +32,9 @@ namespace tensorflow {
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 26,
                       EncapsulateXlaComputationsPass);
 
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 25,
+                      IntroduceFloatingPointJitterPass);
+
 // from
 // third_party/tensorflow/compiler/tf2xla/functionalize_control_flow_pass_registration.cc
 // FunctionalizeControlFlowPass: 27
@@ -40,6 +45,9 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 26,
 // handle those FunctionDef correctly.
 
 // POST_REWRITE_FOR_EXEC passes that support auto-clustering to enable XLA:
+
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 5,
+                      CloneConstantsForBetterClusteringPass);
 
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 10,
                       MarkForCompilationPass);
