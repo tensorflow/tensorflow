@@ -66,7 +66,7 @@ def sparse_multiclass_hinge_loss(
   Raises:
     ValueError: If `logits`, `labels` or `weights` have invalid or inconsistent
       shapes.
-    ValueError: If `labels` tensor has invalid dtype.
+    TypeError: If `labels` tensor has invalid dtype.
   """
 
   with ops.name_scope(scope, 'sparse_multiclass_hinge_loss', (logits,
@@ -84,7 +84,7 @@ def sparse_multiclass_hinge_loss(
 
     # Check labels have valid type.
     if labels.dtype != dtypes.int32 and labels.dtype != dtypes.int64:
-      raise ValueError(
+      raise TypeError(
           'Invalid dtype for labels: {}. Acceptable dtypes: int32 and int64'.
           format(labels.dtype))
 

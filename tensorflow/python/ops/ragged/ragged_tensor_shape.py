@@ -433,7 +433,7 @@ class RaggedTensorDynamicShape(object):
 
   def with_dim_size_dtype(self, dtype):
     if dtype not in (dtypes.int32, dtypes.int64):
-      raise ValueError('dtype must be int32 or int64')
+      raise TypeError('dtype must be int32 or int64')
     if self.dim_size_dtype == dtype:
       return self
     return RaggedTensorDynamicShape(

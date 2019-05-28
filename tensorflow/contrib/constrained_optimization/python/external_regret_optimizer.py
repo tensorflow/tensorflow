@@ -75,7 +75,7 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
       a fully-known shape, or is not one-dimensional.
   """
   if not multipliers.dtype.is_floating:
-    raise ValueError("multipliers must have a floating-point dtype")
+    raise TypeError("multipliers must have a floating-point dtype")
   multipliers_shape = multipliers.get_shape()
   if multipliers_shape.ndims is None:
     raise ValueError("multipliers must have known shape")
@@ -220,7 +220,7 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
       grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Raises:
-      ValueError: If the minimization_problem tensors have different dtypes.
+      TypeError: If the minimization_problem tensors have different dtypes.
 
     Returns:
       `Operation`, the train_op.
@@ -236,7 +236,7 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     # the same dtype.
     if (objective.dtype.base_dtype != constraints.dtype.base_dtype or
         objective.dtype.base_dtype != proxy_constraints.dtype.base_dtype):
-      raise ValueError("objective, constraints and proxy_constraints must "
+      raise TypeError("objective, constraints and proxy_constraints must "
                        "have the same dtype")
 
     # Flatten both constraints tensors to 1d.

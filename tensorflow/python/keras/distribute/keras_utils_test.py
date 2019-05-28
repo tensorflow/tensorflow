@@ -223,7 +223,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # since the order of the device and the corresponding input tensor dtype
       # is not deterministic over different runs.
       with self.assertRaisesRegexp(
-          ValueError, 'Input tensor dtypes do not match for '
+          TypeError, 'Input tensor dtypes do not match for '
           'distributed tensor inputs '
           'DistributedValues:.+'):
         with distribution.scope():

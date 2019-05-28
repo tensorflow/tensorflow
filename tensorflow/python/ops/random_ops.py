@@ -225,15 +225,15 @@ def random_uniform(shape,
     A tensor of the specified shape filled with random uniform values.
 
   Raises:
-    ValueError: If `dtype` is integral and `maxval` is not specified.
+    TypeError: If `dtype` is integral and `maxval` is not specified.
   """
   dtype = dtypes.as_dtype(dtype)
   if dtype not in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
                    dtypes.float64, dtypes.int32, dtypes.int64):
-    raise ValueError("Invalid dtype %r" % dtype)
+    raise TypeError("Invalid dtype %r" % dtype)
   if maxval is None:
     if dtype.is_integer:
-      raise ValueError("Must specify maxval for integer dtype %r" % dtype)
+      raise TypeError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
   with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
     shape = _ShapeTensor(shape)

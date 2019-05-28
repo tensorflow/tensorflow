@@ -82,7 +82,7 @@ def _maximal_eigenvector_power_method(matrix,
       `epsilon` or `maximum_iterations` parameters violate their bounds.
   """
   if not matrix.dtype.is_floating:
-    raise ValueError("multipliers must have a floating-point dtype")
+    raise TypeError("multipliers must have a floating-point dtype")
   if epsilon <= 0.0:
     raise ValueError("epsilon must be strictly positive")
   if maximum_iterations <= 0:
@@ -144,7 +144,7 @@ def _project_stochastic_matrix_wrt_euclidean_norm(matrix):
       fully-known shape, or is not two-dimensional and square.
   """
   if not matrix.dtype.is_floating:
-    raise ValueError("multipliers must have a floating-point dtype")
+    raise TypeError("multipliers must have a floating-point dtype")
   matrix_shape = matrix.get_shape()
   if matrix_shape.ndims is None:
     raise ValueError("matrix must have known shape")
@@ -326,7 +326,7 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
       grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Raises:
-      ValueError: If the minimization_problem tensors have different dtypes.
+      TypeError: If the minimization_problem tensors have different dtypes.
 
     Returns:
       `Operation`, the train_op.
@@ -342,7 +342,7 @@ class _SwapRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     # the same dtype.
     if (objective.dtype.base_dtype != constraints.dtype.base_dtype or
         objective.dtype.base_dtype != proxy_constraints.dtype.base_dtype):
-      raise ValueError("objective, constraints and proxy_constraints must "
+      raise TypeError("objective, constraints and proxy_constraints must "
                        "have the same dtype")
 
     # Flatten both constraints tensors to 1d.

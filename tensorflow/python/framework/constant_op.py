@@ -335,7 +335,7 @@ def _tensor_shape_tensor_conversion_function(s,
     if dtype not in (dtypes.int32, dtypes.int64):
       raise TypeError("Cannot convert a TensorShape to dtype: %s" % dtype)
     if dtype == dtypes.int32 and int64_value:
-      raise ValueError("Cannot convert a TensorShape to dtype int32; "
+      raise TypeError("Cannot convert a TensorShape to dtype int32; "
                        "a dimension is too large (%s)" % int64_value)
   else:
     dtype = dtypes.int64 if int64_value else dtypes.int32

@@ -1738,7 +1738,7 @@ def _check_rnn_cell_input_dtypes(inputs):
       input or state.
 
   Raises:
-    ValueError: if any of the input tensor are not having dtypes of float or
+    TypeError: if any of the input tensor are not having dtypes of float or
       complex.
   """
   for t in nest.flatten(inputs):
@@ -1750,5 +1750,5 @@ def _check_supported_dtypes(dtype):
     return
   dtype = dtypes.as_dtype(dtype)
   if not (dtype.is_floating or dtype.is_complex):
-    raise ValueError("RNN cell only supports floating point inputs, "
+    raise TypeError("RNN cell only supports floating point inputs, "
                      "but saw dtype: %s" % dtype)

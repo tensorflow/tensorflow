@@ -133,7 +133,7 @@ class MixtureSameFamily(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
-      ValueError: `if not mixture_distribution.dtype.is_integer`.
+      TypeError: `if not mixture_distribution.dtype.is_integer`.
       ValueError: if mixture_distribution does not have scalar `event_shape`.
       ValueError: if `mixture_distribution.batch_shape` and
         `components_distribution.batch_shape[:-1]` are both fully defined and
@@ -154,7 +154,7 @@ class MixtureSameFamily(distribution.Distribution):
                            else array_ops.shape(s)[0])
 
       if not mixture_distribution.dtype.is_integer:
-        raise ValueError(
+        raise TypeError(
             "`mixture_distribution.dtype` ({}) is not over integers".format(
                 mixture_distribution.dtype.name))
 

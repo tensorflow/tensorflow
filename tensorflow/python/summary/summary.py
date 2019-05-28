@@ -258,7 +258,7 @@ def text(name, tensor, collections=None):
     ValueError: If tensor has the wrong type.
   """
   if tensor.dtype != _dtypes.string:
-    raise ValueError('Expected tensor %s to have dtype string, got %s' %
+    raise TypeError('Expected tensor %s to have dtype string, got %s' %
                      (tensor.name, tensor.dtype))
 
   summary_metadata = _SummaryMetadata(

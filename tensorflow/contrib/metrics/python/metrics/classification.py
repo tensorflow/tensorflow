@@ -44,16 +44,16 @@ def accuracy(predictions, labels, weights=None, name=None):
     Accuracy `Tensor`.
 
   Raises:
-    ValueError: if dtypes don't match or
+    TypeError: if dtypes don't match or
                 if dtype is not bool, integer, or string.
   """
   if not (labels.dtype.is_integer or
           labels.dtype in (dtypes.bool, dtypes.string)):
-    raise ValueError(
+    raise TypeError(
         'Labels should have bool, integer, or string dtype, not %r' %
         labels.dtype)
   if not labels.dtype.is_compatible_with(predictions.dtype):
-    raise ValueError('Dtypes of predictions and labels should match. '
+    raise TypeError('Dtypes of predictions and labels should match. '
                      'Given: predictions (%r) and labels (%r)' %
                      (predictions.dtype, labels.dtype))
   with ops.name_scope(name, 'accuracy', values=[predictions, labels]):

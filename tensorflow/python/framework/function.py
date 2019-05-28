@@ -1245,7 +1245,7 @@ def get_extra_args():
 
 def _type_list_to_str(types):
   if any(_ not in _DTYPE_TO_STR for _ in types):
-    raise ValueError("Unsupported dtypes: %s" % types)
+    raise TypeError("Unsupported dtypes: %s" % types)
   return "".join([_DTYPE_TO_STR[_] for _ in types])
 
 

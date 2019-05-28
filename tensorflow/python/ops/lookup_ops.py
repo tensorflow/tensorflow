@@ -537,8 +537,9 @@ class TextFileInitializer(TableInitializerBase):
       name: A name for the operation (optional).
 
     Raises:
-      ValueError: when the filename is empty, or when the table key and value
-      data types do not match the expected data types.
+      ValueError: when the filename is empty.
+      TypeError: when the table key and value data types do not match the
+      expected data types.
     """
     if not isinstance(filename, ops.Tensor) and not filename:
       raise ValueError("Filename required for %s." % name)
@@ -551,7 +552,7 @@ class TextFileInitializer(TableInitializerBase):
       raise ValueError("Invalid key index %s." % (key_index))
 
     if key_index == TextFileIndex.LINE_NUMBER and key_dtype != dtypes.int64:
-      raise ValueError("Signature mismatch. Keys must be dtype %s, got %s." %
+      raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                        (dtypes.int64, key_dtype))
     if ((key_index == TextFileIndex.WHOLE_LINE) and
         (not key_dtype.is_integer) and (key_dtype != dtypes.string)):
@@ -562,10 +563,10 @@ class TextFileInitializer(TableInitializerBase):
       raise ValueError("Invalid value index %s." % (value_index))
 
     if value_index == TextFileIndex.LINE_NUMBER and value_dtype != dtypes.int64:
-      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
+      raise TypeError("Signature mismatch. Values must be dtype %s, got %s." %
                        (dtypes.int64, value_dtype))
     if value_index == TextFileIndex.WHOLE_LINE and value_dtype != dtypes.string:
-      raise ValueError("Signature mismatch. Values must be dtype %s, got %s." %
+      raise TypeError("Signature mismatch. Values must be dtype %s, got %s." %
                        (dtypes.string, value_dtype))
 
     if (vocab_size is not None) and (vocab_size <= 0):
@@ -1365,7 +1366,7 @@ def index_table_from_tensor(vocabulary_list,
           "Expected %s, got %s." %
           ("integer" if dtype.is_integer else "non-integer", keys.dtype))
     if (not dtype.is_integer) and (keys.dtype.base_dtype != dtype):
-      raise ValueError("Expected %s, got %s." % (dtype, keys.dtype))
+      raise TypeError("Expected %s, got %s." % (dtype, keys.dtype))
     num_elements = array_ops.size(keys)
     values = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
 

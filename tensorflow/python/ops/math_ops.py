@@ -2926,12 +2926,12 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
     A `Tensor` of same shape and type as the elements of `inputs`.
 
   Raises:
-    ValueError: If `inputs` don't all have same shape and dtype or the shape
+    TypeError: If `inputs` don't all have same shape and dtype or the shape
     cannot be inferred.
   """
 
   def _input_error():
-    return ValueError("inputs must be a list of at least one Tensor with the "
+    return TypeError("inputs must be a list of at least one Tensor with the "
                       "same dtype and shape")
 
   if not inputs or not isinstance(inputs, (list, tuple)):

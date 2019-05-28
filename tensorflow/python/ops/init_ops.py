@@ -1451,8 +1451,8 @@ def _assert_float_dtype(dtype):
     Validated type.
 
   Raises:
-    ValueError: if `dtype` is not a floating point type.
+    TypeError: if `dtype` is not a floating point type.
   """
   if not dtype.is_floating:
-    raise ValueError("Expected floating point type, got %s." % dtype)
+    raise TypeError("Expected floating point type, got %s." % dtype)
   return dtype

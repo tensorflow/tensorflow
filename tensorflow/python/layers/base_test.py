@@ -356,7 +356,7 @@ class BaseLayerTest(test.TestCase):
         return inputs
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError, r'expected dtype=float32'):
+    with self.assertRaisesRegexp(TypeError, r'expected dtype=float32'):
       layer.apply(constant_op.constant(1, dtype=dtypes.int32))
 
     # Works

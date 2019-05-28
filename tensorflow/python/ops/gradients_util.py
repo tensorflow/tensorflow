@@ -66,11 +66,12 @@ def _IndexedSlicesToTensor(value, dtype=None, name=None, as_ref=False):
     A dense Tensor representing the values in the given IndexedSlices.
 
   Raises:
-    ValueError: If the IndexedSlices does not have the same dtype.
+    ValueError: If the IndexedSlices is without dense_shape.
+    TypeError: If the IndexedSlices does not have the same dtype.
   """
   _ = as_ref
   if dtype and not dtype.is_compatible_with(value.dtype):
-    raise ValueError(
+    raise TypeError(
         "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %
         (dtype.name, value.dtype.name))
   if value.dense_shape is None:

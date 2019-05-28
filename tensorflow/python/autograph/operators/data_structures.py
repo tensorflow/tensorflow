@@ -71,7 +71,7 @@ def tf_tensor_array_new(elements, element_dtype=None, element_shape=None):
         ' {}'.format(elements))
   else:
     if element_dtype is None:
-      raise ValueError('dtype is required to create an empty TensorArray')
+      raise TypeError('dtype is required to create an empty TensorArray')
 
   all_shapes = set(tuple(el.shape.as_list()) for el in elements)
   if len(all_shapes) == 1:

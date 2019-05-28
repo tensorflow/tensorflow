@@ -261,7 +261,7 @@ def sequence_categorical_column_with_hash_bucket(
 
   Raises:
     ValueError: `hash_bucket_size` is not greater than 1.
-    ValueError: `dtype` is neither string nor integer.
+    TypeError: `dtype` is neither string nor integer.
   """
   return fc._SequenceCategoricalColumn(
       fc._categorical_column_with_hash_bucket(

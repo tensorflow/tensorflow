@@ -1379,14 +1379,14 @@ def internal_convert_to_tensor_or_indexed_slices(value,
     A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
-    ValueError: If `dtype` does not match the element type of `value`.
+    TypeError: If `dtype` does not match the element type of `value`.
   """
   if isinstance(value, EagerTensor) and not context.executing_eagerly():
     return internal_convert_to_tensor(
         value, dtype=dtype, name=name, as_ref=as_ref)
   elif isinstance(value, _TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
-      raise ValueError(
+      raise TypeError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
           (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value
@@ -1507,12 +1507,12 @@ def internal_convert_to_tensor_or_composite(value,
     A `Tensor` or `CompositeTensor`, based on `value`.
 
   Raises:
-    ValueError: If `dtype` does not match the element type of `value`.
+    TypeError: If `dtype` does not match the element type of `value`.
   """
   if isinstance(value, composite_tensor.CompositeTensor):
     value_dtype = getattr(value, "dtype", None)
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
-      raise ValueError(
+      raise TypeError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
           (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
     return value

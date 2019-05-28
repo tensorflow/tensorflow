@@ -105,17 +105,17 @@ def _infer_state_dtype(explicit_dtype, state):
     dtype: inferred dtype of hidden state.
 
   Raises:
-    ValueError: if `state` has heterogeneous dtypes or is empty.
+    TypeError: if `state` has heterogeneous dtypes or is empty.
   """
   if explicit_dtype is not None:
     return explicit_dtype
   elif nest.is_sequence(state):
     inferred_dtypes = [element.dtype for element in nest.flatten(state)]
     if not inferred_dtypes:
-      raise ValueError("Unable to infer dtype from empty state.")
+      raise TypeError("Unable to infer dtype from empty state.")
     all_same = all(x == inferred_dtypes[0] for x in inferred_dtypes)
     if not all_same:
-      raise ValueError(
+      raise TypeError(
           "State has tensors of different inferred_dtypes. Unable to infer a "
           "single representative dtype.")
     return inferred_dtypes[0]
@@ -672,7 +672,7 @@ def dynamic_rnn(cell,
       state = initial_state
     else:
       if not dtype:
-        raise ValueError("If there is no initial_state, you must give a dtype.")
+        raise TypeError("If there is no initial_state, you must give a dtype.")
       if getattr(cell, "get_initial_state", None) is not None:
         state = cell.get_initial_state(
             inputs=None, batch_size=batch_size, dtype=dtype)

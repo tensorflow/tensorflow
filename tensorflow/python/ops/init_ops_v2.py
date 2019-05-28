@@ -111,11 +111,11 @@ class Ones(Initializer):
        supported.
 
     Raises:
-      ValuesError: If the dtype is not numeric or boolean.
+      TypeError: If the dtype is not numeric or boolean.
     """
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_numpy_compatible or dtype == dtypes.string:
-      raise ValueError("Expected numeric or boolean dtype, got %s." % dtype)
+      raise TypeError("Expected numeric or boolean dtype, got %s." % dtype)
     return array_ops.ones(shape, dtype)
 
 
@@ -244,11 +244,11 @@ class RandomUniform(Initializer):
       types are supported.
 
     Raises:
-      ValueError: If the dtype is not numeric.
+      TypeError: If the dtype is not numeric.
     """
     dtype = dtypes.as_dtype(dtype)
     if not dtype.is_floating and not dtype.is_integer:
-      raise ValueError("Expected float or integer dtype, got %s." % dtype)
+      raise TypeError("Expected float or integer dtype, got %s." % dtype)
     return self._random_generator.random_uniform(shape, self.minval,
                                                  self.maxval, dtype)
 
@@ -289,7 +289,7 @@ class RandomNormal(Initializer):
        supported.
 
     Raises:
-      ValueError: If the dtype is not floating point
+      TypeError: If the dtype is not floating point
     """
     dtype = _assert_float_dtype(dtype)
     return self._random_generator.random_normal(shape, self.mean, self.stddev,
@@ -336,7 +336,7 @@ class TruncatedNormal(Initializer):
        supported.
 
     Raises:
-      ValueError: If the dtype is not floating point
+      TypeError: If the dtype is not floating point
     """
     dtype = _assert_float_dtype(dtype)
     return self._random_generator.truncated_normal(shape, self.mean,
@@ -410,7 +410,7 @@ class VarianceScaling(Initializer):
        supported.
 
     Raises:
-      ValueError: If the dtype is not floating point
+      TypeError: If the dtype is not floating point
     """
     partition_info = None  # Keeps logic so can be readded later if necessary
     dtype = _assert_float_dtype(dtype)
@@ -762,11 +762,11 @@ def _assert_float_dtype(dtype):
     Validated type.
 
   Raises:
-    ValueError: if `dtype` is not a floating point type.
+    TypeError: if `dtype` is not a floating point type.
   """
   dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating:
-    raise ValueError("Expected floating point type, got %s." % dtype)
+    raise TypeError("Expected floating point type, got %s." % dtype)
   return dtype
 
 
