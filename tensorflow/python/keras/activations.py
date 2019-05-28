@@ -198,6 +198,17 @@ def hard_sigmoid(x):
 
 @keras_export('keras.activations.linear')
 def linear(x):
+  """Linear activation function.
+
+    Arguments:
+        x: Input tensor.
+
+    Returns:
+        Linear activation:
+
+    # Note
+      - Often used as last layer of regression networks.
+    """
   return x
 
 
