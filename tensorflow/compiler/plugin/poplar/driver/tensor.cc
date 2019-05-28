@@ -679,7 +679,7 @@ static StatusOr<poplar::Tensor> AddLeftMatMul(poplar::Graph& graph,
            ConvClassificationTypeToString(target, resources.annotations));
 
   auto result = poplin::createMatMulGroupedInputLHS(
-      graph, type, a_shape, b_shape, name, opts, &resources.dot_cache);
+      graph, type, type, a_shape, b_shape, name, opts, &resources.dot_cache);
 
   return BackShapeLeftMatMul(o_shape, result, target->dot_dimension_numbers());
 }
@@ -747,7 +747,7 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
            ConvClassificationTypeToString(target, resources.annotations));
 
   auto result = poplin::createMatMulGroupedInputRHS(
-      graph, type, a_shape, b_shape, name, opts, &resources.dot_cache);
+      graph, type, type, a_shape, b_shape, name, opts, &resources.dot_cache);
   result =
       BackShapeRightMatMul(o_shape, result, target->dot_dimension_numbers());
 

@@ -164,9 +164,10 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
     zeros.push_back(0);
   }
 
-  poplin::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, n_g, t_l, t_u, d_i,
-                            p_l, p_u, falses, zeros, zeros, d_w, zeros, zeros,
-                            falses, zeros, zeros, w_s, zeros, zeros);
+  poplin::ConvParams params(dtype, dtype, n_b, n_s, f_s, n_i, n_o, n_g, t_l,
+                            t_u, d_i, p_l, p_u, falses, zeros, zeros, d_w,
+                            zeros, zeros, falses, zeros, zeros, w_s, zeros,
+                            zeros);
 
   return params;
 }
