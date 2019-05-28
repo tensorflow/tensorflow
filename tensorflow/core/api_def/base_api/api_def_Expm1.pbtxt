@@ -12,7 +12,6 @@ op {
   x = tf.constant([2.0, 8.0])
   tf.math.expm1(x) ==> array([6.389056, 2979.958], dtype=float32)
 
-  #Refer `exp` for explanation
   x = tf.constant(1 + 1j)
   tf.math.expm1(x) ==> (0.46869393991588515+2.2873552871788423j)
   ```
