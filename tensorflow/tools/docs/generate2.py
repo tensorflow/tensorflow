@@ -64,7 +64,7 @@ You can install the exact version that was used to generate these docs
 with:
 
 ```
-pip install tf-nightly-2.0-preview=={version}",
+pip install tf-nightly-2.0-preview=={version}
 ```
 """.format(version=tf.__version__)
 
