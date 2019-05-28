@@ -57,19 +57,15 @@ class DropoutOp : public PoplibsOpDef {
     assert(dropout_instruction &&
            "Expected operation to be an xla::poplarplugin::DropoutOp");
 
-    // The probabilty that any given element of "x" will be disgarded.
+    // The probabilty that any given element of "x" will be discarded.
     double rate = dropout_instruction->Rate();
 
-    // The value to scale the non-droped elements by.
+    // The value to scale the non-dropped elements by.
     double scale = dropout_instruction->Scale();
 
     // If false, pass in user_seed, else pass in global_seed.
     bool is_user_seed = dropout_instruction->IsUserSeed();
     int32_t seed_modifier = dropout_instruction->SeedModifier();
-
-    // The global seed value we use.
-    std::srand(std::time(nullptr));
-    int32_t global_seed = std::rand();
 
     // Create an empty tensor for the dropout. This is internal to the poprand
     // implementation but is exposed anyway so we need to provide it.

@@ -20,6 +20,10 @@ See :py:func:`tensorflow.contrib.ipu.dropout`.
 Embedding lookup
 ~~~~~~~~~~~~~~~~
 
+This is a version of embedding lookup which will produce a smaller memory
+footprint for small lookups. Instead of using dynamic lookup into the main
+embedding dictionary, it uses a one hot operator and a multiply.
+
 See :py:func:`tensorflow.contrib.ipu.embedding_lookup`.
 
 Group normalization
