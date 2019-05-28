@@ -34,11 +34,11 @@
 using namespace mlir;
 
 namespace {
-static void createIntrinsicCall(llvm::IRBuilder<> &builder,
-                                llvm::Intrinsic::ID intrinsic) {
+static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
+                                        llvm::Intrinsic::ID intrinsic) {
   llvm::Module *module = builder.GetInsertBlock()->getModule();
   llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic, {});
-  builder.CreateCall(fn);
+  return builder.CreateCall(fn);
 }
 
 class ModuleTranslation : public LLVM::ModuleTranslation {

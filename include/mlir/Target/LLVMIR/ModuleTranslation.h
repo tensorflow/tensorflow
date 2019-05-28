@@ -86,6 +86,7 @@ private:
   Module &mlirModule;
   std::unique_ptr<llvm::Module> llvmModule;
 
+protected:
   // Mappings between original and translated values, used for lookups.
   llvm::StringMap<llvm::Function *> functionMapping;
   llvm::DenseMap<Value *, llvm::Value *> valueMapping;

@@ -38,8 +38,8 @@ class NVVM_SpecialRegisterOp<string mnemonic,
     list<OpTrait> traits = []> :
   NVVM_Op<mnemonic, !listconcat(traits, [NoSideEffect])>,
   Results<(outs LLVM_Type:$res)>, Arguments<(ins)> {
-  string llvmBuilder = "createIntrinsicCall(builder, llvm::Intrinsic::nvvm_"
-    # !subst(".","_", mnemonic) # ");";
+  string llvmBuilder = "$res = createIntrinsicCall(builder,"
+    # "llvm::Intrinsic::nvvm_" # !subst(".","_", mnemonic) # ");";
   let parser = [{ return parseNVVMSpecialRegisterOp(parser, result); }];
   let printer = [{ printNVVMSpecialRegisterOp(p, this->getOperation()); }];
 }
