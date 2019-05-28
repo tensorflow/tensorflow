@@ -112,6 +112,129 @@ ParseResult mlir::linalg::BufferDeallocOp::parse(OpAsmParser *parser,
 ////////////////////////////////////////////////////////////////////////////////
 // ForOp.
 ////////////////////////////////////////////////////////////////////////////////
+// Check that if a "block" has a terminator, it is an `TerminatorOp`.
+static LogicalResult checkHasTerminator(OpState &op, Block &block) {
+  if (block.empty() || isa<TerminatorOp>(block.back()))
+    return success();
+
+  op.emitOpError("expects regions to end with '" +
+                 TerminatorOp::getOperationName() + "'")
+          .attachNote()
+      << "in custom textual format, the absence of terminator implies '"
+      << TerminatorOp::getOperationName() << "'";
+  return failure();
+}
+
+// Insert `linalg.terminator` at the end of the ForOp only region's only block
+// if it does not have a terminator already.  If a new `linalg.terminator` is
+// inserted, the location is specified by `loc`. If the region is empty, insert
+// a new block first.
+static void ensureTerminator(Region &region, Builder &builder, Location loc) {
+  if (region.empty())
+    region.push_back(new Block);
+
+  Block &block = region.back();
+  if (!block.empty() && block.back().isKnownTerminator())
+    return;
+
+  OperationState terminatorState(builder.getContext(), loc,
+                                 TerminatorOp::getOperationName());
+  TerminatorOp::build(&builder, &terminatorState);
+  block.push_back(Operation::create(terminatorState));
+}
+
+void mlir::linalg::ForOp::build(Builder *builder, OperationState *result,
+                                Value *lb, Value *ub, Value *step) {
+  result->addOperands({lb, ub, step});
+  Region *bodyRegion = result->addRegion();
+  Block *body = new Block();
+  body->addArgument(IndexType::get(builder->getContext()));
+  bodyRegion->push_back(body);
+  ensureTerminator(*bodyRegion, *builder, result->location);
+}
+
+LogicalResult mlir::linalg::ForOp::verify() {
+  if (!getLowerBound()->getType().isa<IndexType>())
+    return emitOpError("lower bound operand must be an index");
+  if (!getUpperBound()->getType().isa<IndexType>())
+    return emitOpError("upper bound operand must be an index");
+  if (!getLowerBound()->getType().dyn_cast<IndexType>())
+    return emitOpError("step operand must be an index");
+  if (auto cst =
+          dyn_cast_or_null<ConstantIndexOp>(getLowerBound()->getDefiningOp()))
+    if (cst.getValue() <= 0)
+      return emitOpError("constant step operand must be positive");
+
+  if (std::next(getOperation()->getRegions().begin()) !=
+      getOperation()->getRegions().end())
+    return emitOpError("operation expected to have exactly one region");
+
+  auto &bodyRegion = getOperation()->getRegion(0);
+  // The body region must contain a single basic block.
+  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
+    return emitOpError("expected body region to have a single block");
+  // Check that the body defines as single block argument for the induction
+  // variable.
+  auto *body = getBody();
+  if (body->getNumArguments() != 1 ||
+      !body->getArgument(0)->getType().isIndex())
+    return emitOpError("expected body to have a single index argument for "
+                       "the induction variable");
+  if (failed(checkHasTerminator(*this, *body)))
+    return failure();
+  return success();
+}
+
+void mlir::linalg::ForOp::print(OpAsmPrinter *p) {
+  *p << getOperationName() << " " << *getInductionVar() << " = "
+     << *getLowerBound() << " to " << *getUpperBound() << " step "
+     << *getStep();
+  p->printRegion(getRegion(),
+                 /*printEntryBlockArgs=*/false,
+                 /*printBlockTerminators=*/false);
+  p->printOptionalAttrDict(getAttrs());
+}
+
+ParseResult mlir::linalg::ForOp::parse(OpAsmParser *parser,
+                                       OperationState *result) {
+  auto &builder = parser->getBuilder();
+  OpAsmParser::OperandType inductionVariable, lb, ub, step;
+  // Parse the induction variable followed by '='.
+  if (parser->parseRegionArgument(inductionVariable) || parser->parseEqual())
+    return failure();
+
+  // Parse loop bounds.
+  Type indexType = builder.getIndexType();
+  if (parser->parseOperand(lb) ||
+      parser->resolveOperand(lb, indexType, result->operands) ||
+      parser->parseKeyword("to") || parser->parseOperand(ub) ||
+      parser->resolveOperand(ub, indexType, result->operands) ||
+      parser->parseKeyword("step") || parser->parseOperand(step) ||
+      parser->resolveOperand(step, indexType, result->operands))
+    return failure();
+
+  // Parse the body region.
+  Region *body = result->addRegion();
+  if (parser->parseRegion(*body, inductionVariable, indexType))
+    return failure();
+
+  ensureTerminator(*body, builder, result->location);
+
+  // Parse the optional attribute list.
+  if (parser->parseOptionalAttributeDict(result->attributes))
+    return failure();
+
+  return success();
+}
+
+mlir::linalg::ForOp mlir::linalg::getForInductionVarOwner(Value *val) {
+  auto *ivArg = dyn_cast<BlockArgument>(val);
+  if (!ivArg)
+    return ForOp();
+  assert(ivArg->getOwner() && "unlinked block argument");
+  auto *containingInst = ivArg->getOwner()->getContainingOp();
+  return dyn_cast_or_null<ForOp>(containingInst);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // LoadOp.

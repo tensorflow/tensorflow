@@ -70,3 +70,25 @@ func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.ran
 // CHECK-LABEL: func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.range {
 //  CHECK-NEXT:   %0 = linalg.range_intersect %arg0, %arg1 : !linalg.range
 //  CHECK-NEXT:   return %0 : !linalg.range
+
+func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
+  linalg.for %i0 = %arg0 to %arg1 step %arg2 {
+    linalg.for %i1 = %arg0 to %arg1 step %arg2 {
+      %min_cmp = cmpi "slt", %i0, %i1 : index
+      %min = select %min_cmp, %i0, %i1 : index
+      %max_cmp = cmpi "sge", %i0, %i1 : index
+      %max = select %max_cmp, %i0, %i1 : index
+      linalg.for %i2 = %min to %max step %i1 {
+      }
+    }
+  }
+  return
+}
+// CHECK-LABEL: func @linalg_for(%arg0: index, %arg1: index, %arg2: index) {
+//  CHECK-NEXT:   linalg.for %i0 = %arg0 to %arg1 step %arg2 {
+//  CHECK-NEXT:     linalg.for %i1 = %arg0 to %arg1 step %arg2 {
+//  CHECK-NEXT:       %0 = cmpi "slt", %i0, %i1 : index
+//  CHECK-NEXT:       %1 = select %0, %i0, %i1 : index
+//  CHECK-NEXT:       %2 = cmpi "sge", %i0, %i1 : index
+//  CHECK-NEXT:       %3 = select %2, %i0, %i1 : index
+//  CHECK-NEXT:       linalg.for %i2 = %1 to %3 step %i1 {

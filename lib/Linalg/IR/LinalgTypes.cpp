@@ -31,7 +31,7 @@ using namespace mlir::linalg;
 mlir::linalg::LinalgDialect::LinalgDialect(MLIRContext *context)
     : Dialect("linalg", context) {
   addTypes<BufferType, RangeType, ViewType>();
-  addOperations<BufferAllocOp, BufferDeallocOp, LoadOp, RangeOp, StoreOp,
+  addOperations<BufferAllocOp, BufferDeallocOp, ForOp, LoadOp, RangeOp, StoreOp,
                 SliceOp, ViewOp>();
   addOperations<
 #define GET_OP_LIST
