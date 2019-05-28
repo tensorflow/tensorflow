@@ -24,12 +24,6 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-constexpr const char ConcatenateDatasetOp::kDatasetType[];
-constexpr const char ConcatenateDatasetOp::kInputDataset[];
-constexpr const char ConcatenateDatasetOp::kAnotherDataset[];
-constexpr const char ConcatenateDatasetOp::kOutputTypes[];
-constexpr const char ConcatenateDatasetOp::kOutputShapes[];
-
 constexpr char kIndex[] = "i";
 constexpr char kInputImplUninitialized[] = "input_impl_uninitialized";
 
@@ -201,6 +195,9 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* to_concatenate_;
   std::vector<PartialTensorShape> output_shapes_;
 };
+
+ConcatenateDatasetOp::ConcatenateDatasetOp(OpKernelConstruction* ctx)
+    : BinaryDatasetOpKernel(ctx) {}
 
 void ConcatenateDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase* to_concatenate,

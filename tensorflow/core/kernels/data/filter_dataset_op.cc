@@ -32,14 +32,6 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-constexpr const char FilterDatasetOp::kDatasetType[];
-constexpr const char FilterDatasetOp::kInputDataset[];
-constexpr const char FilterDatasetOp::kOtherArguments[];
-constexpr const char FilterDatasetOp::kPredicate[];
-constexpr const char FilterDatasetOp::kTarguments[];
-constexpr const char FilterDatasetOp::kOutputTypes[];
-constexpr const char FilterDatasetOp::kOutputShapes[];
-
 constexpr char kInputImplsEmpty[] = "input_impls_empty";
 constexpr char kFilteredElements[] = "filtered_elements";
 constexpr char kDroppedElements[] = "dropped_elements";
@@ -227,6 +219,15 @@ class FilterDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* const input_;
   const std::unique_ptr<CapturedFunction> captured_func_;
 };
+
+FilterDatasetOp::FilterDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kPredicate, /*params=*/{},
+                                               &func_metadata_));
+  OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
+              errors::InvalidArgument(
+                  "predicate function has more than one return value."));
+}
 
 void FilterDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                   DatasetBase** output) {

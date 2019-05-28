@@ -25,12 +25,7 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-constexpr const char RangeDatasetOp::kDatasetType[];
-constexpr const char RangeDatasetOp::kStart[];
-constexpr const char RangeDatasetOp::kStop[];
-constexpr const char RangeDatasetOp::kStep[];
-constexpr const char RangeDatasetOp::kOutputTypes[];
-constexpr const char RangeDatasetOp::kOutputShapes[];
+constexpr char kNext[] = "next";
 
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
@@ -115,14 +110,14 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("next"), next_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNext), next_));
       return Status::OK();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("next"), &next_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNext), &next_));
       return Status::OK();
     }
 
@@ -135,6 +130,9 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   const int64 stop_;
   const int64 step_;
 };
+
+RangeDatasetOp::RangeDatasetOp(OpKernelConstruction* ctx)
+    : DatasetOpKernel(ctx) {}
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64 start;
