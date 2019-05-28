@@ -38,11 +38,8 @@ __global__ void BucketizeCustomKernel(
     GpuDeviceArrayStruct<float> boundaries_array, int32* out) {
   const float* boundaries = GetGpuDeviceArrayOnDevice(&boundaries_array);
 
-#if GOOGLE_CUDA
-  extern __shared__ __align__(sizeof(float)) unsigned char shared_mem[];
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, shared_mem);
-#endif
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(float), unsigned char, shared_mem);
+
   float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
 
   if (useSharedMem) {
