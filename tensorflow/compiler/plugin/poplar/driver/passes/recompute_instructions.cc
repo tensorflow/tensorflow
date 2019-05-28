@@ -45,17 +45,42 @@ namespace {
 
 using TuplePair = std::pair<HloInstruction*, HloInstruction*>;
 
+static bool IsTuple(HloInstruction* inst) {
+  return DynCast<HloGetTupleElementInstruction>(inst) != nullptr;
+}
+
 // Look through a tuple to find the "real" use. The first use matching
 // |predicate_function| will be returned.
 template <typename Predicate>
 static HloInstruction* LookThroughTuple(HloInstruction* inst,
                                         Predicate predicate_function) {
-  if (DynCast<HloGetTupleElementInstruction>(inst) == nullptr) {
+  if (!IsTuple(inst)) {
     return nullptr;
   }
 
   for (HloInstruction* user : inst->users()) {
     if (predicate_function(user)) return user;
+  }
+
+  return nullptr;
+}
+
+// Parameters and constants will be scheduled very early so we don't want to
+// attach control dependencies to them.
+static bool EarlyScheduledInstruction(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kParameter ||
+         instruction->opcode() == HloOpcode::kConstant;
+}
+
+template <typename Predicate>
+static HloInstruction* LookThroughTupleOperands(HloInstruction* inst,
+                                                Predicate predicate_function) {
+  if (!IsTuple(inst)) {
+    return nullptr;
+  }
+
+  for (HloInstruction* operand : inst->unique_operands()) {
+    if (predicate_function(operand)) return operand;
   }
 
   return nullptr;
@@ -190,7 +215,8 @@ struct ConvNormNLReplacer : public Replacer {
     // won't be adding a cycle.
     auto is_unreachable = [&](HloInstruction* inst) {
       return !reachability_map->IsReachable(inst, new_convolution) &&
-             !reachability_map->IsReachable(new_convolution, inst);
+             !reachability_map->IsReachable(new_convolution, inst) &&
+             !EarlyScheduledInstruction(inst);
     };
 
     // Add a control dependency from all of the operands to the new
@@ -202,7 +228,6 @@ struct ConvNormNLReplacer : public Replacer {
         break;
       }
     }
-
     return Status::OK();
   }
 };
@@ -266,17 +291,21 @@ struct ConvNormReplacer : public Replacer {
     // If we can't reach the instruction we can add it as a control dept as we
     // won't be adding a cycle.
     auto is_unreachable = [&](HloInstruction* inst) {
-      return !reachability_map->IsReachable(inst, new_convolution);
+      return !reachability_map->IsReachable(inst, new_convolution) &&
+             !reachability_map->IsReachable(new_convolution, inst) &&
+             !EarlyScheduledInstruction(inst);
     };
 
     // Add a control dependency from the first backward operation of the
     // backward gradient to the new instruction to hopefuly make sure it is
     // executed right before its use.
     for (HloInstruction* operand : norm_backward_gradient->unique_operands()) {
-      HloInstruction* tuple_user = LookThroughTuple(operand, is_unreachable);
-      // Tuple will be a user of norm_backward_gradient which will also meet
-      // the condition so we manually skip that.
-      if (tuple_user != nullptr && tuple_user != norm_backward_gradient) {
+      // If it is a tuple look through the tuple to check if the parent meets
+      // the unreachable condition, otherwise just check the instruction itself.
+      const bool is_in_tuple =
+          IsTuple(operand) && LookThroughTupleOperands(operand, is_unreachable);
+      const bool is_not_tuple = !IsTuple(operand) && is_unreachable(operand);
+      if (is_in_tuple || is_not_tuple) {
         TF_RETURN_IF_ERROR(operand->AddControlDependencyTo(new_convolution));
         break;
       }
