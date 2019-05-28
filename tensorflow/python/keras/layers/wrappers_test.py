@@ -332,6 +332,7 @@ class TimeDistributedTest(test.TestCase):
           [None, 2, 8])
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional(self):
@@ -555,8 +556,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       # test passing invalid initial_state: passing a tensor
       input2 = keras.layers.Input((timesteps, dim))
       with self.assertRaises(ValueError):
-        output = keras.layers.Bidirectional(
-            rnn(units))(input2, initial_state=state[0])
+        keras.layers.Bidirectional(rnn(units))(input2, initial_state=state[0])
 
       # test valid usage: passing a list
       output = keras.layers.Bidirectional(rnn(units))(input2,
@@ -567,6 +567,23 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       inputs = [np.random.rand(samples, timesteps, dim),
                 np.random.rand(samples, timesteps, dim)]
       model.predict(inputs)
+
+  def test_Bidirectional_state_reuse_with_np_input(self):
+    # See https://github.com/tensorflow/tensorflow/issues/28761 for more detail.
+    rnn = keras.layers.LSTM
+    samples = 2
+    dim = 5
+    timesteps = 3
+    units = 3
+
+    with self.cached_session():
+      input1 = np.random.rand(samples, timesteps, dim).astype(np.float32)
+      layer = keras.layers.Bidirectional(
+          rnn(units, return_state=True, return_sequences=True))
+      state = layer(input1)[1:]
+
+      input2 = np.random.rand(samples, timesteps, dim).astype(np.float32)
+      keras.layers.Bidirectional(rnn(units))(input2, initial_state=state)
 
   def test_Bidirectional_trainable(self):
     # test layers that need learning_phase to be set
