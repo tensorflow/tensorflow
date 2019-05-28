@@ -20,7 +20,7 @@
 
 namespace mlir {
 class Function;
-class LogicalResult;
+struct LogicalResult;
 
 LogicalResult lowerAffineConstructs(Function &function);
 } // namespace mlir
