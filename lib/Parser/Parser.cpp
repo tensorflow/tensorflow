@@ -3484,8 +3484,10 @@ public:
   ParseResult parseModule();
 
 private:
+  /// Parse an attribute alias declaration.
   ParseResult parseAttributeAliasDef();
 
+  /// Parse an attribute alias declaration.
   ParseResult parseTypeAliasDef();
 
   // Functions.
@@ -3506,16 +3508,20 @@ private:
 ///
 ParseResult ModuleParser::parseAttributeAliasDef() {
   assert(getToken().is(Token::hash_identifier));
-
-  StringRef attrId = getTokenSpelling().drop_front();
+  StringRef aliasName = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  if (getState().attributeAliasDefinitions.count(attrId) > 0)
-    return emitError("redefinition of attribute alias id '" + attrId + "'");
+  if (getState().attributeAliasDefinitions.count(aliasName) > 0)
+    return emitError("redefinition of attribute alias id '" + aliasName + "'");
+
+  // Make sure this isn't invading the dialect attribute namespace.
+  if (aliasName.contains('.'))
+    return emitError("attribute names with a '.' are reserved for "
+                     "dialect-defined names");
 
   consumeToken(Token::hash_identifier);
 
-  // Parse the '='
+  // Parse the '='.
   if (parseToken(Token::equal, "expected '=' in attribute alias definition"))
     return failure();
 
@@ -3524,7 +3530,7 @@ ParseResult ModuleParser::parseAttributeAliasDef() {
   if (!attr)
     return failure();
 
-  getState().attributeAliasDefinitions[attrId] = attr;
+  getState().attributeAliasDefinitions[aliasName] = attr;
   return success();
 }
 
@@ -3534,7 +3540,6 @@ ParseResult ModuleParser::parseAttributeAliasDef() {
 ///
 ParseResult ModuleParser::parseTypeAliasDef() {
   assert(getToken().is(Token::exclamation_identifier));
-
   StringRef aliasName = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
@@ -3560,7 +3565,6 @@ ParseResult ModuleParser::parseTypeAliasDef() {
 
   // Register this alias with the parser state.
   getState().typeAliasDefinitions.try_emplace(aliasName, aliasedType);
-
   return success();
 }
 
@@ -3606,10 +3610,10 @@ ParseResult ModuleParser::parseArgumentList(
 
     // Parse the attribute dict.
     SmallVector<NamedAttribute, 2> attrs;
-    if (getToken().is(Token::l_brace)) {
+    if (getToken().is(Token::l_brace))
       if (parseAttributeDict(attrs))
         return failure();
-    }
+
     argAttrs.push_back(attrs);
     return success();
   };
@@ -3723,7 +3727,7 @@ ParseResult ModuleParser::parseModule() {
       emitError("expected a top level entity");
       return failure();
 
-      // If we got to the end of the file, then we're done.
+    // If we got to the end of the file, then we're done.
     case Token::eof:
       return success();
 
@@ -3733,11 +3737,13 @@ ParseResult ModuleParser::parseModule() {
     case Token::error:
       return failure();
 
+    // Parse an attribute alias.
     case Token::hash_identifier:
       if (parseAttributeAliasDef())
         return failure();
       break;
 
+    // Parse a type alias.
     case Token::exclamation_identifier:
       if (parseTypeAliasDef())
         return failure();

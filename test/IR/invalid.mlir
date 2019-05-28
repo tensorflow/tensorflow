@@ -1048,3 +1048,8 @@ func @bad_complex(complex memref<2x4xi8>>)
 
 // expected-error @+1 {{expected '>' in complex type}}
 func @bad_complex(complex<i32)
+
+// -----
+
+// expected-error @+1 {{attribute names with a '.' are reserved for dialect-defined names}}
+#foo.attr = i32
