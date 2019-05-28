@@ -89,7 +89,7 @@ objc_library(
 cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
     linkopts = [
-        "-Wl,-soname=libtensorflowlite_gpu_gl.so"
+        "-Wl,-soname=libtensorflowlite_gpu_gl.so",
     ] + select({
         "//tensorflow:android": [
             "-lEGL",
