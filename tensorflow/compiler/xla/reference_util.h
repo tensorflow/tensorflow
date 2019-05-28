@@ -180,9 +180,6 @@ class ReferenceUtil {
       absl::Span<const float> operand, float init,
       absl::Span<const int64> window, absl::Span<const int64> stride,
       Padding padding);
-  static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
-      const Array2D<float>& operand, float init, absl::Span<const int64> window,
-      absl::Span<const int64> stride, Padding padding);
   static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
       const Array3D<float>& operand, float init, absl::Span<const int64> window,
       absl::Span<const int64> stride, Padding padding);
@@ -193,11 +190,6 @@ class ReferenceUtil {
   // Windowed reductions with a generic reduce function.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
       absl::Span<const float> operand, float init,
-      const std::function<float(float, float)>& reduce_func,
-      absl::Span<const int64> window, absl::Span<const int64> stride,
-      absl::Span<const std::pair<int64, int64>> padding);
-  static std::unique_ptr<Array2D<float>> ReduceWindow2DGeneric(
-      const Array2D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
       absl::Span<const int64> window, absl::Span<const int64> stride,
       absl::Span<const std::pair<int64, int64>> padding);

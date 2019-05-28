@@ -163,7 +163,9 @@ void EagerContext::ClearCaches() {
   mutex_lock ml(cache_mu_);
   executor_.WaitForAllPendingNodes().IgnoreError();
   gtl::STLDeleteValues(&kernel_cache_);
-  gtl::STLDeleteValues(&active_functions_);
+  for (auto& entry : registered_functions_) {
+    entry.second->cached_kernel_keys->clear();
+  }
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
@@ -216,6 +218,12 @@ void EagerContext::CloseRemoteContexts() {
 EagerContext::~EagerContext() {
 #if !defined(IS_MOBILE_PLATFORM)
   ClearCaches();
+  for (auto& entry : registered_functions_) {
+    while (!entry.second->Unref()) {
+      // remove all references.
+    }
+  }
+  registered_functions_.clear();
 
   if (server_) {
     // TODO(nareshmodi): Fix this.
@@ -361,43 +369,55 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
 }
 
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
+  bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
-    if (gtl::FindPtrOrNull(active_functions_, fdef.signature().name()) ==
-        nullptr) {
-      gtl::InsertOrUpdate(&active_functions_, fdef.signature().name(),
-                          new std::vector<Fprint128>);
+    auto* registered_function =
+        gtl::FindPtrOrNull(registered_functions_, fdef.signature().name());
+    if (registered_function == nullptr) {
+      registered_function = new RegisteredFunction;
+      registered_function->cached_kernel_keys =
+          absl::make_unique<std::vector<Fprint128>>();
+      gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
+                          registered_function);
     } else {
-      LOG(WARNING) << "Added two functions with the same name: "
-                   << fdef.signature().name();
+      registered_function->Ref();
     }
+    is_first_ref = registered_function->RefCountIsOne();
   }
-  {
+  if (is_first_ref) {
     mutex_lock l(functions_mu_);
     TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
     // TODO(fishx): Avoid holding lock when sending RPCs.
     return MaybeRegisterFunctionRemotely(fdef);
   }
+  return Status::OK();
 }
 
 Status EagerContext::RemoveFunction(const string& func) {
+  bool is_last_ref = false;
   {
     mutex_lock l(cache_mu_);
-    auto cache_keys =
-        absl::WrapUnique(gtl::EraseKeyReturnValuePtr(&active_functions_, func));
-    if (cache_keys == nullptr) {
+    auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
+    if (registered_function == nullptr) {
       return errors::InvalidArgument("Tried to remove non-existent function '",
                                      func, "'.");
     }
-    for (auto& key : *cache_keys) {
-      delete gtl::EraseKeyReturnValuePtr(&kernel_cache_, key);
+    is_last_ref = registered_function->RefCountIsOne();
+    if (is_last_ref) {
+      for (auto& key : *registered_function->cached_kernel_keys) {
+        delete gtl::EraseKeyReturnValuePtr(&kernel_cache_, key);
+      }
+      registered_functions_.erase(func);
     }
+    registered_function->Unref();
   }
-  {
+  if (is_last_ref) {
     mutex_lock l(functions_mu_);
     // TODO(fishx): Remove remote function as well.
     return func_lib_def_.RemoveFunction(func);
   }
+  return Status::OK();
 }
 
 KernelAndDevice* EagerContext::GetCachedKernel(Fprint128 cache_key) {
@@ -409,10 +429,11 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
   gtl::InsertOrUpdate(&kernel_cache_, cache_key, kernel);
-  auto* keys = gtl::FindPtrOrNull(active_functions_, kernel->name());
+  auto* registered_function =
+      gtl::FindPtrOrNull(registered_functions_, kernel->name());
   // The kernel name can be either a primitive op or a function.
-  if (keys != nullptr) {
-    keys->emplace_back(cache_key);
+  if (registered_function != nullptr) {
+    registered_function->cached_kernel_keys->emplace_back(cache_key);
   }
 }
 

@@ -473,40 +473,6 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         for i in range(params.shape[0])
     ])
 
-  def testSkipEagerErrors(self):
-    if context.executing_eagerly():
-      return
-    with self.assertRaisesRegexp(ValueError, r"tf\.gather does not allow.*"):
-      array_ops.gather(
-          params=[1, 2],
-          batch_dims=1,
-          indices=array_ops.placeholder(dtypes.int32))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testErrors(self):
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 2 must be less than rank\(indices\) = 2"):
-      array_ops.gather(
-          params=[[1, 2], [3, 4]], indices=[[1, 2], [3, 4]], batch_dims=2)
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 1 must be less than rank\(params\) = 1"):
-      array_ops.gather(
-          params=[1, 2, 3, 4], indices=[[1, 2], [3, 4]], batch_dims=1)
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 1 must be less than or equal to axis = 0"):
-      array_ops.gather(
-          params=[[1, 2], [3, 4]],
-          indices=[[1, 2], [3, 4]],
-          batch_dims=1,
-          axis=0)
-
-    one = array_ops.ones((), dtypes.int32)
-    with self.assertRaisesRegexp(TypeError, "batch_dims must be an int"):
-      array_ops.gather(params=[[1]], indices=[[1]], batch_dims=one)
-
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherRefVariable(self):
     with self.cached_session():

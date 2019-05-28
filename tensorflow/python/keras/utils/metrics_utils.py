@@ -72,7 +72,7 @@ def update_state_wrapper(update_state_fn):
     with tf_utils.graph_context_for_symbolic_tensors(*args, **kwargs):
       update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
-      metric_obj.add_update(update_op, inputs=True)
+      metric_obj.add_update(update_op)
     return update_op
 
   return tf_decorator.make_decorator(update_state_fn, decorated)

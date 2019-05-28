@@ -58,25 +58,13 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 17> kPassThroughOps = {
-    "CacheDataset",
-    "FilterDataset",
-    "FilterByLastComponentDataset",
-    "Identity",
-    "MapDataset",
-    "ModelDataset",
-    "OptimizeDataset",
-    "ParallelMapDataset",
-    "PrefetchDataset",
-    "ReduceDataset",
-    "RepeatDataset",
-    "ShardDataset",
-    "ShuffleAndRepeatDataset",
-    "ShuffleDataset",
-    "SkipDataset",
-    "TakeDataset",
-    "WindowDataset"
-};
+constexpr std::array<const char*, 16> kPassThroughOps = {
+    "CacheDataset",       "FilterDataset",   "Identity",
+    "MapDataset",         "ModelDataset",    "OptimizeDataset",
+    "ParallelMapDataset", "PrefetchDataset", "ReduceDataset",
+    "RepeatDataset",      "ShardDataset",    "ShuffleAndRepeatDataset",
+    "ShuffleDataset",     "SkipDataset",     "TakeDataset",
+    "WindowDataset"};
 
 constexpr std::array<const char*, 4> kFuncDatasetOps = {
     "ExperimentalGroupByWindowDataset",

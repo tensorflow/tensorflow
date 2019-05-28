@@ -13,9 +13,10 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -338,6 +339,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":hlo_execution_profiler",
+        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -353,6 +355,7 @@ tf_cuda_library(
         ":buffer_allocations",
         ":hlo_execution_profiler",
         ":thunk",
+        "//tensorflow/compiler/xla:refcounting_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:util",
@@ -456,6 +459,11 @@ cc_library(
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:kernel",
+<<<<<<< HEAD
+=======
+        "//tensorflow/stream_executor/cuda:cuda_stream",
+        "//tensorflow/stream_executor/cuda:curand_plugin",
+>>>>>>> upstream/master
         "//tensorflow/stream_executor/gpu:gpu_stream",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
@@ -683,6 +691,7 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
+<<<<<<< HEAD
     srcs = if_cuda_is_configured([
         "cusolver_context.cc"]
     ),
@@ -690,6 +699,14 @@ cc_library(
         "cusolver_context.h"]
     ),
     deps =  if_cuda_is_configured([
+=======
+    srcs = ["cusolver_context.cc"],
+    hdrs = ["cusolver_context.h"],
+    deps = [
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
+>>>>>>> upstream/master
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

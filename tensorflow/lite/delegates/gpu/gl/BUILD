@@ -66,7 +66,7 @@ flatbuffer_cc_library(
         "--scoped-enums",
     ],
     includes = [
-        "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs_includes",
+        ":common_cc_fbs_includes",
     ],
 )
 
@@ -260,8 +260,10 @@ cc_library(
     srcs = ["gl_sync.cc"],
     hdrs = ["gl_sync.h"],
     deps = [
+        ":gl_buffer",
         ":gl_call",
         ":gl_errors",
+        ":gl_program",
         ":portable",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
@@ -283,8 +285,8 @@ flatbuffer_cc_library(
     name = "metadata_cc_fbs",
     srcs = ["metadata.fbs"],
     includes = [
-        "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs_includes",
-        "//tensorflow/lite/delegates/gpu/gl:workgroups_cc_fbs_includes",
+        ":common_cc_fbs_includes",
+        ":workgroups_cc_fbs_includes",
     ],
 )
 
@@ -306,6 +308,7 @@ cc_library(
     name = "object",
     hdrs = ["object.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
@@ -431,7 +434,7 @@ flatbuffer_cc_library(
     name = "workgroups_cc_fbs",
     srcs = ["workgroups.fbs"],
     includes = [
-        "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs_includes",
+        ":common_cc_fbs_includes",
     ],
 )
 

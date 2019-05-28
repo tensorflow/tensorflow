@@ -1,9 +1,10 @@
 # Description:
 # Python APIs for various Tensorflow backends.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 

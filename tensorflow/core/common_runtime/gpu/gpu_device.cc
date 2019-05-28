@@ -431,7 +431,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   string gpu_thread_mode;
   TF_RETURN_IF_ERROR(
       ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global", &gpu_thread_mode));
-  gpu_thread_mode = str_util::Lowercase(gpu_thread_mode);
+  gpu_thread_mode = absl::AsciiStrToLower(gpu_thread_mode);
   if (gpu_thread_mode != "global") {
     int64 gpu_thread_count = -1;
     // Default to two threads. One for device compute and another for memory
@@ -1760,8 +1760,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     std::vector<int> raw_ids(ids->size());
     std::transform(ids->begin(), ids->end(), raw_ids.begin(),
                    [](PlatformGpuId id) -> int { return id.value(); });
-    LOG(INFO) << "Adding visible gpu devices: "
-              << str_util::Join(raw_ids, ", ");
+    LOG(INFO) << "Adding visible gpu devices: " << absl::StrJoin(raw_ids, ", ");
   }
 
   return Status::OK();

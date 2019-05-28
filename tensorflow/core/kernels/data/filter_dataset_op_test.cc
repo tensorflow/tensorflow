@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/filter_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "filter_dataset";
-constexpr char kOpName[] = "FilterDataset";
 
 class FilterDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -39,12 +39,13 @@ class FilterDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def =
-        test::function::NDef(kNodeName, kOpName, {"input_dataset"},
-                             {{"predicate", func},
-                              {"Targuments", {}},
-                              {"output_types", output_types},
-                              {"output_shapes", output_shapes}});
+    NodeDef node_def = test::function::NDef(
+        kNodeName, name_utils::OpName(FilterDatasetOp::kDatasetType),
+        {FilterDatasetOp::kInputDataset},
+        {{FilterDatasetOp::kPredicate, func},
+         {FilterDatasetOp::kTarguments, {}},
+         {FilterDatasetOp::kOutputTypes, output_types},
+         {FilterDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -256,7 +257,8 @@ TEST_F(FilterDatasetOpTest, DatasetTypeString) {
                              filter_dataset_context.get(), &filter_dataset));
   core::ScopedUnref scoped_unref(filter_dataset);
 
-  EXPECT_EQ(filter_dataset->type_string(), kOpName);
+  EXPECT_EQ(filter_dataset->type_string(),
+            name_utils::OpName(FilterDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedFilterDatasetOpTest, DatasetOutputDtypes) {
@@ -475,7 +477,8 @@ TEST_F(ParameterizedFilterDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(
       filter_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::Filter");
+  EXPECT_EQ(iterator->prefix(), name_utils::IteratorPrefix(
+                                    FilterDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedFilterDatasetOpTest, Roundtrip) {

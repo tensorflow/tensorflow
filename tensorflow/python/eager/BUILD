@@ -1,4 +1,6 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -93,6 +95,17 @@ py_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "context_test",
+    size = "small",
+    srcs = ["context_test.py"],
+    additional_deps = [
+        ":context",
+        ":test",
     ],
 )
 
@@ -594,7 +607,12 @@ tf_xla_py_test(
     srcs = ["def_function_xla_test.py"],
     tags = [
         "no_pip",
+<<<<<<< HEAD
         "no_cuda",
+=======
+        "no_rocm",
+        "no_windows",
+>>>>>>> upstream/master
         "nomac",
     ],
     deps = [

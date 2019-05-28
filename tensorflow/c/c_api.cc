@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/match.h"
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 
@@ -97,7 +98,6 @@ using tensorflow::TensorId;
 using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
 using tensorflow::VersionDef;
-using tensorflow::error::Code;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::gtl::ArraySlice;
@@ -107,12 +107,6 @@ extern "C" {
 
 // --------------------------------------------------------------------------
 const char* TF_Version() { return TF_VERSION_STRING; }
-
-// --------------------------------------------------------------------------
-size_t TF_DataTypeSize(TF_DataType dt) {
-  return static_cast<size_t>(
-      tensorflow::DataTypeSize(static_cast<DataType>(dt)));
-}
 
 // --------------------------------------------------------------------------
 
@@ -1675,7 +1669,7 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
       if (metadata.list_size == 0) {
         for (int i = 0; i < oper->node.op_def().attr_size(); ++i) {
           const auto& a = oper->node.op_def().attr(i);
-          if (a.name().compare(attr_name) != 0) continue;
+          if (a.name() != attr_name) continue;
           const string& typestr = a.type();
           if (typestr == "list(string)") {
             metadata.type = TF_ATTR_STRING;
@@ -2495,8 +2489,7 @@ void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
       // used in this graph
       for (const auto& pair : g->name_map) {
         const string& name = pair.first;
-        if (name.compare(prefix) == 0 ||
-            tensorflow::str_util::StartsWith(name, prefix_cmp)) {
+        if ((name == prefix) || absl::StartsWith(name, prefix_cmp)) {
           status->status = InvalidArgument(
               "prefix [", prefix,
               "] conflicts with existing node in the graph named [", name, "]");
@@ -2526,8 +2519,7 @@ void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
       // Adding the gradients to the graph can alter the prefix to prevent
       // name collisions only if this prefix has not been provided explicitly
       // by the user. If it was provided, assert that it remained intact.
-      if (prefix != nullptr &&
-          !tensorflow::str_util::StartsWith(n->name(), prefix_cmp)) {
+      if (prefix != nullptr && !absl::StartsWith(n->name(), prefix_cmp)) {
         status->status = tensorflow::errors::Internal(
             "BUG: The gradients prefix have been unexpectedly altered when "
             "adding the nodes to the graph. This is a bug. Please file an "

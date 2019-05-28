@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
-
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
+#include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -442,6 +442,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      const RecvTensorRequest* request,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
+  VLOG(1) << "GrpcRecvTensorAsync req: " << request->DebugString();
   const int64 request_id = request->request_id();
   const int64 step_id = request->step_id();
 
@@ -544,8 +545,8 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                 delete copy;
               };
 
-              send_dev_context->CopyDeviceTensorToCPU(
-                  &val, request->rendezvous_key(), src_dev, copy, copy_ready);
+              CopyDeviceToHost(&val, alloc, alloc, request->rendezvous_key(),
+                               src_dev, copy, send_dev_context, copy_ready);
               return;
             }
           }

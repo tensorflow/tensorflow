@@ -1975,6 +1975,7 @@ def tf_py_wrap_cc(
 #    //third_party/tensorflow/tools/pip_package:win_pip_package_marker for specific reasons.
 # 2. When --define=no_tensorflow_py_deps=false (by default), it's a normal py_test.
 def py_test(deps = [], data = [], kernels = [], **kwargs):
+    # Python version placeholder
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
@@ -2003,6 +2004,8 @@ def py_binary(name, deps = [], **kwargs):
         name = name + "_deps",
         deps = deps,
     )
+
+    # Python version placeholder
     native.py_binary(
         name = name,
         deps = select({

@@ -1,8 +1,6 @@
 # Description:
 #   GPU-platform specific StreamExecutor support code.
 
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -18,6 +16,7 @@ package(
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 # Filegroup used to collect source files for the dependency check.

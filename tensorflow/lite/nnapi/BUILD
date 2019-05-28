@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "nnapi_lib",

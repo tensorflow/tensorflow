@@ -172,7 +172,7 @@ TEST_F(GatherOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<int32>(TensorShape({}), {0});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "indices[2] = 99 is not in [0, 5)"))
+      absl::StrContains(s.ToString(), "indices[2] = 99 is not in [0, 5)"))
       << s;
 }
 

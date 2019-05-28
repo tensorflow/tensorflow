@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -57,9 +58,8 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
   // Equal to the first error.
   EXPECT_EQ(status.code(), error::INTERNAL);
   // Both errors are reported.
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Internal: 1"));
-  EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "Invalid argument: 2"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 1"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Invalid argument: 2"));
 }
 
 TEST(TestReffedStatusCallback, RefMulti) {
@@ -80,8 +80,8 @@ TEST(TestReffedStatusCallback, RefMulti) {
   cb->Unref();  // Created by constructor.
   EXPECT_TRUE(called);
   // Both errors are reported.
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Internal: 1"));
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Internal: 2"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 1"));
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Internal: 2"));
 }
 
 TEST(TestReffedStatusCallback, MultiThreaded) {
@@ -114,7 +114,7 @@ TEST(TestReffedStatusCallback, MultiThreaded) {
   EXPECT_EQ(num_called.load(), 1);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "Invalid argument: err"));
+      absl::StrContains(status.error_message(), "Invalid argument: err"));
 }
 
 }  // namespace

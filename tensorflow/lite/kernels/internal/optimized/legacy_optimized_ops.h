@@ -423,6 +423,20 @@ struct LegacyDepthwiseConvWorkerTask : public gemmlowp::Task {
   int thread_dim_;
 };
 
+inline int HowManyConvThreads(const RuntimeShape& output_shape,
+                              const RuntimeShape& filter_shape,
+                              int thread_dim) {
+  constexpr int kMinMulPerThread = 8;
+  const int output_units = output_shape.Dims(thread_dim);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int num_mul_per_unit =
+      FlatSizeSkipDim(output_shape, thread_dim) * filter_height * filter_width;
+  const int min_units_per_thread = kMinMulPerThread / num_mul_per_unit + 1;
+  int thread_count = output_units / min_units_per_thread;
+  return thread_count;
+}
+
 inline void DepthwiseConv(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,

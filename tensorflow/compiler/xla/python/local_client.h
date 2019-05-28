@@ -169,6 +169,8 @@ class Device {
   }
 
  private:
+  Status SynchronizeAllActivity();
+
   bool use_multiple_streams_;
   bool synchronous_deallocation_;
   bool asynchronous_;
@@ -242,49 +244,67 @@ class PyLocalClient {
 };
 
 // Holds a reference from Python to one or more device buffers.
+// A PyLocalBuffer can be either valid or invalid. An invalid buffer is one that
+// has never been initialized, or a buffer that has been deleted (e.g., by
+// calling Delete). We allow PyLocalBuffer objects to outlive the underlying
+// device buffers so we can decouple buffer lifetimes from the corresponding
+// Python references if needed.
+// Thread-safe.
 class PyLocalBuffer {
  public:
-  static StatusOr<PyLocalBuffer> FromPython(
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromPython(
       const pybind11::object& argument, std::shared_ptr<PyLocalClient> client,
       int device_ordinal);
 
   // Converts multiple (python object, device ordinal) pairs into
   // PyLocalBuffers in parallel.
-  static StatusOr<std::vector<PyLocalBuffer>> FromPythonValues(
+  static StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> FromPythonValues(
       const std::vector<std::pair<pybind11::object, int>>& argument,
       std::shared_ptr<PyLocalClient> client);
 
-  static StatusOr<PyLocalBuffer> MakeTuple(
-      const std::vector<PyLocalBuffer> buffers,
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> MakeTuple(
+      const std::vector<PyLocalBuffer*> buffers,
       std::shared_ptr<PyLocalClient> client, int device_ordinal);
 
   PyLocalBuffer() = default;
   PyLocalBuffer(Shape on_host_shape,
                 std::shared_ptr<PySharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client);
+
+  PyLocalBuffer(const PyLocalBuffer&) = delete;
+  PyLocalBuffer(PyLocalBuffer&&) = delete;
+  PyLocalBuffer& operator=(const PyLocalBuffer&) = delete;
+  PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
+
   StatusOr<pybind11::object> ToPython() const;
   const Shape& on_host_shape() const { return on_host_shape_; }
-  const std::shared_ptr<PySharedDeviceBuffer>& device_buffer() const {
-    return device_buffer_;
-  }
-  int device_ordinal() const { return device_buffer_->device_ordinal(); }
+  int device_ordinal() const { return device_ordinal_; }
 
-  void Delete() {
-    device_buffer_ = nullptr;
-    client_ = nullptr;
-  }
+  // Returns the associated device buffer. Returns a nullptr if the buffer is
+  // invalid.
+  std::shared_ptr<PySharedDeviceBuffer> DeviceBuffer() const;
+
+  // Deletes the device memory associated with this buffer, leaving it in an
+  // invalid state.
+  void Delete();
 
   // Returns a view of the PyLocalBuffer DAG as a ShapedBuffer. The
   // PyLocalBuffer retains ownership of the device buffers.
-  ShapedBuffer AsShapedBuffer() const;
+  StatusOr<ShapedBuffer> AsShapedBuffer() const;
 
   // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
-  StatusOr<std::vector<PyLocalBuffer>> DestructureTuple();
+  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> DestructureTuple();
+
+  // Blocks the host until the buffer's value has been computed and is ready for
+  // immediate use on the device. Useful in particular for timing benchmarks.
+  Status BlockHostUntilReady();
 
  private:
-  std::shared_ptr<PyLocalClient> client_ = nullptr;
-  Shape on_host_shape_;
-  std::shared_ptr<PySharedDeviceBuffer> device_buffer_;
+  const std::shared_ptr<PyLocalClient> client_;
+  const Shape on_host_shape_;
+  const int device_ordinal_;
+  mutable absl::Mutex mu_;
+  std::shared_ptr<PySharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -293,9 +313,11 @@ class PyLocalExecutable {
  public:
   // Compiles a computation to an executable.
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
-      const XlaComputation& computation, std::vector<Shape> argument_layouts,
+      const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
-      std::shared_ptr<PyLocalClient> client);
+      std::shared_ptr<PyLocalClient> client,
+      absl::optional<DeviceAssignment> device_assignment);
 
   PyLocalExecutable(std::shared_ptr<LocalExecutable> executable,
                     DeviceAssignment device_assignment,
@@ -312,19 +334,19 @@ class PyLocalExecutable {
     return device_assignment_;
   }
 
-  StatusOr<PyLocalBuffer> Execute(
+  StatusOr<std::unique_ptr<PyLocalBuffer>> Execute(
       absl::Span<PyLocalBuffer* const> argument_handles);
 
   // Execute on many replicas. Takes a sequence of argument lists (one argument
   // list per replica) and returns a tuple of results (one result per replica).
   // The number of argument lists must be equal to the replica count.
-  StatusOr<std::vector<PyLocalBuffer>> ExecutePerReplica(
+  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecutePerReplica(
       absl::Span<const std::vector<PyLocalBuffer*>> argument_handles);
 
   void Delete() { executable_ = nullptr; }
 
  private:
-  StatusOr<PyLocalBuffer> ExecuteHelper(
+  StatusOr<std::unique_ptr<PyLocalBuffer>> ExecuteHelper(
       absl::Span<PyLocalBuffer* const> argument_handles, int replica);
 
   std::shared_ptr<PyLocalClient> const client_;

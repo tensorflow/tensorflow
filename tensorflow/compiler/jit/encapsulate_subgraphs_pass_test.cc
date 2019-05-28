@@ -514,10 +514,10 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   auto flr = pflr->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 
   std::unique_ptr<Graph> graph_out;
-  s = EncapsulateSubgraphsInFunctions(
-      "_encapsulate", /*outside_compilation_attribute=*/"", *graph,
-      /*rewrite_subgraph_fn=*/{},
-      /*reuse_existing_functions=*/false, &graph_out, lib_def.get());
+  s = EncapsulateSubgraphsInFunctions("_encapsulate", *graph,
+                                      /*rewrite_subgraph_fn=*/{},
+                                      /*reuse_existing_functions=*/false,
+                                      &graph_out, lib_def.get());
   if (!s.ok()) return s;
 
   std::unordered_map<string, XlaClusterInfo> clusters;
@@ -746,7 +746,7 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
   FunctionLibraryDefinition library(OpRegistry::Global(), {});
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_cluster", "", graph_before_encapsulation,
+      "_cluster", graph_before_encapsulation,
       /*rewrite_subgraph_fn=*/{},
       /*reuse_existing_functions=*/false, &graph, &library));
 
@@ -798,7 +798,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
   FunctionLibraryDefinition library(OpRegistry::Global(), {});
   int guaranteed_consts = 0;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_encapsulate", "", graph_before,
+      "_encapsulate", graph_before,
       /*rewrite_subgraph_fn=*/
       [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
                            std::unique_ptr<Graph>* graph_ptr,
@@ -843,7 +843,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
   FunctionLibraryDefinition library(OpRegistry::Global(), {});
   int guaranteed_consts = 0;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_encapsulate", "", graph_before,
+      "_encapsulate", graph_before,
       /*rewrite_subgraph_fn=*/
       [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
                            std::unique_ptr<Graph>* graph_ptr,

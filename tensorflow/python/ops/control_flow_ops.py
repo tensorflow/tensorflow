@@ -2124,6 +2124,12 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   Singleton lists and tuples form the only exceptions to this: when returned by
   `true_fn` and/or `false_fn`, they are implicitly unpacked to single values.
 
+  Note: It is illegal to "directly" use tensors created inside a cond branch
+  outside it, e.g. by storing a reference to a branch tensor in the python
+  state. If you need to use a tensor created in a branch function you should
+  return it as an output of the branch function and use the output from
+  `tf.cond` instead.
+
   Args:
     pred: A scalar determining whether to return the result of `true_fn` or
       `false_fn`.

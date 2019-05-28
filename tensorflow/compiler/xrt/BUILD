@@ -44,12 +44,15 @@ cc_library(
     srcs = [
         "xrt_compilation_cache.cc",
         "xrt_device.cc",
+        "xrt_memory_manager.cc",
         "xrt_state.cc",
         "xrt_util.cc",
     ],
     hdrs = [
         "xrt_compilation_cache.h",
         "xrt_device.h",
+        "xrt_memory_manager.h",
+        "xrt_refptr.h",
         "xrt_state.h",
         "xrt_util.h",
     ],

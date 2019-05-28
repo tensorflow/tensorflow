@@ -256,21 +256,20 @@ class _InterpolateFunctionError(object):
     _, tags = error_interpolation.parse_message(message)
     g = None
     func_stack = []
-    # pylint: disable=protected-access
     for t in tags:
       if t.type == "function_node":
+        # TODO(mdan): Tests should cover this.
         if t.name == compat.as_str(self._func.name):
-          g = self._func._graph
+          g = self._func.graph
         elif g:
           next_func = g._get_function(t.name)
           if next_func is not None and isinstance(next_func,
                                                   _EagerDefinedFunction):
-            g = next_func._graph
+            g = next_func.graph
         if g:
           func_stack.append(g.name)
         else:
           func_stack.append("<unknown>")
-    # pylint: enable=protected-access
     if g:
       message = error_interpolation.interpolate(message, g)
       message += "\n\nFunction call stack:\n"
@@ -302,7 +301,19 @@ class _EagerDefinedFunctionDeleter(object):
     self.name = name
 
   def __del__(self):
-    context.remove_function(self.name)
+    try:
+      context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.
 
 
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
@@ -1395,40 +1406,25 @@ class Function(object):
       kwargs = {}
     seen_names = set()
     captured = frozenset(graph_function.graph.internal_captures)
-    allowed_positional = 0
-    if args:
-      for outer_arg in args:
-        # TODO(allenl): Consider allowing arguments with defaults in the Python
-        # function's signature to be passed as positional arguments to the
-        # concrete function.
-        if not isinstance(
-            outer_arg,
-            (ops.Tensor, resource_variable_ops.ResourceVariable,
-             tensor_spec.TensorSpec)):
-          break
-        allowed_positional += 1
     # pylint: disable=protected-access
-    graph_function._num_positional_args = allowed_positional
     graph_function._arg_keywords = []
+    prefix_counts = {}
     # pylint: enable=protected-access
+    num_positional = 0
     for arg in graph_function.graph.inputs:
       if arg in captured:
         break
-      user_arg_name = arg.op.get_attr("_user_specified_name")
-      if user_arg_name in seen_names:
-        raise ValueError(
-            ("Unable to construct a concrete function for {} since some "
-             "arguments do not have unique names. Got two arguments named "
-             "'{}'. When constructing a concrete TensorFlow function from a "
-             "Python function which takes nested structures or variadic "
-             "positional arguments, pass unique names to tf.TensorSpec objects "
-             "used to identify these Tensor inputs. These names may then be "
-             "used as keyword arguments to the concrete function.")
-            .format(
-                self._python_function,
-                compat.as_str(arg.op.get_attr("_user_specified_name"))))
-      seen_names.add(user_arg_name)
-      graph_function._arg_keywords.append(user_arg_name)  # pylint: disable=protected-access
+      num_positional += 1
+      user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
+      proposal = user_arg_name
+      while proposal in seen_names:
+        index = prefix_counts.get(user_arg_name, 1)
+        proposal = "{}_{}".format(user_arg_name, index)
+        prefix_counts[user_arg_name] = index + 1
+      seen_names.add(proposal)
+      graph_function._arg_keywords.append(proposal)  # pylint: disable=protected-access
+    # Anything can be a positional argument, in the same order as .inputs
+    graph_function._num_positional_args = num_positional  # pylint: disable=protected-access
     return graph_function
 
   def __get__(self, instance, owner):

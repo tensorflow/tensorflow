@@ -63,7 +63,7 @@ class KernelThunk : public Thunk {
 
   // Executes the kernel for the thunk on "stream", which must be non-null.
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

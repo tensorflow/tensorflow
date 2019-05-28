@@ -306,6 +306,32 @@ class DistributionTestBase(test.TestCase):
 
     return _input_fn
 
+  def _test_input_fn_iterable(
+      self, strategy, input_fn, expected_values, ignore_order=False):
+    if not context.executing_eagerly():
+      self.skipTest("Only supported with eager execution.")
+
+    assert_same = self.assertCountEqual if ignore_order else self.assertEqual
+
+    iterable = strategy.experimental_distribute_datasets_from_function(input_fn)
+    iterator = iter(iterable)
+
+    for expected_value in expected_values:
+      computed_value = self.evaluate(
+          list(strategy.experimental_local_results(next(iterator))))
+      assert_same(expected_value, computed_value)
+
+    with self.assertRaises(StopIteration):
+      self.evaluate(strategy.experimental_local_results(next(iterator)))
+
+    # After re-initializing the iterator, should be able to iterate again.
+    iterator = iter(iterable)
+
+    for expected_value in expected_values:
+      computed_value = self.evaluate(
+          list(strategy.experimental_local_results(next(iterator))))
+      assert_same(expected_value, computed_value)
+
   def _test_input_fn_iterator(self,
                               iterator,
                               devices,

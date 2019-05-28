@@ -1,7 +1,10 @@
 # Description:
 # Tools for testing
 
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -9,8 +12,6 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow:tensorflow.bzl", "py_test")
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 

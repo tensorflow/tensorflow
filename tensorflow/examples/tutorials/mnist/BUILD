@@ -1,7 +1,9 @@
 # Description:
 # Example TensorFlow models for MNIST used in tutorials
 
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 

@@ -29,7 +29,11 @@ limitations under the License.
 // NOTE(keveman): Eigen's int8 and string versions don't compile yet with nvcc.
 
 #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
 #error "This header must be included inside with Cuda or ROCm defined"
+=======
+#error "This header must be included inside with CUDA or ROCm defined"
+>>>>>>> upstream/master
 #endif
 
 #define EIGEN_USE_GPU

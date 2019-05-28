@@ -34,9 +34,6 @@ const int8_t kMaxQuantizedValue = 127;
 }  // namespace
 
 TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
-  if (tensor.shape.empty()) {
-    return kTfLiteError;
-  }
   *num_elements = 1;
   for (const uint64_t dim : tensor.shape) {
     *num_elements *= dim;

@@ -28,7 +28,7 @@ InfeedThunk::InfeedThunk(
     : Thunk(Kind::kInfeed, hlo_instruction), infeed_slices_(infeed_slices) {}
 
 Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                    se::Stream* stream,
+                                    se::Stream* stream, const RunId& /*run_id*/,
                                     HloExecutionProfiler* profiler) {
   VLOG(2) << "Infeeding to GPU: " << hlo_instruction()->ToString();
 
