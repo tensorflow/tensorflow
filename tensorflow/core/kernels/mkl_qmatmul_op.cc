@@ -80,10 +80,11 @@ limitations under the License.
 // except adding relu function for the 32bit integer output.
 //
 // The QuantizedMatMulWithBiasAndReluAndRequantize op does one more step of
-// requantize calculation based on above. The requantize scale Qr is calculated
-// from offline calibration.
+// requantize calculation based on above. Since the fusion ends with a Relu the
+// activation X𝑓32 at Relu, in the original fp32 graph, is guaranteed to be
+// non-negative. The requantize scale Qr is calculated from offline calibration.
 //    Qr = 255 / Max(X𝑓32)
-//    Xu8 = Qr * X𝑓32
+//    Xu8 = Qr * X𝑓32.
 //
 // More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
