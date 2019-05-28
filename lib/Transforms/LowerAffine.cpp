@@ -556,7 +556,7 @@ static LogicalResult lowerAffineIf(AffineIfOp ifOp) {
   condBlock = builder.getInsertionBlock();
   if (condBlock->empty()) {
     condBlock->replaceAllUsesWith(thenBlock);
-    condBlock->eraseFromFunction();
+    condBlock->erase();
   } else {
     builder.create<BranchOp>(loc, thenBlock);
   }

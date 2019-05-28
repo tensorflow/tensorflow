@@ -111,8 +111,8 @@ public:
   /// the specified block.
   void insertBefore(Block *block);
 
-  /// Unlink this Block from its Function and delete it.
-  void eraseFromFunction();
+  /// Unlink this Block from its parent region and delete it.
+  void erase();
 
   //===--------------------------------------------------------------------===//
   // Block argument management

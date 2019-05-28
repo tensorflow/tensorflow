@@ -70,9 +70,9 @@ void Block::insertBefore(Block *block) {
 }
 
 /// Unlink this Block from its Function and delete it.
-void Block::eraseFromFunction() {
-  assert(getFunction() && "Block has no parent");
-  getFunction()->getBlocks().erase(this);
+void Block::erase() {
+  assert(getParent() && "Block has no parent");
+  getParent()->getBlocks().erase(this);
 }
 
 /// Returns 'op' if 'op' lies in this block, or otherwise finds the
@@ -258,7 +258,7 @@ Block *Block::splitBlock(iterator splitBefore) {
   // Start by creating a new basic block, and insert it immediate after this
   // one in the containing function.
   auto newBB = new Block();
-  getFunction()->getBlocks().insert(++Function::iterator(this), newBB);
+  getParent()->getBlocks().insert(std::next(Region::iterator(this)), newBB);
 
   // Move all of the operations from the split point to the end of the function
   // into the new block.
