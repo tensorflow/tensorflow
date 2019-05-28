@@ -49,12 +49,14 @@ class HloDataflowAnalysis {
   // default strategy.
   //
   // The first parameter of the function should be the fusion instruction, the
-  // second parameter should be an operand of the fusion instruction.
+  // second parameter should be an operand of the fusion instruction. The third
+  // parameter should be the output index of the fusion.
   //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
   using FusionCanShareBufferFunction = std::function<bool(
-      const HloInstruction* fusion, const HloInstruction* operand)>;
+      const HloInstruction* fusion, const HloInstruction* operand,
+      const ShapeIndex& fusion_index)>;
 
   // Run dataflow analysis on the given module. Parameters:
   //
@@ -128,7 +130,7 @@ class HloDataflowAnalysis {
   int64 value_count() const { return values_.size(); }
 
   // Return a vector of all HloValues stabily sorted by HloValue::Id.
-  const std::vector<const HloValue*>& values() const { return values_vector_; }
+  const std::vector<HloValue*>& values() const { return values_vector_; }
 
   // Return the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
@@ -152,6 +154,8 @@ class HloDataflowAnalysis {
                                      const ShapeIndex& operand_index,
                                      HloInstruction* user,
                                      const ShapeIndex& user_index) const;
+
+  const HloModule& module() const { return module_; }
 
  protected:
   HloDataflowAnalysis(
@@ -238,7 +242,7 @@ class HloDataflowAnalysis {
   std::vector<HloValue::Id> value_ids_to_delete_;
 
   // A vector containing all HloValues sorted by HloValue::Id.
-  std::vector<const HloValue*> values_vector_;
+  std::vector<HloValue*> values_vector_;
 
   // The Id to use for the next HloValue.
   HloValue::Id next_value_id_ = 0;

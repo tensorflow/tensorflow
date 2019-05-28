@@ -26,6 +26,11 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#endif // GOOGLE_CUDA
+
+
 // Helper functions for interacting with StreamExecutor.
 
 namespace xla {
@@ -102,54 +107,11 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
                              int64 threads_per_block, int64 block_count,
                              se::Stream* stream);
-
-// Options for compiling with PTX.
-struct PtxCompilationOptions {
-  bool xla_gpu_disable_ptxas_optimizations;
-  std::string xla_gpu_cuda_data_dir;
-
-  using PtxOptionsTuple = std::tuple<bool, std::string>;
-
-  explicit PtxCompilationOptions(const HloModuleConfig& hlo_module_config)
-      : xla_gpu_disable_ptxas_optimizations(
-            hlo_module_config.debug_options()
-                .xla_gpu_disable_ptxas_optimizations()),
-        xla_gpu_cuda_data_dir(
-            hlo_module_config.debug_options().xla_gpu_cuda_data_dir()) {}
-
-  // For comparison and hashing.
-  PtxOptionsTuple ToTuple() {
-    return std::make_tuple(xla_gpu_disable_ptxas_optimizations,
-                           xla_gpu_cuda_data_dir);
-  }
-};
-
-// Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array.
-//
-// Queries stream executor stream_exec to get CUDA compute capability from the
-// device.
-//
-// compile_ptx_options is used to query for the CUDA location in case it is
-// customized in a passed flag, and for controlling ptxas optimizations.
-// It can be constructed from HloModuleConfig.
-StatusOr<std::vector<uint8>> CompilePtx(
-    se::StreamExecutor* stream_exec, absl::string_view ptx,
-    PtxCompilationOptions compile_ptx_options);
-
-// Same as CompilePtx, but caches the result, and returns unowned view of
-// the compiled binary.
-//
-// A copy of the string provided in ptx will be made.
-StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
-    se::StreamExecutor* executor, absl::string_view ptx,
-    PtxCompilationOptions compilation_options);
-
-// Returns a vector of potential locations of the CUDA root directory.
-// Searches through tensorflow CUDA locations AND through the CUDA location
-// specified in compile_ptx_options (can be constructed from HloModuleConfig).
-std::vector<string> GetCudaRootCandidates(
-    PtxCompilationOptions compile_ptx_options);
+#if GOOGLE_CUDA
+// Create PtxCompilationOptions out of HloModuleConfig.
+se::cuda::PtxCompilationOptions PtxOptsFromConfig(
+    const HloModuleConfig& hlo_module_config);
+#endif // GOOGLE_CUDA
 
 }  // namespace gpu
 }  // namespace xla

@@ -401,9 +401,7 @@ struct Kernel<Path::kNeonDotprod, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
-    // TODO(renjieliu): Add support for in order case.
-    if (__builtin_expect(tuning == Tuning::kInOrder, true) &&
-        !std::is_same<DstScalar, std::int32_t>::value) {
+    if (__builtin_expect(tuning == Tuning::kInOrder, true)) {
       Kernel8bitNeonDotprodInOrder(params);
     } else {
       Kernel8bitNeonDotprodOutOfOrder(params);

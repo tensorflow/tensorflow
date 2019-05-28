@@ -1188,4 +1188,8 @@ Status ComputePredicates(const Graph& graph,
 }
 }  // namespace deadness_analysis_internal
 
+string DeadnessAnalysis::DebugString(DeadnessPredicate predicate) const {
+  return static_cast<Predicate*>(predicate.pred_)->ToString();
+}
+
 }  // namespace tensorflow

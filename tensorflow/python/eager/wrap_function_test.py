@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import os
 
+
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
@@ -322,6 +324,8 @@ class WrapFunctionTest(test.TestCase):
     self.assertEqual(0, v.numpy())
     f_pruned()
     self.assertEqual(1, v.numpy())
+    f_wrapped.prune([], 'assign_to_v')()
+    f_wrapped.prune([], meta_graph_pb2.TensorInfo(name='assign_to_v'))()
 
   def test_function_from_graph_def(self):
     @def_function.function

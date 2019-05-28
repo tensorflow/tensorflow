@@ -580,7 +580,6 @@ cc_library(
         ":gpu_constants",
         ":partition_assignment",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -591,13 +590,17 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
     ],
 )
 
 tf_cc_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
-    tags = if_cuda_is_configured(tf_cuda_tests_tags()) + ["no_rocm"],
+    tags = ["no_rocm"]
+     + tf_cuda_tests_tags(),
     deps = [
         ":redzone_allocator",
         "//tensorflow/compiler/xla:status_macros",
@@ -605,12 +608,11 @@ tf_cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:core",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
-        "//tensorflow/stream_executor:device_memory_allocator",
     ]
      + if_cuda_is_configured([
         ":cusolver_context",
@@ -618,9 +620,9 @@ tf_cc_test(
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
      ])
-     + if_rocm_is_configured(["//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+     + if_rocm_is_configured([
+        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
      ]),
-
 )
 
 cc_library(
@@ -1048,6 +1050,7 @@ cc_library(
         ":cudnn_conv_algorithm_picker",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/stream_executor/cuda:cuda_diagnostics",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
     ])
     + if_rocm_is_configured([":miopen_conv_algorithm_picker",
                             "//tensorflow/core:rocm_rocdl_path",]),
@@ -1224,6 +1227,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:kernel_spec",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1258,6 +1262,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1265,7 +1270,8 @@ cc_library(
 tf_cc_test(
     name = "buffer_comparator_test",
     srcs = ["buffer_comparator_test.cc"],
-    tags = if_cuda_is_configured(tf_cuda_tests_tags()) + ["no_rocm"],
+    tags = ["no_rocm"]
+     + tf_cuda_tests_tags(),
     deps = [
         ":buffer_comparator",
         "//tensorflow/compiler/xla:shape_util",
@@ -1320,7 +1326,8 @@ cc_library(
 tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
-    tags = if_cuda_is_configured(tf_cuda_tests_tags()) + ["no_rocm"],
+    tags = ["no_rocm"]
+     + tf_cuda_tests_tags(),
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla/service:hlo_parser",

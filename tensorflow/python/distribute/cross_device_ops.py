@@ -209,6 +209,9 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
     raise ValueError("`per_replica_value` must be non-empty")
   count = len(all_values)
 
+  if (count == 1 and all_values[0].device == reduce_to_device):
+    return all_values[0]
+
   with ops.device(reduce_to_device):
     with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
       reduced = cross_device_utils.aggregate_tensors_or_indexed_slices(
@@ -710,7 +713,7 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
   def _do_batch_all_reduce(self, reduce_op, dense_values):
     """Run batch all-reduces."""
     logging.log_first_n(
-        logging.INFO, "batch_all_reduce: %d all-reduces with algorithm = %s,"
+        logging.INFO, "batch_all_reduce: %d all-reduces with algorithm = %s, "
         "num_packs = %d, agg_small_grads_max_bytes = %d and "
         "agg_small_grads_max_group = %d" %
         (len(dense_values), self._all_reduce_alg, self._num_packs,

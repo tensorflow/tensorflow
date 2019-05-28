@@ -86,7 +86,7 @@ from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
 
 
-# If the above import is made available through the BUILD rule, then this
+# If the below import is made available through the BUILD rule, then this
 # function is overridden and will instead return True and cause Tensorflow
 # graphs to be compiled with XLA.
 def is_xla_enabled():

@@ -234,14 +234,26 @@ def recreate_function(saved_function, concrete_functions):
         if _concrete_function_callable_with(function, inputs, allow_conversion):
           return _call_concrete_function(function, inputs)
 
-    available_signatures = [
-        concrete_functions[function_name].graph.structured_input_signature
-        for function_name in saved_function.concrete_functions
-    ]
+    signature_descriptions = []
+
+    def _pretty_format_positional(positional):
+      return "Positional arguments ({} total):\n    * {}".format(
+          len(positional),
+          "\n    * ".join([str(a) for a in positional]))
+
+    for index, function_name in enumerate(saved_function.concrete_functions):
+      concrete_function = concrete_functions[function_name]
+      positional, keyword = concrete_function.structured_input_signature
+      signature_descriptions.append(
+          "Option {}:\n  {}\n  Keyword arguments: {}"
+          .format(index + 1, _pretty_format_positional(positional), keyword))
     raise ValueError(
-        "Could not find matching function to call for inputs %r. "
-        "Only existing signatures are %r."
-        % (inputs, available_signatures))
+        "Could not find matching function to call loaded from the SavedModel. "
+        "Got:\n  {}\n  Keyword arguments: {}\n\nExpected "
+        "these arguments to match one of the following {} option(s):\n\n{}"
+        .format(_pretty_format_positional(args), kwargs,
+                len(saved_function.concrete_functions),
+                "\n\n".join(signature_descriptions)))
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:

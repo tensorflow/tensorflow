@@ -853,8 +853,7 @@ class TrtGraphConverterV2(object):
   precision modes):
 
   ```python
-  TrtConversionParams params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
-      precision_mode='FP16')
+  params = DEFAULT_TRT_CONVERSION_PARAMS._replace(precision_mode='FP16')
   converter = TrtGraphConverterV2(
       input_saved_model_dir="my_dir", conversion_params=params)
   converter.convert()
@@ -868,7 +867,7 @@ class TrtGraphConverterV2(object):
   function with some input data:
 
   ```python
-  TrtConversionParams params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
+  params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
       precision_mode='FP16',
       # Set this to a large enough number so it can cache all the TRT engines.
       maximum_cached_engines=16)

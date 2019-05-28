@@ -22,6 +22,7 @@ cc_library(
     hdrs = ["nnapi_delegate.h"],
     deps = [
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
@@ -34,8 +35,6 @@ cc_test(
     srcs = ["nnapi_delegate_test.cc"],
     tags = [
         "no_windows",
-        # TODO(b/122987564): Enable on Android after resolving API 27 failures.
-        "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [

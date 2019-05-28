@@ -352,10 +352,10 @@ class TestModelDeepCopy(test.TestCase):
                       model_copy.get_weights()[0]))
 
 
-@keras_parameterized.run_all_keras_modes
 class TestCloneAndBuildModel(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_clone_and_build_non_compiled_model(self):
     inp = np.random.random((10, 4))
     out = np.random.random((10, 4))
@@ -436,6 +436,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     new_model.evaluate(inp, out)
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_clone_and_build_compiled(self):
     model = _get_model()
     model.compile(
@@ -445,6 +446,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
 
     self._clone_and_build_test_helper(model, testing_utils.get_model_type())
 
+  @keras_parameterized.run_all_keras_modes
   def test_clone_and_build_sequential_without_inputs_defined(self):
     model = models.Sequential(_get_layers(input_shape=None))
     model.compile(
@@ -476,16 +478,41 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     self.assertEqual(K.eval(global_step), 124)
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_replace_tf_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases(adam.AdamOptimizer(0.01))
 
   @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_replace_keras_optimizer_iterations_variable(self):
     if testing_utils.should_run_eagerly():
       # This needs to be updated to run with v2 optimizers.
       self.skipTest('b/120991591')
 
     self.assert_optimizer_iterations_increases('adam')
+
+  def test_clone_optimizer_in_different_graph(self):
+    with ops.Graph().as_default():
+      with self.session():
+        model = testing_utils.get_small_sequential_mlp(3, 4)
+        optimizer = keras.optimizer_v2.adam.Adam()
+        model.compile(
+            optimizer, 'mse', metrics=['acc', metrics.categorical_accuracy],
+            )
+        model.fit(
+            x=np.array([[1., 2., 3., 4.]]),
+            y=np.array([[1., 1., 1., 1.]]),
+            epochs=1)
+        optimizer_config = optimizer.get_config()
+    with ops.Graph().as_default():
+      with self.session():
+        with self.assertRaisesRegexp(ValueError,
+                                     'Cannot use the given session'):
+          models.clone_and_build_model(model, compile_clone=True)
+        # The optimizer_config object allows the model to be cloned in a
+        # different graph.
+        models.clone_and_build_model(model, compile_clone=True,
+                                     optimizer_config=optimizer_config)
 
 
 if __name__ == '__main__':

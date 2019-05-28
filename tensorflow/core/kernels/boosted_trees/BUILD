@@ -12,8 +12,8 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_kernel_library",
     "tf_cc_test",
+    "tf_kernel_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config.bzl",

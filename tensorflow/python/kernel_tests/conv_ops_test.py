@@ -2192,7 +2192,8 @@ class Conv2DTest(test.TestCase):
           padding=[[0, 0], [2, 2], [2, 2], [0, 0]],
           test_input=True,
           data_format=data_format,
-          use_gpu=use_gpu)
+          use_gpu=use_gpu,
+          max_err=0.003)
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient2x2PaddingStrideOne(self):

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -150,6 +151,15 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     xla::XlaOp conv =
         xla::ConvGeneralDilated(ctx->Input(0), filter, window_strides, padding,
                                 lhs_dilation, rhs_dilation, dims, depth);
+    // Feature group convolution, will end up with the kernel_size change more
+    // rapidly than the depth. Reshape, transpose and reshape to reorder them.
+    auto conv_dims = builder->GetShape(conv).ValueOrDie().dimensions();
+    conv_dims.back() = depth;
+    conv_dims.push_back(kernel_size);
+    conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));
+    conv_dims.pop_back();
+    conv_dims.back() *= kernel_size;
+    conv = xla::Reshape(conv, conv_dims);
     ctx->SetOutput(0, conv);
   }
 

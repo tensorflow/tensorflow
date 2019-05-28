@@ -40,6 +40,14 @@ Java_org_tensorflow_EagerOperation_deleteTensorHandle(JNIEnv *, jclass, jlong);
 
 /**
  * Class:     org_tensorflow_EagerOperation
+ * Method:    resolveTensorHandle
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL
+Java_org_tensorflow_EagerOperation_resolveTensorHandle(JNIEnv *, jclass, jlong);
+
+/**
+ * Class:     org_tensorflow_EagerOperation
  * Method:    outputListLength
  * Signature: (JLjava/lang/String;)I
  */

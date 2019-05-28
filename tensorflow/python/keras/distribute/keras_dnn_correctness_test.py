@@ -84,6 +84,14 @@ class TestDistributionStrategyDnnCorrectness(
     return x_train, y_train, x_predict
 
   def get_data_with_partial_last_batch(self):
+    x_train = np.random.rand(10000, 1).astype('float32')
+    y_train = 3 * x_train
+    x_eval = np.random.rand(10000, 1).astype('float32')
+    y_eval = 3 * x_eval
+    x_predict = np.array([[1.], [2.], [3.], [4.]], dtype=np.float32)
+    return x_train, y_train, x_eval, y_eval, x_predict
+
+  def get_data_with_partial_last_batch_eval(self):
     x_train = np.random.rand(9984, 1).astype('float32')
     y_train = 3 * x_train
     x_eval = np.random.rand(10000, 1).astype('float32')
@@ -99,13 +107,25 @@ class TestDistributionStrategyDnnCorrectness(
                               cloning)
 
   @combinations.generate(
+      keras_correctness_test_base.test_combinations_with_tpu_strategies())
+  def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
+                                                        use_numpy,
+                                                        use_validation_data):
+    self.run_correctness_test(
+        distribution, use_numpy, use_validation_data, partial_last_batch='eval')
+
+  @combinations.generate(
       keras_correctness_test_base
-      .test_combinations_with_tpu_strategies())
+      .strategy_minus_tpu_and_input_config_combinations_eager())
   def test_dnn_correctness_with_partial_last_batch(self, distribution,
                                                    use_numpy,
                                                    use_validation_data):
     self.run_correctness_test(
-        distribution, use_numpy, use_validation_data, partial_last_batch=True)
+        distribution,
+        use_numpy,
+        use_validation_data,
+        partial_last_batch='train_and_eval',
+        training_epochs=1)
 
   @combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dnn_with_dynamic_learning_rate(self, distribution, cloning):
@@ -125,7 +145,7 @@ class TestDistributionStrategyDnnMetricCorrectness(
           loss=keras.losses.mean_squared_error,
           # TODO(b/130808953):  Switch back to the V1 optimizer after
           # global_step is made mirrored.
-          optimizer=gradient_descent_keras.SGD(0.5),
+          optimizer=gradient_descent_keras.SGD(0.05),
           metrics=[keras.metrics.BinaryAccuracy()],
           cloning=cloning)
     return model
@@ -237,7 +257,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
 
       model.compile(
           loss=keras.losses.mean_squared_error,
-          optimizer=gradient_descent_keras.SGD(0.5),
+          optimizer=gradient_descent_keras.SGD(0.05),
           metrics=['mse'],
           cloning=cloning)
       return model
@@ -275,18 +295,20 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
         self.run_dynamic_lr_test(distribution, cloning)
 
   @combinations.generate(
-      keras_correctness_test_base
-      .test_combinations_with_tpu_strategies())
-  def test_dnn_correctness_with_partial_last_batch(self, distribution,
-                                                   use_numpy,
-                                                   use_validation_data):
+      keras_correctness_test_base.test_combinations_with_tpu_strategies())
+  def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
+                                                        use_numpy,
+                                                        use_validation_data):
     with self.assertRaisesRegexp(
         ValueError,
         'We currently do not support distribution strategy with a '
         '`Sequential` model that is created without `input_shape`/'
         '`input_dim` set in its first layer or a subclassed model.'):
       self.run_correctness_test(
-          distribution, use_numpy, use_validation_data, partial_last_batch=True)
+          distribution,
+          use_numpy,
+          use_validation_data,
+          partial_last_batch='eval')
 
 
 if __name__ == '__main__':

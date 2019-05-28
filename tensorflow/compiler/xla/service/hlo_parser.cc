@@ -686,6 +686,10 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   optional<string> backend_config;
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
+  optional<std::vector<int64>> outer_dimension_partitions;
+  attrs["outer_dimension_partitions"] = {/*required=*/false,
+                                         AttrTy::kBracedInt64List,
+                                         &outer_dimension_partitions};
 
   HloInstruction* instruction;
   switch (opcode) {
@@ -1505,7 +1509,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCustomCall: {
       optional<string> custom_call_target;
-      optional<string> opaque;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
@@ -1513,7 +1516,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<Shape>> operand_layout_constraints;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
-      attrs["opaque"] = {/*required=*/false, AttrTy::kString, &opaque};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
@@ -1561,11 +1563,11 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         }
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target, *operand_layout_constraints,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       } else {
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       }
       if (window.has_value()) {
         instruction->set_window(*window);
@@ -1771,6 +1773,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(std::move(*backend_config));
+  }
+  if (outer_dimension_partitions) {
+    instruction->set_outer_dimension_partitions(*outer_dimension_partitions);
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)

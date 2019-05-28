@@ -741,8 +741,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   for (const auto& pair : subgraphs) {
     i += 1;
     const string& target = pair.first;
-    FunctionLibraryRuntime* target_flr = GetFLR(target);
-    const string& device_type = target_flr->device()->device_type();
+
+    const string& device_type =
+        device_set_.FindDeviceByName(target)->device_type();
     Graph* subgraph = pair.second.get();
 
     ComponentFunctionData* comp_data = &data->glue_[target];
@@ -793,6 +794,19 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
 
     const string& target = pair.first;
     FunctionLibraryRuntime* target_flr = GetFLR(target);
+    if (target_flr == nullptr) {
+      if (!comp_data.ret_indices_.empty()) {
+        return errors::Unimplemented(
+            "Currently, outputting tensors on remote devices is not supported. "
+            "The ",
+            comp_data.ret_indices_[0],
+            "-th return value of the function outputs to target_device: ",
+            target,
+            " Please copy the tensor to local device explicitly using "
+            "tf.identity and return the new Tensor instead.");
+      }
+      continue;
+    }
     Device* target_device = target_flr->device();
     const FunctionBody* fbody = target_flr->GetFunctionBody(comp_data.handle_);
     DCHECK(fbody != nullptr);

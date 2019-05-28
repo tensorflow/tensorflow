@@ -272,9 +272,19 @@ PYBIND11_MODULE(xla_extension, m) {
   // CPU custom-call targets.
   m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
 
+  py::class_<AllocatorConfig> alloc_config(m, "AllocatorConfig");
+  alloc_config.def(py::init<>())
+      .def_readwrite("kind", &AllocatorConfig::kind)
+      .def_readwrite("memory_fraction", &AllocatorConfig::memory_fraction);
+  py::enum_<AllocatorConfig::Kind>(alloc_config, "Kind")
+      .value("DEFAULT", AllocatorConfig::Kind::kDefault)
+      .value("PLATFORM", AllocatorConfig::Kind::kPlatform)
+      .value("BFC", AllocatorConfig::Kind::kBFC);
+
   py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
       .def_static("Get", &PyLocalClient::Get, py::arg("platform"),
-                  py::arg("xla_platform_id"), py::arg("asynchronous"))
+                  py::arg("xla_platform_id"), py::arg("asynchronous"),
+                  py::arg("allocator_config") = AllocatorConfig())
       .def("DeviceCount", &PyLocalClient::device_count)
       .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
       .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
@@ -298,9 +308,9 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>())
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
-           py::call_guard<py::gil_scoped_release>());
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def_property("xla_cpu_enable_fast_math",

@@ -442,13 +442,18 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
   use_per_replica_batch = not global_batch_size_supported(
       distribution_strategy)
 
-  # Partial batches are allowed for training as we repeat the
-  # dataset when converting numpy arrays into a dataset.
-  # For other modes uneven batch sizes are not allowed except
+  # TODO(b/128995245): In eager mode, uneven batch sizes are allowed except for
+  # `fit()` on TPUStrategy.
+  # In graph mode, the zero batch case in batch norm is not handled due to
+  # XLA-GPU regression. Uneven batch sizes are not allowed except
   # for `test()` and `predict()` on TPUStrategy.
-  allow_partial_batch = (mode == ModeKeys.TRAIN or
-                         ((mode == ModeKeys.PREDICT or mode == ModeKeys.TEST)
-                          and is_tpu_strategy(distribution_strategy)))
+  if context.executing_eagerly():
+    allow_partial_batch = (mode != ModeKeys.TRAIN or
+                           not is_tpu_strategy(distribution_strategy))
+  else:
+    allow_partial_batch = (mode == ModeKeys.TRAIN or
+                           ((mode == ModeKeys.PREDICT or mode == ModeKeys.TEST)
+                            and is_tpu_strategy(distribution_strategy)))
 
   if steps is None:
     if batch_size is None:

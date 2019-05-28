@@ -94,7 +94,6 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -122,6 +121,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/distribute:distribute_lib",
     ],
 )
 

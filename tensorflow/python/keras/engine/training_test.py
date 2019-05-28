@@ -1196,6 +1196,24 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(model.training, expected_training_arg)
     self.assertEqual(model.l1.training, expected_training_arg)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_error_when_model_is_not_compiled(self):
+    inputs = keras.Input(shape=(1,))
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
+      model.fit(np.ones((1, 1)), np.ones((1, 1)))
+
+    class MyModel(keras.Model):
+
+      def call(self, x):
+        self.add_loss(math_ops.reduce_sum(x))
+        return x
+
+    model = MyModel()
+    with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
+      model.fit(np.random.random((32, 1)), epochs=2)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 

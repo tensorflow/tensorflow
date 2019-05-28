@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 
+#include <cmath>
 #include <complex>
 #include <vector>
 
@@ -334,6 +335,9 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
+  // Enables NNAPI delegate application during interpreter creation.
+  static void SetForceUseNnapi(bool use_nnapi);
+
  protected:
   int32_t GetTensorSize(int index) const;
 
@@ -400,7 +404,7 @@ class SingleOpModel {
     } else if (zero_point_double > qmax_double) {
       nudged_zero_point = qmax;
     } else {
-      nudged_zero_point = static_cast<T>(round(zero_point_double));
+      nudged_zero_point = static_cast<T>(std::round(zero_point_double));
     }
 
     // The zero point should always be in the range of quantized value,

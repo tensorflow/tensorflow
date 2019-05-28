@@ -643,3 +643,20 @@ py_library(
         "//tensorflow/python/eager:context",
     ],
 )
+
+tf_py_test(
+    name = "remote_test",
+    size = "medium",
+    srcs = ["remote_test.py"],
+    additional_deps = [
+        ":context",
+        ":def_function",
+        ":test",
+        ":remote",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+    tags = [
+        "no_oss",  # This test launches local server.
+        "optonly",  # times out
+    ],
+)

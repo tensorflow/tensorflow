@@ -2936,7 +2936,7 @@ static Status ValidateGatherDimensionNumbers(
     const GatherDimensionNumbers& gather_dim_numbers,
     absl::Span<const int64> slice_sizes) {
   TF_RETURN_IF_ERROR(
-      ExpectArray(input_shape, "input tensor operand gather op"));
+      ExpectArray(input_shape, "input tensor operand of gather op"));
   TF_RETURN_IF_ERROR(
       ExpectArray(start_indices_shape, "gather indices operand of gather op"));
 

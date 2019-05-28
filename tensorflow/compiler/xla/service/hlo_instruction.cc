@@ -460,11 +460,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         }
         instruction =
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             operand_shapes, proto.custom_call_opaque());
+                             operand_shapes, proto.backend_config());
       } else {
         instruction =
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             proto.custom_call_opaque());
+                             proto.backend_config());
       }
       if (proto.has_window()) {
         static_cast<HloCustomCallInstruction*>(instruction.get())
@@ -631,6 +631,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
+  instruction->outer_dimension_partitions_.assign(
+      proto.outer_dimension_partitions().begin(),
+      proto.outer_dimension_partitions().end());
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -1299,18 +1302,18 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, absl::string_view opaque) {
+    absl::string_view custom_call_target, string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
-      shape, operands, custom_call_target, opaque);
+      shape, operands, custom_call_target, std::move(opaque));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target,
-    absl::Span<const Shape> operand_shapes_with_layout,
-    absl::string_view opaque) {
+    absl::Span<const Shape> operand_shapes_with_layout, string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
-      shape, operands, custom_call_target, opaque, operand_shapes_with_layout);
+      shape, operands, custom_call_target, std::move(opaque),
+      operand_shapes_with_layout);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
@@ -1524,6 +1527,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
+  clone->set_outer_dimension_partitions(outer_dimension_partitions_);
   clone->set_raw_backend_config_string(backend_config_);
   if (context != nullptr) {
     context->MapInstruction(this, clone.get());
@@ -1624,12 +1628,12 @@ const HloInstruction* HloInstruction::LatestNonGteAncestor() const {
 }
 
 const HloInstruction* HloInstruction::operand(int64 i) const {
-  return operands_[i];
+  return operands_.at(i);
 }
 
 HloInstruction* HloInstruction::mutable_operand(int64 i) {
   CHECK(operands_[i] != nullptr);
-  return operands_[i];
+  return operands_.at(i);
 }
 
 int64 HloInstruction::operand_index(const HloInstruction* target) const {
@@ -2414,6 +2418,11 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (has_sharding()) {
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
+  if (!outer_dimension_partitions_.empty()) {
+    extra.push_back(absl::StrFormat("outer_dimension_partitions={%s}",
+                                    StrJoin(outer_dimension_partitions_, ",")));
+  }
+
   if (options.print_control_dependencies() && !control_predecessors_.empty()) {
     extra.push_back(StrCat("control-predecessors={",
                            StrJoin(control_predecessors_, ", ",
@@ -2462,6 +2471,11 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
+  }
+  if (!outer_dimension_partitions_.empty()) {
+    for (const auto& idx : outer_dimension_partitions_) {
+      proto.mutable_outer_dimension_partitions()->Add(idx);
+    }
   }
 
   return proto;

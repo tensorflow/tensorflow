@@ -145,6 +145,7 @@ cc_library(
         ":shared_device_buffer",
         ":types",
         ":worker_thread",
+        "//tensorflow/compiler/jit:xla_launch_util",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -161,6 +162,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:bfc_allocator",
+        "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
@@ -214,7 +217,6 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:name_uniquer",
@@ -229,6 +231,7 @@ tf_pybind_extension(
         # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+        "//tensorflow/stream_executor:device_memory_allocator",
     ] + xla_python_default_plugins(),
 )
 

@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,

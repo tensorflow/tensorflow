@@ -59,6 +59,22 @@ JNIEXPORT void JNICALL Java_org_tensorflow_EagerOperation_deleteTensorHandle(
   TFE_DeleteTensorHandle(reinterpret_cast<TFE_TensorHandle*>(handle));
 }
 
+JNIEXPORT jlong JNICALL Java_org_tensorflow_EagerOperation_resolveTensorHandle(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  TFE_TensorHandle* tensor_handle = requireTensorHandle(env, handle);
+  if (tensor_handle == nullptr) return 0;
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* tensor = TFE_TensorHandleResolve(tensor_handle, status);
+  if (!throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
+    return 0;
+  }
+  TF_DeleteStatus(status);
+  static_assert(sizeof(jlong) >= sizeof(TF_Tensor*),
+                "Cannot represent a C TF_Tensor as a Java long");
+  return reinterpret_cast<jlong>(tensor);
+}
+
 JNIEXPORT jint JNICALL Java_org_tensorflow_EagerOperation_outputListLength(
     JNIEnv* env, jclass clazz, jlong handle, jstring name) {
   TFE_Op* op = requireOp(env, handle);

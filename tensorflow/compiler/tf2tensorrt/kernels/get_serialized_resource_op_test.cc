@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <dirent.h>
 #include <string.h>
+
 #include <fstream>
 #include <vector>
 
@@ -68,9 +69,9 @@ TEST_F(GetSerializedResourceOpTest, Basic) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Verify the result.
-  // TODO(laigd): OpsTestBase::GetOutput() doesn't work.
-  Tensor* output = context_->mutable_output(0);
-  EXPECT_EQ("my_serialized_str", output->scalar<string>()());
+  // string type output will remain on CPU, so we're not using GetOutput() here.
+  EXPECT_EQ("my_serialized_str",
+            context_->mutable_output(0)->scalar<string>()());
 }
 
 }  // namespace tensorrt

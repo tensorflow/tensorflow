@@ -1320,6 +1320,10 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
 
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
+
   Args:
     tensor:  N-D tensor.
     mask:  K-D boolean tensor, K <= N and K must be known statically.
@@ -1403,6 +1407,10 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   The `axis` could be used with `mask` to indicate the axis to mask from.
   In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
   the first `axis + dim(mask)` dimensions of `tensor`'s shape.
+
+  See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
+  ragged tensors, and can be used if you need to preserve the masked dimensions
+  of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
 
   Args:
     tensor:  N-D tensor.
@@ -3126,8 +3134,6 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
 
-  Note: When it comes to squeezing ragged tensors, it has O(number of elements).
-
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
 
@@ -3159,11 +3165,60 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 @tf_export("squeeze", v1=[])
 @dispatch.add_dispatch_support
 def squeeze_v2(input, axis=None, name=None):
+  """Removes dimensions of size 1 from the shape of a tensor.
+
+  Given a tensor `input`, this operation returns a tensor of the same type with
+  all dimensions of size 1 removed. If you don't want to remove all size 1
+  dimensions, you can remove specific size 1 dimensions by specifying
+  `axis`.
+
+  For example:
+
+  ```python
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  tf.shape(tf.squeeze(t))  # [2, 3]
+  ```
+
+  Or, to remove specific size 1 dimensions:
+
+  ```python
+  # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+  tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
+  ```
+
+  Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
+  deprecated `squeeze_dims` argument.
+
+  Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
+  time, where `N` is the number of elements in the squeezed dimensions.
+
+  Args:
+    input: A `Tensor`. The `input` to squeeze.
+    axis: An optional list of `ints`. Defaults to `[]`. If specified, only
+      squeezes the dimensions listed. The dimension index starts at 0. It is an
+      error to squeeze a dimension that is not 1. Must be in the range
+      `[-rank(input), rank(input))`. Must be specified if `input` is a
+      `RaggedTensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+    Contains the same data as `input`, but has one or more dimensions of
+    size 1 removed.
+
+  Raises:
+    ValueError: The input cannot be converted to a tensor, or the specified
+      axis cannot be squeezed.
+  """
   # pylint: disable=redefined-builtin
   return squeeze(input, axis, name)
 
 
-@tf_export("where")
+@tf_export(v1=["where"])
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.where in 2.0, "
+    "which has the same broadcast rule as np.where")
 @dispatch.add_dispatch_support
 def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
@@ -3213,6 +3268,48 @@ def where(condition, x=None, y=None, name=None):
       return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
     return gen_math_ops.select(condition=condition, x=x, y=y, name=name)
+  else:
+    raise ValueError("x and y must both be non-None or both be None.")
+
+
+@tf_export("where", v1=["where_v2"])
+def where_v2(condition, x=None, y=None, name=None):
+  """Return the elements, either from `x` or `y`, depending on the `condition`.
+
+  If both `x` and `y` are None, then this operation returns the coordinates of
+  true elements of `condition`.  The coordinates are returned in a 2-D tensor
+  where the first dimension (rows) represents the number of true elements, and
+  the second dimension (columns) represents the coordinates of the true
+  elements. Keep in mind, the shape of the output tensor can vary depending on
+  how many true values there are in input. Indices are output in row-major
+  order.
+  If both non-None, `condition`, `x` and `y` must be broadcastable to the same
+  shape.
+  The `condition` tensor acts as a mask that chooses, based on the value at each
+  element, whether the corresponding element / row in the output should be taken
+  from `x` (if true) or `y` (if false).
+  Args:
+    condition: A `Tensor` of type `bool`
+    x: A Tensor which is of the same type as `y`, and may be broadcastable with
+      `condition` and `y`.
+    y: A Tensor which is of the same type as `x`, and may be broadcastable with
+      `condition` and `x`.
+    name: A name of the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `x` and `y`, and shape that
+      is broadcasted from `condition`, `x`, and `y`, if `x`, `y` are non-None.
+    A `Tensor` with shape `(num_true, dim_size(condition))`.
+  Raises:
+    ValueError: When exactly one of `x` or `y` is non-None.
+  """
+  if x is None and y is None:
+    with ops.name_scope(name, "Where", [condition]) as name:
+      condition = ops.convert_to_tensor(
+          condition, preferred_dtype=dtypes.bool, name="condition")
+      return gen_array_ops.where(condition=condition, name=name)
+  elif x is not None and y is not None:
+    return gen_math_ops.select_v2(condition=condition, t=x, e=y, name=name)
   else:
     raise ValueError("x and y must both be non-None or both be None.")
 
@@ -3346,6 +3443,12 @@ def gather(params,
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
+  if compat.forward_compatible(2019, 6, 10):
+    if axis is None:
+      axis = batch_dims
+    return gen_array_ops.gather_v2(
+        params, indices, axis, batch_dims=batch_dims, name=name)
+
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):
       return _batch_gather(params, indices, batch_dims, axis)

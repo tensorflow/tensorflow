@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/stream_executor/owning_device_memory.h"
 
 namespace xla {
 
@@ -188,7 +187,12 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
     }
     tree.shape = ShapeUtil::MakeTupleShape(host_shapes);
   } else {
-    tree.leaves.push_back(py::cast<xla::BorrowingLiteral>(argument));
+    pybind11::detail::type_caster<BorrowingLiteral> caster;
+    if (!caster.load(argument, /*convert=*/true)) {
+      return InvalidArgument("Invalid array value.");
+    }
+    tree.arrays.push_back(std::move(caster.array));
+    tree.leaves.push_back(std::move(*caster));
     tree.shape = tree.leaves.front().shape();
   }
   return tree;

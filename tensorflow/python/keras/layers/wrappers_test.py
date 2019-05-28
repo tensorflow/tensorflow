@@ -913,6 +913,50 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(layer_from_config.forward_layer.name, 'forward_lstm')
     self.assertEqual(layer_from_config.backward_layer.name, 'backward_lstm_1')
 
+  def test_rnn_with_customized_cell(self):
+    batch = 20
+    dim = 5
+    timesteps = 3
+    units = 5
+    merge_mode = 'sum'
+
+    class ResidualLSTMCell(keras.layers.LSTMCell):
+
+      def call(self, inputs, states, training=None):
+        output, states = super(ResidualLSTMCell, self).call(inputs, states)
+        return output + inputs, states
+
+    cell = ResidualLSTMCell(units)
+    forward_layer = keras.layers.RNN(cell)
+    inputs = keras.Input((timesteps, dim))
+    bidirectional_rnn = keras.layers.Bidirectional(
+        forward_layer, merge_mode=merge_mode)
+    outputs = _to_list(bidirectional_rnn(inputs))
+
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+        np.random.random((batch, timesteps, dim)),
+        np.random.random((batch, units)),
+        epochs=1,
+        batch_size=10)
+
+    # Test stacking
+    cell = [ResidualLSTMCell(units), ResidualLSTMCell(units)]
+    forward_layer = keras.layers.RNN(cell)
+    inputs = keras.Input((timesteps, dim))
+    bidirectional_rnn = keras.layers.Bidirectional(
+        forward_layer, merge_mode=merge_mode)
+    outputs = _to_list(bidirectional_rnn(inputs))
+
+    model = keras.Model(inputs, outputs)
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(
+        np.random.random((batch, timesteps, dim)),
+        np.random.random((batch, units)),
+        epochs=1,
+        batch_size=10)
+
 
 def _to_list(ls):
   if isinstance(ls, list):

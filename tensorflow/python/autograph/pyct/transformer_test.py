@@ -355,12 +355,13 @@ class TransformerTest(test.TestCase):
       return x
 
     node, source = parser.parse_entity(test_fn, future_features=())
-    origin_info.resolve(node, source)
+    origin_info.resolve(node, source, 'test_file', 100, 0)
     node = tr.visit(node)
 
     created_pass_node = node.body[1]
+    # Takes the line number of the if statement.
     self.assertEqual(
-        anno.getanno(created_pass_node, anno.Basic.ORIGIN).loc.lineno, 3)
+        anno.getanno(created_pass_node, anno.Basic.ORIGIN).loc.lineno, 102)
 
   def test_origin_info_preserved_in_moved_nodes(self):
 
@@ -379,15 +380,16 @@ class TransformerTest(test.TestCase):
       return x
 
     node, source = parser.parse_entity(test_fn, future_features=())
-    origin_info.resolve(node, source)
+    origin_info.resolve(node, source, 'test_file', 100, 0)
     node = tr.visit(node)
 
     assign_node = node.body[1]
     aug_assign_node = node.body[2]
+    # Keep their original line numbers.
     self.assertEqual(
-        anno.getanno(assign_node, anno.Basic.ORIGIN).loc.lineno, 4)
+        anno.getanno(assign_node, anno.Basic.ORIGIN).loc.lineno, 103)
     self.assertEqual(
-        anno.getanno(aug_assign_node, anno.Basic.ORIGIN).loc.lineno, 5)
+        anno.getanno(aug_assign_node, anno.Basic.ORIGIN).loc.lineno, 104)
 
 
 if __name__ == '__main__':

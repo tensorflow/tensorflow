@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
@@ -476,6 +477,18 @@ class StreamExecutor {
   // Return allocator statistics.
   absl::optional<AllocatorStats> GetAllocatorStats();
 
+  // Return an allocator which delegates to this stream executor for memory
+  // allocation.
+  //
+  // Creates the allocator object on the first access, as the device ordinal
+  // of this stream_executor is not set in constructor.
+  StreamExecutorMemoryAllocator *GetAllocator() {
+    if (!allocator_.has_value()) {
+      allocator_.emplace(this);
+    }
+    return &allocator_.value();
+  }
+
  private:
   template <typename BeginCallT, typename CompleteCallT,
             typename ReturnT, typename... BeginArgsT>
@@ -706,6 +719,8 @@ class StreamExecutor {
   // limit.
   int64 memory_limit_bytes_;
 
+  absl::optional<StreamExecutorMemoryAllocator> allocator_;
+
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
 
@@ -766,13 +781,11 @@ inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
 }
 
 template <typename ElemT>
-ScopedDeviceMemory<ElemT>::ScopedDeviceMemory()
-    : wrapped_(DeviceMemoryBase()), parent_(nullptr) {}
-
-template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor *parent,
                                               DeviceMemoryBase value)
-    : wrapped_(value), parent_(parent) {}
+    : wrapped_(value),
+      device_ordinal_(parent->device_ordinal()),
+      allocator_(parent->GetAllocator()) {}
 
 template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
@@ -782,34 +795,9 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
     std::vector<ElemT> local(values);
     if (!parent->SynchronousMemcpy(ptr(), const_cast<const ElemT *>(&local[0]),
                                    ptr()->size())) {
-      Reset(nullptr);
+      Free();
     }
   }
-}
-
-template <typename ElemT>
-ScopedDeviceMemory<ElemT>::~ScopedDeviceMemory() {
-  if (wrapped_ == nullptr) return;
-  DCHECK(parent_ != nullptr);
-  parent_->Deallocate(&wrapped_);
-}
-
-template <typename ElemT>
-void ScopedDeviceMemory<ElemT>::Reset(DeviceMemory<ElemT> updated) {
-  if (wrapped_ != nullptr) {
-    DCHECK(parent_ != nullptr);
-    parent_->Deallocate(&wrapped_);
-  }
-  wrapped_ = updated;
-}
-
-template <typename ElemT>
-void ScopedDeviceMemory<ElemT>::Reset(std::nullptr_t) {
-  if (wrapped_ != nullptr) {
-    DCHECK(parent_ != nullptr);
-    parent_->Deallocate(&wrapped_);
-  }
-  wrapped_ = DeviceMemory<ElemT>{};
 }
 
 template <typename T>

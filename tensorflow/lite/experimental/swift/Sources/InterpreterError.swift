@@ -40,7 +40,7 @@ extension InterpreterError: LocalizedError {
     case .invalidTensorDataCount(let providedCount, let requiredCount):
       return "Provided data count \(providedCount) must match the required count \(requiredCount)."
     case .invalidTensorDataType:
-      return "Tensor data type is unsupported or could not be determined because of a model error."
+      return "Tensor data type is unsupported or could not be determined due to a model error."
     case .failedToLoadModel:
       return "Failed to load the given model."
     case .failedToCreateInterpreter:
