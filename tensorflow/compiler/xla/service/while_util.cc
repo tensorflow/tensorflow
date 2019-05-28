@@ -166,7 +166,7 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * compare,
-      MakeBinaryHlo(HloOpcode::kLt, indvar, trip_count_constant));
+      MakeCompareHlo(ComparisonDirection::kLt, indvar, trip_count_constant));
   cond_computation->set_root_instruction(compare);
   return std::move(cond_computation);
 }

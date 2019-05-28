@@ -143,11 +143,6 @@ class CheckpointingTests(test.TestCase):
     suffix = "/.ATTRIBUTES/VARIABLE_VALUE"
     expected_checkpoint_names = [
         name + suffix for name in expected_checkpoint_names]
-    # The optimizer and Dense layers also save get_config() JSON
-    expected_checkpoint_names.extend([
-        "model/_second/.ATTRIBUTES/OBJECT_CONFIG_JSON",
-        "model/_named_dense/.ATTRIBUTES/OBJECT_CONFIG_JSON"
-    ])
     named_variables = {v.name: v for v in named_variables}
     six.assertCountEqual(self, expected_checkpoint_names,
                          named_variables.keys())
@@ -302,7 +297,7 @@ class CheckpointingTests(test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.AdamOptimizer(0.001)
-          root = util.Checkpoint(
+          root = util.CheckpointV1(
               optimizer=optimizer, model=model,
               global_step=training_util.get_or_create_global_step())
           input_value = constant_op.constant([[3.]])
@@ -726,10 +721,9 @@ class CheckpointCompatibilityTests(test.TestCase):
     with context.graph_mode():
       save_graph = ops.Graph()
       with save_graph.as_default(), self.test_session(
-          graph=save_graph) as session:
+          graph=save_graph):
         root = self._initialized_model()
-        save_path = root.save(
-            session=session, file_prefix=checkpoint_prefix)
+        save_path = root.save(file_prefix=checkpoint_prefix)
     with context.eager_mode():
       root = self._initialized_model()
       self._set_sentinels(root)

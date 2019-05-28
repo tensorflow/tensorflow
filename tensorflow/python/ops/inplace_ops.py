@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -55,7 +56,7 @@ def _inplace_helper(x, i, v, op):
     return array_ops.reshape(
         op(array_ops.reshape(x, [1, -1]), [0], array_ops.reshape(v, [1, -1])),
         array_ops.shape(x))
-  i = math_ops.to_int32(i)
+  i = math_ops.cast(i, dtypes.int32)
   if i.get_shape().ndims == 0:
     # Single 0-dim update.
     return op(x, array_ops.reshape(i, [1]), array_ops.expand_dims(v, 0))

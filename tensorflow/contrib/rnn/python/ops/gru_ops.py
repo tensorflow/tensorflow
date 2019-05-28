@@ -151,7 +151,7 @@ class GRUBlockCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
-        with `tf.nn.rnn_cell.GRUCell`.
+        with `tf.compat.v1.nn.rnn_cell.GRUCell`.
 
     Raises:
       ValueError: if both cell_size and num_units are not None;

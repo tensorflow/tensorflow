@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/collective_nccl_reducer.h"
 
 #include <algorithm>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/device.h"

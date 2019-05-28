@@ -15,9 +15,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/broadcast_to_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -80,6 +81,10 @@ class BroadcastToOp : public OpKernel {
                 errors::InvalidArgument(
                     "Incompatible shapes: ", input_shape.DebugString(), " vs. ",
                     output_shape.DebugString()));
+    OP_REQUIRES(ctx, BCast::ToShape(bcast.output_shape()) == output_shape,
+                errors::InvalidArgument("Unable to broadcast tensor of shape ",
+                                        input_shape, " to tensor of shape ",
+                                        output_shape));
 
     functor::BroadcastTo<Device, T>()(device, ctx, *output_tensor, output_shape,
                                       input_tensor, input_shape, bcast);
@@ -96,7 +101,8 @@ class BroadcastToOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 namespace functor {
 #define DECLARE_GPU_TEMPLATE(Type)                               \
@@ -120,6 +126,17 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_TEMPLATE);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("BroadcastTo")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("input")
+                            .HostMemory("shape")
+                            .HostMemory("output"),
+                        BroadcastToOp<CPUDevice, int32>);
 #endif
 
 }  // namespace tensorflow

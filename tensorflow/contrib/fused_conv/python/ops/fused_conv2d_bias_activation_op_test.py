@@ -23,14 +23,19 @@ from tensorflow.contrib.fused_conv.python.ops import fused_conv2d_bias_activatio
 from tensorflow.python.platform import test
 
 
-# Instantiate the two test suites from test_base, mixing in test.TestCase as
+# Instantiate three test suites from test_base, mixing in test.TestCase as
 # the test framework.
 class FusedConv2DBiasActivationTest(test_base.FusedConv2DBiasActivationTest,
                                     test.TestCase):
   pass
 
 
-class FusedConvInt8Tests(test_base.FusedConvInt8Tests, test.TestCase):
+class FusedConvInt8CPUTests(test_base.FusedConvInt8CPUTests, test.TestCase):
+  pass
+
+
+class FusedConvInt8CorrespondenceTests(
+    test_base.FusedConvInt8CorrespondenceTests, test.TestCase):
   pass
 
 

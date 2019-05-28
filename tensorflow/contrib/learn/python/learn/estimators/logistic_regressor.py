@@ -31,6 +31,7 @@ from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 
 
@@ -160,8 +161,9 @@ def _make_logistic_eval_metric_ops(labels, predictions, thresholds):
       labels=labels_tensor, predictions=predictions)
 
   for threshold in thresholds:
-    predictions_at_threshold = math_ops.to_float(
+    predictions_at_threshold = math_ops.cast(
         math_ops.greater_equal(predictions, threshold),
+        dtypes.float32,
         name='predictions_at_threshold_%f' % threshold)
     metrics[metric_key.MetricKey.ACCURACY_MEAN % threshold] = (
         metrics_lib.streaming_accuracy(labels=labels_tensor,

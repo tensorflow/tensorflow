@@ -1,0 +1,11 @@
+include "workgroups.fbs";
+
+namespace tflite.gpu.gl.data;
+
+file_identifier "AFFL";
+
+table FlowMetadata {
+  workgroups:CustomWorkgroups;
+}
+
+root_type FlowMetadata;

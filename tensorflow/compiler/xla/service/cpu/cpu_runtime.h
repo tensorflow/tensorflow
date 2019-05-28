@@ -66,6 +66,9 @@ extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
 extern const char* const kKeyValueSortSymbolName;
 
+extern const char* const kTracingStartSymbolName;
+extern const char* const kTracingEndSymbolName;
+
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
 extern const char* const kXlaCpuRuntimeSymbolNamePrefix;
@@ -79,6 +82,13 @@ XfeedManager* GetXfeedManager(int device_ordinal);
 }  // namespace xla
 
 extern "C" {
+
+extern xla::int64 __xla_cpu_runtime_TracingStart(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    const char* name);
+extern void __xla_cpu_runtime_TracingEnd(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
+    xla::int64 id);
 
 // Some things common to all of the runtime entry points below:
 //

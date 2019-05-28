@@ -42,7 +42,7 @@ Aws::Client::ClientConfiguration* InitializeDefaultClientConfig() {
     // is set with a truthy value.
     const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
     string load_config =
-        load_config_env ? str_util::Lowercase(load_config_env) : "";
+        load_config_env ? absl::AsciiStrToLower(load_config_env) : "";
     if (load_config == "true" || load_config == "1") {
       Aws::String config_file;
       // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.

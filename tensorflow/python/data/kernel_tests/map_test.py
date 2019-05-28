@@ -47,8 +47,12 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -728,6 +732,64 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
 
+  def testTensorArray(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array)
+    self.assertDatasetProduces(
+        dataset, expected_output=[list(range(i)) for i in range(10)])
+
+  def testTensorArrayChain(self):
+
+    def _tensor_array(i):
+      i = math_ops.cast(i, dtypes.int32)
+      return (
+          tensor_array_ops.TensorArray(dtypes.int32, element_shape=(), size=i)
+          .unstack(math_ops.range(i, dtype=dtypes.int32)))
+
+    def _check(x):
+      self.assertIsInstance(x, tensor_array_ops.TensorArray)
+      return x.identity()
+
+    dataset = dataset_ops.Dataset.range(10).map(_tensor_array).map(_check)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[list(range(i)) for i in range(10)])
+
+  def testRagged(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    dataset = dataset_ops.Dataset.range(5).map(_ragged)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[ragged_factory_ops.constant([[i]]) for i in range(5)])
+
+  def testRaggedChain(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    def _concat(i):
+      self.assertTrue(ragged_tensor.is_ragged(i))
+      return ragged_concat_ops.concat([i, i], 0)
+
+    dataset = dataset_ops.Dataset.range(10).map(_ragged).map(_concat)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            self.evaluate(_concat(ragged_factory_ops.constant([[i]])))
+            for i in range(10)
+        ])
+
   @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
@@ -752,7 +814,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testWarnOnLookupTable(self):
     def collecting_function(x):
       _ = lookup_ops.HashTable(
-          lookup_ops.KeyValueTensorInitializer([], []), 0.0, name="t1")
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
       return x
 
     warnings.simplefilter("always")
@@ -763,11 +825,92 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertGreaterEqual(len(w), 1)
     found_warning = False
     for warning in w:
-      if ("Creating lookup tables inside a function passed to Dataset.map() is "
+      if ("Creating resources inside a function passed to Dataset.map() is "
           "not supported." in str(warning)):
         found_warning = True
         break
     self.assertTrue(found_warning)
+
+  @test_util.run_v1_only("map_with_legacy_function v1 only")
+  def testWarnOnLookupTableLegacyFunction(self):
+
+    def collecting_function(x):
+      _ = lookup_ops.HashTable(
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
+      return x
+
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      _ = dataset_ops.Dataset.range(10).map_with_legacy_function(
+          collecting_function)
+    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
+    # testing, so we search for the expected warning.
+    self.assertGreaterEqual(len(w), 1)
+    found_warning = False
+    for warning in w:
+      if ("Creating resources inside a function passed to Dataset.map() is "
+          "not supported." in str(warning)):
+        found_warning = True
+        break
+    self.assertTrue(found_warning)
+
+  def testWarnOnSeedFromOuterGraph(self):
+    with ops.Graph().as_default() as g:
+      g.seed = 10
+      warnings.simplefilter("always")
+
+      # map_fun doesn't use seed, so no warning is generated.
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).map(math_ops.square)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
+
+      def random_func(x):
+        x = math_ops.add(x, 1)
+        random_ops.random_shuffle([x, math_ops.square(x)])
+        return x
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).map(random_func)
+      self.assertGreaterEqual(len(w), 1)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertTrue(found_warning)
+
+      def random_func_seeded(x):
+        ops.get_default_graph().seed = None
+        random_ops.random_shuffle(x)
+        return x
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).batch(2).map(random_func_seeded)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).batch(
+            2).map(lambda x: random_ops.random_shuffle(x, seed=37))
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
 
   def testNestedDatasetMap(self):
     # TODO(b/110122868): When iterators can yield a `tf.data.Dataset`, remove
@@ -1105,7 +1248,7 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
       expected_error = (
           errors.InvalidArgumentError,
           "Cannot place the graph because a reference or resource edge "
-          "connects colocation groups with incompatible assigned devices")
+          "connects colocation groups with incompatible resource devices")
       self.assertDatasetProduces(
           dataset, expected_error=expected_error, requires_initialization=True)
 

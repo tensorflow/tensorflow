@@ -515,7 +515,7 @@ def move_dimension(x, source_idx, dest_idx):
   Example:
 
   ```python
-  x = tf.placeholder(shape=[200, 30, 4, 1, 6])
+  x = tf.compat.v1.placeholder(shape=[200, 30, 4, 1, 6])
   x_perm = _move_dimension(x, 1, 1) # no-op
   x_perm = _move_dimension(x, 0, 3) # result shape [30, 4, 1, 200, 6]
   x_perm = _move_dimension(x, 0, -2) # equivalent to previous

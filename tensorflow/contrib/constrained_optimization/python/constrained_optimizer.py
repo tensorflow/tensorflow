@@ -32,17 +32,18 @@ from tensorflow.python.training import optimizer as train_optimizer
 class ConstrainedOptimizer(object):
   """Base class representing a constrained optimizer.
 
-  A ConstrainedOptimizer wraps a tf.train.Optimizer (or more than one), and
-  applies it to a ConstrainedMinimizationProblem. Unlike a tf.train.Optimizer,
-  which takes a tensor to minimize as a parameter to its minimize() method, a
-  constrained optimizer instead takes a ConstrainedMinimizationProblem.
+  A ConstrainedOptimizer wraps a tf.compat.v1.train.Optimizer (or more than
+  one), and applies it to a ConstrainedMinimizationProblem. Unlike a
+  tf.compat.v1.train.Optimizer, which takes a tensor to minimize as a parameter
+  to its minimize() method, a constrained optimizer instead takes a
+  ConstrainedMinimizationProblem.
   """
 
   def __init__(self, optimizer):
     """Constructs a new `ConstrainedOptimizer`.
 
     Args:
-      optimizer: tf.train.Optimizer, used to optimize the
+      optimizer: tf.compat.v1.train.Optimizer, used to optimize the
         ConstraintedMinimizationProblem.
 
     Returns:
@@ -52,7 +53,7 @@ class ConstrainedOptimizer(object):
 
   @property
   def optimizer(self):
-    """Returns the `tf.train.Optimizer` used for optimization."""
+    """Returns the `tf.compat.v1.train.Optimizer` used for optimization."""
     return self._optimizer
 
   @abc.abstractmethod
@@ -74,14 +75,15 @@ class ConstrainedOptimizer(object):
     Args:
       minimization_problem: ConstrainedMinimizationProblem, the problem to
         optimize.
-      global_step: as in `tf.train.Optimizer`'s `minimize` method.
-      var_list: as in `tf.train.Optimizer`'s `minimize` method.
-      gate_gradients: as in `tf.train.Optimizer`'s `minimize` method.
-      aggregation_method: as in `tf.train.Optimizer`'s `minimize` method.
-      colocate_gradients_with_ops: as in `tf.train.Optimizer`'s `minimize`
+      global_step: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      var_list: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      gate_gradients: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      aggregation_method: as in `tf.compat.v1.train.Optimizer`'s `minimize`
         method.
-      name: as in `tf.train.Optimizer`'s `minimize` method.
-      grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
+      colocate_gradients_with_ops: as in `tf.compat.v1.train.Optimizer`'s
+        `minimize` method.
+      name: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Returns:
       `Operation`, the train_op.
@@ -106,14 +108,15 @@ class ConstrainedOptimizer(object):
     Args:
       minimization_problem: ConstrainedMinimizationProblem, the problem to
         optimize.
-      global_step: as in `tf.train.Optimizer`'s `minimize` method.
-      var_list: as in `tf.train.Optimizer`'s `minimize` method.
-      gate_gradients: as in `tf.train.Optimizer`'s `minimize` method.
-      aggregation_method: as in `tf.train.Optimizer`'s `minimize` method.
-      colocate_gradients_with_ops: as in `tf.train.Optimizer`'s `minimize`
+      global_step: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      var_list: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      gate_gradients: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      aggregation_method: as in `tf.compat.v1.train.Optimizer`'s `minimize`
         method.
-      name: as in `tf.train.Optimizer`'s `minimize` method.
-      grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
+      colocate_gradients_with_ops: as in `tf.compat.v1.train.Optimizer`'s
+        `minimize` method.
+      name: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Returns:
       `Operation`, the train_op.
@@ -159,14 +162,15 @@ class ConstrainedOptimizer(object):
     Args:
       minimization_problem: ConstrainedMinimizationProblem, the problem to
         optimize.
-      global_step: as in `tf.train.Optimizer`'s `minimize` method.
-      var_list: as in `tf.train.Optimizer`'s `minimize` method.
-      gate_gradients: as in `tf.train.Optimizer`'s `minimize` method.
-      aggregation_method: as in `tf.train.Optimizer`'s `minimize` method.
-      colocate_gradients_with_ops: as in `tf.train.Optimizer`'s `minimize`
+      global_step: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      var_list: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      gate_gradients: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      aggregation_method: as in `tf.compat.v1.train.Optimizer`'s `minimize`
         method.
-      name: as in `tf.train.Optimizer`'s `minimize` method.
-      grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
+      colocate_gradients_with_ops: as in `tf.compat.v1.train.Optimizer`'s
+        `minimize` method.
+      name: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Returns:
       `Operation`, the train_op.
@@ -220,14 +224,15 @@ class ConstrainedOptimizer(object):
         optimize.
       unconstrained_steps: int, number of steps for which we should perform
         unconstrained updates, before transitioning to constrained updates.
-      global_step: as in `tf.train.Optimizer`'s `minimize` method.
-      var_list: as in `tf.train.Optimizer`'s `minimize` method.
-      gate_gradients: as in `tf.train.Optimizer`'s `minimize` method.
-      aggregation_method: as in `tf.train.Optimizer`'s `minimize` method.
-      colocate_gradients_with_ops: as in `tf.train.Optimizer`'s `minimize`
+      global_step: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      var_list: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      gate_gradients: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      aggregation_method: as in `tf.compat.v1.train.Optimizer`'s `minimize`
         method.
-      name: as in `tf.train.Optimizer`'s `minimize` method.
-      grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
+      colocate_gradients_with_ops: as in `tf.compat.v1.train.Optimizer`'s
+        `minimize` method.
+      name: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Returns:
       `Operation`, the train_op.

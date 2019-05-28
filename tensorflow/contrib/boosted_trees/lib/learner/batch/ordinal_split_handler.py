@@ -312,9 +312,10 @@ def _make_dense_split(quantile_accumulator_handle, stats_accumulator_handle,
         gen_stats_accumulator_ops.stats_accumulator_scalar_flush(
             stats_accumulator_handle, stamp_token, next_stamp_token))
   # For sum_reduction, we don't need to divide by number of minibatches.
-  num_minibatches = control_flow_ops.cond(loss_uses_sum_reduction,
-                                          lambda: math_ops.to_int64(1),
-                                          lambda: num_minibatches)
+  num_minibatches = control_flow_ops.cond(
+      loss_uses_sum_reduction,
+      lambda: math_ops.cast(1, dtypes.int64),
+      lambda: num_minibatches)
   # Put quantile and stats accumulator flushing in the dependency path.
   with ops.control_dependencies([flush_quantiles, partition_ids]):
     are_splits_ready = array_ops.identity(are_splits_ready)
@@ -488,9 +489,10 @@ def _make_sparse_split(
     num_minibatches, partition_ids, bucket_ids, gradients, hessians = (
         gen_stats_accumulator_ops.stats_accumulator_scalar_flush(
             stats_accumulator_handle, stamp_token, next_stamp_token))
-  num_minibatches = control_flow_ops.cond(loss_uses_sum_reduction,
-                                          lambda: math_ops.to_int64(1),
-                                          lambda: num_minibatches)
+  num_minibatches = control_flow_ops.cond(
+      loss_uses_sum_reduction,
+      lambda: math_ops.cast(1, dtypes.int64),
+      lambda: num_minibatches)
   # Put quantile and stats accumulator flushing in the dependency path.
   with ops.control_dependencies([flush_quantiles, partition_ids]):
     are_splits_ready = array_ops.identity(are_splits_ready)

@@ -1,8 +1,7 @@
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -70,6 +69,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@protobuf_archive//:protobuf_headers",
     ],
 )
 

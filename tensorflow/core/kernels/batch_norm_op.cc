@@ -127,8 +127,12 @@ class BatchNormGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {2}, 2, var.shape(), &dv));
     Tensor* db = nullptr;
-    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {3}, 3, mean.shape(), &db));
+    if (scale_after_normalization_) {
+      OP_REQUIRES_OK(context, context->allocate_output(3, mean.shape(), &db));
+    } else {
+      OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                  {3}, 3, mean.shape(), &db));
+    }
     Tensor* dg = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(4, gamma.shape(), &dg));
 

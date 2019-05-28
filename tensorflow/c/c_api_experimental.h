@@ -62,6 +62,20 @@ extern "C" {
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
 
+// Set XLA's internal BuildXlaOpsPassFlags.tf_xla_enable_lazy_compilation to the
+// value of 'enabled'. Also returns the original value of that flag.
+//
+// Use in tests to allow XLA to fallback to TF classic. This has global effect.
+TF_CAPI_EXPORT unsigned char TF_SetXlaEnableLazyCompilation(
+    unsigned char enable);
+
+// Sets XLA's auto jit mode according to the specified string, which is parsed
+// as if passed in XLA_FLAGS. This has global effect.
+TF_CAPI_EXPORT void TF_SetXLaAutoJitMode(const char* mode);
+
+// Sets XLA's minimum cluster size. This has global effect.
+TF_CAPI_EXPORT void TF_SetXlaMinClusterSize(int size);
+
 // Create a serialized tensorflow.ConfigProto proto, where:
 //
 // a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
@@ -92,26 +106,6 @@ TF_CAPI_EXPORT extern const char* TF_GraphDebugString(TF_Graph* graph,
 // (e.g. swift) cannot then call free() on the returned pointer.
 TF_CAPI_EXPORT extern char* TF_FunctionDebugString(TF_Function* func,
                                                    size_t* len);
-
-// Creates a stack of data set + iterator nodes, currently hard-coded to return
-// a sequence of 3 float values <42.0, 43.0, 44.0> over 3 calls. On success,
-// returns the IteratorGetNext node, which caller can run or feed into an node.
-//
-// TODO(hongm): Extend the API to allow customization of the nodes created.
-TF_CAPI_EXPORT extern TF_Operation* TF_MakeFakeIteratorGetNextWithDatasets(
-    TF_Graph* graph, TF_Status* status);
-
-// Similar to the above API, except that the returned iterator reads the
-// file based dataset from `file_path`.
-// If `is_mnist` is 0, the dataset corresponds to ImageNet.
-// The iterators outputs 2 tensors:
-// - A float tensor of shape `batch_size` X 784 when `is_mnist` is non-zero, or
-// `batch_size` X 224 X 224 X 3 otherwise.
-// - An int32 tensor of shape `batch_size`
-// TODO(hongm): Extend the API to allow customization of the nodes created.
-TF_CAPI_EXPORT extern TF_Operation* TF_MakeFileBasedIteratorGetNextWithDatasets(
-    TF_Graph* graph, const char* file_path, int batch_size,
-    unsigned char is_mnist, TF_Status* status);
 
 // On success, dequeues a tensor from a TF-managed FifoQueue given by
 // `tensor_id`, associated with `session`. There must be a graph node named
@@ -213,6 +207,34 @@ TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
 
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
+
+// TF_NewCheckpointReader() return the CheckpointReader that can be use to
+// investigate or load the variable from the checkpoint file
+typedef struct TF_CheckpointReader TF_CheckpointReader;
+TF_CAPI_EXPORT extern TF_CheckpointReader* TF_NewCheckpointReader(
+    const char* filename, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_DeleteCheckpointReader(
+    TF_CheckpointReader* reader);
+TF_CAPI_EXPORT extern int TF_CheckpointReaderHasTensor(
+    TF_CheckpointReader* reader, const char* name);
+// Get the variable name at the given index
+TF_CAPI_EXPORT extern const char* TF_CheckpointReaderGetVariable(
+    TF_CheckpointReader* reader, int index);
+// Get the number of variable in the checkpoint
+TF_CAPI_EXPORT extern int TF_CheckpointReaderSize(TF_CheckpointReader* reader);
+// Get the DataType of a variable
+TF_CAPI_EXPORT extern TF_DataType TF_CheckpointReaderGetVariableDataType(
+    TF_CheckpointReader* reader, const char* name);
+// Read the shape of a variable and write to `dims`
+TF_CAPI_EXPORT extern void TF_CheckpointReaderGetVariableShape(
+    TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims,
+    TF_Status* status);
+// Get the number of dimension of a variable
+TF_CAPI_EXPORT extern int TF_CheckpointReaderGetVariableNumDims(
+    TF_CheckpointReader* reader, const char* name);
+// Load the weight of a variable
+TF_CAPI_EXPORT extern TF_Tensor* TF_CheckpointReaderGetTensor(
+    TF_CheckpointReader* reader, const char* name, TF_Status* status);
 
 // TF_NewAttrBuilder() returns an object that you can set attributes on as
 // though it were an op. This allows querying properties of that op for

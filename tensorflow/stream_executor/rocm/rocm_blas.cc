@@ -18,12 +18,13 @@ limitations under the License.
 #include "tensorflow/stream_executor/rocm/rocm_blas.h"
 
 #define EIGEN_USE_GPU
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include <assert.h>
+
 #include <complex>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
@@ -382,7 +382,7 @@ template <typename FuncT, typename... Args>
 bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
                                   bool pointer_mode_host, bool err_on_failure,
                                   Args... args) {
-  mutex_lock lock{mu_};
+  absl::MutexLock lock{&mu_};
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
@@ -1462,8 +1462,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           float alpha, const DeviceMemory<Eigen::half> &a,
                           int lda, const DeviceMemory<Eigen::half> &b, int ldb,
                           float beta, DeviceMemory<Eigen::half> *c, int ldc) {
-  VLOG(1) << port::Printf(
-      "doing rocBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
+  VLOG(1) << absl::StreamFormat(
+      "doing rocBLAS SGEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
@@ -1507,8 +1507,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &b, int ldb, float beta,
                           DeviceMemory<float> *c, int ldc) {
-  VLOG(1) << port::Printf(
-      "doing rocBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
+  VLOG(1) << absl::StreamFormat(
+      "doing rocBLAS SGEMM: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,

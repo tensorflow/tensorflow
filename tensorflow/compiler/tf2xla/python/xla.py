@@ -295,8 +295,16 @@ def self_adjoint_eig(a, lower, max_iter, epsilon):
   return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
 
 
+def svd(a, max_iter, epsilon, precision_config=None):
+  precision_config_proto = ""
+  if precision_config:
+    precision_config_proto = precision_config.SerializeToString()
+  return gen_xla_ops.xla_svd(a, max_iter, epsilon, precision_config_proto)
+
+
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
+einsum = gen_xla_ops.xla_einsum
 
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove
 # the XLA-specific pad operator.
@@ -362,6 +370,9 @@ def reduce_window(operand,
       padding=padding,
       computation=reducer,
       name=name)
+
+
+replica_id = gen_xla_ops.xla_replica_id
 
 
 def reshape(x, new_sizes, dimensions=None, name=None):

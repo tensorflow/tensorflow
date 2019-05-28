@@ -144,7 +144,7 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
-        handle_name = ops._name_from_scope_name(name)
+        handle_name = ops.name_from_scope_name(name)
         shared_name = handle_name
         if init_from_fn:
           # Use attr_scope and device(None) to simulate the behavior of

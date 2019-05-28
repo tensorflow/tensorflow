@@ -16,6 +16,8 @@ limitations under the License.
 // XLA-specific Shape Ops.
 
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
+#include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -223,14 +226,42 @@ class ZerosLikeOp : public XlaOpKernel {
   explicit ZerosLikeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
+    if (IsTensorListInput(ctx, 0)) {
+      // Input is a TensorList.
 
-    auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
-    ctx->SetOutput(0, xla::Broadcast(zero, input_shape.dim_sizes()));
+      // Check the TensorList input is initialized.
+      xla::XlaOp list = ctx->Input(0);
+      bool is_initialized;
+      OP_REQUIRES_OK(ctx, IsTensorListInitialized(list, &is_initialized));
+      OP_REQUIRES(
+          ctx, is_initialized,
+          errors::InvalidArgument(
+              "TensorList input for ZerosLike op is an uninitialized list"));
+
+      auto list_shape_or = ctx->builder()->GetShape(list);
+      OP_REQUIRES_OK(ctx, list_shape_or.status());
+      xla::XlaOp new_list;
+      OP_REQUIRES_OK(
+          ctx, CreateZerosTensorListWithShape(
+                   ctx->builder(), list_shape_or.ValueOrDie(), &new_list));
+
+      xla::XlaOp push_index;
+      OP_REQUIRES_OK(ctx, GetTensorListPushIndex(list, &push_index));
+
+      xla::XlaOp result;
+      OP_REQUIRES_OK(ctx,
+                     SetTensorListPushIndex(new_list, push_index, &result));
+      ctx->SetTensorListOutput(0, result);
+    } else {
+      const TensorShape input_shape = ctx->InputShape(0);
+
+      auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
+      ctx->SetOutput(0, xla::Broadcast(zero, input_shape.dim_sizes()));
+    }
   }
 };
 
-REGISTER_XLA_OP(Name("ZerosLike"), ZerosLikeOp);
+REGISTER_XLA_OP(Name("ZerosLike").AllowVariantTypes(), ZerosLikeOp);
 
 class OnesLikeOp : public XlaOpKernel {
  public:

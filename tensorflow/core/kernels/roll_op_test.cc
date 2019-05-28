@@ -373,8 +373,7 @@ TEST_F(RollOpTest, Error_InputMustBeVectorOrHigher) {
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({}), {0});
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "input must be 1-D or higher"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "input must be 1-D or higher"))
       << s;
 }
 
@@ -386,8 +385,8 @@ TEST_F(RollOpTest, Error_AxisMustBeScalarOrVector) {
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(),
-                                    "axis must be a scalar or a 1-D vector"))
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "axis must be a scalar or a 1-D vector"))
       << s;
 }
 
@@ -399,8 +398,8 @@ TEST_F(RollOpTest, Error_ShiftMustBeScalarOrVector) {
   AddInputFromArray<int32>(TensorShape({1, 2}), {0, 1});
   AddInputFromArray<int32>(TensorShape({}), {1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(),
-                                    "shift must be a scalar or a 1-D vector"))
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "shift must be a scalar or a 1-D vector"))
       << s;
 }
 
@@ -412,8 +411,8 @@ TEST_F(RollOpTest, Error_ShiftAndAxisMustBeSameSize) {
   AddInputFromArray<int32>(TensorShape({1}), {1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(),
-                                    "shift and axis must have the same size"))
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "shift and axis must have the same size"))
       << s;
 }
 
@@ -425,7 +424,7 @@ TEST_F(RollOpTest, Error_AxisOutOfRange) {
   AddInputFromArray<int32>(TensorShape({}), {1});
   AddInputFromArray<int32>(TensorShape({}), {1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "is out of range")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "is out of range")) << s;
 }
 
 // isd - (inner shift dimension) The inner most dimension to be shifted.

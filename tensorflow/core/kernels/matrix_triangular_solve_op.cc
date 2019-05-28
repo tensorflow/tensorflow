@@ -25,22 +25,22 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
 template <typename Scalar>
-se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* cuda_memory) {
-  se::DeviceMemoryBase wrapped(const_cast<Scalar*>(cuda_memory));
+se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* gpu_memory) {
+  se::DeviceMemoryBase wrapped(const_cast<Scalar*>(gpu_memory));
   se::DeviceMemory<Scalar> typed(wrapped);
   return typed;
 }
 }  // namespace
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <class Scalar>
 class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
@@ -128,7 +128,7 @@ REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
 REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
                        (MatrixTriangularSolveOp<double>), double);
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // TODO(rmlarsen): Re-factor to
 // 1. Enable buffer forwarding from rhs->out.
@@ -253,6 +253,6 @@ REGISTER_LINALG_OP_GPU("BatchMatrixTriangularSolve",
 REGISTER_LINALG_OP_GPU("BatchMatrixTriangularSolve",
                        (MatrixTriangularSolveOpGPU<double>), double);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

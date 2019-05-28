@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import itertools
 import threading
 import types as types_lib
 import weakref
@@ -36,9 +37,9 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -64,13 +65,16 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 CacheKey = collections.namedtuple("CacheKey", [
     "input_signature", "parent_graph", "device_functions",
-    "colocation_stack", "uses_xla"])
+    "colocation_stack"])
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
 
 def _flat_shape_list(*params):
   """Return a flat list of TensorShapes, one for each tensor[spec] in `*params`.
+
+  If `params` contains `CompositeTensors`, then they are expanded to their
+  components `Tensors`.
 
   Args:
     *params: Set of nested entries containing Tensors, TensorSpec, and
@@ -81,7 +85,7 @@ def _flat_shape_list(*params):
   """
   return [tensor_shape.TensorShape(x.shape)
           if isinstance(x, (ops.Tensor, tensor_spec.TensorSpec)) else None
-          for x in nest.flatten(params)]
+          for x in nest.flatten(params, expand_composites=True)]
 
 
 def _shape_less_specific_than(relaxed, to_check):
@@ -176,7 +180,9 @@ def _common_shape(x, y):
     return tensor_shape.TensorShape(None)
   dims = []
   for dim_x, dim_y in zip(x.dims, y.dims):
-    if dim_x != dim_y or tensor_shape.dimension_value(dim_x) is None:
+    if (dim_x != dim_y
+        or tensor_shape.dimension_value(dim_x) is None
+        or tensor_shape.dimension_value(dim_y) is None):
       dims.append(None)
     else:
       dims.append(tensor_shape.dimension_value(dim_x))
@@ -188,12 +194,12 @@ def is_same_structure(structure1,
                       check_values=False):
   """Check two structures for equality, optionally of types and of values."""
   try:
-    nest.assert_same_structure(structure1, structure2)
+    nest.assert_same_structure(structure1, structure2, expand_composites=True)
   except (ValueError, TypeError):
     return False
   if check_values:
-    flattened1 = nest.flatten(structure1)
-    flattened2 = nest.flatten(structure2)
+    flattened1 = nest.flatten(structure1, expand_composites=True)
+    flattened2 = nest.flatten(structure2, expand_composites=True)
     # First check the types to avoid AttributeErrors.
     if any(type(f1) != type(f2) for f1, f2 in zip(flattened1, flattened2)):
       return False
@@ -250,21 +256,20 @@ class _InterpolateFunctionError(object):
     _, tags = error_interpolation.parse_message(message)
     g = None
     func_stack = []
-    # pylint: disable=protected-access
     for t in tags:
       if t.type == "function_node":
+        # TODO(mdan): Tests should cover this.
         if t.name == compat.as_str(self._func.name):
-          g = self._func._graph
+          g = self._func.graph
         elif g:
           next_func = g._get_function(t.name)
           if next_func is not None and isinstance(next_func,
                                                   _EagerDefinedFunction):
-            g = next_func._graph
+            g = next_func.graph
         if g:
           func_stack.append(g.name)
         else:
           func_stack.append("<unknown>")
-    # pylint: enable=protected-access
     if g:
       message = error_interpolation.interpolate(message, g)
       message += "\n\nFunction call stack:\n"
@@ -287,6 +292,28 @@ def _backward_name(n):
 def _inference_name(n):
   """The name of a forward-but-no-gradient defun named n."""
   return "__inference_%s_%s" % (n, ops.uid())
+
+
+class _EagerDefinedFunctionDeleter(object):
+  """Unregister function from eager context."""
+
+  def __init__(self, name):
+    self.name = name
+
+  def __del__(self):
+    try:
+      context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.
 
 
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
@@ -341,11 +368,14 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
+    self.name = compat.as_bytes(function_def.signature.name)
     with ops.init_scope():
       if context.executing_eagerly():
+        context.ensure_initialized()
         context.add_function(fn)
+        self._function_deleter = _EagerDefinedFunctionDeleter(self.name)
+        self._registered_on_context = True
     self.definition = function_def
-    self.name = compat.as_bytes(function_def.signature.name)
     self.signature = function_def.signature
     self._num_outputs = len(self.signature.output_arg)
     self._output_types = [o.type for o in self.signature.output_arg]
@@ -356,7 +386,7 @@ class _EagerDefinedFunction(object):
     self.python_grad_func = None
     self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
-    self._graph = graph
+    self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
 
   def add_to_graph(self, g=None):
@@ -366,7 +396,7 @@ class _EagerDefinedFunction(object):
     else:
       if self.name not in g._functions:
         g._add_function(self)
-      for f in self._graph._functions.values():
+      for f in self.graph._functions.values():
         if f.name not in g._functions:
           g._add_function(f)
     # pylint: enable=protected-access
@@ -396,7 +426,7 @@ class _EagerDefinedFunction(object):
           "Arguments and signature arguments do not match: %s %s " %
           (len(args), len(list(self.signature.input_arg))))
 
-    function_call_options = ctx.get_function_call_options()
+    function_call_options = ctx.function_call_options
     if function_call_options.config_proto_serialized is None:
       config = function_utils.get_disabled_rewriter_config()
     else:
@@ -415,25 +445,6 @@ class _EagerDefinedFunction(object):
             ctx=ctx)
       # Replace empty list with None
       outputs = outputs or None
-    elif self._graph._xla_compile:  # pylint: disable=protected-access
-      g = ops.get_default_graph()
-      self.add_to_graph(g)
-      signature = self.signature
-      with ops.control_dependencies(self._control_captures):
-        op = g.create_op(
-            signature.name,
-            [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
-            tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-            op_def=signature,
-            name="FunctionCall",
-            compute_shapes=False)
-      outputs = op.outputs
-      if not outputs:
-        return op
-      if isinstance(outputs, (ops.Tensor, type(None))):
-        outputs = [outputs]
-      else:
-        outputs = list(outputs)
     else:
       # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
       # creates `PartitionedCallOp` kernels by default, or remove the previous
@@ -451,6 +462,9 @@ class _EagerDefinedFunction(object):
     if executing_eagerly:
       return outputs
     else:
+      # TODO(b/128924522): This additional set_shape should not be
+      # necessary. ShapeRefiner likely needs to inspect handle_data. Remove this
+      # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
       for i, func_graph_output in enumerate(self._func_graph_outputs):
@@ -560,7 +574,8 @@ class ConcreteFunction(object):
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.
 
-    Objects aside from Tensors and Variables are ignored.
+    Objects aside from Tensors, CompositeTensors, and Variables are ignored.
+    CompositeTensors are expanded into their components.
 
     Args:
       args: Canonicalized positional arguments of the Python function.
@@ -571,7 +586,7 @@ class ConcreteFunction(object):
       `args` and `kwargs`.
     """
     return self._call_flat(
-        (t for t in nest.flatten((args, kwargs))
+        (t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
                            resource_variable_ops.ResourceVariable))))
 
@@ -579,7 +594,8 @@ class ConcreteFunction(object):
     """Executes the wrapped function.
 
     Args:
-      args: a list of Tensors or Variables.
+      args: a list of Tensors or Variables.  Any CompositeTensors should be
+        expanded before calling this method.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -587,9 +603,18 @@ class ConcreteFunction(object):
     Raises:
       ValueError: If `args` contains anything other than Tensors or Variables.
     """
+    args = list(args)
     ctx = context.context()
+    executing_eagerly = ctx.executing_eagerly()
 
-    tape.variables_accessed(self._func_graph.variables)
+    if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
+      raise AssertionError("Expected all args to be Tensors or Variables; "
+                           "but got CompositeTensor: %r" % args)
+
+    if (tape.could_possibly_record() or
+        hasattr(ops.get_default_graph(), "watch_variable")):
+      for v in self._func_graph.variables:
+        resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
     variables_used = set([])
@@ -599,12 +624,31 @@ class ConcreteFunction(object):
         # pass its handle only once.
         if arg.handle in variables_used:
           continue
-        if arg.trainable:
-          tape.variable_accessed(arg)
+        resource_variable_ops.variable_accessed(arg)
         tensor_inputs.append(arg.handle)
         variables_used.add(arg.handle)
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
+        if not executing_eagerly:
+          # If we're graph building, shape inference is on. We check for input
+          # compatibility up front to avoid hard to debug incompatibilities
+          # later.
+          graph_input_shape = tensor_shape.TensorShape(
+              self._func_graph.inputs[i].shape)
+          if not graph_input_shape.is_compatible_with(arg.shape):
+            if self._arg_keywords:
+              arg_name = "'{}'".format(self._arg_keywords[i])
+            else:
+              arg_name = "with index {}".format(i)
+            raise ValueError(
+                ("The argument {} (value {}) is not compatible with the shape "
+                 "this function was traced with. Expected shape {}, but got "
+                 "shape {}.\n\nIf you called get_concrete_function, you may "
+                 "need to pass a tf.TensorSpec(..., shape=...) with a less "
+                 "specific shape, having None on axes which can vary.").format(
+                     arg_name, arg,
+                     self._func_graph.inputs[i].shape,
+                     arg.shape))
       elif (self._signature is not None and
             isinstance(self._signature[i], tensor_spec.TensorSpec)):
         tensor_inputs.append(
@@ -720,31 +764,20 @@ class ConcreteFunction(object):
   @property
   def output_shapes(self):
     """The function's output shapes."""
-    # TODO(ebrevdo): Should we only keep the output shapes associated
-    # with len(self._python_returns) outputs?
-    # TODO(akshayka): Consider removing this.
-    outputs_list = nest.flatten(self._func_graph.structured_outputs)
-    j = 0
-    for i, o in enumerate(outputs_list):
-      if o is not None:
-        if isinstance(o, ops.IndexedSlices):
-          # Extract the shape of the `IndexedSlices` object's `values` field.
-          outputs_list[i] = self._output_shapes[j]  # the `values` shape
-          if o.dense_shape is not None:
-            j += 3  # skip over shapes for `values`, `indices`, `dense_shape`
-          else:
-            j += 2  # skip over shapes for `values`, `indices`
-        else:
-          outputs_list[i] = self._output_shapes[j]
-          j += 1
-    return nest.pack_sequence_as(self._func_graph.structured_outputs,
-                                 outputs_list)
+    return nest.map_structure(
+        lambda x: getattr(x, 'shape', tensor_shape.TensorShape(None)),
+        composite_tensor.replace_composites_with_components(
+            self._func_graph.structured_outputs),
+        expand_composites=False)
 
   @property
   def output_dtypes(self):
     # TODO(akshayka): Consider removing this.
-    return nest.map_structure(lambda x: x.dtype if x is not None else None,
-                              self._func_graph.structured_outputs)
+    return nest.map_structure(
+        lambda x: x.dtype if x is not None else None,
+        composite_tensor.replace_composites_with_components(
+            self._func_graph.structured_outputs),
+        expand_composites=False)
 
   def add_to_graph(self, g=None, register_gradient_functions=False):
     """Registers the function, adds it to the graph g or default graph."""
@@ -753,7 +786,7 @@ class ConcreteFunction(object):
     # In case of eager execution, function definition gets added to context
     # during construction itself.
 
-    # TODO(allel/shivaniagrawal): rename this to register to reflect the
+    # TODO(allenl/shivaniagrawal): rename this to register to reflect the
     # method's functionality better. Remove register_gradient_functions argument
     # and figure out if these needs to be registered.
 
@@ -782,6 +815,11 @@ class ConcreteFunction(object):
     """Constructs the backprop function object for this function."""
     backwards_graph = func_graph_module.FuncGraph(
         _backward_name(self._func_graph.name))
+    # Keep track of the forward graph so that if the backwards graph
+    # tries to capture tensors those will be correctly captured first in
+    # the forward graph. This is an edge case that can only happen with
+    # tf.custom_gradient.
+    backwards_graph._forward_func_graph = self._func_graph  # pylint: disable=protected-access
     forward_function_name = _forward_name(self._func_graph.name)
     outputs = [x for x in self._func_graph.outputs
                if gradients_util.IsTrainable(x)]
@@ -920,29 +958,16 @@ class ConcreteFunction(object):
     if self._func_graph.structured_outputs is None:
       return result
 
-    # Use `nest.flatten` instead of `func_graph_module.flatten` in order to
-    # preserve any IndexedSlices in `self._func_graph.structured_outputs`.
-    outputs_list = nest.flatten(self._func_graph.structured_outputs)
+    # Replace outputs with results, skipping over any 'None' values.
+    outputs_list = nest.flatten(self._func_graph.structured_outputs,
+                                expand_composites=True)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
-        if isinstance(o, ops.IndexedSlices):
-          # Repack Tensors for IndexedSlices.
-          if o.dense_shape is not None:
-            outputs_list[i] = ops.IndexedSlices(
-                values=result[j],
-                indices=result[j + 1],
-                dense_shape=result[j + 2])
-            j += 3
-          else:
-            outputs_list[i] = ops.IndexedSlices(
-                values=result[j], indices=result[j + 1])
-            j += 2
-        else:
-          outputs_list[i] = result[j]
-          j += 1
+        outputs_list[i] = result[j]
+        j += 1
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
-                                outputs_list)
+                                outputs_list, expand_composites=True)
     return ret
 
 
@@ -960,35 +985,55 @@ class FunctionSpec(object):
   @staticmethod
   def from_function_and_signature(python_function, input_signature):
     """Create a FunctionSpec instance given a python function and signature."""
-    if isinstance(python_function, functools.partial):
-      python_function_to_inspect = python_function.func
-      args_to_prepend = python_function.args or tuple()
-      kwargs_to_include = python_function.keywords or {}
-      if input_signature is not None:
-        # TODO(b/124441704): Add support for input_signature + partial.
-        raise NotImplementedError(
-            "Missing support for input_signature when using partial functions.")
-    else:
-      python_function_to_inspect = python_function
-      args_to_prepend = tuple()
-      kwargs_to_include = {}
+    fullargspec = tf_inspect.getfullargspec(python_function)
+    # Treat a wrapped partial function as a special case. For all arguments that
+    # were overridden with keywords in the partial:
+    #   - remove the corresponding arguments,
+    #   - remove the corresponding keywords.
+    _, unwrapped = tf_decorator.unwrap(python_function)
+    # TODO(b/131153379): Consider Python3's fullargspec.kwonlyargs and
+    # fullargspec.kwonlydefaults.
+    if isinstance(unwrapped, functools.partial):
+      # Also consider the Python3 case with kwonlydefaults.
+      if fullargspec.defaults or fullargspec.kwonlydefaults:
+        new_defaults = fullargspec.defaults
+        new_args = fullargspec.args
+        if fullargspec.defaults:
+          num_defaults = len(fullargspec.defaults)
+          args_with_default = fullargspec.args[-num_defaults:]
+          non_keyword_defaults_mask = [
+              0 if key in unwrapped.keywords else 1 for key in args_with_default
+          ]
+          # Keep only arguments and defaults that were not kwargs of partial.
+          new_defaults = tuple(
+              itertools.compress(fullargspec.defaults,
+                                 non_keyword_defaults_mask))
+          new_args = list(
+              itertools.compress(fullargspec.args, non_keyword_defaults_mask))
 
-    fullargspec = tf_inspect.getfullargspec(python_function_to_inspect)
-    is_method = tf_inspect.ismethod(python_function_to_inspect)
-
-    return FunctionSpec(fullargspec, is_method, args_to_prepend,
-                        kwargs_to_include, input_signature)
+        fullargspec = tf_inspect.FullArgSpec(
+            args=new_args,
+            varargs=fullargspec.varargs,
+            varkw=fullargspec.varkw,
+            defaults=new_defaults,
+            kwonlyargs=[],
+            kwonlydefaults={},
+            annotations=fullargspec.annotations)
+    is_method = tf_inspect.ismethod(python_function)
+    return FunctionSpec(fullargspec, is_method, [], {}, input_signature)
 
   def __init__(self, fullargspec, is_method, args_to_prepend, kwargs_to_include,
                input_signature):
     self._fullargspec = fullargspec
     self._is_method = is_method
-    self._args_to_prepend = args_to_prepend
-    self._kwargs_to_include = kwargs_to_include
+    del args_to_prepend
+    del kwargs_to_include
     self._default_values = fullargspec.defaults
 
     if self._is_method:
       # Remove `self`: default arguments shouldn't be matched to it.
+      # TODO(b/127938157): Should this error out if there is no arg to
+      # be removed?
       args = fullargspec.args[1:]
     else:
       args = fullargspec.args
@@ -1000,16 +1045,15 @@ class FunctionSpec(object):
     self.vararg_name = fullargspec.varargs
 
     # A cache mapping from arg index to default value, for canonicalization.
-    offset = len(args) - len(fullargspec.defaults or [])
+    offset = len(args) - len(self._default_values or [])
     self._arg_indices_to_default_values = {
         offset + index: default
-        for index, default in enumerate(fullargspec.defaults or [])
+        for index, default in enumerate(self._default_values or [])
     }
-    self._default_values_start_index = offset
     if input_signature is None:
       self._input_signature = None
     else:
-      if fullargspec.varkw is not None or fullargspec.kwonlyargs:
+      if fullargspec.kwonlyargs:
         raise ValueError("Cannot define a TensorFlow function from a Python "
                          "function with keyword arguments when "
                          "input_signature is provided.")
@@ -1019,7 +1063,8 @@ class FunctionSpec(object):
                         "list, received " + str(type(input_signature)))
 
       self._input_signature = tuple(input_signature)
-      self._flat_input_signature = tuple(nest.flatten(input_signature))
+      self._flat_input_signature = tuple(nest.flatten(input_signature,
+                                                      expand_composites=True))
 
   @property
   def fullargspec(self):
@@ -1084,14 +1129,11 @@ class FunctionSpec(object):
               "When input_signature is provided, only pass arguments "
               "covered by it. Received argument %s." % arg)
 
-    args = self._args_to_prepend + args
-    kwargs = dict(kwargs, **self._kwargs_to_include)
     if not kwargs:
-      if self._default_values:
-        inputs = args + self._default_values[
-            len(args) - self._default_values_start_index:]
-      else:
-        inputs = args
+      inputs = args
+      for index in sorted(self._arg_indices_to_default_values.keys()):
+        if index >= len(args):
+          inputs += (self._arg_indices_to_default_values[index],)
     else:
       # Maps from index of arg to its corresponding value, according to `args`
       # and `kwargs`; seeded with the default values for the named args that
@@ -1130,7 +1172,9 @@ class FunctionSpec(object):
 
 def _convert_numpy_inputs(inputs):
   """Convert numpy array inputs to tensors."""
-  flat_inputs = nest.flatten(inputs)
+  # We assume that any CompositeTensors have already converted their components
+  # from numpy arrays to Tensors, so we don't need to expand composites here.
+  flat_inputs = nest.flatten(inputs, expand_composites=False)
 
   # Check for NumPy arrays in arguments and convert them to Tensors.
   # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
@@ -1143,7 +1187,7 @@ def _convert_numpy_inputs(inputs):
       need_packing = True
   if need_packing:
     return nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs)
+        structure=inputs, flat_sequence=flat_inputs, expand_composites=False)
   else:
     return inputs
 
@@ -1156,7 +1200,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
     # signature should throw an error.
     flatten_inputs = nest.flatten_up_to(
         input_signature,
-        inputs[:len(input_signature)])
+        inputs[:len(input_signature)],
+        expand_composites=True)
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
                      "input_signature. Inputs (%s), input_signature(%s)." %
@@ -1186,7 +1231,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   if need_packing:
     inputs = nest.pack_sequence_as(
         structure=input_signature,
-        flat_sequence=flatten_inputs)
+        flat_sequence=flatten_inputs,
+        expand_composites=True)
 
   return inputs
 
@@ -1238,6 +1284,7 @@ class Function(object):
                attributes=None,
                autograph=True,
                autograph_options=None,
+               experimental_relax_shapes=False,
                capture_by_value=None):
     """Initializes a `Function`.
 
@@ -1255,6 +1302,8 @@ class Function(object):
       autograph_options: Experimental knobs to control behavior
         `when autograph=True`. See https://www.tensorflow.org/guide/autograph
         for more information.
+      experimental_relax_shapes: When true, argument shapes may be relaxed to
+        avoid unecessary retracing.
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
@@ -1263,15 +1312,13 @@ class Function(object):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-    if isinstance(python_function, functools.partial):
-      self._python_function = python_function.func
-    else:
-      self._python_function = python_function
+    self._python_function = python_function
     self._function_spec = FunctionSpec.from_function_and_signature(
         python_function, input_signature)
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
+    self._experimental_relax_shapes = experimental_relax_shapes
     self._function_cache = FunctionCache()
     self._function_attributes = attributes or {}
     self._capture_by_value = capture_by_value
@@ -1297,18 +1344,18 @@ class Function(object):
     return self._function_spec
 
   @property
-  def _input_signature(self):
+  def input_signature(self):
     """Returns the input signature."""
-    return self._function_spec.input_signature  # pylint: disable=protected-access
+    return self._function_spec.input_signature
 
   @property
-  def _flat_input_signature(self):
+  def flat_input_signature(self):
     """Returns the flattened input signature."""
-    return self._function_spec.flat_input_signature  # pylint: disable=protected-access
+    return self._function_spec.flat_input_signature
 
   def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
     """Returns a concrete function which cleans up its graph function."""
-    if self._input_signature:
+    if self.input_signature:
       args, kwargs = None, None
     graph_function, _, _ = self._maybe_define_function(args, kwargs)
     return graph_function
@@ -1331,68 +1378,53 @@ class Function(object):
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
     """
-    if self._input_signature:
+    if self.input_signature:
       if kwargs:
         raise ValueError("Cannot define a TensorFlow function from a Python "
                          "function with keyword arguments when "
                          "input_signature is provided.")
       if args:
         # If args are provided, they must match the input signature.
-        if not is_same_structure(self._input_signature, args):
+        if not is_same_structure(self.input_signature, args):
           raise ValueError("Structure of Python function inputs does not match "
                            "input_signature.")
-        flat_inputs = nest.flatten(args)
+        flat_inputs = nest.flatten(args, expand_composites=True)
         if any(not isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec))
                for arg in flat_inputs):
           raise ValueError("When input_signature is provided, all inputs to "
                            "the Python function must be Tensors or "
                            "tf.TensorSpec objects.")
         if any(not spec.is_compatible_with(other)
-               for spec, other in zip(self._flat_input_signature, flat_inputs)):
+               for spec, other in zip(self.flat_input_signature, flat_inputs)):
           raise ValueError("Python inputs incompatible with input_signature: "
                            "inputs (%s), input_signature (%s)" %
-                           (str(args), str(self._input_signature)))
+                           (str(args), str(self.input_signature)))
       args, kwargs = None, None
     graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-    if self._input_signature:
-      args = self._input_signature
+    if self.input_signature:
+      args = self.input_signature
       kwargs = {}
     seen_names = set()
     captured = frozenset(graph_function.graph.internal_captures)
-    allowed_positional = 0
-    if args:
-      for outer_arg in args:
-        # TODO(allenl): Consider allowing arguments with defaults in the Python
-        # function's signature to be passed as positional arguments to the
-        # concrete function.
-        if not isinstance(
-            outer_arg,
-            (ops.Tensor, resource_variable_ops.ResourceVariable,
-             tensor_spec.TensorSpec)):
-          break
-        allowed_positional += 1
     # pylint: disable=protected-access
-    graph_function._num_positional_args = allowed_positional
     graph_function._arg_keywords = []
+    prefix_counts = {}
     # pylint: enable=protected-access
+    num_positional = 0
     for arg in graph_function.graph.inputs:
       if arg in captured:
         break
-      user_arg_name = arg.op.get_attr("_user_specified_name")
-      if user_arg_name in seen_names:
-        raise ValueError(
-            ("Unable to construct a concrete function for {} since some "
-             "arguments do not have unique names. Got two arguments named "
-             "'{}'. When constructing a concrete TensorFlow function from a "
-             "Python function which takes nested structures or variadic "
-             "positional arguments, pass unique names to tf.TensorSpec objects "
-             "used to identify these Tensor inputs. These names may then be "
-             "used as keyword arguments to the concrete function.")
-            .format(
-                self._python_function,
-                compat.as_str(arg.op.get_attr("_user_specified_name"))))
-      seen_names.add(user_arg_name)
-      graph_function._arg_keywords.append(user_arg_name)  # pylint: disable=protected-access
+      num_positional += 1
+      user_arg_name = compat.as_str(arg.op.get_attr("_user_specified_name"))
+      proposal = user_arg_name
+      while proposal in seen_names:
+        index = prefix_counts.get(user_arg_name, 1)
+        proposal = "{}_{}".format(user_arg_name, index)
+        prefix_counts[user_arg_name] = index + 1
+      seen_names.add(proposal)
+      graph_function._arg_keywords.append(proposal)  # pylint: disable=protected-access
+    # Anything can be a positional argument, in the same order as .inputs
+    graph_function._num_positional_args = num_positional  # pylint: disable=protected-access
     return graph_function
 
   def __get__(self, instance, owner):
@@ -1431,14 +1463,14 @@ class Function(object):
 
   def _cache_key(self, args, kwargs, include_tensor_ranks_only=False):
     """Computes the cache key given inputs and execution context."""
-    if self._input_signature is None:
+    if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
       input_signature = pywrap_tensorflow.TFE_Py_EncodeArg(
           inputs, include_tensor_ranks_only)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
-      input_signature = self._flat_input_signature
+      input_signature = self.flat_input_signature
 
     ctx = context.context()
 
@@ -1462,16 +1494,13 @@ class Function(object):
         default_graph._distribution_strategy_stack)
     if executing_eagerly:
       colocation_stack = ()
-      uses_xla = ctx.device_spec.device_type == "TPU"
-      if uses_distribution_strategy or uses_xla:
+      if uses_distribution_strategy:
         device_functions = (pydev.merge_device(ctx.device_name),)
       else:
         device_functions = ()
     else:
       colocation_stack = tuple(default_graph._colocation_stack.peek_objs())
-      uses_xla = getattr(default_graph, "_xla_compile", False)
       if (uses_distribution_strategy
-          or uses_xla
           or func_graph_module.device_stack_has_callable(
               default_graph._device_function_stack)):
         # Putting the device in the cache key ensures that call-site device
@@ -1481,14 +1510,14 @@ class Function(object):
         device_functions = ()
     # pylint: enable=protected-access
     return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack, uses_xla)
+                    colocation_stack)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
-    if self._input_signature is None:
+    if self.input_signature is None:
       arglen = len(args)
     else:
-      arglen = len(self._input_signature)
+      arglen = len(self.input_signature)
     base_arg_names = self._function_spec.arg_names[:arglen]
     num_missing_args = arglen - len(self._function_spec.arg_names)
     missing_arg_names = [self._function_spec.vararg_name] * num_missing_args
@@ -1504,7 +1533,7 @@ class Function(object):
             self._python_function,
             args,
             kwargs,
-            self._input_signature,
+            self.input_signature,
             autograph=self._autograph,
             autograph_options=self._autograph_options,
             arg_names=arg_names,
@@ -1522,6 +1551,41 @@ class Function(object):
     # pylint: enable=protected-access
 
     return graph_function
+
+  def _define_function_with_shape_relaxation(self, args, kwargs):
+    """Define a function, relaxing arg shapes to avoid unecessary retracing."""
+
+    rank_only_cache_key = self._cache_key(
+        args, kwargs, include_tensor_ranks_only=True)
+
+    arg_shapes = _flat_shape_list(args, kwargs)
+    relaxed_arg_shapes = self._function_cache.arg_relaxed_shapes.get(
+        rank_only_cache_key, None)
+    relaxed_arg_function = self._function_cache.arg_relaxed.get(
+        rank_only_cache_key, None)
+
+    if (relaxed_arg_function is not None
+        and _compatible_shapes(flat_relaxed=relaxed_arg_shapes,
+                               flat_to_check=arg_shapes)):
+      return relaxed_arg_function, args, kwargs
+
+    if relaxed_arg_shapes is None:
+      relaxed_arg_shapes = arg_shapes
+    else:
+      if len(arg_shapes) != len(relaxed_arg_shapes):
+        raise RuntimeError("Expected arg_shapes len to match "
+                           "relaxed_arg_shapes len: %d vs. %d"
+                           % (len(arg_shapes), len(relaxed_arg_shapes)))
+      relaxed_arg_shapes = [
+          _common_shape(x, y) for (x, y) in zip(
+              arg_shapes, relaxed_arg_shapes)]
+    self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
+        relaxed_arg_shapes)
+    graph_function = self._create_graph_function(
+        args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
+    self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
+
+    return graph_function, args, kwargs
 
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
@@ -1543,7 +1607,7 @@ class Function(object):
       RuntimeError: If there's an internal bug (inconsistency) in handling
         shape relaxation retracing.
     """
-    if self._input_signature is None or args is not None or kwargs is not None:
+    if self.input_signature is None or args is not None or kwargs is not None:
       args, kwargs = self._function_spec.canonicalize_function_inputs(
           *args, **kwargs)
     cache_key = self._cache_key(args, kwargs)
@@ -1565,52 +1629,24 @@ class Function(object):
                    self._python_function, cache_key)
       logging.vlog(2,
                    "Python function signature [args: %s] [kwargs: %s]",
-                   str(args),
-                   str(kwargs))
+                   args,
+                   kwargs)
 
       call_context_key = cache_key.replace(input_signature=None)
+      # Build a function with shape relaxation retracing if:
+      # 1. shape relaxation is explicitly enabled
+      # and 2. there's no provided input signature
+      # and 3. there's been a cache miss for this calling context
+      if (self._experimental_relax_shapes
+          and self.input_signature is None
+          and call_context_key in self._function_cache.missed):
+        return self._define_function_with_shape_relaxation(args, kwargs)
 
-      # If there's a provided input signature, or XLA is being used, or
-      # there's no cache miss for this calling context so far, go ahead and
-      # build the function and bypass shape relaxation retracing.
-      if (self._input_signature is not None
-          or cache_key.uses_xla
-          or call_context_key not in self._function_cache.missed):
-        self._function_cache.missed.add(call_context_key)
+      self._function_cache.missed.add(call_context_key)
+      graph_function = self._function_cache.primary.get(cache_key, None)
+      if graph_function is None:
         graph_function = self._create_graph_function(args, kwargs)
         self._function_cache.primary[cache_key] = graph_function
-        return graph_function, args, kwargs
-
-      rank_only_cache_key = self._cache_key(
-          args, kwargs, include_tensor_ranks_only=True)
-
-      arg_shapes = _flat_shape_list(args, kwargs)
-      relaxed_arg_shapes = self._function_cache.arg_relaxed_shapes.get(
-          rank_only_cache_key, None)
-      relaxed_arg_function = self._function_cache.arg_relaxed.get(
-          rank_only_cache_key, None)
-
-      if (relaxed_arg_function is not None
-          and _compatible_shapes(flat_relaxed=relaxed_arg_shapes,
-                                 flat_to_check=arg_shapes)):
-        return relaxed_arg_function, args, kwargs
-
-      if relaxed_arg_shapes is None:
-        relaxed_arg_shapes = arg_shapes
-      else:
-        if len(arg_shapes) != len(relaxed_arg_shapes):
-          raise RuntimeError("Expected arg_shapes len to match "
-                             "relaxed_arg_shapes len: %d vs. %d"
-                             % (len(arg_shapes), len(relaxed_arg_shapes)))
-        relaxed_arg_shapes = [
-            _common_shape(x, y) for (x, y) in zip(
-                arg_shapes, relaxed_arg_shapes)]
-      self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
-          relaxed_arg_shapes)
-      graph_function = self._create_graph_function(
-          args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
-      self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
-
       return graph_function, args, kwargs
 
 
@@ -1642,7 +1678,7 @@ def register(func, *args, **kwargs):
 
 def validate_signature(signature):
   if any(not isinstance(arg, tensor_spec.TensorSpec)
-         for arg in nest.flatten(signature)):
+         for arg in nest.flatten(signature, expand_composites=True)):
     raise TypeError("Invalid input_signature %s; input_signature must be "
                     "a possibly nested sequence of TensorSpec objects.")
 
@@ -1650,7 +1686,8 @@ def validate_signature(signature):
 def defun(func=None,
           input_signature=None,
           autograph=True,
-          experimental_autograph_options=None):
+          experimental_autograph_options=None,
+          experimental_relax_shapes=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") compiles a Python function
@@ -1690,7 +1727,7 @@ def defun(func=None,
   ```python
   import tensorflow as tf
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   # A simple example.
   def f(x, y):
@@ -1737,7 +1774,7 @@ def defun(func=None,
   model(x, training=False) # executes a graph, without dropout
 
   # `defun`-compiled functions are differentiable.
-  optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=0.01)
   with tf.GradientTape() as tape:
     outputs = model(x)
   gradient = tape.gradient(outputs, model.trainable_variables)
@@ -1759,8 +1796,8 @@ def defun(func=None,
   By default, `F = tf.contrib.eager.defun(f)` instantiates a separate graph
   for every unique sequence of the shapes and dtypes of Tensor arguments and
   the values of Python objects it is invoked with. For example, calling
-  `F(tf.random_uniform([2])` will execute a different graph than
-  `F(tf.random_uniform([3])` because the two inputs have different shapes.
+  `F(tf.random.uniform([2])` will execute a different graph than
+  `F(tf.random.uniform([3])` because the two inputs have different shapes.
   The first time that `F(*args, **kwargs)` is called with a particular sequence
   of Tensor shapes and dtypes and Python values, it constructs a graph by
   tracing the execution of `f(*args, **kwargs)`; this graph is bound to an
@@ -1797,15 +1834,15 @@ def defun(func=None,
     ...
 
   # Note how the third dimension of the first input can vary freely.
-  words = tf.random_uniform(([50, 300, 10])
-  second_input = tf.random_uniform([300, 100])
+  words = tf.random.uniform(([50, 300, 10])
+  second_input = tf.random.uniform([300, 100])
   my_sequence_model(words, second_input)
 
-  words = tf.random_uniform(([50, 300, 20])
+  words = tf.random.uniform(([50, 300, 20])
   my_sequence_model(words, second_input)
 
   # Passing an input with an incompatible shape will raise an error.
-  words = tf.random_uniform(([50, 100, 20])
+  words = tf.random.uniform(([50, 100, 20])
   my_sequence_model(words, second_input)  # <---- This will raise an error.
 
   ```
@@ -1827,7 +1864,7 @@ def defun(func=None,
   import tensorflow as tf
   import numpy as np
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   def add_noise():
     return tf.eye(5) + np.random.randn(5, 5)
@@ -1837,7 +1874,7 @@ def defun(func=None,
   `compiled = tf.contrib.eager.defun(add_noise)` will return the same value
   every time it is called, since a particular random offset generated by NumPy
   will be inserted into the graph as a TensorFlow constant. The solution is to
-  replace the call to `np.random.randn` with `tf.random_normal((5, 5))`.
+  replace the call to `np.random.randn` with `tf.random.normal((5, 5))`.
 
   _Python Side-Effects_
 
@@ -1859,7 +1896,7 @@ def defun(func=None,
   ```python
   import tensorflow as tf
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   @tf.contrib.eager.defun
   def lossy_matmul(W, x, training=True):
@@ -1868,8 +1905,8 @@ def defun(func=None,
       outputs = tf.nn.dropout(outputs, keep_probability=0.2)
     return outputs
 
-  W = tf.random_normal((3, 5))
-  x = tf.random_normal((5, 1))
+  W = tf.random.normal((3, 5))
+  x = tf.random.normal((5, 1))
 
   # Executes a graph that applies dropout.
   lossy_outputs = lossy_matmul(W, x, training=True)
@@ -1911,7 +1948,7 @@ def defun(func=None,
   ```python
   import tensorflow as tf
 
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   def fn():
     x = tf.Variable(0.0)
@@ -1967,7 +2004,8 @@ def defun(func=None,
     experimental_autograph_options: Experimental knobs (in the form of a tuple
       of tensorflow.autograph.Feature values) to control behavior when
       autograph=True.
-
+    experimental_relax_shapes: When true, argument shapes may be relaxed to
+      avoid unecessary retracing.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -1983,14 +2021,16 @@ def defun(func=None,
       func=func,
       input_signature=input_signature,
       autograph=autograph,
-      experimental_autograph_options=experimental_autograph_options)
+      experimental_autograph_options=experimental_autograph_options,
+      experimental_relax_shapes=experimental_relax_shapes)
 
 
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
                           autograph=True,
-                          experimental_autograph_options=None):
+                          experimental_autograph_options=None,
+                          experimental_relax_shapes=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -2010,6 +2050,7 @@ def defun_with_attributes(func=None,
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
       experimental_autograph_options.
+    experimental_relax_shapes: same as defun()'s experimental_relax_shapes
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -2035,7 +2076,8 @@ def defun_with_attributes(func=None,
             input_signature=input_signature,
             attributes=attributes,
             autograph=autograph,
-            autograph_options=experimental_autograph_options))
+            autograph_options=experimental_autograph_options,
+            experimental_relax_shapes=experimental_relax_shapes))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
@@ -2068,7 +2110,10 @@ class TfMethodTarget(object):
     return self.weakrefself_target__()
 
   def call(self, args, kwargs):
-    return self.weakrefself_func__()(*args, **kwargs)
+    wrapped_fn = self.weakrefself_func__()
+    if tf_inspect.ismethod(wrapped_fn):
+      wrapped_fn = six.get_unbound_function(wrapped_fn)
+    return wrapped_fn(self.weakrefself_target__(), *args, **kwargs)
 
 
 def class_method_to_instance_method(original_function, instance):
@@ -2085,7 +2130,7 @@ def class_method_to_instance_method(original_function, instance):
   # (defined either in function.py or def_function.py).
   assert hasattr(original_function, "_name")
   assert hasattr(original_function, "_autograph")
-  assert hasattr(original_function, "_input_signature")
+  assert hasattr(original_function, "_function_spec")
   assert hasattr(original_function, "python_function")
 
   weak_bound_method_wrapper = None
@@ -2103,9 +2148,10 @@ def class_method_to_instance_method(original_function, instance):
         wrapped_fn = six.get_unbound_function(wrapped_fn)
       return wrapped_fn(weak_instance(), *args, **kwargs)
 
-    # If __wrapped__ was replaced, then it is always an unbound function
-    # that takes self as first argument.
-    return wrapped_fn(weak_instance(), *args, **kwargs)
+    # If __wrapped__ was replaced, then it is always an unbound function.
+    # However, the replacer is still responsible for attaching self properly.
+    # TODO(mdan): Is it possible to do it here instead?
+    return wrapped_fn(*args, **kwargs)
   weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
 
   # pylint: disable=protected-access
@@ -2116,7 +2162,7 @@ def class_method_to_instance_method(original_function, instance):
       tf_decorator.make_decorator(bound_method, bound_method_wrapper),
       name=original_function._name,
       autograph=original_function._autograph,
-      input_signature=original_function._input_signature)
+      input_signature=original_function.input_signature)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly

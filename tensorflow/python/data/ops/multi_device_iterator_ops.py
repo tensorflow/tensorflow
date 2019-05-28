@@ -209,11 +209,12 @@ class MultiDeviceIterator(object):
       In order to prevent deadlocks, if the prefetch_buffer_size is greater
       than the max_buffer_size, we set the max_buffer_size to
       prefetch_buffer_size.
-
-    Raises:
-      RuntimeError: If run in Eager mode.
     """
+    options = dataset_ops.Options()
+    options.experimental_distribute.num_devices = len(devices)
+    dataset = dataset.with_options(options)
     self._dataset = dataset._apply_options()  # pylint: disable=protected-access
+    self._experimental_slack = dataset.options().experimental_slack
     self._devices = devices
     self._source_device = source_device
     self._source_device_tensor = ops.convert_to_tensor(source_device)
@@ -282,12 +283,16 @@ class MultiDeviceIterator(object):
     ds = self._prototype_device_datasets[i]
     ds = _ReincarnatedPerDeviceGenerator(ds, self._incarnation_id)
     if self._prefetch_buffer_size > 0:
-      ds = ds.prefetch(self._prefetch_buffer_size)
+      if self._experimental_slack:
+        ds = dataset_ops.PrefetchDataset(
+            ds, self._prefetch_buffer_size, slack_period=1)
+      else:
+        ds = ds.prefetch(self._prefetch_buffer_size)
     # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
     # non-CPU devices.
     options = dataset_ops.Options()
-    options.experimental_autotune = False
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
     ds = ds.with_options(options)
     return ds
 
@@ -331,8 +336,8 @@ class MultiDeviceIterator(object):
         ds = self._create_device_dataset(i)
         # Reset the device iterator resources with the new dataset.
         ds_variant = ds._variant_tensor
-        gen_dataset_ops.make_iterator(ds_variant,
-                                      self._device_iterators[i]._resource)
+        gen_dataset_ops.make_iterator(
+            ds_variant, self._device_iterators[i]._iterator_resource)
 
   @property
   def _element_structure(self):

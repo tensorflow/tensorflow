@@ -35,6 +35,7 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.core.util.event_pb2 import TaggedRunMetadata
 # pylint: enable=unused-import
 
+from tensorflow.python.distribute import summary_op_util as _distribute_summary_op_util
 from tensorflow.python.eager import context as _context
 from tensorflow.python.framework import constant_op as _constant_op
 from tensorflow.python.framework import dtypes as _dtypes
@@ -74,7 +75,7 @@ def scalar(name, tensor, collections=None, family=None):
   Raises:
     ValueError: If tensor has the wrong shape or type.
   """
-  if _summary_op_util.skip_summary():
+  if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
@@ -129,7 +130,7 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  if _summary_op_util.skip_summary():
+  if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
@@ -169,7 +170,7 @@ def histogram(name, values, collections=None, family=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  if _summary_op_util.skip_summary():
+  if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[values],
@@ -216,7 +217,7 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  if _summary_op_util.skip_summary():
+  if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family=family, values=[tensor]) as (tag, scope):
@@ -313,7 +314,7 @@ def tensor_summary(name,
 
   serialized_summary_metadata = summary_metadata.SerializeToString()
 
-  if _summary_op_util.skip_summary():
+  if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
@@ -363,7 +364,7 @@ def merge(inputs, collections=None, name=None):
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')
-  if _summary_op_util.skip_summary():
+  if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
   name = _summary_op_util.clean_tag(name)
   with _ops.name_scope(name, 'Merge', inputs):

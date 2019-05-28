@@ -104,13 +104,11 @@ int main(int argc, char* argv[]) {
     // kind of prediction, so figure out what the highest scoring category was.
     TfLiteTensor* output = interpreter.output(0);
     uint8_t top_category_score = 0;
-    int top_category_index = 0;
     for (int category_index = 0; category_index < kCategoryCount;
          ++category_index) {
       const uint8_t category_score = output->data.uint8[category_index];
       if (category_score > top_category_score) {
         top_category_score = category_score;
-        top_category_index = category_index;
       }
     }
 

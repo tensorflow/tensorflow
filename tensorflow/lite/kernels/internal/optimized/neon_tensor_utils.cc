@@ -51,6 +51,9 @@ void* aligned_alloc(size_t alignment, size_t size, void** freeing_buffer) {
 
 // Use /proc/cpuinfo to test whether we have the right processor.
 bool HasSdotInstruction() {
+#ifdef __MINGW32__
+  return false;
+#else
   // TODO(strohman): Replace this with a proper API call once we are running
   // on kernels that can tell us about this instruction: (b/119112014)
   // Note that the C++ spec ensures that this variable will be initialized
@@ -90,6 +93,7 @@ bool HasSdotInstruction() {
     return found;
   }();
   return has_sdot;
+#endif  // MINGW32
 }
 
 }  // namespace
@@ -381,7 +385,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride) {
 #ifdef __aarch64__
-  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0) {
+  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
+      m_rows >= n_batch) {
     if (n_batch % 4 == 0 && result_stride == 1) {
       // Benchmarks suggest that it's always better to use the batch code
       // when we can, even on small matrices.

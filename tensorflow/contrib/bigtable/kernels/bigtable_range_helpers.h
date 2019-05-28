@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_BIGTABLE_KERNELS_BIGTABLE_RANGE_HELPERS_H_
 
 #include <string>
+#include <utility>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"

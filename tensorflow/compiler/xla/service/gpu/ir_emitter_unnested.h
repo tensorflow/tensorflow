@@ -209,13 +209,15 @@ class IrEmitterUnnested : public IrEmitter {
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
       const HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index,
+      bool use_linear_index,
       absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // Prerequisite: `IsReductionToVector(*unnested_hlo)`
-  Status EmitReductionToVector(HloInstruction* unnested_hlo);
+  // Prerequisite: `IsReductionFromOrToContiguousDimensions(*unnested_hlo)`
+  Status EmitReductionFromOrToContiguousDimensions(
+      HloInstruction* unnested_hlo);
 
   // Computes the KernelMappingScheme for the reduce HLO and indicates whether
   // the reduction is a row reduction. For an un-fused reduce op, unnested_hlo

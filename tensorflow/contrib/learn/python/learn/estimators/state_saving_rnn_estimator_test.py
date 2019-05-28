@@ -396,8 +396,9 @@ class StateSavingRnnEstimatorTest(test.TestCase):
         random_sequence = random_ops.random_uniform(
             [sequence_length + 1], 0, 2, dtype=dtypes.int32, seed=seed)
         labels = array_ops.slice(random_sequence, [0], [sequence_length])
-        inputs = math_ops.to_float(
-            array_ops.slice(random_sequence, [1], [sequence_length]))
+        inputs = math_ops.cast(
+            array_ops.slice(random_sequence, [1], [sequence_length]),
+            dtypes.float32)
         features = {'inputs': inputs}
 
         if mode == model_fn_lib.ModeKeys.INFER:
@@ -450,8 +451,9 @@ class LegacyConstructorTest(test.TestCase):
       random_sequence = random_ops.random_uniform(
           [sequence_length + 1], 0, 2, dtype=dtypes.int32, seed=seed)
       labels = array_ops.slice(random_sequence, [0], [sequence_length])
-      inputs = math_ops.to_float(
-          array_ops.slice(random_sequence, [1], [sequence_length]))
+      inputs = math_ops.cast(
+          array_ops.slice(random_sequence, [1], [sequence_length]),
+          dtypes.float32)
       return {'inputs': inputs}, labels
     return input_fn
 
@@ -537,8 +539,9 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
         random_sequence = random_ops.random_uniform(
             [sequence_length + 1], 0, 2, dtype=dtypes.int32, seed=seed)
         labels = array_ops.slice(random_sequence, [0], [sequence_length])
-        inputs = math_ops.to_float(
-            array_ops.slice(random_sequence, [1], [sequence_length]))
+        inputs = math_ops.cast(
+            array_ops.slice(random_sequence, [1], [sequence_length]),
+            dtypes.float32)
         return {'inputs': inputs}, labels
 
       return input_fn

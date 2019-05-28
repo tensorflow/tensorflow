@@ -21,11 +21,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
@@ -100,17 +101,14 @@ class LRUCache {
   }
 
   // Creates n free positions in cache
-  Status DiscardOld(size_t n = 0) {
-    if (n > capacity_) {
-      return errors::Internal("Insufficient capacity in cache (capacity = ",
-                              capacity_, ", requested ", n, ")");
-    }
+  void DiscardOld(size_t n = 0) {
+    DCHECK(capacity_ >= n) << "Insufficient capacity in cache (capacity = "
+                           << capacity_ << ", requested " << n << ")";
     while (objects_.size() > (capacity_ - n)) {
       key_type discard_key = keys_.back();
       keys_.pop_back();
       objects_.erase(discard_key);
     }
-    return Status::OK();
   }
 };
 
@@ -141,36 +139,18 @@ struct EngineContext {
 
 class TRTEngineCacheResource : public ResourceBase {
  public:
-  TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity)
-      : cache_(capacity) {
-    auto device = ctx->device();
-    auto alloc = device->GetAllocator(AllocatorAttributes());
-    if (!alloc) {
-      LOG(ERROR) << "Can't find device allocator for gpu device "
-                 << device->name();
-      allocator_ = nullptr;
-    } else {
-      allocator_.reset(new TRTDeviceAllocator(alloc));
-    }
-  }
+  // According to the TensorRT API, the logger is considered a singleton by the
+  // TensorRT library, and multiple instances of IRuntime and/or IBuilder must
+  // all use the same logger. So here we make it a singleton.
+  //
+  // TODO(laigd): use this logger in all places where conversion happens.
+  static Logger& GetLogger();
 
-  string DebugString() const override {
-    std::stringstream oss;
-    using std::dec;
-    using std::endl;
-    using std::hex;
-    oss << "TRTEngineCacheResource: ";
-    oss << "TRTBaseAllocator = " << hex << allocator_.get() << dec << ", ";
-    oss << "LRUCache = " << hex << &cache_ << dec << endl;
-    oss << "Containing " << cache_.size() << " entries: " << endl;
-    for (const auto& item : cache_) {
-      oss << TensorShapeUtils::ShapeListString(item.first) << ": " << hex
-          << "ICudaEngine: " << item.second.get()->cuda_engine.get() << ", "
-          << "IExecutionContext: " << item.second.get()->execution_context.get()
-          << dec << endl;
-    }
-    return oss.str();
-  }
+  TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity);
+
+  ~TRTEngineCacheResource() override;
+
+  string DebugString() const override;
 
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;

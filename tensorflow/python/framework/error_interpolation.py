@@ -140,8 +140,8 @@ def _compute_colocation_summary_from_dict(name, colocation_dict, prefix=""):
   Returns:
     A multi-line string similar to:
         Node-device colocations active during op creation:
-          with tf.colocate_with(test_node_1): <test_1.py:27>
-          with tf.colocate_with(test_node_2): <test_2.py:38>
+          with tf.compat.v1.colocate_with(test_node_1): <test_1.py:27>
+          with tf.compat.v1.colocate_with(test_node_2): <test_2.py:38>
     The first line will have no padding to its left by default.  Subsequent
     lines will have two spaces of left-padding.  Use the prefix argument
     to increase indentation.
@@ -263,16 +263,16 @@ def compute_field_dict(op, strip_file_prefix=""):
       "defined_at": " (defined at tool_utils.py:124)",
       "colocations":
           '''Node-device colocations active during op creation:
-               with tf.colocate_with(test_node_1): <test_1.py:27>
-               with tf.colocate_with(test_node_2): <test_2.py:38>'''
+               with tf.compat.v1.colocate_with(test_node_1): <test_1.py:27>
+               with tf.compat.v1.colocate_with(test_node_2): <test_2.py:38>'''
       "devices":
           '''Device assignments active during op 'foo' creation:
                with tf.device(/cpu:0): <test_1.py:27>
                with tf.device(some_func<foo.py, 123>): <test_2.py:38>'''
       "devs_and_colocs": A concatenation of colocations and devices, e.g.
           '''Node-device colocations active during op creation:
-               with tf.colocate_with(test_node_1): <test_1.py:27>
-               with tf.colocate_with(test_node_2): <test_2.py:38>'''
+               with tf.compat.v1.colocate_with(test_node_1): <test_1.py:27>
+               with tf.compat.v1.colocate_with(test_node_2): <test_2.py:38>'''
              Device assignments active during op 'foo' creation:
                with tf.device(/cpu:0): <test_1.py:27>
                with tf.device(some_func<foo.py, 123>): <test_2.py:38>'''

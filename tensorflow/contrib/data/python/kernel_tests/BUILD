@@ -1,6 +1,7 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -10,6 +11,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 py_test(
     name = "assert_element_shape_test",
     srcs = ["assert_element_shape_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:batching",
@@ -32,6 +34,7 @@ py_test(
     size = "medium",
     srcs = ["lmdb_dataset_op_test.py"],
     data = ["//tensorflow/core:lmdb_testdata"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -57,6 +60,7 @@ py_test(
     name = "reduce_dataset_test",
     size = "small",
     srcs = ["reduce_dataset_test.py"],
+    python_version = "PY2",
     deps = [
         "//tensorflow/contrib/data/python/ops:get_single_element",
         "//tensorflow/contrib/data/python/ops:grouping",
@@ -73,6 +77,7 @@ py_test(
     name = "slide_dataset_op_test",
     size = "small",
     srcs = ["slide_dataset_op_test.py"],
+    python_version = "PY2",
     deps = [
         "//tensorflow/contrib/data/python/ops:sliding",
         "//tensorflow/python:array_ops",

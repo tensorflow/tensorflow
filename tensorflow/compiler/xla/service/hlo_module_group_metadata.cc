@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -122,8 +123,9 @@ Status HloModuleGroupMetadata::Build() {
   // Visit the computations in postorder so that the companion information grows
   // from inner computations to outer ones.
   for (HloModule* module : modules_) {
+    FunctionVisitor function_visitor(visitor);
     for (HloComputation* computation : module->MakeComputationPostOrder()) {
-      TF_RETURN_IF_ERROR(computation->Accept(visitor));
+      TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
   TF_RETURN_IF_ERROR(VerifyCompanionSets());
@@ -370,8 +372,9 @@ Status HloModuleGroupMetadata::RecordInstructions() {
   };
 
   for (HloModule* module : modules_) {
+    FunctionVisitor function_visitor(visitor);
     for (auto* computation : module->computations()) {
-      TF_RETURN_IF_ERROR(computation->Accept(visitor));
+      TF_RETURN_IF_ERROR(computation->Accept(&function_visitor));
     }
   }
   VLOG(2) << "Created " << channels_.size() << " channels";

@@ -36,7 +36,6 @@ from tensorflow.python.ops import variable_scope as variable_scope_lib
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.util import deprecation
 
-
 __all__ = [
     "MaskedAutoregressiveFlow",
     "masked_autoregressive_default_template",
@@ -190,8 +189,7 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
   """
 
   @deprecation.deprecated(
-      "2018-10-01",
-      "The TensorFlow Distributions library has moved to "
+      "2018-10-01", "The TensorFlow Distributions library has moved to "
       "TensorFlow Probability "
       "(https://github.com/tensorflow/probability). You "
       "should update all references to use `tfp.distributions` "
@@ -210,10 +208,11 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
         `log_scale` from both the forward domain (`x`) and the inverse domain
         (`y`). Calculation must respect the "autoregressive property" (see class
         docstring). Suggested default
-        `masked_autoregressive_default_template(hidden_layers=...)`.
-        Typically the function contains `tf.Variables` and is wrapped using
-        `tf.make_template`. Returning `None` for either (both) `shift`,
-        `log_scale` is equivalent to (but more efficient than) returning zero.
+        `masked_autoregressive_default_template(hidden_layers=...)`. Typically
+        the function contains `tf.Variables` and is wrapped using
+        `tf.compat.v1.make_template`. Returning `None` for either (both)
+        `shift`, `log_scale` is equivalent to (but more efficient than)
+        returning zero.
       is_constant_jacobian: Python `bool`. Default: `False`. When `True` the
         implementation assumes `log_scale` does not depend on the forward domain
         (`x`) or inverse domain (`y`) values. (No validation is made;
@@ -222,9 +221,9 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       unroll_loop: Python `bool` indicating whether the `tf.while_loop` in
-        `_forward` should be replaced with a static for loop. Requires that
-        the final dimension of `x` be known at graph construction time. Defaults
-        to `False`.
+        `_forward` should be replaced with a static for loop. Requires that the
+        final dimension of `x` be known at graph construction time. Defaults to
+        `False`.
       name: Python `str`, name given to ops managed by this object.
     """
     name = name or "masked_autoregressive_flow"
@@ -267,6 +266,7 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
     y0 = array_ops.zeros_like(x, name="y0")
     # call the template once to ensure creation
     _ = self._shift_and_log_scale_fn(y0)
+
     def _loop_body(index, y0):
       """While-loop body for autoregression calculation."""
       # Set caching device to avoid re-getting the tf.Variable for every while
@@ -282,6 +282,7 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
       if shift is not None:
         y += shift
       return index + 1, y
+
     _, y = control_flow_ops.while_loop(
         cond=lambda index, _: index < event_size,
         body=_loop_body,
@@ -310,8 +311,7 @@ MASK_EXCLUSIVE = "exclusive"
 
 
 @deprecation.deprecated(
-    "2018-10-01",
-    "The TensorFlow Distributions library has moved to "
+    "2018-10-01", "The TensorFlow Distributions library has moved to "
     "TensorFlow Probability "
     "(https://github.com/tensorflow/probability). You "
     "should update all references to use `tfp.distributions` "
@@ -335,8 +335,7 @@ def _gen_slices(num_blocks, n_in, n_out, mask_type=MASK_EXCLUSIVE):
 
 
 @deprecation.deprecated(
-    "2018-10-01",
-    "The TensorFlow Distributions library has moved to "
+    "2018-10-01", "The TensorFlow Distributions library has moved to "
     "TensorFlow Probability "
     "(https://github.com/tensorflow/probability). You "
     "should update all references to use `tfp.distributions` "
@@ -357,8 +356,7 @@ def _gen_mask(num_blocks,
 
 
 @deprecation.deprecated(
-    "2018-10-01",
-    "The TensorFlow Distributions library has moved to "
+    "2018-10-01", "The TensorFlow Distributions library has moved to "
     "TensorFlow Probability "
     "(https://github.com/tensorflow/probability). You "
     "should update all references to use `tfp.distributions` "
@@ -373,7 +371,9 @@ def masked_dense(inputs,
                  name=None,
                  *args,
                  **kwargs):
-  """A autoregressively masked dense layer. Analogous to `tf.layers.dense`.
+  """A autoregressively masked dense layer.
+
+  Analogous to `tf.compat.v1.layers.dense`.
 
   See [Germain et al. (2015)][1] for detailed explanation.
 
@@ -385,14 +385,14 @@ def masked_dense(inputs,
       MADE masks.
     exclusive: Python `bool` scalar representing whether to zero the diagonal of
       the mask, used for the first layer of a MADE.
-    kernel_initializer: Initializer function for the weight matrix.
-      If `None` (default), weights are initialized using the
+    kernel_initializer: Initializer function for the weight matrix. If `None`
+      (default), weights are initialized using the
       `tf.glorot_random_initializer`.
     reuse: Python `bool` scalar representing whether to reuse the weights of a
       previous layer by the same name.
     name: Python `str` used to describe ops managed by this function.
-    *args: `tf.layers.dense` arguments.
-    **kwargs: `tf.layers.dense` keyword arguments.
+    *args: `tf.compat.v1.layers.dense` arguments.
+    **kwargs: `tf.compat.v1.layers.dense` keyword arguments.
 
   Returns:
     Output tensor.
@@ -438,8 +438,7 @@ def masked_dense(inputs,
 
 
 @deprecation.deprecated(
-    "2018-10-01",
-    "The TensorFlow Distributions library has moved to "
+    "2018-10-01", "The TensorFlow Distributions library has moved to "
     "TensorFlow Probability "
     "(https://github.com/tensorflow/probability). You "
     "should update all references to use `tfp.distributions` "
@@ -464,7 +463,7 @@ def masked_autoregressive_default_template(
 
   Warning: This function uses `masked_dense` to create randomly initialized
   `tf.Variables`. It is presumed that these will be fit, just as you would any
-  other neural architecture which uses `tf.layers.dense`.
+  other neural architecture which uses `tf.compat.v1.layers.dense`.
 
   #### About Hidden Layers
 
@@ -500,8 +499,8 @@ def masked_autoregressive_default_template(
       `tf.clip_by_value` should be preserved. Default: `False`.
     name: A name for ops managed by this function. Default:
       "masked_autoregressive_default_template".
-    *args: `tf.layers.dense` arguments.
-    **kwargs: `tf.layers.dense` keyword arguments.
+    *args: `tf.compat.v1.layers.dense` arguments.
+    **kwargs: `tf.compat.v1.layers.dense` keyword arguments.
 
   Returns:
     shift: `Float`-like `Tensor` of shift terms (the "mu" in
@@ -521,6 +520,7 @@ def masked_autoregressive_default_template(
   """
   name = name or "masked_autoregressive_default_template"
   with ops.name_scope(name, values=[log_scale_min_clip, log_scale_max_clip]):
+
     def _fn(x):
       """MADE parameterized via `masked_autoregressive_default_template`."""
       # TODO(b/67594795): Better support of dynamic shape.
@@ -529,8 +529,9 @@ def masked_autoregressive_default_template(
       if input_depth is None:
         raise NotImplementedError(
             "Rightmost dimension must be known prior to graph execution.")
-      input_shape = (np.int32(x.shape.as_list()) if x.shape.is_fully_defined()
-                     else array_ops.shape(x))
+      input_shape = (
+          np.int32(x.shape.as_list())
+          if x.shape.is_fully_defined() else array_ops.shape(x))
       for i, units in enumerate(hidden_layers):
         x = masked_dense(
             inputs=x,
@@ -553,16 +554,17 @@ def masked_autoregressive_default_template(
       x = array_ops.reshape(
           x, shape=array_ops.concat([input_shape, [2]], axis=0))
       shift, log_scale = array_ops.unstack(x, num=2, axis=-1)
-      which_clip = (math_ops.clip_by_value if log_scale_clip_gradient
-                    else _clip_by_value_preserve_grad)
+      which_clip = (
+          math_ops.clip_by_value
+          if log_scale_clip_gradient else _clip_by_value_preserve_grad)
       log_scale = which_clip(log_scale, log_scale_min_clip, log_scale_max_clip)
       return shift, log_scale
+
     return template_ops.make_template(name, _fn)
 
 
 @deprecation.deprecated(
-    "2018-10-01",
-    "The TensorFlow Distributions library has moved to "
+    "2018-10-01", "The TensorFlow Distributions library has moved to "
     "TensorFlow Probability "
     "(https://github.com/tensorflow/probability). You "
     "should update all references to use `tfp.distributions` "

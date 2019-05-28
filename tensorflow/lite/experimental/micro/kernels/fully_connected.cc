@@ -102,8 +102,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
       GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
       GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
-      GetTensorShape(output), GetTensorData<output_data_type>(output), \
-      nullptr)
+      GetTensorShape(output), GetTensorData<output_data_type>(output))
   switch (output->type) {
     case kTfLiteUInt8:
       TF_LITE_FULLY_CONNECTED(uint8_t);

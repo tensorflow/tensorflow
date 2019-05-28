@@ -22,6 +22,7 @@ import os
 import sys
 
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -31,13 +32,18 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.module import module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
@@ -114,6 +120,22 @@ class SaveTest(test.TestCase):
         _import_and_infer(
             save_dir, {"z": 1.}, signature_key="non_default_key"))
 
+  def test_unbuilt_model_does_not_prevent_saving(self):
+    root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
+    save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
+
+  def test_version_information_included(self):
+    root = tracking.AutoTrackable()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+    saved_model_proto = loader_impl.parse_saved_model(save_dir)
+    self.assertEqual(
+        versions.__version__,
+        saved_model_proto.meta_graphs[0].meta_info_def.tensorflow_version)
+    self.assertEqual(
+        versions.__git_version__,
+        saved_model_proto.meta_graphs[0].meta_info_def.tensorflow_git_version)
+
   def test_non_concrete_error(self):
     root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
@@ -149,11 +171,6 @@ class SaveTest(test.TestCase):
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
                           tensor_spec.TensorSpec(None, dtypes.float32)],))
     root.f([constant_op.constant(1.), constant_op.constant(1.)])
-    # Concrete functions must always have uniquely named Tensor inputs. Save
-    # relies on this.
-    with self.assertRaisesRegexp(
-        ValueError, "two arguments named 'x'"):
-      root.f.get_concrete_function()
 
   def test_nested_outputs(self):
     root = tracking.AutoTrackable()
@@ -245,7 +262,7 @@ class SaveTest(test.TestCase):
 
   def test_docstring(self):
 
-    class Adder(util.Checkpoint):
+    class Adder(module.Module):
 
       @def_function.function(input_signature=[tensor_spec.TensorSpec(
           shape=None, dtype=dtypes.float32)])
@@ -312,6 +329,34 @@ class SaveTest(test.TestCase):
     del root.signatures
     save.save(root, save_dir)
 
+  def test_function_with_captured_dataset(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Currently broken when a GPU is available.")
+
+    class HasDataset(module.Module):
+
+      def __init__(self):
+        super(HasDataset, self).__init__()
+        self.dataset = (
+            dataset_ops.Dataset.range(5)
+            .map(lambda x: x ** 2))
+
+      @def_function.function
+      def __call__(self, x):
+        current_sum = array_ops.zeros([], dtype=dtypes.int64)
+        for element in self.dataset:
+          current_sum += x * element
+        return current_sum
+
+    root = HasDataset()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(
+        root, save_dir,
+        signatures=root.__call__.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.int64)))
+    self.assertAllClose({"output_0": 3 * (1 + 4 + 9 + 16)},
+                        _import_and_infer(save_dir, {"x": 3}))
+
 
 class AssetTests(test.TestCase):
 
@@ -374,7 +419,7 @@ class AssetTests(test.TestCase):
         {"output_0": [0.2]},
         _import_and_infer(export_dir, {"x": [0.1]}))
 
-  def test_sensible_graph_building_exception(self):
+  def test_sensible_function_building_exception(self):
     root = util.Checkpoint(v=variables.Variable(2.))
     root.f = def_function.function(
         lambda x: 2. * root.v,
@@ -385,9 +430,6 @@ class AssetTests(test.TestCase):
       save.save(root, export_dir)
     with self.assertRaisesRegexp(AssertionError, "tf.function"):
       _calls_save()
-    with ops.Graph().as_default():
-      with self.assertRaisesRegexp(AssertionError, "enable_eager_execution"):
-        save.save(root, export_dir)
 
 
 class _ModelWithOptimizerUsingDefun(util.Checkpoint):

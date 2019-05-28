@@ -17,17 +17,17 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
-
 #include <assert.h>
 #include <stdio.h>
+
 #include <cmath>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 #if defined(_MSC_VER) && !defined(__clang__)
 // msvc does not support unroll. One could try the loop pragma but we need to
@@ -161,7 +161,7 @@ __global__ void __launch_bounds__(1024)
       Eigen::array<T, 4> z;
       Eigen::array<T, 4> g;
 
-      const T plusFactor = (normMin < T(0)) ? T(0) : normMin * normMin;
+      const T plusFactor = (normMin < T(0)) ? T(0) : T(normMin * normMin);
 
       int numIterations = 0;
       while (numIterations < kMaxIterations) {
@@ -240,7 +240,7 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::ConstFlat maxvals,
                   const random::PhiloxRandom& gen,
                   typename TTypes<T>::Flat output) {
-    const auto config = GetCudaLaunchConfig(num_elements, d);
+    const auto config = GetGpuLaunchConfig(num_elements, d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         TruncatedNormalKernel<T>, config.block_count, config.thread_per_block,

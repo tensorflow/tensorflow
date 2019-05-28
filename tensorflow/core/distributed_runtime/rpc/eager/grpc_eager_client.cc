@@ -66,18 +66,23 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   ~GrpcEagerClientCache() override { threads_.clear(); }
 
-  EagerClient* GetClient(const string& target) override {
+  Status GetClient(const string& target, EagerClient** client) override {
     auto it = clients_.find(target);
     if (it == clients_.end()) {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
+      if (shared == nullptr) {
+        return errors::InvalidArgument("Client for target ", target,
+                                       " not found.");
+      }
       auto worker = std::unique_ptr<EagerClient>(new GrpcEagerClient(
           shared, threads_[AssignClientToThread(target)].completion_queue()));
 
       it = clients_.emplace(target, std::move(worker)).first;
     }
 
-    return it->second.get();
+    *client = it->second.get();
+    return Status::OK();
   }
 
  private:
@@ -88,7 +93,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   size_t AssignClientToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performace
+    // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {
