@@ -583,6 +583,7 @@ def RankOp : Std_Op<"rank", [NoSideEffect]> {
 
   let arguments = (ins AnyTensor);
   let results = (outs Index);
+  let verifier = ?;
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState *result, Value *tensor", [{

@@ -1806,14 +1806,6 @@ static ParseResult parseRankOp(OpAsmParser *parser, OperationState *result) {
                  parser->addTypeToList(indexType, result->types));
 }
 
-static LogicalResult verify(RankOp op) {
-  auto type = op.getOperand()->getType();
-  if (!type.isa<TensorType>()) {
-    return op.emitOpError("requires an operand that is a tensor");
-  }
-  return success();
-}
-
 OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
   // Constant fold rank when the rank of the tensor is known.
   auto type = getOperand()->getType();
