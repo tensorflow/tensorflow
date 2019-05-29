@@ -21,6 +21,7 @@ VALID_LIBS = [
     "curl",
     "cython",
     "double_conversion",
+    "enum34_archive",
     "flatbuffers",
     "gast_archive",
     "gif_archive",
