@@ -94,10 +94,10 @@ formula. `real_value = (int8_value - zero_point) * scale`.
 
 The representation has two main parts:
 
-*   Per-axis (aka per-channel) or per-layer weights represented by int8 two’s
+*   Per-axis (aka per-channel) or per-tensor weights represented by int8 two’s
     complement values in the range [-127, 127] with zero-point equal to 0.
 
-*   Per-layer activations/inputs represented by int8 two’s complement values in
+*   Per-tensor activations/inputs represented by int8 two’s complement values in
     the range [-128, 127], with a zero-point in range [-128, 127].
 
 For a detailed view of our quantization scheme, please see our
