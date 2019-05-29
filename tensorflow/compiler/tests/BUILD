@@ -471,6 +471,9 @@ tf_xla_py_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
