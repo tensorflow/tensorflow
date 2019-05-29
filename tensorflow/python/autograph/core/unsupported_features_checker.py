@@ -27,13 +27,6 @@ class UnsupportedFeaturesChecker(gast.NodeTransformer):
   Any features detected will cause AutoGraph to not compile a function.
   """
 
-  # TODO(b/124103128): Implement support for `global` statements
-  def visit_Global(self, node):
-    raise NotImplementedError('The global keyword is not yet supported.')
-
-  def visit_Nonlocal(self, node):
-    raise NotImplementedError('The nonlocal keyword is not yet supported.')
-
   # These checks could potentially be replaced with inspect.isgeneratorfunction
   # to avoid a getsource/parse/ast-walk round trip.
   def visit_Yield(self, node):

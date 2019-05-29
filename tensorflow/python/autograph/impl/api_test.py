@@ -48,7 +48,7 @@ from tensorflow.python.util import tf_inspect
 tf = utils.fake_tf()
 
 
-testing_global_numeric = 2
+global_n = 2
 
 
 class TestResource(object):
@@ -660,13 +660,14 @@ class ApiTest(test.TestCase):
   def test_to_graph_with_globals(self):
 
     def test_fn(x):
-      global testing_global_numeric
-      testing_global_numeric = x + testing_global_numeric
-      return testing_global_numeric
+      global global_n
+      global_n = x + global_n
+      return global_n
 
-    with self.assertRaisesRegex(
-        NotImplementedError, 'global keyword is not yet supported'):
-      api.to_graph(test_fn)
+    converted_fn = api.to_graph(test_fn)
+    prev_val = global_n
+    converted_fn(10)
+    self.assertGreater(global_n, prev_val)
 
   def test_to_graph_with_kwargs_clashing_converted_call(self):
 
