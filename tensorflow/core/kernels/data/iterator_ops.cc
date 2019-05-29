@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -595,10 +596,9 @@ int64 AnonymousIteratorHandleOp::current_id_(0);
 void MakeIteratorOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  IteratorResource* iterator_resource;
+  core::RefCountPtr<IteratorResource> iterator_resource;
   OP_REQUIRES_OK(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
-  core::ScopedUnref unref(iterator_resource);
   OP_REQUIRES_OK(ctx, iterator_resource->SetIteratorFromDataset(ctx, dataset));
 }
 
