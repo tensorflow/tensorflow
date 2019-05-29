@@ -84,7 +84,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
-TEST_F(InstructionFusionTest, DotOperationNoFusion_Bitcast) {
+TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), "arg0"));
@@ -101,7 +101,8 @@ TEST_F(InstructionFusionTest, DotOperationNoFusion_Bitcast) {
   auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {

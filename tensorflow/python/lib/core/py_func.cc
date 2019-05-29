@@ -92,6 +92,7 @@ Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
         Py_DECREF(lst);
         return s;
       }
+      arg = PyArray_Return(reinterpret_cast<PyArrayObject*>(arg));
     }
     PyList_SetItem(lst, i, arg);
   }
@@ -467,7 +468,7 @@ Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
     StringPiece p = t.tensor_data();
     memcpy(PyArray_DATA(np_array), p.data(), p.size());
   }
-  *ret = PyArray_Return(np_array);
+  *ret = reinterpret_cast<PyObject*>(np_array);
   return Status::OK();
 }
 

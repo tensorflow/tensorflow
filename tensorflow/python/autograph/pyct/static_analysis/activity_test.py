@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
@@ -112,13 +113,9 @@ class ScopeTest(test.TestCase):
 class ActivityAnalyzerTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
-    node, _, source = parser.parse_entity(test_fn, future_imports=())
+    node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source,
-        source_file=None,
-        namespace={},
-        arg_values=None,
-        arg_types=None)
+        source_code=source, source_file=None, future_features=(), namespace={})
     node = qual_names.resolve(node)
     ctx = transformer.Context(entity_info)
     node = activity.resolve(node, ctx)
@@ -240,6 +237,8 @@ class ActivityAnalyzerTest(test.TestCase):
 
     node, _ = self._parse_and_analyze(test_fn)
     for_node = node.body[1]
+    self.assertScopeIs(
+        anno.getanno(for_node, NodeAnno.ITERATE_SCOPE), (), ('_'))
     self.assertScopeIs(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'))
     self.assertScopeIs(
@@ -471,6 +470,32 @@ class ActivityAnalyzerTest(test.TestCase):
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('c', 'd'), ('a',))
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+
+  def test_comprehension_targets_are_isolated(self):
+
+    def test_fn(a):
+      b = [c for c in a]  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    if six.PY2:
+      self.assertScopeIs(body_scope, ('a',), ('b', 'c'))
+    else:
+      self.assertScopeIs(body_scope, ('a',), ('b',))
+
+  def test_comprehension_targets_are_isolated_in_augassign(self):
+
+    def test_fn(a, b):
+      b += [c for c in a]  # pylint:disable=unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    if six.PY2:
+      self.assertScopeIs(body_scope, ('a', 'b'), ('b', 'c'))
+    else:
+      self.assertScopeIs(body_scope, ('a', 'b'), ('b',))
 
 
 if __name__ == '__main__':

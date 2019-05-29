@@ -21,8 +21,10 @@ from __future__ import print_function
 import copy
 import re
 import sys
+import unittest
 
 import numpy as np
+import six
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
@@ -37,6 +39,7 @@ from tensorflow.python.ops import io_ops
 
 
 def _create_tensor(value, device=None, dtype=None):
+  context.ensure_initialized()
   ctx = context.context()
   if device is None:
     device = ctx.device_name
@@ -61,6 +64,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertIn("tf.Tensor", repr(t))
 
   def testBadConstructorArgs(self):
+    context.ensure_initialized()
     ctx = context.context()
     handle = ctx._handle
     device = ctx.device_name
@@ -76,9 +80,11 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError,
                                  "Expecting a DataType value for dtype. Got"):
       ops.EagerTensor(1, context=handle, device=device, dtype="1")
+
     # Following errors happen when trying to copy to GPU.
-    if not context.context().num_gpus():
+    if not test_util.is_gpu_available():
       self.skipTest("No GPUs found")
+
     with ops.device("/device:GPU:0"):
       device = ctx.device_name
       # Bad context.
@@ -195,6 +201,16 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertTrue(bool(_create_tensor([1])))
     self.assertTrue(bool(_create_tensor([1.])))
 
+  @unittest.skipUnless(six.PY2, "long has been removed in PY3")
+  def testLong(self):
+    self.assertEqual(long(_create_tensor(long(42))), 42)
+
+  def testIndex(self):
+    self.assertEqual([42][_create_tensor(0)], 42)
+
+    with self.assertRaises(TypeError):
+      _ = [42][_create_tensor([0])]
+
   def testIntDowncast(self):
     t = _create_tensor(3)
     self.assertEqual(dtypes.int32, t.dtype)
@@ -269,9 +285,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     for list_element, tensor_element in zip(l, t):
       self.assertAllEqual(list_element, tensor_element.numpy())
 
+  @test_util.run_gpu_only
   def testStringTensorOnGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with ops.device("/device:GPU:0"):
       with self.assertRaisesRegexp(
           RuntimeError, "Can't copy Tensor with type string to device"):
@@ -353,8 +368,9 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorNumpyScalar(self):
-    x = ops.convert_to_tensor([np.asscalar(np.array(321, dtype=np.int)),
-                               np.asscalar(np.array(16, dtype=np.int))])
+    x = ops.convert_to_tensor(
+        [np.array(321, dtype=np.int).item(),
+         np.array(16, dtype=np.int).item()])
     self.assertAllEqual(x, [321, 16])
 
   def testEagerTensorError(self):
@@ -363,6 +379,41 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         "Cannot convert provided value to EagerTensor. "
         "Provided value.*Requested dtype.*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
+
+  def testEagerLargeConstant(self):
+    for t in [dtypes.uint64, dtypes.uint32, dtypes.int32, dtypes.int64]:
+      self.assertEqual(
+          constant_op.constant(t.max, dtype=t).numpy(), t.max)
+      self.assertEqual(
+          constant_op.constant(t.min, dtype=t).numpy(), t.min)
+
+  def test_numpyIsView(self):
+    t = constant_op.constant([0.0])
+    t._numpy()[0] = 42.0
+    self.assertAllClose(t, constant_op.constant([42.0]))
+
+  def testMemoryviewIsReadonly(self):
+    t = constant_op.constant([0.0])
+    self.assertTrue(memoryview(t).readonly)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testMemoryviewScalar(self):
+    t = constant_op.constant(42.0)
+    self.assertAllEqual(
+        np.array(memoryview(t)), np.array(42.0, dtype=np.float32))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testMemoryviewEmpty(self):
+    t = constant_op.constant([], dtype=np.float32)
+    self.assertAllEqual(np.array(memoryview(t)), np.array([]))
+
+  @test_util.run_gpu_only
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testMemoryviewCopyToCPU(self):
+    with ops.device("/device:GPU:0"):
+      t = constant_op.constant([0.0])
+    self.assertAllEqual(
+        np.array(memoryview(t)), np.array([0.0], dtype=np.float32))
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

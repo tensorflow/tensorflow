@@ -34,8 +34,8 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 #ifdef GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -43,7 +43,7 @@ namespace {
 
 class TestClusterFLR : public DistributedFunctionLibraryRuntime {
  public:
-  TestClusterFLR() {}
+  explicit TestClusterFLR(DeviceMgr* device_mgr) : device_mgr_(device_mgr) {}
 
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
@@ -60,9 +60,12 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
+  DeviceMgr* remote_device_mgr() const override { return device_mgr_; }
+
  private:
   mutex mu_;
   int next_handle_ GUARDED_BY(mu_) = 0;
+  DeviceMgr* device_mgr_;
 };
 
 // TODO(b/128707168): Tests requiring a GPU device are currently always skipped
@@ -70,13 +73,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
 // device is set up.
 class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
  public:
-  ~ProcessFunctionLibraryRuntimeTest() override {
-    if (rendezvous_ != nullptr) {
-      rendezvous_->Unref();
-    }
-  }
-
-  void Init(const std::vector<FunctionDef>& flib) {
+  ProcessFunctionLibraryRuntimeTest() {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 2});
@@ -94,12 +91,20 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) {
       CHECK_EQ(nullptr, gpu_device_);
     }
+  }
 
+  ~ProcessFunctionLibraryRuntimeTest() override {
+    if (rendezvous_ != nullptr) {
+      rendezvous_->Unref();
+    }
+  }
+
+  void Init(const std::vector<FunctionDef>& flib) {
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    cluster_flr_.reset(new TestClusterFLR());
+    cluster_flr_.reset(new TestClusterFLR(device_mgr_.get()));
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, nullptr, cluster_flr_.get()));
@@ -212,7 +217,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                    });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
-    EXPECT_TRUE(str_util::StrContains(status.error_message(), "not found."));
+    EXPECT_TRUE(absl::StrContains(status.error_message(), "not found."));
 
     return Status::OK();
   }
@@ -465,6 +470,7 @@ void TestTwoDeviceMult(
     const string& error = "") {
   fixture->Init({test::function::TwoDeviceMult()});
   FunctionLibraryRuntime::Options opts;
+  opts.rendezvous = fixture->rendezvous_;
   auto x = test::AsTensor<float>({1, 2, 3});
   Tensor y_cpu;
   Tensor y_gpu;
@@ -473,7 +479,7 @@ void TestTwoDeviceMult(
   if (!error.empty()) {
     EXPECT_TRUE(errors::IsInvalidArgument(status))
         << "Actual status: " << status;
-    EXPECT_TRUE(str_util::StrContains(status.error_message(), error))
+    EXPECT_TRUE(absl::StrContains(status.error_message(), error))
         << "Actual error message: " << status.error_message();
     return;
   }
@@ -495,22 +501,23 @@ void TestTwoDeviceInputOutput(
     GTEST_SKIP() << "No GPUs available";
   }
   fixture->Init({test::function::TwoDeviceInputOutput()});
+
   FunctionLibraryRuntime::Options opts;
+  opts.rendezvous = fixture->rendezvous_;
   Tensor x1 = test::AsTensor<float>({1, 2});
-  if (str_util::StrContains(inst_opts.input_devices[0], "GPU")) {
+  if (absl::StrContains(inst_opts.input_devices[0], "GPU")) {
     x1 = fixture->CPUToGPU(x1);
   }
   Tensor x2 = test::AsTensor<float>({10, 20});
-  if (str_util::StrContains(inst_opts.input_devices[1], "GPU")) {
+  if (absl::StrContains(inst_opts.input_devices[1], "GPU")) {
     x2 = fixture->CPUToGPU(x2);
   }
-
   Tensor y1;
   Tensor y2;
   TF_CHECK_OK(fixture->Run("TwoDeviceInputOutput", opts, {{"T", DT_FLOAT}},
                            inst_opts, {x1, x2}, {&y1, &y2}));
 
-  if (str_util::StrContains(inst_opts.output_devices[0], "GPU")) {
+  if (absl::StrContains(inst_opts.output_devices[0], "GPU")) {
     EXPECT_TRUE(IsCUDATensor(y1));
     y1 = fixture->GPUToCPU(y1);
   } else {
@@ -518,7 +525,7 @@ void TestTwoDeviceInputOutput(
   }
   test::ExpectTensorEqual<float>(y1, test::AsTensor<float>({2, 4}));
 
-  if (str_util::StrContains(inst_opts.output_devices[1], "GPU")) {
+  if (absl::StrContains(inst_opts.output_devices[1], "GPU")) {
     EXPECT_TRUE(IsCUDATensor(y2));
     y2 = fixture->GPUToCPU(y2);
   } else {
@@ -600,7 +607,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListInput) {
       "FuncWithListInput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  ASSERT_TRUE(str_util::StrContains(
+  ASSERT_TRUE(absl::StrContains(
       status.error_message(),
       "FuncWithListInput has an input named \"x1\" that is a list of tensors"))
       << "Actual error message: " << status.error_message();
@@ -614,7 +621,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {
       "FuncWithListOutput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {}, {"CPU:0"}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  ASSERT_TRUE(str_util::StrContains(
+  ASSERT_TRUE(absl::StrContains(
       status.error_message(),
       "FuncWithListOutput has an output named \"y\" that is a list of tensors"))
       << "Actual error message: " << status.error_message();
@@ -677,57 +684,70 @@ Tensor GetResourceHandle(const string& var_name, const string& container,
   return tensor;
 }
 
-void TestResourceOutputAndUse(ProcessFunctionLibraryRuntimeTest* fixture,
-                              const string& resource_return_device) {
-  if (fixture->gpu_device_ == nullptr) {
+TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
+  if (gpu_device_ == nullptr) {
     GTEST_SKIP() << "No GPUs available";
   }
-  FunctionLibraryRuntime::InstantiateOptions inst_opts = MakeOptions(
-      "CPU:0", {"GPU:0", "GPU:0"}, {resource_return_device, "GPU:0"});
-  fixture->Init({test::function::ResourceOutput(),
-                 test::function::ReadResourceVariable()});
+  FunctionLibraryRuntime::InstantiateOptions inst_opts =
+      MakeOptions("CPU:0", {"GPU:0", "GPU:0"}, {"GPU:0", "GPU:0"});
+  Init({test::function::ResourceOutput(),
+        test::function::ReadResourceVariable()});
 
   // Make resource var
-  Tensor resource_value = fixture->CPUToGPU(test::AsTensor<float>({10, 20}));
+  Tensor resource_value = CPUToGPU(test::AsTensor<float>({10, 20}));
   Var* resource = new Var(DT_FLOAT);
   *resource->tensor() = resource_value;
   resource->is_initialized = true;
-  ResourceMgr* mgr = fixture->gpu_device_->resource_manager();
+  ResourceMgr* mgr = gpu_device_->resource_manager();
   Status status = mgr->Create(mgr->default_container(), "my_gpu_var", resource);
   ASSERT_TRUE(status.ok()) << status.error_message();
 
   // Run the function taking a resource and outputing it
-  Tensor x1 = fixture->CPUToGPU(test::AsTensor<float>({1, 2}));
+  FunctionLibraryRuntime::Options opts;
+  opts.rendezvous = rendezvous_;
+  Tensor x1 = CPUToGPU(test::AsTensor<float>({1, 2}));
   Tensor x2 = GetResourceHandle("my_gpu_var", mgr->default_container(),
                                 "/job:a/replica:0/task:0/device:GPU:0");
   Tensor returned_handle;
   Tensor y2;
-  TF_CHECK_OK(fixture->Run("ResourceOutput", {}, {{"T", DT_FLOAT}}, inst_opts,
-                           {x1, x2}, {&returned_handle, &y2}));
+  TF_CHECK_OK(Run("ResourceOutput", opts, {{"T", DT_FLOAT}}, inst_opts,
+                  {x1, x2}, {&returned_handle, &y2}));
 
   EXPECT_FALSE(IsCUDATensor(returned_handle));
   EXPECT_TRUE(IsCUDATensor(y2));
-  y2 = fixture->GPUToCPU(y2);
+  y2 = GPUToCPU(y2);
   test::ExpectTensorEqual<float>(y2, test::AsTensor<float>({2, 4}));
 
   // Read the variable using the handle returned from previous function to
   // make sure the handle and read value is on the right device.
   inst_opts = MakeOptions("GPU:0", {"GPU:0"}, {"GPU:0"});
   Tensor read_resource;
-  TF_CHECK_OK(fixture->Run("ReadResourceVariable", {}, {{"T", DT_FLOAT}},
-                           inst_opts, {returned_handle}, {&read_resource}));
+  TF_CHECK_OK(Run("ReadResourceVariable", opts, {{"T", DT_FLOAT}}, inst_opts,
+                  {returned_handle}, {&read_resource}));
   EXPECT_TRUE(IsCUDATensor(read_resource));
-  read_resource = fixture->GPUToCPU(read_resource);
+  read_resource = GPUToCPU(read_resource);
   test::ExpectTensorEqual<float>(read_resource,
                                  test::AsTensor<float>({10, 20}));
 }
 
-TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
-  TestResourceOutputAndUse(this, "GPU:0");
-}
+TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_PlacerError) {
+  if (gpu_device_ == nullptr) {
+    GTEST_SKIP() << "No GPUs available";
+  }
+  // ResourceOutput forwards second input to first output. Both are resources.
+  // Placer should not be able to place this graph because we ask it to place
+  // second input on GPU but first output to CPU.
+  FunctionLibraryRuntime::InstantiateOptions inst_opts =
+      MakeOptions("CPU:0", {"GPU:0", "GPU:0"}, {"CPU:0", "GPU:0"});
+  Init({test::function::ResourceOutput(),
+        test::function::ReadResourceVariable()});
 
-TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_CPU) {
-  TestResourceOutputAndUse(this, "CPU:0");
+  FunctionLibraryRuntime::Handle handle;
+  Status status = proc_flr_->Instantiate(
+      "ResourceOutput", test::function::Attrs({{"T", DT_FLOAT}}), inst_opts,
+      &handle);
+  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::StrContains(status.error_message(), "Cannot place"));
 }
 
 REGISTER_OP("BrokenOp")

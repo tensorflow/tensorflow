@@ -562,11 +562,11 @@ REGISTER_OP("XlaEinsum")
             lhs_rhs_split[1], "'", " with size: ", lhs_rhs_split[1].size()));
       }
 
-      for (const char& c : lhs_rhs_split[0]) {
-        left_map[c] = context->Dim(input_a, left_map.size());
+      for (int i = 0; i < lhs_rhs_split[0].size(); ++i) {
+        left_map[lhs_rhs_split[0][i]] = context->Dim(input_a, i);
       }
-      for (const char& c : lhs_rhs_split[1]) {
-        right_map[c] = context->Dim(input_b, right_map.size());
+      for (int i = 0; i < lhs_rhs_split[1].size(); ++i) {
+        right_map[lhs_rhs_split[1][i]] = context->Dim(input_b, i);
       }
 
       for (const char& c : equation_split[1]) {
@@ -588,6 +588,14 @@ An op which supports basic einsum op with 2 inputs and 1 output.
 This op has better TPU performnce since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
 )doc");
+
+REGISTER_OP("XlaReplicaId")
+    .Output("id: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* context) {
+      context->set_output(0, context->MakeShape({}));
+      return Status::OK();
+    })
+    .Doc("Replica ID.");
 
 }  // namespace
 }  // namespace tensorflow

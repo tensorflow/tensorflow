@@ -23,12 +23,17 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
-#include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
 
-Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {}
+Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
+  // Enable log history collection in StatusGroup so that recent warning and
+  // error log messages will be attached to the root error status to be
+  // forwarded to the master.
+  StatusGroup::ConfigureLogHistory();
+}
 
 void Worker::GetStatusAsync(const GetStatusRequest* request,
                             GetStatusResponse* response, StatusCallback done) {
@@ -45,9 +50,9 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
 void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
-  Status s = env_->session_mgr->CreateSession(request->session_handle(),
-                                              request->server_def(),
-                                              request->isolate_session_state());
+  Status s = env_->session_mgr->CreateSession(
+      request->session_handle(), request->server_def(),
+      request->cluster_device_attributes(), request->isolate_session_state());
   done(s);
 }
 
@@ -72,7 +77,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
   }
   if (s.ok()) {
     s = session->graph_mgr->Register(
-        request->session_handle(), request->graph_def(),
+        request->session_handle(), request->graph_def(), session.get(),
         request->graph_options(), request->debug_options(),
         request->collective_graph_key(), session->cluster_flr.get(),
         response->mutable_graph_handle());
@@ -188,30 +193,15 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
   }
-  DeviceTracer* tracer = nullptr;
+  ProfilerSession* profiler_session = nullptr;
   if (collector && request->exec_opts().record_timeline()) {
     // If timeline was requested, assume we want hardware level tracing.
-    std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
-    if (trptr) {
-      tracer = trptr.release();
-      Status s = tracer->Start();
-      if (!s.ok()) {
-        delete tracer;
-        if (errors::IsUnavailable(s)) {
-          LOG(WARNING)
-              << "Hardware tracing unavailable, continuing without it. " << s;
-          tracer = nullptr;
-        } else {
-          delete collector;
-          delete out;
-          done(s);
-          return;
-        }
-      }
-    }
+    profiler_session =
+        ProfilerSession::Create(/*ProfilerContext*/ nullptr).release();
   }
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {
+    LOG(INFO) << "Cancellation requested for RunGraph.";
     cm->StartCancel();
     AbortStep(step_id);
   });
@@ -223,7 +213,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     opts->ClearCancelCallback();
     delete cm;
     delete collector;
-    delete tracer;
+    delete profiler_session;
     delete out;
     done(errors::Aborted("Call was aborted"));
     return;
@@ -231,24 +221,23 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session.get(), request->exec_opts(),
       collector, response, cm, in,
-      [this, step_id, response, session, cm, out, token, collector, tracer,
-       opts, done](Status s) {
+      [this, step_id, response, session, cm, out, token, collector,
+       profiler_session, opts, done](const Status& status) {
+        Status s = status;
         if (s.ok()) {
           s = session->graph_mgr->RecvOutputs(step_id, out);
         }
+
         opts->ClearCancelCallback();
         cancellation_manager_.DeregisterCallback(token);
         delete cm;
 
-        if (tracer) {
-          Status tracer_status = tracer->Stop();
-          if (tracer_status.ok()) {
-            tracer_status = tracer->Collect(collector);
-          }
-          if (!tracer_status.ok()) {
-            LOG(ERROR) << "Bad status from tracer: " << tracer_status;
-          }
+        if (profiler_session) {
+          RunMetadata run_metadata;
+          profiler_session->CollectData(&run_metadata).IgnoreError();
+          response->mutable_step_stats()->MergeFrom(run_metadata.step_stats());
         }
+
         if (s.ok()) {
           for (const auto& p : *out) {
             const string& key = p.first;
@@ -256,9 +245,10 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
+
         if (collector) collector->Finalize();
         delete collector;
-        delete tracer;
+        delete profiler_session;
         delete out;
         done(s);
       });
@@ -309,6 +299,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
 
   // Before we start doing anything, we set the RPC cancellation.
   opts->SetCancelCallback([this, cm, step_id]() {
+    LOG(INFO) << "Cancellation requested for PartialRunGraph.";
     cm->StartCancel();
     AbortStep(step_id);
   });

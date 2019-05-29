@@ -359,7 +359,7 @@ class LayoutAssignment : public HloModulePass {
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
   // Returns null if it can't decide the best layout.
   // Precondition: `instruction` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
+  virtual std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
       const Layout& output_layout, const HloInstruction* instruction,
       int64 operand_no);
   // Given the layout of `user`'s `operand_no`-th operand, chooses a layout of
@@ -465,9 +465,9 @@ class LayoutAssignment : public HloModulePass {
   // Creates a copy of the given operand if the operand's layout does not match
   // the given layout. This copy replaces the use in the given instruction.
   // Tuple operands will be deep-copied.
-  Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
-                                    HloInstruction* instruction,
-                                    int64 operand_no);
+  virtual Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                            HloInstruction* instruction,
+                                            int64 operand_no);
 
   // Registers a copy instruction added by the layout assignment pass.
   void RegisterAddedCopy(HloInstruction* copy) {

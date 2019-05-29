@@ -111,6 +111,7 @@ class KernelAndDevice {
   virtual DataType input_type(int i) const = 0;
   virtual int num_inputs() const = 0;
   virtual int num_outputs() const = 0;
+  virtual const string& name() const = 0;
 
  protected:
   // TODO(apassos) Consider a shared cancellation manager. Note that this
@@ -165,6 +166,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   }
   int num_inputs() const override { return kernel_->num_inputs(); }
   int num_outputs() const override { return kernel_->num_outputs(); }
+  const string& name() const override { return kernel_->name(); }
 
  private:
   std::unique_ptr<OpKernel> kernel_;
@@ -193,14 +195,23 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
+      std::unordered_map<int, TensorShape> input_tensor_shapes,
+      std::unordered_map<int, std::pair<DataType, TensorShape>>
+          input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
-      Device* host_cpu_device)
+      Device* host_cpu_device, const string& name,
+      std::function<Rendezvous*(const int64)> rendezvous_creator)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
         pflr_(pflr),
         handle_(kInvalidHandle),
-        input_devices_(std::move(input_devices)) {}
+        input_devices_(std::move(input_devices)),
+        input_tensor_shapes_(std::move(input_tensor_shapes)),
+        input_resource_dtypes_and_shapes_(
+            std::move(input_resource_dtypes_and_shapes)),
+        name_(name),
+        rendezvous_creator_(std::move(rendezvous_creator)) {}
 
   virtual ~KernelAndDeviceFunc();
 
@@ -226,6 +237,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   }
   int num_inputs() const override { return input_dtypes_.size(); }
   int num_outputs() const override { return output_dtypes_.size(); }
+  const string& name() const override { return name_; };
 
  private:
   ProcessFunctionLibraryRuntime* const pflr_;  // non-null
@@ -236,9 +248,15 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
+  std::unordered_map<int, TensorShape> input_tensor_shapes_;
+  std::unordered_map<int, std::pair<DataType, TensorShape>>
+      input_resource_dtypes_and_shapes_;
 
   DataTypeVector input_dtypes_;
   DataTypeVector output_dtypes_;
+  string name_;
+
+  std::function<Rendezvous*(const int64)> rendezvous_creator_;
 };
 
 }  // namespace tensorflow

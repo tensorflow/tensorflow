@@ -153,10 +153,9 @@ class Analyzer(cfg.GraphVisitor):
       # This Name node below is a literal name, e.g. False
       # This can also happen if activity.py forgot to annotate the node with a
       # scope object.
-      assert isinstance(
-          node.ast_node,
-          (gast.Name, gast.Break, gast.Continue, gast.Raise)), (node.ast_node,
-                                                                node)
+      assert isinstance(node.ast_node,
+                        (gast.Name, gast.Break, gast.Continue, gast.Raise,
+                         gast.Pass)), (node.ast_node, node)
       defs_out = defs_in
 
     self.in_[node] = defs_in
@@ -223,10 +222,6 @@ class TreeAnnotator(transformer.Base):
   def visit_Global(self, node):
     raise NotImplementedError()
 
-  def visit_ExceptHandler(self, node):
-    # TODO(b/123995141) Add Exception Handlers to the CFG
-    return node
-
   def visit_Name(self, node):
     if self.current_analyzer is None:
       # Names may appear outside function defs - for example in class
@@ -279,6 +274,16 @@ class TreeAnnotator(transformer.Base):
   def visit_While(self, node):
     self._aggregate_predecessors_defined_in(node)
     return self.generic_visit(node)
+
+  def visit_Try(self, node):
+    self._aggregate_predecessors_defined_in(node)
+    return self.generic_visit(node)
+
+  def visit_ExceptHandler(self, node):
+    self._aggregate_predecessors_defined_in(node)
+    # TODO(mdan): Also track the exception type / name symbols.
+    node.body = self.visit_block(node.body)
+    return node
 
   def visit(self, node):
     parent = self.current_cfg_node

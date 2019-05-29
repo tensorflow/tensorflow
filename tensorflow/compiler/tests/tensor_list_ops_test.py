@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class ListOpsTest(xla_test.XLATestCase):
 
   def testElementShape(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       dim = array_ops.placeholder(dtypes.int32)
       l = list_ops.empty_tensor_list(
           element_shape=(dim, 15),
@@ -44,7 +44,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(sess.run(e64, {dim: 7}), (7, 15))
 
   def testPushPop(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       l = list_ops.empty_tensor_list(
           element_shape=(7, 15),
           element_dtype=dtypes.float32,
@@ -59,7 +59,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(sess.run(e1), 1.0 * np.ones((7, 15)))
 
   def testDoNotConstantFoldVariants(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       val = array_ops.placeholder(dtype=dtypes.float32)
       l = list_ops.empty_tensor_list(
           element_shape=(7, 15),
@@ -78,7 +78,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(sess.run(e1, {val: 1.0}), 1.0 * np.ones((7, 15)))
 
   def testPushPopSeparateLists(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       l = list_ops.empty_tensor_list(
           element_shape=[],
           element_dtype=dtypes.float32,
@@ -95,7 +95,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertEqual(result, [1.0, [2.0, 1.0], [3.0, 1.0]])
 
   def testEmptyTensorListNoMax(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       l = list_ops.empty_tensor_list(
           element_shape=(7, 15), element_dtype=dtypes.float32)
       l = list_ops.tensor_list_push_back(
@@ -106,7 +106,7 @@ class ListOpsTest(xla_test.XLATestCase):
         self.assertAllEqual(sess.run(e), 1.0 * np.ones((7, 15)))
 
   def testEmptyTensorListMax(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       l = list_ops.empty_tensor_list(
           element_shape=(10, 15), element_dtype=dtypes.float32,
           max_num_elements=2)
@@ -116,7 +116,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(sess.run(e), 3.0 * np.ones((10, 15)))
 
   def testListFromTensor(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       t = constant_op.constant([1.0, 2.0])
       l = list_ops.tensor_list_from_tensor(t, element_shape=[])
       e = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
@@ -125,10 +125,10 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(e0, 2.0)
       l, e1 = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       self.assertAllEqual(e1, 1.0)
-      self.assertAllEqual(list_ops.tensor_list_length(l), 0)
+      self.assertAllEqual(list_ops.tensor_list_length(l), 2)
 
   def testGetSet(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       t = constant_op.constant([1.0, 2.0])
       l = list_ops.tensor_list_from_tensor(t, element_shape=[])
       e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
@@ -138,7 +138,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(t, [3.0, 2.0])
 
   def testSetDoesNotUpdatePushIndex(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l = list_ops.empty_tensor_list(
           element_shape=[], element_dtype=dtypes.float32, max_num_elements=2)
       # SetItem should not change the push index.
@@ -149,7 +149,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(t, [5., 7.])
 
   def testGetSetReserved(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l = list_ops.tensor_list_reserve(
           element_dtype=dtypes.float32, element_shape=[], num_elements=2)
       e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
@@ -159,7 +159,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(t, [3.0, 0.0])
 
   def testSetStackReservedUnknownElementShape(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l = list_ops.tensor_list_reserve(
           element_dtype=dtypes.float32, element_shape=None, num_elements=2)
       l = list_ops.tensor_list_set_item(l, 0, [3.0, 4.0])
@@ -167,7 +167,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(t, [[3.0, 4.0], [0., 0.]])
 
   def testPushInEmptyListWithUnknownElementShape(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l = list_ops.empty_tensor_list(
           element_dtype=dtypes.float32, element_shape=None, max_num_elements=2)
       l = list_ops.tensor_list_push_back(l, [3.0, 4.0])
@@ -178,7 +178,7 @@ class ListOpsTest(xla_test.XLATestCase):
             list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))
 
   def testGetSetReservedNonScalar(self):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       l = list_ops.tensor_list_reserve(
           element_dtype=dtypes.float32,
           element_shape=(7, 15),
@@ -191,7 +191,7 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(sess.run(e2), np.zeros((7, 15)))
 
   def testStack(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l = list_ops.empty_tensor_list(
           element_dtype=dtypes.float32,
           element_shape=[],
@@ -205,11 +205,23 @@ class ListOpsTest(xla_test.XLATestCase):
       self.assertAllEqual(t, [1.0, 2.0])
 
   def testStackWithUninitializedTensors(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l = list_ops.tensor_list_reserve(
           element_dtype=dtypes.float32, element_shape=[], num_elements=3)
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [0., 0., 0.])
+
+  def testZerosLikeForTensorList(self):
+    with self.session(), self.test_scope():
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=[],
+          max_num_elements=2)
+      l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
+      z = array_ops.zeros_like(l)
+      z = list_ops.tensor_list_stack(z, element_dtype=dtypes.float32)
+      self.assertAllEqual(z.shape.as_list(), [None])
+      self.assertAllEqual(z, [0.0, 0.0])
 
 if __name__ == "__main__":
   os.environ['TF_XLA_FLAGS'] = ('--tf_xla_min_cluster_size=2 ' +

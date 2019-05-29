@@ -111,6 +111,12 @@ TEST_F(NameUniquerTest, AvoidKeywords) {
   EXPECT_EQ("s64_", uniquer.GetUniqueName("s64"));
   EXPECT_EQ("pred_", uniquer.GetUniqueName("pred"));
 
+  // Name prefix __xla_ is preserved.
+  EXPECT_NE(uniquer.GetUniqueName("__xla_").find("__xla_"), std::string::npos);
+  // Other form of __ prefixes is not preserved to avoid using name prefixes
+  // reserved by backends.
+  EXPECT_EQ(uniquer.GetUniqueName("__abx").find("__"), std::string::npos);
+
   // Though a primitive type, "tuple" is not a keyword.
   EXPECT_EQ("tuple", uniquer.GetUniqueName("tuple"));
 

@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
@@ -30,7 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import partial_batch_padding_handler as padding_util
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_utils
@@ -59,9 +60,8 @@ def fit_distributed(model,
                     validation_steps=None,
                     validation_freq=1):
   """Fit loop for Distribution Strategies."""
-  distributed_training_utils.validate_callbacks(callbacks, model.optimizer)
-  distributed_training_utils.validate_inputs(
-      x, y, model._distribution_strategy)
+  dist_utils.validate_callbacks(callbacks, model.optimizer)
+  dist_utils.validate_inputs(x, y)
 
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
@@ -69,9 +69,12 @@ def fit_distributed(model,
     # functions and distribution strategy, we pass `mode` to selectively
     # relax the costraint to consume all the training samples.
     steps_per_epoch, batch_size = (
-        distributed_training_utils.get_input_params(
-            model._distribution_strategy, first_x_value, steps_per_epoch,
-            batch_size, mode=ModeKeys.TRAIN))
+        dist_utils.get_input_params(
+            model._distribution_strategy,
+            first_x_value,
+            steps_per_epoch,
+            batch_size,
+            mode=ModeKeys.TRAIN))
   batch_size = model._validate_or_infer_batch_size(
       batch_size, steps_per_epoch, x)
   dataset = model._distribution_standardize_user_data(
@@ -81,31 +84,43 @@ def fit_distributed(model,
       batch_size=batch_size,
       validation_split=validation_split,
       shuffle=shuffle,
-      repeat=True)
+      epochs=epochs)
+  if not dist_utils.is_distributing_by_cloning(model):
+    with model._distribution_strategy.scope():
+      (dataset, _, _) = model._standardize_user_data(
+          dataset,
+          sample_weight=sample_weight,
+          class_weight=class_weight,
+          batch_size=batch_size,
+          validation_split=validation_split,
+          shuffle=shuffle)
 
   val_dataset = None
   if validation_data:
     val_x, val_y, val_sample_weights = model._unpack_validation_data(
         validation_data)
-    distributed_training_utils.validate_inputs(
-        val_x, val_y, model._distribution_strategy)
+    dist_utils.validate_inputs(val_x, val_y)
     first_valx_value = nest.flatten(val_x)[0]
     if isinstance(first_valx_value, np.ndarray):
-      validation_steps, _ = distributed_training_utils.get_input_params(
-          model._distribution_strategy, first_valx_value, validation_steps,
-          batch_size)
+      validation_steps, _ = dist_utils.get_input_params(
+          model._distribution_strategy,
+          first_valx_value,
+          validation_steps,
+          batch_size,
+          mode=ModeKeys.TEST)
     val_dataset = model._distribution_standardize_user_data(
         val_x, val_y,
         sample_weight=val_sample_weights,
         class_weight=None,
         batch_size=batch_size,
         validation_split=validation_split,
-        shuffle=shuffle)
+        shuffle=shuffle,
+        allow_partial_batch=True)
   elif validation_split:
     raise ValueError('validation_split argument is not supported with '
                      'distribution strategies.')
 
-  if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
+  if dist_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_fit_loop(
         model,
         dataset,
@@ -143,18 +158,23 @@ def evaluate_distributed(model,
                          steps=None,
                          callbacks=None):
   """Evaluate loop for Distribution Strategies."""
-  distributed_training_utils.validate_inputs(x, y, model._distribution_strategy)
+  dist_utils.validate_inputs(x, y)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
-    steps, batch_size = distributed_training_utils.get_input_params(
-        model._distribution_strategy, first_x_value, steps, batch_size)
+    steps, batch_size = dist_utils.get_input_params(
+        model._distribution_strategy,
+        first_x_value,
+        steps,
+        batch_size,
+        mode=ModeKeys.TEST)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
   dataset = model._distribution_standardize_user_data(
       x, y,
       sample_weight=sample_weight,
-      batch_size=batch_size)
+      batch_size=batch_size,
+      allow_partial_batch=True)
 
-  if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
+  if dist_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_test_loop(
         model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
   else:
@@ -174,19 +194,21 @@ def predict_distributed(model,
                         steps=None,
                         callbacks=None):
   """Predict loop for Distribution Strategies."""
-  distributed_training_utils.validate_inputs(
-      x, None, model._distribution_strategy, allow_partial_batch=True)
+  dist_utils.validate_inputs(x, None)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
-    steps, batch_size = distributed_training_utils.get_input_params(
-        model._distribution_strategy, first_x_value, steps,
-        batch_size, mode=ModeKeys.PREDICT)
+    steps, batch_size = dist_utils.get_input_params(
+        model._distribution_strategy,
+        first_x_value,
+        steps,
+        batch_size,
+        mode=ModeKeys.PREDICT)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
   dataset = model._distribution_standardize_user_data(
       x,
       batch_size=batch_size,
       allow_partial_batch=True)
-  if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
+  if dist_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_predict_loop(
         model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
   else:
@@ -199,7 +221,7 @@ def predict_distributed(model,
         callbacks=callbacks)
 
 
-def _per_device_execution_function(model, mode):
+def _per_replica_execution_function(model, mode):
   exec_func = model._make_execution_function(mode)
   return (exec_func.inputs, exec_func.outputs, exec_func.updates_op,
           exec_func.session_kwargs)
@@ -207,14 +229,14 @@ def _per_device_execution_function(model, mode):
 
 def _build_model(strategy, model, mode, inputs, targets=None):
   if model._compile_distribution:
-    distributed_training_utils.clone_model_on_replicas(
+    dist_utils.clone_model_on_replicas(
         model, strategy, mode, inputs=inputs, targets=targets)
   else:
-    distributed_training_utils._build_distributed_network(
-        model, strategy, mode, inputs, targets)
+    dist_utils._build_distributed_network(model, strategy, mode, inputs,
+                                          targets)
 
 
-def _make_step_fn(model, mode, strategy, output_labels):
+def _make_train_step_fn(model, mode, strategy, output_labels):
   """Create step fn.
 
   Arguments:
@@ -229,18 +251,30 @@ def _make_step_fn(model, mode, strategy, output_labels):
 
   def _step_fn(ctx, inputs):
     """A step fn that returns update ops."""
-    inputs, targets = inputs
+    if isinstance(inputs, (tuple, list)) and len(inputs) == 2:
+      inputs, targets = inputs
+    else:
+      targets = None
+
+    # When input feature is a dictionary of tensors, dictionary is flattended
+    # to an array and passed as a model input. This results in input mismatch
+    # when model input layer names are not sorted in alphabetical order as
+    # `nest.flatten()`sorts dictioary elements by keys. As so, transform input
+    # tensors into an array and order it along `model._feed_input_names`.
+    if isinstance(inputs, dict):
+      inputs = [inputs[input_name] for input_name in model._feed_input_names]
+
     _build_model(strategy, model, mode, inputs, targets)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = strategy.extended.call_for_each_replica(
-         _per_device_execution_function,
-         args=(distributed_training_utils.get_distributed_model(model, mode),
-               mode))
+         _per_replica_execution_function,
+         args=(dist_utils.get_distributed_model(model, mode), mode))
     (all_inputs, all_outputs, all_updates,
-     all_session_args) = distributed_training_utils.unwrap_values(
-         strategy, grouped_inputs, grouped_outputs, grouped_updates,
-         grouped_session_args)
+     all_session_args) = dist_utils.unwrap_values(strategy, grouped_inputs,
+                                                  grouped_outputs,
+                                                  grouped_updates,
+                                                  grouped_session_args)
     combined_fn = K.function(
         all_inputs,
         all_outputs,
@@ -275,7 +309,7 @@ def experimental_tpu_fit_loop(model,
                               val_dataset=None,
                               validation_steps=None,
                               validation_freq=1):
-  """Fit loop for training with TPU DistributionStrategy.
+  """Fit loop for training with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -309,22 +343,18 @@ def experimental_tpu_fit_loop(model,
   mode = ModeKeys.TRAIN
   # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
   current_strategy = model._distribution_strategy
-  iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
+  iterator = dist_utils.get_iterator(dataset, current_strategy)
   steps_per_epoch = training_utils.infer_steps_for_dataset(
       dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
-  if (current_strategy.extended.steps_per_run != 1 and
-      steps_per_epoch is None):
-    raise ValueError('`steps_per_epoch` should be specified when calling '
-                     '`fit` on the model with TPUStrategy when '
-                     '`steps_per_run` != 1 .')
 
-  scope = distributed_training_utils.distributed_scope(
+  scope = dist_utils.distributed_scope(
       strategy=current_strategy, learning_phase=1)
   scope.__enter__()
 
   out_labels = model.metrics_names or []
 
-  step_fn = _make_step_fn(model, ModeKeys.TRAIN, current_strategy, out_labels)
+  step_fn = _make_train_step_fn(model, ModeKeys.TRAIN, current_strategy,
+                                out_labels)
 
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
@@ -333,12 +363,12 @@ def experimental_tpu_fit_loop(model,
     tensor = model._all_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  use_steps = steps_per_epoch is not None
-  if use_steps:
+  if steps_per_epoch is not None:
     iteration_value = min(steps_per_epoch,
                           current_strategy.extended.steps_per_run)
   else:
-    iteration_value = current_strategy.extended.steps_per_run
+    raise ValueError('Number of steps could not be infered from the data, '
+                     'please pass the steps_per_epoch argument.')
 
   steps_per_run = K.variable(
       value=iteration_value,
@@ -353,7 +383,7 @@ def experimental_tpu_fit_loop(model,
   do_validation = bool(validation_steps)
 
   if model._compile_distribution:
-    distributed_training_utils._copy_weights_to_distributed_model(model, mode)
+    dist_utils._copy_weights_to_distributed_model(model, mode)
 
   callbacks = cbks.configure_callbacks(
       callbacks,
@@ -366,27 +396,27 @@ def experimental_tpu_fit_loop(model,
       mode=mode)
 
   # Calculate the steps each time on the device.
-  if use_steps:
-    steps_to_run = ([current_strategy.extended.steps_per_run] *
-                    (steps_per_epoch //
-                     current_strategy.extended.steps_per_run))
-    if steps_per_epoch % current_strategy.extended.steps_per_run:
-      steps_to_run.append(
-          steps_per_epoch % current_strategy.extended.steps_per_run)
-    target_steps = len(steps_to_run)
-  else:
-    target_steps = np.inf
+  steps_to_run = ([current_strategy.extended.steps_per_run] *
+                  (steps_per_epoch //
+                   current_strategy.extended.steps_per_run))
+  if steps_per_epoch % current_strategy.extended.steps_per_run:
+    steps_to_run.append(
+        steps_per_epoch % current_strategy.extended.steps_per_run)
+  target_steps = len(steps_to_run)
 
   callbacks._call_begin_hook(mode)
+
+  initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
+
   for epoch in range(initial_epoch, epochs):
-    distributed_training_utils._reset_metrics(model)
+    dist_utils._reset_metrics(model)
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     step_index = 0
     prev_step_count = None
     current_step = 0
     while current_step < target_steps:
-      step_count = steps_to_run[current_step] if use_steps else 1
+      step_count = steps_to_run[current_step]
       batch_logs = {'batch': step_index, 'size': 1, 'num_steps': step_count}
       callbacks._call_batch_hook(mode, 'begin', step_index, batch_logs)
       if prev_step_count is None or step_count != prev_step_count:
@@ -395,18 +425,11 @@ def experimental_tpu_fit_loop(model,
       try:
         _, outputs = K.batch_get_value([train_op, output_tensors])
       except errors.OutOfRangeError:
-        if use_steps:
-          logging.warning('Your dataset iterator ran out of data; '
-                          'interrupting training. Make sure that your dataset '
-                          'can generate at least `steps_per_epoch * epochs` '
-                          'batches (in this case, %d batches).' %
-                          steps_per_epoch * epochs)
-        else:
-          target_steps = current_step
-          logging.info('Dataset iterator ran out of data. Inferring the '
-                       'value of `steps_per_epoch` as %s  .' % target_steps)
-          distributed_training_utils.initialize_iterator(iterator,
-                                                         current_strategy)
+        logging.warning('Your dataset iterator ran out of data; '
+                        'interrupting training. Make sure that your dataset '
+                        'can generate at least `steps_per_epoch * epochs` '
+                        'batches (in this case, %d batches).' %
+                        steps_per_epoch * epochs)
         break
 
       batch_logs.update(outputs)
@@ -424,8 +447,7 @@ def experimental_tpu_fit_loop(model,
       if model._compile_distribution:
         # Since we create a new clone from the original model we need to copy
         # the weights back to the original model before we can run validation.
-        distributed_training_utils._copy_weights_to_original_model(
-            model, ModeKeys.TRAIN)
+        dist_utils._copy_weights_to_original_model(model, ModeKeys.TRAIN)
 
       val_outs = experimental_tpu_test_loop(  # pylint: disable=undefined-variable
           model,
@@ -446,8 +468,7 @@ def experimental_tpu_fit_loop(model,
 
   if model._compile_distribution:
     # Copy the weights back from the replicated model to the original model.
-    distributed_training_utils._copy_weights_to_original_model(
-        model, ModeKeys.TRAIN)
+    dist_utils._copy_weights_to_original_model(model, ModeKeys.TRAIN)
   scope.__exit__(None, None, None)
   return model.history
 
@@ -457,7 +478,7 @@ def experimental_tpu_test_loop(model,
                                verbose=0,
                                steps=None,
                                callbacks=None):
-  """Test loop for evaluating with TPU DistributionStrategy.
+  """Test loop for evaluating with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -476,41 +497,53 @@ def experimental_tpu_test_loop(model,
   """
   mode = ModeKeys.TEST
   current_strategy = model._distribution_strategy
-  iterator = distributed_training_utils.get_iterator(dataset,
-                                                     current_strategy)
+  iterator = dist_utils.get_iterator(dataset, current_strategy)
   steps = training_utils.infer_steps_for_dataset(dataset, steps,
                                                  steps_name='steps')
 
-  scope = distributed_training_utils.distributed_scope(
+  scope = dist_utils.distributed_scope(
       strategy=current_strategy, learning_phase=0)
   scope.__enter__()
 
   out_labels = model.metrics_names
-  step_fn = _make_step_fn(model, ModeKeys.TEST, current_strategy, out_labels)
 
-  # Add initial dummy values for loss and other metric tensors.
-  initial_loop_values = {}
-  initial_loop_values['loss'] = constant_op.constant(1e7)
-  for name in model.metrics_names[1:]:
-    tensor = model._all_metrics_tensors[name]
-    initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
+  def _test_step_fn(inputs):
+    """A fn that returns output of single test step."""
+    if isinstance(inputs, (tuple, list)) and len(inputs) == 2:
+      inputs, targets = inputs
+    else:
+      targets = None
 
-  # TODO(priyag): Use steps_per_run when we use new metrics as they will
-  # allow handling metric computation at each step using variables.
-  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-      step_fn, iterator, iterations=1,
-      initial_loop_values=initial_loop_values)
+    (distribution_strategy_context.get_replica_context().merge_call(
+        _build_model, args=(model, mode, inputs, targets)))
 
-  test_op = ctx.run_op
-  output_tensors = ctx.last_step_outputs
+    (_, outputs, updates, _) = _per_replica_execution_function(
+        dist_utils.get_distributed_model(model, mode), mode)
+    with ops.control_dependencies([updates]):
+      return outputs
 
-  if verbose == 1:
+  test_input_data = iterator.get_next()
+  per_replica_outputs = current_strategy.experimental_run_v2(
+      _test_step_fn, args=(test_input_data,))
+  output_tensors = {}
+  for label, output in zip(out_labels, per_replica_outputs):
+    if label == 'loss':
+      reduce_op = ds_reduce_util.ReduceOp.SUM
+    else:
+      # We reduce all other metrics using mean for now. This is temporary
+      # workaround until new metrics are in place.
+      reduce_op = ds_reduce_util.ReduceOp.MEAN
+    output_tensors[label] = current_strategy.reduce(reduce_op, output,
+                                                    axis=None)
+  test_op = control_flow_ops.group(list(output_tensors.values()))
+
+  if verbose >= 1:
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
-    distributed_training_utils._copy_weights_to_distributed_model(model, mode)
+    dist_utils._copy_weights_to_distributed_model(model, mode)
 
-  distributed_training_utils._reset_metrics(model)
+  dist_utils._reset_metrics(model)
 
   callbacks = cbks.configure_callbacks(
       callbacks,
@@ -527,7 +560,8 @@ def experimental_tpu_test_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    target_steps = np.inf
+    raise ValueError('Number of steps could not be infered from the data, '
+                     'please pass the steps argument.')
 
   current_step = 0
   while current_step < target_steps:
@@ -536,11 +570,8 @@ def experimental_tpu_test_loop(model,
     try:
       _, batch_outs = K.batch_get_value([test_op, output_tensors])
     except errors.OutOfRangeError:
-      if steps is not None:
-        warning_msg = 'Make sure that your dataset can generate at least '
-        '`steps` batches (in this case, {} batches).'.format(steps)
-      else:
-        warning_msg = 'Number of steps ran: {} steps'.format(current_step)
+      warning_msg = 'Make sure that your dataset can generate at least '
+      '`steps` batches (in this case, {} batches).'.format(steps)
 
       logging.warning('Your dataset iterator ran out of data; '
                       'interrupting evaluation. ' + warning_msg)
@@ -556,10 +587,13 @@ def experimental_tpu_test_loop(model,
 
     batch_logs = cbks.make_logs(model, batch_logs, outs, mode)
     callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
-    if verbose >= 1:
+    if verbose == 1:
       progbar.update(current_step + 1)
     current_step += 1
 
+  if verbose >= 1:
+    # Progress bar finishes at the end.
+    progbar.update(target_steps)
   callbacks._call_end_hook(mode)
 
   scope.__exit__(None, None, None)
@@ -576,7 +610,7 @@ def experimental_tpu_predict_loop(model,
                                   verbose=0,
                                   steps=None,
                                   callbacks=None):
-  """Predict loop for predicting with TPU DistributionStrategy.
+  """Predict loop for predicting with TPU tf.distribute.Strategy.
 
   Arguments:
       model: Keras Model instance.
@@ -595,8 +629,7 @@ def experimental_tpu_predict_loop(model,
   mode = ModeKeys.PREDICT
   steps = training_utils.infer_steps_for_dataset(dataset, steps,
                                                  steps_name='steps')
-  dataset_fully_shaped = (distributed_training_utils.
-                          is_dataset_shape_fully_defined(dataset))
+  dataset_fully_shaped = dist_utils.is_dataset_shape_fully_defined(dataset)
   padding_handler = None
   if not dataset_fully_shaped:
     # TODO(hongjunchoi): Investigate whether operations from
@@ -620,9 +653,9 @@ def experimental_tpu_predict_loop(model,
       dataset = dataset.prefetch(prefetch_buffer)
 
   current_strategy = model._distribution_strategy
-  iterator = distributed_training_utils.get_iterator(dataset, current_strategy)
+  iterator = dist_utils.get_iterator(dataset, current_strategy)
 
-  scope = distributed_training_utils.distributed_scope(
+  scope = dist_utils.distributed_scope(
       strategy=current_strategy, learning_phase=0)
   scope.__enter__()
 
@@ -632,10 +665,8 @@ def experimental_tpu_predict_loop(model,
     (distribution_strategy_context.get_replica_context().merge_call(
         _build_model, args=(model, mode, inputs)))
 
-    (_, outputs, updates, _) = (
-        _per_device_execution_function(
-            distributed_training_utils.get_distributed_model(model, mode),
-            mode))
+    (_, outputs, updates, _) = _per_replica_execution_function(
+        dist_utils.get_distributed_model(model, mode), mode)
 
     with ops.control_dependencies([updates]):
       return outputs
@@ -646,16 +677,16 @@ def experimental_tpu_predict_loop(model,
   predict_input_data = iterator.get_next()
   per_replica_outputs = current_strategy.experimental_run_v2(
       _predict_step_fn, args=(predict_input_data,))
-  output_tensors = distributed_training_utils.flatten_perdevice_values(
+  output_tensors = dist_utils.flatten_per_replica_values(
       current_strategy, per_replica_outputs)
 
-  if verbose == 1:
+  if verbose >= 1:
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
-    distributed_training_utils._copy_weights_to_distributed_model(model, mode)
+    dist_utils._copy_weights_to_distributed_model(model, mode)
 
-  distributed_training_utils._reset_metrics(model)
+  dist_utils._reset_metrics(model)
 
   callbacks = cbks.configure_callbacks(
       callbacks,
@@ -676,7 +707,8 @@ def experimental_tpu_predict_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    target_steps = np.inf
+    raise ValueError('Number of steps could not be infered from the data, '
+                     'please pass the steps argument.')
 
   current_step = 0
   while current_step < target_steps:
@@ -687,11 +719,8 @@ def experimental_tpu_predict_loop(model,
       _, batch_outs = K.batch_get_value([predict_ops, output_tensors])
 
     except errors.OutOfRangeError:
-      if steps is not None:
-        warning_msg = 'Make sure that your dataset can generate at least '
-        '`steps` batches (in this case, {} batches).'.format(steps)
-      else:
-        warning_msg = 'Number of steps ran: {} steps'.format(current_step)
+      warning_msg = 'Make sure that your dataset can generate at least '
+      '`steps` batches (in this case, {} batches).'.format(steps)
 
       logging.warning('Your dataset iterator ran out of data; '
                       'interrupting evaluation. ' + warning_msg)
@@ -707,9 +736,13 @@ def experimental_tpu_predict_loop(model,
 
     batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
     callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
-    if verbose >= 1:
+    if verbose == 1:
       progbar.update(current_step + 1)
     current_step += 1
+
+  if verbose >= 1:
+    # Progress bar finishes at the end.
+    progbar.update(current_step)
 
   callbacks._call_end_hook(mode)
 
@@ -727,3 +760,176 @@ def experimental_tpu_predict_loop(model,
     prediction_result = padding_handler.apply_mask(prediction_result)
 
   return prediction_result
+
+
+class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
+  """Training loop for distribution strategy with multiple worker."""
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    # Multi-Worker mode runs the Keras training loop on multiple
+    # servers via the Distribute Coordinator.
+    def _worker_fn(_):
+      """Run training inside the distributed coordinator."""
+      filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
+      return fit_distributed(
+          model,
+          x=x,
+          y=y,
+          batch_size=batch_size,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=filtered_callbacks,
+          validation_split=validation_split,
+          validation_data=validation_data,
+          shuffle=shuffle,
+          class_weight=class_weight,
+          sample_weight=sample_weight,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps,
+          validation_freq=validation_freq)
+
+    # Independent worker only for now.
+    return dc.run_distribute_coordinator(
+        _worker_fn,
+        model._distribution_strategy,
+        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+
+    def _worker_fn(_):
+      """Run evaluation inside the distributed coordinator."""
+      filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
+      return evaluate_distributed(
+          model,
+          x=x,
+          y=y,
+          batch_size=batch_size,
+          verbose=verbose,
+          sample_weight=sample_weight,
+          steps=steps,
+          callbacks=filtered_callbacks)
+
+    # Independent worker only for now.
+    return dc.run_distribute_coordinator(
+        _worker_fn,
+        model._distribution_strategy,
+        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    return predict_distributed(
+        model,
+        x=x,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)
+
+
+class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
+  """Training loop for distribution strategy with single worker."""
+
+  def fit(self,
+          model,
+          x=None,
+          y=None,
+          batch_size=None,
+          epochs=1,
+          verbose=1,
+          callbacks=None,
+          validation_split=0.,
+          validation_data=None,
+          shuffle=True,
+          class_weight=None,
+          sample_weight=None,
+          initial_epoch=0,
+          steps_per_epoch=None,
+          validation_steps=None,
+          validation_freq=1,
+          **kwargs):
+    return fit_distributed(
+        model,
+        x=x,
+        y=y,
+        batch_size=batch_size,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        validation_split=validation_split,
+        validation_data=validation_data,
+        shuffle=shuffle,
+        class_weight=class_weight,
+        sample_weight=sample_weight,
+        initial_epoch=initial_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq)
+
+  def evaluate(self,
+               model,
+               x=None,
+               y=None,
+               batch_size=None,
+               verbose=1,
+               sample_weight=None,
+               steps=None,
+               callbacks=None,
+               **kwargs):
+    return evaluate_distributed(
+        model,
+        x=x,
+        y=y,
+        batch_size=batch_size,
+        verbose=verbose,
+        sample_weight=sample_weight,
+        steps=steps,
+        callbacks=callbacks)
+
+  def predict(self,
+              model,
+              x,
+              batch_size=None,
+              verbose=0,
+              steps=None,
+              callbacks=None,
+              **kwargs):
+    return predict_distributed(
+        model,
+        x=x,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)

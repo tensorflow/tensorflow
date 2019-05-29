@@ -2,11 +2,10 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-licenses(["notice"])  # Apache 2.0
 
 py_library(
     name = "parallel_for",
@@ -81,8 +80,12 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -145,6 +148,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
+    shard_count = 5,
     tags = ["optonly"],  # Too slow in non-opt mode
     xla_enable_strict_auto_jit = True,
 )

@@ -42,7 +42,7 @@ class CondBuilder {
   // `graph`. The functions should be available in `flib`.
   CondBuilder(Node* if_op, const string& then_fn_name,
               const string& else_fn_name, const FunctionLibraryDefinition& flib,
-              Graph* graph);
+              bool keep_node_fetchable, Graph* graph);
 
   // Constructs the basic conditional control flow using switch and merge nodes.
   Status CreatePivotNodes();
@@ -73,7 +73,10 @@ class CondBuilder {
   Node* control_predecessor_;
   // The original If op.
   Node* if_op_;
-  // The identity node with the same outputs as the original If op.
+  // The node with the same name as the original If op:
+  //   (a) IdentityN node with same outputs if 'keep_node_fetchable_ == true'
+  //       and if the original If op had non-zero data outputs.
+  //   (b) NoOp node with control edge from 'branch_executed_node_' otherwise.
   Node* lowered_if_output_;
   // The predicate of the conditional.
   OutputTensor pred_;
@@ -93,6 +96,7 @@ class CondBuilder {
   Graph* graph_;
   const FunctionLibraryDefinition& flib_;
   string name_;
+  bool keep_node_fetchable_;
 
   NodeDebugInfo debug_info_;
   NodeBuilder then_call_builder_;
@@ -101,11 +105,13 @@ class CondBuilder {
 
 CondBuilder::CondBuilder(Node* if_op, const string& then_fn_name,
                          const string& else_fn_name,
-                         const FunctionLibraryDefinition& flib, Graph* graph)
+                         const FunctionLibraryDefinition& flib,
+                         bool keep_node_fetchable, Graph* graph)
     : if_op_(if_op),
       graph_(graph),
       flib_(flib),
       name_(if_op->name()),
+      keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*if_op_),
       then_call_builder_(NewName("then"), then_fn_name, graph->op_registry(),
                          &debug_info_),
@@ -200,7 +206,7 @@ Status CondBuilder::AddOutputs() {
   outputs_.resize(merges.size());
   for (int i = 0; i < then_call_node_->num_outputs(); ++i) {
     TF_RETURN_IF_ERROR(
-        NodeBuilder(graph_->NewName("output"), "Merge", graph_->op_registry(),
+        NodeBuilder(NewName("output"), "Merge", graph_->op_registry(),
                     &debug_info_)
             .Input({NodeOut(then_call_node_, i), NodeOut(else_call_node_, i)})
             .Device(if_op_->requested_device())
@@ -215,7 +221,10 @@ Status CondBuilder::AddOutputs() {
   // Furthermore it will guarantee that all function side effects will be
   // executed, if the function will be inlined into the graph. Having data
   // outputs is not enough, because they might become unused after inlining.
-  TF_RETURN_IF_ERROR(NodeBuilder(graph_->NewName("branch_executed"), "Merge",
+  //
+  // We will use this node to rewrite outgoing control edges from lowered 'If'
+  // node. All data edges will read tensors directly from Merge nodes.
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("branch_executed"), "Merge",
                                  graph_->op_registry(), &debug_info_)
                          .Input({pivot_t_, pivot_f_})
                          .ControlInputs({then_call_node_, else_call_node_})
@@ -227,7 +236,7 @@ Status CondBuilder::AddOutputs() {
   // Add outputs.
   for (const Edge* e : if_op_->out_edges()) {
     if (e->IsControlEdge()) {
-      graph_->AddControlEdge(lowered_if_output_, e->dst());
+      graph_->AddControlEdge(branch_executed_node_, e->dst());
     } else {
       // Feed the outputs directly from the merge nodes so that downstream ops
       // can start before all the outputs have been computed.
@@ -240,20 +249,26 @@ Status CondBuilder::AddOutputs() {
 
 Status CondBuilder::BuildLoweredIfOutput() {
   // If outputs are empty, it means that we might have only output control
-  // edges. Furthermore it's illegal to have IdentityN with empty `T`.
-  // TODO(ezhulenev): `IdentityN` node will introduce redundant Send/Recv nodes
-  // if branch functions are multi-device.
-  NodeBuilder ib(name_, outputs_.empty() ? "NoOp" : "IdentityN");
-  if (!outputs_.empty()) ib.Input(outputs_);
-  ib.Device(if_op_->requested_device());
-  ib.ControlInput(branch_executed_node_);
-  return ib.Finalize(graph_, &lowered_if_output_);
+  // edges (already connected to the `branch_executed_node`). Furthermore it's
+  // illegal to have an IdentityN with empty inputs.
+  //
+  // We still must keep lowered If node as a valid source of control edges,
+  // because it might be a part of function control output set.
+  NodeBuilder builder = keep_node_fetchable_ && !outputs_.empty()
+                            ? NodeBuilder(name_, "IdentityN").Input(outputs_)
+                            : NodeBuilder(name_, "NoOp");
+
+  return builder.Device(if_op_->requested_device())
+      .ControlInput(branch_executed_node_)
+      .Finalize(graph_, &lowered_if_output_);
 }
 
 }  // namespace
 
-Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib) {
-  VLOG(2) << "Lower If node: " << SummarizeNode(*n);
+Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib,
+                     bool keep_node_fetchable) {
+  VLOG(2) << "Lower If node (keep_node_fetchable=" << keep_node_fetchable
+          << "): " << SummarizeNode(*n);
 
   const AttrValue* then_attr = n->attrs().Find("then_branch");
   if (then_attr == nullptr) {
@@ -265,7 +280,7 @@ Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib) {
   }
 
   CondBuilder cb(n, then_attr->func().name(), else_attr->func().name(), flib,
-                 g);
+                 keep_node_fetchable, g);
   TF_RETURN_IF_ERROR(cb.CreatePivotNodes());
   TF_RETURN_IF_ERROR(cb.AddInputs());
   TF_RETURN_IF_ERROR(cb.AddOutputs());

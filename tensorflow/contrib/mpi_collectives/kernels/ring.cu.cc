@@ -20,6 +20,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/contrib/mpi_collectives/kernels/ring.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 namespace contrib {

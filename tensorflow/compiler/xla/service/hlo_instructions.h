@@ -650,6 +650,7 @@ class HloSliceInstruction : public HloInstruction {
 class HloConstantInstruction : public HloInstruction {
  public:
   explicit HloConstantInstruction(Literal literal);
+  explicit HloConstantInstruction(Literal literal, const Shape& shape);
   // Used when the literal is too large and dropped.
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
@@ -874,6 +875,13 @@ class HloParameterInstruction : public HloInstruction {
     parameter_replicated_at_leaf_buffers_.emplace(
         parameter_replicated_at_leaf_buffers.begin(),
         parameter_replicated_at_leaf_buffers.end());
+  }
+  void set_parameter_replicated_at_leaf_buffers(
+      const std::vector<bool>& parameter_replicated_at_leaf_buffers) {
+    CHECK_EQ(ShapeUtil::GetLeafCount(shape()),
+             parameter_replicated_at_leaf_buffers.size());
+    parameter_replicated_at_leaf_buffers_ =
+        parameter_replicated_at_leaf_buffers;
   }
   const absl::optional<std::vector<bool>>&
   parameter_replicated_at_leaf_buffers() const {
@@ -1172,15 +1180,13 @@ class HloCustomCallInstruction : public HloInstruction {
  public:
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
-                           absl::string_view custom_call_target,
-                           absl::string_view opaque);
+                           absl::string_view custom_call_target, string opaque);
 
   // Constructor for a custom call with constrained layout. 'shape' and
   // 'operands_with_layout' must all have layouts.
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
-                           absl::string_view custom_call_target,
-                           absl::string_view opaque,
+                           absl::string_view custom_call_target, string opaque,
                            absl::Span<const Shape> operand_shapes_with_layout);
 
   const Window& window() const override {
@@ -1202,7 +1208,8 @@ class HloCustomCallInstruction : public HloInstruction {
     convolution_dimension_numbers_ =
         absl::make_unique<ConvolutionDimensionNumbers>(dnums);
   }
-  const string& opaque() const { return opaque_; }
+  // TODO(jpienaar): Remove this accessor in the follow up.
+  const string& opaque() const { return raw_backend_config_string(); }
   const string& custom_call_target() const { return custom_call_target_; }
   void set_feature_group_count(int64 feature_group_count) {
     feature_group_count_ = feature_group_count;
@@ -1238,8 +1245,6 @@ class HloCustomCallInstruction : public HloInstruction {
       HloCloneContext* context) const override;
   // Name of a global symbol to call.
   string custom_call_target_;
-  // Opaque string interpreted by the backend.
-  string opaque_;
   // Describes the window in a windowed operation such as convolution.
   std::unique_ptr<Window> window_;
   // Describes the dimension numbers used for a convolution.

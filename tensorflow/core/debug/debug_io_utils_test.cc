@@ -461,7 +461,7 @@ class DiskUsageLimitTest : public ::testing::Test {
   void Initialize() {
     setenv("TFDBG_DISK_BYTES_LIMIT", "", 1);
     DebugFileIO::resetDiskByteUsage();
-    DebugFileIO::globalDiskBytesLimit = 0;
+    DebugFileIO::global_disk_bytes_limit_ = 0;
   }
 };
 

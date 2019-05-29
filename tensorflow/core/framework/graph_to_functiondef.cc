@@ -208,10 +208,18 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       node_def->add_input(
           strings::StrCat(edge->src()->name(), ":", edge->src_output()));
     }
-
     // Add control inputs
+    std::vector<std::string> control_inputs;
+    control_inputs.reserve(control_edges.size());
     for (const Edge* edge : control_edges) {
-      node_def->add_input(strings::StrCat("^", edge->src()->name()));
+      control_inputs.push_back(strings::StrCat("^", edge->src()->name()));
+    }
+    // Sort the control inputs so that nodes that are semantically equivalent
+    // generate idential node_def.
+    std::sort(control_inputs.begin(), control_inputs.end());
+
+    for (const auto& input : control_inputs) {
+      node_def->add_input(input);
     }
 
     // Populate tensor_renaming.
@@ -241,7 +249,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   for (int n_index = 0; n_index < fdef->node_def_size(); ++n_index) {
     NodeDef* node_def = fdef->mutable_node_def(n_index);
     for (int i = 0; i < node_def->input_size(); ++i) {
-      if (str_util::StartsWith(node_def->input(i), "^")) {
+      if (absl::StartsWith(node_def->input(i), "^")) {
         // Control input
         const string normalized =
             node_names.Renormalize(node_def->input(i).substr(1));

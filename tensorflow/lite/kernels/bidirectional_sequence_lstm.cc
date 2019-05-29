@@ -34,6 +34,8 @@ namespace ops {
 namespace builtin {
 namespace bidirectional_sequence_lstm {
 
+// LINT.IfChange
+
 // Input Tensors of size {max_time, n_batch, n_input}
 constexpr int kInputTensor = 0;
 
@@ -125,6 +127,8 @@ constexpr int kBwAuxInputToOutputWeightsTensor = 47;  // Optional
 constexpr int kFwOutputTensor = 0;
 constexpr int kBwOutputTensor = 1;  // Ignored if merge_outputs is set.
 
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/quantize_weights.cc)
+
 // Temporary tensors.
 enum TemporaryTensor {
   // Scratch buffers for input, forget, etc. gates
@@ -181,6 +185,7 @@ TfLiteStatus CheckLstmTensorDimensionsAndTypes(
   TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, input_to_forget_weights->dims->data[1], n_input);
   TF_LITE_ENSURE(context, (input_to_forget_weights->type == kTfLiteFloat32) ||
+                              (input_to_forget_weights->type == kTfLiteInt8) ||
                               (input_to_forget_weights->type == kTfLiteUInt8));
 
   const TfLiteTensor* input_to_input_weights =

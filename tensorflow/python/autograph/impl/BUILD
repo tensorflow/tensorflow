@@ -1,4 +1,6 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -31,9 +33,7 @@ py_library(
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
-        "//third_party/py/numpy",
         "@gast_archive//:gast",
-        "@six_archive//:six",
     ],
 )
 

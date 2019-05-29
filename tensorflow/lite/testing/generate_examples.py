@@ -31,11 +31,10 @@ from __future__ import print_function
 
 
 import tensorflow as tf
-
-
 import argparse
 import os
 import sys
+from tensorflow.lite.testing import generate_examples_lib
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -59,7 +58,7 @@ parser.add_argument(
     help=("If a particular model is affected by a known bug,"
           " count it as a toco error."))
 parser.add_argument(
-    "--ignore_toco_errors",
+    "--ignore_converter_errors",
     action="store_true",
     help="Raise an exception if any toco error is encountered.")
 parser.add_argument(
@@ -77,18 +76,17 @@ bin_path = None
 
 
 def main(unused_args):
-  from tensorflow.lite.testing import generate_examples_lib
-  params = generate_examples_lib.Params()
+  options = generate_examples_lib.Options()
 
-  params.output_path = FLAGS.output_path
-  params.zip_to_output = FLAGS.zip_to_output
-  params.toco = FLAGS.toco
-  params.known_bugs_are_errors = FLAGS.known_bugs_are_errors
-  params.ignore_toco_errors = FLAGS.ignore_toco_errors
-  params.save_graphdefs = FLAGS.save_graphdefs
-  params.run_with_flex = FLAGS.run_with_flex
+  options.output_path = FLAGS.output_path
+  options.zip_to_output = FLAGS.zip_to_output
+  options.toco = FLAGS.toco
+  options.known_bugs_are_errors = FLAGS.known_bugs_are_errors
+  options.ignore_converter_errors = FLAGS.ignore_converter_errors
+  options.save_graphdefs = FLAGS.save_graphdefs
+  options.run_with_flex = FLAGS.run_with_flex
 
-  generate_examples_lib.generate_examples(params)
+  generate_examples_lib.generate_examples(options)
 
 
 if __name__ == "__main__":

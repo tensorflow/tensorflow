@@ -15,8 +15,8 @@ filegroup(
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
     "tf_cc_test",
+    "tf_cuda_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
@@ -165,8 +165,9 @@ cc_library(
     srcs = ["grpc_response_cache.cc"],
     hdrs = ["grpc_response_cache.h"],
     deps = [
-        ":grpc_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -222,6 +223,7 @@ cc_library(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -240,6 +242,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -339,8 +342,9 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
-    name = "grpc_testlib_server",
+# Library version of grpc_testlib_server, to allow for custom testlib servers.
+cc_library(
+    name = "grpc_testlib_server_main",
     testonly = 1,
     srcs = [
         "grpc_testlib_server.cc",
@@ -366,6 +370,13 @@ tf_cc_binary(
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:variable_ops",
     ],
+    alwayslink = 1,
+)
+
+tf_cc_binary(
+    name = "grpc_testlib_server",
+    testonly = 1,
+    deps = [":grpc_testlib_server_main"],
 )
 
 tf_cuda_library(
@@ -376,7 +387,7 @@ tf_cuda_library(
     data = [
         ":grpc_testlib_server",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":grpc_session",
         "//tensorflow/core:core_cpu",

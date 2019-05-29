@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -40,8 +41,10 @@ Status StatefulRandomShape(shape_inference::InferenceContext* c) {
       .Attr("shape_dtype : type = DT_INT64")      \
       .SetShapeFn(StatefulRandomShape);
 
+REGISTER_STATEFUL_OP("StatefulUniform", DT_FLOAT);
 REGISTER_STATEFUL_OP("StatefulUniformFullInt", DT_UINT64);
 REGISTER_STATEFUL_OP("StatefulStandardNormalV2", DT_FLOAT);
+REGISTER_STATEFUL_OP("StatefulTruncatedNormal", DT_FLOAT);
 
 REGISTER_OP("StatefulUniformInt")
     .Input("resource: resource")
@@ -66,6 +69,17 @@ REGISTER_OP("StatefulUniformInt")
       return Status::OK();
     });
 
+REGISTER_OP("RngSkip")
+    .Input("resource: resource")
+    .Input("algorithm: int64")
+    .Input("delta: int64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    });
+
 REGISTER_OP("NonDeterministicInts")
     .Input("shape: shape_dtype")
     .SetIsStateful()
@@ -80,10 +94,34 @@ REGISTER_OP("NonDeterministicInts")
       return Status::OK();
     });
 
+REGISTER_OP("StatefulRandomBinomial")
+    .Input("resource: resource")
+    .Input("algorithm: int64")
+    .Input("shape: S")
+    .Input("counts: T")
+    .Input("probs: T")
+    .Output("output: dtype")
+    .Attr("S: {int32, int64}")
+    .Attr("T: {half, float, double, int32, int64} = DT_DOUBLE")
+    .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(3), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &unused));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    });
+
 // Register the depracated 'StatefulStandardNormal' op. This op is a short-lived
 // version where the 'resource' variable also contains the algorithm tag.
 // It is deprecated in favor of 'StatefulStandardNormalV2'.
 REGISTER_OP("StatefulStandardNormal")
+    .Deprecated(29, "Use StatefulStandardNormalV2 instead")
     .Input("resource: resource")
     .Input("shape: shape_dtype")
     .Output("output: dtype")

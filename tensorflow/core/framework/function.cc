@@ -21,7 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -32,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -177,7 +179,8 @@ class FunctionInstantiationHelper {
       } else {
         gnode->set_op(FunctionLibraryDefinition::kArgOp);
       }
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
@@ -286,8 +289,7 @@ class FunctionInstantiationHelper {
       // must lie in the range [node_name, node_colon_bound).
       auto it = index_.lower_bound(node_name);
       while (it != index_.end() && it->first <= node_colon_bound) {
-        if (it->first == node_name ||
-            tensorflow::str_util::StartsWith(it->first, node_colon)) {
+        if (it->first == node_name || absl::StartsWith(it->first, node_colon)) {
           nid = it->second.nid;
           break;
         }
@@ -343,7 +345,8 @@ class FunctionInstantiationHelper {
         gnode->set_op(FunctionLibraryDefinition::kRetOp);
       }
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
-      AddAttr("T", dtypes[i], gnode);
+      DataType dtype = ret_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
+      AddAttr("T", dtype, gnode);
       AddAttr("index", (*ret_index)++, gnode);
       result_.ret_types.push_back(dtypes[i]);
     }
@@ -494,7 +497,7 @@ string Print(const AttrValue& attr_value) {
     }
     std::sort(entries.begin(), entries.end());
     return strings::StrCat(attr_value.func().name(), "[",
-                           str_util::Join(entries, ", "), "]");
+                           absl::StrJoin(entries, ", "), "]");
   }
   return SummarizeAttrValue(attr_value);
 }
@@ -519,21 +522,21 @@ string Print(const NodeDef& n) {
         entries.push_back("device=<FAILED_TO_PARSE>");
       }
     }
-    strings::StrAppend(&out, "[", str_util::Join(entries, ", "), "]");
+    strings::StrAppend(&out, "[", absl::StrJoin(entries, ", "), "]");
   }
   strings::StrAppend(&out, "(");
   std::vector<StringPiece> dat;
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
-    if (str_util::ConsumePrefix(&s, "^")) {
+    if (absl::ConsumePrefix(&s, "^")) {
       dep.emplace_back(s);
     } else {
       dat.push_back(s);
     }
   }
-  strings::StrAppend(&out, str_util::Join(dat, ", "), ")");
+  strings::StrAppend(&out, absl::StrJoin(dat, ", "), ")");
   if (!dep.empty()) {
-    strings::StrAppend(&out, " @ ", str_util::Join(dep, ", "));
+    strings::StrAppend(&out, " @ ", absl::StrJoin(dep, ", "));
   }
   return out;
 }
@@ -897,19 +900,31 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   }
   if (!options.target.empty()) {
     entries.push_back(
-        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+        strings::StrCat("_target", "=", absl::CEscape(options.target)));
   }
   for (int i = 0; i < options.input_devices.size(); ++i) {
-    entries.push_back(strings::StrCat(
-        "_input_dev", i, "=", str_util::CEscape(options.input_devices[i])));
+    entries.push_back(strings::StrCat("_input_dev", i, "=",
+                                      absl::CEscape(options.input_devices[i])));
   }
   for (int i = 0; i < options.output_devices.size(); ++i) {
     entries.push_back(strings::StrCat(
-        "_output_dev", i, "=", str_util::CEscape(options.output_devices[i])));
+        "_output_dev", i, "=", absl::CEscape(options.output_devices[i])));
   }
-  if (options.overlay_lib) {
+  for (const auto& iter : options.input_tensor_shapes) {
+    entries.push_back(
+        strings::StrCat("_input_tensor_shape", iter.first, "=",
+                        absl::CEscape(iter.second.DebugString())));
+  }
+  for (const auto& iter : options.input_resource_dtypes_and_shapes) {
+    entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
+                                      DataTypeString(iter.second.first)));
+    entries.push_back(
+        strings::StrCat("_input_resource_shape", iter.first, "=",
+                        absl::CEscape(iter.second.second.DebugString())));
+  }
+  if (options.lib_def) {
     entries.push_back(strings::StrCat(
-        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+        "_lib_def", "=", reinterpret_cast<uintptr_t>(options.lib_def)));
   }
   if (!options.state_handle.empty()) {
     entries.push_back(
@@ -922,11 +937,11 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   string config_proto_serialized;
   options.config_proto.SerializeToString(&config_proto_serialized);
   if (!config_proto_serialized.empty()) {
-    entries.push_back(strings::StrCat(
-        "_config_proto", "=", str_util::CEscape(config_proto_serialized)));
+    entries.push_back(strings::StrCat("_config_proto", "=",
+                                      absl::CEscape(config_proto_serialized)));
   }
   std::sort(entries.begin(), entries.end());
-  return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
+  return strings::StrCat(funcname, "[", absl::StrJoin(entries, ","), "]");
 }
 
 FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,
@@ -1089,7 +1104,7 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
           "' because a different function with the same name already "
           "exists.");
     }
-    // Ignore duplicate FunctionDefs
+    // Ignore duplicate FunctionDefs.
     return Status::OK();
   }
   const OpDef* op_def;
@@ -1224,8 +1239,8 @@ Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
 Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   const auto& i = function_defs_.find(func);
   if (i == function_defs_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent function ",
-                                   func);
+    return errors::InvalidArgument("Tried to remove non-existent function '",
+                                   func, "'.");
   }
   function_defs_.erase(i);
   return Status::OK();
@@ -1234,8 +1249,8 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
   if (i == func_grad_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent gradient ",
-                                   func);
+    return errors::InvalidArgument("Tried to remove non-existent gradient '",
+                                   func, "'.");
   }
   func_grad_.erase(i);
   return Status::OK();
@@ -1487,6 +1502,24 @@ FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
   return reachable_flib;
 }
 
+string AllocatorAttributesToString(
+    const std::vector<AllocatorAttributes>& attrs) {
+  string result("[");
+  // AllocatorAttribute::DebugString produces around 85 bytes now.
+  result.reserve(100 * attrs.size());
+  for (const AllocatorAttributes& attr : attrs) {
+    result.append(attr.DebugString());
+    result.append(", ");
+  }
+  if (!attrs.empty()) {
+    result.resize(result.size() - 2);
+  }
+  result.append("]");
+  return result;
+}
+
+const char* IsSet(void* ptr) { return ptr == nullptr ? "unset" : "set"; }
+
 }  // namespace
 
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
@@ -1497,6 +1530,20 @@ FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
     const FunctionDef& func) const {
   return ReachableFunctionLibraryDefinition(*this, func.node_def());
+}
+
+string FunctionLibraryRuntime::Options::DebugString() const {
+  return absl::StrCat(
+      "FLR::Options(step_id=", step_id, " rendezvous=", IsSet(rendezvous),
+      " cancellation_manager=", IsSet(cancellation_manager),
+      " collective_executor=", IsSet(collective_executor),
+      " step_container=", IsSet(step_container),
+      " stats_collector=", IsSet(stats_collector), " runner=", IsSet(runner),
+      " remote_execution=", remote_execution, " source_device=", source_device,
+      " create_rendezvous=", create_rendezvous,
+      " allow_dead_tensors=", allow_dead_tensors,
+      " args_alloc_attrs=", AllocatorAttributesToString(args_alloc_attrs),
+      " rets_alloc_attrs=", AllocatorAttributesToString(rets_alloc_attrs), ")");
 }
 
 void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {

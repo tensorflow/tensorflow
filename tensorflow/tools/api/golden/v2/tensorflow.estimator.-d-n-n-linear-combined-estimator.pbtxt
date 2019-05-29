@@ -2,6 +2,7 @@ path: "tensorflow.estimator.DNNLinearCombinedEstimator"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn_linear_combined.DNNLinearCombinedEstimatorV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"

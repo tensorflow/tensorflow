@@ -66,14 +66,9 @@ class FilteredPassManager : public llvm::legacy::PassManager {
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
-    llvm::StringRef PassName = p->getPassName();
-    if (PassName.contains("Warn about non-applied transformations")) {
-      delete p;
-      return;
-    }
     if (disable_expensive_passes_) {
+      llvm::StringRef PassName = p->getPassName();
       if (PassName.contains("Unroll loops")) {
-        delete p;
         return;
       }
     }
@@ -128,7 +123,10 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
-  runtime::RewriteIRRuntimeFunctions(&module, enable_fast_math_);
+  const auto& opts = target_machine_->Options;
+  bool fast_math_enabled = opts.UnsafeFPMath && opts.NoInfsFPMath &&
+                           opts.NoNaNsFPMath && opts.NoSignedZerosFPMath;
+  runtime::RewriteIRRuntimeFunctions(&module, fast_math_enabled);
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;
@@ -214,7 +212,6 @@ void CompilerFunctor::AddOptimizationPasses(
     builder.Inliner = llvm::createAlwaysInlinerLegacyPass();
   }
 
-  builder.DisableUnitAtATime = false;
   builder.DisableUnrollLoops = opt_level == 0;
   builder.LoopVectorize = opt_level > 0 && size_level == 0;
   builder.SLPVectorize = opt_level > 1 && size_level == 0;

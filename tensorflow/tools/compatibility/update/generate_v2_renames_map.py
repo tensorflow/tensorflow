@@ -32,7 +32,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 from tensorflow.tools.common import public_api
 from tensorflow.tools.common import traverse
-from tensorflow.tools.compatibility import tf_upgrade_v2
+from tensorflow.tools.compatibility import all_renames_v2
 
 
 _OUTPUT_FILE_PATH = 'third_party/tensorflow/tools/compatibility/renames_v2.py'
@@ -85,6 +85,7 @@ def get_all_v2_names():
 
   visitor = public_api.PublicAPIVisitor(visit)
   visitor.do_not_descend_map['tf'].append('contrib')
+  visitor.do_not_descend_map['tf.compat'] = ['v1']
   traverse.traverse(tf.compat.v2, visitor)
   return v2_names
 
@@ -169,7 +170,7 @@ def update_renames_v2(output_file_path):
   constant_renames = collect_constant_renames()
   all_renames = function_renames.union(constant_renames)
   manual_renames = set(
-      tf_upgrade_v2.TFAPIChangeSpec().manual_symbol_renames.keys())
+      all_renames_v2.manual_symbol_renames.keys())
 
   # List of rename lines to write to output file in the form:
   #   'tf.deprecated_name': 'tf.canonical_name'

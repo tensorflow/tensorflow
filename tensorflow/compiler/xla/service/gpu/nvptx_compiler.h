@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {
@@ -52,11 +53,11 @@ class NVPTXCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
@@ -98,8 +99,8 @@ class NVPTXCompiler : public LLVMCompiler {
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
   std::vector<uint8> CompilePtxOrGetCachedResult(
-      const string& ptx, int cc_major, int cc_minor,
-      const HloModuleConfig& hlo_module_config);
+      se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
+      int cc_minor, const HloModuleConfig& hlo_module_config);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for

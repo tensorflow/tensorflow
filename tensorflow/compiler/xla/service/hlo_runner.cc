@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -85,9 +84,11 @@ HloRunner::ReadModuleFromHloTextFile(const std::string& filename,
   return ParseHloString(hlo_string, config);
 }
 
-HloRunner::HloRunner(se::Platform* platform) {
+HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
+  backend_options.set_intra_op_parallelism_threads(
+      intra_op_parallelism_threads);
   backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
@@ -108,7 +109,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
 }
 
 StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
-    const absl::Span<const Literal* const> literals) {
+    absl::Span<const Literal* const> literals) {
   std::vector<ScopedShapedBuffer> buffers;
   for (const Literal* literal : literals) {
     CHECK(literal != nullptr);
@@ -120,7 +121,7 @@ StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
 }
 
 StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
-    const absl::Span<const Literal> literals) {
+    absl::Span<const Literal> literals) {
   std::vector<const Literal*> literal_pointers;
   literal_pointers.reserve(literals.size());
   for (const auto& literal : literals) {
@@ -137,10 +138,10 @@ StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
                                                                  buffer);
 }
 
-StatusOr<Literal> HloRunner::Execute(
-    std::unique_ptr<HloModule> module,
-    const absl::Span<const Literal* const> arguments, bool run_hlo_passes,
-    ExecutionProfile* profile) {
+StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
+                                     absl::Span<const Literal* const> arguments,
+                                     bool run_hlo_passes,
+                                     ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
@@ -153,7 +154,7 @@ StatusOr<Literal> HloRunner::Execute(
 }
 
 StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
-                                     const absl::Span<const Literal> arguments,
+                                     absl::Span<const Literal> arguments,
                                      bool run_hlo_passes,
                                      ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
@@ -169,10 +170,9 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
       /*profile=*/profile);
 }
 
-StatusOr<Literal> HloRunner::Execute(
-    std::unique_ptr<Executable> executable,
-    const absl::Span<const Literal* const> arguments,
-    ExecutionProfile* profile) {
+StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
+                                     absl::Span<const Literal* const> arguments,
+                                     ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
@@ -184,7 +184,7 @@ StatusOr<Literal> HloRunner::Execute(
 }
 
 StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
-                                     const absl::Span<const Literal> arguments,
+                                     absl::Span<const Literal> arguments,
                                      ExecutionProfile* profile) {
   // Construct a vector of plain pointers for the arguments.
   std::vector<const Literal*> argument_pointers;
@@ -200,14 +200,14 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
-    const absl::Span<const ShapedBuffer* const> arguments, bool run_hlo_passes,
+    absl::Span<const ShapedBuffer* const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
   // Get service run options.
   se::Stream stream(backend().default_stream_executor());
   stream.Init();
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr);
+                                    nullptr, RunId());
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
@@ -221,7 +221,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
-    const absl::Span<const ScopedShapedBuffer> arguments, bool run_hlo_passes,
+    absl::Span<const ScopedShapedBuffer> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
   std::vector<const ShapedBuffer*> argument_pointers;
   argument_pointers.reserve(arguments.size());
@@ -236,15 +236,14 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 }
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
-    Executable* executable,
-    const absl::Span<const ShapedBuffer* const> arguments,
+    Executable* executable, absl::Span<const ShapedBuffer* const> arguments,
     ExecutionProfile* profile) {
   // Get service run options.
   se::Stream stream(backend().default_stream_executor());
   stream.Init();
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr);
+                                    nullptr, RunId());
 
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer retval,
@@ -255,8 +254,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 }
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
-    Executable* executable,
-    const absl::Span<const ScopedShapedBuffer> arguments,
+    Executable* executable, absl::Span<const ScopedShapedBuffer> arguments,
     ExecutionProfile* profile) {
   std::vector<const ShapedBuffer*> argument_pointers;
   argument_pointers.reserve(arguments.size());
@@ -271,10 +269,16 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
-    DeviceAssignment* device_assignment, bool use_threads) {
+    DeviceAssignment* device_assignment) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
+  return ExecuteReplicated(executable.get(), options, device_assignment);
+}
+
+StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+    Executable* executable, const ReplicatedExecuteOptions& options,
+    DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   std::vector<std::unique_ptr<se::Stream>> streams;
   std::vector<ServiceExecutableRunOptions> service_run_options;
 
@@ -290,6 +294,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
       options.num_replicas * options.arguments.size() + 1);
   std::vector<absl::Span<const ShapedBuffer* const>> argument_buffer_slices;
   int64 index = 0;
+  RunId run_id;
   for (int64 i = 0; i < options.num_replicas; ++i) {
     int64 device = (*device_assignment)(i, 0);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
@@ -297,7 +302,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     streams.push_back(absl::make_unique<se::Stream>(executor));
     streams.back()->Init();
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
-        device, streams.back().get(), device_assignment));
+        device, streams.back().get(), device_assignment, run_id));
 
     // Copy arguments to device.
     for (const Literal* argument : options.arguments) {
@@ -368,7 +373,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 
   LOG(INFO) << "Replicated execution started";
   std::vector<ScopedShapedBuffer> results;
-  if (!use_threads) {
+  if (!options.use_threads) {
     TF_ASSIGN_OR_RETURN(results,
                         executable->ExecuteOnStreams(service_run_options,
                                                      argument_buffer_slices));
@@ -414,13 +419,12 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
 }
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
-    bool use_threads) {
+    std::unique_ptr<HloModule> module,
+    const ReplicatedExecuteOptions& options) {
   TF_ASSIGN_OR_RETURN(
       DeviceAssignment device_assignment,
       backend().computation_placer()->AssignDevices(options.num_replicas, 1));
-  return ExecuteReplicated(std::move(module), options, &device_assignment,
-                           use_threads);
+  return ExecuteReplicated(std::move(module), options, &device_assignment);
 }
 
 StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
@@ -440,7 +444,8 @@ StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
 }
 
 ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
-    int64 device, se::Stream* stream, DeviceAssignment* device_assignment) {
+    int64 device, se::Stream* stream, DeviceAssignment* device_assignment,
+    RunId run_id) {
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(device);
   run_options.set_stream(stream);
@@ -450,6 +455,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
   if (device_assignment != nullptr) {
     run_options.set_device_assignment(device_assignment);
   }
+  run_options.set_run_id(run_id);
   return ServiceExecutableRunOptions(run_options, backend().StreamBorrower());
 }
 

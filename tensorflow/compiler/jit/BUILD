@@ -1,4 +1,12 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        ":internal",
+        # BEGIN-GOOGLE-INTERNAL
+        "//learning/brain/contrib/tpu_modeling/exp/tpu_inference_converter:__pkg__",
+        # END-GOOGLE-INTERNAL
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -14,18 +22,8 @@ package_group(
     ],
 )
 
-package(
-    default_visibility = [
-        ":internal",
-    ],
-)
-
-# NB! Removing the cc_header_only_library import breaks the OSS build since
-# copybara injects some build rules that use it.
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
@@ -78,10 +76,10 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
-        ":create_xla_launch_op",  # buildcleaner: keep
         ":flags",
         ":jit_compilation_passes",
         ":xla_device",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -98,9 +96,9 @@ cc_library(
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
     deps = [
-        ":create_xla_launch_op",  # buildcleaner: keep
         ":jit_compilation_passes",
         ":xla_device",
+        ":xla_kernel_creator",  # buildcleaner: keep
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -201,6 +199,7 @@ cc_library(
         "//tensorflow/core/kernels:host_constant_op",
         "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:logging_ops",
         "//tensorflow/core/kernels:no_op",
         "//tensorflow/core/kernels:queue_op",
         "//tensorflow/core/kernels:resource_variable_ops",
@@ -212,6 +211,7 @@ cc_library(
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/kernels/data:optional_ops",
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
@@ -223,6 +223,7 @@ cc_library(
     name = "shape_inference_helpers",
     srcs = ["shape_inference_helpers.cc"],
     hdrs = ["shape_inference_helpers.h"],
+    visibility = [":friends"],
     deps = ["//tensorflow/core:graph"],
 )
 
@@ -237,6 +238,7 @@ cc_library(
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -255,6 +257,9 @@ cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
+    visibility = [
+        ":internal",
+    ],
     deps = [
         ":common",
         ":xla_compilation_cache",
@@ -264,7 +269,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -272,6 +276,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -326,10 +331,10 @@ cc_library(
 )
 
 cc_library(
-    name = "create_xla_launch_op",
+    name = "xla_kernel_creator",
     srcs = [
-        "create_xla_launch_op.cc",
-        "create_xla_launch_op.h",
+        "xla_kernel_creator.cc",
+        "xla_kernel_creator.h",
     ],
     deps = [
         ":common",
@@ -346,13 +351,13 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "create_xla_launch_op_test",
+    name = "xla_kernel_creator_test",
     srcs = [
-        "create_xla_launch_op.h",
-        "create_xla_launch_op_test.cc",
+        "xla_kernel_creator.h",
+        "xla_kernel_creator_test.cc",
     ],
     deps = [
-        ":create_xla_launch_op",
+        ":xla_kernel_creator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -370,6 +375,7 @@ cc_library(
     srcs = ["resource_operation_safety_analysis.cc"],
     hdrs = ["resource_operation_safety_analysis.h"],
     deps = [
+        ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/core:framework",
@@ -466,6 +472,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -497,6 +506,7 @@ cc_library(
         "encapsulate_xla_computations_pass.cc",
         "extract_outside_compilation_pass.cc",
         "increase_dynamism_for_auto_jit_pass.cc",
+        "introduce_floating_point_jitter_pass.cc",
         "mark_for_compilation_pass.cc",
         "mark_for_compilation_pass_test_helper.cc",
         "partially_decluster_pass.cc",
@@ -509,20 +519,25 @@ cc_library(
         "encapsulate_xla_computations_pass.h",
         "extract_outside_compilation_pass.h",
         "increase_dynamism_for_auto_jit_pass.h",
+        "introduce_floating_point_jitter_pass.h",
         "mark_for_compilation_pass.h",
         "mark_for_compilation_pass_test_helper.h",
         "partially_decluster_pass.h",
     ],
     deps = [
+        "compilability_check_util",
         ":common",
+        ":device_util",
         ":encapsulate_util",
         ":flags",
+        ":resource_operation_safety_analysis",
         ":shape_inference_helpers",
         ":union_find",
         ":xla_cluster_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/cc:scope_internal",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/ops:xla_ops",
@@ -533,6 +548,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/cc:xla_jit_ops",
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -559,7 +575,6 @@ cc_library(
     hdrs = ["xla_cluster_util.h"],
     deps = [
         ":flags",
-        ":resource_operation_safety_analysis",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -574,6 +589,35 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "device_util",
+    srcs = ["device_util.cc"],
+    hdrs = ["device_util.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "device_util_test",
+    srcs = ["device_util_test.cc"],
+    deps = [
+        ":device_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -635,8 +679,11 @@ tf_cc_test(
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",
         "increase_dynamism_for_auto_jit_pass_test.cc",
+        "introduce_floating_point_jitter_pass_internal.h",
+        "introduce_floating_point_jitter_pass_test.cc",
         "mark_for_compilation_pass_test.cc",
         "partially_decluster_pass_test.cc",
+        "rearrange_function_argument_pass_test.cc",
     ],
     deps = [
         ":common",
@@ -657,6 +704,7 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:test_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -676,6 +724,7 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -709,44 +758,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "xla_fusion_optimizer",
-    srcs = ["xla_fusion_optimizer.cc"],
-    hdrs = ["xla_fusion_optimizer.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":common",
-        ":compilation_passes",
-        ":union_find",
-        ":xla_cluster_util",
-        "//tensorflow/compiler/jit/graphcycles",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
-        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "xla_fusion_optimizer_test",
-    srcs = ["xla_fusion_optimizer_test.cc"],
-    deps = [
-        ":common",
-        ":xla_cluster_util",
-        ":xla_fusion_optimizer",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:resource_variable_ops",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/grappler/utils:grappler_test",
-    ],
-)
-
-cc_library(
     name = "node_matchers",
     testonly = True,
     srcs = ["node_matchers.cc"],
@@ -774,6 +785,34 @@ tf_cc_test(
         "//tensorflow/cc:ops",
         "//tensorflow/core:ops",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "compilability_check_util",
+    srcs = ["compilability_check_util.cc"],
+    hdrs = ["compilability_check_util.h"],
+    deps = [
+        ":common",
+        ":device_util",
+        ":flags",
+        ":resource_operation_safety_analysis",
+        ":union_find",
+        ":xla_cluster_util",
+        "//tensorflow/compiler/jit/graphcycles",
+        "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

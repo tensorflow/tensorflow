@@ -86,28 +86,6 @@ bool IsString(PyObject* o) {
          PyUnicode_Check(o);
 }
 
-// Work around a writable-strings warning with Python 2's PyMapping_Keys macro,
-// and while we're at it give them consistent behavior by making sure the
-// returned value is a list.
-//
-// As with PyMapping_Keys, returns a new reference.
-//
-// On failure, returns nullptr.
-PyObject* MappingKeys(PyObject* o) {
-#if PY_MAJOR_VERSION >= 3
-  return PyMapping_Keys(o);
-#else
-  static char key_method_name[] = "keys";
-  Safe_PyObjectPtr raw_result(PyObject_CallMethod(o, key_method_name, nullptr));
-  if (PyErr_Occurred() || raw_result.get() == nullptr) {
-    return nullptr;
-  }
-  return PySequence_Fast(
-      raw_result.get(),
-      "The '.keys()' method of a custom mapping returned a non-sequence.");
-#endif
-}
-
 // Equivalent to Python's 'o.__class__.__name__'
 // Note that '__class__' attribute is set only in new-style classes.
 // A lot of tensorflow code uses __class__ without checks, so it seems like
@@ -442,17 +420,15 @@ class SequenceValueIterator : public ValueIterator {
   Py_ssize_t index_;
 };
 
-// Just return itself as a single item.
-class SparseTensorValueIterator : public ValueIterator {
+// Iterator that just returns a single python object.
+class SingleValueIterator : public ValueIterator {
  public:
-  explicit SparseTensorValueIterator(PyObject* tensor) : tensor_(tensor) {
-    Py_INCREF(tensor);
-  }
+  explicit SingleValueIterator(PyObject* x) : x_(x) { Py_INCREF(x); }
 
-  Safe_PyObjectPtr next() override { return std::move(tensor_); }
+  Safe_PyObjectPtr next() override { return std::move(x_); }
 
  private:
-  Safe_PyObjectPtr tensor_;
+  Safe_PyObjectPtr x_;
 };
 
 // Returns nullptr (to raise an exception) when next() is called.  Caller
@@ -560,7 +536,7 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
   } else if (IsAttrsHelper(nested)) {
     return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
-    return absl::make_unique<SparseTensorValueIterator>(nested);
+    return absl::make_unique<SingleValueIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -574,6 +550,9 @@ ValueIteratorPtr GetValueIteratorForComposite(PyObject* nested) {
     if (PyErr_Occurred() || nested == nullptr) {
       return absl::make_unique<ErrorValueIterator>();
     }
+    ValueIteratorPtr result = absl::make_unique<SingleValueIterator>(nested);
+    Py_DECREF(nested);  // ValueIterator took ownership
+    return result;
   }
   return GetValueIterator(nested);
 }
@@ -646,7 +625,8 @@ bool AssertSameStructureHelper(
     PyObject* o1, PyObject* o2, bool check_types, string* error_msg,
     bool* is_type_error,
     const std::function<int(PyObject*)>& is_sequence_helper,
-    const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter) {
+    const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter,
+    bool check_composite_tensor_metadata) {
   DCHECK(error_msg);
   DCHECK(is_type_error);
   const bool is_seq1 = is_sequence_helper(o1);
@@ -752,6 +732,29 @@ bool AssertSameStructureHelper(
     }
   }
 
+  if (check_composite_tensor_metadata && IsCompositeTensor(o1)) {
+    if (!IsCompositeTensor(o2)) return false;
+    static char _to_component_metadata[] = "_component_metadata";
+    Safe_PyObjectPtr m1(
+        PyObject_CallMethod(o1, _to_component_metadata, nullptr));
+    if (PyErr_Occurred() || m1 == nullptr) return false;
+    Safe_PyObjectPtr m2(
+        PyObject_CallMethod(o2, _to_component_metadata, nullptr));
+    if (PyErr_Occurred() || m2 == nullptr) {
+      return false;
+    }
+    if (PyObject_RichCompareBool(m1.get(), m2.get(), Py_NE)) {
+      *is_type_error = false;
+      *error_msg = tensorflow::strings::StrCat(
+          "The two CompositeTensors have different metadata. "
+          "First CompositeTensor ",
+          PyObjectToString(o1), " has metadata ", PyObjectToString(m1.get()),
+          ", while second structure ", PyObjectToString(o2), " has metadata ",
+          PyObjectToString(m2.get()));
+      return false;
+    }
+  }
+
   ValueIteratorPtr iter1 = value_iterator_getter(o1);
   ValueIteratorPtr iter2 = value_iterator_getter(o2);
 
@@ -766,7 +769,8 @@ bool AssertSameStructureHelper(
       }
       bool no_internal_errors = AssertSameStructureHelper(
           v1.get(), v2.get(), check_types, error_msg, is_type_error,
-          is_sequence_helper, value_iterator_getter);
+          is_sequence_helper, value_iterator_getter,
+          check_composite_tensor_metadata);
       Py_LeaveRecursiveCall();
       if (!no_internal_errors) return false;
       if (!error_msg->empty()) return true;
@@ -791,6 +795,28 @@ bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
+
+// Work around a writable-strings warning with Python 2's PyMapping_Keys macro,
+// and while we're at it give them consistent behavior by making sure the
+// returned value is a list.
+//
+// As with PyMapping_Keys, returns a new reference.
+//
+// On failure, returns nullptr.
+PyObject* MappingKeys(PyObject* o) {
+#if PY_MAJOR_VERSION >= 3
+  return PyMapping_Keys(o);
+#else
+  static char key_method_name[] = "keys";
+  Safe_PyObjectPtr raw_result(PyObject_CallMethod(o, key_method_name, nullptr));
+  if (PyErr_Occurred() || raw_result.get() == nullptr) {
+    return nullptr;
+  }
+  return PySequence_Fast(
+      raw_result.get(),
+      "The '.keys()' method of a custom mapping returned a non-sequence.");
+#endif
+}
 
 PyObject* Flatten(PyObject* nested, bool expand_composites) {
   PyObject* list = PyList_New(0);
@@ -916,10 +942,12 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
       expand_composites ? IsSequenceOrCompositeHelper : IsSequenceHelper;
   const std::function<ValueIteratorPtr(PyObject*)>& get_value_iterator =
       expand_composites ? GetValueIteratorForComposite : GetValueIterator;
+  const bool check_composite_tensor_metadata = expand_composites;
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            is_sequence_helper, get_value_iterator);
+                            is_sequence_helper, get_value_iterator,
+                            check_composite_tensor_metadata);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).
@@ -943,7 +971,7 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            IsSequenceForDataHelper, GetValueIterator);
+                            IsSequenceForDataHelper, GetValueIterator, false);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).

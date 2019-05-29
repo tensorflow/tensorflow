@@ -250,8 +250,8 @@ class StatefulScatterNdTest(test.TestCase):
   # def testBooleanScatterUpdate(self):
   #   with self.session(use_gpu=False) as session:
   #     var = tf.Variable([True, False])
-  #     update0 = tf.scatter_nd_update(var, [[1]], [True])
-  #     update1 = tf.scatter_nd_update(
+  #     update0 = tf.compat.v1.scatter_nd_update(var, [[1]], [True])
+  #     update1 = tf.compat.v1.scatter_nd_update(
   #         var, tf.constant(
   #             [[0]], dtype=tf.int64), [False])
   #     var.initializer.run()

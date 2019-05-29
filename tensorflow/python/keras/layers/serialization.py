@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import tf2
+from tensorflow.python.keras.engine.base_layer import AddLoss
 from tensorflow.python.keras.engine.base_layer import TensorFlowOpLayer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
@@ -47,7 +48,7 @@ if tf2.enabled():
 
 # This deserialization table is added for backward compatibility, as in TF 1.13,
 # BatchNormalizationV1 and BatchNormalizationV2 are used as class name for v1
-# and v2 version of BatchNormalization, respectively. Here we explictly convert
+# and v2 version of BatchNormalization, respectively. Here we explicitly convert
 # them to the canonical name in the config of deserialization.
 _DESERIALIZATION_TABLE = {
     'BatchNormalizationV1': 'BatchNormalization',

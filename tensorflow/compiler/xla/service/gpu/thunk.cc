@@ -34,6 +34,8 @@ absl::string_view ThunkKindToString(Thunk::Kind kind) {
       return "kCudnnBatchNormForwardInference";
     case Thunk::kCudnnBatchNormForwardTraining:
       return "kCudnnBatchNormForwardTraining";
+    case Thunk::kCustomCall:
+      return "kCustomCall";
     case Thunk::kNcclAllReduce:
       return "kNcclAllReduce";
     case Thunk::kFft:

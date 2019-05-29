@@ -20,11 +20,11 @@ limitations under the License.
 
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
-
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
@@ -56,11 +56,11 @@ class RPCState : public GrpcClientCQTag {
       : call_opts_(call_opts),
         threadpool_(threadpool),
         done_(std::move(done)),
+        timeout_in_ms_(timeout_in_ms),
+        max_retries_(max_retries),
         cq_(cq),
         stub_(stub),
         method_(method),
-        max_retries_(max_retries),
-        timeout_in_ms_(timeout_in_ms),
         fail_fast_(fail_fast) {
     response_ = response;
     ::grpc::Status s = GrpcMaybeUnparseProto(request, &request_buf_);
@@ -99,6 +99,9 @@ class RPCState : public GrpcClientCQTag {
     if (call_opts_) {
       call_opts_->ClearCancelCallback();
     }
+
+    VLOG(2) << "Completed call: " << method_;
+
     Status s = FromGrpcStatus(status_);
     if (s.ok() && !ok) {
       // Since this function is only being used for processing the response
@@ -133,6 +136,13 @@ class RPCState : public GrpcClientCQTag {
                  strings::StrCat(s.error_message(),
                                  "\nAdditional GRPC error information:\n",
                                  context_->debug_error_string()));
+      // Always treat gRPC cancellation as a derived error. This ensures that
+      // other error types are preferred during status aggregation. (gRPC
+      // cancellation messages do not contain the original status message).
+      if (s.code() == tensorflow::error::Code::CANCELLED) {
+        s = StatusGroup::MakeDerived(s);
+      }
+
       done_(s);
       delete this;
     }

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -28,18 +27,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 
 namespace {
 
-// ChooseIdentityValue looks at the instruction and returns a identity value
-// which, when padded, doesn't change the result of the instruction.
+// ChooseIdentityValue looks at the instruction's operand, returns a
+// identity value which, when padded, doesn't change the result of the
+// instruction.
 //
 // nullopt is returned if padding doesn't need to be reset.
-StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
+StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
+                                              int64 operand_number) {
   HloComputation* comp = inst->parent();
   // Padding on elementwise operation doesn't affect the result of the effective
   // data.
@@ -48,7 +48,14 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
   }
 
   switch (inst->opcode()) {
-    case HloOpcode::kReduce:
+    case HloOpcode::kReduce: {
+      TF_RET_CHECK(operand_number < inst->operand_count() / 2)
+          << "Only data operand with dynamic dimension is valid.";
+      // Variadic reduce has different init value for different operand, given a
+      // data operand number, find the init value index.
+      int64 init_value_index = inst->operand_count() / 2 + operand_number;
+      return inst->mutable_operand(init_value_index);
+    }
     case HloOpcode::kReduceWindow: {
       // Because of the way we do reduce, we already require the `init` operand
       // of hlo reduce instruction to be identity value. Here we reuse the
@@ -72,6 +79,10 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
       return inst->mutable_operand(2);
     }
     case HloOpcode::kParameter:
+    case HloOpcode::kGather:
+    case HloOpcode::kScatter:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kReshape:
     case HloOpcode::kTuple:
@@ -81,7 +92,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
     case HloOpcode::kSlice:
       return nullptr;
     default:
-      return UnimplementedStrCat("Unimplimented padding for instruction: ",
+      return UnimplementedStrCat("Unimplemented padding for instruction: ",
                                  inst->ToString());
   }
 }
@@ -133,7 +144,7 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           }
 
           TF_ASSIGN_OR_RETURN(HloInstruction * identity_value,
-                              ChooseIdentityValue(inst));
+                              ChooseIdentityValue(inst, operand_num));
           if (identity_value == nullptr) {
             continue;
           }

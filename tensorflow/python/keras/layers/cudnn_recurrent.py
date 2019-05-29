@@ -77,8 +77,7 @@ class _CuDNNRNN(RNN):
     self.state_spec = [InputSpec(shape=(None, dim)) for dim in state_size]
     self.constants_spec = None
     self._states = None
-    self._num_constants = None
-    self._num_inputs = None
+    self._num_constants = 0
     self._vector_shape = constant_op.constant([-1])
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
@@ -114,7 +113,7 @@ class _CuDNNRNN(RNN):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_state:
       return [output] + states

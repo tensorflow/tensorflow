@@ -65,6 +65,7 @@ def op_attr_type(op_type, attr_name):
   try:
     return _op_attr_type_cache[(op_type, attr_name)]
   except KeyError:
+    context.ensure_initialized()
     h = context.context()._handle  # pylint: disable=protected-access
     attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(h, op_type, attr_name)
   _op_attr_type_cache[(op_type, attr_name)] = attr_type
@@ -88,11 +89,12 @@ def make_attr(attr_type, value):
 class _MockOp(object):
   """Pretends to be a tf.Operation for the gradient functions."""
 
-  def __init__(self, attrs, inputs, outputs, typ):
+  def __init__(self, attrs, inputs, outputs, typ, skip_input_indices):
     self.attrs = attrs
     self.inputs = inputs
     self.outputs = outputs
     self.type = typ
+    self.skip_input_indices = skip_input_indices
 
   def get_attr(self, attr):
     typ = op_attr_type(self.type, attr)
@@ -111,7 +113,7 @@ class _MockOp(object):
 
 
 def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
-                       out_grads):
+                       out_grads, skip_input_indices):
   """Calls the gradient function of the op.
 
   Args:
@@ -121,11 +123,13 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     inputs: inputs to the original operation.
     outputs: outputs to the original operation.
     out_grads: gradients of the operation wrt its outputs.
+    skip_input_indices: a tuple that is passed to the gradient function,
+      indicating which inputs to skip calculating the gradient for
 
   Returns:
     The gradients with respect to the inputs of the function, as a list.
   """
-  mock_op = _MockOp(attr_tuple, inputs, outputs, op_name)
+  mock_op = _MockOp(attr_tuple, inputs, outputs, op_name, skip_input_indices)
   grad_fn = ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
   if grad_fn is None:
     return [None] * num_inputs
@@ -157,7 +161,7 @@ def implicit_val_and_grad(f):
   Example:
 
   ```python
-  dense_layer = tf.layers.Dense(1)
+  dense_layer = tf.compat.v1.layers.Dense(1)
   def loss(x, y):
     return tf.reduce_sum(tf.square(dense_layer(x) - y))
 
@@ -171,7 +175,7 @@ def implicit_val_and_grad(f):
   print('Value of loss: %s' % value)
 
   # Apply the gradients to Variables.
-  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.1)
   optimizer.apply_gradients(grads_and_vars)
   ```
 
@@ -231,7 +235,7 @@ def implicit_grad(f):
   Example:
 
   ```python
-  dense_layer = tf.layers.Dense(1)
+  dense_layer = tf.compat.v1.layers.Dense(1)
   def loss(x, y):
     return tf.reduce_sum(tf.square(dense_layer(x) - y))
 
@@ -244,7 +248,7 @@ def implicit_grad(f):
   grads_and_vars = grad_fn(x, y)
 
   # Apply the gradients to Variables.
-  optimizer = tf.train.GradientDescentOptimizer(0.1)
+  optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.1)
   optimizer.apply_gradients(grads_and_vars)
   ```
 
@@ -564,8 +568,8 @@ def _aggregate_grads(gradients):
       if isinstance(grad, ops.Tensor):
         indexed_slices = ops.IndexedSlices(
             grad,
-            math_ops.range(grad.shape[0]),
-            constant_op.constant(grad.shape.as_list()))
+            math_ops.range(array_ops.shape(grad)[0]),
+            array_ops.shape(grad))
         indexed_slices_list.append(indexed_slices)
       else:
         indexed_slices_list.append(grad)
@@ -664,9 +668,9 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.Variable` or `tf.get_variable`, where
-  `trainable=True` is default in both cases) are automatically watched. Tensors
-  can be manually watched by invoking the `watch` method on this context
+  Trainable variables (created by `tf.Variable` or `tf.compat.v1.get_variable`,
+  where `trainable=True` is default in both cases) are automatically watched.
+  Tensors can be manually watched by invoking the `watch` method on this context
   manager.
 
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
@@ -719,7 +723,7 @@ class GradientTape(object):
   with tf.GradientTape(watch_accessed_variables=False) as tape:
     tape.watch(variable_a)
     y = variable_a ** 2  # Gradients will be available for `variable_a`.
-    z = variable_b ** 3  # No gradients will be avaialble since `variable_b` is
+    z = variable_b ** 3  # No gradients will be available since `variable_b` is
                          # not being watched.
   ```
 
@@ -764,6 +768,7 @@ class GradientTape(object):
     self._recording = False
     self._created_eagerly = context.executing_eagerly()
     if self._created_eagerly:
+      context.ensure_initialized()
       context.context().start_step()
 
   def __enter__(self):
@@ -809,6 +814,10 @@ class GradientTape(object):
       tensor: a Tensor or list of Tensors.
     """
     for t in nest.flatten(tensor):
+      if not t.dtype.is_floating:
+        logging.log_first_n(
+            logging.WARN, "The dtype of the watched tensor must be "
+            "floating (e.g. tf.float32), got %r", 5, t.dtype)
       if hasattr(t, "handle"):
         # There are many variable-like objects, all of them currently have
         # `handle` attribute that points to a tensor. If this changes, internals
@@ -854,6 +863,7 @@ class GradientTape(object):
 
     Equivalent to exiting and reentering the tape context manager with a new
     tape. For example, the two following code blocks are equivalent:
+
     ```
     with tf.GradientTape() as t:
       loss = loss_fn()
@@ -937,13 +947,25 @@ class GradientTape(object):
 
     flat_targets = []
     for t in nest.flatten(target):
+      if not t.dtype.is_floating:
+        logging.vlog(
+            logging.WARN, "The dtype of the target tensor must be "
+            "floating (e.g. tf.float32) when calling GradientTape.gradient, "
+            "got %r", t.dtype)
       if resource_variable_ops.is_resource_variable(t):
         with self:
           t = ops.convert_to_tensor(t)
       flat_targets.append(t)
 
     flat_sources = nest.flatten(sources)
+    flat_sources_raw = flat_sources
     flat_sources = [_handle_or_self(x) for x in flat_sources]
+    for t in flat_sources_raw:
+      if not t.dtype.is_floating:
+        logging.vlog(
+            logging.WARN, "The dtype of the source tensor must be "
+            "floating (e.g. tf.float32) when calling GradientTape.gradient, "
+            "got %r", t.dtype)
 
     if output_gradients is not None:
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
@@ -954,6 +976,7 @@ class GradientTape(object):
         flat_targets,
         flat_sources,
         output_gradients=output_gradients,
+        sources_raw=flat_sources_raw,
         unconnected_gradients=unconnected_gradients)
 
     if not self._persistent:
@@ -970,11 +993,11 @@ class GradientTape(object):
                experimental_use_pfor=True):
     """Computes the jacobian using operations recorded in context of this tape.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
+    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
     definition of a Jacobian.
 
     Example usage:
-    
+
     ```python
     with tf.GradientTape() as g:
       x  = tf.constant([1.0, 2.0])
@@ -1071,26 +1094,28 @@ class GradientTape(object):
                      experimental_use_pfor=True):
     """Computes and stacks per-example jacobians.
 
-    See http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant for the
-    definition of a Jacobian.  This function is essentially an efficient
+    See [wikipedia article](http://en.wikipedia.org/wiki/jacobian_matrix_and_determinant) for the
+    definition of a Jacobian. This function is essentially an efficient
     implementation of the following:
+    
     `tf.stack([self.jacobian(y[i], x[i]) for i in range(x.shape[0])])`.
 
     Note that compared to `GradientTape.jacobian` which computes gradient of
     each output value w.r.t each input value, this function is useful when
-    `target[i,...] is independent of `source[j,...]` for `j != i`. This
-    independence assumption allows more efficient computation as compared to
+    `target[i,...]` is independent of `source[j,...]` for `j != i`. This
+    assumption allows more efficient computation as compared to
     `GradientTape.jacobian`. The output, as well as intermediate activations,
     are lower dimensional and avoid a bunch of redundant zeros which would
     result in the jacobian computation given the independence assumption.
 
     Example usage:
+
     ```python
     with tf.GradientTape() as g:
-      x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
+      x = tf.constant([[1., 2.], [3., 4.]], dtype=tf.float32)
       g.watch(x)
       y = x * x
-    batch_jacobian = g.batch_jacobian(y, x)
+    batch_jacobian = g.batch_jacobian(y, x) 
     # batch_jacobian is [[[2,  0], [0,  4]], [[6,  0], [0,  8]]]
     ```
 
@@ -1120,7 +1145,7 @@ class GradientTape(object):
     """
     target_shape = target.shape
     if target_shape.rank is None:
-      dim = Dimension(None)
+      dim = tensor_shape.Dimension(None)
     else:
       dim = target_shape.dims[0]
     if not (target_shape.with_rank_at_least(2) and

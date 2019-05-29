@@ -95,6 +95,7 @@ class VSpace {
   // Calls the passed-in backward function.
   virtual Status CallBackwardFunction(
       BackwardFunction* backward_function,
+      const std::vector<int64>& unneeded_gradients,
       gtl::ArraySlice<Gradient*> output_gradients,
       std::vector<Gradient*>* result) const = 0;
 
@@ -528,7 +529,17 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     state.op_tape.erase(op_it);
     std::vector<Gradient*> out_gradients;
     out_gradients.reserve(trace.output_tensor_info.size());
+    std::vector<int64> unneeded_gradients;
+    for (int i = 0; i < trace.input_tensor_id.size(); i++) {
+      const auto& in_tensor_id = trace.input_tensor_id[i];
+      if (tensor_tape_.find(in_tensor_id) == tensor_tape_.end() &&
+          sources_set.find(in_tensor_id) == sources_set.end()) {
+        unneeded_gradients.push_back(i);
+      }
+    }
+
     bool any_gradient_nonzero = false;
+    std::vector<int> zero_indices;
     for (int i = 0; i < trace.output_tensor_info.size(); ++i) {
       const int64 id = trace.output_tensor_info[i].GetID();
       auto grad_it = gradients.find(id);
@@ -539,7 +550,8 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
             func_name_it->second.find(i) != func_name_it->second.end()) {
           out_gradients.push_back(nullptr);
         } else {
-          out_gradients.push_back(vspace.Zeros(trace.output_tensor_info[i]));
+          out_gradients.push_back(nullptr);
+          zero_indices.push_back(i);
         }
       } else {
         any_gradient_nonzero = true;
@@ -561,8 +573,13 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     }
     std::vector<Gradient*> in_gradients;
     if (any_gradient_nonzero) {
-      Status s = vspace.CallBackwardFunction(trace.backward_function,
-                                             out_gradients, &in_gradients);
+      for (const auto i : zero_indices) {
+        out_gradients[i] = vspace.Zeros(trace.output_tensor_info[i]);
+      }
+      Status s;
+      s = vspace.CallBackwardFunction(trace.backward_function,
+                                      unneeded_gradients, out_gradients,
+                                      &in_gradients);
       if (!persistent_) {
         trace.backward_function_deleter(trace.backward_function);
       }
@@ -638,7 +655,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         VLOG(1) << "Op " << op_id << " missing " << missing_it->second
                 << " output gradients";
         if (missing_it->second == 0) {
-          op_stack.push_back(op_id);
+          op_stack.insert(op_stack.begin(), op_id);
         }
       }
     }

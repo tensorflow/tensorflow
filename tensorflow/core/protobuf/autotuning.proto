@@ -22,9 +22,25 @@ message ComputeCapability {
 }
 
 message AutotuneResult {
-  message SuccessResult {
-    int64 scratch_bytes = 1;
-    google.protobuf.Duration run_time = 2;
+  enum FailureKind {
+    UNKNOWN = 0;
+    REDZONE_MODIFIED = 1;
+    WRONG_RESULT = 2;
+  }
+
+  message FailureResult {
+    FailureKind kind = 1;
+    string msg = 2;
+
+    // For failure_kind == WRONG_RESULT, this field indicates the reference
+    // configuration that we compared against.
+    //
+    // Note that the reference algorithm isn't always correct.  However,
+    // empirically it's more correct, as it's "algo 0", less fancy than the
+    // compared one.
+    oneof key {
+      ConvKey reference_conv = 11;
+    }
   }
 
   message ConvKey {
@@ -32,34 +48,16 @@ message AutotuneResult {
     bool tensor_ops_enabled = 2;
   }
 
-  // If the conv runs successfully, success will be populated with the
-  // autotuning result. Otherwise, the error message is propagated.
-  oneof result {
-    SuccessResult success = 3;
-    string error_string = 4;
-  }
+  int64 scratch_bytes = 8;
+  google.protobuf.Duration run_time = 9;
+
+  FailureResult failure = 7;
 
   oneof key {
     ConvKey conv = 5;
   }
 
-  // Sometimes we run a correctness checker during autotuning. It compares the
-  // result buffer content between two algorithms, say, "reference" and "test"
-  // algorithms. The "test" algorithm is the one associated with this
-  // AutotuneResult.
-  //
-  // This field records the reference algorithm used. Notice that naming it
-  // "reference" doesn't mean it's always correct. However, empirically it's
-  // more correct, as it's "algo 0", less fancy than the compared one.
-  //
-  // Notice that the checker_failure may exist even in the success case.
-  // This is because the error string in `result` comes from the underlying
-  // implementation like cuDNN, which isn't aware that it produced an incorrect
-  // result. And even if the checker detects an incorrect result, we can still
-  // retrieve scratch_bytes and runtime_ms.
-  oneof checker_failure {
-    ConvKey reference_conv = 6;
-  }
+  // Next ID: 12
 }
 
 message AutotuningLog {
@@ -70,4 +68,9 @@ message AutotuningLog {
 
   CudnnVersion cudnn_version = 3;
   ComputeCapability compute_capability = 4;
+
+  // stream_executor::DeviceDescription::pci_bus_id.
+  string device_pci_bus_id = 5;
+
+  // Next ID: 6
 }

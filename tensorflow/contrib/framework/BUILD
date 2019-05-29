@@ -1,13 +1,14 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-package(default_visibility = [
-    "//learning/brain:__subpackages__",
-    "//tensorflow:__subpackages__",
-    "//tensorflow_model_optimization:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -145,6 +146,7 @@ py_test(
     name = "arg_scope_test",
     size = "small",
     srcs = ["python/ops/arg_scope_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
@@ -156,6 +158,7 @@ py_test(
     name = "checkpoint_utils_test",
     size = "small",
     srcs = ["python/framework/checkpoint_utils_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],  # http://b/30468735
     deps = [
@@ -175,6 +178,7 @@ py_test(
     name = "ops_test",
     size = "small",
     srcs = ["python/ops/ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
@@ -187,6 +191,7 @@ py_test(
     name = "prettyprint_ops_test",
     size = "small",
     srcs = ["python/ops/prettyprint_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
@@ -203,6 +208,7 @@ py_test(
 py_test(
     name = "experimental_test",
     srcs = ["python/framework/experimental_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
@@ -214,6 +220,7 @@ py_test(
 py_test(
     name = "graph_util_test",
     srcs = ["python/framework/graph_util_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
@@ -225,6 +232,7 @@ py_test(
 py_test(
     name = "tensor_util_test",
     srcs = ["python/framework/tensor_util_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
@@ -242,6 +250,7 @@ py_test(
     name = "variables_test",
     size = "small",
     srcs = ["python/ops/variables_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -280,6 +289,7 @@ py_test(
     size = "medium",
     srcs = ["python/ops/checkpoint_ops_test.py"],
     data = [":checkpoint_ops_testdata"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [

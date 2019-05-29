@@ -54,16 +54,15 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
   """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
 
   Currently only Types I, II and III are supported.
-  Type I is implemented using a length `2N` padded `tf.spectral.rfft`.
-  Type II is implemented using a length `2N` padded `tf.spectral.rfft`, as
-  described here:
-  https://dsp.stackexchange.com/a/10606.
+  Type I is implemented using a length `2N` padded `tf.signal.rfft`.
+  Type II is implemented using a length `2N` padded `tf.signal.rfft`, as
+  described here: [Type 2 DCT using 2N FFT padded (Makhoul)](https://dsp.stackexchange.com/a/10606).
   Type III is a fairly straightforward inverse of Type II
-  (i.e. using a length `2N` padded `tf.spectral.irfft`).
+  (i.e. using a length `2N` padded `tf.signal.irfft`).
 
   @compatibility(scipy)
-  Equivalent to scipy.fftpack.dct for Type-I, Type-II and Type-III DCT.
-  https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.dct.html
+  Equivalent to [scipy.fftpack.dct](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.dct.html)
+   for Type-I, Type-II and Type-III DCT.
   @end_compatibility
 
   Args:
@@ -163,8 +162,8 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
   `signal == idct(dct(signal, norm='ortho'), norm='ortho')`.
 
   @compatibility(scipy)
-  Equivalent to scipy.fftpack.idct for Type-I, Type-II and Type-III DCT.
-  https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.idct.html
+  Equivalent to [scipy.fftpack.idct](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.idct.html)
+   for Type-I, Type-II and Type-III DCT.
   @end_compatibility
 
   Args:

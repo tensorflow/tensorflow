@@ -5,7 +5,7 @@ filegroup(
 
 cc_library(
     name = "nccl",
-    srcs = ["libnccl.so.%{version}"],
+    srcs = ["libnccl.so.%{nccl_version}"],
     hdrs = ["nccl.h"],
     include_prefix = "third_party/nccl",
     visibility = ["//visibility:public"],
@@ -17,9 +17,12 @@ cc_library(
 genrule(
     name = "nccl-files",
     outs = [
-        "libnccl.so.%{version}",
+        "libnccl.so.%{nccl_version}",
         "nccl.h",
     ],
-    cmd = """cp "%{hdr_path}/nccl.h" "$(@D)/nccl.h" &&
-           cp "%{install_path}/libnccl.so.%{version}" "$(@D)/libnccl.so.%{version}" """,
+    cmd = """
+cp "%{nccl_header_dir}/nccl.h" "$(@D)/nccl.h" &&
+cp "%{nccl_library_dir}/libnccl.so.%{nccl_version}" \
+  "$(@D)/libnccl.so.%{nccl_version}"
+""",
 )

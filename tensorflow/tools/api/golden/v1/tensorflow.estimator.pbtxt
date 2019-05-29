@@ -188,6 +188,10 @@ tf_module {
     name: "inputs"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "tpu"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "add_metrics"
     argspec: "args=[\'estimator\', \'metric_fn\'], varargs=None, keywords=None, defaults=None"

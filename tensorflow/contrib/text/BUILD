@@ -2,12 +2,13 @@
 #   contains parts of TensorFlow that are experimental or unstable and which
 #   are not supported.
 
-package(default_visibility = [
-    "//learning/brain:__subpackages__",
-    "//tensorflow:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow:tensorflow.bzl",
@@ -97,6 +98,7 @@ py_test(
     name = "skip_gram_ops_test",
     size = "medium",
     srcs = ["python/ops/skip_gram_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":text_py",

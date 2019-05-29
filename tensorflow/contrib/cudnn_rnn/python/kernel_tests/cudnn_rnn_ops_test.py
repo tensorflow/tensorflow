@@ -21,19 +21,17 @@ from __future__ import print_function
 import collections
 import itertools
 import os
-import unittest
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -44,7 +42,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_lib
 
@@ -339,7 +336,7 @@ def ExpandNamedTestCases(inputs, *remove_keys, **extra_configs):
   return [dict(t) for t in {tuple(d.items()) for d in res}]
 
 
-class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
+class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _test_training_helper(self,
                             num_units,
@@ -382,12 +379,9 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_training(self, num_units, input_size, batch_size, time, num_layers,
                     variable_seq_lengths, time_major, dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_training_helper(
         num_units,
         input_size,
@@ -406,13 +400,10 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_training_fp16(self, num_units, input_size, batch_size, time,
                          num_layers, variable_seq_lengths, time_major,
                          dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_training_helper(
         num_units,
         input_size,
@@ -433,12 +424,9 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_inference(self, num_units, input_size, batch_size, time, num_layers,
                      variable_seq_lengths, time_major, dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
           sess,
@@ -465,13 +453,10 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_inference_fp16(self, num_units, input_size, batch_size, time,
                           num_layers, variable_seq_lengths, time_major,
                           dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
           sess,
@@ -502,14 +487,11 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_inference_with_dropout(self, num_units, input_size, batch_size, time,
                                   num_layers, variable_seq_lengths, time_major,
                                   dynamic_shape_input):
     """Validates that dropout does not affect Cudnn Rnn inference."""
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     # Hand-picked dropouts are used below (0. and 1.)
     with ops.Graph().as_default() as g:
       with self.session(use_gpu=True, graph=g) as sess:
@@ -721,7 +703,7 @@ def RunGRU(sess,
   return outputs, cu_outputs, h, cu_h
 
 
-class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
+class CudnnGRUTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _test_training_helper(self,
                             num_units,
@@ -764,12 +746,9 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_training(self, num_units, input_size, batch_size, time, num_layers,
                     variable_seq_lengths, time_major, dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_training_helper(
         num_units,
         input_size,
@@ -788,13 +767,10 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_training_fp16(self, num_units, input_size, batch_size, time,
                          num_layers, variable_seq_lengths, time_major,
                          dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_training_helper(
         num_units,
         input_size,
@@ -815,12 +791,9 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_inference(self, num_units, input_size, batch_size, time, num_layers,
                      variable_seq_lengths, time_major, dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, h, cu_h) = RunGRU(
           sess,
@@ -843,13 +816,10 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_inference_fp16(self, num_units, input_size, batch_size, time,
                           num_layers, variable_seq_lengths, time_major,
                           dynamic_shape_input):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, h, cu_h) = RunGRU(
           sess,
@@ -875,15 +845,12 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
               "time_major": [True, False],
               "dynamic_shape_input": [True, False],
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_inference_with_dropout(self, num_units, input_size, batch_size, time,
                                   num_layers, variable_seq_lengths, time_major,
                                   dynamic_shape_input):
     """Validates that dropout does not affect Cudnn Rnn inference."""
     # Hand-picked dropouts are used below (0. and 1.)
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with ops.Graph().as_default() as g:
       with self.session(use_gpu=True, graph=g) as sess:
         # 1st time w/o dropout.
@@ -919,7 +886,7 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
     self.assertAllClose(cu_h[0], cu_h2[0])
 
 
-class CudnnParamsFormatConverterTest(TensorFlowTestCase,
+class CudnnParamsFormatConverterTest(test_util.TensorFlowTestCase,
                                      parameterized.TestCase):
   """Class for testing various format converters."""
 
@@ -970,22 +937,16 @@ class CudnnParamsFormatConverterTest(TensorFlowTestCase,
   @parameterized.named_parameters((c["testcase_name"], c["num_units"],
                                    c["input_size"], c["num_layers"])
                                   for c in NAMED_RNN_TESTCASES)
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_lstm(self, num_units, input_size, num_layers):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_lstm_helper(num_units, input_size, num_layers,
                            cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
 
   @parameterized.named_parameters((c["testcase_name"], c["num_units"],
                                    c["input_size"], c["num_layers"])
                                   for c in NAMED_RNN_TESTCASES)
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_lstm_bidi(self, num_units, input_size, num_layers):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_lstm_helper(num_units, input_size, num_layers,
                            cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
 
@@ -1044,27 +1005,22 @@ class CudnnParamsFormatConverterTest(TensorFlowTestCase,
   @parameterized.named_parameters((c["testcase_name"], c["num_units"],
                                    c["input_size"], c["num_layers"])
                                   for c in NAMED_RNN_TESTCASES)
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_gru(self, num_units, input_size, num_layers):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_gru_helper(num_units, input_size, num_layers,
                           cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
 
   @parameterized.named_parameters((c["testcase_name"], c["num_units"],
                                    c["input_size"], c["num_layers"])
                                   for c in NAMED_RNN_TESTCASES)
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_gru_bidi(self, num_units, input_size, num_layers):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     self._test_gru_helper(num_units, input_size, num_layers,
                           cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
 
 
-class CudnnRnnSaveRestoreTest(TensorFlowTestCase, parameterized.TestCase):
+class CudnnRnnSaveRestoreTest(test_util.TensorFlowTestCase,
+                              parameterized.TestCase):
   """Class for testing various Cudnn Rnn SaveableObjects."""
 
   def _create_opaque_param(self,
@@ -1112,14 +1068,11 @@ class CudnnRnnSaveRestoreTest(TensorFlowTestCase, parameterized.TestCase):
               ],
               "direction": [CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION]
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_save_restore_variable(self, rnn_mode, num_units, input_size,
                                  num_layers, direction):
     # Verify the restored opaque param, once converted to tf_canonical format,
     # is the same as the tf canonicals of the pre-restored param.
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with self.session(use_gpu=True) as sess:
       opaque_param = self._create_opaque_param(rnn_mode, num_units, input_size,
                                                num_layers, direction)
@@ -1164,14 +1117,11 @@ class CudnnRnnSaveRestoreTest(TensorFlowTestCase, parameterized.TestCase):
               ],
               "direction": [CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION]
           }))
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
+  @test_util.run_gpu_only
   def test_save_restore_multi_variables(self, rnn_mode, num_units, input_size,
                                         num_layers, direction):
     # Verify the restored opaque param, once converted to tf_canonical format,
     # is the same as the tf canonicals of the pre-restored param.
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
     with self.session(use_gpu=True) as sess:
       opaque_params = []
       saveables = []

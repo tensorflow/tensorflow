@@ -390,10 +390,10 @@ Outputs {
 **CEIL**
 
 ```
-inputs {
-  0: tensor
+Inputs {
+  0: a tensor
 }
-outputs: {
+Outputs {
   0: result of computing element-wise ceil of the input tensor
 }
 ```
@@ -844,6 +844,17 @@ Options {
 }
 ```
 
+**ROUND**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise round of the input tensor
+}
+```
+
 **SLICE**
 
 ```
@@ -999,7 +1010,7 @@ Inputs {
 }
 Outputs {
   0: k largest element along each last dimensional slice
-  1: indices of values within the last dimension of the input ensor
+  1: indices of values within the last dimension of the input tensor
 }
 ```
 

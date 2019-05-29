@@ -44,6 +44,104 @@ _DEFUN_DEVICE_ATTRIBUTE = 'api_preferred_device'
 _CPU_DEVICE_NAME = 'CPU'
 _GPU_DEVICE_NAME = 'GPU'
 
+# The following number constants are used to represent the runtime of the defun
+# backend function. Since the CPU/GPU implementation are mathematically same, we
+# need some signal for the function to indicate which function is executed. This
+# is for testing purpose to verify the correctness of swapping backend function.
+_RUNTIME_UNKNOWN = 0
+_RUNTIME_CPU = 1
+_RUNTIME_GPU = 2
+
+
+@keras_export('keras.layers.GRUCell', v1=[])
+class GRUCell(recurrent.GRUCell):
+  """Cell class for the GRU layer.
+
+  Arguments:
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use. Default: hyperbolic tangent
+      (`tanh`). If you pass None, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use for the recurrent step.
+      Default: sigmoid (`sigmoid`). If you pass `None`, no activation is
+      applied (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix, used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to the `kernel` weights
+      matrix.
+    recurrent_regularizer: Regularizer function applied to the
+      `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to the `kernel` weights
+      matrix.
+    recurrent_constraint: Constraint function applied to the `recurrent_kernel`
+      weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the
+      linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of
+      smaller dot products and additions, whereas mode 2 (default) will
+      batch them into fewer, larger operations. These modes will
+      have different performance profiles on different hardware and
+      for different applications.
+    reset_after: GRU convention (whether to apply reset gate after or
+      before matrix multiplication). False = "before",
+      True = "after" (default and CuDNN compatible).
+
+  Call arguments:
+    inputs: A 2D tensor.
+    states: List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
+  """
+
+  def __init__(self,
+               units,
+               activation='tanh',
+               recurrent_activation='sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               implementation=2,
+               reset_after=True,
+               **kwargs):
+    super(GRUCell, self).__init__(
+        units,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        implementation=implementation,
+        reset_after=reset_after,
+        **kwargs)
+
 
 @keras_export('keras.layers.GRU', v1=[])
 class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
@@ -165,7 +263,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
+               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -239,14 +337,14 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
           time_major=self.time_major,
           zero_output_for_mask=self.zero_output_for_mask)
       # This is a dummy tensor for testing purpose.
-      runtime = _runtime('unknown')
+      runtime = _runtime(_RUNTIME_UNKNOWN)
     else:
       last_output, outputs, runtime, states = self._defun_gru_call(
           inputs, initial_state, training, mask)
 
     if self.stateful:
       updates = [state_ops.assign(self.states[0], states[0])]
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -400,7 +498,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
       mask=mask,
       go_backwards=go_backwards,
       input_length=timesteps)
-  return last_output, outputs, new_states[0], _runtime('cpu')
+  return last_output, outputs, new_states[0], _runtime(_RUNTIME_CPU)
 
 
 def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
@@ -464,7 +562,97 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   if mask is not None:
     last_output = h
 
-  return last_output, outputs, h, _runtime('cudnn')
+  return last_output, outputs, h, _runtime(_RUNTIME_GPU)
+
+
+@keras_export('keras.layers.LSTMCell', v1=[])
+class LSTMCell(recurrent.LSTMCell):
+  """Cell class for the LSTM layer.
+
+  Arguments:
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use. Default: hyperbolic tangent
+      (`tanh`). If you pass `None`, no activation is applied (ie. "linear"
+      activation: `a(x) = x`).
+    recurrent_activation: Activation function to use for the recurrent step.
+      Default: sigmoid (`sigmoid`). If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix, used for
+      the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel` weights
+      matrix, used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    unit_forget_bias: Boolean. If True, add 1 to the bias of the forget gate at
+      initialization. Setting it to true will also force
+      `bias_initializer="zeros"`. This is recommended in [Jozefowicz et
+        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+    kernel_regularizer: Regularizer function applied to the `kernel` weights
+      matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to the `kernel` weights
+      matrix.
+    recurrent_constraint: Constraint function applied to the `recurrent_kernel`
+      weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the linear
+      transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1. Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of smaller dot
+      products and additions, whereas mode 2 (default) will batch them into
+      fewer, larger operations. These modes will have different performance
+      profiles on different hardware and for different applications.
+
+  Call arguments:
+    inputs: A 2D tensor.
+    states: List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
+  """
+
+  def __init__(self,
+               units,
+               activation='tanh',
+               recurrent_activation='sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               implementation=2,
+               **kwargs):
+    super(LSTMCell, self).__init__(
+        units,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        unit_forget_bias=unit_forget_bias,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        implementation=implementation,
+        **kwargs)
 
 
 @keras_export('keras.layers.LSTM', v1=[])
@@ -569,7 +757,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
                bias_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
-               implementation=1,
+               implementation=2,
                return_sequences=False,
                return_state=False,
                go_backwards=False,
@@ -643,7 +831,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           input_length=timesteps,
           time_major=self.time_major,
           zero_output_for_mask=self.zero_output_for_mask)
-      runtime = _runtime('unknown')
+      runtime = _runtime(_RUNTIME_UNKNOWN)
     else:
       # Use the new defun approach for backend implementation swap.
       # Note that different implementations need to have same function
@@ -721,7 +909,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -841,7 +1029,8 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
       mask=mask,
       go_backwards=go_backwards,
       input_length=timesteps)
-  return last_output, outputs, new_states[0], new_states[1], _runtime('cpu')
+  return (last_output, outputs, new_states[0], new_states[1],
+          _runtime(_RUNTIME_CPU))
 
 
 def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
@@ -920,7 +1109,7 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # the last_output, since it is numerically same as the output.
   if mask is not None:
     last_output = h
-  return last_output, outputs, h, c, _runtime('cudnn')
+  return last_output, outputs, h, c, _runtime(_RUNTIME_GPU)
 
 
 def is_sequence_right_padded(mask, time_major):
@@ -1013,4 +1202,4 @@ def _get_context_device_type():
 def _runtime(runtime_name):
   with ops.device('/cpu:0'):
     return constant_op.constant(
-        runtime_name, dtype=dtypes.string, name='runtime')
+        runtime_name, dtype=dtypes.float32, name='runtime')

@@ -227,13 +227,10 @@ void BatchedNonMaxSuppressionOp(
     OpKernelContext* context, const Tensor& inp_boxes, const Tensor& inp_scores,
     int num_boxes, const int max_size_per_class, const int total_size_per_batch,
     const float score_threshold, const float iou_threshold,
-    bool pad_per_class = false) {
+    bool pad_per_class = false, bool clip_boxes = true) {
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
   const int num_batches = inp_boxes.dim_size(0);
-
-  // Default clip window of [0, 0, 1, 1] if none specified
-  std::vector<float> clip_window{0, 0, 1, 1};
 
   // [num_batches, per_batch_size * 4]
   std::vector<std::vector<float>> nmsed_boxes(num_batches);
@@ -375,18 +372,23 @@ void BatchedNonMaxSuppressionOp(
     while (curr_total_size > 0 && result_idx < result_candidate_vec.size()) {
       ResultCandidate next_candidate = result_candidate_vec[result_idx++];
       // Add to final output vectors
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[0], clip_window[2]),
-                   clip_window[0]));
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[1], clip_window[3]),
-                   clip_window[1]));
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[2], clip_window[2]),
-                   clip_window[0]));
-      nmsed_boxes[batch].push_back(
-          std::max(std::min(next_candidate.box_coord[3], clip_window[3]),
-                   clip_window[1]));
+      if (clip_boxes) {
+        const float box_min = 0.0;
+        const float box_max = 1.0;
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[0], box_max), box_min));
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[1], box_max), box_min));
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[2], box_max), box_min));
+        nmsed_boxes[batch].push_back(
+            std::max(std::min(next_candidate.box_coord[3], box_max), box_min));
+      } else {
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[0]);
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[1]);
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[2]);
+        nmsed_boxes[batch].push_back(next_candidate.box_coord[3]);
+      }
       nmsed_scores[batch].push_back(next_candidate.score);
       nmsed_classes[batch].push_back(next_candidate.class_idx);
       curr_total_size--;
@@ -679,6 +681,7 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
   explicit CombinedNonMaxSuppressionOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("pad_per_class", &pad_per_class_));
+    OP_REQUIRES_OK(context, context->GetAttr("clip_boxes", &clip_boxes_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -734,11 +737,12 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes,
                                max_size_per_class, max_total_size_per_batch,
                                score_threshold_val, iou_threshold_val,
-                               pad_per_class_);
+                               pad_per_class_, clip_boxes_);
   }
 
  private:
   bool pad_per_class_;
+  bool clip_boxes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppression").Device(DEVICE_CPU),
