@@ -292,6 +292,24 @@ def _hipcc_is_hipclang(repository_ctx):
         return "True"
     return "False"
 
+def _if_hipcc_is_hipclang(repository_ctx, if_true, if_false=[]):
+    """
+    Returns either the if_true or if_false arg based on whether hipcc
+    is based on the hip-clang toolchain
+
+    Args :
+        repository_ctx: The repository context.
+        if_true : value to return if hipcc is hip-clang based
+        if_false : value to return if hipcc is not hip-clang based
+                   (optional, defaults to empty list)
+
+    Returns :
+        either the if_true arg or the of_False arg
+    """
+    if _hipcc_is_hipclang(repository_ctx) == "True":
+        return if_true
+    return if_false
+
 def _crosstool_verbose(repository_ctx):
     """Returns the environment variable value CROSSTOOL_VERBOSE.
 
@@ -730,7 +748,21 @@ def _create_local_rocm_repository(repository_ctx):
     # bazel's header check failing.
     rocm_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
 
-    rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings(["-DTENSORFLOW_USE_ROCM", "-D__HIP_PLATFORM_HCC__", "-DEIGEN_USE_HIP"])
+    rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings([
+        "-DTENSORFLOW_USE_ROCM=1",
+        "-D__HIP_PLATFORM_HCC__",
+        "-DEIGEN_USE_HIP"
+    ] + _if_hipcc_is_hipclang(repository_ctx, [
+        #
+        # define "TENSORFLOW_COMPILER_IS_HIP_CLANG" when we are using clang
+        # based hipcc to compile/build tensorflow
+        #
+        # Note that this #define should not be used to check whether or not
+        # tensorflow is being built with ROCm support
+        # (only TENSORFLOW_USE_ROCM should be used for that purpose)
+        #
+        "-DTENSORFLOW_COMPILER_IS_HIP_CLANG=1"
+    ]))
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_rocm"
 
