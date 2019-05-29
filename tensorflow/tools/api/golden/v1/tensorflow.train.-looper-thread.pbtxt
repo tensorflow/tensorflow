@@ -36,7 +36,7 @@ tf_class {
   }
   member_method {
     name: "join"
-    argspec: "args=[\'self\', \'timeout\', \'balancing\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+    argspec: "args=[\'self\', \'timeout\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "loop"
