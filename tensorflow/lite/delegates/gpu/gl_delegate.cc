@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/registry.h"
+#include "tensorflow/lite/delegates/gpu/gl/object_manager.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/best_effort_calculator.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -95,7 +96,7 @@ class Delegate {
   Status CopyFromBufferHandle(TfLiteBufferHandle handle, TfLiteTensor* tensor) {
     ValueRef ref;
     RETURN_IF_ERROR(FindObject(handle, &ref));
-    auto buffer = phwc4_objects_.FindBuffer(handle);
+    auto buffer = phwc4_objects_->FindBuffer(handle);
     return buffer->MappedRead<float>([&](absl::Span<const float> data) {
       tensor->data_is_stale = false;
       return ConvertFromPHWC4(
@@ -108,7 +109,7 @@ class Delegate {
                             TfLiteTensor* tensor) const {
     ValueRef ref;
     RETURN_IF_ERROR(FindObject(handle, &ref));
-    auto buffer = phwc4_objects_.FindBuffer(handle);
+    auto buffer = phwc4_objects_->FindBuffer(handle);
     return buffer->MappedWrite<float>([&](absl::Span<float> data) {
       return ConvertToPHWC4(
           absl::MakeConstSpan(tensor->data.f, tensor->bytes / sizeof(float)),
@@ -124,7 +125,7 @@ class Delegate {
                                          GL_SHADER_STORAGE_BUFFER,
                                          GL_BUFFER_SIZE, &bytes_size));
     }
-    return bhwc_objects_.RegisterBuffer(
+    return bhwc_objects_->RegisterBuffer(
         tensor_index, GlBuffer(GL_SHADER_STORAGE_BUFFER, ssbo, bytes_size,
                                /* offset = */ 0,
                                /* has_ownership = */ false));
@@ -136,6 +137,13 @@ class Delegate {
     // into FlowGraph32.
     GraphFloat32 graph;
     RETURN_IF_ERROR(BuildModel(context, delegate_params, &graph));
+
+    // Reset object managers & Value vectors.
+    phwc4_objects_ = absl::make_unique<ObjectManager>();
+    bhwc_objects_ = absl::make_unique<ObjectManager>();
+    tensors_.clear();
+    inputs_.clear();
+    outputs_.clear();
 
     // Apply general transformations on the graph.
     NullTransformationReporter reporter;
@@ -192,7 +200,7 @@ class Delegate {
         // PHWC4. If yes, we may skip conversion step.
         // We need to keep same buffer in bhwc_objects_ to indicate there is
         // externally provided buffer.
-        auto external_buffer = bhwc_objects_.FindBuffer(tensor_index);
+        auto external_buffer = bhwc_objects_->FindBuffer(tensor_index);
         GlBuffer buffer;
         if (IsPHWC4(input->tensor.shape) && external_buffer) {
           buffer = external_buffer->MakeRef();
@@ -201,7 +209,7 @@ class Delegate {
               GetElementsSizeForPHWC4(input->tensor.shape), &buffer));
         }
         RETURN_IF_ERROR(
-            phwc4_objects_.RegisterBuffer(input->id, std::move(buffer)));
+            phwc4_objects_->RegisterBuffer(input->id, std::move(buffer)));
       }
     }
 
@@ -228,7 +236,7 @@ class Delegate {
         // Create phwc4 output buffer.
         // Check whether there is externally provided object is already in
         // PHWC4. If yes, we may skip conversion step.
-        auto external_buffer = bhwc_objects_.FindBuffer(tensor_index);
+        auto external_buffer = bhwc_objects_->FindBuffer(tensor_index);
         GlBuffer buffer;
         if (IsPHWC4(output->tensor.shape) && external_buffer) {
           buffer = external_buffer->MakeRef();
@@ -237,7 +245,7 @@ class Delegate {
               GetElementsSizeForPHWC4(output->tensor.shape), &buffer));
         }
         RETURN_IF_ERROR(
-            phwc4_objects_.RegisterBuffer(output->id, std::move(buffer)));
+            phwc4_objects_->RegisterBuffer(output->id, std::move(buffer)));
       }
     }
 
@@ -267,9 +275,9 @@ class Delegate {
 
     // Create inference context.
     const RuntimeOptions runtime_options;
-    RETURN_IF_ERROR(compiled_model->NewRun(runtime_options, &phwc4_objects_,
-                                           command_queue_.get(),
-                                           &inference_context_));
+    RETURN_IF_ERROR(
+        compiled_model->NewRun(runtime_options, phwc4_objects_.get(),
+                               command_queue_.get(), &inference_context_));
     return OkStatus();
   }
 
@@ -284,14 +292,14 @@ class Delegate {
     // Push input data from a tensor to GPU.
     for (ValueId id : inputs_) {
       const ValueRef& ref = tensors_[id];
-      auto external_object = bhwc_objects_.FindBuffer(ref.tensor_index);
+      auto external_object = bhwc_objects_->FindBuffer(ref.tensor_index);
       if (external_object) {
         // Use input from GPU.
         // Conversion is needed only when external object is not phwc4.
         if (!IsPHWC4(tensors_[id].shape)) {
           RETURN_IF_ERROR(bhwc_to_phwc4_.Convert(
               ref.shape, *external_object, command_queue_.get(),
-              phwc4_objects_.FindBuffer(id)));
+              phwc4_objects_->FindBuffer(id)));
         }
       } else {
         // Copy from CPU to GPU
@@ -308,13 +316,13 @@ class Delegate {
     bool finished_gpu_processing = false;
     for (ValueId id : outputs_) {
       const ValueRef& ref = tensors_[id];
-      auto external_object = bhwc_objects_.FindBuffer(ref.tensor_index);
+      auto external_object = bhwc_objects_->FindBuffer(ref.tensor_index);
       if (external_object) {
         // Convert data from PHWC4 to BHWC and leave it in GPU object.
         // Conversion is needed only when external object is not phwc4.
         if (!IsPHWC4(tensors_[id].shape)) {
           RETURN_IF_ERROR(
-              phwc4_to_bhwc_.Convert(ref.shape, *phwc4_objects_.FindBuffer(id),
+              phwc4_to_bhwc_.Convert(ref.shape, *phwc4_objects_->FindBuffer(id),
                                      command_queue_.get(), external_object));
         }
       } else {
@@ -359,8 +367,8 @@ class Delegate {
   std::vector<ValueRef> tensors_;  // indexed by ValueId
   std::vector<ValueId> inputs_;
   std::vector<ValueId> outputs_;
-  ObjectManager phwc4_objects_;
-  ObjectManager bhwc_objects_;  // key is tensor_index
+  std::unique_ptr<ObjectManager> phwc4_objects_;
+  std::unique_ptr<ObjectManager> bhwc_objects_;  // key is tensor_index
   ConverterPhwc4ToBhwc phwc4_to_bhwc_;
   ConverterBhwcToPhwc4 bhwc_to_phwc4_;
   std::unique_ptr<CommandQueue> command_queue_;
