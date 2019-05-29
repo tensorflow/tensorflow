@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/function.h"
@@ -1302,6 +1303,8 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("ReduceDataset");
 
 }  // namespace
 

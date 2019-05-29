@@ -3165,6 +3165,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/executor.h",
     "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
+    "common_runtime/input_colocation_exemption_registry.h",
     "common_runtime/isolate_placer_inspection_required_ops_pass.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_function_call_op.h",
@@ -3225,6 +3226,7 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
+        "common_runtime/input_colocation_exemption_registry.cc",
         "common_runtime/inspecting_placer.cc",
         "common_runtime/inspecting_placer.h",
         "common_runtime/isolate_placer_inspection_required_ops_pass.cc",
@@ -5258,6 +5260,19 @@ tf_cc_test_gpu(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/internal:profiler_interface",
+    ],
+)
+
+tf_cc_tests(
+    name = "common_runtime_input_colocation_exemption_registry_test",
+    size = "small",
+    srcs = ["common_runtime/input_colocation_exemption_registry_test.cc"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":test",
+        ":test_main",
+        ":testlib",
     ],
 )
 
