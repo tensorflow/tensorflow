@@ -409,11 +409,11 @@ void BranchOp::eraseOperand(unsigned index) {
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
-  StringRef calleeName;
-  llvm::SMLoc calleeLoc;
+  FunctionAttr calleeAttr;
   FunctionType calleeType;
   SmallVector<OpAsmParser::OperandType, 4> operands;
-  if (parser->parseFunctionName(calleeName, calleeLoc) ||
+  auto calleeLoc = parser->getNameLoc();
+  if (parser->parseAttribute(calleeAttr, "callee", result->attributes) ||
       parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
                                OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
@@ -423,8 +423,6 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
                               result->operands))
     return failure();
 
-  result->addAttribute("callee",
-                       parser->getBuilder().getFunctionAttr(calleeName));
   return success();
 }
 

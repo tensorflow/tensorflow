@@ -30,7 +30,6 @@
 namespace mlir {
 
 class Builder;
-class Function;
 
 //===----------------------------------------------------------------------===//
 // OpAsmPrinter
@@ -65,7 +64,6 @@ public:
     }
   }
   virtual void printType(Type type) = 0;
-  virtual void printFunctionReference(Function *func) = 0;
   virtual void printAttribute(Attribute attr) = 0;
   virtual void printAttributeAndType(Attribute attr) = 0;
 
@@ -110,7 +108,7 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Attribute attr) {
 
 // Support printing anything that isn't convertible to one of the above types,
 // even if it isn't exactly one of them.  For example, we want to print
-// FunctionType with the Type& version above, not have it match this.
+// FunctionType with the Type version above, not have it match this.
 template <typename T, typename std::enable_if<
                           !std::is_convertible<T &, Value &>::value &&
                               !std::is_convertible<T &, Type &>::value &&
@@ -269,17 +267,6 @@ public:
   /// If a named attribute dictionary is present, parse it into result.
   virtual ParseResult
   parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
-
-  /// Parse a function name like '@foo' and return the name in a form that can
-  /// be passed to resolveFunctionName when a function type is available.
-  virtual ParseResult parseFunctionName(StringRef &result,
-                                        llvm::SMLoc &loc) = 0;
-
-  /// Parse a function name like '@foo` if present and return the name without
-  /// the sigil in `result`.  Return true if the next token is not a function
-  /// name and keep `result` unchanged.
-  virtual ParseResult parseOptionalFunctionName(StringRef &result,
-                                                llvm::SMLoc &loc) = 0;
 
   /// This is the representation of an operand reference.
   struct OperandType {

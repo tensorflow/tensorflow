@@ -336,8 +336,8 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   SmallVector<OpAsmParser::OperandType, 8> operands;
   Type type;
-  StringRef calleeName;
-  llvm::SMLoc calleeLoc, trailingTypeLoc;
+  FunctionAttr funcAttr;
+  llvm::SMLoc trailingTypeLoc;
 
   // Parse an operand list that will, in practice, contain 0 or 1 operand.  In
   // case of an indirect call, there will be 1 operand before `(`.  In case of a
@@ -349,7 +349,7 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
 
   // Optionally parse a function identifier.
   if (isDirect)
-    if (parser->parseFunctionName(calleeName, calleeLoc))
+    if (parser->parseAttribute(funcAttr, "callee", attrs))
       return failure();
 
   if (parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
@@ -362,10 +362,6 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   if (!funcType)
     return parser->emitError(trailingTypeLoc, "expected function type");
   if (isDirect) {
-    // Add the direct callee as an Op attribute.
-    auto funcAttr = parser->getBuilder().getFunctionAttr(calleeName);
-    attrs.push_back(parser->getBuilder().getNamedAttr("callee", funcAttr));
-
     // Make sure types match.
     if (parser->resolveOperands(operands, funcType.getInputs(),
                                 parser->getNameLoc(), result->operands))

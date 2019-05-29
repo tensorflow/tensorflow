@@ -337,7 +337,6 @@ public:
   }
 
   void print(Module *module);
-  void printFunctionReference(Function *func);
   void printAttributeAndType(Attribute attr) {
     printAttributeOptionalType(attr, /*includeType=*/true);
   }
@@ -496,10 +495,6 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
   SmallVector<char, 16> str;
   apValue.toString(str);
   os << str;
-}
-
-void ModulePrinter::printFunctionReference(Function *func) {
-  os << '@' << func->getName();
 }
 
 void ModulePrinter::printLocation(Location loc) {
@@ -1179,9 +1174,6 @@ public:
   }
   void printAttributeAndType(Attribute attr) override {
     ModulePrinter::printAttributeAndType(attr);
-  }
-  void printFunctionReference(Function *func) override {
-    return ModulePrinter::printFunctionReference(func);
   }
   void printOperand(Value *value) override { printValueID(value); }
 

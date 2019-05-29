@@ -3148,29 +3148,6 @@ public:
     return parser.parseAttributeDict(result);
   }
 
-  /// Parse a function name like '@foo' and return the name in a form that can
-  /// be passed to resolveFunctionName when a function type is available.
-  ParseResult parseFunctionName(StringRef &result, llvm::SMLoc &loc) override {
-    if (parseOptionalFunctionName(result, loc))
-      return emitError(loc, "expected function name");
-    return success();
-  }
-
-  /// Parse a function name like '@foo` if present and return the name without
-  /// the sigil in `result`.  Return true if the next token is not a function
-  /// name and keep `result` unchanged.
-  ParseResult parseOptionalFunctionName(StringRef &result,
-                                        llvm::SMLoc &loc) override {
-    loc = parser.getToken().getLoc();
-
-    if (parser.getToken().isNot(Token::at_identifier))
-      return failure();
-
-    result = parser.getTokenSpelling().drop_front();
-    parser.consumeToken(Token::at_identifier);
-    return success();
-  }
-
   ParseResult parseOperand(OperandType &result) override {
     FunctionParser::SSAUseInfo useInfo;
     if (parser.parseSSAUse(useInfo))
