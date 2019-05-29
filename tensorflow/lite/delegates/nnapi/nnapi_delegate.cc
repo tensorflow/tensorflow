@@ -777,8 +777,9 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinConv2d:
         if (version == 1) {
-          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
-              IsHybridOperator(context, builtin_code, node)) {
+          if ((android_sdk_version < kMinSdkVersionForNNAPI12) &&
+              (IsHybridOperator(context, builtin_code, node) ||
+               !IsFloatOrUint8Operator(context, node))) {
             // Hybrid operators not supported before NNAPI 1.2.
             return nullptr;
           }
@@ -833,10 +834,22 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinDepthwiseConv2d:
         if (version == 1) {
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              !IsFloatOrUint8Operator(context, node)) {
+            // Hybrid operators not supported before NNAPI 1.2.
+            return nullptr;
+          }
           const auto input_type = context->tensors[node->inputs->data[0]].type;
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
               input_type == kTfLiteUInt8 &&
               !IsRestrictedScalesCompliant(context, node)) {
+            return nullptr;
+          }
+          auto builtin =
+              reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              (builtin->dilation_width_factor != 1 ||
+               builtin->dilation_height_factor != 1)) {
             return nullptr;
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -849,14 +862,34 @@ class NNAPIDelegateKernel {
             mapping_args.builder->AddScalarInt32Operand(
                 builtin->depth_multiplier);
             mapping_args.builder->AddScalarInt32Operand(builtin->activation);
+            if (builtin->dilation_width_factor != 1 ||
+                builtin->dilation_height_factor != 1) {
+              mapping_args.builder->AddScalarBoolOperand(
+                  false);  // Use NHWC format
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->dilation_width_factor);
+              mapping_args.builder->AddScalarInt32Operand(
+                  builtin->dilation_height_factor);
+            }
             return ANEURALNETWORKS_DEPTHWISE_CONV_2D;
           };
         }
         break;
       case kTfLiteBuiltinFullyConnected:
         if (version == 1) {
+          if (node->inputs->size != 3 ||
+              node->inputs->data[2] == kOptionalTensor) {
+            // TODO(b/132950584): Add support for FullyConnected with no bias.
+            return nullptr;
+          }
+          const auto output_type =
+              context->tensors[node->outputs->data[0]].type;
+          if (output_type == kTfLiteInt16) {
+            return nullptr;
+          }
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
-              IsHybridOperator(context, builtin_code, node)) {
+              (IsHybridOperator(context, builtin_code, node) ||
+               !IsFloatOrUint8Operator(context, node))) {
             // Hybrid operators not supported before NNAPI 1.2.
             return nullptr;
           }
@@ -864,6 +897,11 @@ class NNAPIDelegateKernel {
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
               input_type == kTfLiteUInt8 &&
               !IsRestrictedScalesCompliant(context, node)) {
+            return nullptr;
+          }
+          auto builtin =
+              reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+          if (builtin->keep_num_dims) {
             return nullptr;
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -944,10 +982,16 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinL2Normalization: {
-        auto builtin =
-            reinterpret_cast<TfLiteL2NormParams*>(node->builtin_data);
-        if (builtin->activation == kTfLiteActNone) {
-          return BasicMappingFn<ANEURALNETWORKS_L2_NORMALIZATION>;
+        if (version == 1) {
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              !IsFloatOperator(context, node)) {
+            return nullptr;
+          }
+          auto builtin =
+              reinterpret_cast<TfLiteL2NormParams*>(node->builtin_data);
+          if (builtin->activation == kTfLiteActNone) {
+            return BasicMappingFn<ANEURALNETWORKS_L2_NORMALIZATION>;
+          }
         }
         break;
       }

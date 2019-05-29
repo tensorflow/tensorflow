@@ -664,6 +664,7 @@ cc_test(
     name = "conv_test",
     size = "small",
     srcs = ["conv_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -678,6 +679,7 @@ cc_test(
     name = "depthwise_conv_test",
     size = "small",
     srcs = ["depthwise_conv_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -834,6 +836,7 @@ cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1047,6 +1050,7 @@ cc_test(
     name = "fully_connected_test",
     size = "small",
     srcs = ["fully_connected_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
