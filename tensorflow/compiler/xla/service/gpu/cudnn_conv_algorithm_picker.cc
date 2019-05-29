@@ -301,15 +301,12 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         break;
       }
       case xla::F32: {
-        se::DeviceMemory<float> typed_buffer(buffer);
-        stream.ThenPopulateRandUniform(&typed_buffer);
+        uint32 bits;
+        memcpy(&bits, &kBroadcastedConstant, sizeof(bits));
+        stream.ThenMemset32(&buffer, bits, buffer.size());
         break;
       }
-      case xla::F64: {
-        se::DeviceMemory<double> typed_buffer(buffer);
-        stream.ThenPopulateRandUniform(&typed_buffer);
-        break;
-      }
+      // TODO(timshen): populate non-zero data for f64.
       default:
         stream.ThenMemZero(&buffer, buffer.size());
     }
