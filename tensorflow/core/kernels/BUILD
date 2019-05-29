@@ -7242,7 +7242,6 @@ tf_mkl_kernel_library(
     ] + mkl_deps(),
 )
 
-
 tf_mkl_kernel_library(
     name = "mkl_conv_op",
     hdrs = [
