@@ -978,6 +978,8 @@ class Layer(module.Module):
       raise ValueError('Please provide a name for your metric like '
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
+    elif from_metric_obj:
+      name = value._metric_obj.name
 
     if in_call_context:
       # TF Function path should take the eager path.

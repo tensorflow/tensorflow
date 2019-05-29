@@ -1570,12 +1570,7 @@ class Model(network.Network):
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor for the loss.
-          # TODO(b/120571621): Directly call metric when the bug is fixed.
-          aggregated_output_loss = (
-              distributed_training_utils.call_replica_local_fn(
-                  endpoint.output_loss_metric,
-                  output_loss,
-                  strategy=self._distribution_strategy))
+          aggregated_output_loss = endpoint.output_loss_metric(output_loss)
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
 
         # Scale output loss for distribution. For custom losses we assume
@@ -1859,18 +1854,6 @@ class Model(network.Network):
     self._per_output_metrics = updated_per_output_metrics
     self._per_output_weighted_metrics = updated_per_output_weighted_metrics
 
-  def _call_metric_fn(self, metric_fn, y_true, y_pred, weights, mask=None):
-    # TODO(b/120571621): Remove this function when the bug is fixed.
-    """Helper function to call metric function with distribution strategy."""
-    return distributed_training_utils.call_replica_local_fn(
-        training_utils.call_metric_function,
-        metric_fn,
-        y_true,
-        y_pred,
-        weights=weights,
-        mask=mask,
-        strategy=self._distribution_strategy)
-
   def _handle_per_output_metrics(self,
                                  metrics_dict,
                                  y_true,
@@ -1892,8 +1875,8 @@ class Model(network.Network):
     metric_results = []
     for metric_name, metric_fn in metrics_dict.items():
       with K.name_scope(metric_name):
-        metric_result = self._call_metric_fn(metric_fn, y_true, y_pred, weights,
-                                             mask)
+        metric_result = training_utils.call_metric_function(
+            metric_fn, y_true, y_pred, weights=weights, mask=mask)
         metric_results.append(metric_result)
         if not self.run_eagerly:
           self._compile_metrics_tensors[metric_name] = metric_result

@@ -1761,6 +1761,67 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertAllClose(history.history, ds_history.history)
 
   @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.one_device_strategy_gpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+          ],
+          mode=['eager'],
+          cloning=[False]))
+  def test_distribution_strategy_with_add_metric_object(self, distribution,
+                                                        cloning):
+
+    class Bias(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_weight(name='bias', initializer='zeros', shape=())
+        self.mean = keras.metrics.Mean(name='mean')
+
+      def call(self, inputs):
+        self.add_metric(self.mean(inputs))
+        return inputs + self.bias
+
+    def _make_model_with_add_metric_object():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = Bias()(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model_with_add_metric_object()
+    self.assertLen(model.metrics, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(
+        x,
+        y,
+        steps_per_epoch=2,
+        validation_data=(x, y),
+        validation_steps=2,
+        epochs=2)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_metric_object()
+      self.assertLen(ds_model.metrics, 1)
+      ds_model.compile('sgd', 'mse', cloning=cloning)
+      ds_history = ds_model.fit(
+          x,
+          y,
+          steps_per_epoch=2,
+          validation_data=(x, y),
+          validation_steps=2,
+          epochs=2)
+      self.assertLen(ds_model.metrics, 1)
+
+    self.assertAllClose(history.history, ds_history.history)
+
+  @combinations.generate(
       combinations.times(all_strategy_minus_default_and_tpu_combinations(),
                          combinations.combine(cloning=[True, False])))
   def test_distribution_strategy_with_add_metric_outside_call(
