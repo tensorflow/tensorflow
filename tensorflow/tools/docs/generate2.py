@@ -142,7 +142,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   except AttributeError:
     pass
 
-  base_dir = path.normpath(path.join(path.dirname(tf.__file__), "../.."))
+  base_dir = path.dirname(tf.__file__)
 
   base_dirs = (
       base_dir,
