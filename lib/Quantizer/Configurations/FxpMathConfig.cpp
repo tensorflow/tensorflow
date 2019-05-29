@@ -96,9 +96,8 @@ struct FxpMathTargetConfigImpl : public FxpMathTargetConfig {
   bool isHandledType(Type t) const final {
     if (t.isa<FloatType>())
       return true;
-    auto shapedType = t.dyn_cast<ShapedType>();
-    return (shapedType && shapedType.getElementType().isa<FloatType>() &&
-            (t.isa<VectorType>() || t.isa<TensorType>()));
+    return (t.isa<VectorType>() || t.isa<TensorType>()) &&
+           t.cast<ShapedType>().getElementType().isa<FloatType>();
   }
 
   void finalizeAnchors(CAGSlice &cag) const override {
