@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import operator
+import time
 
 import numpy as np
 
@@ -108,6 +109,40 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(self.evaluate(rnd), self.evaluate(dep))
       self.assertAllClose(
           self.evaluate(rnd) + self.evaluate(dep) + 2.0, self.evaluate(depdep))
+
+  @test_util.run_deprecated_v1
+  def testCyclicInitializer(self):
+    with self.cached_session():
+      cyclic = control_flow_ops.while_loop(
+          cond=lambda i: i < 10,
+          body=lambda i: i + 1,
+          loop_vars=(constant_op.constant(0),))
+      initial_value = variables._try_guard_against_uninitialized_dependencies(
+          "test", cyclic)
+      self.assertIs(initial_value, cyclic)
+
+  @test_util.run_deprecated_v1
+  def testCycleDetectionIsLinear(self):
+    # https://github.com/tensorflow/tensorflow/issues/28685
+
+    def _build_tensor(depth):
+      fibonacci = [array_ops.zeros(shape=()), array_ops.ones(shape=())]
+      for _ in range(depth):
+        fibonacci.append(fibonacci[-2] + fibonacci[-1])
+      return fibonacci[-1]
+
+    measurements = []
+    with self.cached_session():
+      for depth in range(15, 25):
+        with ops.Graph().as_default():
+          tensor = _build_tensor(depth)
+
+        start_time = time.time()
+        variables._has_cycle(tensor.op, {})
+        end_time = time.time()
+        measurements.append(end_time - start_time)
+
+    self.assertLess(max(measurements) / min(measurements), 10)
 
   def testIterable(self):
     with self.assertRaisesRegexp(TypeError, "not iterable"):

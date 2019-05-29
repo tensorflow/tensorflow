@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import abc
 import enum  # pylint: disable=g-bad-import-order
+import itertools
 import functools
 import os
 import six
@@ -2508,23 +2509,27 @@ def _try_guard_against_uninitialized_dependencies(name, initial_value):
     raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
   # Don't modify initial_value if it contains any cyclic dependencies.
-  if _has_cycle(initial_value.op, path=set()):
+  if _has_cycle(initial_value.op, state={}):
     return initial_value
   return _safe_initial_value_from_tensor(name, initial_value, op_cache={})
 
 
-def _has_cycle(op, path):
+_UNKNOWN, _STARTED, _FINISHED = range(3)
+
+
+def _has_cycle(op, state):
   """Detect cycles in the dependencies of `initial_value`."""
-  if op.name in path:
+  op_state = state.get(op.name, _UNKNOWN)
+  if op_state == _STARTED:
     return True
-  path.add(op.name)
-  for op_input in op.inputs:
-    if _has_cycle(op_input.op, path):
+  elif op_state == _FINISHED:
+    return False
+
+  state[op.name] = _STARTED
+  for i in itertools.chain((i.op for i in op.inputs), op.control_inputs):
+    if _has_cycle(i, state):
       return True
-  for op_control_input in op.control_inputs:
-    if _has_cycle(op_control_input, path):
-      return True
-  path.remove(op.name)
+  state[op.name] = _FINISHED
   return False
 
 
