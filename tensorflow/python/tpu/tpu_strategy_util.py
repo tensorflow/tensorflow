@@ -73,7 +73,7 @@ def initialize_tpu_system(cluster_resolver=None):
       else:
         # Explicitly place the tpu.initialize_system in the first worker to
         # avoid the output node match multiple devices error.
-        job = "worker/replica:0/task:0"
+        job = "{}/replica:0/task:0".format(cluster_resolver.get_job_name())
       return tpu.initialize_system(job=job)
 
     tpu_devices = sorted(

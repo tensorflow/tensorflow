@@ -377,8 +377,7 @@ class TPUClusterResolver(ClusterResolver):
     return self.master()
 
   def get_job_name(self):
-    if (self._should_resolve() or is_running_in_gce()):
-      return self.task_type
+    return self.task_type
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
