@@ -1644,6 +1644,20 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(versions.__version__, root.tensorflow_version)
     self.assertEqual(versions.__git_version__, root.tensorflow_git_version)
 
+  def test_load_grad_save(self, cycles):
+    root = util.Checkpoint()
+    root.v = variables.Variable(2.)
+    root.f = def_function.function(lambda x: root.v * x)
+    root.g = def_function.function(root.f)
+    for _ in range(cycles):
+      with backprop.GradientTape() as tape:
+        inp = constant_op.constant(2.)
+        tape.watch(inp)
+        output = root.g(inp)
+        self.assertAllClose(4., output)
+      self.assertAllClose(2., tape.gradient(output, inp))
+      root = self.cycle(root, 1)
+
   def test_functional_model_with_conv(self, cycles):
     x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)
     conved = convolutional.Conv2D(filters=3, kernel_size=3, dilation_rate=2)(x)
