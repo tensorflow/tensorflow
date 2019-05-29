@@ -887,8 +887,10 @@ void OpEmitter::genPrinter() {
     return;
 
   auto &method = opClass.newMethod("void", "print", "OpAsmPrinter *p");
+  FmtContext fctx;
+  fctx.addSubst("cppClass", opClass.getClassName());
   auto printer = codeInit->getValue().ltrim().rtrim(" \t\v\f\r");
-  method.body() << "  " << printer;
+  method.body() << "  " << tgfmt(printer, &fctx);
 }
 
 void OpEmitter::genVerifier() {
