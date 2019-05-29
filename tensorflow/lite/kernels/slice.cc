@@ -92,7 +92,7 @@ inline tflite::SliceParams BuildSliceParams(const std::vector<int>& begins,
   for (int i = 0; i < dims_count; ++i) {
     start_i = begins[dims_count - 1 - i];
     stop_i = sizes[dims_count - 1 - i] == -1
-                 ? SizeOfDimension(input, i) - start_i
+                 ? SizeOfDimension(input, i)
                  : start_i + sizes[dims_count - 1 - i];
     op_params.begin[i] = start_i;
     op_params.size[i] = stop_i;
