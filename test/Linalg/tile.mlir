@@ -3,13 +3,9 @@
 // RUN: mlir-opt %s -linalg-tile -linalg-tile-sizes=0,0,2 | FileCheck %s -check-prefix=TILE-002
 // RUN: mlir-opt %s -linalg-tile -linalg-tile-sizes=2,3,4 | FileCheck %s -check-prefix=TILE-234
 
-//   TILE-2-DAG: #[[ID:.*]] = (d0) -> (d0)
 //   TILE-2-DAG: #[[UB0:.*]] = (d0) -> (d0 + 2)
-//  TILE-02-DAG: #[[ID:.*]] = (d0) -> (d0)
 //  TILE-02-DAG: #[[UB0:.*]] = (d0) -> (d0 + 2)
-// TILE-002-DAG: #[[ID:.*]] = (d0) -> (d0)
 // TILE-002-DAG: #[[UB0:.*]] = (d0) -> (d0 + 2)
-// TILE-234-DAG: #[[ID:.*]] = (d0) -> (d0)
 // TILE-234-DAG: #[[UB0:.*]] = (d0) -> (d0 + 2)
 // TILE-234-DAG: #[[UB1:.*]] = (d0) -> (d0 + 3)
 // TILE-234-DAG: #[[UB2:.*]] = (d0) -> (d0 + 4)
@@ -31,7 +27,7 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-2-NEXT: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //  TILE-2-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       TILE-2: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
-//       TILE-2: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[M]]) step 2 {
+//       TILE-2: linalg.for %i0 = %c0{{.*}} to %[[M]] step %c2 {
 //  TILE-2-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-2-NEXT:   %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //  TILE-2-NEXT:   %[[cmpuba:.*]] = cmpi "slt", %[[M]], %[[a]] : index
@@ -53,7 +49,7 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-02-NEXT: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //  TILE-02-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       TILE-02: %[[N:.*]] = linalg.dim %[[B]], 1 : !linalg.view<?x?xf32>
-//       TILE-02: affine.for %i0 = #[[ID]](%c0) to #[[ID]](%[[N]]) step 2 {
+//       TILE-02: linalg.for %i0 = %c0 to %[[N]] step %c2 {
 //       TILE-02:   %[[b:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-02-NEXT:   %[[N:.*]] = linalg.dim %[[B]], 1 : !linalg.view<?x?xf32>
 //  TILE-02-NEXT:   %[[cmpubb:.*]] = cmpi "slt", %[[N]], %[[b]] : index
@@ -75,7 +71,7 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-002-NEXT: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //  TILE-002-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
 //       TILE-002: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
-//       TILE-002: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[K]]) step 2 {
+//       TILE-002: linalg.for %i0 = %c0{{.*}} to %[[K]] step %c2 {
 //       TILE-002:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-002-NEXT:   %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
 //  TILE-002-NEXT:   %[[cmpuba:.*]] = cmpi "slt", %[[K]], %[[a]] : index
@@ -99,9 +95,9 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //       TILE-234: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //       TILE-234: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
 //       TILE-234: %[[N:.*]] = linalg.dim %[[B]], 1 : !linalg.view<?x?xf32>
-//       TILE-234:  affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[M]]) step 2 {
-//  TILE-234-NEXT:    affine.for %i1 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[N]]) step 3 {
-//  TILE-234-NEXT:      affine.for %i2 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[K]]) step 4 {
+//       TILE-234:  linalg.for %i0 = %c0{{.*}} to %[[M]] step %c2 {
+//  TILE-234-NEXT:    linalg.for %i1 = %c0{{.*}} to %[[N]] step %c3 {
+//  TILE-234-NEXT:      linalg.for %i2 = %c0{{.*}} to %[[K]] step %c4 {
 //  TILE-234-NEXT:        %[[ai:.*]]  = affine.apply #[[UB0]](%i0)
 //  TILE-234-NEXT:        %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //  TILE-234-NEXT:        %[[cmpubai:.*]] = cmpi "slt", %[[M]], %[[ai]] : index
@@ -159,7 +155,7 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-2-NEXT: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //  TILE-2-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       TILE-2: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
-//       TILE-2: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[M]]) step 2 {
+//       TILE-2: linalg.for %i0 = %c0{{.*}} to %[[M]] step %c2 {
 //  TILE-2-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-2-NEXT:   %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //  TILE-2-NEXT:   %[[cmpuba:.*]] = cmpi "slt", %[[M]], %[[a]] : index
@@ -181,7 +177,7 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-02-NEXT: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //  TILE-02-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       TILE-02: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
-//       TILE-02: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[K]]) step 2 {
+//       TILE-02: linalg.for %i0 = %c0{{.*}} to %[[K]] step %c2 {
 //       TILE-02:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-02-NEXT:   %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
 //  TILE-02-NEXT:   %[[cmpuba:.*]] = cmpi "slt", %[[K]], %[[a]] : index
@@ -199,7 +195,7 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //       TILE-02:   linalg.matvec(%[[sAj]], %[[sBj]], %[[C]]) : !linalg.view<?x?xf32>, !linalg.view<?xf32>, !linalg.view<?xf32>
 
 // TILE-002-LABEL: func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
-//   TILE-002-NOT: affine.for
+//   TILE-002-NOT: linalg.for
 
 // TILE-234-LABEL: func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
 //       TILE-234: %[[A:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?x?xf32>
@@ -207,8 +203,8 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //  TILE-234-NEXT: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       TILE-234: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //       TILE-234: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
-//       TILE-234:  affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[M]]) step 2 {
-//  TILE-234-NEXT:    affine.for %i1 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[K]]) step 3 {
+//       TILE-234:  linalg.for %i0 = %c0{{.*}} to %[[M]] step %c2 {
+//  TILE-234-NEXT:    linalg.for %i1 = %c0{{.*}} to %[[K]] step %c3 {
 //  TILE-234-NEXT:      %[[ai:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-234-NEXT:      %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //  TILE-234-NEXT:      %[[cmpubai:.*]] = cmpi "slt", %[[M]], %[[ai]] : index
@@ -244,7 +240,7 @@ func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg
 }
 // TILE-2-LABEL: func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
 //       TILE-2: %[[M:.*]] = linalg.dim %arg0, 0 : !linalg.view<?xf32>
-//       TILE-2: affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[M]]) step 2 {
+//       TILE-2: linalg.for %i0 = %c0{{.*}} to %[[M]] step %c2 {
 //  TILE-2-NEXT:   %[[a:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-2-NEXT:   %[[M:.*]] = linalg.dim %arg0, 0 : !linalg.view<?xf32>
 //  TILE-2-NEXT:   %[[cmpuba:.*]] = cmpi "slt", %[[M]], %[[a]] : index
@@ -262,14 +258,14 @@ func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg
 //  TILE-2-NEXT:   linalg.dot(%[[sAi]], %[[sBi]], {{.*}}) : !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
 
 // TILE-02-LABEL: func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
-//   TILE-02-NOT: affine.for
+//   TILE-02-NOT: linalg.for
 
 // TILE-002-LABEL: func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
-//   TILE-002-NOT: affine.for
+//   TILE-002-NOT: linalg.for
 
 // TILE-234-LABEL: func @dot(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
 //       TILE-234: %[[K:.*]] = linalg.dim %arg0, 0 : !linalg.view<?xf32>
-//       TILE-234:  affine.for %i0 = #[[ID]](%c0{{.*}}) to #[[ID]](%[[K]]) step 2 {
+//       TILE-234:  linalg.for %i0 = %c0{{.*}} to %[[K]] step %c2 {
 //  TILE-234-NEXT:    %[[a:.*]] = affine.apply #[[UB0]](%i0)
 //  TILE-234-NEXT:    %[[K:.*]] = linalg.dim %arg0, 0 : !linalg.view<?xf32>
 //  TILE-234-NEXT:    %[[cmpuba:.*]] = cmpi "slt", %[[K]], %[[a]] : index

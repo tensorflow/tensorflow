@@ -364,6 +364,7 @@ struct OperationHandle : public CapturableHandle {
   /// of MLIR without duplicating the type system or the op definitions.
   template <typename Op, typename... Args>
   static OperationHandle create(Args... args);
+  template <typename Op, typename... Args> static Op createOp(Args... args);
 
   /// Generic create for a named operation.
   static OperationHandle create(StringRef name, ArrayRef<ValueHandle> operands,
@@ -433,6 +434,15 @@ OperationHandle OperationHandle::create(Args... args) {
   return OperationHandle(ScopedContext::getBuilder()
                              ->create<Op>(ScopedContext::getLocation(), args...)
                              .getOperation());
+}
+
+template <typename Op, typename... Args>
+Op OperationHandle::createOp(Args... args) {
+  return cast<Op>(
+      OperationHandle(ScopedContext::getBuilder()
+                          ->create<Op>(ScopedContext::getLocation(), args...)
+                          .getOperation())
+          .getOperation());
 }
 
 template <typename Op, typename... Args>

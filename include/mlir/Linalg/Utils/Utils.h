@@ -24,10 +24,34 @@
 namespace mlir {
 
 namespace edsc {
-/// Helper class to sugar building loop nests from ranges.
+
+/// A LoopRangeBuilder is a generic NestedBuilder for linalg.for operations.
+/// More specifically it is meant to be used as a temporary object for
+/// representing any nested MLIR construct that is "related to" an mlir::Value*
+/// (for now an induction variable).
+class LoopRangeBuilder : public NestedBuilder {
+public:
+  /// Constructs a new linalg::ForOp and captures the associated induction
+  /// variable. A ValueHandle pointer is passed as the first argument and is the
+  /// *only* way to capture the loop induction variable.
+  LoopRangeBuilder(ValueHandle *iv, ValueHandle range);
+  LoopRangeBuilder(ValueHandle *iv, Value *range);
+
+  LoopRangeBuilder(const LoopRangeBuilder &) = delete;
+  LoopRangeBuilder(LoopRangeBuilder &&) = default;
+
+  LoopRangeBuilder &operator=(const LoopRangeBuilder &) = delete;
+  LoopRangeBuilder &operator=(LoopRangeBuilder &&) = default;
+
+  /// The only purpose of this operator is to serve as a sequence point so that
+  /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
+  /// scoped within a LoopRangeBuilder.
+  ValueHandle operator()(std::function<void(void)> fun = nullptr);
+};
+
+/// Helper class to sugar building linalg.for loop nests from ranges.
 /// This is similar to edsc::LoopNestBuilder except it works on ranges directly.
-/// In the current implementation it produces affine.for operations and thus
-/// only admits ranges with constant steps.
+/// In the current implementation it produces linalg.for operations.
 class LoopNestRangeBuilder {
 public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
@@ -37,7 +61,7 @@ public:
   edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
-  llvm::SmallVector<edsc::LoopBuilder, 4> loops;
+  llvm::SmallVector<LoopRangeBuilder, 4> loops;
 };
 
 } // namespace edsc

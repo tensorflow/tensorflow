@@ -1,7 +1,5 @@
 // RUN: mlir-opt %s -linalg-lower-to-loops | FileCheck %s
 
-// CHECK: #[[ID:.*]] = (d0) -> (d0)
-
 func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
@@ -21,9 +19,9 @@ func @matmul(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //       CHECK: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //       CHECK: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
 //       CHECK: %[[N:.*]] = linalg.dim %[[B]], 1 : !linalg.view<?x?xf32>
-//       CHECK: affine.for %i0 = #[[ID]](%c0) to #[[ID]](%[[M]]) {
-//       CHECK:   affine.for %i1 = #[[ID]](%c0) to #[[ID]](%[[N]]) {
-//       CHECK:     affine.for %i2 = #[[ID]](%c0) to #[[ID]](%[[K]]) {
+//       CHECK: linalg.for %i0 = %c0 to %[[M]] step %c1 {
+//       CHECK:   linalg.for %i1 = %c0 to %[[N]] step %c1 {
+//       CHECK:     linalg.for %i2 = %c0 to %[[K]] step %c1 {
 //   CHECK-DAG:       %[[a:.*]] = linalg.load %[[A]][%i0, %i2] : !linalg.view<?x?xf32>
 //   CHECK-DAG:       %[[b:.*]] = linalg.load %[[B]][%i2, %i1] : !linalg.view<?x?xf32>
 //   CHECK-DAG:       %[[inc:.*]] = mulf %[[a]], %[[b]] : f32
@@ -48,8 +46,8 @@ func @matvec(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: inde
 //       CHECK: %[[C:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       CHECK: %[[M:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?x?xf32>
 //       CHECK: %[[K:.*]] = linalg.dim %[[A]], 1 : !linalg.view<?x?xf32>
-//       CHECK: affine.for %i0 = #[[ID]](%c0) to #[[ID]](%[[M]]) {
-//       CHECK:   affine.for %i1 = #[[ID]](%c0) to #[[ID]](%[[K]]) {
+//       CHECK: linalg.for %i0 = %c0 to %[[M]] step %c1 {
+//       CHECK:   linalg.for %i1 = %c0 to %[[K]] step %c1 {
 //   CHECK-DAG:     %[[a:.*]] = linalg.load %[[A]][%i0, %i1] : !linalg.view<?x?xf32>
 //   CHECK-DAG:     %[[b:.*]] = linalg.load %[[B]][%i1] : !linalg.view<?xf32>
 //   CHECK-DAG:     %[[inc:.*]] = mulf %[[a]], %[[b]] : f32
@@ -72,7 +70,7 @@ func @dot(%arg0: !linalg.buffer<f32>, %arg1: index, %arg2: index, %arg3: index) 
 //       CHECK: %[[B:.*]] = linalg.view %arg0[{{.*}}] : !linalg.view<?xf32>
 //       CHECK: %[[C:.*]] = linalg.view %arg0[] : !linalg.view<f32>
 //       CHECK: %[[K:.*]] = linalg.dim %[[A]], 0 : !linalg.view<?xf32>
-//       CHECK: affine.for %i0 = #[[ID]](%c0) to #[[ID]](%[[K]]) {
+//       CHECK: linalg.for %i0 = %c0 to %[[K]] step %c1 {
 //   CHECK-DAG:   %[[a:.*]] = linalg.load %[[A]][%i0] : !linalg.view<?xf32>
 //   CHECK-DAG:   %[[b:.*]] = linalg.load %[[B]][%i0] : !linalg.view<?xf32>
 //   CHECK-DAG:   %[[inc:.*]] = mulf %[[a]], %[[b]] : f32
@@ -86,7 +84,7 @@ func @dot_view(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !l
 }
 // CHECK-LABEL: func @dot_view(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>, %arg2: !linalg.view<f32>) {
 //       CHECK: %[[K:.*]] = linalg.dim %arg0, 0 : !linalg.view<?xf32>
-//       CHECK: affine.for %i0 = #[[ID]](%c0) to #[[ID]](%[[K]]) {
+//       CHECK: linalg.for %i0 = %c0 to %[[K]] step %c1 {
 //   CHECK-DAG:   %[[a:.*]] = linalg.load %arg0[%i0] : !linalg.view<?xf32>
 //   CHECK-DAG:   %[[b:.*]] = linalg.load %arg1[%i0] : !linalg.view<?xf32>
 //   CHECK-DAG:   %[[inc:.*]] = mulf %[[a]], %[[b]] : f32

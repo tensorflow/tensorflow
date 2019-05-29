@@ -158,10 +158,9 @@ LogicalResult mlir::linalg::ForOp::verify() {
     return emitOpError("lower bound operand must be an index");
   if (!getUpperBound()->getType().isa<IndexType>())
     return emitOpError("upper bound operand must be an index");
-  if (!getLowerBound()->getType().dyn_cast<IndexType>())
+  if (!getStep()->getType().dyn_cast<IndexType>())
     return emitOpError("step operand must be an index");
-  if (auto cst =
-          dyn_cast_or_null<ConstantIndexOp>(getLowerBound()->getDefiningOp()))
+  if (auto cst = dyn_cast_or_null<ConstantIndexOp>(getStep()->getDefiningOp()))
     if (cst.getValue() <= 0)
       return emitOpError("constant step operand must be positive");
 
@@ -767,7 +766,7 @@ void mlir::linalg::emitScalarImplementation(
   using linalg_store = OperationBuilder<linalg::StoreOp>;
   using IndexedValue = TemplatedIndexedValue<linalg_load, linalg_store>;
   assert(reductionIvs.size() == 1);
-  auto innermostLoop = mlir::getForInductionVarOwner(reductionIvs.back());
+  auto innermostLoop = linalg::getForInductionVarOwner(reductionIvs.back());
   auto *body = innermostLoop.getBody();
   using edsc::op::operator+;
   using edsc::op::operator*;

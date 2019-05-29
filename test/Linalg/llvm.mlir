@@ -117,3 +117,61 @@ func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.ran
 //       CHECK:   %13 = llvm.mul %4, %5 : !llvm.i64
 //       CHECK:   %14 = llvm.insertvalue %13, %12[2] : !llvm<"{ i64, i64, i64 }">
 //       CHECK:   llvm.return %14 : !llvm<"{ i64, i64, i64 }">
+
+func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
+  linalg.for %i0 = %arg0 to %arg1 step %arg2 {
+    %a = muli %i0, %arg0 : index
+  }
+  return
+}
+// CHECK-LABEL: func @linalg_for(%arg0: !llvm.i64, %arg1: !llvm.i64, %arg2: !llvm.i64) {
+//       CHECK:   llvm.br ^bb2(%arg0 : !llvm.i64)
+//       CHECK: ^bb1:   // pred: ^bb2
+//       CHECK:   llvm.return
+//       CHECK: ^bb2(%0: !llvm.i64):    // 2 preds: ^bb0, ^bb3
+//       CHECK:   %1 = llvm.icmp "sgt" %arg1, %0 : !llvm.i64
+//       CHECK:   llvm.cond_br %1, ^bb3, ^bb1
+//       CHECK: ^bb3:   // pred: ^bb2
+//       CHECK:   %2 = llvm.mul %0, %arg0 : !llvm.i64
+//       CHECK:   %3 = llvm.add %0, %arg2 : !llvm.i64
+//       CHECK:   llvm.br ^bb2(%3 : !llvm.i64)
+
+func @linalg_for_2(%arg0 : index, %arg1 : index, %arg2 : index) {
+  linalg.for %i0 = %arg0 to %arg1 step %arg2 {
+    linalg.for %i1 = %arg0 to %arg1 step %arg2 {
+      %a = muli %i0, %i1 : index
+    }
+    linalg.for %i2 = %arg0 to %arg1 step %arg2 {
+      %b = muli %i0, %i2 : index
+    }
+  }
+  return
+}
+// CHECK-LABEL: func @linalg_for_2(%arg0: !llvm.i64, %arg1: !llvm.i64, %arg2: !llvm.i64) {
+//       CHECK:   llvm.br ^bb2(%arg0 : !llvm.i64)
+//       CHECK: ^bb1:   // pred: ^bb2
+//       CHECK:   llvm.return
+//       CHECK: ^bb2(%0: !llvm.i64):    // 2 preds: ^bb0, ^bb5
+//       CHECK:   %1 = llvm.icmp "sgt" %arg1, %0 : !llvm.i64
+//       CHECK:   llvm.cond_br %1, ^bb3, ^bb1
+//       CHECK: ^bb3:   // pred: ^bb2
+//       CHECK:   llvm.br ^bb8(%arg0 : !llvm.i64)
+//       CHECK: ^bb4:   // pred: ^bb8
+//       CHECK:   llvm.br ^bb6(%arg0 : !llvm.i64)
+//       CHECK: ^bb5:   // pred: ^bb6
+//       CHECK:   %2 = llvm.add %0, %arg2 : !llvm.i64
+//       CHECK:   llvm.br ^bb2(%2 : !llvm.i64)
+//       CHECK: ^bb6(%3: !llvm.i64):    // 2 preds: ^bb4, ^bb7
+//       CHECK:   %4 = llvm.icmp "sgt" %arg1, %3 : !llvm.i64
+//       CHECK:   llvm.cond_br %4, ^bb7, ^bb5
+//       CHECK: ^bb7:   // pred: ^bb6
+//       CHECK:   %5 = llvm.mul %0, %3 : !llvm.i64
+//       CHECK:   %6 = llvm.add %3, %arg2 : !llvm.i64
+//       CHECK:   llvm.br ^bb6(%6 : !llvm.i64)
+//       CHECK: ^bb8(%7: !llvm.i64):    // 2 preds: ^bb3, ^bb9
+//       CHECK:   %8 = llvm.icmp "sgt" %arg1, %7 : !llvm.i64
+//       CHECK:   llvm.cond_br %8, ^bb9, ^bb4
+//       CHECK: ^bb9:   // pred: ^bb8
+//       CHECK:   %9 = llvm.mul %0, %7 : !llvm.i64
+//       CHECK:   %10 = llvm.add %7, %arg2 : !llvm.i64
+//       CHECK:   llvm.br ^bb8(%10 : !llvm.i64)

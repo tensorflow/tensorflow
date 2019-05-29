@@ -35,19 +35,34 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
 
+mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
+                                               ValueHandle range) {
+  assert(range.getType() && "expected !linalg.range type");
+  assert(range.getValue()->getDefiningOp() &&
+         "need operations to extract range parts");
+  auto rangeOp = cast<RangeOp>(range.getValue()->getDefiningOp());
+  auto lb = rangeOp.min();
+  auto ub = rangeOp.max();
+  auto step = rangeOp.step();
+  auto forOp = OperationHandle::createOp<linalg::ForOp>(lb, ub, step);
+  *iv = ValueHandle(forOp.getInductionVar());
+  auto *body = forOp.getBody();
+  enter(body, /*prev=*/1);
+}
+
+ValueHandle
+mlir::edsc::LoopRangeBuilder::operator()(std::function<void(void)> fun) {
+  if (fun)
+    fun();
+  exit();
+  return ValueHandle::null();
+}
+
 mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
     ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> ranges) {
+  loops.reserve(ranges.size());
   for (unsigned i = 0, e = ranges.size(); i < e; ++i) {
-    assert(ranges[i].getType() && "expected !linalg.range type");
-    assert(ranges[i].getValue()->getDefiningOp() &&
-           "need operations to extract range parts");
-    auto rangeOp = cast<RangeOp>(ranges[i].getValue()->getDefiningOp());
-    auto lb = rangeOp.min();
-    auto ub = rangeOp.max();
-    // This must be a constexpr index until we relax the affine.for constraint
-    auto step =
-        cast<ConstantIndexOp>(rangeOp.step()->getDefiningOp()).getValue();
-    loops.emplace_back(ivs[i], ValueHandle(lb), ValueHandle(ub), step);
+    loops.emplace_back(ivs[i], ranges[i]);
   }
   assert(loops.size() == ivs.size() && "Mismatch loops vs ivs size");
 }

@@ -35,6 +35,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/LowerAffine.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
@@ -48,20 +49,22 @@ using namespace mlir::edsc::intrinsics;
 using namespace mlir::LLVM;
 using namespace mlir::linalg;
 
-using undef = ValueBuilder<mlir::LLVM::UndefOp>;
-using insertvalue = ValueBuilder<mlir::LLVM::InsertValueOp>;
-using extractvalue = ValueBuilder<mlir::LLVM::ExtractValueOp>;
-using constant = ValueBuilder<mlir::LLVM::ConstantOp>;
 using add = ValueBuilder<mlir::LLVM::AddOp>;
-using sub = ValueBuilder<mlir::LLVM::SubOp>;
-using mul = ValueBuilder<mlir::LLVM::MulOp>;
+using addi = ValueBuilder<mlir::AddIOp>;
 using bitcast = ValueBuilder<mlir::LLVM::BitcastOp>;
 using call = OperationBuilder<mlir::LLVM::CallOp>;
+using cmpi = ValueBuilder<mlir::CmpIOp>;
+using constant = ValueBuilder<mlir::LLVM::ConstantOp>;
+using extractvalue = ValueBuilder<mlir::LLVM::ExtractValueOp>;
 using gep = ValueBuilder<mlir::LLVM::GEPOp>;
+using insertvalue = ValueBuilder<mlir::LLVM::InsertValueOp>;
 using llvm_load = ValueBuilder<LLVM::LoadOp>;
 using llvm_store = OperationBuilder<LLVM::StoreOp>;
 using llvm_select = ValueBuilder<LLVM::SelectOp>;
-using icmp = ValueBuilder<LLVM::ICmpOp>;
+using llvm_icmp = ValueBuilder<LLVM::ICmpOp>;
+using mul = ValueBuilder<mlir::LLVM::MulOp>;
+using sub = ValueBuilder<mlir::LLVM::SubOp>;
+using undef = ValueBuilder<mlir::LLVM::UndefOp>;
 
 template <typename T>
 static LLVMType getPtrToElementType(T containerType,
@@ -384,11 +387,11 @@ public:
     Value *desc = undef(rangeDescriptorTy);
     desc = insertvalue(
         rangeDescriptorTy, desc,
-        llvm_select(int64Ty, icmp(int1Ty, SGE, min1, min2), min1, min2),
+        llvm_select(int64Ty, llvm_icmp(int1Ty, SGE, min1, min2), min1, min2),
         positionAttr(rewriter, 0));
     desc = insertvalue(
         rangeDescriptorTy, desc,
-        llvm_select(int64Ty, icmp(int1Ty, SLE, max1, max2), max1, max2),
+        llvm_select(int64Ty, llvm_icmp(int1Ty, SLE, max1, max2), max1, max2),
         positionAttr(rewriter, 1));
     // TODO(ntv): this assumes both steps are one for now. Enforce and extend.
     desc = insertvalue(rangeDescriptorTy, desc, mul(step1, step2),
@@ -548,7 +551,8 @@ public:
   }
 };
 
-// DotOp creates a new range descriptor.
+// DotOp creates a new call to the `linalg_dot` function which is assumed to
+// have been declared in the current module.
 class DotOpConversion : public LLVMOpLowering {
 public:
   explicit DotOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
@@ -605,13 +609,67 @@ struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
 };
 } // namespace
 
+// Converts a `linalg.for` op to CFG form before actual conversion to the LLVM
+// dialect starts.
+static void lowerLinalgForToCFG(Function &f) {
+  // Collect all the For operations. We do this as a prepass to avoid
+  // invalidating the walker with our rewrite.
+  SmallVector<linalg::ForOp, 8> instsToRewrite;
+  f.walk<ForOp>([&](ForOp op) { instsToRewrite.push_back(op); });
+
+  for (auto forOp : llvm::reverse(instsToRewrite)) {
+    auto *op = forOp.getOperation();
+    auto loc = op->getLoc();
+    using namespace edsc::op;
+    FuncBuilder builder(op);
+    ScopedContext scope(builder, loc);
+    ValueHandle lb(forOp.getLowerBound()), ub(forOp.getUpperBound()),
+        step(forOp.getStep());
+
+    // 1. Split Block into init and end blocks, create body and condition blocks
+    // with the `iv` block argument.
+    auto *initBlock = op->getBlock();
+    auto *endBlock = initBlock->splitBlock(op);
+    BlockHandle conditionBlock, bodyBlock;
+    ValueHandle iv(IndexType::get(op->getContext()));
+    BlockBuilder(&conditionBlock, {&iv})();
+    BlockBuilder(&bodyBlock, {})();
+
+    // 2. Create and fill the condition block whose sole purpose is to evaluate
+    // iv and branch to either `bodyBlock` or `endBlock`. Add all branches to
+    // the `conditionBlock`.
+    // clang-format off
+    BlockBuilder(conditionBlock, Append())([&] {
+      auto cmp = cmpi(CmpIPredicate::SGT, ub, iv);
+      cond_br(cmp, bodyBlock, {}, endBlock, {});
+    });
+    BlockBuilder(bodyBlock, Append())([&] {
+      br(conditionBlock, addi(iv, step));
+    });
+    BlockBuilder(initBlock, Append())([&] {
+      br(conditionBlock, lb);
+    });
+    // clang-format on
+
+    // 3. Move the instructions from the for loop to the body, update all uses
+    // of the induction variable and clean up.
+    auto *oldBody = forOp.getBody();
+    bodyBlock.getBlock()->getOperations().splice(
+        bodyBlock.getBlock()->begin(), oldBody->getOperations(),
+        oldBody->begin(), std::prev(oldBody->end()));
+    forOp.getInductionVar()->replaceAllUsesWith(iv);
+    forOp.erase();
+  }
+}
+
 void LowerLinalgToLLVMPass::runOnModule() {
   auto &module = getModule();
 
-  PassManager pm;
-  pm.addPass(createLowerAffinePass());
-  if (failed(pm.run(&module)))
-    signalPassFailure();
+  for (auto &f : module.getFunctions()) {
+    lowerLinalgForToCFG(f);
+    if (failed(lowerAffineConstructs(f)))
+      signalPassFailure();
+  }
 
   // Convert to the LLVM IR dialect using the converter defined above.
   OwningRewritePatternList patterns;
