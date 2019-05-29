@@ -451,6 +451,25 @@ class ApiTest(test.TestCase):
                            (g, constant_op.constant(1)), {})
     self.assertEqual(self.evaluate(x), 1)
 
+  def test_converted_call_forced_when_explicitly_whitelisted(self):
+
+    @api.do_not_convert()
+    def f(x):
+      return x + 1
+
+    x = api.converted_call(
+        f, None,
+        converter.ConversionOptions(recursive=True, force_conversion=True),
+        (constant_op.constant(0),), {})
+    self.assertTrue(self.evaluate(x))
+
+    converted_f = api.to_graph(
+        f, experimental_optional_features=converter.Feature.ALL)
+    x = api.converted_call(converted_f, None,
+                           converter.ConversionOptions(recursive=True), (0,),
+                           {})
+    self.assertEqual(x, 1)
+
   @test_util.run_deprecated_v1
   def test_converted_call_no_user_code(self):
 

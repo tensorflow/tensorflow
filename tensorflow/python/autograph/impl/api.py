@@ -338,6 +338,11 @@ def converted_call(f, owner, options, args, kwargs):
     else:
       return py_builtins.overload_of(f)(*args)
 
+  # TODO(mdan): Clean up the naming inconsistency.
+  if hasattr(f, 'autograph_info__') or hasattr(f, '__ag_compiled'):
+    logging.log(2, 'Permanently whitelisted: %s: already converted', f)
+    return _call_unconverted(f, args, kwargs)
+
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
       _is_known_loaded_type(f, 'wrapt', 'BoundFunctionWrapper')):
