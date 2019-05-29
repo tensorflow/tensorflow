@@ -253,7 +253,7 @@ protected:
 /// everywhere.
 /// A ValueHandle can have 3 states:
 ///   1. null state (empty type and empty value), in which case it does not hold
-///      a value and may never hold a Value (not now of in the future). This is
+///      a value and must never hold a Value (now or in the future). This is
 ///      used for MLIR operations with zero returns as well as the result of
 ///      calling a NestedBuilder::operator(). In both cases the objective is to
 ///      have an object that can be inserted in an ArrayRef<ValueHandle> to
