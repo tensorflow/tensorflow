@@ -21,13 +21,44 @@
 
 #include "mlir/SPIRV/SPIRVOps.h"
 
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+
+using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// spv.module
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseModule(OpAsmParser *parser, OperationState *state) {
+  Region *body = state->addRegion();
+
+  if (parser->parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}) ||
+      parser->parseKeyword("attributes") ||
+      parser->parseOptionalAttributeDict(state->attributes))
+    return failure();
+
+  return success();
+}
+
+static ParseResult printModule(Operation *op, OpAsmPrinter *printer) {
+  *printer << op->getName();
+  printer->printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
+                       /*printBlockTerminators=*/false);
+  *printer << " attributes";
+  printer->printOptionalAttrDict(op->getAttrs(),
+                                 /*elidedAttrs=*/{});
+  return success();
+}
 
 namespace mlir {
 namespace spirv {
 
 #define GET_OP_CLASSES
 #include "mlir/SPIRV/SPIRVOps.cpp.inc"
+#define GET_OP_CLASSES
+#include "mlir/SPIRV/SPIRVStructureOps.cpp.inc"
 
 } // namespace spirv
 } // namespace mlir

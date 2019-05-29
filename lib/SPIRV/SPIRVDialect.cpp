@@ -32,6 +32,10 @@ SPIRVDialect::SPIRVDialect(MLIRContext *context) : Dialect("spv", context) {
 #define GET_OP_LIST
 #include "mlir/SPIRV/SPIRVOps.cpp.inc"
       >();
+  addOperations<
+#define GET_OP_LIST
+#include "mlir/SPIRV/SPIRVStructureOps.cpp.inc"
+      >();
 
   // Allow unknown operations because SPIR-V is extensible.
   allowUnknownOperations();

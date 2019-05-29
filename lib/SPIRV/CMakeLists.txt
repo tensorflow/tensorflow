@@ -7,6 +7,6 @@ add_llvm_library(MLIRSPIRV
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/SPIRV
   )
 
-add_dependencies(MLIRSPIRV MLIRSPIRVOpsIncGen)
+add_dependencies(MLIRSPIRV MLIRSPIRVOpsIncGen MLIRSPIRVStructureOpsIncGen)
 
 target_link_libraries(MLIRSPIRV MLIRIR MLIRSupport)
