@@ -31,7 +31,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kParallelCopy = "parallel_copy";
   static constexpr const char* const kToutputTypes = "Toutput_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kN = "N";
+  static constexpr const char* const kNumPaddedShapes = "N";
 
   explicit PaddedBatchDatasetOp(OpKernelConstruction* ctx);
 

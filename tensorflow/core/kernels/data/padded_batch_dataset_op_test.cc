@@ -18,7 +18,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-constexpr char kNodeName[] = "padded_batch_datasetv2";
+constexpr char kNodeName[] = "padded_batch_dataset";
 
 class PaddedBatchDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -98,12 +98,11 @@ class PaddedBatchDatasetOpTest : public DatasetOpsTestBase {
     inputs.push_back(PaddedBatchDatasetOp::kDropRemainder);
 
     NodeDef node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(PaddedBatchDatasetOp::kDatasetType),
-        inputs,
+        kNodeName, "PaddedBatchDatasetV2", inputs,
         {{PaddedBatchDatasetOp::kParallelCopy, parallel_copy},
          {PaddedBatchDatasetOp::kToutputTypes, output_types},
          {PaddedBatchDatasetOp::kOutputShapes, output_shapes},
-         {PaddedBatchDatasetOp::kN, n}});
+         {PaddedBatchDatasetOp::kNumPaddedShapes, n}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -688,8 +687,7 @@ TEST_F(PaddedBatchDatasetOpTest, DatasetTypeString) {
                              &padded_batch_dataset));
   core::ScopedUnref scoped_unref(padded_batch_dataset);
 
-  EXPECT_EQ(padded_batch_dataset->type_string(),
-            name_utils::OpName(PaddedBatchDatasetOp::kDatasetType));
+  EXPECT_EQ(padded_batch_dataset->type_string(), "PaddedBatchDatasetV2");
 }
 
 TEST_P(ParameterizedPaddedBatchDatasetOpTest, DatasetOutputDtypes) {

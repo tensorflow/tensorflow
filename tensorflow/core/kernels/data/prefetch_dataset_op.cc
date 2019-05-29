@@ -37,6 +37,9 @@ namespace data {
 constexpr double kSleepFactor = 0.2;
 constexpr char kBuffer[] = "buffer";
 constexpr char kStatus[] = "status";
+constexpr char kSizeSuffix[] = ".size";
+constexpr char kCodeSuffix[] = ".code";
+constexpr char kErrorMessageSuffix[] = ".error_message";
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
@@ -193,7 +196,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
         if (buffer_element.status.ok()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kBuffer, "[", i, "].size")),
+              full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
               buffer_element.value.size()));
           for (size_t j = 0; j < buffer_element.value.size(); j++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
@@ -226,7 +229,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           {
             int64 temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kBuffer, "[", i, "].size")), &temp));
+                full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
+                &temp));
             value_size = static_cast<size_t>(temp);
           }
           buffer_element.value.reserve(value_size);
@@ -404,11 +408,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     string CodeKey(size_t index) {
-      return full_name(strings::StrCat(kStatus, "[", index, "].code"));
+      return full_name(strings::StrCat(kStatus, "[", index, "]", kCodeSuffix));
     }
 
     string ErrorMessageKey(size_t index) {
-      return full_name(strings::StrCat(kStatus, "[", index, "].error_message"));
+      return full_name(
+          strings::StrCat(kStatus, "[", index, "]", kErrorMessageSuffix));
     }
 
     // This mutex is used to ensure exclusivity between multiple threads

@@ -36,7 +36,7 @@ string OpName(const string& dataset_type) {
   } else if (dataset_type == "Map") {
     return "MapDataset";
   } else if (dataset_type == "PaddedBatch") {
-    return "PaddedBatchDatasetV2";
+    return "PaddedBatchDataset";
   } else if (dataset_type == "Prefetch") {
     return "PrefetchDataset";
   } else if (dataset_type == "Range") {

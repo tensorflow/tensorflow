@@ -142,7 +142,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         {{2, padded_shapes}, {3, padding_values}},
         {{kParallelCopy, parallel_copy},
          {kToutputTypes, output_types},
-         {kN, N}},
+         {kNumPaddedShapes, N}},
         output));
     return Status::OK();
   }
