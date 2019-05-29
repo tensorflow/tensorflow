@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/non_max_suppression_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "tensorflow/stream_executor/platform/port.h"
 #include "third_party/cub/device/device_radix_sort.cuh"
 #include "third_party/cub/device/device_segmented_radix_sort.cuh"
 #include "third_party/cub/device/device_select.cuh"
@@ -45,38 +46,127 @@ typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 const int NMS_BOXES_PER_THREAD = 8 * sizeof(int);
+template <typename T>
+__device__ EIGEN_STRONG_INLINE void Swap(T& a, T& b) {
+  T c(a);
+  a = b;
+  b = c;
+}
 
+template <typename T>
+__device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
+                                                  float a_area, T threshold) {
+  const float b_area = (b->x2 - b->x1 + 1.0f) * (b->y2 - b->y1 + 1.0f);
+  if (a_area == 0.0f || b_area == 0.0f) return false;
+  const float xx1 = fmaxf(a->x1, b->x1);
+  const float yy1 = fmaxf(a->y1, b->y1);
+  const float xx2 = fminf(a->x2, b->x2);
+  const float yy2 = fminf(a->y2, b->y2);
+
+  // fdimf computes the positive difference between xx2+1 and xx1.
+  const float w = fdimf(xx2 + 1.0f, xx1);
+  const float h = fdimf(yy2 + 1.0f, yy1);
+  const float intersection = w * h;
+
+  // Testing for aa/bb > t
+  // eq with aa > bb*t (b is !=0)
+  // avoiding divisions.
+  const float aa = intersection;
+  const float bb = a_area + b_area - intersection;
+  const float bt = bb * threshold;
+  return aa > bt;
+}
+
+template <bool T>
+__global__ void NMSKernel(const Box* d_desc_sorted_boxes, const int nboxes,
+               const float thresh, const int mask_ld, int* d_delete_mask);
+
+// Assume boxes may have x1>x2 and or y1>y2. If so change the coordinates such
+// that for all boxes x1<x2 and y1<y2.
+template <>
 __launch_bounds__(NMS_BLOCK_DIM* NMS_BLOCK_DIM, 4) __global__
-    void NMSKernel(const Box* d_desc_sorted_boxes, const int nboxes,
-                   const float thresh, const int mask_ld, int* d_delete_mask,
-                   bool flip_boxes = false) {
-  // Storing boxes used by this CUDA block in the shared memory
+    void NMSKernel<true>(const Box* d_desc_sorted_boxes, const int nboxes,
+                         const float thresh, const int mask_ld,
+                         int* d_delete_mask) {
+  // Storing boxes used by this CUDA block in the shared memory.
   __shared__ Box shared_i_boxes[NMS_BLOCK_DIM];
   // Same thing with areas
   __shared__ float shared_i_areas[NMS_BLOCK_DIM];
-  // The condition of the for loop is common to all threads in the block
-  // This is necessary to be able to call __syncthreads() inside of the loop
+  // The condition of the for loop is common to all threads in the block.
+  // This is necessary to be able to call __syncthreads() inside of the loop.
+  for (int i_block_offset = blockIdx.x * blockDim.x; i_block_offset < nboxes;
+       i_block_offset += blockDim.x * gridDim.x) {
+    const int i = i_block_offset + threadIdx.x;
+    if (i < nboxes) {
+      // One 1D line load the boxes for x-dimension.
+      if (threadIdx.y == 0) {
+        Box box = d_desc_sorted_boxes[i];
+        if (box.x1 > box.x2) Swap(box.x1, box.x2);
+        if (box.y1 > box.y2) Swap(box.y1, box.y2);
+        shared_i_boxes[threadIdx.x] = box;
+        shared_i_areas[threadIdx.x] =
+            (box.x2 - box.x1 + 1.0f) * (box.y2 - box.y1 + 1.0f);
+      }
+    }
+    __syncthreads();
+    for (int j_thread_offset =
+             NMS_BOXES_PER_THREAD * (blockIdx.y * blockDim.y + threadIdx.y);
+         j_thread_offset < nboxes;
+         j_thread_offset += NMS_BOXES_PER_THREAD * blockDim.y * gridDim.y) {
+      // Note : We can do everything using multiplication,
+      // and use fp16 - we are comparing against a low precision
+      // threshold.
+      int above_thresh = 0;
+      bool valid = false;
+      for (int ib = 0; ib < NMS_BOXES_PER_THREAD; ++ib) {
+        // This thread will compare Box i and Box j.
+        const int j = j_thread_offset + ib;
+        if (i >= j || i >= nboxes || j >= nboxes) continue;
+        valid = true;
+        Box j_box = d_desc_sorted_boxes[j];
+        const Box i_box = shared_i_boxes[threadIdx.x];
+        if (j_box.x1 > j_box.x2) {
+          Swap(j_box.x1, j_box.x2);
+        }
+        if (j_box.y1 > j_box.y2) {
+          Swap(j_box.y1, j_box.y2);
+        }
+        if (OverThreshold(&i_box, &j_box, shared_i_areas[threadIdx.x],
+                          thresh)) {
+          // we have score[j] <= score[i].
+          above_thresh |= (1U << ib);
+        }
+      }
+      if (valid) {
+        d_delete_mask[i * mask_ld + j_thread_offset / NMS_BOXES_PER_THREAD] =
+            above_thresh;
+      }
+    }
+    __syncthreads();  // making sure everyone is done reading smem.
+  }
+}
+// Assume boxes are constructed such that x1<x2 and y1<y2
+template <>
+__launch_bounds__(NMS_BLOCK_DIM* NMS_BLOCK_DIM, 4) __global__
+    void NMSKernel<false>(const Box* d_desc_sorted_boxes, const int nboxes,
+                          const float thresh, const int mask_ld,
+                          int* d_delete_mask) {
+  // Storing boxes used by this CUDA block in the shared memory.
+  __shared__ Box shared_i_boxes[NMS_BLOCK_DIM];
+  // Same thing with areas
+  __shared__ float shared_i_areas[NMS_BLOCK_DIM];
+  // The condition of the for loop is common to all threads in the block.
+  // This is necessary to be able to call __syncthreads() inside of the loop.
   for (int i_block_offset = blockIdx.x * blockDim.x; i_block_offset < nboxes;
        i_block_offset += blockDim.x * gridDim.x) {
     const int i_to_load = i_block_offset + threadIdx.x;
     if (i_to_load < nboxes) {
-      // One 1D line load the boxes for x-dimension
+      // One 1D line load the boxes for x-dimension.
       if (threadIdx.y == 0) {
         const Box box = d_desc_sorted_boxes[i_to_load];
-        Box flipped = box;
-        if (flip_boxes) {
-          if (box.x1 > box.x2) {
-            flipped.x1 = box.x2;
-            flipped.x2 = box.x1;
-          }
-          if (box.y1 > box.y2) {
-            flipped.y1 = box.y2;
-            flipped.y2 = box.y1;
-          }
-        }
-        shared_i_boxes[threadIdx.x] = flipped;
+        shared_i_boxes[threadIdx.x] = box;
         shared_i_areas[threadIdx.x] =
-            (flipped.x2 - flipped.x1 + 1.0f) * (flipped.y2 - flipped.y1 + 1.0f);
+            (box.x2 - box.x1 + 1.0f) * (box.y2 - box.y1 + 1.0f);
       }
     }
     __syncthreads();
@@ -87,55 +177,20 @@ __launch_bounds__(NMS_BLOCK_DIM* NMS_BLOCK_DIM, 4) __global__
          j_thread_offset += NMS_BOXES_PER_THREAD * blockDim.y * gridDim.y) {
       // Note : We can do everything using multiplication,
       // and use fp16 - we are comparing against a low precision
-      // threshold
+      // threshold.
       int above_thresh = 0;
       bool valid = false;
       for (int ib = 0; ib < NMS_BOXES_PER_THREAD; ++ib) {
-        // This thread will compare Box i and Box j
+        // This thread will compare Box i and Box j.
         const int j = j_thread_offset + ib;
-        if (i < j && i < nboxes && j < nboxes) {
-          valid = true;
-          const Box o_box = d_desc_sorted_boxes[j];
-          const Box i_box = shared_i_boxes[threadIdx.x];
-          Box j_box = o_box;
-          if (flip_boxes) {
-            if (j_box.x1 > j_box.x2) {
-              float tmp = j_box.x2;
-              j_box.x2 = j_box.x1;
-              j_box.x1 = tmp;
-            }
-            if (j_box.y1 > j_box.y2) {
-              float tmp = j_box.y2;
-              j_box.y2 = j_box.y1;
-              j_box.y1 = tmp;
-            }
-          }
-          const float j_area =
-              (j_box.x2 - j_box.x1 + 1.0f) * (j_box.y2 - j_box.y1 + 1.0f);
-          const float i_area = shared_i_areas[threadIdx.x];
-          // The following code will not be valid with empty boxes
-          if (i_area == 0.0f || j_area == 0.0f) continue;
-          const float xx1 = fmaxf(i_box.x1, j_box.x1);
-          const float yy1 = fmaxf(i_box.y1, j_box.y1);
-          const float xx2 = fminf(i_box.x2, j_box.x2);
-          const float yy2 = fminf(i_box.y2, j_box.y2);
-
-          // fdimf computes the positive difference between xx2+1 and xx1
-          const float w = fdimf(xx2 + 1.0f, xx1);
-          const float h = fdimf(yy2 + 1.0f, yy1);
-          const float intersection = w * h;
-
-          // Testing for a/b > t
-          // eq with a > b*t (b is !=0)
-          // avoiding divisions
-          const float a = intersection;
-          const float b = i_area + j_area - intersection;
-          const float bt = b * thresh;
-          // eq. to if ovr > thresh
-          if (a > bt) {
-            // we have score[j] <= score[i]
-            above_thresh |= (1U << ib);
-          }
+        // score[j]<=score[i].
+        if (i >= j || i >= nboxes || j >= nboxes) continue;
+        valid = true;
+        // eq. to if ovr > thresh.
+        if (OverThreshold(&shared_i_boxes[threadIdx.x], &d_desc_sorted_boxes[j],
+                          shared_i_areas[threadIdx.x], thresh)) {
+          // we have score[j] <= score[i].
+          above_thresh |= (1U << ib);
         }
       }
       if (valid) {
@@ -143,75 +198,82 @@ __launch_bounds__(NMS_BLOCK_DIM* NMS_BLOCK_DIM, 4) __global__
             above_thresh;
       }
     }
-    __syncthreads();  // making sure everyone is done reading smem
+    __syncthreads();  // making sure everyone is done reading smem.
   }
 }
 
 template <typename T, typename Index>
-__global__ void IndexSelect(const CudaLaunchConfig config, const T* original,
+__global__ void IndexSelect(const int num_elements, const T* original,
                             const Index* indices, T* selected) {
-  CUDA_AXIS_KERNEL_LOOP(idx, config.virtual_thread_count, X) {
+  for (int idx : CudaGridRangeX(num_elements)) {
     selected[idx] = original[indices[idx]];
   }
 }
 
 template <typename P1, typename P2, typename Index>
-__global__ void PairedSelect(const CudaLaunchConfig config, const P1* p1,
-                             const P2* p2, const Index* indices,
-                             P1* selected_p1, P2* selected_p2) {
-  for (auto idx : CudaGridRangeX(config.virtual_thread_count)) {
+__global__ void PairedSelect(const int num_elements, const P1* p1, const P2* p2,
+                             const Index* indices, P1* selected_p1,
+                             P2* selected_p2) {
+  for (auto idx : CudaGridRangeX(num_elements)) {
     selected_p1[idx] = p1[indices[idx]];
     selected_p2[idx] = p2[indices[idx]];
   }
 }
 
 template <typename T>
-__global__ void Iota(const CudaLaunchConfig config, const T offset,
-                     T* to_fill) {
-  for (int idx : CudaGridRangeX(config.virtual_thread_count)) {
+__global__ void Iota(const int num_elements, const T offset, T* to_fill) {
+  for (int idx : CudaGridRangeX(num_elements)) {
     to_fill[idx] = static_cast<T>(idx) + offset;
   }
 }
 
-tensorflow::Status nms_gpu(const float* d_desc_sorted_boxes_float_ptr,
-                           const int N, const float thresh,
-                           int* d_keep_sorted_list, int* h_nkeep,
-                           int* dev_delete_mask, int* host_delete_mask,
-                           OpKernelContext* context, bool flip_boxes) {
+tensorflow::Status NmsGpu(const float* d_desc_sorted_boxes_float_ptr,
+                          const int num_boxes, const float thresh,
+                          int* d_keep_sorted_list, int* h_nkeep,
+                          int* dev_delete_mask, int* host_delete_mask,
+                          OpKernelContext* context, bool flip_boxes) {
   // d_desc_sorted_boxes_float_ptr is a pointer
   //    to device memory float array containing the box corners for N boxes.
   // N is number of boxes.
-  // threshold is the iou threshold for elimination
+  // threshold is the intersection-over-union threshold for elimination
   // d_keep_sorted_list is a device pointer to int array containing sorted
   //    indices of the boxes to keep h_nkeep is the pointer to number of
   //    elements to keep for the host.
-  // h_nkeep is a host pointer for returning number of items to keep
+  // h_nkeep is a host pointer for returning number of items to keep.
   // flip_boxes flag reorders the boxes use lower left and upper right corners
   // if they are given in mixed format. Making sure we respect the __align(16)__
-  // we promised to the compiler
+  // we promised to the compiler.
   auto iptr = reinterpret_cast<std::uintptr_t>(d_desc_sorted_boxes_float_ptr);
   CHECK_EQ((iptr & 15), 0);
 
   // The next kernel expects squares
 
-  const int mask_ld = (N + NMS_BOXES_PER_THREAD - 1) / NMS_BOXES_PER_THREAD;
+  const int mask_ld =
+      (num_boxes + NMS_BOXES_PER_THREAD - 1) / NMS_BOXES_PER_THREAD;
   const Box* d_desc_sorted_boxes =
       reinterpret_cast<const Box*>(d_desc_sorted_boxes_float_ptr);
   auto stream_exec = context->op_device_context()->stream();
   auto device = context->eigen_gpu_device();
   dim3 grid, block;
-  int block_size = (N + NMS_BLOCK_DIM - 1) / NMS_BLOCK_DIM;
+  int block_size = (num_boxes + NMS_BLOCK_DIM - 1) / NMS_BLOCK_DIM;
   block_size = std::max(std::min(block_size, NMS_BLOCK_DIM_MAX), 1);
   grid.x = block_size;
   grid.y = block_size;
   block.x = NMS_BLOCK_DIM;
   block.y = NMS_BLOCK_DIM;
-  NMSKernel<<<grid, block, 0, device.stream()>>>(
-      d_desc_sorted_boxes, N, thresh, mask_ld, dev_delete_mask, flip_boxes);
+  if (flip_boxes) {
+    TF_CHECK_OK(GpuLaunchKernel(NMSKernel<true>, grid, block, 0,
+                                device.stream(), d_desc_sorted_boxes, num_boxes,
+                                thresh, mask_ld, dev_delete_mask));
+  } else {
+    TF_CHECK_OK(GpuLaunchKernel(NMSKernel<false>, grid, block, 0,
+                                device.stream(), d_desc_sorted_boxes, num_boxes,
+                                thresh, mask_ld, dev_delete_mask));
+  }
   CHECK_EQ(cudaGetLastError(), cudaSuccess);
   // Overlapping CPU computes and D2H memcpy
   // both take about the same time
-  int nto_copy = std::min(NMS_CHUNK_SIZE, N);
+  int nto_copy = std::min(NMS_CHUNK_SIZE, num_boxes);
   cudaEvent_t copy_done;
   cudaEventCreate(&copy_done);
   device.memcpyDeviceToHost(&host_delete_mask[0], &dev_delete_mask[0],
@@ -220,11 +282,11 @@ tensorflow::Status nms_gpu(const float* d_desc_sorted_boxes_float_ptr,
   int offset = 0;
   std::vector<int> h_keep_sorted_list;
   std::vector<int> rmv(mask_ld, 0);
-  memset(host_delete_mask, N, sizeof(int));
-  while (offset < N) {
+  memset(host_delete_mask, num_boxes, sizeof(int));
+  while (offset < num_boxes) {
     const int ncopied = nto_copy;
     int next_offset = offset + ncopied;
-    nto_copy = std::min(NMS_CHUNK_SIZE, N - next_offset);
+    nto_copy = std::min(NMS_CHUNK_SIZE, num_boxes - next_offset);
     if (nto_copy > 0) {
       device.memcpyDeviceToHost(&host_delete_mask[next_offset * mask_ld],
                                 &dev_delete_mask[next_offset * mask_ld],
@@ -303,8 +365,6 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
       return;
     }
     const int output_size = max_output_size.scalar<int>()();
-    // const float score_threshold_val =
-    // std::numeric_limits<float>::lowest();
     size_t cub_sort_temp_storage_bytes = 0;
     float* flt_ptr = nullptr;
     int* int_ptr = nullptr;
@@ -370,8 +430,10 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
     // this will return sorted scores and their indices
     config = GetCudaLaunchConfig(num_boxes, device);
     // initialize box and score indices
-    Iota<<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-        config, 0, d_indices.flat<int>().data());
+    TF_CHECK_OK(CudaLaunchKernel(Iota<int>, config.block_count,
+                                 config.thread_per_block, 0, device.stream(),
+                                 config.virtual_thread_count, 0,
+                                 d_indices.flat<int>().data()));
     cuda_ret = cudaGetLastError();
     CUDA_CHECK(cuda_ret);
     CHECK_EQ(cuda_ret, cudaSuccess);
@@ -392,18 +454,19 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
         reinterpret_cast<float4*>(d_sorted_boxes.flat<float>().data());
     const int* sorted_indices = d_sorted_indices.flat<int>().data();
     // sort boxes using indices
-    IndexSelect<<<config.block_count, config.thread_per_block, 0,
-                  device.stream()>>>(config, original_boxes, sorted_indices,
-                                     sorted_boxes);
+    TF_CHECK_OK(GpuLaunchKernel(IndexSelect<float4, int>, config.block_count,
+                                config.thread_per_block, 0, device.stream(),
+                                config.virtual_thread_count, original_boxes,
+                                sorted_indices, sorted_boxes));
     CHECK_EQ(cuda_ret, cudaSuccess);
     int num_to_keep = 0;
     bool flip_boxes = true;  // there is no guarantee that boxes are given in
                              // lower left-upper right corners!
     auto status =
-        nms_gpu(d_sorted_boxes.flat<float>().data(), num_boxes,
-                iou_threshold_val, d_selected_indices.flat<int>().data(),
-                &num_to_keep, d_nms_mask.flat<int>().data(),
-                host_nms_mask.flat<int>().data(), context, flip_boxes);
+        NmsGpu(d_sorted_boxes.flat<float>().data(), num_boxes,
+               iou_threshold_val, d_selected_indices.flat<int>().data(),
+               &num_to_keep, d_nms_mask.flat<int>().data(),
+               host_nms_mask.flat<int>().data(), context, flip_boxes);
     cuda_ret = cudaGetLastError();
     CUDA_CHECK(cuda_ret);
     CHECK_EQ(cuda_ret, cudaSuccess);
@@ -418,13 +481,15 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                             &output_indices));
     if (num_outputs == 0) return;
     config = GetCudaLaunchConfig(num_outputs, device);
-    IndexSelect<<<config.block_count, config.thread_per_block, 0,
-                  device.stream()>>>(config, sorted_indices,
-                                     d_selected_indices.flat<int>().data(),
-                                     (*output_indices).flat<int>().data());
+    TF_CHECK_OK(GpuLaunchKernel(IndexSelect<int, int>, config.block_count,
+                                config.thread_per_block, 0, device.stream(),
+                                config.virtual_thread_count, sorted_indices,
+                                d_selected_indices.flat<int>().data(),
+                                (*output_indices).flat<int>().data()));
     CHECK_EQ(cudaGetLastError(), cudaSuccess);
   }
 };
+
 REGISTER_KERNEL_BUILDER(
     Name("NonMaxSuppressionV2").TypeConstraint<float>("T").Device(DEVICE_GPU),
     NonMaxSuppressionV2GPUOp);
