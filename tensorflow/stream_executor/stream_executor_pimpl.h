@@ -425,6 +425,19 @@ class StreamExecutor {
   // Returns a borrowed pointer to the underlying StreamExecutor implementation.
   internal::StreamExecutorInterface *implementation();
 
+  // Creates a kernel which can be launched with stream.ThenLaunch, such that
+  // the types of the arguments provided for launch would have to match
+  // types of the arguments provided at creation time.
+  //
+  // The kernel has a name kernel_name, and is based from provided PTX in ptx,
+  // and (optional) compiled PTX in cubin_data.
+  // The canonical storage for both ptx and cubin_data should outlive the
+  // lifetime of the kernel.
+  template <typename... Args>
+  port::StatusOr<std::unique_ptr<TypedKernel<Args...>>> CreateTypedKernel(
+      absl::string_view kernel_name, absl::string_view ptx,
+      absl::Span<const uint8> cubin_data);
+
   // Warning: use Stream::ThenLaunch instead, this method is not for general
   // consumption. However, this is the only way to launch a kernel for which
   // the type signature is only known at runtime; say, if an application
@@ -757,6 +770,27 @@ class ScopedModuleHandle {
 
 ////////////
 // Inlines
+
+template <typename... Args>
+inline port::StatusOr<std::unique_ptr<TypedKernel<Args...>>>
+StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
+                                  absl::string_view ptx,
+                                  absl::Span<const uint8> cubin_data) {
+  auto kernel_base = absl::make_unique<TypedKernel<Args...>>(this);
+  MultiKernelLoaderSpec loader_spec(kernel_base->kNumberOfParameters);
+  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
+
+  if (!cubin_data.empty()) {
+    loader_spec.AddCudaCubinInMemory(
+        reinterpret_cast<const char *>(cubin_data.data()), kernel_name);
+  }
+
+  if (!GetKernel(loader_spec, kernel_base.get())) {
+    return port::InternalError("Unable to load kernel");
+  }
+
+  return std::move(kernel_base);
+}
 
 template <typename T>
 inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count) {
