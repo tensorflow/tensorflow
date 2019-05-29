@@ -30,44 +30,44 @@ def main() {
 
 # CHECK: Module:
 # CHECK-NEXT:     Function
-# CHECK-NEXT:       Proto 'multiply_transpose' @{{.*}}Toy/Ch5/ast.toy:5:1'
+# CHECK-NEXT:       Proto 'multiply_transpose' @{{.*}}ast.toy:5:1'
 # CHECK-NEXT:       Params: [a, b]
 # CHECK-NEXT:       Block {
 # CHECK-NEXT:         Retur
-# CHECK-NEXT:           BinOp: * @{{.*}}Toy/Ch5/ast.toy:6:14
-# CHECK-NEXT:             var: a @{{.*}}Toy/Ch5/ast.toy:6:10
-# CHECK-NEXT:             Call 'transpose' [ @{{.*}}Toy/Ch5/ast.toy:6:14
-# CHECK-NEXT:               var: b @{{.*}}Toy/Ch5/ast.toy:6:24
+# CHECK-NEXT:           BinOp: * @{{.*}}ast.toy:6:14
+# CHECK-NEXT:             var: a @{{.*}}ast.toy:6:10
+# CHECK-NEXT:             Call 'transpose' [ @{{.*}}ast.toy:6:14
+# CHECK-NEXT:               var: b @{{.*}}ast.toy:6:24
 # CHECK-NEXT:             ]
 # CHECK-NEXT:       } // Block
 # CHECK-NEXT:     Function
-# CHECK-NEXT:       Proto 'main' @{{.*}}Toy/Ch5/ast.toy:9:1'
+# CHECK-NEXT:       Proto 'main' @{{.*}}ast.toy:9:1'
 # CHECK-NEXT:       Params: []
 # CHECK-NEXT:       Block {
-# CHECK-NEXT:         VarDecl a<> @{{.*}}Toy/Ch5/ast.toy:12:3
-# CHECK-NEXT:           Literal: <2, 3>[ <3>[ 1.000000e+00, 2.000000e+00, 3.000000e+00], <3>[ 4.000000e+00, 5.000000e+00, 6.000000e+00]] @{{.*}}Toy/Ch5/ast.toy:12:11
-# CHECK-NEXT:         VarDecl b<2, 3> @{{.*}}Toy/Ch5/ast.toy:15:3
-# CHECK-NEXT:           Literal: <6>[ 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00] @{{.*}}Toy/Ch5/ast.toy:15:17
-# CHECK-NEXT:         VarDecl c<> @{{.*}}Toy/Ch5/ast.toy:18:3
-# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}Toy/Ch5/ast.toy:18:11
-# CHECK-NEXT:             var: a @{{.*}}Toy/Ch5/ast.toy:18:30
-# CHECK-NEXT:             var: b @{{.*}}Toy/Ch5/ast.toy:18:33
+# CHECK-NEXT:         VarDecl a<> @{{.*}}ast.toy:12:3
+# CHECK-NEXT:           Literal: <2, 3>[ <3>[ 1.000000e+00, 2.000000e+00, 3.000000e+00], <3>[ 4.000000e+00, 5.000000e+00, 6.000000e+00]] @{{.*}}ast.toy:12:11
+# CHECK-NEXT:         VarDecl b<2, 3> @{{.*}}ast.toy:15:3
+# CHECK-NEXT:           Literal: <6>[ 1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00, 5.000000e+00, 6.000000e+00] @{{.*}}ast.toy:15:17
+# CHECK-NEXT:         VarDecl c<> @{{.*}}ast.toy:18:3
+# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}ast.toy:18:11
+# CHECK-NEXT:             var: a @{{.*}}ast.toy:18:30
+# CHECK-NEXT:             var: b @{{.*}}ast.toy:18:33
 # CHECK-NEXT:           ]
-# CHECK-NEXT:         VarDecl d<> @{{.*}}Toy/Ch5/ast.toy:21:3
-# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}Toy/Ch5/ast.toy:21:11
-# CHECK-NEXT:             var: b @{{.*}}Toy/Ch5/ast.toy:21:30
-# CHECK-NEXT:             var: a @{{.*}}Toy/Ch5/ast.toy:21:33
+# CHECK-NEXT:         VarDecl d<> @{{.*}}ast.toy:21:3
+# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}ast.toy:21:11
+# CHECK-NEXT:             var: b @{{.*}}ast.toy:21:30
+# CHECK-NEXT:             var: a @{{.*}}ast.toy:21:33
 # CHECK-NEXT:           ]
-# CHECK-NEXT:         VarDecl e<> @{{.*}}Toy/Ch5/ast.toy:24:3
-# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}Toy/Ch5/ast.toy:24:11
-# CHECK-NEXT:             var: b @{{.*}}Toy/Ch5/ast.toy:24:30
-# CHECK-NEXT:             var: c @{{.*}}Toy/Ch5/ast.toy:24:33
+# CHECK-NEXT:         VarDecl e<> @{{.*}}ast.toy:24:3
+# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}ast.toy:24:11
+# CHECK-NEXT:             var: b @{{.*}}ast.toy:24:30
+# CHECK-NEXT:             var: c @{{.*}}ast.toy:24:33
 # CHECK-NEXT:           ]
-# CHECK-NEXT:         VarDecl e<> @{{.*}}Toy/Ch5/ast.toy:27:3
-# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}Toy/Ch5/ast.toy:27:11
-# CHECK-NEXT:             Call 'transpose' [ @{{.*}}Toy/Ch5/ast.toy:27:30
-# CHECK-NEXT:               var: a @{{.*}}Toy/Ch5/ast.toy:27:40
+# CHECK-NEXT:         VarDecl e<> @{{.*}}ast.toy:27:3
+# CHECK-NEXT:           Call 'multiply_transpose' [ @{{.*}}ast.toy:27:11
+# CHECK-NEXT:             Call 'transpose' [ @{{.*}}ast.toy:27:30
+# CHECK-NEXT:               var: a @{{.*}}ast.toy:27:40
 # CHECK-NEXT:             ]
-# CHECK-NEXT:             var: c @{{.*}}Toy/Ch5/ast.toy:27:44
+# CHECK-NEXT:             var: c @{{.*}}ast.toy:27:44
 # CHECK-NEXT:           ]
 
