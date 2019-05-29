@@ -2852,9 +2852,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   }
 
   // Get nodedef for StridedSlice layer.
-  auto get_strided_slice_nodedef =
-      [](int64 begin_mask = 0, int64 end_mask = 0, int64 ellipsis_mask = 0,
-         int64 new_axis_mask = 0, int64 shrink_axis_mask = 0) -> NodeDef {
+  auto get_strided_slice_nodedef = [](
+      int64 begin_mask = 0, int64 end_mask = 0, int64 ellipsis_mask = 0,
+      int64 new_axis_mask = 0, int64 shrink_axis_mask = 0) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
@@ -2983,6 +2983,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     int begin_mask;
     int end_mask;
     int ellipsis_mask;
+    int new_axis_mask;
+    int shrink_axis_mask;
     std::vector<int> expected_output_dims;
     std::vector<float> expected_output;
   };
@@ -2999,9 +3001,9 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
 #if IS_TRT_VERSION_GE(5, 1, 3, 1)
-  const int kStridedSliceOKCases = 28;
+  const int kStridedSliceOKCases = 31;
 #else
-  const int kStridedSliceOKCases = 24;
+  const int kStridedSliceOKCases = 27;
 #endif
   // Ok.
   TestParams ok_params[kStridedSliceOKCases] = {
@@ -3014,6 +3016,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{1, 2},
     },
@@ -3025,6 +3029,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3036,6 +3042,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3048,6 +3056,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{1, 2},
     },
@@ -3059,6 +3069,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{5, 6},
     },
@@ -3070,6 +3082,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{1, 2},
     },
@@ -3081,6 +3095,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3093,6 +3109,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2},
         /*expected_output=*/{1, 2},
     },
@@ -3104,6 +3122,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2},
         /*expected_output=*/{5, 6},
     },
@@ -3116,6 +3136,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 2},
         /*expected_output=*/{1, 2, 4, 5},
     },
@@ -3127,6 +3149,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 1, 3},
         /*expected_output=*/{4, 5, 6},
     },
@@ -3139,6 +3163,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 3, 1},
         /*expected_output=*/{1, 2, 3},
     },
@@ -3150,6 +3176,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 1, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 3, 1},
         /*expected_output=*/{4, 5, 6},
     },
@@ -3162,6 +3190,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{1, 2, 3},
     },
@@ -3173,6 +3203,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 3},
         /*expected_output=*/{3, 4, 5},
     },
@@ -3184,6 +3216,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3, 1},
         /*expected_output=*/{3, 4, 5},
     },
@@ -3196,6 +3230,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3, 1},
         /*expected_output=*/{1, 2, 3},
     },
@@ -3207,6 +3243,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 1}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{5, 1},
         /*expected_output=*/{1, 2, 3, 4, 5},
     },
@@ -3219,6 +3257,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 3},
         /*expected_output=*/{1, 2, 3, 4, 5, 6},
     },
@@ -3232,6 +3272,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{1, 3, 5},
     },
@@ -3243,6 +3285,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{1, 3, 5},
     },
@@ -3254,6 +3298,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{3},
         /*expected_output=*/{2, 4, 6},
     },
@@ -3265,6 +3311,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0}),
         /*end_mask=*/get_mask({1, 0}),
         /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{2},
         /*expected_output=*/{3, 6},
     },
@@ -3278,6 +3326,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3289,6 +3339,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({1, 0, 0, 0}),
         /*end_mask=*/get_mask({1, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3300,6 +3352,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3311,6 +3365,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({0, 1, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
     },
@@ -3322,16 +3378,59 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
         /*begin_mask=*/get_mask({0, 0, 0, 0}),
         /*end_mask=*/get_mask({0, 0, 0, 0}),
         /*ellipsis_mask=*/get_mask({1, 0, 0, 0}),
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/0,
         /*expected_output_dims=*/{1, 2, 1},
         /*expected_output=*/{2, 5},
+    },
+    // shrink_axis_mask
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 0, 1},
+        /*end=*/{0, 0, 0, 2},
+        /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({1, 1, 1, 0}),
+        /*end_mask=*/get_mask({1, 1, 1, 0}),
+        /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/get_mask({0, 0, 0, 1}),
+        /*expected_output_dims=*/{1, 2},
+        /*expected_output=*/{2, 5},
+    },
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 0, 1},
+        /*end=*/{0, 1, 2, 2},
+        /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({1, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 0, 0, 0}),
+        /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/get_mask({0, 1, 0, 1}),
+        /*expected_output_dims=*/{2},
+        /*expected_output=*/{2, 5},
+    },
+    TestParams{
+        /*input_dims=*/{6},
+        /*begin=*/{0, 0},
+        /*end=*/{0, 1},
+        /*strides=*/{1, 1},
+        /*begin_mask=*/get_mask({1, 0}),
+        /*end_mask=*/get_mask({1, 0}),
+        /*ellipsis_mask=*/0,
+        /*new_axis_mask=*/0,
+        /*shrink_axis_mask=*/get_mask({0, 1}),
+        /*expected_output_dims=*/{},
+        /*expected_output=*/{1},
     },
   };
 
   for (int i = 0; i < kStridedSliceOKCases; i++) {
     Reset();
-    NodeDef node_def = get_strided_slice_nodedef(ok_params[i].begin_mask,
-                                                 ok_params[i].end_mask,
-                                                 ok_params[i].ellipsis_mask);
+    NodeDef node_def = get_strided_slice_nodedef(
+        ok_params[i].begin_mask, ok_params[i].end_mask,
+        ok_params[i].ellipsis_mask, ok_params[i].new_axis_mask,
+        ok_params[i].shrink_axis_mask);
     AddTestTensor("input", ok_params[i].input_dims);
     AddTestWeights<int32>("begin",
                           {static_cast<int>(ok_params[i].begin.size())},

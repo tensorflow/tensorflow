@@ -2129,7 +2129,9 @@ template <typename Container>
 Status ConvertStridedSliceHelper(OpConverterParams* params,
                                  const TRT_TensorOrWeights& input,
                                  Container begin, Container size,
-                                 const Container& stride) {
+                                 const Container& stride,
+                                 bool reshape_after = false,
+                                 nvinfer1::Dims final_shape = {}) {
   const auto& node_def = params->node_def;
   // Get input dims.
   nvinfer1::Dims dims = input.GetTrtDims();
@@ -2168,7 +2170,14 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
 
   nvinfer1::ISliceLayer* layer = params->converter->network()->addSlice(
       *input.tensor(), begin_dims, size_dims, stride_dims);
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  nvinfer1::ITensor* tensor = layer->getOutput(0);
+  // Reshape for shrink_axis.
+  if (reshape_after) {
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        TRT_TensorOrWeights(tensor), final_shape, /*validation_only=*/false,
+        &tensor));
+  }
+  params->outputs->push_back(TRT_TensorOrWeights(tensor));
   return Status::OK();
 #else
   // Use IPaddingLayer.
@@ -2286,8 +2295,13 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
         tensor, inv_transpose_order, &tensor));
   }
-  // Restore reshape
-  if (need_reshape) {
+  // Reshape for shrink_axis.
+  if (reshape_after) {
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        TRT_TensorOrWeights(tensor), final_shape, /*validation_only=*/false,
+        &tensor));
+  } else if (need_reshape) {
+    // Restore reshape.
     // Calculate output dimensions
     for (int i = 0; i < pad_dims.size(); i++) {
       const int axis = pad_dims[i];
@@ -2371,17 +2385,17 @@ Status ConvertStridedSlice(OpConverterParams* params) {
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
 
   TFAttrs attrs(node_def);
-  // Unsupported mask options.
-  for (const string& attr : {"new_axis_mask", "shrink_axis_mask"}) {
-    int attr_val = attrs.get<int64>(attr);
-    if (attr_val != 0) {
-      return errors::Unimplemented(
-          attr, " is not supported for StridedSlice, at ", node_def.name());
-    }
+  // new_axis_mask is not supported.
+  const int32 new_axis_mask = attrs.get<int64>("new_axis_mask");
+  if (new_axis_mask != 0) {
+    return errors::Unimplemented(
+        "new_axis_mask is not supported for StridedSlice, at ",
+        node_def.name());
   }
   const int32 begin_mask = attrs.get<int64>("begin_mask");
   const int32 end_mask = attrs.get<int64>("end_mask");
   const int32 ellipsis_mask = attrs.get<int64>("ellipsis_mask");
+  const int32 shrink_axis_mask = attrs.get<int64>("shrink_axis_mask");
 
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
@@ -2413,9 +2427,9 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
       &begin_weights.GetTensor(), &end_weights.GetTensor(),
       stride_weights.GetTensor(), input_shape, begin_mask, end_mask,
-      ellipsis_mask, /*new_axis_mask=*/0,
-      /*shrink_axis_mask=*/0, &processing_shape, &final_shape, &is_identity,
-      &is_simple_slice, &slice_dim0, &begin, &end, &strides));
+      ellipsis_mask, new_axis_mask, shrink_axis_mask, &processing_shape,
+      &final_shape, &is_identity, &is_simple_slice, &slice_dim0, &begin, &end,
+      &strides));
 
   // Negative or zero strides currently not supported.
   for (int stride : strides) {
@@ -2449,13 +2463,23 @@ Status ConvertStridedSlice(OpConverterParams* params) {
           node_def.name());
     }
   }
+  // Can't shrink axis on batch dimension.
+  if (shrink_axis_mask & 1) {
+    return errors::Unimplemented(
+        "TensorRT does not allow modifications to the batch dimension, at ",
+        node_def.name());
+  }
   // TRT Slice layer uses (begin, size) instead of (begin, end)
   absl::InlinedVector<int64, 4> size(input_dims.size());
   for (int i = 0; i < input_dims.size(); i++) {
     // Divide by stride (round up)
     size[i] = (end[i] - begin[i] + strides[i] - 1) / strides[i];
   }
-  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, strides);
+  const bool reshape_after = shrink_axis_mask;
+  const nvinfer1::Dims final_shape_dims =
+      TensorShapeToTrtDims(final_shape, /*ignore_first_dim=*/true);
+  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, strides,
+                                   reshape_after, final_shape_dims);
 }
 
 Status ConvertConv2D(OpConverterParams* params) {
@@ -3552,6 +3576,7 @@ Status ConvertSplitHelper(OpConverterParams* params,
   if (params->validation_only) return Status::OK();
 
   // For Unpack/Unstack, remove axis that we split upon.
+  // TODO(tmorris): Could use final_shape in ConvertStridedSliceHelper for this.
   if (squeeze_after) {
     // Create the new shape.
     size.erase(size.begin() + trt_axis + 1);
