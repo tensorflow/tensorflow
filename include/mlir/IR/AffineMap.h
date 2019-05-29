@@ -53,8 +53,7 @@ public:
   AffineMap &operator=(const AffineMap &other) = default;
 
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
-                       ArrayRef<AffineExpr> results,
-                       ArrayRef<AffineExpr> rangeSizes);
+                       ArrayRef<AffineExpr> results);
 
   /// Returns a single constant result affine map.
   static AffineMap getConstantMap(int64_t val, MLIRContext *context);
@@ -68,11 +67,6 @@ public:
   explicit operator bool() { return map != nullptr; }
   bool operator==(AffineMap other) const { return other.map == map; }
   bool operator!=(AffineMap other) const { return !(other.map == map); }
-
-  /// Returns true if the co-domain (or more loosely speaking, range) of this
-  /// map is bounded. Bounded affine maps have a size (extent) for each of
-  /// their range dimensions (more accurately co-domain dimensions).
-  bool isBounded() const;
 
   /// Returns true if this affine map is an identity affine map.
   /// An identity affine map corresponds to an identity affine function on the
@@ -98,10 +92,7 @@ public:
   ArrayRef<AffineExpr> getResults() const;
   AffineExpr getResult(unsigned idx) const;
 
-  ArrayRef<AffineExpr> getRangeSizes() const;
-
-  /// Walk all of the AffineExpr's in this mapping.  The results are visited
-  /// first, and then the range sizes (if present).  Each node in an expression
+  /// Walk all of the AffineExpr's in this mapping. Each node in an expression
   /// tree is visited in postorder.
   void walkExprs(std::function<void(AffineExpr)> callback) const;
 
@@ -128,15 +119,12 @@ public:
   /// Prerequisites:
   /// The maps are composable, i.e. that the number of AffineDimExpr of `this`
   /// matches the number of results of `map`.
-  /// At this time, composition of bounded AffineMap is not supported. Both
-  /// `this` and `map` must be unbounded.
   ///
   /// Example:
   ///   map1: `(d0, d1)[s0, s1] -> (d0 + 1 + s1, d1 - 1 - s0)`
   ///   map2: `(d0)[s0] -> (d0 + s0, d0 - s0))`
   ///   map1.compose(map2):
   ///     `(d0)[s0, s1, s2] -> (d0 + s1 + s2 + 1, d0 - s0 - s2 - 1)`
-  // TODO(ntv): support composition of bounded maps when we have a need for it.
   AffineMap compose(AffineMap map);
 
   friend ::llvm::hash_code hash_value(AffineMap arg);
@@ -150,8 +138,7 @@ inline ::llvm::hash_code hash_value(AffineMap arg) {
   return ::llvm::hash_value(arg.map);
 }
 
-/// Simplify an affine map by simplifying its underlying AffineExpr results and
-/// sizes.
+/// Simplify an affine map by simplifying its underlying AffineExpr results.
 AffineMap simplifyAffineMap(AffineMap map);
 
 /// Returns a map of codomain to domain dimensions such that the first codomain
@@ -160,7 +147,6 @@ AffineMap simplifyAffineMap(AffineMap map);
 /// Prerequisites:
 ///   1. `map` is a permutation of full rank.
 ///   2. `map` has no symbols.
-///   3. `map` has empty `rangeSizes`.
 ///
 /// Example:
 ///
@@ -177,8 +163,7 @@ AffineMap simplifyAffineMap(AffineMap map);
 AffineMap inversePermutation(AffineMap map);
 
 /// Concatenates a list of `maps` into a single AffineMap, stepping over
-/// potentially empty maps. Assumes each of the underlying map has 0 symbols and
-/// empty `rangeSizes`.
+/// potentially empty maps. Assumes each of the underlying map has 0 symbols.
 /// The resulting map has a number of dims equal to the max of `maps`' dims and
 /// the concatenated results as its results.
 ///

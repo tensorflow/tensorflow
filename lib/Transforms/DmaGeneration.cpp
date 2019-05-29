@@ -326,7 +326,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
       // The coordinate for the start location is just the lower bound along the
       // corresponding dimension on the memory region (stored in 'offset').
       auto map = top.getAffineMap(
-          cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset, {});
+          cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset);
       memIndices.push_back(b->create<AffineApplyOp>(loc, map, regionSymbols));
     }
     // The fast buffer is DMAed into at location zero; addressing is relative.
@@ -438,8 +438,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     auto dimExpr = b->getAffineDimExpr(regionSymbols.size() + i);
     remapExprs.push_back(dimExpr - offsets[i]);
   }
-  auto indexRemap =
-      b->getAffineMap(regionSymbols.size() + rank, 0, remapExprs, {});
+  auto indexRemap = b->getAffineMap(regionSymbols.size() + rank, 0, remapExprs);
 
   // Record the begin since it may be invalidated by memref replacement.
   Block::iterator prev;

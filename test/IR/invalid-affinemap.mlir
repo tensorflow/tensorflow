@@ -99,21 +99,6 @@
 // -----
 #hello_world = (i, j) -> (i, 3*d0 + ) // expected-error {{use of undeclared identifier}}
 
-// -----
-#hello_world = (i, j) -> (i, j) size (10, x) // expected-error {{use of undeclared identifier}}
-
-// -----
-#hello_world = (i, j) [M] -> (i, j) size (10, j) // expected-error {{size expressions cannot refer to dimension values}}
-
-// -----
-#hello_world = (i, j) [M] -> (i, j) size (10, M+i) // expected-error {{size expressions cannot refer to dimension values}}
-
-// -----
-#hello_world = (i, j) -> (i, j) size (10) // expected-error {{fewer range sizes than range expressions}}
-
-// -----
-#hello_world = (i, j) -> (i, j) size (10, 20, 30) // expected-error {{more range sizes than range expressions}}
-
 // TODO(bondhugula): Add more tests; coverage of error messages emitted not complete
 
 // -----

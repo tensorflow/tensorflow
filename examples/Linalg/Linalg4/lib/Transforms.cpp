@@ -73,7 +73,6 @@ makeTiledRanges(TensorContractionBase<ConcreteOp> &contraction,
     // 1. Take the first ivs results of the map, the other ones are not composed
     // but merely copied over.
     assert(map.getNumSymbols() == 0);
-    assert(map.getRangeSizes().empty());
     MLIRContext *context = ScopedContext::getContext();
     unsigned numParallel = op->getNumParallelDims();
     unsigned numReduction = op->getNumReductionDims();
@@ -93,7 +92,7 @@ makeTiledRanges(TensorContractionBase<ConcreteOp> &contraction,
     for (auto en : llvm::enumerate(map.getResults())) {
       auto index = en.index();
       auto expr = en.value();
-      AffineMap exprMap = AffineMap::get(numDims, 0, expr, {});
+      AffineMap exprMap = AffineMap::get(numDims, 0, expr);
       ValueHandle offset(makeFoldedComposedAffineApply(exprMap, ivs));
       // Offset is normally a function of loop induction variables.
       // If it is 0, it must come from a dimension that was not tiled.

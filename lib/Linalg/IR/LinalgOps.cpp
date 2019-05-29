@@ -741,19 +741,18 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
   auto k = getAffineDimExpr(2, context);
   if (isa<DotOp>(op))
     // A(r_i) * B(r_i) -> C()
-    return SmallVector<AffineMap, 4>{AffineMap::get(1, 0, {i}, {}),
-                                     AffineMap::get(1, 0, {i}, {}),
-                                     AffineMap()};
+    return SmallVector<AffineMap, 4>{AffineMap::get(1, 0, {i}),
+                                     AffineMap::get(1, 0, {i}), AffineMap()};
   if (isa<MatvecOp>(op))
     //   A(i, r_j) * B(r_j) -> C(i)
-    return SmallVector<AffineMap, 4>{AffineMap::get(2, 0, {i, j}, {}),
-                                     AffineMap::get(2, 0, {j}, {}),
-                                     AffineMap::get(2, 0, {i}, {})};
+    return SmallVector<AffineMap, 4>{AffineMap::get(2, 0, {i, j}),
+                                     AffineMap::get(2, 0, {j}),
+                                     AffineMap::get(2, 0, {i})};
   if (isa<MatmulOp>(op))
     //   A(i, r_k) * B(r_k, j) -> C(i, j)
-    return SmallVector<AffineMap, 4>{AffineMap::get(3, 0, {i, k}, {}),
-                                     AffineMap::get(3, 0, {k, j}, {}),
-                                     AffineMap::get(3, 0, {i, j}, {})};
+    return SmallVector<AffineMap, 4>{AffineMap::get(3, 0, {i, k}),
+                                     AffineMap::get(3, 0, {k, j}),
+                                     AffineMap::get(3, 0, {i, j})};
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
 }
 

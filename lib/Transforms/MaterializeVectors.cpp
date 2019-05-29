@@ -373,7 +373,7 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
   SmallVector<mlir::Value *, 8> res;
   res.reserve(affineExprs.size());
   for (auto expr : affineExprs) {
-    auto map = AffineMap::get(numIndices, 0, expr, {});
+    auto map = AffineMap::get(numIndices, 0, expr);
     res.push_back(makeComposedAffineApply(b, b->getInsertionPoint()->getLoc(),
                                           map, memrefIndices));
   }
@@ -470,7 +470,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
   if (keep.empty()) {
     return permutationMap;
   }
-  auto projectionMap = AffineMap::get(optionalRatio->size(), 0, keep, {});
+  auto projectionMap = AffineMap::get(optionalRatio->size(), 0, keep);
   LLVM_DEBUG(projectionMap.print(dbgs() << "\nprojectionMap: "));
   return simplifyAffineMap(projectionMap.compose(permutationMap));
 }

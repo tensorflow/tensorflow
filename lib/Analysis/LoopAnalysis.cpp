@@ -80,7 +80,7 @@ void mlir::buildTripCountMapAndOperands(
   for (auto ubExpr : ubMap.getResults())
     ubs.push_back(b.create<AffineApplyOp>(
         forOp.getLoc(),
-        b.getAffineMap(ubMap.getNumDims(), ubMap.getNumSymbols(), {ubExpr}, {}),
+        b.getAffineMap(ubMap.getNumDims(), ubMap.getNumSymbols(), {ubExpr}),
         ubOperands));
 
   tripCountOperands->clear();
@@ -92,7 +92,7 @@ void mlir::buildTripCountMapAndOperands(
   for (unsigned i = 0, e = ubs.size(); i < e; i++)
     tripCountExprs[i] =
         (b.getAffineDimExpr(1 + i) - b.getAffineDimExpr(0)).ceilDiv(step);
-  *map = b.getAffineMap(1 + ubs.size(), 0, tripCountExprs, {});
+  *map = b.getAffineMap(1 + ubs.size(), 0, tripCountExprs);
 
   fullyComposeAffineMapAndOperands(map, tripCountOperands);
   *map = simplifyAffineMap(*map);

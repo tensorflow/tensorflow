@@ -2115,8 +2115,6 @@ ParseResult AffineParser::parseAffineMapOrIntegerSetInline(AffineMap &map,
 /// Parse the range and sizes affine map definition inline.
 ///
 ///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
-///                 (`size` `(` dim-size (`,` dim-size)* `)`)?
-///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
 AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
@@ -2137,44 +2135,8 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
     return AffineMap();
 
-  // Parse optional range sizes.
-  //  range-sizes ::= (`size` `(` dim-size (`,` dim-size)* `)`)?
-  //  dim-size ::= affine-expr | `min` `(` affine-expr (`,` affine-expr)+ `)`
-  // TODO(bondhugula): support for min of several affine expressions.
-  // TODO: check if sizes are non-negative whenever they are constant.
-  SmallVector<AffineExpr, 4> rangeSizes;
-  if (consumeIf(Token::kw_size)) {
-    // Location of the l_paren token (if it exists) for error reporting later.
-    auto loc = getToken().getLoc();
-    if (parseToken(Token::l_paren, "expected '(' at start of affine map range"))
-      return AffineMap();
-
-    auto parseRangeSize = [&]() -> ParseResult {
-      auto loc = getToken().getLoc();
-      auto elt = parseAffineExpr();
-      if (!elt)
-        return failure();
-
-      if (!elt.isSymbolicOrConstant())
-        return emitError(loc,
-                         "size expressions cannot refer to dimension values");
-
-      rangeSizes.push_back(elt);
-      return success();
-    };
-
-    if (parseCommaSeparatedListUntil(Token::r_paren, parseRangeSize, false))
-      return AffineMap();
-    if (exprs.size() > rangeSizes.size())
-      return (emitError(loc, "fewer range sizes than range expressions"),
-              AffineMap());
-    if (exprs.size() < rangeSizes.size())
-      return (emitError(loc, "more range sizes than range expressions"),
-              AffineMap());
-  }
-
   // Parsed a valid affine map.
-  return builder.getAffineMap(numDims, numSymbols, exprs, rangeSizes);
+  return builder.getAffineMap(numDims, numSymbols, exprs);
 }
 
 /// Parse an ambiguous reference to either and affine map or an integer set.

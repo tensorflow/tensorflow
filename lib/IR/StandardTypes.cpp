@@ -329,12 +329,12 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
     ++i;
   }
 
-  // Drop the unbounded identity maps from the composition.
+  // Drop identity maps from the composition.
   // This may lead to the composition becoming empty, which is interpreted as an
   // implicit identity.
   llvm::SmallVector<AffineMap, 2> cleanedAffineMapComposition;
   for (const auto &map : affineMapComposition) {
-    if (map.isIdentity() && !map.isBounded())
+    if (map.isIdentity())
       continue;
     cleanedAffineMapComposition.push_back(map);
   }

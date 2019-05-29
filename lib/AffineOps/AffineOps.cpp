@@ -407,7 +407,6 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
                                              ArrayRef<Value *> operands)
     : AffineApplyNormalizer() {
   static_assert(kMaxAffineApplyDepth > 0, "kMaxAffineApplyDepth must be > 0");
-  assert(map.getRangeSizes().empty() && "Unbounded map expected");
   assert(map.getNumInputs() == operands.size() &&
          "number of operands does not match the number of map inputs");
 
@@ -497,7 +496,7 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
          "Unexpected number of concatenated symbols");
   auto numDims = dimValueToPosition.size();
   auto numSymbols = concatenatedSymbols.size() - map.getNumSymbols();
-  auto auxiliaryMap = AffineMap::get(numDims, numSymbols, auxiliaryExprs, {});
+  auto auxiliaryMap = AffineMap::get(numDims, numSymbols, auxiliaryExprs);
 
   LLVM_DEBUG(map.print(dbgs() << "\nCompose map: "));
   LLVM_DEBUG(auxiliaryMap.print(dbgs() << "\nWith map: "));

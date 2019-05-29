@@ -80,9 +80,8 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   for (unsigned i = 0, e = tripCountMap.getNumResults(); i < e; i++) {
     auto tripCountExpr = tripCountMap.getResult(i);
     bumpExprs[i] = (tripCountExpr - tripCountExpr % unrollFactor) * step;
-    auto bumpMap =
-        b->getAffineMap(tripCountMap.getNumDims(), tripCountMap.getNumSymbols(),
-                        bumpExprs[i], {});
+    auto bumpMap = b->getAffineMap(tripCountMap.getNumDims(),
+                                   tripCountMap.getNumSymbols(), bumpExprs[i]);
     bumpValues[i] =
         b->create<AffineApplyOp>(forOp.getLoc(), bumpMap, tripCountOperands);
   }
@@ -94,7 +93,7 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   operands->clear();
   operands->push_back(lb);
   operands->append(bumpValues.begin(), bumpValues.end());
-  *map = b->getAffineMap(1 + tripCountMap.getNumResults(), 0, newUbExprs, {});
+  *map = b->getAffineMap(1 + tripCountMap.getNumResults(), 0, newUbExprs);
   // Simplify the map + operands.
   fullyComposeAffineMapAndOperands(map, operands);
   *map = simplifyAffineMap(*map);
@@ -465,7 +464,7 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
     if (!forOpIV->use_empty()) {
       // iv' = iv + 1/2/3...unrollFactor-1;
       auto d0 = builder.getAffineDimExpr(0);
-      auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
+      auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step});
       auto ivUnroll =
           builder.create<AffineApplyOp>(forOp.getLoc(), bumpMap, forOpIV);
       operandMap.map(forOpIV, ivUnroll);
@@ -654,8 +653,7 @@ static void augmentMapAndBounds(FuncBuilder *b, Value *iv, AffineMap *map,
   auto bounds = llvm::to_vector<4>(map->getResults());
   bounds.push_back(b->getAffineDimExpr(map->getNumDims()) + offset);
   operands->insert(operands->begin() + map->getNumDims(), iv);
-  *map =
-      b->getAffineMap(map->getNumDims() + 1, map->getNumSymbols(), bounds, {});
+  *map = b->getAffineMap(map->getNumDims() + 1, map->getNumSymbols(), bounds);
   canonicalizeMapAndOperands(map, operands);
 }
 

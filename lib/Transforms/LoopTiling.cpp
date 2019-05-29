@@ -168,12 +168,12 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
       boundExprs.append(origUbMap.getResults().begin(),
                         origUbMap.getResults().end());
       auto ubMap = b.getAffineMap(origUbMap.getNumDims() + 1,
-                                  origUbMap.getNumSymbols(), boundExprs, {});
+                                  origUbMap.getNumSymbols(), boundExprs);
       newLoops[width + i].setUpperBound(/*operands=*/ubOperands, ubMap);
     } else {
       // No need of the min expression.
       auto dim = b.getAffineDimExpr(0);
-      auto ubMap = b.getAffineMap(1, 0, dim + tileSizes[i], {});
+      auto ubMap = b.getAffineMap(1, 0, dim + tileSizes[i]);
       newLoops[width + i].setUpperBound(newLoops[i].getInductionVar(), ubMap);
     }
   }

@@ -1096,10 +1096,9 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
         simplifyAffineExpr(dimExpr - offsets[i], outerIVs.size() + rank, 0);
     remapExprs.push_back(remapExpr);
   }
-  auto indexRemap =
-      zeroOffsetCount == rank
-          ? AffineMap()
-          : b.getAffineMap(outerIVs.size() + rank, 0, remapExprs, {});
+  auto indexRemap = zeroOffsetCount == rank
+                        ? AffineMap()
+                        : b.getAffineMap(outerIVs.size() + rank, 0, remapExprs);
   // Replace all users of 'oldMemRef' with 'newMemRef'.
   bool ret =
       replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap,

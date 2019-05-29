@@ -311,7 +311,7 @@ static ValueHandle createBinaryIndexHandle(
   if (v1) {
     operands.push_back(v1);
   }
-  auto map = AffineMap::get(numDims, numSymbols, {affCombiner(d0, d1)}, {});
+  auto map = AffineMap::get(numDims, numSymbols, {affCombiner(d0, d1)});
   // TODO: createOrFold when available.
   return ValueHandle::createComposedAffineApply(map, operands);
 }

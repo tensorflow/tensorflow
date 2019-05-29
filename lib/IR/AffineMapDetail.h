@@ -36,10 +36,6 @@ struct AffineMapStorage {
   /// The affine expressions for this (multi-dimensional) map.
   /// TODO: use trailing objects for this.
   ArrayRef<AffineExpr> results;
-
-  /// The extents along each of the range dimensions if the map is bounded,
-  /// nullptr otherwise.
-  ArrayRef<AffineExpr> rangeSizes;
 };
 
 } // end namespace detail

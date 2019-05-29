@@ -149,27 +149,25 @@ struct BuiltinDialect : public Dialect {
 struct AffineMapKeyInfo : DenseMapInfo<AffineMap> {
   // Affine maps are uniqued based on their dim/symbol counts and affine
   // expressions.
-  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr>,
-                           ArrayRef<AffineExpr>>;
+  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr>>;
   using DenseMapInfo<AffineMap>::isEqual;
 
   static unsigned getHashValue(const AffineMap &key) {
-    return getHashValue(KeyTy(key.getNumDims(), key.getNumSymbols(),
-                              key.getResults(), key.getRangeSizes()));
+    return getHashValue(
+        KeyTy(key.getNumDims(), key.getNumSymbols(), key.getResults()));
   }
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
         std::get<0>(key), std::get<1>(key),
-        hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()),
-        hash_combine_range(std::get<3>(key).begin(), std::get<3>(key).end()));
+        hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()));
   }
 
   static bool isEqual(const KeyTy &lhs, AffineMap rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
     return lhs == std::make_tuple(rhs.getNumDims(), rhs.getNumSymbols(),
-                                  rhs.getResults(), rhs.getRangeSizes());
+                                  rhs.getResults());
   }
 };
 
@@ -797,27 +795,22 @@ StorageUniquer &MLIRContext::getAffineUniquer() {
 }
 
 AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExpr> results,
-                         ArrayRef<AffineExpr> rangeSizes) {
+                         ArrayRef<AffineExpr> results) {
   // The number of results can't be zero.
   assert(!results.empty());
 
-  assert(rangeSizes.empty() || results.size() == rangeSizes.size());
-
   auto &impl = results[0].getContext()->getImpl();
-  auto key = std::make_tuple(dimCount, symbolCount, results, rangeSizes);
+  auto key = std::make_tuple(dimCount, symbolCount, results);
 
   // Safely get or create an AffineMap instance.
   return safeGetOrCreate(impl.affineMaps, key, impl.affineMutex, [&] {
     auto *res = impl.affineAllocator.Allocate<detail::AffineMapStorage>();
 
-    // Copy the results and range sizes into the bump pointer.
+    // Copy the results into the bump pointer.
     results = copyArrayRefInto(impl.affineAllocator, results);
-    rangeSizes = copyArrayRefInto(impl.affineAllocator, rangeSizes);
 
     // Initialize the memory using placement new.
-    new (res)
-        detail::AffineMapStorage{dimCount, symbolCount, results, rangeSizes};
+    new (res) detail::AffineMapStorage{dimCount, symbolCount, results};
     return AffineMap(res);
   });
 }

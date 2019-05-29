@@ -46,9 +46,9 @@ SmallVector<AffineMap, 8> linalg::DotOp::loopsToOperandRangeMaps() {
   auto d0 = getAffineDimExpr(0, context); // K
   // A(K), B(K), C()
   //   (d0) -> (d0, d0)(%k)
-  return SmallVector<AffineMap, 8>{AffineMap::get(1, 0, {d0}, {}), // A(K)
-                                   AffineMap::get(1, 0, {d0}, {}), // B(K)
-                                   AffineMap()};                   // C()
+  return SmallVector<AffineMap, 8>{AffineMap::get(1, 0, {d0}), // A(K)
+                                   AffineMap::get(1, 0, {d0}), // B(K)
+                                   AffineMap()};               // C()
 }
 
 void linalg::DotOp::emitScalarImplementation(
@@ -92,10 +92,9 @@ SmallVector<AffineMap, 8> linalg::MatvecOp::loopsToOperandRangeMaps() {
   auto d1 = getAffineDimExpr(1, context); // K
   // A(M, K), B(K), C(M)
   //   (d0, d1) -> (d0, d1, d1, d0)(%m, %k)
-  return SmallVector<AffineMap, 8>{
-      AffineMap::get(2, 0, {d0, d1}, {}), // A(M, K)
-      AffineMap::get(2, 0, {d1}, {}),     // B(K)
-      AffineMap::get(2, 0, {d0}, {})};    // C(M)
+  return SmallVector<AffineMap, 8>{AffineMap::get(2, 0, {d0, d1}), // A(M, K)
+                                   AffineMap::get(2, 0, {d1}),     // B(K)
+                                   AffineMap::get(2, 0, {d0})};    // C(M)
 }
 
 // The body expression for matvec is: C(i) = scalarC + A(i, r_j) * B(r_j)
@@ -163,9 +162,9 @@ SmallVector<AffineMap, 8> linalg::MatmulOp::loopsToOperandRangeMaps() {
   // A(M, K), B(K, N), C(M, N):
   //   (d0, d1, d2) -> (d0, d2, d2, d1, d0, d1)(%m, %n, %k)
   return SmallVector<AffineMap, 8>{
-      AffineMap::get(3, 0, {d0, d2}, {}), // A(M, K)
-      AffineMap::get(3, 0, {d2, d1}, {}), // B(K, N)
-      AffineMap::get(3, 0, {d0, d1}, {})  // C(M, N)
+      AffineMap::get(3, 0, {d0, d2}), // A(M, K)
+      AffineMap::get(3, 0, {d2, d1}), // B(K, N)
+      AffineMap::get(3, 0, {d0, d1})  // C(M, N)
   };
 }
 

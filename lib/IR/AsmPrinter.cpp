@@ -1059,16 +1059,6 @@ void ModulePrinter::printAffineMap(AffineMap map) {
   interleaveComma(map.getResults(),
                   [&](AffineExpr expr) { printAffineExpr(expr); });
   os << ')';
-
-  if (!map.isBounded()) {
-    return;
-  }
-
-  // Print range sizes for bounded affine maps.
-  os << " size (";
-  interleaveComma(map.getRangeSizes(),
-                  [&](AffineExpr expr) { printAffineExpr(expr); });
-  os << ')';
 }
 
 void ModulePrinter::printIntegerSet(IntegerSet set) {

@@ -71,7 +71,7 @@ mlir::AffineMap linalg::operandRangesToLoopsMap(
     results.append(m.getResults().begin(), m.getResults().end());
     current = mlir::AffineMap::get(
         std::max(current.getNumDims(), m.getNumDims()),
-        current.getNumSymbols() + m.getNumSymbols(), results, {});
+        current.getNumSymbols() + m.getNumSymbols(), results);
   }
   return inverseSubMap(current);
 }

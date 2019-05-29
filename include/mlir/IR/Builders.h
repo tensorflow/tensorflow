@@ -148,8 +148,7 @@ public:
   AffineExpr getAffineConstantExpr(int64_t constant);
 
   AffineMap getAffineMap(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExpr> results,
-                         ArrayRef<AffineExpr> rangeSizes);
+                         ArrayRef<AffineExpr> results);
 
   // Special cases of affine maps and integer sets
   /// Returns a single constant result affine map with 0 dimensions and 0

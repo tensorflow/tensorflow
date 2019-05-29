@@ -72,7 +72,6 @@ public:
 private:
   // Same meaning as AffineMap's fields.
   SmallVector<AffineExpr, 8> results;
-  SmallVector<AffineExpr, 8> rangeSizes;
   unsigned numDims;
   unsigned numSymbols;
   /// A pointer to the IR's context to store all newly created

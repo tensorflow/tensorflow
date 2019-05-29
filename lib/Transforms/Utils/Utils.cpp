@@ -146,9 +146,8 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
       // Remapped indices.
       for (auto resultExpr : indexRemap.getResults()) {
-        auto singleResMap =
-            builder.getAffineMap(indexRemap.getNumDims(),
-                                 indexRemap.getNumSymbols(), resultExpr, {});
+        auto singleResMap = builder.getAffineMap(
+            indexRemap.getNumDims(), indexRemap.getNumSymbols(), resultExpr);
         auto afOp = builder.create<AffineApplyOp>(opInst->getLoc(),
                                                   singleResMap, remapOperands);
         state.operands.push_back(afOp);
@@ -259,7 +258,7 @@ void mlir::createAffineComputationSlice(
   sliceOps->reserve(composedMap.getNumResults());
   for (auto resultExpr : composedMap.getResults()) {
     auto singleResMap = builder.getAffineMap(
-        composedMap.getNumDims(), composedMap.getNumSymbols(), resultExpr, {});
+        composedMap.getNumDims(), composedMap.getNumSymbols(), resultExpr);
     sliceOps->push_back(builder.create<AffineApplyOp>(
         opInst->getLoc(), singleResMap, composedOpOperands));
   }

@@ -48,7 +48,7 @@ static AffineMap inversePermutationMap(AffineMap map) {
       seenExprs.push_back(expr);
   assert(map.getNumSymbols() == 0 && "expected map without symbols");
   assert(seenExprs.size() == map.getNumInputs() && "map is not invertible");
-  return AffineMap::get(map.getNumResults(), 0, seenExprs, {});
+  return AffineMap::get(map.getNumResults(), 0, seenExprs);
 }
 
 mlir::AffineMap linalg::inverseSubMap(AffineMap map, unsigned beginResult,
@@ -57,6 +57,6 @@ mlir::AffineMap linalg::inverseSubMap(AffineMap map, unsigned beginResult,
     endResult = map.getNumResults();
   auto subMap = AffineMap::get(
       map.getNumDims(), map.getNumSymbols(),
-      map.getResults().slice(beginResult, endResult - beginResult), {});
+      map.getResults().slice(beginResult, endResult - beginResult));
   return inversePermutationMap(subMap);
 }

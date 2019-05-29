@@ -157,21 +157,16 @@ MutableAffineMap::MutableAffineMap(AffineMap map)
       context(map.getResult(0).getContext()) {
   for (auto result : map.getResults())
     results.push_back(result);
-  for (auto rangeSize : map.getRangeSizes())
-    results.push_back(rangeSize);
 }
 
 void MutableAffineMap::reset(AffineMap map) {
   results.clear();
-  rangeSizes.clear();
   numDims = map.getNumDims();
   numSymbols = map.getNumSymbols();
   // A map always has at least 1 result by construction
   context = map.getResult(0).getContext();
   for (auto result : map.getResults())
     results.push_back(result);
-  for (auto rangeSize : map.getRangeSizes())
-    results.push_back(rangeSize);
 }
 
 bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
@@ -194,7 +189,7 @@ void MutableAffineMap::simplify() {
 }
 
 AffineMap MutableAffineMap::getAffineMap() const {
-  return AffineMap::get(numDims, numSymbols, results, rangeSizes);
+  return AffineMap::get(numDims, numSymbols, results);
 }
 
 MutableIntegerSet::MutableIntegerSet(IntegerSet set, MLIRContext *context)
@@ -1454,8 +1449,8 @@ std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
     auto expr = mlir::toAffineExpr(lb, dimCount, symCount, localExprs, context);
     exprs.push_back(expr);
   }
-  auto lbMap = exprs.empty() ? AffineMap()
-                             : AffineMap::get(dimCount, symCount, exprs, {});
+  auto lbMap =
+      exprs.empty() ? AffineMap() : AffineMap::get(dimCount, symCount, exprs);
 
   exprs.clear();
   exprs.reserve(ubIndices.size());
@@ -1468,8 +1463,8 @@ std::pair<AffineMap, AffineMap> FlatAffineConstraints::getLowerAndUpperBound(
     // Upper bound is exclusive.
     exprs.push_back(expr + 1);
   }
-  auto ubMap = exprs.empty() ? AffineMap()
-                             : AffineMap::get(dimCount, symCount, exprs, {});
+  auto ubMap =
+      exprs.empty() ? AffineMap() : AffineMap::get(dimCount, symCount, exprs);
 
   return {lbMap, ubMap};
 }
@@ -1591,8 +1586,8 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
     AffineMap &ubMap = (*ubMaps)[pos];
 
     if (expr) {
-      lbMap = AffineMap::get(numMapDims, numMapSymbols, expr, {});
-      ubMap = AffineMap::get(numMapDims, numMapSymbols, expr + 1, {});
+      lbMap = AffineMap::get(numMapDims, numMapSymbols, expr);
+      ubMap = AffineMap::get(numMapDims, numMapSymbols, expr + 1);
     } else {
       // TODO(bondhugula): Whenever there are local identifiers in the
       // dependence constraints, we'll conservatively over-approximate, since we
@@ -1621,7 +1616,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
         if (lbConst.hasValue()) {
           lbMap = AffineMap::get(
               numMapDims, numMapSymbols,
-              getAffineConstantExpr(lbConst.getValue(), context), {});
+              getAffineConstantExpr(lbConst.getValue(), context));
         }
       }
       if (!ubMap || ubMap.getNumResults() > 1) {
@@ -1631,7 +1626,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
         if (ubConst.hasValue()) {
           (ubMap) = AffineMap::get(
               numMapDims, numMapSymbols,
-              getAffineConstantExpr(ubConst.getValue() + 1, context), {});
+              getAffineConstantExpr(ubConst.getValue() + 1, context));
         }
       }
     }

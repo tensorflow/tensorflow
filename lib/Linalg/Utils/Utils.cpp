@@ -131,7 +131,7 @@ mlir::linalg::applyMapToValues(FuncBuilder *b, Location loc, AffineMap map,
   // ranges. If the resulting application can be folded into a Value*, the
   // folding occurs eagerly. Otherwise, an affine.apply operation is emitted.
   for (auto expr : map.getResults()) {
-    AffineMap map = AffineMap::get(numDims, 0, expr, {});
+    AffineMap map = AffineMap::get(numDims, 0, expr);
     res.push_back(emitOrFoldComposedAffineApply(b, loc, map, values, state));
   }
   return res;

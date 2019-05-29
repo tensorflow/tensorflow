@@ -140,7 +140,7 @@ static AffineMap makePermutationMap(
            "Vectorization prerequisite violated: at most 1 index may be "
            "invariant wrt a vectorized loop");
   }
-  return AffineMap::get(indices.size(), 0, perm, {});
+  return AffineMap::get(indices.size(), 0, perm);
 }
 
 /// Implementation detail that walks up the parents and records the ones with

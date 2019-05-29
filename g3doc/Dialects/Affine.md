@@ -13,15 +13,16 @@ core concepts that are used throughout the document.
 ### Dimensions and Symbols
 
 Dimensions and symbols are the two kinds of identifiers that can appear in the
-polyhedral structures, and are always of [`index`](../LangRef.md#index-type) type. Dimensions
-are declared in parentheses and symbols are declared in square brackets.
+polyhedral structures, and are always of [`index`](../LangRef.md#index-type)
+type. Dimensions are declared in parentheses and symbols are declared in square
+brackets.
 
 Examples:
 
 ```mlir {.mlir}
 // A 2d to 3d affine mapping.
 // d0/d1 are dimensions, s0 is a symbol
-#affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0) size (10, 20, 30)
+#affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0)
 ```
 
 Dimensional identifiers correspond to the dimensions of the underlying structure
@@ -51,7 +52,7 @@ SSA values bound to dimensions and symbols must always have 'index' type.
 Example:
 
 ```mlir {.mlir}
-#affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0) size (10,20,30)
+#affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0)
 // Binds %N to the s0 symbol in affine_map2to3.
 %x = alloc()[%N] : memref<40x50xf32, #affine_map2to3>
 ```
@@ -98,10 +99,11 @@ less than or equal to that result. `mod` is the modulo operation: since its
 second argument is always positive, its results are always positive in our
 usage. The `integer-literal` operand for ceildiv, floordiv, and mod is always
 expected to be positive. `bare-id` is an identifier which must have type
-[index](../LangRef.md#index-type). The precedence of operations in an affine expression are
-ordered from highest to lowest in the order: (1) parenthesization, (2) negation,
-(3) modulo, multiplication, floordiv, and ceildiv, and (4) addition and
-subtraction. All of these operators associate from left to right.
+[index](../LangRef.md#index-type). The precedence of operations in an affine
+expression are ordered from highest to lowest in the order: (1)
+parenthesization, (2) negation, (3) modulo, multiplication, floordiv, and
+ceildiv, and (4) addition and subtraction. All of these operators associate from
+left to right.
 
 A _multi-dimensional affine expression_ is a comma separated list of
 one-dimensional affine expressions, with the entire list enclosed in
@@ -129,20 +131,12 @@ Syntax:
 ``` {.ebnf}
 affine-map-inline
    ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
-       ( `size` `(` dim-size (`,` dim-size)* `)` )?
-
-dim-size ::= affine-expr
-           | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ```
 
 The identifiers in the dimensions and symbols lists must be unique. These are
-the only identifiers that may appear in 'multi-dim-affine-expr'. In addition,
-only symbolic identifiers and constants can appear in 'dim-size'. Affine maps
+the only identifiers that may appear in 'multi-dim-affine-expr'. Affine maps
 with one or more symbols in its specification are known as "symbolic affine
-maps", and those with no symbols as "non-symbolic affine maps". An affine map
-has an optional "size" tuple which provides the size for each corresponding
-dimension. Affine maps with a size in their specification are known as "bounded
-affine maps", and those without a size are "unbounded affine maps".
+maps", and those with no symbols as "non-symbolic affine maps".
 
 **Context:** Affine maps are mathematical functions that transform a list of
 dimension indices and symbols into a list of results, with affine expressions
@@ -180,16 +174,14 @@ Examples:
 
 ```mlir {.mlir}
 // Affine map out-of-line definition and usage example.
-#affine_map42 =
-  (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2)) size (10, s0)
+#affine_map42 = (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2))
 
 // Use an affine mapping definition in an alloc operation, binding the
 // SSA value %N to the symbol s0.
 %a = alloc()[%N] : memref<4x4xf32, #affine_map42>
 
 // Same thing with an inline affine mapping definition.
-%b = alloc()[%N] : memref<4x4xf32, (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2))
-                                           size (10, s0)>
+%b = alloc()[%N] : memref<4x4xf32, (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2))>
 ```
 
 ### Semi-affine maps
@@ -224,7 +216,6 @@ Syntax of semi-affine maps:
 ``` {.ebnf}
 semi-affine-map-inline
    ::= dim-and-symbol-id-lists `->` multi-dim-semi-affine-expr
-       ( `size` `(` dim-size (`,` dim-size)* `)` )?
 ```
 
 Semi-affine maps may be defined inline at the point of use, or may be hoisted to

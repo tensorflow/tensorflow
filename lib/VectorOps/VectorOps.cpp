@@ -231,9 +231,6 @@ LogicalResult VectorTransferReadOp::verify() {
     return emitOpError("requires an AffineMapAttr named 'permutation_map'");
   }
   auto permutationMap = getPermutationMap();
-  if (!permutationMap.getRangeSizes().empty()) {
-    return emitOpError("requires an unbounded permutation_map");
-  }
   if (permutationMap.getNumSymbols() != 0) {
     return emitOpError("requires a permutation_map without symbols");
   }
@@ -364,9 +361,6 @@ LogicalResult VectorTransferWriteOp::verify() {
     return emitOpError("requires an AffineMapAttr named 'permutation_map'");
   }
   auto permutationMap = getPermutationMap();
-  if (!permutationMap.getRangeSizes().empty()) {
-    return emitOpError("requires an unbounded permutation_map");
-  }
   if (permutationMap.getNumSymbols() != 0) {
     return emitOpError("requires a permutation_map without symbols");
   }

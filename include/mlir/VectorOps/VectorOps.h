@@ -53,9 +53,8 @@ public:
 ///      the access is statically guaranteed to be within bounds;
 ///   2. an attribute of type AffineMap to specify a slice of the original
 ///      MemRef access and its transposition into the super-vector shape.
-///      The permutation_map is an unbounded AffineMap that must
-///      represent a permutation from the MemRef dim space projected onto the
-///      vector dim space.
+///      The permutation_map is an AffineMap that must represent a permutation
+///      from the MemRef dim space projected onto the vector dim space.
 ///      This permutation_map has as many output dimensions as the vector rank.
 ///      However, it is not necessarily full rank on the target space to signify
 ///      that broadcast operations will be needed along certain vector

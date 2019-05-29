@@ -120,12 +120,11 @@ static RangeParts makeGenericRangeParts(AffineMap map,
   assert(map.getNumInputs() == ranges.size());
   unsigned numDims = map.getNumDims();
   assert(map.getNumSymbols() == 0);
-  assert(map.getRangeSizes().empty());
 
   RangeParts res(map.getNumResults());
   RangeParts rangeParts(ranges);
   for (auto expr : map.getResults()) {
-    AffineMap map = AffineMap::get(numDims, 0, expr, {});
+    AffineMap map = AffineMap::get(numDims, 0, expr);
     res.mins.push_back(makeFoldedComposedAffineApply(map, rangeParts.mins));
     res.maxes.push_back(makeFoldedComposedAffineApply(map, rangeParts.maxes));
     res.steps.push_back(makeFoldedComposedAffineApply(map, rangeParts.steps));
