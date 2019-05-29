@@ -130,12 +130,14 @@ RefCountedEigenContext* GetEigenContext(TfLiteContext* context) {
 }
 
 TfLiteStatus Refresh(TfLiteContext* context) {
-  // if no of thread  <= -1 , then there is no point of continuing
-  if (context->recommended_num_threads <= -1) {
+  // if no of thread  < -1 , then there is no point of continuing
+  if (context->recommended_num_threads < -1) {
     return kTfLiteOk;
   }
 
-  SetEigenNbThreads(context->recommended_num_threads);
+  if (context->recommended_num_threads > -1) {
+      SetEigenNbThreads(context->recommended_num_threads);
+  }
 
   auto* ptr = GetEigenContext(context);
   if (ptr != nullptr) {
