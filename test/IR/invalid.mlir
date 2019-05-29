@@ -591,14 +591,14 @@ func@n(){^b(
 
 func @elementsattr_non_tensor_type() -> () {
 ^bb0:
-  "foo"(){bar: dense<i32, [4]>} : () -> () // expected-error {{elements literal must be a shaped type}}
+  "foo"(){bar: dense<i32, [4]>} : () -> () // expected-error {{elements literal must be a ranked tensor or vector type}}
 }
 
 // -----
 
 func @elementsattr_non_ranked() -> () {
 ^bb0:
-  "foo"(){bar: dense<tensor<?xi32>, [4]>} : () -> () // expected-error {{shaped literal must have static shape}}
+  "foo"(){bar: dense<tensor<?xi32>, [4]>} : () -> () // expected-error {{elements literal type must have static shape}}
 }
 
 // -----

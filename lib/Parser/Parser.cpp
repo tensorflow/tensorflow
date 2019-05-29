@@ -189,7 +189,7 @@ public:
                                                   IntegerSet &set);
   DenseElementsAttr parseDenseElementsAttr(ShapedType type);
   DenseElementsAttr parseDenseElementsAttrAsTensor(Type eltType);
-  ShapedType parseShapedType();
+  ShapedType parseElementsLiteralType();
 
   // Location Parsing.
 
@@ -1203,8 +1203,11 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::comma, "expected ','"))
       return nullptr;
 
-    auto type = parseShapedType();
+    auto type = parseElementsLiteralType();
     if (!type)
+      return nullptr;
+
+    if (parseToken(Token::comma, "expected ',' after elements literal type"))
       return nullptr;
 
     if (getToken().getKind() != Token::string)
@@ -1227,8 +1230,10 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::less, "expected '<' after 'splat'"))
       return nullptr;
 
-    auto type = parseShapedType();
+    auto type = parseElementsLiteralType();
     if (!type)
+      return nullptr;
+    if (parseToken(Token::comma, "expected ',' after elements literal type"))
       return nullptr;
     switch (getToken().getKind()) {
     case Token::floatliteral:
@@ -1253,8 +1258,11 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::less, "expected '<' after 'dense'"))
       return nullptr;
 
-    auto type = parseShapedType();
+    auto type = parseElementsLiteralType();
     if (!type)
+      return nullptr;
+
+    if (parseToken(Token::comma, "expected ',' after elements literal type"))
       return nullptr;
 
     auto attr = parseDenseElementsAttr(type);
@@ -1271,8 +1279,11 @@ Attribute Parser::parseAttribute(Type type) {
     if (parseToken(Token::less, "Expected '<' after 'sparse'"))
       return nullptr;
 
-    auto type = parseShapedType();
+    auto type = parseElementsLiteralType();
     if (!type)
+      return nullptr;
+
+    if (parseToken(Token::comma, "expected ',' after elements literal type"))
       return nullptr;
 
     switch (getToken().getKind()) {
@@ -1381,26 +1392,25 @@ DenseElementsAttr Parser::parseDenseElementsAttr(ShapedType type) {
 
 /// Shaped type for elements attribute.
 ///
-///   shaped-type ::= vector-type | tensor-type
+///   elements-literal-type ::= vector-type | ranked-tensor-type
 ///
 /// This method also checks the type has static shape.
-ShapedType Parser::parseShapedType() {
-  auto elementType = parseType();
-  if (!elementType)
+ShapedType Parser::parseElementsLiteralType() {
+  auto type = parseType();
+  if (!type)
     return nullptr;
 
-  auto type = elementType.dyn_cast<ShapedType>();
-  if (!type) {
-    return (emitError("elements literal must be a shaped type"), nullptr);
+  if (!type.isa<RankedTensorType>() && !type.isa<VectorType>()) {
+    return (
+        emitError("elements literal must be a ranked tensor or vector type"),
+        nullptr);
   }
 
-  if (parseToken(Token::comma, "expected ','"))
-    return nullptr;
+  auto sType = type.cast<ShapedType>();
+  if (!sType.hasStaticShape())
+    return (emitError("elements literal type must have static shape"), nullptr);
 
-  if (!type.hasStaticShape()) {
-    return (emitError("shaped literal must have static shape"), nullptr);
-  }
-  return type;
+  return sType;
 }
 
 /// Debug Location.
