@@ -147,11 +147,12 @@ int64_t ShapedType::getSizeInBits() const {
   if (elementType.isIntOrFloat())
     return elementType.getIntOrFloatBitWidth() * getNumElements();
 
-  // Tensors can have vectors and other tensors as elements, vectors cannot.
-  assert(!isa<VectorType>() && "unsupported vector element type");
-  auto elementShapedType = elementType.dyn_cast<ShapedType>();
-  assert(elementShapedType && "unsupported tensor element type");
-  return getNumElements() * elementShapedType.getSizeInBits();
+  // Tensors can have vectors and other tensors as elements, other shaped types
+  // cannot.
+  assert(isa<TensorType>() && "unsupported element type");
+  assert((elementType.isa<VectorType>() || elementType.isa<TensorType>()) &&
+         "unsupported tensor element type");
+  return getNumElements() * elementType.cast<ShapedType>().getSizeInBits();
 }
 
 ArrayRef<int64_t> ShapedType::getShape() const {
