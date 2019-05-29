@@ -171,7 +171,7 @@ public:
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
   /// scoped within a LoopBuilder.
-  ValueHandle operator()(std::function<void(void)> fun = nullptr);
+  ValueHandle operator()(llvm::function_ref<void(void)> fun = nullptr);
 };
 
 /// Explicit nested LoopBuilder. Offers a compressed multi-loop builder to avoid
@@ -201,7 +201,7 @@ public:
   LoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
                   ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
 
-  ValueHandle operator()(std::function<void(void)> fun = nullptr);
+  ValueHandle operator()(llvm::function_ref<void(void)> fun = nullptr);
 
 private:
   SmallVector<LoopBuilder, 4> loops;
@@ -234,7 +234,7 @@ public:
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `fun` (which build IR snippets in a scoped fashion) is
   /// scoped within a BlockBuilder.
-  void operator()(std::function<void(void)> fun = nullptr);
+  void operator()(llvm::function_ref<void(void)> fun = nullptr);
 
 private:
   BlockBuilder(BlockBuilder &) = delete;

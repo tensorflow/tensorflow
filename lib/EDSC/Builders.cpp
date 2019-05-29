@@ -184,7 +184,8 @@ mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
   enter(body, /*prev=*/1);
 }
 
-ValueHandle mlir::edsc::LoopBuilder::operator()(std::function<void(void)> fun) {
+ValueHandle
+mlir::edsc::LoopBuilder::operator()(llvm::function_ref<void(void)> fun) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   /// The particular use case concerns nested blocks:
@@ -223,7 +224,7 @@ mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
 }
 
 ValueHandle
-mlir::edsc::LoopNestBuilder::operator()(std::function<void(void)> fun) {
+mlir::edsc::LoopNestBuilder::operator()(llvm::function_ref<void(void)> fun) {
   if (fun)
     fun();
   // Iterate on the calling operator() on all the loops in the nest.
@@ -261,7 +262,7 @@ mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle *bh,
 
 /// Only serves as an ordering point between entering nested block and creating
 /// stmts.
-void mlir::edsc::BlockBuilder::operator()(std::function<void(void)> fun) {
+void mlir::edsc::BlockBuilder::operator()(llvm::function_ref<void(void)> fun) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   if (fun)
