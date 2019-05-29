@@ -406,7 +406,7 @@ class RNN(Layer):
     self.state_spec = None
     self._states = None
     self.constants_spec = None
-    self._num_constants = None
+    self._num_constants = 0
 
   @property
   def states(self):
@@ -769,7 +769,7 @@ class RNN(Layer):
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
-      if self._num_constants is None:
+      if not self._num_constants:
         initial_state = inputs[1:]
       else:
         initial_state = inputs[1:-self._num_constants]
@@ -853,7 +853,7 @@ class RNN(Layer):
         'unroll': self.unroll,
         'time_major': self.time_major
     }
-    if self._num_constants is not None:
+    if self._num_constants:
       config['num_constants'] = self._num_constants
     if self.zero_output_for_mask:
       config['zero_output_for_mask'] = self.zero_output_for_mask
@@ -870,7 +870,7 @@ class RNN(Layer):
   def from_config(cls, config, custom_objects=None):
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
     cell = deserialize_layer(config.pop('cell'), custom_objects=custom_objects)
-    num_constants = config.pop('num_constants', None)
+    num_constants = config.pop('num_constants', 0)
     layer = cls(cell, **config)
     layer._num_constants = num_constants
     return layer
@@ -2698,7 +2698,7 @@ def _standardize_args(inputs, initial_state, constants, num_constants):
     # could be a list of items, or list of list if the initial_state is complex
     # structure, and finally followed by constants which is a flat list.
     assert initial_state is None and constants is None
-    if num_constants is not None:
+    if num_constants:
       constants = inputs[-num_constants:]
       inputs = inputs[:-num_constants]
     if len(inputs) > 1:

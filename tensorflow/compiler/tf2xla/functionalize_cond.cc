@@ -598,6 +598,14 @@ Status Conditional::ExtractBodies(Graph* graph) {
       // as they could be mutated during iteration.
       std::vector<const Edge*> in_edges(n->in_edges().begin(),
                                         n->in_edges().end());
+      // Sort in_edges to make sure nodes are copied in a deterministic order.
+      std::sort(
+          in_edges.begin(), in_edges.end(), [](const Edge* a, const Edge* b) {
+            int a_src_output = a->src_output(), b_src_output = b->src_output();
+            StringPiece a_name(a->src()->name()), b_name(b->src()->name());
+            return std::tie(a_src_output, a_name) <
+                   std::tie(b_src_output, b_name);
+          });
       for (const Edge* e : in_edges) {
         Node* src = e->src();
         // Skip src/dst node.

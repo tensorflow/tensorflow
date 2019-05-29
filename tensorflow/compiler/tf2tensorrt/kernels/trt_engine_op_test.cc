@@ -22,7 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"

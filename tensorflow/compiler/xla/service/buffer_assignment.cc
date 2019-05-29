@@ -93,6 +93,29 @@ std::vector<int64> ColorInterferenceGraph(
   return assigned_colors;
 }
 
+// If an hlo buffer contains an entry parameter, the buffer is read-only unless
+// it is aliased with an output.
+bool HloBufferIsReadOnly(const HloBuffer& buffer) {
+  for (const HloValue* value : buffer.values()) {
+    const HloInstruction* instruction = value->instruction();
+    const HloModule* module = instruction->parent()->parent();
+    const bool is_entry_parameter =
+        instruction->opcode() == HloOpcode::kParameter &&
+        instruction->parent() == module->entry_computation();
+
+    if (is_entry_parameter) {
+      bool parameter_has_alias =
+          module->input_output_alias_config().ParameterHasAlias(
+              instruction->parameter_number(), value->index());
+      // The parameter doesn't have an alias, it must be read-only.
+      if (!parameter_has_alias) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 Status GatherComputationsByAllocationType(
@@ -902,7 +925,9 @@ Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
       if (instruction->operand_count() == 0) {
         continue;
       }
-      // Can't share the buffer.
+
+      // The operand can't share the same buffer with the user based on dataflow
+      // analysis.
       if (!assignment->dataflow_analysis().CanShareOperandBufferWithUser(
               instruction->mutable_operand(0), {}, instruction, {})) {
         continue;
@@ -916,6 +941,12 @@ Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
 
       // Already have the same buffer. No need to merge those.
       if (instruction_buffer.id() == operand_buffer.id()) {
+        continue;
+      }
+
+      // Do not perform in-place dynamic update slice if the operand buffer is
+      // read-only.
+      if (HloBufferIsReadOnly(operand_buffer)) {
         continue;
       }
 

@@ -77,7 +77,7 @@ class _CuDNNRNN(RNN):
     self.state_spec = [InputSpec(shape=(None, dim)) for dim in state_size]
     self.constants_spec = None
     self._states = None
-    self._num_constants = None
+    self._num_constants = 0
     self._vector_shape = constant_op.constant([-1])
 
   def call(self, inputs, mask=None, training=None, initial_state=None):

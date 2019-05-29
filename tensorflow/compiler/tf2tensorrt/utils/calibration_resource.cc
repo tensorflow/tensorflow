@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
+
+const absl::string_view kCalibrationContainerName = "TF-TRT-Calibration";
 
 TRTCalibrationResource::~TRTCalibrationResource() {
   VLOG(0) << "Destroying Calibration Resource " << std::endl << DebugString();

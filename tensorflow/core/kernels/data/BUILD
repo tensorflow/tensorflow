@@ -316,9 +316,11 @@ tf_cc_test(
 tf_kernel_library(
     name = "filter_dataset_op",
     srcs = ["filter_dataset_op.cc"],
+    hdrs = ["filter_dataset_op.h"],
     deps = [
         ":captured_function",
         ":dataset_utils",
+        ":name_utils",
         ":stats_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -460,9 +462,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "flat_map_dataset_op",
     srcs = ["flat_map_dataset_op.cc"],
+    hdrs = ["flat_map_dataset_op.h"],
     deps = [
         ":captured_function",
         ":dataset_utils",
+        ":name_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -905,7 +909,9 @@ tf_cc_test(
 tf_kernel_library(
     name = "concatenate_dataset_op",
     srcs = ["concatenate_dataset_op.cc"],
+    hdrs = ["concatenate_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
