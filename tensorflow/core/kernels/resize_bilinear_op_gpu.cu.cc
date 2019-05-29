@@ -117,33 +117,6 @@ __global__ void ResizeBilinearGradKernel(
 
     const float dtop = (1 - y_lerp) * input_grad[in_idx];
     GpuAtomicAdd(output_grad +
-<<<<<<< HEAD
-                      ((b * original_height + top_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dtop));
-    GpuAtomicAdd(output_grad +
-                      ((b * original_height + top_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dtop));
-
-    const float dbottom = y_lerp * input_grad[in_idx];
-    GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dbottom));
-    GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dbottom));
-=======
                      ((b * original_height + top_y_index) * original_width +
                       left_x_index) *
                          channels +
@@ -169,7 +142,6 @@ __global__ void ResizeBilinearGradKernel(
                          channels +
                      c,
                  static_cast<T>(x_lerp * dbottom));
->>>>>>> upstream/master
   }
 }
 
@@ -180,11 +152,7 @@ __global__ void LegacyResizeBilinearKernel(const int32 nthreads,
                                            int in_height, int in_width,
                                            int channels, int out_height,
                                            int out_width, float* output) {
-<<<<<<< HEAD
-    GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
-=======
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
->>>>>>> upstream/master
     // out_idx = c + channels * (x + out_width * (y + out_height * b))
     int idx = out_idx;
     const int c = idx % channels;
@@ -260,33 +228,6 @@ __global__ void LegacyResizeBilinearGradKernel(
 
     const float dtop = (1 - y_lerp) * input_grad[in_idx];
     GpuAtomicAdd(output_grad +
-<<<<<<< HEAD
-                      ((b * original_height + top_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dtop));
-    GpuAtomicAdd(output_grad +
-                      ((b * original_height + top_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dtop));
-
-    const float dbottom = y_lerp * input_grad[in_idx];
-    GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       left_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>((1 - x_lerp) * dbottom));
-    GpuAtomicAdd(output_grad +
-                      ((b * original_height + bottom_y_index) * original_width +
-                       right_x_index) *
-                          channels +
-                      c,
-                  static_cast<T>(x_lerp * dbottom));
-=======
                      ((b * original_height + top_y_index) * original_width +
                       left_x_index) *
                          channels +
@@ -312,7 +253,6 @@ __global__ void LegacyResizeBilinearGradKernel(
                          channels +
                      c,
                  static_cast<T>(x_lerp * dbottom));
->>>>>>> upstream/master
   }
 }
 
@@ -340,19 +280,6 @@ struct ResizeBilinear<GPUDevice, T> {
 
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     if (half_pixel_centers) {
-<<<<<<< HEAD
-      TF_CHECK_OK(GpuLaunchKernel(
-          ResizeBilinearKernel<T>, config.block_count, config.thread_per_block,
-          0, d.stream(), config.virtual_thread_count, images.data(),
-          height_scale, width_scale, batch, in_height, in_width, channels,
-          out_height, out_width, output.data()));
-    } else {
-      TF_CHECK_OK(GpuLaunchKernel(
-          LegacyResizeBilinearKernel<T>, config.block_count,
-          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          images.data(), height_scale, width_scale, batch, in_height, in_width,
-          channels, out_height, out_width, output.data()));
-=======
       TF_CHECK_OK(
           GpuLaunchKernel(ResizeBilinearKernel<T>, dim3(config.block_count),
                           dim3(config.thread_per_block), 0, d.stream(),
@@ -366,7 +293,6 @@ struct ResizeBilinear<GPUDevice, T> {
           config.virtual_thread_count, images.data(), height_scale, width_scale,
           batch, in_height, in_width, channels, out_height, out_width,
           output.data()));
->>>>>>> upstream/master
     }
   }
 };

@@ -223,13 +223,8 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
       block_size;
 
   TF_CHECK_OK(GpuLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>,
-<<<<<<< HEAD
-		    num_blocks, block_size, 0, d.stream(), gen, data,
-		    size, dist));
-=======
                               num_blocks, block_size, 0, d.stream(), gen, data,
                               size, dist));
->>>>>>> upstream/master
 }
 
 }  // namespace functor

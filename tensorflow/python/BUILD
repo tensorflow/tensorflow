@@ -1392,11 +1392,8 @@ tf_py_test(
     main = "framework/contrib_test.py",
     tags = [
         "no_pip",
-<<<<<<< HEAD
 	"no_rocm_v2",
-=======
         "no_windows",
->>>>>>> upstream/master
     ],
 )
 
@@ -2977,13 +2974,10 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
     tags = [
         "no_rocm",
     ],
-=======
     xla_enable_strict_auto_jit = True,
->>>>>>> upstream/master
 )
 
 py_library(

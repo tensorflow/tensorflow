@@ -82,11 +82,7 @@ struct ReduceAndReshape {
 // Explicit instantiations are defined in tile_ops_{cpu,gpu}_impl.*,
 // below are their declarations.
 
-<<<<<<< HEAD
-#ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
 extern template struct Tile<GPUDevice, bool, int32>;
 extern template struct Tile<GPUDevice, bool, int64>;
 extern template struct Tile<GPUDevice, float, int32>;

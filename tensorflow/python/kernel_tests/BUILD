@@ -1272,11 +1272,8 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-<<<<<<< HEAD
     tags = ["no_rocm"],
-=======
     xla_enable_strict_auto_jit = True,
->>>>>>> upstream/master
 )
 
 tf_py_test(
@@ -3854,9 +3851,6 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
-<<<<<<< HEAD
     tags = ["no_rocm"],
-=======
     xla_enable_strict_auto_jit = True,
->>>>>>> upstream/master
 )

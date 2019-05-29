@@ -1097,10 +1097,8 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes.count(&node) > 0) continue;
 
-<<<<<<< HEAD
 // Remove this once TF-ROCm supports _FusedConv2D
 #if !defined(TENSORFLOW_USE_ROCM)
-=======
 #ifdef INTEL_MKL
     if (!item.optimization_options().is_eager_mode) {
       // Remap Conv2D+BiasAdd+Add+relu into the _FusedConv2D.
@@ -1121,7 +1119,6 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     }
 #endif  //! INTEL_MKL
 
->>>>>>> upstream/master
     // Remap {Conv2D,MatMul}+BiasAdd into the _Fused{Conv2D,MatMul}
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBias(ctx, &node, &contract_with_bias)) {

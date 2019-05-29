@@ -459,11 +459,6 @@ cc_library(
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:kernel",
-<<<<<<< HEAD
-=======
-        "//tensorflow/stream_executor/cuda:cuda_stream",
-        "//tensorflow/stream_executor/cuda:curand_plugin",
->>>>>>> upstream/master
         "//tensorflow/stream_executor/gpu:gpu_stream",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",
@@ -479,6 +474,7 @@ cc_library(
      + if_cuda_is_configured([
         ":cusolver_context",
         "//tensorflow/stream_executor/cuda:cuda_stream",
+        "//tensorflow/stream_executor/cuda:curand_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
@@ -691,7 +687,6 @@ tf_cc_test(
 
 cc_library(
     name = "cusolver_context",
-<<<<<<< HEAD
     srcs = if_cuda_is_configured([
         "cusolver_context.cc"]
     ),
@@ -699,14 +694,9 @@ cc_library(
         "cusolver_context.h"]
     ),
     deps =  if_cuda_is_configured([
-=======
-    srcs = ["cusolver_context.cc"],
-    hdrs = ["cusolver_context.h"],
-    deps = [
         # LINT.IfChange
         "@local_config_cuda//cuda:cublas_headers",
         # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
->>>>>>> upstream/master
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
