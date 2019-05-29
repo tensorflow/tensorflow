@@ -1725,6 +1725,48 @@ class TensorArrayTest(test.TestCase):
       self.assertAllClose(vdx, vdy)
 
   @test_util.deprecated_graph_mode_only
+  def testSkipEagerTensorArrayInt8GPU(self):
+    if not test.is_gpu_available():
+      return
+    with self.session(use_gpu=True, force_gpu=True) as sess:
+      value = array_ops.placeholder(dtypes.int8)
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.int8, size=2)
+      ta = ta.scatter([0, 1], value)
+      r0 = ta.read(0)
+      r1 = ta.read(1)
+      v0, v1 = sess.run([r0, r1], feed_dict={value: [-3, 100]})
+      self.assertAllEqual(v0, -3)
+      self.assertAllEqual(v1, 100)
+
+  @test_util.deprecated_graph_mode_only
+  def testSkipEagerTensorArrayInt16GPU(self):
+    if not test.is_gpu_available():
+      return
+    with self.session(use_gpu=True, force_gpu=True) as sess:
+      value = array_ops.placeholder(dtypes.int16)
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.int16, size=2)
+      ta = ta.scatter([0, 1], value)
+      r0 = ta.read(0)
+      r1 = ta.read(1)
+      v0, v1 = sess.run([r0, r1], feed_dict={value: [-3, 100]})
+      self.assertAllEqual(v0, -3)
+      self.assertAllEqual(v1, 100)
+
+  @test_util.deprecated_graph_mode_only
+  def testSkipEagerTensorArrayInt32GPU(self):
+    if not test.is_gpu_available():
+      return
+    with self.session(use_gpu=True, force_gpu=True) as sess:
+      value = array_ops.placeholder(dtypes.int32)
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=2)
+      ta = ta.scatter([0, 1], value)
+      r0 = ta.read(0)
+      r1 = ta.read(1)
+      v0, v1 = sess.run([r0, r1], feed_dict={value: [-3, 100]})
+      self.assertAllEqual(v0, -3)
+      self.assertAllEqual(v1, 100)
+
+  @test_util.deprecated_graph_mode_only
   def testSkipEagerTensorArrayInt64GPU(self):
     if not test.is_gpu_available():
       return
