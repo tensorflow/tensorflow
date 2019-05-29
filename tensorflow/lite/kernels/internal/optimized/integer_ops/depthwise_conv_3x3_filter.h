@@ -2930,9 +2930,6 @@ inline void DepthwiseConv3x3FilterPerChannel(
   params.filter_offset = filter_offset;
   params.output_activation_min = output_activation_min;
   params.output_activation_max = output_activation_max;
-  // TODO(renjieliu): Remove these once all per-channel cases have been handled.
-  params.output_multiplier = output_multiplier_ptr[0];
-  params.output_right_shift = output_shift_ptr[0];
 
   const int32 filter_height = filter_shape.Dims(1);
   const int32 filter_width = filter_shape.Dims(2);
