@@ -365,7 +365,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
     }
     const float l2_norm = std::sqrt(squared_l2_norm);
     for (int c = 0; c < depth; ++c) {
-      output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
+      const int index = depth * i + c;
+      output_data[index] = input_data[index] / l2_norm;
     }
   }
 }
@@ -392,12 +393,13 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
     GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
                                      &inv_l2norm_multiplier, &inv_l2norm_shift);
     for (int c = 0; c < depth; c++) {
-      int32 diff = input_data[depth * i + c] - input_zero_point;
+      const int index = depth * i + c;
+      int32 diff = input_data[index] - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
           128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-      output_data[depth * i + c] = static_cast<uint8>(output_val);
+      output_data[index] = static_cast<uint8>(output_val);
     }
   }
 }
