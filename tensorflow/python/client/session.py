@@ -648,7 +648,6 @@ class BaseSession(SessionInterface):
         raise TypeError('graph must be a tf.Graph, but got %s' % type(graph))
       self._graph = graph
 
-    self._opened = False
     self._closed = False
 
     self._current_version = 0
