@@ -66,6 +66,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_pip",
         "nopip",
     ],
     deps = [
@@ -108,6 +109,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_pip",
         "nopip",
     ],
     deps = [
@@ -148,6 +150,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_pip",
         "nopip",
     ],
     deps = [
