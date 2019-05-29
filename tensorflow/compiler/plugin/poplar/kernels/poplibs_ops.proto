@@ -35,6 +35,8 @@ message PoplibsOp {
     OneHot = 23;
     ReplicationFactor = 24;
     ReplicationNormalise = 25;
+    ArgMin = 26;
+    ArgMax = 27;
   }
   required Op op = 2;
 }

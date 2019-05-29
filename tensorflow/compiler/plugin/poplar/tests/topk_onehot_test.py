@@ -235,35 +235,6 @@ class OneHotTopK(test_util.TensorFlowTestCase):
       result = sess.run(report)
       self.assertTrue(len(result) == 3)
 
-  def testArgMax(self):
-
-    batchsize = 4
-    n_categories = 1200
-
-    def model(a):
-      return math_ops.argmax(a, axis=1, output_type=dtypes.int32)
-
-    with ops.device('cpu'):
-      pa = array_ops.placeholder(np.float32, [batchsize, n_categories])
-      report = gen_ipu_ops.ipu_event_trace()
-
-    with ops.device("/device:IPU:0"):
-      out = model(pa)
-
-    tu.configure_ipu_system()
-
-    with tu.ipu_session() as sess:
-      sess.run(report)
-
-      input = np.random.rand(batchsize, n_categories)
-
-      fd = {pa: input}
-      result = sess.run(out, fd)
-      self.assertAllClose(result, np.argmax(input, axis=1))
-
-      result = sess.run(report)
-      self.assertTrue(len(result) == 3)
-
   def testInTopK(self):
 
     batchsize = 4
