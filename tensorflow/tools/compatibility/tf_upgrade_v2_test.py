@@ -1494,7 +1494,8 @@ def _log_prob(self, x):
       self.assertIn("%s has been" % name, report)
 
   def test_assert_equal_graph_def(self):
-    text = "tf.test.assert_equal_graph_def(a, b, checkpoint_v2=x)"
+    text = ("tf.test.assert_equal_graph_def(a, b, checkpoint_v2=x, "
+            "hash_table_shared_name=y)")
     expected = "tf.test.assert_equal_graph_def(actual=a, expected=b)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)

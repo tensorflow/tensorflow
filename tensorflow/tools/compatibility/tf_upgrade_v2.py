@@ -78,6 +78,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         # },
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
+            "hash_table_shared_name": None,
         },
         "tf.autograph.to_code": {
             "arg_types": None,
