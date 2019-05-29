@@ -650,8 +650,6 @@ class BaseSession(SessionInterface):
 
     self._closed = False
 
-    self._current_version = 0
-    self._extend_lock = threading.Lock()
     if target is not None:
       try:
         self._target = compat.as_bytes(target)
