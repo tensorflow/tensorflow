@@ -53,7 +53,7 @@ void PrintOpStatsPass::runOnModule() {
 void PrintOpStatsPass::printSummary() {
   os << "Operations encountered:\n";
   os << "-----------------------\n";
-  std::vector<StringRef> sorted(opCount.keys().begin(), opCount.keys().end());
+  SmallVector<StringRef, 64> sorted(opCount.keys());
   llvm::sort(sorted);
 
   // Split an operation name from its dialect prefix.
