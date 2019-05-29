@@ -165,7 +165,11 @@ def sort_tensors_and_ops(graph):
                                           'tensors', 'tensor_to_idx',
                                           'contains_cycle',
                                           'topological_order_or_cycle'])
-  operations = graph.get_operations()
+  contains_cycle, topological_order_or_cycle = topological_sort(graph)
+  if not contains_cycle:
+    operations = topological_order_or_cycle
+  else:
+    operations = graph.get_operations()
   op_to_idx = {op.name: index for index, op
                in enumerate(operations)}
   tensors = []
@@ -173,7 +177,6 @@ def sort_tensors_and_ops(graph):
     tensors.extend(op.outputs)
   tensor_to_idx = {tensor.name: index for index, tensor in
                    enumerate(tensors)}
-  contains_cycle, topological_order_or_cycle = topological_sort(graph)
   return graph_wrapper(graph=graph, operations=operations, op_to_idx=op_to_idx,
                        tensors=tensors, tensor_to_idx=tensor_to_idx,
                        contains_cycle=contains_cycle,
