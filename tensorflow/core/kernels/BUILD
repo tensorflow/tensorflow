@@ -1646,6 +1646,28 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "conv_grad_input_ops_benchmark_test",
+    size = "medium",
+    srcs = ["conv_grad_input_ops_benchmark_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":host_constant_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "depthwise_conv_ops_test",
     size = "small",
     srcs = ["depthwise_conv_ops_test.cc"],
