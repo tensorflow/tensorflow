@@ -157,7 +157,7 @@ static Graph* FusedBatchNormInference(int n, int h, int w, int c,
   Node* empty = test::graph::Constant(g, empty_t, "empty");
 
   Node* fused_batch_norm;
-  TF_CHECK_OK(NodeBuilder(g->NewName("fused_batch_norm"), "FusedBatchNormV2")
+  TF_CHECK_OK(NodeBuilder(g->NewName("fused_batch_norm"), "FusedBatchNormV3")
                   .Input(x)
                   .Input(other)                        // scale
                   .Input(other)                        // offset
@@ -197,12 +197,13 @@ static Graph* FusedBatchNormGrad(int n, int h, int w, int c, bool is_training,
 
   Node* fused_batch_norm;
   TF_CHECK_OK(
-      NodeBuilder(g->NewName("fused_batch_norm_grad"), "FusedBatchNormGradV2")
+      NodeBuilder(g->NewName("fused_batch_norm_grad"), "FusedBatchNormGradV3")
           .Input(y_backprop)
           .Input(x)
           .Input(other)  // scale
           .Input(other)  // saved_mean_or_pop_mean
           .Input(other)  // saved_maybe_inv_var_or_pop_var
+          .Input(other)  // reserve_space
           .Attr("T", dtype)
           .Attr("U", DT_FLOAT)
           .Attr("epsilon", 0.001)
