@@ -48,6 +48,37 @@ class FloorDivModel : public SingleOpModel {
   int output_;
 };
 
+template <typename T>
+class QuantizedFloorDivOpModel : public SingleOpModel {
+ public:
+  QuantizedFloorDivOpModel(const TensorData& input1, const TensorData& input2,
+                           const TensorData& output) {
+    input1_ = AddInput(input1);
+    input2_ = AddInput(input2);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_FLOOR_DIV, BuiltinOptions_FloorDivOptions,
+                 CreateFloorDivOptions(builder_).Union());
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+  }
+
+  int input1() { return input1_; }
+  int input2() { return input2_; }
+
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+  template <typename integer_dtype>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(this->output_),
+                         GetScale(this->output_), GetZeroPoint(this->output_));
+  }
+
+ private:
+  int input1_;
+  int input2_;
+  int output_;
+};
+
 TEST(FloorDivModel, Simple) {
   FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
                                {TensorType_INT32, {1, 2, 2, 1}},
@@ -112,5 +143,67 @@ TEST(FloorDivModel, BroadcastFloorDivFloat) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
 }
+
+// for quantized Floor Div, the error shouldn't exceed 2*step
+float GetTolerance(int min, int max) {
+  float kQuantizedStep = (max - min) / 255.0;
+  float kQuantizedTolerance = 2.0 * kQuantizedStep;
+  return kQuantizedTolerance;
+}
+
+TEST(QuantizedFloorDivOpTest, NoBroadCastInt8) {
+  float kQuantizedTolerance = GetTolerance(-8.0, 8.0);
+  QuantizedFloorDivOpModel<int8_t> m({TensorType_INT8, {1, 2, 2, 1}, -8.0, 8.0},
+                                     {TensorType_INT8, {1, 2, 2, 1}, -8.0, 8.0},
+                                     {TensorType_INT8, {}, -8.0, 8.0});
+  m.QuantizeAndPopulate<int8_t>(m.input1(), {4.0, 5.0, 4.0, 7.5});
+  m.QuantizeAndPopulate<int8_t>(m.input2(), {3.0, 2.0, 1.0, 2.0});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(
+                  ArrayFloatNear({1.0, 2.0, 4.0, 3.0}, kQuantizedTolerance)));
+}
+
+TEST(QuantizedFloorDivOpTest, NoBroadCastUInt8) {
+  float kQuantizedTolerance = GetTolerance(-8.0, 8.0);
+  QuantizedFloorDivOpModel<uint8_t> m(
+      {TensorType_UINT8, {1, 2, 2, 1}, -8.0, 8.0},
+      {TensorType_UINT8, {1, 2, 2, 1}, -8.0, 8.0},
+      {TensorType_UINT8, {}, -8.0, 8.0});
+  m.QuantizeAndPopulate<uint8_t>(m.input1(), {-4.0, 5.0, 7.5, 7.5});
+  m.QuantizeAndPopulate<uint8_t>(m.input2(), {3.0, 2.0, 4.0, 2.0});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(
+                  ArrayFloatNear({-2.0, 2.0, 1.0, 3.0}, kQuantizedTolerance)));
+}
+
+TEST(QuantizedFloorDivOpTest, BroadCastInt8) {
+  float kQuantizedTolerance = GetTolerance(-8.0, 8.0);
+  QuantizedFloorDivOpModel<int8_t> m({TensorType_INT8, {6}, -8.0, 8.0},
+                                     {TensorType_INT8, {1}, -8.0, 8.0},
+                                     {TensorType_INT8, {}, -8.0, 8.0});
+  m.QuantizeAndPopulate<int8_t>(m.input1(), {4.0, 3.2, 2.7, 1.8, 5.0, 6.3});
+  m.QuantizeAndPopulate<int8_t>(m.input2(), {1.3});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({3.0, 2.0, 2.0, 1.0, 3.0, 4.0},
+                                              kQuantizedTolerance)));
+}
+
+TEST(QuantizedFloorDivOpTest, BroadCastUInt8) {
+  float kQuantizedTolerance = GetTolerance(-8.0, 8.0);
+  QuantizedFloorDivOpModel<uint8_t> m({TensorType_UINT8, {6}, -8.0, 8.0},
+                                      {TensorType_UINT8, {1}, -8.0, 8.0},
+                                      {TensorType_UINT8, {}, -8.0, 8.0});
+  m.QuantizeAndPopulate<uint8_t>(m.input1(), {-3.2, -4.0, 2.7, 1.8, 5.0, 6.3});
+  m.QuantizeAndPopulate<uint8_t>(m.input2(), {1.2});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({-3.0, -4.0, 2.0, 1.0, 4.0, 5.0},
+                                              kQuantizedTolerance)));
+}
+
 }  // namespace
+
 }  // namespace tflite

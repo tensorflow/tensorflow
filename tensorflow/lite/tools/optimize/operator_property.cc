@@ -106,6 +106,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restricted_value_on_output = {1 / 256.0, -128};
       property.version = 2;
       break;
+    case BuiltinOperator_FLOOR_DIV:
+      property.input_indexes = {0, 1};
+      property.output_indexes = {0};
+      property.version = 2;
+      break;
     case BuiltinOperator_L2_NORMALIZATION:
       property.input_indexes = {0};
       property.output_indexes = {0};

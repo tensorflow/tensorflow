@@ -2363,6 +2363,10 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
     // Version 2 supports float input types.
     if (input_array.data_type == ArrayDataType::kFloat) {
       return 2;
+      // Version 3 supports uint8/int8 input types.
+    } else if (input_array.data_type == ArrayDataType::kInt8 ||
+               input_array.data_type == ArrayDataType::kUint8) {
+      return 3;
     }
     return 1;
   }

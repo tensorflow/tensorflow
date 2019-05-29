@@ -374,7 +374,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_FLOOR_DIV, Register_FLOOR_DIV(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SQUARE, Register_SQUARE());
   AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE());
   AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD());
