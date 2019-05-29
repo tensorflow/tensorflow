@@ -420,3 +420,17 @@ func @fold_extract_element(%arg0 : index) -> (f32, f16, f16, i32) {
   // CHECK-NEXT: return
   return %ext_1, %ext_2, %ext_3, %ext_4 : f32, f16, f16, i32
 }
+
+
+// CHECK-LABEL: func @fold_rank
+func @fold_rank() -> (index) {
+  %const_0 = constant dense<tensor<2x1x4xi32>, [[[1, -2, 1, 36]], [[0, 2, -1, 64]]]>
+
+  // Fold a rank into a constant
+  // CHECK-NEXT: {{.*}} = constant 3 : index
+  %rank_0 = rank %const_0 : tensor<2x1x4xi32>
+
+  // CHECK-NEXT: return
+  return %rank_0 : index
+}
+

@@ -1788,6 +1788,43 @@ OpFoldResult MulIOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// RankOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, RankOp op) {
+  *p << "rank " << *op.getOperand() << " : " << op.getOperand()->getType();
+}
+
+static ParseResult parseRankOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType operandInfo;
+  Type type;
+  Type indexType = parser->getBuilder().getIndexType();
+
+  return failure(parser->parseOperand(operandInfo) ||
+                 parser->parseColonType(type) ||
+                 parser->resolveOperand(operandInfo, type, result->operands) ||
+                 parser->addTypeToList(indexType, result->types));
+}
+
+static LogicalResult verify(RankOp op) {
+  auto type = op.getOperand()->getType();
+  if (!type.isa<TensorType>()) {
+    return op.emitOpError("requires an operand that is a tensor");
+  }
+  return success();
+}
+
+OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  // Constant fold rank when the rank of the tensor is known.
+  auto type = getOperand()->getType();
+  if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
+    int64_t rank = tensorType.getRank();
+    return IntegerAttr::get(IndexType::get(getContext()), rank);
+  }
+  return IntegerAttr();
+}
+
+//===----------------------------------------------------------------------===//
 // RemISOp
 //===----------------------------------------------------------------------===//
 

@@ -24,6 +24,14 @@ func @dim3(tensor<1xf32>) {
 
 // -----
 
+func @rank(f32) {
+^bb(%0: f32):
+  "std.rank"(%0): (f32)->index // expected-error {{'std.rank' op operand #0 must be tensor of any type values}}
+  return
+}
+
+// -----
+
 func @constant() {
 ^bb:
   %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{requires a result type that aligns with the 'value' attribute}}

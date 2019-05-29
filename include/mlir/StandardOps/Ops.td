@@ -573,6 +573,26 @@ def OrOp : IntArithmeticOp<"or", [Commutative]> {
   let hasFolder = 1;
 }
 
+def RankOp : Std_Op<"rank", [NoSideEffect]> {
+  let summary = "rank operation";
+  let description = [{
+    The "rank" operation takes a tensor operand and returns its rank.
+
+      %1 = rank %0 : index
+  }];
+
+  let arguments = (ins AnyTensor);
+  let results = (outs Index);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result, Value *tensor", [{
+      auto indexType = builder->getIndexType();
+      build(builder, result, indexType, tensor);
+    }]>];
+
+  let hasFolder = 1;
+}
+
 def RemFOp : FloatArithmeticOp<"remf"> {
   let summary = "floating point division remainder operation";
 }
