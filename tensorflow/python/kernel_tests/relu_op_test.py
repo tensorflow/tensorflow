@@ -106,7 +106,7 @@ class ReluTest(test.TestCase):
       self.evaluate(nn_ops.relu(inputs))
 
   def testNoElement(self):
-    self._testRelu(np.array([[],[]], dtype=np.float32))
+    self._testRelu(np.array([[], []], dtype=np.float32))
 
   # The gradient test for ReLU is a bit tricky as the derivative is not well
   # defined at around zero and we want to avoid that in terms of input values.
@@ -228,7 +228,7 @@ class ReluTest(test.TestCase):
           y = nn_ops.relu(x)
         return tape.gradient(y, x)
 
-      x = np.asarray([[],[]], dtype=np.float32)
+      x = np.asarray([[], []], dtype=np.float32)
       z = list(gradient_checker_v2.compute_gradient(f, [x]))[0][0]
       self.assertAllEqual(z, np.reshape(x, (0, 0)))
 
