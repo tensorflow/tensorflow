@@ -163,9 +163,9 @@ There are two ways to run TensorFlow unit tests.
 1.  Using tools and libraries installed directly on your system.
 
     Refer to the
-    [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel)
+    [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-cpu.Dockerfile)
     and
-    [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel-gpu)
+    [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-gpu.Dockerfile)
     for the required packages. Alternatively, use the said
     [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
     `tensorflow/tensorflow:nightly-devel` and
