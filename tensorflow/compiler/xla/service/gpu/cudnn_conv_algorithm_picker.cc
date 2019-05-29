@@ -130,22 +130,29 @@ void PrintPlatformInfo(const se::Stream* stream) {
 // If the redzones are modified, logs an error, sets the appropriate failure
 // bits on `result`, and returns false.
 //
+// Returns a status if an unexpected error has occurred, and the stream
+// has been poisoned.
+//
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
-                   absl::string_view name, const HloInstruction* instr,
-                   AutotuneResult* result) {
+StatusOr<bool> CheckRedzones(const RedzoneAllocator& allocator,
+                             se::Stream* stream, absl::string_view name,
+                             const HloInstruction* instr,
+                             AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
+  using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
-  Status status = allocator.CheckRedzones(stream);
-  if (status.ok()) {
+  TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
+                      allocator.CheckRedzones(stream));
+
+  if (redzone_check.ok()) {
     return true;
   }
 
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
-  *fail->mutable_msg() = status.ToString();
+  *fail->mutable_msg() = redzone_check.redzone_failure_msg;
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -156,7 +163,7 @@ bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
       "the problem, please file a bug with this full error message and we'll "
       "contact nvidia.",
       name);
-  LOG(ERROR) << status.ToString();
+  LOG(ERROR) << redzone_check.redzone_failure_msg;
   LOG(ERROR) << "HloInstruction " << instr->ToString();
   PrintPlatformInfo(stream);
   return false;
@@ -171,8 +178,8 @@ struct ConvCacheStats {
   int64 cache_misses = 0;
 
   void LogStats() {
-    VLOG(1) << "Cache hits: " << cache_hits;
-    VLOG(1) << "Cache misses: " << cache_misses;
+    VLOG(2) << "Cache hits: " << cache_hits;
+    VLOG(2) << "Cache misses: " << cache_misses;
   }
 };
 
@@ -256,14 +263,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const auto device_ordinal = stream_exec_->device_ordinal();
 
   // allocator either points to this->allocator_ or, if that's null, to a
-  // StreamExecutorMemoryAllocator for stream_exec_.
-  DeviceMemoryAllocator* allocator;
-  optional<StreamExecutorMemoryAllocator> se_allocator;
+  // se::StreamExecutorMemoryAllocator for stream_exec_.
+  se::DeviceMemoryAllocator* allocator;
+  optional<se::StreamExecutorMemoryAllocator> se_allocator;
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
-    se_allocator.emplace(stream_exec_->platform(),
-                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
+    se_allocator.emplace(stream_exec_);
     allocator = &*se_allocator;
   }
 
@@ -295,19 +301,25 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         break;
       }
       case xla::F32: {
-        uint32 bits;
-        memcpy(&bits, &kBroadcastedConstant, sizeof(bits));
-        stream.ThenMemset32(&buffer, bits, buffer.size());
+        se::DeviceMemory<float> typed_buffer(buffer);
+        stream.ThenPopulateRandUniform(&typed_buffer);
         break;
       }
-      // TODO(timshen): populate non-zero data for f64.
+      case xla::F64: {
+        se::DeviceMemory<double> typed_buffer(buffer);
+        stream.ThenPopulateRandUniform(&typed_buffer);
+        break;
+      }
       default:
         stream.ThenMemZero(&buffer, buffer.size());
     }
   };
 
+  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+
   // Allocate space for the input, filter, and output of the convolution.
-  RedzoneAllocator input_output_allocator(device_ordinal, allocator);
+  RedzoneAllocator input_output_allocator(device_ordinal, allocator,
+                                          hlo_module_config);
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -346,7 +358,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                      AlgorithmToString(alg)),
         2);
 
-    RedzoneAllocator scratch_allocator(device_ordinal, allocator);
+    RedzoneAllocator scratch_allocator(device_ordinal, allocator,
+                                       hlo_module_config);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -379,16 +392,23 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
     // Check for writes to redzones.
-    if (!CheckRedzones(input_output_allocator, &stream, "input/output", instr,
-                       &result) ||
-        !CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result)) {
+    TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
+                        CheckRedzones(input_output_allocator, &stream,
+                                      "input/output", instr, &result));
+
+    TF_ASSIGN_OR_RETURN(
+        bool scratch_allocator_redzone_clear,
+        CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result));
+
+    if (!input_output_allocator_redzone_clear ||
+        !scratch_allocator_redzone_clear) {
       continue;
     }
 
     if (comparator.has_value()) {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
       StatusOr<bool> compare_result = comparator->CompareEqual(
-          &stream, allocator, reference_result_buffer, result_buffer);
+          &stream, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
         LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
                    << " against " << AlgorithmToString(alg) << " for "
@@ -407,6 +427,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
             << AlgorithmToString(first_algorithm) << " vs "
             << AlgorithmToString(alg);
         PrintPlatformInfo(&stream);
+        VLOG(1) << "Full module on failure: \n"
+                << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         auto* reference_conv = fail->mutable_reference_conv();
@@ -416,21 +438,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       }
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
-      auto comp =
-          BufferComparator::Create(result_shape, stream.parent(), compiler_);
-      if (comp.ok()) {
-        comparator.emplace(comp.ConsumeValueOrDie());
-        reference_result_buffer = result_buffer;
-        TF_ASSIGN_OR_RETURN(result_buffer,
-                            input_output_allocator.AllocateBytes(
-                                &stream, reference_result_buffer.size()));
-        initialize_buffer(result_buffer);
-        first_algorithm = alg;
-      } else {
-        LOG(ERROR) << "Fail to initialize buffer comparator: " << comp.status()
-                   << ", instruction: " << instr->ToString();
-        CHECK(!crash_on_checking_failure);
-      }
+      comparator.emplace(result_shape, hlo_module_config);
+      reference_result_buffer = result_buffer;
+      TF_ASSIGN_OR_RETURN(result_buffer,
+                          input_output_allocator.AllocateBytes(
+                              &stream, reference_result_buffer.size()));
+      initialize_buffer(result_buffer);
+      first_algorithm = alg;
     }
   }
 
@@ -452,8 +466,12 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
-    VLOG(2) << "Autotuning result:\n" << log.DebugString();
-    tensorflow::Logger::Singleton()->LogProto(log);
+    VLOG(1) << "Autotuning result: " << log.ShortDebugString();
+    // If we crash on checking failure, we are in a testing/benchmark mode, thus
+    // omitting logging through the logger.
+    if (!crash_on_checking_failure) {
+      tensorflow::Logger::Singleton()->LogProto(log);
+    }
   }
 
   // Crash on miscompares and redzone violations if desired.  Do this after
@@ -511,7 +529,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   }
 
   auto best_algo = std::move(best_algo_or).ValueOrDie();
-  VLOG(1) << "Setting cudnn conv to use algorithm "
+  VLOG(2) << "Setting cudnn conv to use algorithm "
           << best_algo.conv().algorithm() << " and "
           << NumBytesToString(best_algo.scratch_bytes())
           << " of scratch memory: " << instr->ToString()
@@ -532,7 +550,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
-  VLOG(1) << "Replacing convolution " << instr->ToString() << " with "
+  VLOG(2) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));

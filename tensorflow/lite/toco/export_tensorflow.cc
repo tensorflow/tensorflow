@@ -1215,6 +1215,16 @@ void ConvertCeilOperator(const Model& model, const CeilOperator& src_op,
   (*ceil_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertRoundOperator(const Model& model, const RoundOperator& src_op,
+                          GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* round_op = tensorflow_graph->add_node();
+  round_op->set_op("Round");
+  round_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *round_op->add_input() = src_op.inputs[0];
+  (*round_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
                            GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* gather_op = tensorflow_graph->add_node();
@@ -2210,6 +2220,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kCeil) {
     ConvertCeilOperator(model, static_cast<const CeilOperator&>(src_op),
                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kRound) {
+    ConvertRoundOperator(model, static_cast<const RoundOperator&>(src_op),
+                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kGather) {
     ConvertGatherOperator(model, static_cast<const GatherOperator&>(src_op),
                           tensorflow_graph);

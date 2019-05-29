@@ -24,6 +24,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+
+xla::XlaOp ConcatScalars(xla::XlaBuilder* builder,
+                         absl::Span<const xla::XlaOp> scalars) {
+  std::vector<xla::XlaOp> vectors;
+  absl::c_transform(scalars, std::back_inserter(vectors),
+                    [](xla::XlaOp x) { return xla::Reshape(x, {1}); });
+  return ConcatInDim(builder, vectors, 0);
+}
+
 namespace {
 
 // Rotates a 32-bit integer 'v' left by 'distance' bits.
@@ -220,8 +229,7 @@ Philox4x32State Philox4x32(Philox4x32State state, Philox4x32Key key) {
 
 // Scrambles the input key so that users don't need to worry about which part
 // of the key needs to be strong.
-std::pair<Philox4x32State, Philox4x32Key> GeneratePhiloxInternalStateAndKey(
-    Philox4x32Key key) {
+std::pair<Philox4x32State, Philox4x32Key> ScramblePhiloxKey(Philox4x32Key key) {
   XlaBuilder* builder = key[0].builder();
   XlaOp key0 = ConvertElementType(key[0], U64);
   XlaOp key1 = ConvertElementType(key[1], U64);
@@ -240,49 +248,105 @@ std::pair<Philox4x32State, Philox4x32Key> GeneratePhiloxInternalStateAndKey(
           Philox4x32Key{state[0], state[1]}};
 }
 
-// Adds the integers [0, 1, ..., n) to 'state', treating 'state' as a 4 U32s, to
-// compute n states for generating n random numbers.
-Philox4x32State GetPhiloxGeneratorInputState(Philox4x32State state, int64 n) {
+// Adds an U128 tensor with an U64 tensor. The U128 tensor is represented as two
+// U64s with the low 64bits in the front. This routine supports explicit
+// broadcasting of the U128 tensor, with `broadcast_sizes` representing the
+// dimensions prepended to its shape.
+std::array<XlaOp, 2> Uint128AddUint64(
+    const std::array<XlaOp, 2>& u128, XlaOp u64,
+    absl::Span<const int64> broadcast_sizes = {}) {
+  auto u128_low = u128[0];
+  auto u128_high = u128[1];
+  XlaOp new_u128_low = u128_low + u64;
+  XlaOp one = ConstantR0<uint64>(u128[0].builder(), 1);
+  XlaOp new_u128_high = Select(Lt(new_u128_low, u128_low),
+                               Broadcast(u128_high + one, broadcast_sizes),
+                               Broadcast(u128_high, broadcast_sizes));
+  return {new_u128_low, new_u128_high};
+}
+
+std::array<XlaOp, 2> Uint32sToUint128(const std::array<XlaOp, 4>& u32s) {
+  return {Uint32sToUint64({u32s[0], u32s[1]}),
+          Uint32sToUint64({u32s[2], u32s[3]})};
+}
+
+std::array<XlaOp, 4> Uint128ToUint32s(const std::array<XlaOp, 2>& u128) {
+  std::array<XlaOp, 2> u128_low_32s = Uint64ToUint32s(u128[0]);
+  std::array<XlaOp, 2> u128_high_32s = Uint64ToUint32s(u128[1]);
+  return {u128_low_32s[0], u128_low_32s[1], u128_high_32s[0], u128_high_32s[1]};
+}
+
+std::array<XlaOp, 2> Uint128FromOp(XlaOp op) {
+  auto u128_low = xla::Reshape(xla::Slice(op, {0}, {1}, {1}), {});
+  auto u128_high = xla::Reshape(xla::Slice(op, {1}, {2}, {1}), {});
+  return {u128_low, u128_high};
+}
+
+XlaOp Uint128ToOp(std::array<XlaOp, 2> u128) {
+  return ConcatScalars(u128[0].builder(), {u128[0], u128[1]});
+}
+
+// Returns the pair (state + [0, 1, ..., n-1], state + n), which should be used
+// as the inputs fed to `Philox4x32` and the updated state. `state` is an U128
+// represented as 4 U32s in the order from the least significant one to the most
+// significant one.
+std::pair<Philox4x32State, XlaOp> GetPhiloxInputsAndUpdatedState(
+    const Philox4x32State& state, int64 n) {
   XlaBuilder* builder = state[0].builder();
   XlaOp iota = Iota(builder, U64, n);
-  XlaOp state_low = Uint32sToUint64({state[0], state[1]});
-  XlaOp new_state_low = state_low + iota;
-  std::array<XlaOp, 2> new_state_low_32s = Uint64ToUint32s(new_state_low);
-
-  XlaOp one = ConstantR0<uint64>(builder, 1);
-  XlaOp state_high = Uint32sToUint64({state[2], state[3]});
-  XlaOp new_state_high =
-      Select(Lt(new_state_low, state_low), Broadcast(state_high + one, {n}),
-             Broadcast(state_high, {n}));
-  std::array<XlaOp, 2> new_state_high_32s = Uint64ToUint32s(new_state_high);
-
-  return {new_state_low_32s[0], new_state_low_32s[1], new_state_high_32s[0],
-          new_state_high_32s[1]};
+  auto state_u128 = Uint32sToUint128(state);
+  auto inputs = Uint128ToUint32s(Uint128AddUint64(state_u128, iota, {n}));
+  XlaOp new_state =
+      Uint128ToOp(Uint128AddUint64(state_u128, ConstantR0<uint64>(builder, n)));
+  return std::make_pair(inputs, new_state);
 }
 
 // Generates CeilOfRatio(num_elems, 4)*4 32bit Philox random numbers, as Philox
 // numbers are generated in the unit of 128bits.
-Philox4x32State GeneratePhiloxBits(int64 num_elems, Philox4x32Key key) {
+std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64 num_elems,
+                                                     XlaOp initial_state,
+                                                     Philox4x32Key key,
+                                                     bool scramble) {
   Philox4x32State state;
-  std::tie(state, key) = GeneratePhiloxInternalStateAndKey(key);
+  if (scramble) {
+    // When `scramble` is true, `initial_state` is not used. This is because
+    // scramble is true only when this function is called by stateless random
+    // ops, for which `initial_state` is always zero.
+    std::tie(state, key) = ScramblePhiloxKey(key);
+  } else {
+    state = Uint128ToUint32s(Uint128FromOp(initial_state));
+  }
   const int64 num_vector4 = CeilOfRatio<int64>(num_elems, 4);
-  return Philox4x32(GetPhiloxGeneratorInputState(state, num_vector4), key);
+  Philox4x32State inputs;
+  XlaOp new_state;
+  std::tie(inputs, new_state) =
+      GetPhiloxInputsAndUpdatedState(state, num_vector4);
+  auto outputs = Philox4x32(inputs, key);
+  return std::make_pair(outputs, new_state);
 }
 
 // Generates an array of primitive type U32 with the given shape containing
 // random bits generated by the Philox algorithm. Returns the array and the new
 // state of the random number generator.
-RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
-                         const Shape& shape) {
+RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state, const Shape& shape,
+                         bool scramble) {
   XlaBuilder* builder = op_key.builder();
   const int64 num_elems = ShapeUtil::ElementsIn(shape);
 
-  XlaOp new_state = initial_state + ConstantR0<uint64>(builder, num_elems);
-  Philox4x32Key key = Uint64ToUint32s(op_key + initial_state);
-  Philox4x32State state = GeneratePhiloxBits(num_elems, key);
-
-  XlaOp numbers = ConcatInDim(builder, {state[0], state[1], state[2], state[3]},
-                              /*dimension=*/0);
+  Philox4x32Key key = Uint64ToUint32s(op_key);
+  Philox4x32State bits;
+  XlaOp new_state;
+  std::tie(bits, new_state) =
+      GeneratePhiloxBits(num_elems, initial_state, key, scramble);
+  // Combining bits[i] in a round-robin fashion, to align with non-XLA
+  // implementations
+  int64 bits_len = (num_elems + 3) / 4;
+  for (auto i = 0; i < 4; ++i) {
+    bits[i] = Reshape(bits[i], {bits_len, 1});
+  }
+  XlaOp numbers = ConcatInDim(builder, {bits[0], bits[1], bits[2], bits[3]},
+                              /*dimension=*/1);
+  numbers = Reshape(numbers, {bits_len * 4});
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
@@ -292,27 +356,30 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
 // Generates an array of primitive type U64 with the given shape containing
 // random bits generated by the Philox algorithm. Returns the array and the new
 // state of the random number generator.
-RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
-                         const Shape& shape) {
+RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state, const Shape& shape,
+                         bool scramble) {
   XlaBuilder* builder = op_key.builder();
   const int64 num_elems = ShapeUtil::ElementsIn(shape);
 
-  XlaOp new_state = initial_state + ConstantR0<uint64>(builder, num_elems);
-  Philox4x32Key key = Uint64ToUint32s(op_key + initial_state);
-  Philox4x32State state32 = GeneratePhiloxBits(num_elems * 2, key);
+  Philox4x32Key key = Uint64ToUint32s(op_key);
+  Philox4x32State bits32;
+  XlaOp new_state;
+  std::tie(bits32, new_state) =
+      GeneratePhiloxBits(num_elems * 2, initial_state, key, scramble);
 
-  auto convert_to_64 = [&](XlaOp v0, XlaOp v1) {
-    return ConvertElementType(v0, U64) |
-           ShiftLeft(ConvertElementType(v1, U64),
-                     ConstantR0WithType(builder, U64, 32));
-  };
+  std::array<XlaOp, 2> bits64;
+  bits64[0] = Uint32sToUint64({bits32[0], bits32[1]});
+  bits64[1] = Uint32sToUint64({bits32[2], bits32[3]});
 
-  std::array<XlaOp, 2> state64;
-  state64[0] = convert_to_64(state32[0], state32[1]);
-  state64[1] = convert_to_64(state32[2], state32[3]);
-
-  XlaOp numbers = ConcatInDim(builder, {state64[0], state64[1]},
-                              /*dimension=*/0);
+  // Combining bits64[i] in a round-robin fashion, to align with non-XLA
+  // implementations
+  int64 bits64_len = (num_elems + 1) / 2;
+  for (auto i = 0; i < 2; ++i) {
+    bits64[i] = Reshape(bits64[i], {bits64_len, 1});
+  }
+  XlaOp numbers = ConcatInDim(builder, {bits64[0], bits64[1]},
+                              /*dimension=*/1);
+  numbers = Reshape(numbers, {bits64_len * 2});
   numbers = Slice(numbers, /*start_indices=*/{0},
                   /*limit_indices=*/{num_elems},
                   /*strides=*/{1});
@@ -386,17 +453,17 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
   }
 }
 
-RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
-                             const Shape& shape) {
+RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
+                             bool scramble) {
   PrimitiveType type = shape.element_type();
   switch (type) {
     case F32:
     case U32:
     case S32:
-      return PhiloxRngBit32(key, initial_state, shape);
+      return PhiloxRngBit32(key, initial_state, shape, scramble);
     case U64:
     case S64:
-      return PhiloxRngBit64(key, initial_state, shape);
+      return PhiloxRngBit64(key, initial_state, shape, scramble);
     default:
       return {key.builder()->ReportError(Unimplemented(
                   "Types other than F32, U32, S32, U64 and S64 "

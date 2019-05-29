@@ -19,10 +19,10 @@ from __future__ import print_function
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_householder as householder
 from tensorflow.python.ops.linalg import linear_operator_test_util
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
@@ -32,21 +32,21 @@ class LinearOperatorHouseholderTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _operator_build_infos(self):
-    build_info = linear_operator_test_util.OperatorBuildInfo
+  @staticmethod
+  def operator_shapes_infos():
+    shape_info = linear_operator_test_util.OperatorShapesInfo
     return [
-        build_info((1, 1)),
-        build_info((1, 3, 3)),
-        build_info((3, 4, 4)),
-        build_info((2, 1, 4, 4))]
+        shape_info((1, 1)),
+        shape_info((1, 3, 3)),
+        shape_info((3, 4, 4)),
+        shape_info((2, 1, 4, 4))]
 
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def tests_to_skip():
     # This linear operator is never positive definite.
     return ["cholesky"]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
@@ -65,8 +65,7 @@ class LinearOperatorHouseholderTest(
     operator = householder.LinearOperatorHouseholder(lin_op_reflection_axis)
 
     mat = reflection_axis[..., array_ops.newaxis]
-    matrix = -2 * linear_operator_util.matmul_with_broadcast(
-        mat, mat, adjoint_b=True)
+    matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     matrix = array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 
@@ -90,4 +89,5 @@ class LinearOperatorHouseholderTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorHouseholderTest)
   test.main()

@@ -154,6 +154,8 @@ py_library(
         "device_assignment.py",
         "session_support.py",
         "tensor_tracer.py",
+        "tensor_tracer_flags.py",
+        "tensor_tracer_report.py",
         "topology.py",
         "tpu.py",
         "tpu_feed.py",
@@ -236,7 +238,10 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:layers",
     ],
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_oss",  # TODO(b/131157871): Reenable in OSS when fixed
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
 )
 
 tf_py_test(
@@ -270,30 +275,6 @@ tf_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
     ],
-)
-
-tf_py_test(
-    name = "tpu_config_test",
-    size = "small",
-    srcs = ["tpu_config_test.py"],
-    additional_deps = [
-        ":tpu_estimator",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-tf_py_test(
-    name = "tpu_estimator_signals_test",
-    size = "small",
-    srcs = ["tpu_estimator_signals_test.py"],
-    additional_deps = [
-        ":tpu_estimator",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-    ],
-    # TODO(jhseu): Remove. Fails in OSS on Python 3.
-    tags = ["no_oss"],
 )
 
 tf_py_test(

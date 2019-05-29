@@ -78,12 +78,12 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
 
 // If "*s" starts with "expected", consume it and return true.
 // Otherwise, return false.
-ABSL_DEPRECATED("Use absl::ConsumeSuffix instead.")
+ABSL_DEPRECATED("Use absl::ConsumePrefix instead.")
 bool ConsumePrefix(StringPiece* s, StringPiece expected);
 
 // If "*s" ends with "expected", remove it and return true.
 // Otherwise, return false.
-ABSL_DEPRECATED("Use absl::ConsumePrefix instead.")
+ABSL_DEPRECATED("Use absl::ConsumeSuffix instead.")
 bool ConsumeSuffix(StringPiece* s, StringPiece expected);
 
 // Return lower-cased version of s.

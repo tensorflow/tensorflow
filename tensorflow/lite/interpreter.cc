@@ -26,10 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/nnapi_delegate.h"
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
+
+// TODO(b/132087118): move static_assert to c_api_internal when compiled with
+// C++.
+static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
+              "Float 16 type must be 16 bits.");
 
 namespace tflite {
 
@@ -257,11 +260,11 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
   return kTfLiteOk;
 }
 
-void Interpreter::SetProfiler(profiling::Profiler* profiler) {
+void Interpreter::SetProfiler(Profiler* profiler) {
   for (auto& subgraph : subgraphs_) subgraph->SetProfiler(profiler);
 }
 
-profiling::Profiler* Interpreter::GetProfiler() {
+Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
 

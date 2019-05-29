@@ -30,8 +30,16 @@ Since the number of TensorFlow Lite operations is smaller than TensorFlow's,
 some inference models may not be able to convert. For unimplemented operations,
 take a look at the question on
 [missing operators](faq.md#why-are-some-operations-not-implemented-in-tensorflow-lite).
-Unsupported operators include embeddings and LSTM/RNNs. For conversion issues
-not related to missing operations, search our
+Unsupported operators include embeddings and LSTM/RNNs. For models with
+LSTM/RNNs, you can also try the experimental API
+[OpHint](https://www.tensorflow.org/api_docs/python/tf/lite/OpHint) to convert.
+Models with control flow ops (Switch, Merge, etc) are not convertible at the
+moment, but we are working on adding support for control flow in Tensorflow
+Lite, please see
+[GitHub issues](https://github.com/tensorflow/tensorflow/issues/28485).
+
+For conversion issues not related to missing operations or control flow ops,
+search our
 [GitHub issues](https://github.com/tensorflow/tensorflow/issues?q=label%3Acomp%3Alite+)
 or file a [new one](https://github.com/tensorflow/tensorflow/issues).
 

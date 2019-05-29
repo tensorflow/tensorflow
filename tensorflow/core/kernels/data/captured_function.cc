@@ -104,22 +104,24 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
 Status RunShortCircuit(const ShortCircuitInfo& info,
                        const std::vector<Tensor>& args,
-                       const std::vector<Tensor>& captured_inputs,
+                       const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
+  VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
     } else {
-      rets->push_back(captured_inputs[info.indices[i] - num_args]);
+      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
     }
   }
   return Status::OK();
 }
 
 Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
-                       const std::vector<Tensor>& captured_inputs,
+                       const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
+  VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -129,7 +131,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
         rets->push_back(args[info.indices[i]]);
       }
     } else {
-      rets->push_back(captured_inputs[info.indices[i] - num_args]);
+      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
     }
   }
   return Status::OK();
@@ -339,6 +341,7 @@ Status CapturedFunction::Instantiate(
       inst_opts.input_devices.push_back(inst_opts.target);
     }
     // Compute devices of captured inputs.
+    // TODO(jsimsa): Correctly handle tensors on devices other than CPU:0.
     Device* cpu_device;
     TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
     for (auto& input : captured_inputs_) {
@@ -347,12 +350,15 @@ Status CapturedFunction::Instantiate(
         const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
         inst_opts.input_devices.push_back(handle.device());
       } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
-        // TODO(jsimsa): Correctly handle tensors on devices other than CPU:0.
         inst_opts.input_devices.push_back(cpu_device->name());
       } else {
         // Fall back to using the function library runtime device.
         inst_opts.input_devices.push_back(inst_opts.target);
       }
+    }
+
+    for (size_t i = 0; i < fdef->signature().output_arg_size(); ++i) {
+      inst_opts.output_devices.push_back(inst_opts.target);
     }
   }
 
@@ -507,12 +513,10 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                                          std::vector<Tensor>* rets) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
-    return RunShortCircuit(info, std::move(args),
-                           captured_func_->captured_inputs(), rets);
+    return RunShortCircuit(info, std::move(args), captured_func_, rets);
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -550,11 +554,10 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     std::vector<Tensor>* rets) const {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
-    return RunShortCircuit(info, args, captured_func_->captured_inputs(), rets);
+    return RunShortCircuit(info, args, captured_func_, rets);
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -591,11 +594,10 @@ Status InstantiatedCapturedFunction::RunInstantiated(
     const std::vector<Tensor>& args, std::vector<Tensor>* rets) {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
-    return RunShortCircuit(info, args, captured_func_->captured_inputs(), rets);
+    return RunShortCircuit(info, args, captured_func_, rets);
   }
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ScopedStepContainer step_container(
       f_opts.step_id, [this](const string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
@@ -636,8 +638,7 @@ void InstantiatedCapturedFunction::RunAsync(
     // Run the `done` callback on a threadpool thread, because it will
     // potentially do a non-trivial amount of (e.g. copying) work, and we may
     // want to run that concurrently with the next invocation.
-    Status s = RunShortCircuit(info, std::move(args),
-                               captured_func_->captured_inputs(), rets);
+    Status s = RunShortCircuit(info, std::move(args), captured_func_, rets);
     (*ctx->runner())(
         std::bind([s](FunctionLibraryRuntime::DoneCallback& done) { done(s); },
                   std::move(done)));
@@ -651,7 +652,6 @@ void InstantiatedCapturedFunction::RunAsync(
       std::move(args), &captured_func_->captured_inputs(), ret_types_);
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
   ResourceMgr* resource_mgr = lib_->device()->resource_manager();
   ScopedStepContainer* step_container = new ScopedStepContainer(
       f_opts.step_id, [resource_mgr](const string& name) {

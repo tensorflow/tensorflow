@@ -61,13 +61,21 @@ min {
   ROOT min = f32[] minimum(a.2, b.2)
 }
 
+sum.1 {
+  a.3 = f32[] parameter(0)
+  b.3 = f32[] parameter(1)
+  ROOT add.1 = f32[] add(a.3, b.3)
+}
+
 test {
   p0 = f32[8,16] parameter(0), parameter_replication={true}
   p1 = f32[8,16] parameter(1), parameter_replication={false}
+  p2 = f32[] parameter(2), parameter_replication={true}
   all-reduce = f32[8,16] all-reduce(p0), replica_groups={}, to_apply=sum
   all-reduce.1 = f32[8,16] all-reduce(p0), replica_groups={}, to_apply=max
   all-reduce.2 = f32[8,16] all-reduce(p1), replica_groups={}, to_apply=min
-  ROOT tuple = (f32[8,16], f32[8,16], f32[8,16]) tuple(all-reduce, all-reduce.1, all-reduce.2)
+  all-reduce.3 = f32[] all-reduce(p2), replica_groups={}, to_apply=sum.1
+  ROOT tuple = (f32[8,16], f32[8,16], f32[8,16], f32[]) tuple(all-reduce, all-reduce.1, all-reduce.2, all-reduce.3)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -79,7 +87,9 @@ test {
       GmockMatch(m::Tuple(
           m::MultiplyAnyOrder(m::Parameter(0),
                               m::Broadcast(m::Convert(m::ConstantScalar(8)))),
-          m::Parameter(0), m::AllReduce(m::Parameter(1)))));
+          m::Parameter(0), m::AllReduce(m::Parameter(1)),
+          m::MultiplyAnyOrder(m::Parameter(2),
+                              m::Convert(m::ConstantScalar(8))))));
 }
 
 TEST_F(AllReduceSimplifierTest, AllReduceAfterAllReduce) {

@@ -27,13 +27,42 @@ import pasta
 
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
+from tensorflow.tools.compatibility import module_deprecations_v2
 from tensorflow.tools.compatibility import reorders_v2
 
 # These pylint warnings are a mistake.
 # pylint: disable=g-explicit-bool-comparison,g-bool-id-comparison
 
 
-class TFAPIChangeSpec(ast_edits.APIChangeSpec):
+class UnaliasedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self):
+    self.log_level = ast_edits.ERROR
+    self.log_message = ("The tf_upgrade_v2 script detected an unaliased "
+                        "`import tensorflow`. The script can only run when "
+                        "importing with `import tensorflow as tf`.")
+
+
+class VersionedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self, version):
+    self.log_level = ast_edits.INFO
+    self.log_message = ("Not upgrading symbols because `tensorflow." + version
+                        + "` was directly imported as `tf`.")
+
+
+class TFAPIImportAnalysisSpec(ast_edits.APIAnalysisSpec):
+
+  def __init__(self):
+    self.symbols_to_detect = {}
+    self.imports_to_detect = {
+        ("tensorflow", None): UnaliasedTFImport(),
+        ("tensorflow.compat.v1", "tf"): VersionedTFImport("compat.v1"),
+        ("tensorflow.compat.v2", "tf"): VersionedTFImport("compat.v2"),
+    }
+
+
+class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
   """List of maps that describe what changed in the API."""
 
   def __init__(self):
@@ -470,12 +499,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.io.decode_raw": {
             "bytes": "input_bytes",
+        },
+        "tf.contrib.framework.load_variable": {
+            "checkpoint_dir": "ckpt_dir_or_file",
         }
     }
 
     # Mapping from function to the new name of the function
     # Add additional renames not in renames_v2.py to all_renames_v2.py.
     self.symbol_renames = all_renames_v2.symbol_renames
+
+    self.import_renames = {}
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -619,34 +653,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_reorders = dict(reorders_v2.reorders)
     self.function_reorders.update(self.manual_function_reorders)
 
-    contrib_warning = (
-        ast_edits.ERROR,
-        "<function name> cannot be converted automatically. tf.contrib will not"
-        " be distributed with TensorFlow 2.0, please consider an alternative in"
-        " non-contrib TensorFlow, a community-maintained repository, or fork "
-        "the required code."
-    )
-
-    flags_warning = (
-        ast_edits.ERROR,
-        "tf.flags has been removed, please use the argparse or absl"
-        " modules if you need command line parsing.")
-
-    contrib_cudnn_rnn_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.cudnn_rnn.* has been deprecated, "
-        "and the CuDNN kernel has been integrated with "
-        "tf.keras.layers.LSTM/GRU in TensorFlow 2.0. Please check the new API "
-        "and use that instead."
-    )
-
-    contrib_rnn_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.rnn.* has been deprecated, and "
-        "widely used cells/functions will be moved to tensorflow/addons "
-        "repository. Please check it there and file Github issues if necessary."
-    )
-
     decay_function_comment = (
         ast_edits.INFO,
         "To use learning rate decay schedules with TensorFlow 2.0, switch to "
@@ -669,11 +675,20 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         " they may already have been correct)."
     )
 
+    contrib_layers_layer_norm_comment = (
+        ast_edits.WARNING,
+        "(Manual edit required) `tf.contrib.layers.layer_norm` has been "
+        "deprecated, and its implementation has been integrated with "
+        "`tf.keras.layers.LayerNormalization` in TensorFlow 2.0. "
+        "Note that, the default value of `epsilon` is changed to `1e-3` in the "
+        "new API from `1e-12`, and this may introduce numerical differences. "
+        "Please check the new API and use that instead."
+    )
+
     initializers_no_dtype_comment = (
-        ast_edits.INFO,
-        "Initializers no longer have the "
+        ast_edits.INFO, "Initializers no longer have the "
         "dtype argument in the constructor or partition_info argument in the "
-        "__call__ method.\nThe calls have been converted to compat.v1 for"
+        "__call__ method.\nThe calls have been converted to compat.v1 for "
         "safety (even though they may already have been correct).")
 
     metrics_comment = (
@@ -778,11 +793,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "default, instead of HDF5. To continue saving to HDF5, add the "
         "argument save_format='h5' to the save() function.")
 
-    contrib_dist_strat_warning = (
-        ast_edits.WARNING,
-        "(Manual edit required) tf.contrib.distribute.* have been migrated to"
-        "tf.distribute.*. Please check out the new module for updates APIs.")
-
     distribute_strategy_api_changes = (
         "If you're using the strategy with a "
         "custom training loop, note the following changes in methods: "
@@ -791,7 +801,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "extended.call_for_each_replica->experimental_run_v2, "
         "reduce requires an axis argument, "
         "unwrap->experimental_local_results "
-        "experimental_initialize and experimenta_finalize no longer needed ")
+        "experimental_initialize and experimental_finalize no longer needed ")
 
     contrib_mirrored_strategy_warning = (
         ast_edits.ERROR,
@@ -879,6 +889,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.assert_rank_in":
             assert_rank_comment,
+        "tf.contrib.layers.layer_norm":
+            contrib_layers_layer_norm_comment,
+        "tf.contrib.summary.all_summary_ops":
+            contrib_summary_comment,
         "tf.contrib.summary.audio":
             contrib_summary_comment,
         "tf.contrib.summary.create_file_writer":
@@ -1488,13 +1502,29 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             arg_value_ast=ast.Str("h5")),
     }
 
-    self.module_deprecations = {
-        "tf.contrib": contrib_warning,
-        "tf.contrib.cudnn_rnn": contrib_cudnn_rnn_warning,
-        "tf.contrib.rnn": contrib_rnn_warning,
-        "tf.flags": flags_warning,
-        "tf.contrib.distribute": contrib_dist_strat_warning
-    }
+    self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+
+  def preprocess(self, root_node):
+    visitor = ast_edits.PastaAnalyzeVisitor(TFAPIImportAnalysisSpec())
+    visitor.visit(root_node)
+    detections = set(visitor.results)
+    # If we have detected the presence of imports of specific TF versions,
+    # We want to modify the update spec to check only module deprecations
+    # and skip all other conversions.
+    if detections:
+      self.function_handle = {}
+      self.function_reorders = {}
+      self.function_keyword_renames = {}
+      self.symbol_renames = {}
+      self.function_warnings = {}
+      self.change_to_function = {}
+      self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+      self.function_transformers = {}
+      self.import_renames = {}
+    return visitor.log, visitor.warnings_and_errors
+
+  def clear_preprocessing(self):
+    self.__init__()
 
 
 def _is_ast_str(node):

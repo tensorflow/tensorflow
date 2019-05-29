@@ -12,8 +12,8 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
     "tf_cc_binary",
+    "tf_cc_test",
 )
 
 cc_library(

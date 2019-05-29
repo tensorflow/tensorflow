@@ -137,6 +137,9 @@ def bessel_i1(x, name=None):
 @ops.RegisterGradient('XlaEinsum')
 def _einsum_grad(op, grad):
   equation = op.get_attr('equation')
+  if isinstance(equation, bytes):
+    equation = equation.decode()
+
   inputs, output = equation.split('->')
   left, right = inputs.split(',')
 

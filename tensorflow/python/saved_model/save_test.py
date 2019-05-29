@@ -171,11 +171,6 @@ class SaveTest(test.TestCase):
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
                           tensor_spec.TensorSpec(None, dtypes.float32)],))
     root.f([constant_op.constant(1.), constant_op.constant(1.)])
-    # Concrete functions must always have uniquely named Tensor inputs. Save
-    # relies on this.
-    with self.assertRaisesRegexp(
-        ValueError, "two arguments named 'x'"):
-      root.f.get_concrete_function()
 
   def test_nested_outputs(self):
     root = tracking.AutoTrackable()
@@ -267,7 +262,7 @@ class SaveTest(test.TestCase):
 
   def test_docstring(self):
 
-    class Adder(util.Checkpoint):
+    class Adder(module.Module):
 
       @def_function.function(input_signature=[tensor_spec.TensorSpec(
           shape=None, dtype=dtypes.float32)])
@@ -335,6 +330,9 @@ class SaveTest(test.TestCase):
     save.save(root, save_dir)
 
   def test_function_with_captured_dataset(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Currently broken when a GPU is available.")
+
     class HasDataset(module.Module):
 
       def __init__(self):

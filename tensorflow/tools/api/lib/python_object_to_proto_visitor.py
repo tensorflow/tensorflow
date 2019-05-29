@@ -41,6 +41,9 @@ _CORNER_CASES = {
     'estimator.NanLossDuringTrainingError': {
         'message': {}
     },
+    'train.LooperThread': {
+        'join': {}
+    }
 }
 
 # Python 2 vs. 3 differences
@@ -185,8 +188,8 @@ class PythonObjectToProtoVisitor(object):
     def _AddMember(member_name, member_obj, proto):
       """Add the child object to the object being constructed."""
       _, member_obj = tf_decorator.unwrap(member_obj)
-      if (_SkipMember(parent, member_name)
-          or member_obj == deprecation.HIDDEN_ATTRIBUTE):
+      if (_SkipMember(parent, member_name) or
+          isinstance(member_obj, deprecation.HiddenTfApiAttribute)):
         return
       if member_name == '__init__' or not member_name.startswith('_'):
         if tf_inspect.isroutine(member_obj):

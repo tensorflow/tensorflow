@@ -153,6 +153,11 @@ class ConstantFolding : public GraphOptimizer {
   bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
                        NodeDef* node);
 
+  // Returns true iff the node is a reduction and its reduction indices are
+  // constant. Sets *indices_is_empty to true if the set of dimensions to reduce
+  // along is empty (this happens often in the gradient graphs).
+  bool IsReductionWithConstantIndices(const NodeDef& node,
+                                      bool* indices_is_empty) const;
   // Returns true if theres a possibility that a Reduce node could be simplified
   // to an Identity/Reshape.
   bool IsReductionCandidateForSimplification(
@@ -160,11 +165,12 @@ class ConstantFolding : public GraphOptimizer {
       TensorShapeProto* input_tensor_shape,
       TensorShapeProto* output_tensor_shape, bool* is_single_element_op) const;
   // Returns true iff this reduction can be reduced to an identity (i.e if the
-  // set of dimensions to reduce along is empty). This happens often in the
-  // gradient graphs.
+  // input dimensions to reduce along are all of size 1 and keep_dims is true).
   bool IsReductionSimplifiableToIdentity(
       const NodeDef& node, const TensorShapeProto& input_shape, bool keep_dims,
       const gtl::InlinedVector<TensorValue, 4>& reduction_indices_vector) const;
+  // Changes a reduction into an Identity op, returning true on success.
+  bool ReplaceReductionWithIdentity(NodeDef* node) const;
   // Simplifies a Reduction operation to an Identity/Reshape operation if
   // applicable.
   bool SimplifyReduction(GraphDef* optimized_graph,

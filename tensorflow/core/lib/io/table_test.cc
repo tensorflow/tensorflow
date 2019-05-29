@@ -19,6 +19,8 @@ limitations under the License.
 #include <map>
 #include <string>
 #include <vector>
+
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/block.h"
 #include "tensorflow/core/lib/io/block_builder.h"
@@ -26,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/iterator.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/test.h"
@@ -357,7 +358,7 @@ class Harness : public ::testing::Test {
           string key = PickRandomKey(rnd, keys);
           model_iter = data.lower_bound(key);
           if (kVerbose)
-            fprintf(stderr, "Seek '%s'\n", str_util::CEscape(key).c_str());
+            fprintf(stderr, "Seek '%s'\n", absl::CEscape(key).c_str());
           iter->Seek(StringPiece(key));
           ASSERT_EQ(ToStringPiecePair(data, model_iter),
                     ToStringPiecePair(iter));

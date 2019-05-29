@@ -90,9 +90,11 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
                       multiplier->shape(), all_reduce->shape().element_type()),
                   multiplier));
         }
-        multiplier = all_reduce->parent()->AddInstruction(
-            HloInstruction::CreateBroadcast(all_reduce->shape(), multiplier,
-                                            {}));
+        if (all_reduce->shape().rank() > 0) {
+          multiplier = all_reduce->parent()->AddInstruction(
+              HloInstruction::CreateBroadcast(all_reduce->shape(), multiplier,
+                                              {}));
+        }
         replacement =
             all_reduce->parent()->AddInstruction(HloInstruction::CreateBinary(
                 all_reduce->shape(), HloOpcode::kMultiply,

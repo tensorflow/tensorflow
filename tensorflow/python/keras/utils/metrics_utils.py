@@ -27,6 +27,7 @@ from enum import Enum
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
@@ -68,9 +69,10 @@ def update_state_wrapper(update_state_fn):
   def decorated(metric_obj, *args, **kwargs):
     """Decorated function with `add_update()`."""
 
-    update_op = update_state_fn(*args, **kwargs)
+    with tf_utils.graph_context_for_symbolic_tensors(*args, **kwargs):
+      update_op = update_state_fn(*args, **kwargs)
     if update_op is not None:  # update_op will be None in eager execution.
-      metric_obj.add_update(update_op, inputs=True)
+      metric_obj.add_update(update_op)
     return update_op
 
   return tf_decorator.make_decorator(update_state_fn, decorated)
@@ -108,7 +110,7 @@ def result_wrapper(result_fn):
       # with distribution object as the first parameter. We create a wrapper
       # here so that the result function need not have that parameter.
       def merge_fn_wrapper(distribution, merge_fn, *args):
-        # We will get `PerDevice` merge function. Taking the first one as all
+        # We will get `PerReplica` merge function. Taking the first one as all
         # are identical copies of the function that we had passed below.
         merged_result_fn = (
             distribution.experimental_local_results(merge_fn)[0](*args))

@@ -76,16 +76,6 @@ KNOWN_BUGS = {
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
-
-    # TFLite/Toco does not support BatchMatMul(V2) broadcasting semantic yet.
-    # Simple broadcast.
-    r"unroll_batch_matmul.*shape=\[\(1,2,3\),\(3,5\).*": "130887526",
-    # Empty batch broadcast.
-    r"unroll_batch_matmul.*shape=\[\(2,5,3\),\(3,7\).*": "130887526",
-    # Single batch with non-empty batch broadcast.
-    r"unroll_batch_matmul.*shape=\[\(1,5,3\),\(4,3,7\).*": "130887526",
-    # Broadcast both operands
-    r"unroll_batch_matmul.*shape=\[\(3,1,5,3\),\(1,4,3,7\).*": "130887526",
 }
 
 
@@ -1612,6 +1602,48 @@ def make_gather_with_constant_tests(options):
         outputs, feed_dict={inputs[0]: reference_values})
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
+def make_embedding_lookup_tests(options):
+  """Make a set of tests to do gather."""
+
+  test_parameters = [
+      {
+          "params_dtype": [tf.float32],
+          "params_shape": [[10], [10, 10]],
+          "ids_dtype": [tf.int32],
+          "ids_shape": [[3], [5]],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the gather op testing graph."""
+    params = tf.placeholder(
+        dtype=parameters["params_dtype"],
+        name="params",
+        shape=parameters["params_shape"])
+    ids = tf.placeholder(
+        dtype=parameters["ids_dtype"],
+        name="ids",
+        shape=parameters["ids_shape"])
+    out = tf.nn.embedding_lookup(params, ids)
+    return [params, ids], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    params = create_tensor_data(parameters["params_dtype"],
+                                parameters["params_shape"])
+    ids = create_tensor_data(parameters["ids_dtype"],
+                             parameters["ids_shape"], 0,
+                             parameters["params_shape"][0] - 1)
+    return [params, ids], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [params, ids])))
+
+  make_zip_of_tests(
+      options,
+      test_parameters,
+      build_graph,
+      build_inputs)
 
 
 @register_make_test_function()
@@ -3595,12 +3627,38 @@ def make_ceil_tests(options):
 
 
 @register_make_test_function()
+def make_round_tests(options):
+  """Build the round op testing graph."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the round op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.round(input_value)
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
 def make_neg_tests(options):
   """Make a set of tests to do neg."""
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
-      "input_shape": [[1, 3, 4, 3], [5]],
+      "input_shape": [[1, 3, 4, 3], [5], []],
   }]
 
   def build_graph(parameters):
@@ -3768,6 +3826,15 @@ def make_slice_tests(options):
           "input_shape": [[2, 3]],
           "begin": [[0, 0], [1, 0]],
           "size": [[2, 3], [2, 2]],
+      },
+      # 4-D with size -1
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4, 4, 4, 4]],
+          "begin": [[0, 0, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0],
+                    [0, 0, 0, 1]],
+          "size": [[-1, 1, 1, 1], [1, -1, 1, 1], [1, 1, -1, 1], [1, 1, 1, -1]],
       },
   ]
 
@@ -4448,8 +4515,7 @@ def make_unroll_batch_matmul_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
   make_zip_of_tests(
-      options, test_parameters, build_graph, build_inputs,
-      expected_tf_failures=len(broadcast_shape_params))
+      options, test_parameters, build_graph, build_inputs)
 
 
 @register_make_test_function()

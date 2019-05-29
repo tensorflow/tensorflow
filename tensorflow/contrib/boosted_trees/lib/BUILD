@@ -1,15 +1,15 @@
 # Description:
 #   This directory contains common utilities used in boosted_trees.
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
 
 package(
     default_visibility = [
         "//tensorflow/contrib/boosted_trees:__subpackages__",
         "//tensorflow/contrib/boosted_trees:friends",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -284,6 +284,7 @@ py_library(
 py_test(
     name = "categorical_split_handler_test",
     srcs = ["learner/batch/categorical_split_handler_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":categorical_split_handler",
@@ -324,6 +325,7 @@ py_library(
 py_test(
     name = "ordinal_split_handler_test",
     srcs = ["learner/batch/ordinal_split_handler_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":ordinal_split_handler",

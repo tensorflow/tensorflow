@@ -1,12 +1,12 @@
 # This directory contains estimators to train and run inference on
 # gradient boosted trees on top of TensorFlow.
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
 
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
@@ -69,6 +69,7 @@ py_test(
     name = "trainer_hooks_test",
     size = "small",
     srcs = ["trainer_hooks_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":trainer_hooks",
@@ -118,6 +119,7 @@ py_test(
     name = "custom_export_strategy_test",
     size = "small",
     srcs = ["custom_export_strategy_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":custom_export_strategy",
@@ -176,6 +178,7 @@ py_test(
     size = "medium",
     timeout = "long",
     srcs = ["dnn_tree_combined_estimator_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
@@ -195,6 +198,7 @@ py_test(
     name = "estimator_test",
     size = "medium",
     srcs = ["estimator_test.py"],
+    python_version = "PY2",
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [

@@ -39,11 +39,11 @@ class LinearOperatorAdjointTest(
     self._atol[dtypes.complex64] = 1e-5
     self._rtol[dtypes.complex64] = 1e-5
 
-  def _operator_and_matrix(self,
-                           build_info,
-                           dtype,
-                           use_placeholder,
-                           ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self,
+                          build_info,
+                          dtype,
+                          use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
 
     if ensure_self_adjoint_and_pd:
@@ -224,7 +224,7 @@ class LinearOperatorAdjointNonSquareTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Tests done in the base class NonSquareLinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape_before_adjoint = list(build_info.shape)
     # We need to swap the last two dimensions because we are taking the adjoint
     # of this operator
@@ -245,4 +245,5 @@ class LinearOperatorAdjointNonSquareTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorAdjointTest)
   test.main()

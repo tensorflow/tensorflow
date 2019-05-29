@@ -30,7 +30,7 @@ OutfeedThunk::OutfeedThunk(ShapeTree<BufferAllocation::Slice> outfeed_slices,
 
 Status OutfeedThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   VLOG(2) << "Outfeeding from GPU: " << hlo_instruction()->ToString();
 
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());

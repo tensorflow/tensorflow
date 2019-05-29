@@ -129,12 +129,6 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
       # pylint: disable=protected-access
       self._session_wrapper._decorate_run_options_for_profile(run_args.options)
       # pylint: enable=protected-access
-    elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
-      # The _finalized property must be set to False so that the NodeStepper
-      # can insert ops for retrieving TensorHandles.
-      # pylint: disable=protected-access
-      run_context.session.graph._finalized = False
-      # pylint: enable=protected-access
 
     return run_args
 

@@ -88,14 +88,16 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     """Make iterator from dataset without splitting the batch."""
     # Note that split_batch_by argument is not passed because it is always 1 in
     # this strategy, and adding it adds unnecessary overhead to the dataset.
-    return input_lib.DatasetIterator(dataset, self._input_workers)
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._container_strategy())
 
   def _make_input_fn_iterator(
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, [distribute_lib.InputContext()])
+    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
+                                           [distribute_lib.InputContext()],
+                                           self._container_strategy())
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
@@ -108,7 +110,15 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   def _experimental_distribute_dataset(self, dataset):
     # Note that split_batch_by argument is not passed because it is always 1 in
     # this strategy, and adding it adds unnecessary overhead to the dataset.
-    return input_lib.get_distributed_dataset(dataset, self._input_workers)
+    return input_lib.get_distributed_dataset(dataset, self._input_workers,
+                                             self._container_strategy())
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    return input_lib.DistributedDatasetsFromFunction(
+        dataset_fn,
+        self._input_workers,
+        [distribute_lib.InputContext()],
+        self._container_strategy())
 
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -220,6 +230,10 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   def _global_batch_size(self):
     """Global and per-replica batching are equivalent for OneDeviceStrategy."""
     return True
+
+  @property
+  def _support_per_replica_values(self):
+    return False
 
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):

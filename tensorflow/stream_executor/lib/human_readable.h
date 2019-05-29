@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_HUMAN_READABLE_H_
 
 #include <assert.h>
+
 #include <limits>
 
-#include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -38,7 +39,7 @@ class HumanReadableNumBytes {
     // Special case for bytes.
     if (num_bytes < 1024LL) {
       // No fractions for bytes.
-      return port::Printf("%s%lldB", neg_str, num_bytes);
+      return absl::StrFormat("%s%dB", neg_str, num_bytes);
     }
 
     static const char units[] = "KMGTPE";  // int64 only goes up to E.
@@ -49,8 +50,10 @@ class HumanReadableNumBytes {
       assert(unit < units + sizeof(units));
     }
 
-    return port::Printf(((*unit == 'K') ? "%s%.1f%c" : "%s%.2f%c"), neg_str,
-                        num_bytes / 1024.0, *unit);
+    if (*unit == 'K') {
+      return absl::StrFormat("%s%.1f%c", neg_str, num_bytes / 1024.0, *unit);
+    }
+    return absl::StrFormat("%s%.2f%c", neg_str, num_bytes / 1024.0, *unit);
   }
 
  private:

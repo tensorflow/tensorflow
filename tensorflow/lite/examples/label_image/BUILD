@@ -1,9 +1,10 @@
 # Description:
 # TensorFlow Lite Example Label Image.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
 
@@ -30,6 +31,7 @@ cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:profiler",
     ],
 )
 

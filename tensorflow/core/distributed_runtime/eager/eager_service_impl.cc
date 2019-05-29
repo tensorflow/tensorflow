@@ -88,12 +88,18 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
+  std::vector<DeviceAttributes> cluster_device_attributes;
+  cluster_device_attributes.reserve(
+      request->cluster_device_attributes().size());
+  for (const auto& cluster_device : request->cluster_device_attributes()) {
+    cluster_device_attributes.push_back(cluster_device);
+  }
 
   auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
   auto session_name = strings::StrCat("eager_", request->rendezvous_id());
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
-      session_name, request->server_def(), true));
+      session_name, request->server_def(), request->cluster_device_attributes(),
+      true));
 
   std::shared_ptr<WorkerSession> worker_session;
   TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
@@ -104,10 +110,18 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   // Initialize remote tensor communication based on worker session.
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
-  std::unique_ptr<tensorflow::EagerContext> ctx(new tensorflow::EagerContext(
+  std::function<Rendezvous*(const int64)> rendezvous_creator =
+      [worker_session, this](const int64 step_id) {
+        auto* r = env_->rendezvous_mgr->Find(step_id);
+        r->Initialize(worker_session.get()).IgnoreError();
+        return r;
+      };
+
+  tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), device_mgr, false, r, nullptr));
+      request->async(), device_mgr, false, r, nullptr,
+      worker_session->cluster_flr.get(), std::move(rendezvous_creator));
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);
@@ -122,9 +136,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     do {
       context_id = random::New64();
     } while (contexts_.find(context_id) != contexts_.end());
-    contexts_.emplace(
-        context_id,
-        new ServerContext(std::move(ctx), request->keep_alive_secs(), env_));
+    contexts_.emplace(context_id,
+                      new ServerContext(ctx, request->keep_alive_secs(), env_));
   }
   response->set_context_id(context_id);
 

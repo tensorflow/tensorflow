@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 class XlaPermuteOpTest(xla_test.XLATestCase):
 
   def _runPermuteAndCompare(self, x, src_format, dst_format, expected):
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         placeholder = array_ops.placeholder(dtypes.as_dtype(x.dtype), x.shape)
         param = {placeholder: x}

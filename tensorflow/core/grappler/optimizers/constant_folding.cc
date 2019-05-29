@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -895,6 +896,13 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   // Don't fold ops without outputs.
   if (op_def->output_arg_size() == 0) {
     return false;
+  }
+  // Don't fold DT_VARIANT outputs as this can cause problems with XLA compile.
+  // TODO(rmlarsen): Only do this for XLA_* devices.
+  for (const OpDef::ArgDef& output_arg : op_def->output_arg()) {
+    if (output_arg.type() == DT_VARIANT) {
+      return false;
+    }
   }
 
   // No need to (and don't) fold nodes that have no outgoing edges except
@@ -2382,20 +2390,28 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::IsReductionCandidateForSimplification(
-    const NodeDef& node, const GraphProperties& properties,
-    TensorShapeProto* input_tensor_shape, TensorShapeProto* output_tensor_shape,
-    bool* is_single_element_op) const {
+bool ConstantFolding::IsReductionWithConstantIndices(
+    const NodeDef& node, bool* indices_is_empty) const {
   // Ensure its an appropriate Reduce node.
   if (!IsReduction(node) || node.input_size() < 2) {
     return false;
   }
   // Ensure that the axes to reduce by are constant.
   NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
-  if (!IsReallyConstant(*reductions_indices)) {
+  if (!IsReallyConstant(*reductions_indices) ||
+      !reductions_indices->attr().count("value")) {
     return false;
   }
+  const TensorShapeProto& reduction_indices_shape =
+      reductions_indices->attr().at("value").tensor().tensor_shape();
+  *indices_is_empty = TensorShape(reduction_indices_shape).num_elements() == 0;
+  return true;
+}
 
+bool ConstantFolding::IsReductionCandidateForSimplification(
+    const NodeDef& node, const GraphProperties& properties,
+    TensorShapeProto* input_tensor_shape, TensorShapeProto* output_tensor_shape,
+    bool* is_single_element_op) const {
   // Get the properties of the input & output tensors and check if they both
   // contain a single element.
   if (!properties.HasInputProperties(node.name()) ||
@@ -2460,9 +2476,34 @@ bool ConstantFolding::IsReductionSimplifiableToIdentity(
   return simplifiable;
 }
 
+bool ConstantFolding::ReplaceReductionWithIdentity(NodeDef* node) const {
+  // Replace the reduction node with an identity node, that can be further
+  // optimized by other passes.
+  DataType output_type;
+  if (node->attr().count("T") != 0) {
+    output_type = node->attr().at("T").type();
+  } else if (IsAny(*node) || IsAll(*node)) {
+    output_type = DT_BOOL;
+  } else {
+    return false;
+  }
+  node->set_op("Identity");
+  node->clear_attr();
+  (*node->mutable_attr())["T"].set_type(output_type);
+  *node->mutable_input(1) = AsControlDependency(node->input(1));
+  return true;
+}
+
 bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
                                         const GraphProperties& properties,
                                         NodeDef* node) {
+  bool indices_is_empty = false;
+  if (!IsReductionWithConstantIndices(*node, &indices_is_empty)) {
+    return false;
+  }
+  if (indices_is_empty) {
+    return ReplaceReductionWithIdentity(node);
+  }
   bool is_single_element_op = false;
   TensorShapeProto input_tensor_shape, output_tensor_shape;
   if (!IsReductionCandidateForSimplification(
@@ -2524,20 +2565,7 @@ bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
     (*node->mutable_attr())["Tshape"] = attr_type_indices;
     return true;
   } else if (simplifiable_to_identity) {
-    // Replace the reduction node with an identity node, that can be further
-    // optimized by the model pruner.
-    DataType output_type;
-    if (node->attr().count("T") != 0) {
-      output_type = node->attr().at("T").type();
-    } else {
-      // This is an 'any' or 'all' reduction. The output is always boolean.
-      output_type = DT_BOOL;
-    }
-    node->set_op("Identity");
-    node->clear_attr();
-    (*node->mutable_attr())["T"].set_type(output_type);
-    *node->mutable_input(1) = AsControlDependency(node->input(1));
-    return true;
+    return ReplaceReductionWithIdentity(node);
   }
   return false;
 }
@@ -3137,11 +3165,11 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     for (auto interval : constant_input_runs) {
       // Push the constant inputs in the interval to a child node than can be
       // constant folded.
-      const string new_node_name = OptimizedNodeName(
-          *node, strings::StrCat("_partial_split_", interval.first));
-      if (node_map_->NodeExists(new_node_name)) {
-        break;
-      }
+      string new_node_name = OptimizedNodeName(*node, "_partial_split");
+      do {
+        new_node_name += strings::StrCat("_", interval.first);
+      } while (node_map_->NodeExists(new_node_name));
+
       NodeDef* added_node = optimized_graph->add_node();
       *added_node = *node;
       added_node->set_name(new_node_name);
@@ -3384,7 +3412,6 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(
         RunOptimizationPass(cluster, item_to_optimize, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
-  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();
 
