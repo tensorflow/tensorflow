@@ -221,7 +221,6 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api_internal",
-        ":c_api_no_xla",
         "//tensorflow/core:lib",
     ],
 )
@@ -528,10 +527,13 @@ tf_cc_test(
     deps = [
         ":c_api",
         ":ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
