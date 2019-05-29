@@ -369,6 +369,124 @@ def CmpFOp : Std_Op<"cmpf", [NoSideEffect, SameTypeOperands, SameOperandsAndResu
   let hasFolder = 1;
 }
 
+def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
+  let summary = "conditional branch operation";
+  let description = [{
+    The "cond_br" operation represents a conditional branch operation in a
+    function. The operation takes variable number of operands and produces
+    no results. The operand number and types for each successor must match the
+    arguments of the block successor. For example:
+
+      ^bb0:
+         %0 = extract_element %arg0[] : tensor<i1>
+         cond_br %0, ^bb1, ^bb2
+      ^bb1:
+         ...
+      ^bb2:
+         ...
+  }];
+
+  let arguments = (ins I1:$condition, Variadic<AnyType>:$branchOperands);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState *result, Value *condition,"
+    "Block *trueDest, ArrayRef<Value *> trueOperands,"
+    "Block *falseDest, ArrayRef<Value *> falseOperands", [{
+      result->addOperands(condition);
+      result->addSuccessor(trueDest, trueOperands);
+      result->addSuccessor(falseDest, falseOperands);
+  }]>];
+
+  // CondBranchOp is fully verified by traits.
+  let verifier = ?;
+
+  let extraClassDeclaration = [{
+    // These are the indices into the dests list.
+    enum { trueIndex = 0, falseIndex = 1 };
+
+    // The condition operand is the first operand in the list.
+    Value *getCondition() { return getOperand(0); }
+
+    /// Return the destination if the condition is true.
+    Block *getTrueDest() {
+      return getOperation()->getSuccessor(trueIndex);
+    }
+
+    /// Return the destination if the condition is false.
+    Block *getFalseDest() {
+      return getOperation()->getSuccessor(falseIndex);
+    }
+
+    // Accessors for operands to the 'true' destination.
+    Value *getTrueOperand(unsigned idx) {
+      assert(idx < getNumTrueOperands());
+      return getOperand(getTrueDestOperandIndex() + idx);
+    }
+
+    void setTrueOperand(unsigned idx, Value *value) {
+      assert(idx < getNumTrueOperands());
+      setOperand(getTrueDestOperandIndex() + idx, value);
+    }
+
+    operand_iterator true_operand_begin() {
+      return operand_begin() + getTrueDestOperandIndex();
+    }
+    operand_iterator true_operand_end() {
+      return true_operand_begin() + getNumTrueOperands();
+    }
+    operand_range getTrueOperands() {
+      return {true_operand_begin(), true_operand_end()};
+    }
+
+    unsigned getNumTrueOperands()  {
+      return getOperation()->getNumSuccessorOperands(trueIndex);
+    }
+
+    /// Erase the operand at 'index' from the true operand list.
+    void eraseTrueOperand(unsigned index)  {
+      getOperation()->eraseSuccessorOperand(trueIndex, index);
+    }
+
+    // Accessors for operands to the 'false' destination.
+    Value *getFalseOperand(unsigned idx) {
+      assert(idx < getNumFalseOperands());
+      return getOperand(getFalseDestOperandIndex() + idx);
+    }
+    void setFalseOperand(unsigned idx, Value *value) {
+      assert(idx < getNumFalseOperands());
+      setOperand(getFalseDestOperandIndex() + idx, value);
+    }
+
+    operand_iterator false_operand_begin() { return true_operand_end(); }
+    operand_iterator false_operand_end() {
+      return false_operand_begin() + getNumFalseOperands();
+    }
+    operand_range getFalseOperands() {
+      return {false_operand_begin(), false_operand_end()};
+    }
+
+    unsigned getNumFalseOperands() {
+      return getOperation()->getNumSuccessorOperands(falseIndex);
+    }
+
+    /// Erase the operand at 'index' from the false operand list.
+    void eraseFalseOperand(unsigned index) {
+      getOperation()->eraseSuccessorOperand(falseIndex, index);
+    }
+
+  private:
+    /// Get the index of the first true destination operand.
+    unsigned getTrueDestOperandIndex() { return 1; }
+
+    /// Get the index of the first false destination operand.
+    unsigned getFalseDestOperandIndex() {
+      return getTrueDestOperandIndex() + getNumTrueOperands();
+    }
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
 def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
   let summary = "constant";
 

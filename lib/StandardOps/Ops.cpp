@@ -81,7 +81,7 @@ template <typename T> static LogicalResult verifyCastOp(T op) {
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addOperations<CondBranchOp, DmaStartOp, DmaWaitOp,
+  addOperations<DmaStartOp, DmaWaitOp,
 #define GET_OP_LIST
 #include "mlir/StandardOps/Ops.cpp.inc"
                 >();
@@ -984,16 +984,8 @@ struct SimplifyConstCondBranchPred : public OpRewritePattern<CondBranchOp> {
 };
 } // end anonymous namespace.
 
-void CondBranchOp::build(Builder *builder, OperationState *result,
-                         Value *condition, Block *trueDest,
-                         ArrayRef<Value *> trueOperands, Block *falseDest,
-                         ArrayRef<Value *> falseOperands) {
-  result->addOperands(condition);
-  result->addSuccessor(trueDest, trueOperands);
-  result->addSuccessor(falseDest, falseOperands);
-}
-
-ParseResult CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
+static ParseResult parseCondBranchOp(OpAsmParser *parser,
+                                     OperationState *result) {
   SmallVector<Value *, 4> destOperands;
   Block *dest;
   OpAsmParser::OperandType condInfo;
@@ -1021,48 +1013,18 @@ ParseResult CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
   return success();
 }
 
-void CondBranchOp::print(OpAsmPrinter *p) {
+static void print(OpAsmPrinter *p, CondBranchOp op) {
   *p << "cond_br ";
-  p->printOperand(getCondition());
+  p->printOperand(op.getCondition());
   *p << ", ";
-  p->printSuccessorAndUseList(getOperation(), trueIndex);
+  p->printSuccessorAndUseList(op.getOperation(), CondBranchOp::trueIndex);
   *p << ", ";
-  p->printSuccessorAndUseList(getOperation(), falseIndex);
-}
-
-LogicalResult CondBranchOp::verify() {
-  if (!getCondition()->getType().isInteger(1))
-    return emitOpError("expected condition type was boolean (i1)");
-  return success();
+  p->printSuccessorAndUseList(op.getOperation(), CondBranchOp::falseIndex);
 }
 
 void CondBranchOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.push_back(llvm::make_unique<SimplifyConstCondBranchPred>(context));
-}
-
-Block *CondBranchOp::getTrueDest() {
-  return getOperation()->getSuccessor(trueIndex);
-}
-
-Block *CondBranchOp::getFalseDest() {
-  return getOperation()->getSuccessor(falseIndex);
-}
-
-unsigned CondBranchOp::getNumTrueOperands() {
-  return getOperation()->getNumSuccessorOperands(trueIndex);
-}
-
-void CondBranchOp::eraseTrueOperand(unsigned index) {
-  getOperation()->eraseSuccessorOperand(trueIndex, index);
-}
-
-unsigned CondBranchOp::getNumFalseOperands() {
-  return getOperation()->getNumSuccessorOperands(falseIndex);
-}
-
-void CondBranchOp::eraseFalseOperand(unsigned index) {
-  getOperation()->eraseSuccessorOperand(falseIndex, index);
 }
 
 //===----------------------------------------------------------------------===//
