@@ -29,6 +29,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
@@ -488,6 +489,30 @@ class LoadTest(test.TestCase):
                      ops.GraphKeys.TRAINABLE_VARIABLES])
     root = load.load(path)
     self.assertFalse(root.variables[0].trainable)
+
+  def _model_with_sparse_output(self):
+    """Generate a graph with a SparseTensor output and serialize in V1 format"""
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      in_placeholder = array_ops.placeholder(dtype=dtypes.int64, shape=[1])
+      out_sparse_tensor = sparse_tensor.SparseTensor(
+          indices=[[0]], values=in_placeholder, dense_shape=[1]) * 2
+      with session_lib.Session() as session:
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"start": in_placeholder},
+            outputs={"output": out_sparse_tensor})
+    return path
+
+  def test_load_sparse_outputs(self):
+    path = self._model_with_sparse_output()
+    imported = load.load(path)
+    imported_fn = imported.signatures["serving_default"]
+    forty_two = constant_op.constant([42], dtype=dtypes.int64)
+    self.assertEqual([84], imported_fn(forty_two)["output"].values.numpy())
+
 
 if __name__ == "__main__":
   test.main()

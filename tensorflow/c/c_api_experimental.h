@@ -208,6 +208,34 @@ TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
 
+// TF_NewCheckpointReader() return the CheckpointReader that can be use to
+// investigate or load the variable from the checkpoint file
+typedef struct TF_CheckpointReader TF_CheckpointReader;
+TF_CAPI_EXPORT extern TF_CheckpointReader* TF_NewCheckpointReader(
+    const char* filename, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_DeleteCheckpointReader(
+    TF_CheckpointReader* reader);
+TF_CAPI_EXPORT extern int TF_CheckpointReaderHasTensor(
+    TF_CheckpointReader* reader, const char* name);
+// Get the variable name at the given index
+TF_CAPI_EXPORT extern const char* TF_CheckpointReaderGetVariable(
+    TF_CheckpointReader* reader, int index);
+// Get the number of variable in the checkpoint
+TF_CAPI_EXPORT extern int TF_CheckpointReaderSize(TF_CheckpointReader* reader);
+// Get the DataType of a variable
+TF_CAPI_EXPORT extern TF_DataType TF_CheckpointReaderGetVariableDataType(
+    TF_CheckpointReader* reader, const char* name);
+// Read the shape of a variable and write to `dims`
+TF_CAPI_EXPORT extern void TF_CheckpointReaderGetVariableShape(
+    TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims,
+    TF_Status* status);
+// Get the number of dimension of a variable
+TF_CAPI_EXPORT extern int TF_CheckpointReaderGetVariableNumDims(
+    TF_CheckpointReader* reader, const char* name);
+// Load the weight of a variable
+TF_CAPI_EXPORT extern TF_Tensor* TF_CheckpointReaderGetTensor(
+    TF_CheckpointReader* reader, const char* name, TF_Status* status);
+
 // TF_NewAttrBuilder() returns an object that you can set attributes on as
 // though it were an op. This allows querying properties of that op for
 // type-checking purposes like if the op will run on a particular device type.

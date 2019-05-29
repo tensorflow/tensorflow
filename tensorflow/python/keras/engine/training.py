@@ -24,13 +24,14 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
+from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
@@ -425,6 +426,30 @@ class Model(network.Network):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
+  def _select_training_loop(self, inputs):
+    """Select training loop for fit/eval/predict based on the inputs."""
+    # Case 1: distribution strategy.
+    if self._distribution_strategy:
+      if K.in_multi_worker_mode():
+        return training_distributed.DistributionMultiWorkerTrainingLoop()
+      else:
+        return training_distributed.DistributionSingleWorkerTrainingLoop()
+
+    # Case 2: generator-like. Input is Python generator, or Sequence object,
+    # or a non-distributed Dataset or iterator in eager execution.
+    if data_utils.is_generator_or_sequence(inputs):
+      return training_generator.GeneratorOrSequenceTrainingLoop()
+    if training_utils.is_eager_dataset_or_iterator(inputs):
+      return training_generator.EagerDatasetOrIteratorTrainingLoop()
+
+    # Case 3: Symbolic tensors or Numpy array-like.
+    # This includes Datasets and iterators in graph mode (since they
+    # generate symbolic tensors).
+    if self.run_eagerly:
+      return training_generator.GeneratorLikeTrainingLoop()
+    else:
+      return training_arrays.ArrayLikeTrainingLoop()
+
   def fit(self,
           x=None,
           y=None,
@@ -481,8 +506,11 @@ class Model(network.Network):
             The model is not trained for a number of iterations
             given by `epochs`, but merely until the epoch
             of index `epochs` is reached.
-        verbose: Integer. 0, 1, or 2. Verbosity mode.
+        verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = progress bar, 2 = one line per epoch.
+            Note that the progress bar is not particularly useful when
+            logged to a file, so verbose=2 is recommended when not running
+            interactively (eg, in a production environment).
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during training.
             See `tf.keras.callbacks`.
@@ -587,194 +615,33 @@ class Model(network.Network):
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
-          'The `nb_epoch` argument in `fit` '
-          'has been renamed `epochs`.')
+          'The `nb_epoch` argument in `fit` has been renamed `epochs`.')
       epochs = kwargs.pop('nb_epoch')
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
     self._assert_compile_was_called()
 
-    # Case 1: distribution strategy.
-    if self._distribution_strategy:
-      if K.in_multi_worker_mode():
-        # Multi-Worker mode runs the Keras training loop on multiple
-        # servers via the Distribute Coordinator.
-        def _worker_fn(_):
-          """Run training inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils \
-              .filter_distributed_callbacks(callbacks)
-          return training_distributed.fit_distributed(
-              self,
-              x=x,
-              y=y,
-              batch_size=batch_size,
-              epochs=epochs,
-              verbose=verbose,
-              callbacks=filtered_callbacks,
-              validation_split=validation_split,
-              validation_data=validation_data,
-              shuffle=shuffle,
-              class_weight=class_weight,
-              sample_weight=sample_weight,
-              initial_epoch=initial_epoch,
-              steps_per_epoch=steps_per_epoch,
-              validation_steps=validation_steps,
-              validation_freq=validation_freq)
-
-        # Independent worker only for now.
-        return dc.run_distribute_coordinator(
-            _worker_fn,
-            self._distribution_strategy,
-            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-      else:
-        return training_distributed.fit_distributed(
-            self,
-            x=x,
-            y=y,
-            batch_size=batch_size,
-            epochs=epochs,
-            verbose=verbose,
-            callbacks=callbacks,
-            validation_split=validation_split,
-            validation_data=validation_data,
-            shuffle=shuffle,
-            class_weight=class_weight,
-            sample_weight=sample_weight,
-            initial_epoch=initial_epoch,
-            steps_per_epoch=steps_per_epoch,
-            validation_steps=validation_steps,
-            validation_freq=validation_freq)
-
-    batch_size = self._validate_or_infer_batch_size(
-        batch_size, steps_per_epoch, x)
-
-    # Case 2: generator-like. Input is Python generator, or Sequence object,
-    # or a non-distributed Dataset or iterator in eager execution.
-    if data_utils.is_generator_or_sequence(x):
-      training_utils.check_generator_arguments(
-          y, sample_weight, validation_split=validation_split)
-      return self.fit_generator(
-          x,
-          steps_per_epoch=steps_per_epoch,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          class_weight=class_weight,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch)
-    if training_utils.is_eager_dataset_or_iterator(x):
-      # Make sure that y, sample_weights, validation_split are not passed.
-      training_utils.validate_dataset_input(x, y, sample_weight,
-                                            validation_split)
-      if (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
-          and shuffle):
-        training_utils.verify_dataset_shuffled(x)
-
-      return self.fit_generator(
-          x,
-          steps_per_epoch=steps_per_epoch,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          class_weight=class_weight,
-          workers=0,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch)
-
-    # Case 3: Symbolic tensors or Numpy array-like.
-    # This includes Datasets and iterators in graph mode (since they
-    # generate symbolic tensors).
-    x, y, sample_weights = self._standardize_user_data(
-        x,
-        y,
-        sample_weight=sample_weight,
-        class_weight=class_weight,
+    func = self._select_training_loop(x)
+    return func.fit(
+        self,
+        x=x,
+        y=y,
         batch_size=batch_size,
-        check_steps=True,
-        steps_name='steps_per_epoch',
-        steps=steps_per_epoch,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
         validation_split=validation_split,
-        shuffle=shuffle)
-
-    # Prepare validation data.
-    if validation_data:
-      val_x, val_y, val_sample_weights = self._unpack_validation_data(
-          validation_data)
-      val_x, val_y, val_sample_weights = self._standardize_user_data(
-          val_x,
-          val_y,
-          sample_weight=val_sample_weights,
-          batch_size=batch_size,
-          steps=validation_steps,
-          steps_name='validation_steps')
-    elif validation_split and 0. < validation_split < 1.:
-      if training_utils.has_symbolic_tensors(x):
-        raise ValueError('If your data is in the form of symbolic tensors, '
-                         'you cannot use `validation_split`.')
-      if hasattr(x[0], 'shape'):
-        split_at = int(x[0].shape[0] * (1. - validation_split))
-      else:
-        split_at = int(len(x[0]) * (1. - validation_split))
-      x, val_x = (slice_arrays(x, 0, split_at), slice_arrays(x, split_at))
-      y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
-      if sample_weights:
-        sample_weights, val_sample_weights = (
-            slice_arrays(sample_weights, 0, split_at),
-            slice_arrays(sample_weights, split_at),
-        )
-      else:
-        val_sample_weights = None
-    else:
-      if validation_steps:
-        raise ValueError('`validation_steps` should not be specified if '
-                         '`validation_data` is None.')
-      val_x = None
-      val_y = None
-      val_sample_weights = None
-
-    if self.run_eagerly:
-      return training_generator.fit_generator(
-          self, (x, y, sample_weights),
-          steps_per_epoch=steps_per_epoch,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          workers=0,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch,
-          steps_name='steps_per_epoch')
-    else:
-      return training_arrays.fit_loop(
-          self,
-          x,
-          y,
-          sample_weights=sample_weights,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          val_inputs=val_x,
-          val_targets=val_y,
-          val_sample_weights=val_sample_weights,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq,
-          steps_name='steps_per_epoch')
+        validation_data=validation_data,
+        shuffle=shuffle,
+        class_weight=class_weight,
+        sample_weight=sample_weight,
+        initial_epoch=initial_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        validation_freq=validation_freq,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
 
   def evaluate(self,
                x=None,
@@ -865,96 +732,19 @@ class Model(network.Network):
     _keras_api_gauge.get_cell('evaluate').set(True)
     self._assert_compile_was_called()
 
-    # Case 1: distribution strategy.
-    if self._distribution_strategy:
-      if K.in_multi_worker_mode():
-        # Multi-Worker mode runs the Keras evaluation loop on multiple
-        # servers via the Distribute Coordinator.
-        def _worker_fn(_):
-          """Run evaluation inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils \
-              .filter_distributed_callbacks(callbacks)
-          return training_distributed.evaluate_distributed(
-              self,
-              x=x,
-              y=y,
-              batch_size=batch_size,
-              verbose=verbose,
-              sample_weight=sample_weight,
-              steps=steps,
-              callbacks=filtered_callbacks)
-
-        # Independent worker only for now.
-        return dc.run_distribute_coordinator(
-            _worker_fn,
-            self._distribution_strategy,
-            mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-      else:
-        return training_distributed.evaluate_distributed(
-            self,
-            x=x,
-            y=y,
-            batch_size=batch_size,
-            verbose=verbose,
-            sample_weight=sample_weight,
-            steps=steps,
-            callbacks=callbacks)
-
-    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
-
-    # Case 2: generator-like. Input is Python generator, or Sequence object,
-    # or a non-distributed Dataset or iterator in eager execution.
-    if data_utils.is_generator_or_sequence(x):
-      training_utils.check_generator_arguments(y, sample_weight)
-      return self.evaluate_generator(
-          x,
-          steps=steps,
-          verbose=verbose,
-          callbacks=callbacks,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing)
-    if training_utils.is_eager_dataset_or_iterator(x):
-      # Make sure that y, sample_weights are not passed.
-      training_utils.validate_dataset_input(x, y, sample_weight)
-      return training_generator.evaluate_generator(
-          self, x,
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-
-    # Case 3: Symbolic tensors or Numpy array-like.
-    # This includes Datasets and iterators in graph mode (since they
-    # generate symbolic tensors).
-    x, y, sample_weights = self._standardize_user_data(
-        x,
-        y,
-        sample_weight=sample_weight,
+    func = self._select_training_loop(x)
+    return func.evaluate(
+        self,
+        x=x,
+        y=y,
         batch_size=batch_size,
-        check_steps=True,
-        steps_name='steps',
-        steps=steps)
-
-    if self.run_eagerly:
-      return training_generator.evaluate_generator(
-          self, (x, y, sample_weights),
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-    else:
-      return training_arrays.test_loop(
-          self,
-          inputs=x,
-          targets=y,
-          sample_weights=sample_weights,
-          batch_size=batch_size,
-          verbose=verbose,
-          steps=steps,
-          callbacks=callbacks)
+        verbose=verbose,
+        sample_weight=sample_weight,
+        steps=steps,
+        callbacks=callbacks,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
 
   def predict(self,
               x,
@@ -1018,61 +808,18 @@ class Model(network.Network):
             that is not a multiple of the batch size.
     """
     _keras_api_gauge.get_cell('predict').set(True)
-    # Case 1: distribution strategy.
-    if self._distribution_strategy:
-      return training_distributed.predict_distributed(self,
-                                                      x=x,
-                                                      batch_size=batch_size,
-                                                      verbose=verbose,
-                                                      steps=steps,
-                                                      callbacks=callbacks)
 
-    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
-
-    # Case 2: generator-like. Input is Python generator, or Sequence object,
-    # or a non-distributed Dataset or iterator in eager execution.
-    if data_utils.is_generator_or_sequence(x):
-      return self.predict_generator(
-          x,
-          steps=steps,
-          verbose=verbose,
-          callbacks=callbacks,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing)
-    if training_utils.is_eager_dataset_or_iterator(x):
-      return training_generator.predict_generator(
-          self,
-          x,
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-
-    # Case 3: Symbolic tensors or Numpy array-like.
-    # This includes Datasets and iterators in graph mode (since they
-    # generate symbolic tensors).
-    x, _, _ = self._standardize_user_data(
-        x, check_steps=True, steps_name='steps', steps=steps)
-
-    if self.run_eagerly:
-      return training_generator.predict_generator(
-          self,
-          x,
-          steps=steps,
-          batch_size=batch_size,
-          verbose=verbose,
-          workers=0,
-          callbacks=callbacks)
-    else:
-      return training_arrays.predict_loop(
-          self,
-          x,
-          batch_size=batch_size,
-          verbose=verbose,
-          steps=steps,
-          callbacks=callbacks)
+    func = self._select_training_loop(x)
+    return func.predict(
+        self,
+        x=x,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks,
+        max_queue_size=max_queue_size,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing)
 
   def reset_metrics(self):
     """Resets the state of metrics."""
@@ -1551,6 +1298,40 @@ class Model(network.Network):
         verbose=verbose,
         callbacks=callbacks)
 
+  def _split_training_and_validation_data(self, x, y, sample_weights,
+                                          validation_split):
+    """Split input data into train/eval section based on validation_split."""
+    if training_utils.has_symbolic_tensors(x):
+      raise ValueError('If your data is in the form of symbolic tensors, '
+                       'you cannot use `validation_split`.')
+    if hasattr(x[0], 'shape'):
+      split_at = int(x[0].shape[0] * (1. - validation_split))
+    else:
+      split_at = int(len(x[0]) * (1. - validation_split))
+    x, val_x = (slice_arrays(x, 0, split_at), slice_arrays(x, split_at))
+    y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
+    if sample_weights:
+      sample_weights, val_sample_weights = (
+          slice_arrays(sample_weights, 0, split_at),
+          slice_arrays(sample_weights, split_at),
+      )
+    else:
+      val_sample_weights = None
+    return x, y, sample_weights, val_x, val_y, val_sample_weights
+
+  def _prepare_validation_data(self, validation_data, batch_size,
+                               validation_steps):
+    """Unpack and check the validation data."""
+    val_x, val_y, val_sample_weights = self._unpack_validation_data(
+        validation_data)
+    return self._standardize_user_data(
+        val_x,
+        val_y,
+        sample_weight=val_sample_weights,
+        batch_size=batch_size,
+        steps=validation_steps,
+        steps_name='validation_steps')
+
   def _validate_compile_param_for_distribution_strategy(
       self, run_eagerly, sample_weight_mode, target_tensors, weighted_metrics):
     # Validate that arguments passed by the user to `compile` are supported by
@@ -1779,9 +1560,6 @@ class Model(network.Network):
             # Compute the stateless loss value.
             output_loss = losses_utils.reduce_weighted_loss(
                 weighted_losses, reduction=loss_reduction)
-            if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
-              output_loss = losses_utils.scale_loss_for_distribution(
-                  output_loss)
           else:
             # Compute the stateless loss value for a custom loss class.
             # Here we assume that the class takes care of loss reduction
@@ -1789,8 +1567,6 @@ class Model(network.Network):
             # differentiate between use case where a custom optimizer
             # expects a vector loss value vs unreduced per-sample loss value.
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
-            # For custom losses we assume reduction was mean.
-            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor for the loss.
@@ -1801,6 +1577,13 @@ class Model(network.Network):
                   output_loss,
                   strategy=self._distribution_strategy))
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
+
+        # Scale output loss for distribution. For custom losses we assume
+        # reduction was mean.
+        if (getattr(loss_fn, 'reduction',
+                    losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
+            losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
         if total_loss is None:
           total_loss = loss_weight * output_loss
@@ -2209,10 +1992,9 @@ class Model(network.Network):
 
       with K.get_graph().as_default():
         with K.name_scope('training'):
-          with K.name_scope(self.optimizer.__class__.__name__):
-            # Training updates
-            updates = self.optimizer.get_updates(
-                params=self._collected_trainable_weights, loss=self.total_loss)
+          # Training updates
+          updates = self.optimizer.get_updates(
+              params=self._collected_trainable_weights, loss=self.total_loss)
       # Unconditional updates
       updates += self.get_updates_for(None)
       # Conditional updates relevant to this model
@@ -2286,7 +2068,7 @@ class Model(network.Network):
                                           batch_size=None,
                                           validation_split=0,
                                           shuffle=False,
-                                          repeat=False,
+                                          epochs=1,
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
@@ -2306,8 +2088,8 @@ class Model(network.Network):
       validation_split: Float between 0 and 1.
         Fraction of the training data to be used as validation data.
       shuffle: Boolean whether to shuffle the training data before each epoch.
-      repeat: Boolean whether to repeat the numpy training data when converting
-        to training dataset.
+      epochs: Integer epochs. If > 1, repeat the numpy training data epochs
+        times when converting to training dataset.
       allow_partial_batch: Boolean whether to enforce that all batches have the
         same size.
 
@@ -2382,8 +2164,8 @@ class Model(network.Network):
           # numbers introduce more memory usage based on the size of each
           # sample.
           ds = ds.shuffle(max(1024, batch_size * 8))
-        if repeat:
-          ds = ds.repeat()
+        if epochs > 1:
+          ds = ds.repeat(epochs)
 
         # We need to use the drop_remainder argument to get a known static
         # input shape which is required for TPUs.
@@ -2511,6 +2293,7 @@ class Model(network.Network):
     # Whether this is a subclassed model that expects dictionary inputs
     # rather than list inputs (e.g. FeatureColumn-based models).
     dict_inputs = False
+
     if not self.inputs:
       # We need to use `x_input` to set the model inputs.
 
@@ -2522,8 +2305,10 @@ class Model(network.Network):
       else:
         x_input = x
         y_input = y
+
       # We type-check that `x_input` and `y_input` are either single arrays
-      # or lists of arrays.
+      # or lists of arrays, and extract a flat list of inputs from the passed
+      # structure.
       if isinstance(x_input, (list, tuple)):
         if not all(isinstance(v, np.ndarray) or
                    tensor_util.is_tensor(v) for v in x_input):
@@ -2541,16 +2326,35 @@ class Model(network.Network):
                            'array or a list of arrays. You passed: x=' + str(x))
         all_inputs.append(x_input)
 
+      # Now that we have a flat set of inputs, we make sure that none of them
+      # are CompositeTensors or CompositeTensorValues of any type (or scipy
+      # sparse arrays, which we treat as SparseTensor values). We cannot safely
+      # infer input data from an arbitrary composite tensor, so we don't try -
+      # users should explictly add composite tensor inputs to their subclassed
+      # models.
+      for input_tensor in all_inputs:
+        if (composite_tensor_utils.is_composite_or_composite_value(input_tensor)
+           ):
+          # TODO(b/132691975): Document subclass-model CT input handling.
+          raise ValueError(
+              'All implicitly derived inputs to subclassed Models must be '
+              'tf.Tensors (found %s). To add non-tf.Tensor inputs, please call '
+              'self._add_inputs(tf.keras.Input/SparseInput/RaggedInput (etc)) '
+              'in your subclassed Model object.' % (input_tensor,))
+
       # Build the model using the retrieved inputs (value or symbolic).
       # If values or generated from a dataset, then in symbolic-mode
       # placeholders will be created to match the value shapes.
       is_build_called = True
       if is_dataset:
-        cast_inputs = nest.map_structure(lambda v: v.shape, x_input)
+        def create_tensor_spec(t):
+          return tensor_spec.TensorSpec(t.shape, t.dtype)
+        cast_inputs = nest.map_structure(create_tensor_spec, x_input)
       elif training_utils.has_tensors(x_input):
         cast_inputs = training_utils.cast_if_floating_dtype(x_input)
       else:
         cast_inputs = x_input
+
       self._set_inputs(cast_inputs)
     else:
       y_input = y
@@ -2746,7 +2550,7 @@ class Model(network.Network):
 
     Args:
       inputs: Single array, or list of arrays. The arrays could be placeholders,
-        Numpy arrays, data tensors, or TensorShapes.
+        Numpy arrays, data tensors, or TensorSpecs.
         - if placeholders: the model is built on top of these placeholders,
           and we expect Numpy data to be fed for them when calling `fit`/etc.
         - if Numpy data or TensorShapes: we create placeholders matching the

@@ -99,6 +99,9 @@ class RPCState : public GrpcClientCQTag {
     if (call_opts_) {
       call_opts_->ClearCancelCallback();
     }
+
+    VLOG(2) << "Completed call: " << method_;
+
     Status s = FromGrpcStatus(status_);
     if (s.ok() && !ok) {
       // Since this function is only being used for processing the response

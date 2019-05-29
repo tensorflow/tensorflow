@@ -1,6 +1,7 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
@@ -161,8 +162,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:bfc_allocator",
+        "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/stream_executor:tf_allocator_adapter",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",

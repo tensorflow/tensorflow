@@ -62,6 +62,7 @@ from tensorflow.python.training.tracking import layer_utils as trackable_layer_u
 from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -574,10 +575,10 @@ class Layer(module.Module):
     # We are clearing the losses only on the top level model call and not on
     # every layer/mode call because layer/model may be reused.
     if (base_layer_utils.is_in_eager_or_tf_function() and
-        not base_layer_utils.is_in_call_context()):
+        not base_layer_utils.call_context().in_call):
       self._clear_losses()
 
-    with base_layer_utils.call_context(self):
+    with base_layer_utils.call_context().enter(self, inputs, build_graph):
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
@@ -679,14 +680,6 @@ class Layer(module.Module):
             outputs = self.call(inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, previous_mask)
-
-    if not context.executing_eagerly():
-      # Optionally load weight values specified at layer instantiation.
-      # TODO(fchollet): consider enabling this with eager execution too.
-      if (hasattr(self, '_initial_weights') and
-          self._initial_weights is not None):
-        self.set_weights(self._initial_weights)
-        del self._initial_weights
 
     return outputs
 
@@ -874,7 +867,6 @@ class Layer(module.Module):
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
-      base_layer_utils.check_graph_consistency(loss, method='add_loss')
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -895,20 +887,21 @@ class Layer(module.Module):
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
+        base_layer_utils.check_graph_consistency(loss, method='add_loss')
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
 
     self._callable_losses += callable_losses
 
-    call_context = base_layer_utils.is_in_call_context()
-    if eager_losses and not call_context:
+    in_call_context = base_layer_utils.call_context().in_call
+    if eager_losses and not in_call_context:
       raise ValueError(
           'Expected a symbolic Tensors or a callable for the loss value. '
           'Please wrap your loss computation in a zero argument `lambda`.')
 
     self._eager_losses += eager_losses
 
-    if call_context:
+    if in_call_context:
       for symbolic_loss in symbolic_losses:
         self._losses.append(symbolic_loss)
     else:
@@ -963,7 +956,7 @@ class Layer(module.Module):
 
     from_metric_obj = hasattr(value, '_metric_obj')
     is_symbolic = tf_utils.is_symbolic_tensor(value)
-    call_context = base_layer_utils.is_in_call_context()
+    in_call_context = base_layer_utils.call_context().in_call
 
     if name is None and not from_metric_obj:
       # Eg. `self.add_metric(math_ops.reduce_sum(x), aggregation='mean')`
@@ -981,7 +974,7 @@ class Layer(module.Module):
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
 
-    if call_context:
+    if in_call_context:
       # TF Function path should take the eager path.
       if is_symbolic and not base_layer_utils.is_in_tf_function():
         self._symbolic_add_metric(value, aggregation, name)
@@ -1011,6 +1004,8 @@ class Layer(module.Module):
       new_layers.append(add_metric_layer)
       self._insert_layers(new_layers)
 
+  @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
+                               'inputs')
   @doc_controls.for_subclass_implementers
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
@@ -1044,14 +1039,21 @@ class Layer(module.Module):
         A step counter might fall into this category.
     """
     updates = generic_utils.to_list(updates)
+    call_context = base_layer_utils.call_context()
 
     # All updates can be run immediately in Eager or in a tf.function.
     if base_layer_utils.is_in_eager_or_tf_function():
-      if not base_layer_utils.is_in_frozen_context():
+      if not call_context.frozen:
         for update in updates:
           if callable(update):
             update()
       return
+
+    if call_context.in_call:
+      relevant_inputs = call_context.inputs
+    else:
+      inbound_nodes = getattr(self, '_inbound_nodes', [])
+      relevant_inputs = [node.input_tensors for node in inbound_nodes]
 
     def process_update(x):
       """Standardize update ops.
@@ -1074,7 +1076,9 @@ class Layer(module.Module):
         update = x.op
       else:
         update = ops.convert_to_tensor(x)
-      update._unconditional_update = (inputs is None)
+
+      reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, [update])
+      update._unconditional_update = update not in reachable
       update._in_cross_replica_context = (
           ds_context.has_strategy() and ds_context.in_cross_replica_context())
       return update
@@ -1082,8 +1086,7 @@ class Layer(module.Module):
     updates = [process_update(x) for x in updates]
     # Non-callable Updates are run automatically inside `call` in V2, so
     # they do not need to be tracked later.
-    if (ops.executing_eagerly_outside_functions() and
-        base_layer_utils.is_in_call_context()):
+    if ops.executing_eagerly_outside_functions() and call_context.in_call:
       updates = [u for u in updates if callable(u)]
     self._updates += updates
 
@@ -1111,10 +1114,10 @@ class Layer(module.Module):
     if not params:
       return
     weight_value_tuples = []
-    param_values = backend.batch_get_value(params)
-    for pv, p, w in zip(param_values, params, weights):
-      if pv.shape != w.shape:
-        raise ValueError('Layer weight shape ' + str(pv.shape) +
+    for p, w in zip(params, weights):
+      ref_shape = p.shape
+      if not ref_shape.is_compatible_with(w.shape):
+        raise ValueError('Layer weight shape ' + str(ref_shape) +
                          ' not compatible with '
                          'provided weight shape ' + str(w.shape))
       weight_value_tuples.append((p, w))
@@ -1631,6 +1634,8 @@ class Layer(module.Module):
               array_ops.shape(output)[0], activity_loss.dtype)
           # Make activity regularization strength batch-agnostic.
           mean_activity_loss = activity_loss / batch_size
+          base_layer_utils.check_graph_consistency(
+              mean_activity_loss, method='activity_regularizer')
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
@@ -1858,30 +1863,33 @@ class Layer(module.Module):
 
   def _maybe_build(self, inputs):
     # Check input assumptions set before layer building, e.g. input rank.
-    if self.built:
-      return
+    if not self.built:
+      input_spec.assert_input_compatibility(
+          self.input_spec, inputs, self.name)
+      input_list = nest.flatten(inputs)
+      if input_list and self._dtype is None:
+        try:
+          self._dtype = input_list[0].dtype.base_dtype.name
+        except AttributeError:
+          pass
+      input_shapes = None
+      if all(hasattr(x, 'shape') for x in input_list):
+        input_shapes = nest.map_structure(lambda x: x.shape, inputs)
+      # Only call `build` if the user has manually overridden the build method.
+      if not hasattr(self.build, '_is_default'):
+        # Any setup work performed only once should happen in an `init_scope`
+        # to avoid creating symbolic Tensors that will later pollute any eager
+        # operations.
+        with tf_utils.maybe_init_scope(self):
+          self.build(input_shapes)
+      # We must set self.built since user defined build functions are not
+      # constrained to set self.built.
+      self.built = True
 
-    input_spec.assert_input_compatibility(
-        self.input_spec, inputs, self.name)
-    input_list = nest.flatten(inputs)
-    if input_list and self._dtype is None:
-      try:
-        self._dtype = input_list[0].dtype.base_dtype.name
-      except AttributeError:
-        pass
-    input_shapes = None
-    if all(hasattr(x, 'shape') for x in input_list):
-      input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-    # Only call `build` if the user has manually overridden the build method.
-    if not hasattr(self.build, '_is_default'):
-      # Any setup work performed only once should happen in an `init_scope`
-      # to avoid creating symbolic Tensors that will later pollute any eager
-      # operations.
-      with tf_utils.maybe_init_scope(self):
-        self.build(input_shapes)
-    # We must set self.built since user defined build functions are not
-    # constrained to set self.built.
-    self.built = True
+    # Optionally load weight values specified at layer instantiation.
+    if getattr(self, '_initial_weights', None) is not None:
+      self.set_weights(self._initial_weights)
+      self._initial_weights = None
 
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
@@ -2046,12 +2054,12 @@ class Layer(module.Module):
     return True
 
   @property
+  @tracking.cached_per_instance
   def _call_fn_args(self):
-    if getattr(self, '__call_fn_args', None) is None:
-      self.__call_fn_args = function_utils.fn_args(self.call)
-    return self.__call_fn_args
+    return function_utils.fn_args(self.call)
 
   @property
+  @tracking.cached_per_instance
   def _should_compute_mask(self):
     return ('mask' in self._call_fn_args or
             getattr(self, 'compute_mask', None) is not None)

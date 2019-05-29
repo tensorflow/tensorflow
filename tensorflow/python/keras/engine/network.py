@@ -50,6 +50,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
@@ -341,7 +342,12 @@ class Network(base_layer.Layer):
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
-        self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
+        # Use batch_input_shape here because non-eager composite tensors may not
+        # have a shape attribute that's meaningful (sparse, for instance, has
+        # a tensor that's non-constant and needs to be fed). This means that
+        # input layers that create placeholders will need to have the
+        # batch_input_shape attr to allow for input shape validation.
+        self._feed_input_shapes.append(layer._batch_input_shape)
         self._feed_inputs.append(layer.input)
 
   def _set_output_names(self):
@@ -513,6 +519,7 @@ class Network(base_layer.Layer):
     return weights
 
   @property
+  @tracking.cached_per_instance
   def _should_compute_mask(self):
     return self._is_graph_network and super(Network, self)._should_compute_mask
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
@@ -272,8 +273,10 @@ StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   se::StreamExecutor* executor = stream->parent();
 
   absl::Span<const uint8> compiled_ptx = {};
-  StatusOr<absl::Span<const uint8>> compiled_ptx_or = CompilePtxOrGetCached(
-      executor, redzone_checker_ptx, PtxCompilationOptions(hlo_module_config_));
+  StatusOr<absl::Span<const uint8>> compiled_ptx_or =
+      se::cuda::CompilePtxOrGetCached(executor->device_ordinal(),
+                                      redzone_checker_ptx,
+                                      PtxOptsFromConfig(hlo_module_config_));
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ValueOrDie();
   } else {

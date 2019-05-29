@@ -35,7 +35,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected,
                                      equality_fn=None):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -310,7 +310,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
               dtype=dtype))
 
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = xla.dynamic_slice(
             np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),
@@ -323,7 +323,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
            r'but input rank is 3 and start_indices has shape \[2\].*'))
 
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = xla.dynamic_slice(
             np.arange(1000, dtype=np.int32).reshape([10, 10, 10]),

@@ -956,7 +956,6 @@ class TPUMirroredVariable(variables_lib.Variable):
     raise NotImplementedError(
         "numpy() is only available when eager execution is enabled.")
 
-  @property
   def initialized_value(self):
     return self.primary.initialized_value()
 
@@ -1678,7 +1677,6 @@ class AggregatingVariable(variables_lib.Variable):
   def initializer(self):
     return self._v.initializer
 
-  @property
   def initialized_value(self):
     return self._v.initialized_value()
 

@@ -32,6 +32,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 _INITIALIZED_TPU_SYSTEMS = {}
+_LOCAL_MASTERS = ("", "local")
 
 
 @tf_export("tpu.experimental.initialize_tpu_system")
@@ -57,7 +58,7 @@ def initialize_tpu_system(cluster_resolver=None):
                     "Reinitializing the TPU can cause previously created "
                     "variables on TPU to be lost.")
 
-  logging.info("Initializing the TPU system.")
+  logging.info("Initializing the TPU system: %s", tpu_name)
 
   if context.executing_eagerly():
     # This function looks as it is for the following non-intuitive reasons.
@@ -67,7 +68,13 @@ def initialize_tpu_system(cluster_resolver=None):
     # eagerly. We need to wrap it in defun and trigger the rewrite passes on it.
     @function.defun
     def _tpu_init_fn():
-      return tpu.initialize_system()
+      if tpu_name in _LOCAL_MASTERS:
+        job = None
+      else:
+        # Explicitly place the tpu.initialize_system in the first worker to
+        # avoid the output node match multiple devices error.
+        job = "worker/replica:0/task:0"
+      return tpu.initialize_system(job=job)
 
     tpu_devices = sorted(
         [x for x in context.list_devices() if "device:TPU:" in x])

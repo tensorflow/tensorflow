@@ -154,6 +154,8 @@ py_library(
         "device_assignment.py",
         "session_support.py",
         "tensor_tracer.py",
+        "tensor_tracer_flags.py",
+        "tensor_tracer_report.py",
         "topology.py",
         "tpu.py",
         "tpu_feed.py",

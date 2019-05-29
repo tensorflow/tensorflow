@@ -41,7 +41,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -315,7 +314,7 @@ class MultiWorkerTestBase(test.TestCase):
       **kwargs: will be passed to `client_fn`.
     """
     threads = []
-    for task_type in [run_config.TaskType.CHIEF, run_config.TaskType.WORKER]:
+    for task_type in ['chief', 'worker']:
       for task_id in range(len(cluster_spec.get(task_type, []))):
         t = threading.Thread(
             target=self._run_client,

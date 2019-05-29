@@ -97,9 +97,12 @@ class RecursiveCompilabilityChecker {
     // live-out DT_VARIANT values.
     bool allow_ops_producing_or_consuming_variant;
 
-    // Whether ops known to be slow or to have correctness issues should be
-    // auto-clustered.
-    bool allow_slow_and_inaccurate_ops;
+    // Whether ops known to be slow on XLA-GPU should be considered compilable..
+    bool allow_slow_ops;
+
+    // Whether ops known to have numerical accuracy issues should be considered
+    // compilable..
+    bool allow_inaccurate_ops;
   };
 
   RecursiveCompilabilityChecker(const OperationFilter* op_filter,

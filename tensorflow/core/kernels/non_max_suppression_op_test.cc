@@ -164,8 +164,7 @@ TEST_F(NonMaxSuppressionOpTest, TestInconsistentBoxAndScoreShapes) {
   Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -178,7 +177,7 @@ TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
+      absl::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
       << s;
 }
 
@@ -325,8 +324,7 @@ TEST_F(NonMaxSuppressionV2OpTest, TestInconsistentBoxAndScoreShapes) {
   Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -340,7 +338,7 @@ TEST_F(NonMaxSuppressionV2OpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
+      absl::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
       << s;
 }
 
@@ -707,8 +705,7 @@ TEST_F(NonMaxSuppressionV3OpTest, TestInconsistentBoxAndScoreShapes) {
   Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -723,7 +720,7 @@ TEST_F(NonMaxSuppressionV3OpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
+      absl::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
       << s;
 }
 
@@ -980,8 +977,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestInconsistentBoxAndScoreShapes) {
   Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -995,8 +991,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestInvalidOverlapsShape) {
   Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "overlaps must be square"))
-      << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "overlaps must be square")) << s;
 }
 
 TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestThresholdGreaterOne) {

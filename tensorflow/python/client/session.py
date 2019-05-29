@@ -671,8 +671,8 @@ class BaseSession(SessionInterface):
       raise TypeError(
           'config must be a tf.ConfigProto, but got %s' % type(config))
 
-    if (mixed_precision_global_state.mixed_precision_is_enabled and
-        config.graph_options.rewrite_options.auto_mixed_precision !=
+    if (mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled
+        and config.graph_options.rewrite_options.auto_mixed_precision !=
         rewriter_config_pb2.RewriterConfig.OFF):
       new_config = config_pb2.ConfigProto()
       new_config.CopyFrom(config)

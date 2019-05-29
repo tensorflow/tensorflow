@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -92,7 +93,7 @@ class Thunk {
   //
   // Precondition: Initialize(stream->parent()) has been called.
   virtual Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                 se::Stream* stream,
+                                 se::Stream* stream, const RunId& run_id,
                                  HloExecutionProfiler* profiler) = 0;
 
  protected:

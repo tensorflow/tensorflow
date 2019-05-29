@@ -81,6 +81,9 @@ FunctionDef FuncWithListOutput();
 // x:T -> x + x.
 FunctionDef XAddX();
 
+// x: T, y:T -> x + y.
+FunctionDef XAddY();
+
 // x:T -> x * 2, where x is int32.
 FunctionDef XTimesTwoInt32();
 

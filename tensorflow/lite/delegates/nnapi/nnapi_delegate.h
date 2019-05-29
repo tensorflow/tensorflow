@@ -39,6 +39,27 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
 
     // Preferred Power/perf trade-off.
     ExecutionPreference execution_preference = kUndefined;
+
+    // Selected NNAPI accelerator with nul-terminated name.
+    // Default to nullptr, which implies the NNAPI default behavior: NNAPI
+    // runtime is allowed to use all available accelerators. If the selected
+    // accelerator cannot be found, NNAPI will not be used.
+    // It is the caller's responsibility to ensure the string is valid for the
+    // duration of the Options object lifetime.
+    const char* accelerator_name = nullptr;
+
+    // The nul-terminated cache dir for NNAPI model.
+    // Default to nullptr, which implies the NNAPI will not try caching the
+    // compilation.
+    const char* cache_dir = nullptr;
+
+    // The unique nul-terminated token string for NNAPI model.
+    // Default to nullptr, which implies the NNAPI will not try caching the
+    // compilation. It is the caller's responsibility to ensure there is no
+    // clash of the tokens.
+    // NOTE: when using compilation caching, it is not recommended to use the
+    // same delegate instance for multiple models.
+    const char* model_token = nullptr;
   };
 
   // Uses default options.
@@ -50,13 +71,19 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   ~StatefulNnApiDelegate() = default;
 
   // Returns the delegate options.
-  static const Options& GetOptions(TfLiteDelegate* delegate);
+  static const Options GetOptions(TfLiteDelegate* delegate);
 
  private:
   // Encapsulates all delegate data.
   struct Data {
-    // Delegate options to use.
-    Options options;
+    // Preferred Power/perf trade-off.
+    Options::ExecutionPreference execution_preference;
+    // Selected NNAPI accelerator name.
+    std::string accelerator_name;
+    // The cache dir for NNAPI model.
+    std::string cache_dir;
+    // The unique token string for NNAPI model.
+    std::string model_token;
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate

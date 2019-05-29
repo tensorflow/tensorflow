@@ -28,8 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.tracking import \
-tracking
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.tf_export import tf_export
 
 # A seed for random ops (stateful and stateless) will always be 1024

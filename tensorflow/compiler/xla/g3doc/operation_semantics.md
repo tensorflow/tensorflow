@@ -2201,7 +2201,7 @@ Arguments                      | Type                | Semantics
 `operand`                      | `XlaOp`             | Array to be scattered into.
 `scatter_indices`              | `XlaOp`             | Array containing the starting indices of the slices that must be scattered to.
 `updates`                      | `XlaOp`             | Array containing the values that must be used for scattering.
-`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T, T -> T`.
+`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `(T, T) -> T`.
 `index_vector_dim`             | `int64`             | The dimension in `scatter_indices` that contains the starting indices.
 `update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
 `inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.

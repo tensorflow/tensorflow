@@ -227,6 +227,10 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     diag_mat = array_ops.expand_dims(diag_term, -1)
     return diag_mat * x
 
+  def _matvec(self, x, adjoint=False):
+    diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    return diag_term * x
+
   def _determinant(self):
     return math_ops.reduce_prod(self._diag, axis=[-1])
 

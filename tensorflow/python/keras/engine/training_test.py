@@ -997,7 +997,7 @@ class TrainingTest(keras_parameterized.TestCase):
   def test_validation_freq(self, validation_freq, expected_runs):
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_small_mlp(2, 1, 10)
-    model.compile('sgd', 'mse')
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
 
     class ValCounter(keras.callbacks.Callback):
 
@@ -1022,7 +1022,7 @@ class TrainingTest(keras_parameterized.TestCase):
   def test_validation_steps_without_data(self):
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_small_mlp(2, 1, 10)
-    model.compile('sgd', 'mse')
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
 
     with self.assertRaisesRegexp(
         ValueError, '`validation_steps` should not be specified if '

@@ -3004,6 +3004,8 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
     DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
     DeviceMemory<float>* saved_inv_var, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
@@ -3023,6 +3025,8 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
     DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
     DeviceMemory<float>* saved_inv_var, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return DoBatchNormalizationForwardImpl<float, float>(
@@ -3089,7 +3093,9 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop) {
+    DeviceMemory<float>* offset_backprop,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<Eigen::half, float>(
       stream, miopenHalf, miopenFloat, y_backprop, x, scale, mean, inv_var,
       x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
@@ -3103,7 +3109,9 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop) {
+    DeviceMemory<float>* offset_backprop,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<float, float>(
       stream, miopenFloat, miopenFloat, y_backprop, x, scale, mean, variance,
       x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,

@@ -349,6 +349,8 @@ cc_library(
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1000,7 +1002,6 @@ cc_library(
     name = "allocator",
     srcs = [
         "framework/allocator.cc",
-        "framework/allocator_registry.cc",
         "framework/allocator_registry.h",
         "framework/numeric_types.h",
         "framework/tracking_allocator.cc",
@@ -1014,10 +1015,35 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "//third_party/eigen3",
+    ] + if_static(extra_deps = [":allocator_registry_impl"]),
+    alwayslink = 1,
+)
+
+# This target will be included in libtensorflow_framework.so via the
+# framework_internal_impl target.
+# All other dependencies on this target need to go through if_static guard,
+# as otherwise duplicate registration in the registry will cause crashes.
+cc_library(
+    name = "allocator_registry_impl",
+    srcs = [
+        "framework/allocator.h",
+        "framework/allocator_registry.cc",
+        "framework/allocator_registry.h",
+        "framework/cpu_allocator_impl.cc",
+        "framework/numeric_types.h",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+    ],
+    deps = [
+        ":lib",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1084,6 +1110,7 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2324,6 +2351,7 @@ tf_proto_library_cc(
     srcs = ["protobuf/eager_service.proto"],
     has_services = 1,
     cc_api_version = 2,
+    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
     protodeps = tf_additional_all_protos(),
     visibility = [
@@ -2872,6 +2900,7 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
             "framework/allocator.cc",
+            "framework/cpu_allocator_impl.cc",
             "framework/allocator_registry.cc",
             "framework/tracking_allocator.cc",
             "example/example_parser_configuration.*",
@@ -2905,6 +2934,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":allocator_registry_impl",
         ":allocator",
         ":feature_util",
         ":lib",
@@ -3171,9 +3201,7 @@ tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
         "common_runtime/accumulate_n_optimizer.cc",
-        "common_runtime/allocator_retry.cc",
         "common_runtime/base_collective_executor.cc",
-        "common_runtime/bfc_allocator.cc",
         "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
         "common_runtime/collective_executor_mgr.cc",
@@ -3244,6 +3272,7 @@ tf_cuda_library(
     hdrs = CORE_CPU_LIB_HEADERS,
     copts = tf_copts(),
     deps = [
+        ":bfc_allocator",
         ":graph",
         ":framework",
         ":framework_internal",
@@ -3343,6 +3372,7 @@ cc_library(
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = [":lib_internal"],
 )
@@ -3467,7 +3497,6 @@ GPU_RUNTIME_HEADERS = [
 tf_cuda_library(
     name = "gpu_runtime_impl",
     srcs = [
-        "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_cudamalloc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
@@ -3485,6 +3514,7 @@ tf_cuda_library(
         ":core_cpu_lib",
         ":framework",
         ":framework_internal",
+        ":gpu_bfc_allocator",
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
@@ -3774,6 +3804,8 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@zlib_archive//:zlib",
     ],
 )
@@ -3789,6 +3821,7 @@ tf_cc_test(
         ":protos_all_cc",
         ":test",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 

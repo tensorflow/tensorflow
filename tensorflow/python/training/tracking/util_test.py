@@ -317,7 +317,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         "optimizer/learning_rate",
         "optimizer/beta_1",
         "optimizer/beta_2",
-        "optimizer/epsilon",
         "optimizer/iter",
         "optimizer/decay",
     ) + expected_slot_keys
@@ -337,12 +336,10 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         "my_model/dense/kernel",
         named_variables["model/_named_dense/kernel" + suffix].full_name)
-    self.assertEqual(
-        "beta_1",
-        named_variables["optimizer/beta_1" + suffix].full_name)
-    self.assertEqual(
-        "beta_2",
-        named_variables["optimizer/beta_2" + suffix].full_name)
+    self.assertEqual("Adam/beta_1",
+                     named_variables["optimizer/beta_1" + suffix].full_name)
+    self.assertEqual("Adam/beta_2",
+                     named_variables["optimizer/beta_2" + suffix].full_name)
     # Spot check the generated protocol buffers.
     self.assertEqual("optimizer",
                      serialized_graph.nodes[0].children[1].local_name)
@@ -351,8 +348,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     children = [node.local_name for node in optimizer_node.children]
     six.assertCountEqual(
         self,
-        # Non-slot dependencies
-        ["beta_1", "beta_2", "iter", "decay", "epsilon", "learning_rate"],
+        # hyper variable dependencies
+        ["beta_1", "beta_2", "iter", "decay", "learning_rate"],
         children)
     serialized_slot_keys = []
     for slot in optimizer_node.slot_variables:

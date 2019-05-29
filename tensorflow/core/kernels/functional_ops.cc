@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -182,6 +183,12 @@ class IfOp : public AsyncOpKernel {
     void Start() {
       FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("IfOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate one of the branch.
           opts_, handle, args_, &rets_,
@@ -275,6 +282,12 @@ class CaseOp : public AsyncOpKernel {
         branch = branch_handles_.size() - 1;
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("CaseOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate one of the branch.
           opts_, branch_handles_[branch], args_, &rets_,
@@ -383,6 +396,13 @@ class WhileOp : public AsyncOpKernel {
     TensorVec rets_;
 
     void EvalCond() {
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat(
+                "WhileOp-EvalCond #parent_step_id=", ctx_->step_id(),
+                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate the condition.
           opts_, cond_handle_, args_, &rets_,
@@ -443,6 +463,13 @@ class WhileOp : public AsyncOpKernel {
         return Finish(Status::OK());
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat(
+                "WhileOp-StartBody #parent_step_id=", ctx_->step_id(),
+                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(
           // Evaluate the body.
           opts_, body_handle_, args_, &rets_,
@@ -593,6 +620,12 @@ class ForOp : public AsyncOpKernel {
         args_[1 + i] = std::move(rets_[i]);
       }
       rets_.clear();
+      profiler::TraceMe trace_me(
+          [&] {
+            return absl::StrCat("ForOp #parent_step_id=", ctx_->step_id(),
+                                ",function_step_id=", opts_.step_id, "#");
+          },
+          /*level=*/2);
       lib_->Run(opts_, kernel_->body_handle_, args_, &rets_,
                 [this](const Status& s) {
                   if (s.ok()) {

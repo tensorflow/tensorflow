@@ -2673,16 +2673,27 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       std::vector<int64> base_index(rank);
       bool out_of_bound = false;
       for (int64 i = 0; i < rank; ++i) {
+        // Padding is applied to the dilated base. Say that padding is 3 and
+        // dilation is 2 for some dimension. After applying base dilation and
+        // padding, the dimension looks like:
+        // P P P E D D E D D ... E D D E P P P
+        // where E are the elements and D are the holes. So, the elements are
+        // located in indices: padding + k*base_dilation for k = {0, 1, 2, ...}.
+        // We are accessing elements in the transformed base at indices:
+        // window_count_index * stride + window_index * window_dilation.
+        // Solving for k gives us
+        // (win_count_i * stride + win_i * win_dilation - pad) / base_dilation
+        // When this is a natural number, we index an original element.
+        // Otherwise, we index a 0 (pad or hole), and we don't need to apply
+        // the callback f.
         base_index[i] =
             window_count_index[i] * window.dimensions(i).stride() +
             window_index[i] * window.dimensions(i).window_dilation() -
             window.dimensions(i).padding_low();
-        // We are not in the base area if the dilation placed us out of bounds.
         if (base_index[i] % window.dimensions(i).base_dilation() != 0) {
           out_of_bound = true;
           break;
         }
-        // Apply the dilation to the base area.
         base_index[i] /= window.dimensions(i).base_dilation();
         if (base_index[i] < 0 || base_index[i] >= base_shape.dimensions(i)) {
           out_of_bound = true;

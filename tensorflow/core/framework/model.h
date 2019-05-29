@@ -210,7 +210,7 @@ class Node {
       processing_time_ += time_nanos - iter->second;
       work_start_.erase(iter);
     } else {
-      LOG(WARNING)
+      VLOG(1)
           << "Encountered a stop event that was not preceded by a start event.";
     }
   }

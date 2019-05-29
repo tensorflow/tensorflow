@@ -15,6 +15,13 @@ limitations under the License.
 
 // Usage: replay_computation some_binary_snapshot_proto*
 //
+// Where some_binary_snapshot_proto is [type_prefix:]file_path. Supported
+// type_prefixes:
+// * recordio_hlo_proto - for a Tensorflow recordio file containing serialized
+// xla.HloProtos.
+//
+// If type_prefix is omitted, the program will make several guesses.
+//
 // Replays computations and shows the results on the command line.
 //
 // some_binary_snapshot_proto is obtained by serializing the HloSnapshot from
@@ -65,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -80,6 +88,8 @@ namespace {
 struct Options {
   Options()
       : intra_op_thread_pool_size(tensorflow::port::NumSchedulableCPUs()) {}
+
+  bool NeedsRealData() const { return !use_fake_data && !compile_only; }
 
   string fake_infeed_shape;
   string fake_outfeed_shape;
@@ -98,6 +108,8 @@ struct Options {
   int num_runs = 1;
 
   int intra_op_thread_pool_size;
+
+  bool compile_only = false;
 };
 
 StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
@@ -322,9 +334,41 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   return result_literal;
 }
 
-StatusOr<HloSnapshot> ParseInputFile(const string& filename,
-                                     const Options& opts) {
+StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
+                                                     const Options& opts) {
   tensorflow::Env* env = tensorflow::Env::Default();
+
+  std::unique_ptr<tensorflow::RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
+      string(filename.begin(), filename.end()), &file));
+  tensorflow::io::RecordReader reader(
+      file.get(),
+      tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+
+  std::vector<HloSnapshot> snapshots;
+  uint64 offset = 0;
+  string record;
+  while (reader.ReadRecord(&offset, &record).ok()) {
+    HloSnapshot snapshot;
+    if (snapshot.mutable_hlo()->ParseFromString(record)) {
+      snapshots.push_back(std::move(snapshot));
+    } else {
+      LOG(ERROR) << "Encountered bad proto";
+    }
+  }
+  CHECK(!snapshots.empty())
+      << "No proto is successfully parsed from the file - the file possibly "
+         "has a mismatched compression option, format, etc.";
+  CHECK(!opts.NeedsRealData())
+      << "Without --use_fake_data or --compile_only, you must pass an "
+         "HloSnapshot -- HloProto and textual HLO don't carry real data.";
+  return snapshots;
+}
+
+StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
+                                         const Options& opts) {
+  tensorflow::Env* env = tensorflow::Env::Default();
+
   HloSnapshot snapshot;
   auto s = tensorflow::ReadBinaryProto(env, filename, &snapshot);
   if (s.ok()) {
@@ -333,9 +377,9 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
   if (s.code() == tensorflow::error::NOT_FOUND) {
     return s;
   }
-  CHECK(opts.use_fake_data)
-      << "Without --use_fake_data, you must pass an HloSnapshot -- HloProto "
-         "and textual HLO don't carry real data.";
+  CHECK(!opts.NeedsRealData())
+      << "Without --use_fake_data or --compile_only, you must pass an "
+         "HloSnapshot -- HloProto and textual HLO don't carry real data.";
   fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n",
           filename.c_str());
 
@@ -353,10 +397,23 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
     *snapshot.mutable_hlo()->mutable_hlo_module() =
         module.ValueOrDie()->ToProto();
     return snapshot;
+  } else {
+    LOG(ERROR) << module.status();
   }
   fprintf(stderr, "%s: is not HLO text.  Nothing left to try.\n",
           filename.c_str());
   return InvalidArgument("Could not parse %s.", filename);
+}
+
+StatusOr<std::vector<HloSnapshot>> ParseInputFile(const string& filename,
+                                                  const Options& opts) {
+  std::vector<HloSnapshot> snapshots;
+  absl::string_view filename_view = filename;
+  if (absl::ConsumePrefix(&filename_view, "recordio_hlo_proto:")) {
+    return ParseRecordIoFile(filename_view, opts);
+  }
+  TF_ASSIGN_OR_RETURN(auto snapshot, ParseSingleHloFile(filename, opts));
+  return std::vector<HloSnapshot>{std::move(snapshot)};
 }
 
 int RealMain(absl::Span<char* const> args, const Options& opts) {
@@ -365,12 +422,15 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
 
   std::vector<HloSnapshot> snapshots;
   for (char* arg : args) {
-    StatusOr<HloSnapshot> maybe_snapshot = ParseInputFile(arg, opts);
+    StatusOr<std::vector<HloSnapshot>> maybe_snapshot =
+        ParseInputFile(arg, opts);
     if (maybe_snapshot.ok()) {
-      snapshots.push_back(std::move(maybe_snapshot).ValueOrDie());
+      auto new_snapshots = std::move(maybe_snapshot).ValueOrDie();
+      snapshots.insert(snapshots.end(),
+                       std::make_move_iterator(new_snapshots.begin()),
+                       std::make_move_iterator(new_snapshots.end()));
     } else {
-      LOG(ERROR) << "Can't handle file " << arg << ": "
-                 << maybe_snapshot.status();
+      LOG(ERROR) << maybe_snapshot.status();
     }
   }
 
@@ -378,10 +438,12 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
   LOG(INFO) << "Compiling " << snapshots.size() << " modules in parallel.";
   std::vector<StatusOr<std::unique_ptr<LocalExecutable>>> executables;
   {
+    constexpr size_t kThreadLimits = 100;
     // ThreadPool CHECK-fails if we give it 0 threads.
     tensorflow::thread::ThreadPool thread_pool(
         tensorflow::Env::Default(), tensorflow::ThreadOptions(),
-        "compile_modules", std::max(size_t{1}, snapshots.size()),
+        "compile_modules",
+        std::min<size_t>(std::max(kThreadLimits, snapshots.size()), 1),
         /*low_latency_hint=*/false);
     executables.resize(snapshots.size());
     for (int64 i = 0; i < snapshots.size(); ++i) {
@@ -394,10 +456,16 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
 
   for (int64 i = 0; i < executables.size(); ++i) {
     if (!executables[i].ok()) {
-      LOG(ERROR) << "Compilation failed: " << executables[i].status();
+      LOG(ERROR) << "Compilation failed: " << executables[i].status() << ": "
+                 << snapshots[i].ShortDebugString();
       exit_status = EXIT_FAILURE;
       continue;
     }
+
+    if (opts.compile_only) {
+      continue;
+    }
+
     LocalExecutable* executable = executables[i].ValueOrDie().get();
     LOG(ERROR) << "Running iteration " << i;
     StatusOr<Literal> result_status =
@@ -459,6 +527,9 @@ int main(int argc, char** argv) {
                        &opts.intra_op_thread_pool_size,
                        "How many threads to use in the intra-op thread pool. "
                        "Defaults to the number of CPUs."),
+      tensorflow::Flag("compile_only", &opts.compile_only,
+                       "Whether the input should only be compiled, as opposed "
+                       "to compiled and executed."),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);

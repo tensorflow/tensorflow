@@ -687,6 +687,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tf_allocator_adapter",
+    srcs = ["tf_allocator_adapter.cc"],
+    hdrs = ["tf_allocator_adapter.h"],
+    deps = [
+        ":device_memory",
+        ":device_memory_allocator",
+        ":platform",
+        "//tensorflow/core:allocator",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 tf_cc_test(
     name = "stream_test",
     size = "small",

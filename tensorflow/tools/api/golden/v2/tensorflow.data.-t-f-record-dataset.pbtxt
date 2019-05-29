@@ -102,6 +102,10 @@ tf_class {
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "unbatch"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "window"
     argspec: "args=[\'self\', \'size\', \'shift\', \'stride\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'False\'], "
   }

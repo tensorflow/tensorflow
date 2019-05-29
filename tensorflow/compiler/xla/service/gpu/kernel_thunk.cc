@@ -70,7 +70,7 @@ void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
 }
 
 Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                    se::Stream* stream,
+                                    se::Stream* stream, const RunId& /*run_id*/,
                                     HloExecutionProfiler* profiler) {
   // Load the kernel.
   se::StreamExecutor* executor = stream->parent();

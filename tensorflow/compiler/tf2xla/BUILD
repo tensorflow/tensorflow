@@ -1,6 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -23,15 +26,12 @@ package_group(
     ],
 )
 
-package(
-    default_visibility = [":internal"],
-)
-
 load(
     "//tensorflow/core:platform/default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
+load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 cc_library(
     name = "tf2xla_supported_ops_lib",
@@ -65,6 +65,19 @@ xla_proto_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+# A proto library that is minimal in size and dependencies for platforms like Android.
+tf_portable_proto_library(
+    name = "portable_tf2xla_proto",
+    config_string = "allow_all:true",
+    header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
+    portable_deps = ["//tensorflow/core:android_proto_lib"],
+    proto_deps = [
+        ":tf2xla_proto",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 xla_py_proto_library(
@@ -196,6 +209,7 @@ cc_library(
         ":tf2xla_util",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_cluster_util",
+        "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -514,12 +528,12 @@ cc_library(
 )
 
 cc_library(
-    name = "rearrange_function_argument_pass",
+    name = "rearrange_function_argument",
     srcs = [
-        "rearrange_function_argument_pass.cc",
+        "rearrange_function_argument.cc",
     ],
     hdrs = [
-        "rearrange_function_argument_pass.h",
+        "rearrange_function_argument.h",
     ],
     deps = [
         "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -533,17 +547,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
     ],
-)
-
-cc_library(
-    name = "rearrange_function_argument_pass_registration",
-    srcs = [
-        "rearrange_function_argument_pass_registration.cc",
-    ],
-    deps = [
-        ":rearrange_function_argument_pass",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(

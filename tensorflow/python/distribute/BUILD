@@ -1,8 +1,7 @@
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -72,6 +71,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:kernels",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
@@ -216,6 +216,9 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -608,9 +611,9 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:keras_lib",
         "//tensorflow/python:session",
         "//tensorflow/python:util",
-        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -631,6 +634,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_xla_py_test(
@@ -657,7 +661,11 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
+    tags = [
+        "no_windows",
+    ],
     deps = [
+        ":collective_all_reduce_strategy",
         ":mirrored_strategy",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -686,6 +694,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -710,6 +719,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -722,6 +732,7 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -904,6 +915,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -935,6 +947,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 distribute_py_test(
@@ -1016,5 +1029,24 @@ distribute_py_test(
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
+    name = "ctl_correctness_test",
+    srcs = ["ctl_correctness_test.py"],
+    main = "ctl_correctness_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:keras_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
     ],
 )
