@@ -730,7 +730,7 @@ class MklDnnQuantizedMatMulOp : public OpKernel {
       const inner_product_forward::primitive_desc& mkldnn_matmul_prim_desc,
       const memory::dims& output_dims_mkl_order,
       memory::format output_tf_format, Tensor** output_tensor) {
-    CHECK_NOTNULL(output_tensor);
+    DCHECK(output_tensor);
     auto dst_pd = mkldnn_matmul_prim_desc.dst_primitive_desc();
 
     MklDnnShape output_mkl_shape;
