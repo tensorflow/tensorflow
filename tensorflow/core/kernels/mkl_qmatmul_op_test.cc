@@ -243,7 +243,7 @@ TEST_F(QuantizedMatMulTest, Small_WithNegInp) {
   // |  -3 |  -7 | -11 |
   // |  -4 |  -8 | -12 |
   // The input array only contains unsigned bytes, so we specify the actual
-  // quantized values as Au8 = (Af32 - Min(A𝑓32) * Qa, where
+  // quantized values as Au8 = (Af32 - Min(A𝑓32)) * Qa, where
   // Qa = 255/(Max(A𝑓32) - Min(A𝑓32)). For example, -1 is represented
   // as -1 + 12, or 11 as Qa = 255/(243+12).
   AddInputFromArray<quint8>(TensorShape({4, 3}),
