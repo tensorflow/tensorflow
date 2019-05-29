@@ -73,12 +73,13 @@ class StreamExecutor {
  public:
   StreamExecutor(
       const Platform *platform,
-      std::unique_ptr<internal::StreamExecutorInterface> implementation);
+      std::unique_ptr<internal::StreamExecutorInterface> implementation,
+      int device_ordinal);
 
   ~StreamExecutor();
 
   port::Status Init();
-  port::Status Init(int device_ordinal, DeviceOptions device_options);
+  port::Status Init(DeviceOptions device_options);
 
   // Returns the platform that this StreamExecutor is acting upon.
   ABSL_DEPRECATED("Use platform() instead.")
@@ -482,12 +483,7 @@ class StreamExecutor {
   //
   // Creates the allocator object on the first access, as the device ordinal
   // of this stream_executor is not set in constructor.
-  StreamExecutorMemoryAllocator *GetAllocator() {
-    if (!allocator_.has_value()) {
-      allocator_.emplace(this);
-    }
-    return &allocator_.value();
-  }
+  StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
 
  private:
   template <typename BeginCallT, typename CompleteCallT,
@@ -719,7 +715,7 @@ class StreamExecutor {
   // limit.
   int64 memory_limit_bytes_;
 
-  absl::optional<StreamExecutorMemoryAllocator> allocator_;
+  StreamExecutorMemoryAllocator allocator_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
