@@ -232,6 +232,18 @@ public:
     }
     return success();
   }
+
+  /// Return the parameter value.
+  unsigned getParameter() {
+    // 'getImpl' returns a pointer to our internal storage instance.
+    return getImpl()->nonZeroParam;
+  }
+
+  /// Return the integer parameter type.
+  IntegerType getParameterType() {
+    // 'getImpl' returns a pointer to our internal storage instance.
+    return getImpl()->integerType;
+  }
 };
 ```
 
