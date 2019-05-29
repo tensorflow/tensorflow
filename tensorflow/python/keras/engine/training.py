@@ -1541,7 +1541,7 @@ class Model(network.Network):
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
                   losses_utils.squeeze_or_expand_dimensions(
-                      mask, None, sample_weight))
+                      mask, sample_weight=sample_weight))
               sample_weight *= mask
 
           if hasattr(loss_fn, 'reduction'):

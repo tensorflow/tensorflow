@@ -293,8 +293,11 @@ def update_confusion_matrix_variables(variables_to_update,
           math_ops.cast(1.0, dtype=y_pred.dtype),
           message='predictions must be <= 1')
   ]):
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    if sample_weight is None:
+      y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
+    else:
+      y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
+          y_pred, y_true, sample_weight=sample_weight)
 
   if top_k is not None:
     y_pred = _filter_top_k(y_pred, top_k)
