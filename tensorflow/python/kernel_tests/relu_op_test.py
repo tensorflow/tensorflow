@@ -229,7 +229,7 @@ class ReluTest(test.TestCase):
         return tape.gradient(y, x)
 
       x = np.asarray([[],[]], dtype=np.float32)
-      z = gradient_checker_v2.compute_gradient(f, [x])[0][0]
+      z = list(gradient_checker_v2.compute_gradient(f, [x]))[0][0]
       self.assertAllEqual(z, np.reshape(x, (0, 0)))
 
 class Relu6Test(test.TestCase):
