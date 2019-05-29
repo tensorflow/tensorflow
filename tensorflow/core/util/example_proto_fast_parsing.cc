@@ -1022,8 +1022,8 @@ Status FastParseExample(const Config& config,
   SeededHasher hasher;
   // Build config index.
   PresizedCuckooMap<std::pair<size_t, Type>> config_index(config_size);
-  bool ok = true;
   for (size_t i = 0; i < 1000; ++i) {
+    bool ok = true;
     for (size_t d = 0; d < config.dense.size(); ++d) {
       ok &= config_index.InsertUnique(hasher(config.dense[d].feature_name),
                                       {d, Type::Dense});
@@ -1294,8 +1294,8 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
   SeededHasher hasher;
   // Build config index.
   PresizedCuckooMap<std::pair<size_t, Type>> config_index(config_size);
-  bool ok = true;
   for (size_t i = 0; i < 1000; ++i) {
+    bool ok = true;
     for (size_t d = 0; d < config.dense.size(); ++d) {
       ok &= config_index.InsertUnique(hasher(config.dense[d].feature_name),
                                       {d, Type::Dense});
