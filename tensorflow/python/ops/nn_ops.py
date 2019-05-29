@@ -4012,7 +4012,7 @@ def _get_noise_shape(x, noise_shape):
 
   if x.shape.dims is not None and len(x.shape.dims) == len(noise_shape_.dims):
     new_dims = []
-    for i, dim in enumerate(tf.shape(x))):
+    for i, dim in enumerate(tf.shape(x)):
       if noise_shape_.dims[i].value is None:
         new_dims.append(dim.numpy())
       else:
