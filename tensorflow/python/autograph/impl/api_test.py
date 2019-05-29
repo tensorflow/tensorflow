@@ -108,7 +108,7 @@ class ApiTest(test.TestCase):
 
     class TestClass(object):
 
-      @api.do_not_convert(api.RunMode.GRAPH)
+      @api.do_not_convert(run_as=api.RunMode.GRAPH)
       def called_member(self, a):
         return tf.negative(a)
 
@@ -130,7 +130,7 @@ class ApiTest(test.TestCase):
     class TestClass(object):
 
       @api.do_not_convert(
-          api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
+          run_as=api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
       def called_member(self, a):
         return np.negative(a)
 
@@ -703,7 +703,7 @@ class ApiTest(test.TestCase):
 
   def test_to_graph_with_kwargs_clashing_unconverted_call(self):
 
-    @api.do_not_convert()
+    @api.do_not_convert
     def called_fn(**kwargs):
       return kwargs['f'] + kwargs['owner']
 
