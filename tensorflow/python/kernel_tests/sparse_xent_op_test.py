@@ -24,6 +24,7 @@ import time
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -204,6 +205,7 @@ class SparseXentTest(test.TestCase):
           op.op_def.name for op in sess.graph.get_operations() if op.op_def
       ]
       self.assertNotIn("BatchMatMul", op_names)
+      self.assertNotIn("BatchMatMulV2", op_names)
 
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
@@ -229,7 +231,10 @@ class SparseXentTest(test.TestCase):
       op_names = [
           op.op_def.name for op in sess.graph.get_operations() if op.op_def
       ]
-      self.assertIn("BatchMatMul", op_names)
+      if compat.forward_compatible(2019, 4, 25):
+        self.assertIn("BatchMatMulV2", op_names)
+      else:
+        self.assertIn("BatchMatMul", op_names)
 
     print("cross entropy hessian err = ", err)
     self.assertLess(err, 5e-8)
