@@ -23,6 +23,7 @@ import threading
 
 from tensorflow.python.distribute import all_reduce
 from tensorflow.python.distribute import values as value_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import device as pydev
@@ -30,7 +31,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 
@@ -688,14 +688,14 @@ def unpack_small_tensors(replica_grads, packing):
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
   if any(isinstance(v, ops.IndexedSlices) for v in values):
-    return gradients_util._AggregateIndexedSlicesGradients(values)  # pylint: disable=protected-access
+    return backprop.aggregate_indexed_slices_gradients(values)
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
   if isinstance(value, ops.IndexedSlices):
-    value = gradients_util._HandleNestedIndexedSlices(value)  # pylint: disable=protected-access
+    value = backprop.flatten_nested_indexed_slices(value)
     return ops.IndexedSlices(
         value.values / n, value.indices, value.dense_shape)
   else:
