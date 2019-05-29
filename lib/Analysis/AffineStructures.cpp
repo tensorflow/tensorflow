@@ -482,11 +482,18 @@ void FlatAffineConstraints::addId(IdKind kind, unsigned pos, Value *id) {
 
 /// Checks if two constraint systems are in the same space, i.e., if they are
 /// associated with the same set of identifiers, appearing in the same order.
-bool areIdsAligned(const FlatAffineConstraints &A,
-                   const FlatAffineConstraints &B) {
+static bool areIdsAligned(const FlatAffineConstraints &A,
+                          const FlatAffineConstraints &B) {
   return A.getNumDimIds() == B.getNumDimIds() &&
          A.getNumSymbolIds() == B.getNumSymbolIds() &&
          A.getNumIds() == B.getNumIds() && A.getIds().equals(B.getIds());
+}
+
+/// Calls areIdsAligned to check if two constraint systems have the same set
+/// of identifiers in the same order.
+bool FlatAffineConstraints::areIdsAlignedWithOther(
+    const FlatAffineConstraints &other) {
+  return areIdsAligned(*this, other);
 }
 
 /// Checks if the SSA values associated with `cst''s identifiers are unique.
@@ -527,7 +534,6 @@ static void swapId(FlatAffineConstraints *A, unsigned posA, unsigned posB) {
 //  Eg: Input: A has ((%i %j) [%M %N]) and B has (%k, %j) [%P, %N, %M])
 //      Output: both A, B have (%i, %j, %k) [%M, %N, %P]
 //
-// TODO(mlir-team): expose this function at some point.
 static void mergeAndAlignIds(unsigned offset, FlatAffineConstraints *A,
                              FlatAffineConstraints *B) {
   assert(offset <= A->getNumDimIds() && offset <= B->getNumDimIds());
@@ -602,6 +608,12 @@ static void mergeAndAlignIds(unsigned offset, FlatAffineConstraints *A,
     }
   }
   assert(areIdsAligned(*A, *B) && "IDs expected to be aligned");
+}
+
+// Call 'mergeAndAlignIds' to align constraint systems of 'this' and 'other'.
+void FlatAffineConstraints::mergeAndAlignIdsWithOther(
+    unsigned offset, FlatAffineConstraints *other) {
+  mergeAndAlignIds(offset, this, other);
 }
 
 // This routine may add additional local variables if the flattened expression
@@ -1745,15 +1757,9 @@ LogicalResult FlatAffineConstraints::addSliceBounds(
       if (failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/true,
                                       /*lower=*/true)))
         return failure();
-      if (failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/true,
-                                      /*lower=*/true)))
-        return failure();
       continue;
     }
 
-    if (lbMap && failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/false,
-                                             /*lower=*/true)))
-      return failure();
     if (lbMap && failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/false,
                                              /*lower=*/true)))
       return failure();

@@ -40,9 +40,10 @@
 
 using namespace mlir;
 
-// Gathers all load and store operations in 'opA' into 'values', where
+// Gathers all load and store memref accesses in 'opA' into 'values', where
 // 'values[memref] == true' for each store operation.
-static void getLoadsAndStores(Operation *opA, DenseMap<Value *, bool> &values) {
+static void getLoadAndStoreMemRefAccesses(Operation *opA,
+                                          DenseMap<Value *, bool> &values) {
   opA->walk([&](Operation *op) {
     if (auto loadOp = dyn_cast<LoadOp>(op)) {
       if (values.count(loadOp.getMemRef()) == 0)
@@ -73,7 +74,7 @@ static Operation *getFirstDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opA'.
   // Map from memref value to bool which is true if store, false otherwise.
   DenseMap<Value *, bool> values;
-  getLoadsAndStores(opA, values);
+  getLoadAndStoreMemRefAccesses(opA, values);
 
   // For each 'opX' in block in range ('opA', 'opB'), check if there is a data
   // dependence from 'opA' to 'opX' ('opA' and 'opX' access the same memref
@@ -99,7 +100,7 @@ static Operation *getLastDependentOpInRange(Operation *opA, Operation *opB) {
   // Record memref values from all loads/store in loop nest rooted at 'opB'.
   // Map from memref value to bool which is true if store, false otherwise.
   DenseMap<Value *, bool> values;
-  getLoadsAndStores(opB, values);
+  getLoadAndStoreMemRefAccesses(opB, values);
 
   // For each 'opX' in block in range ('opA', 'opB') in reverse order,
   // check if there is a data dependence from 'opX' to 'opB':
@@ -176,8 +177,22 @@ static Operation *getFusedLoopNestInsertionPoint(AffineForOp srcForOp,
   return forOpB.getOperation();
 }
 
+// Gathers all load and store ops in loop nest rooted at 'forOp' into
+// 'loadAndStoreOps'.
+static bool
+gatherLoadsAndStores(AffineForOp forOp,
+                     SmallVectorImpl<Operation *> &loadAndStoreOps) {
+  bool hasIfOp = false;
+  forOp.getOperation()->walk([&](Operation *op) {
+    if (isa<LoadOp>(op) || isa<StoreOp>(op))
+      loadAndStoreOps.push_back(op);
+    else if (isa<AffineIfOp>(op))
+      hasIfOp = true;
+  });
+  return !hasIfOp;
+}
+
 // TODO(andydavis) Add support for the following features in subsequent CLs:
-// *) Computing union of slices computed between src/dst loads and stores.
 // *) Compute dependences of unfused src/dst loops.
 // *) Compute dependences of src/dst loop as if they were fused.
 // *) Check for fusion preventing dependences (e.g. a dependence which changes
@@ -185,18 +200,46 @@ static Operation *getFusedLoopNestInsertionPoint(AffineForOp srcForOp,
 FusionResult mlir::canFuseLoops(AffineForOp srcForOp, AffineForOp dstForOp,
                                 unsigned dstLoopDepth,
                                 ComputationSliceState *srcSlice) {
-  // Return 'false' if 'srcForOp' and 'dstForOp' are not in the same block.
+  // Return 'failure' if 'dstLoopDepth == 0'.
+  if (dstLoopDepth == 0) {
+    LLVM_DEBUG(llvm::dbgs() << "Cannot fuse loop nests at depth 0\n.");
+    return FusionResult::FailPrecondition;
+  }
+  // Return 'failure' if 'srcForOp' and 'dstForOp' are not in the same block.
   auto *block = srcForOp.getOperation()->getBlock();
   if (block != dstForOp.getOperation()->getBlock()) {
     LLVM_DEBUG(llvm::dbgs() << "Cannot fuse loop nests in different blocks\n.");
     return FusionResult::FailPrecondition;
   }
 
-  // Return 'false' if no valid insertion point for fused loop nest in 'block'
+  // Return 'failure' if no valid insertion point for fused loop nest in 'block'
   // exists which would preserve dependences.
   if (!getFusedLoopNestInsertionPoint(srcForOp, dstForOp)) {
     LLVM_DEBUG(llvm::dbgs() << "Fusion would violate dependences in block\n.");
     return FusionResult::FailBlockDependence;
   }
+
+  // Gather all load and store ops in 'srcForOp'.
+  SmallVector<Operation *, 4> srcLoadAndStoreOps;
+  if (!gatherLoadsAndStores(srcForOp, srcLoadAndStoreOps)) {
+    LLVM_DEBUG(llvm::dbgs() << "Fusing loops with affine.if unsupported.\n.");
+    return FusionResult::FailPrecondition;
+  }
+
+  // Gather all load and store ops in 'dstForOp'.
+  SmallVector<Operation *, 4> dstLoadAndStoreOps;
+  if (!gatherLoadsAndStores(dstForOp, dstLoadAndStoreOps)) {
+    LLVM_DEBUG(llvm::dbgs() << "Fusing loops with affine.if unsupported.\n.");
+    return FusionResult::FailPrecondition;
+  }
+
+  // Compute union of computation slices computed from all pairs in
+  // {'srcLoadAndStoreOps', 'dstLoadAndStoreOps'}.
+  if (failed(mlir::computeSliceUnion(srcLoadAndStoreOps, dstLoadAndStoreOps,
+                                     dstLoopDepth, srcSlice))) {
+    LLVM_DEBUG(llvm::dbgs() << "computeSliceUnion failed\n");
+    return FusionResult::FailPrecondition;
+  }
+
   return FusionResult::Success;
 }

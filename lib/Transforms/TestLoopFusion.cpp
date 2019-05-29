@@ -76,8 +76,10 @@ static void testDependenceCheck(SmallVector<AffineForOp, 2> &loops, unsigned i,
                                 unsigned j, unsigned loopDepth) {
   AffineForOp srcForOp = loops[i];
   AffineForOp dstForOp = loops[j];
-  FusionResult result = mlir::canFuseLoops(srcForOp, dstForOp, loopDepth,
-                                           /*srcSlice=*/nullptr);
+  mlir::ComputationSliceState sliceUnion;
+  // TODO(andydavis) Test at deeper loop depths current loop depth + 1.
+  FusionResult result =
+      mlir::canFuseLoops(srcForOp, dstForOp, loopDepth + 1, &sliceUnion);
   if (result.value == FusionResult::FailBlockDependence) {
     srcForOp.getOperation()->emitRemark("block-level dependence preventing"
                                         " fusion of loop nest ")

@@ -28,6 +28,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -479,6 +480,153 @@ static Operation *getInstAtPosition(ArrayRef<unsigned> positions,
     return nullptr;
   }
   return nullptr;
+}
+
+// Returns the MemRef accessed by load or store 'op'.
+static Value *getLoadOrStoreMemRef(Operation *op) {
+  if (auto loadOp = dyn_cast<LoadOp>(op))
+    return loadOp.getMemRef();
+  return cast<StoreOp>(op).getMemRef();
+}
+
+// Adds loop IV bounds to 'cst' for loop IVs not found in 'ivs'.
+LogicalResult addMissingLoopIVBounds(SmallPtrSet<Value *, 8> &ivs,
+                                     FlatAffineConstraints *cst) {
+  for (unsigned i = 0, e = cst->getNumDimIds(); i < e; ++i) {
+    auto *value = cst->getIdValue(i);
+    if (ivs.count(value) == 0) {
+      assert(isForInductionVar(value));
+      auto loop = getForInductionVarOwner(value);
+      if (failed(cst->addAffineForOpDomain(loop)))
+        return failure();
+    }
+  }
+  return success();
+}
+
+/// Computes in 'sliceUnion' the union of all slice bounds computed at
+/// 'dstLoopDepth' between all pairs in 'srcOps' and 'dstOp' which access the
+/// same memref. Returns 'Success' if union was computed, 'failure' otherwise.
+LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> srcOps,
+                                      ArrayRef<Operation *> dstOps,
+                                      unsigned dstLoopDepth,
+                                      ComputationSliceState *sliceUnion) {
+  unsigned numSrcOps = srcOps.size();
+  unsigned numDstOps = dstOps.size();
+  assert(numSrcOps > 0 && numDstOps > 0);
+
+  // Compute the intersection of 'srcMemrefToOps' and 'dstMemrefToOps'.
+  llvm::SmallDenseSet<Value *> memrefIntersection;
+  for (auto *srcOp : srcOps) {
+    auto *srcMemRef = getLoadOrStoreMemRef(srcOp);
+    for (auto *dstOp : dstOps) {
+      if (srcMemRef == getLoadOrStoreMemRef(dstOp))
+        memrefIntersection.insert(srcMemRef);
+    }
+  }
+  // Return failure if 'memrefIntersection' is empty.
+  if (memrefIntersection.empty())
+    return failure();
+
+  // Compute the union of slice bounds between all pairs in 'srcOps' and
+  // 'dstOps' in 'sliceUnionCst'.
+  FlatAffineConstraints sliceUnionCst;
+  assert(sliceUnionCst.getNumDimAndSymbolIds() == 0);
+  for (unsigned i = 0; i < numSrcOps; ++i) {
+    MemRefAccess srcAccess(srcOps[i]);
+    for (unsigned j = 0; j < numDstOps; ++j) {
+      MemRefAccess dstAccess(dstOps[j]);
+      if (srcAccess.memref != dstAccess.memref)
+        continue;
+      // Compute slice bounds for 'srcAccess' and 'dstAccess'.
+      ComputationSliceState tmpSliceState;
+      if (failed(mlir::getBackwardComputationSliceState(
+              srcAccess, dstAccess, dstLoopDepth, &tmpSliceState))) {
+        LLVM_DEBUG(llvm::dbgs() << "Unable to compute slice bounds\n.");
+        return failure();
+      }
+
+      if (sliceUnionCst.getNumDimAndSymbolIds() == 0) {
+        // Initialize 'sliceUnionCst' with the bounds computed in previous step.
+        if (failed(tmpSliceState.getAsConstraints(&sliceUnionCst))) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Unable to compute slice bound constraints\n.");
+          return failure();
+        }
+        assert(sliceUnionCst.getNumDimAndSymbolIds() > 0);
+        continue;
+      }
+
+      // Compute constraints for 'tmpSliceState' in 'tmpSliceCst'.
+      FlatAffineConstraints tmpSliceCst;
+      if (failed(tmpSliceState.getAsConstraints(&tmpSliceCst))) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Unable to compute slice bound constraints\n.");
+        return failure();
+      }
+
+      // Align coordinate spaces of 'sliceUnionCst' and 'tmpSliceCst' if needed.
+      if (!sliceUnionCst.areIdsAlignedWithOther(tmpSliceCst)) {
+
+        // Pre-constraint id alignment: record loop IVs used in each constraint
+        // system.
+        SmallPtrSet<Value *, 8> sliceUnionIVs;
+        for (unsigned k = 0, l = sliceUnionCst.getNumDimIds(); k < l; ++k)
+          sliceUnionIVs.insert(sliceUnionCst.getIdValue(k));
+        SmallPtrSet<Value *, 8> tmpSliceIVs;
+        for (unsigned k = 0, l = tmpSliceCst.getNumDimIds(); k < l; ++k)
+          tmpSliceIVs.insert(tmpSliceCst.getIdValue(k));
+
+        sliceUnionCst.mergeAndAlignIdsWithOther(/*offset=*/0, &tmpSliceCst);
+
+        // Post-constraint id alignment: add loop IV bounds missing after
+        // id alignment to constraint systems. This can occur if one constraint
+        // system uses an loop IV that is not used by the other. The call
+        // to unionBoundingBox below expects constraints for each Loop IV, even
+        // if they are the unsliced full loop bounds added here.
+        if (failed(addMissingLoopIVBounds(sliceUnionIVs, &sliceUnionCst)))
+          return failure();
+        if (failed(addMissingLoopIVBounds(tmpSliceIVs, &tmpSliceCst)))
+          return failure();
+      }
+      // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
+      if (failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Unable to compute union bounding box of slice bounds."
+                      "\n.");
+        return failure();
+      }
+    }
+  }
+
+  // Store 'numSrcLoopIvs' before converting dst loop IVs to dims.
+  unsigned numSrcLoopIVs = sliceUnionCst.getNumDimIds();
+
+  // Convert any dst loop IVs which are symbol identifiers to dim identifiers.
+  sliceUnionCst.convertLoopIVSymbolsToDims();
+  sliceUnion->clearBounds();
+  sliceUnion->lbs.resize(numSrcLoopIVs, AffineMap());
+  sliceUnion->ubs.resize(numSrcLoopIVs, AffineMap());
+
+  // Get slice bounds from slice union constraints 'sliceUnionCst'.
+  sliceUnionCst.getSliceBounds(numSrcLoopIVs, srcOps[0]->getContext(),
+                               &sliceUnion->lbs, &sliceUnion->ubs);
+
+  // Add slice bound operands of union.
+  SmallVector<Value *, 4> sliceBoundOperands;
+  sliceUnionCst.getIdValues(numSrcLoopIVs,
+                            sliceUnionCst.getNumDimAndSymbolIds(),
+                            &sliceBoundOperands);
+
+  // Copy src loop IVs from 'sliceUnionCst' to 'sliceUnion'.
+  sliceUnion->ivs.clear();
+  sliceUnionCst.getIdValues(0, numSrcLoopIVs, &sliceUnion->ivs);
+
+  // Give each bound its own copy of 'sliceBoundOperands' for subsequent
+  // canonicalization.
+  sliceUnion->lbOperands.resize(numSrcLoopIVs, sliceBoundOperands);
+  sliceUnion->ubOperands.resize(numSrcLoopIVs, sliceBoundOperands);
+  return success();
 }
 
 const char *const kSliceFusionBarrierAttrName = "slice_fusion_barrier";

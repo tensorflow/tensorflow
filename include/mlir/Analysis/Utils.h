@@ -92,6 +92,14 @@ LogicalResult getBackwardComputationSliceState(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned dstLoopDepth, ComputationSliceState *sliceState);
 
+/// Computes in 'sliceUnion' the union of all slice bounds computed at
+/// 'dstLoopDepth' between all pairs in 'srcOps' and 'dstOp' which access the
+/// same memref. Returns 'success' if union was computed, 'failure' otherwise.
+LogicalResult computeSliceUnion(ArrayRef<Operation *> srcOps,
+                                ArrayRef<Operation *> dstOps,
+                                unsigned dstLoopDepth,
+                                ComputationSliceState *sliceUnion);
+
 /// Creates a clone of the computation contained in the loop nest surrounding
 /// 'srcOpInst', slices the iteration space of src loop based on slice bounds
 /// in 'sliceState', and inserts the computation slice at the beginning of the

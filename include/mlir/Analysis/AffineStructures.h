@@ -541,6 +541,25 @@ public:
   ///     <= 15}, output = {0 <= d0 <= 6, 1 <= d1 <= 15}.
   LogicalResult unionBoundingBox(const FlatAffineConstraints &other);
 
+  /// Returns 'true' if this constraint system and 'other' are in the same
+  /// space, i.e., if they are associated with the same set of identifiers,
+  /// appearing in the same order. Returns 'false' otherwise.
+  bool areIdsAlignedWithOther(const FlatAffineConstraints &other);
+
+  /// Merge and align the identifiers of 'this' and 'other' starting at
+  /// 'offset', so that both constraint systems get the union of the contained
+  /// identifiers that is dimension-wise and symbol-wise unique; both
+  /// constraint systems are updated so that they have the union of all
+  /// identifiers, with this's original identifiers appearing first followed by
+  /// any of other's identifiers that didn't appear in 'this'. Local
+  /// identifiers of each system are by design separate/local and are placed
+  /// one after other (this's followed by other's).
+  //  Eg: Input: 'this'  has ((%i %j) [%M %N])
+  //             'other' has (%k, %j) [%P, %N, %M])
+  //      Output: both 'this', 'other' have (%i, %j, %k) [%M, %N, %P]
+  //
+  void mergeAndAlignIdsWithOther(unsigned offset, FlatAffineConstraints *other);
+
   unsigned getNumConstraints() const {
     return getNumInequalities() + getNumEqualities();
   }

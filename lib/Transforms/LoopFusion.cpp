@@ -1192,82 +1192,6 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   return true;
 }
 
-// Computes the union of all slice bounds computed between 'srcOpInst'
-// and each load op in 'dstLoadOpInsts' at 'dstLoopDepth', and returns
-// the union in 'sliceState'. Returns true on success, false otherwise.
-// TODO(andydavis) Move this to a loop fusion utility function.
-static bool getSliceUnion(Operation *srcOpInst,
-                          ArrayRef<Operation *> dstLoadOpInsts,
-                          unsigned numSrcLoopIVs, unsigned dstLoopDepth,
-                          ComputationSliceState *sliceState) {
-  MemRefAccess srcAccess(srcOpInst);
-  unsigned numDstLoadOpInsts = dstLoadOpInsts.size();
-  assert(numDstLoadOpInsts > 0);
-  // Compute the slice bounds between 'srcOpInst' and 'dstLoadOpInsts[0]'.
-  if (failed(mlir::getBackwardComputationSliceState(
-          srcAccess, MemRefAccess(dstLoadOpInsts[0]), dstLoopDepth,
-          sliceState)))
-    return false;
-  // Handle the common case of one dst load without a copy.
-  if (numDstLoadOpInsts == 1)
-    return true;
-
-  // Initialize 'sliceUnionCst' with the bounds computed in previous step.
-  FlatAffineConstraints sliceUnionCst;
-  if (failed(sliceState->getAsConstraints(&sliceUnionCst))) {
-    LLVM_DEBUG(llvm::dbgs() << "Unable to compute slice bound constraints\n.");
-    return false;
-  }
-
-  // Compute the union of slice bounds between 'srcOpInst' and each load
-  // in 'dstLoadOpInsts' in range [1, numDstLoadOpInsts), in 'sliceUnionCst'.
-  for (unsigned i = 1; i < numDstLoadOpInsts; ++i) {
-    MemRefAccess dstAccess(dstLoadOpInsts[i]);
-    // Compute slice bounds for 'srcOpInst' and 'dstLoadOpInsts[i]'.
-    ComputationSliceState tmpSliceState;
-    if (failed(mlir::getBackwardComputationSliceState(
-            srcAccess, dstAccess, dstLoopDepth, &tmpSliceState))) {
-      LLVM_DEBUG(llvm::dbgs() << "Unable to compute slice bounds\n.");
-      return false;
-    }
-
-    // Compute constraints for 'tmpSliceState' in 'tmpSliceCst'.
-    FlatAffineConstraints tmpSliceCst;
-    if (failed(tmpSliceState.getAsConstraints(&tmpSliceCst))) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Unable to compute slice bound constraints\n.");
-      return false;
-    }
-    // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
-    if (failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Unable to compute union bounding box of slice bounds.\n.");
-      return false;
-    }
-  }
-
-  // Convert any dst loop IVs which are symbol identifiers to dim identifiers.
-  sliceUnionCst.convertLoopIVSymbolsToDims();
-
-  sliceState->clearBounds();
-  sliceState->lbs.resize(numSrcLoopIVs, AffineMap());
-  sliceState->ubs.resize(numSrcLoopIVs, AffineMap());
-
-  // Get slice bounds from slice union constraints 'sliceUnionCst'.
-  sliceUnionCst.getSliceBounds(numSrcLoopIVs, srcOpInst->getContext(),
-                               &sliceState->lbs, &sliceState->ubs);
-  // Add slice bound operands of union.
-  SmallVector<Value *, 4> sliceBoundOperands;
-  sliceUnionCst.getIdValues(numSrcLoopIVs,
-                            sliceUnionCst.getNumDimAndSymbolIds(),
-                            &sliceBoundOperands);
-  // Give each bound its own copy of 'sliceBoundOperands' for subsequent
-  // canonicalization.
-  sliceState->lbOperands.resize(numSrcLoopIVs, sliceBoundOperands);
-  sliceState->ubOperands.resize(numSrcLoopIVs, sliceBoundOperands);
-  return true;
-}
-
 // Checks the profitability of fusing a backwards slice of the loop nest
 // surrounding 'srcOpInst' into the loop nest surrounding 'dstLoadOpInsts'.
 // The argument 'srcStoreOpInst' is used to calculate the storage reduction on
@@ -1404,10 +1328,11 @@ static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
   DenseMap<Operation *, int64_t> computeCostMap;
   for (unsigned i = maxDstLoopDepth; i >= 1; --i) {
     // Compute the union of slice bounds of all ops in 'dstLoadOpInsts'.
-    if (!getSliceUnion(srcOpInst, dstLoadOpInsts, numSrcLoopIVs, i,
-                       &sliceStates[i - 1])) {
+    if (failed(mlir::computeSliceUnion({srcOpInst}, dstLoadOpInsts,
+                                       /*dstLoopDepth=*/i,
+                                       &sliceStates[i - 1]))) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "getSliceUnion failed for loopDepth: " << i << "\n");
+                 << "computeSliceUnion failed for loopDepth: " << i << "\n");
       continue;
     }
 
@@ -1813,9 +1738,10 @@ public:
             continue;
           // TODO(andydavis) Remove assert and surrounding code when
           // canFuseLoops is fully functional.
+          mlir::ComputationSliceState sliceUnion;
           FusionResult result = mlir::canFuseLoops(
               cast<AffineForOp>(srcNode->op), cast<AffineForOp>(dstNode->op),
-              bestDstLoopDepth, /*srcSlice=*/nullptr);
+              bestDstLoopDepth, &sliceUnion);
           assert(result.value == FusionResult::Success);
           (void)result;
 
