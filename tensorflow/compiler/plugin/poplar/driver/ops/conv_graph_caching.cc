@@ -91,7 +91,7 @@ ConvolutionCacheKey GetConvolutionCacheKey(
                                        params.getNumInputChans()};
   in_shape.insert(in_shape.end(), params.inputFieldShape.begin(),
                   params.inputFieldShape.end());
-  PoplarTensorSignature in_sig(params.dType, std::move(in_shape));
+  PoplarTensorSignature in_sig(params.inputType, std::move(in_shape));
 
   // Create signature for the weights
   std::vector<std::size_t> weights_shape = {
@@ -99,7 +99,7 @@ ConvolutionCacheKey GetConvolutionCacheKey(
       params.getNumInputChansPerConvGroup()};
   weights_shape.insert(weights_shape.end(), params.kernelShape.begin(),
                        params.kernelShape.end());
-  PoplarTensorSignature weights_sig(params.dType, std::move(weights_shape));
+  PoplarTensorSignature weights_sig(params.inputType, std::move(weights_shape));
   return std::make_tuple(in_sig, weights_sig,
                          poplin::canonicalizeParams(params), conv_type,
                          transpose_and_flip_weights, device_id);
@@ -114,7 +114,7 @@ ConvolutionScaledInplaceCacheKey GetConvolutionScaledInplaceCacheKey(
                                        params.getNumInputChans()};
   in_shape.insert(in_shape.end(), params.inputFieldShape.begin(),
                   params.inputFieldShape.end());
-  PoplarTensorSignature in_sig(params.dType, std::move(in_shape));
+  PoplarTensorSignature in_sig(params.inputType, std::move(in_shape));
 
   // Create signature for the gradients
   std::vector<std::size_t> grad_shape = {params.getNumConvGroups(),
@@ -122,7 +122,7 @@ ConvolutionScaledInplaceCacheKey GetConvolutionScaledInplaceCacheKey(
                                          params.getNumInputChansPerConvGroup()};
   grad_shape.insert(grad_shape.end(), params.kernelShape.begin(),
                     params.kernelShape.end());
-  PoplarTensorSignature grad_sig(params.dType, std::move(grad_shape));
+  PoplarTensorSignature grad_sig(params.inputType, std::move(grad_shape));
   return std::make_tuple(in_sig, grad_sig, poplin::canonicalizeParams(params),
                          conv_type, learning_rate_is_constant, learning_rate,
                          op_type, device_id);
