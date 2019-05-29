@@ -73,7 +73,7 @@ class ScratchBufAllocator : public se::ScratchAllocator {
   bool allocated_ = false;
 };
 
-template <typename T>
+template <typename T, typename BIAS_T>
 Status RunCudnnConvImpl(const CudnnConvParams& params,
                         se::ScratchAllocator* scratch_allocator,
                         se::Stream* stream, RunConvOptions options) {
@@ -149,7 +149,7 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
           params.input_descriptor, input_buf, params.conv_result_scale,
           params.filter_descriptor, filter_buf, params.conv_desc, side_input,
           params.fusion->side_input_scale, bias_desc,
-          DeviceMemory<T>(params.fusion->bias_buf), params.fusion->mode,
+          DeviceMemory<BIAS_T>(params.fusion->bias_buf), params.fusion->mode,
           params.output_descriptor, &output_buf, scratch_allocator, algorithm,
           options.profile_result);
       break;
@@ -376,13 +376,16 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
       conv->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {
     case F16:
-      return RunCudnnConvImpl<Eigen::half>(params, scratch_allocator, stream,
+      return RunCudnnConvImpl<Eigen::half, Eigen::half>(params, scratch_allocator, stream,
                                            options);
     case F32:
-      return RunCudnnConvImpl<float>(params, scratch_allocator, stream,
+      return RunCudnnConvImpl<float ,float>(params, scratch_allocator, stream,
                                      options);
     case F64:
-      return RunCudnnConvImpl<double>(params, scratch_allocator, stream,
+      return RunCudnnConvImpl<double, double>(params, scratch_allocator, stream,
+                                      options);
+    case S8:
+      return RunCudnnConvImpl<int8, float>(params, scratch_allocator, stream,
                                       options);
     default:
       LOG(FATAL) << conv->ToString();

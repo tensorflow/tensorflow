@@ -57,6 +57,11 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
+  // Integer convolution must use NHWC.
+  if (primitive_util::IsIntegralType(instr->operand(0)->shape().element_type())) {
+    return kAllNHWC;
+  }
+
   // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
   // NCHW.
   if (instr->operand(0)->shape().element_type() != xla::PrimitiveType::F16 ||

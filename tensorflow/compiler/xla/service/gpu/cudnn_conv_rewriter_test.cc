@@ -631,6 +631,27 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveConstantFilter) {
                           0));
 }
 
+// Check that an integer forward convolution is replaced with a custom call to
+// cudnnConvolutionForward
+TEST_F(CudnnConvRewriterTest, ForwardIntegerConvolution) {
+  const string module_str = absl::StrFormat(R"(
+    HloModule Test
+
+    ENTRY Test {
+      input = s8[1,2,3,3] parameter(0)
+      filter = s8[3,3,2,5] parameter(1)
+
+      ROOT conv = s8[1,5,3,3] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+    })");
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  EXPECT_TRUE(RunPass(m.get()));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      op::GetTupleElement(
+          op::CustomCall(kCudnnConvForwardCallTarget, _, op::Parameter()), 0));
+}
+
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla

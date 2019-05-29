@@ -216,6 +216,15 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
   }
 
   CHECK(bias);
+
+  // Cast integer type bias to float to match 
+  // cudnnConvolutionBiasActivationForward.
+  if (primitive_util::IsIntegralType(bias->shape().element_type())) {
+    auto shape = bias->shape();
+    shape.set_element_type(xla::F32);
+    bias = computation->AddInstruction(HloInstruction::CreateConvert(shape, bias));
+  }
+
   std::vector<HloInstruction*> args = {conv->mutable_operand(0),
                                        conv->mutable_operand(1), bias};
   if (match.side_input) {

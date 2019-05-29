@@ -2731,6 +2731,37 @@ port::Status CudnnSupport::DoPrepareForConvolution(
   return port::Status::OK();
 }
 
+port::Status CudnnSupport::IntegerConvolutionSanityChecks(
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const absl::optional<dnn::AlgorithmDesc>& algo_desc) {
+  // Check algorithm.  Only _IMPLICIT_PRECOMP_GEMM is supported.
+  if (algo_desc.has_value() &&
+      algo_desc->algo_id() !=
+          CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM) {
+    return port::InternalError(
+        "cudnnConvolutionBiasActivationForward() for int8 is only supported "
+        "with the CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM algorithm.");
+  }
+  // Check the number of input/output feature maps.  Must be multiple of 4.
+  if (input_descriptor.feature_map_count() % 4 != 0 ||
+      output_descriptor.feature_map_count() % 4 != 0) {
+    return port::InternalError(
+        "cudnnConvolutionBiasActivationForward() for int8 is only supported "
+        "with the input and output feature maps being multiple of 4.");
+  }
+ // Check layout.  Only NHWC is supported.
+  if (input_descriptor.layout() != stream_executor::dnn::kBatchYXDepth ||
+      output_descriptor.layout() != stream_executor::dnn::kBatchYXDepth ||
+      filter_descriptor.layout() != stream_executor::dnn::kOutputYXInput) {
+    return port::InternalError(
+        "cudnnConvolutionBiasActivationForward() for int8 is only supported "
+        "with tensor format NHWC.");
+  }
+  return port::Status::OK();
+}
+
 port::Status CudnnSupport::DoConvolve(
     dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -2904,6 +2935,11 @@ port::Status CudnnSupport::DoConvolve(
   switch (kind) {
     case dnn::ConvolutionKind::FORWARD: {
       SE_RETURN_IF_ERROR(get_fwd_bugs());
+      if (element_type == stream_executor::dnn::kInt8) {
+        SE_RETURN_IF_ERROR(
+            IntegerConvolutionSanityChecks(input_descriptor, filter_descriptor,
+                                           output_descriptor, algorithm_desc));
+      }
       RETURN_IF_CUDNN_ERROR(cudnnConvolutionForward(
           cudnn.handle(),
           /*alpha=*/alpha, /*srcDesc=*/input_nd.handle(),
@@ -3602,6 +3638,13 @@ bool CudnnSupport::DoFusedConvolve(
                     "supported on GPUs with compute capability 6.1 or later.";
     return false;
   }
+
+  if (!IsStatusOk(IntegerConvolutionSanityChecks(
+          conv_input_descriptor, filter_descriptor, output_descriptor,
+          algorithm_config.algorithm()), /*report_error=*/true)) {
+    return false;
+  }
+
   return IsStatusOk(
       DoFusedConvolveImpl(
           stream, conv_input_descriptor, conv_input_data, conv_input_scale,

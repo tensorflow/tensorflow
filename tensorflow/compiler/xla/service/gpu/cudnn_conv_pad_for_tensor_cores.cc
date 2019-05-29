@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_features.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -35,90 +36,9 @@ namespace gpu {
 // heuristic, possibly some form of auto-tuning.
 static constexpr double kMaxBytesTouchedIncrease = 1.35;
 
-// Creates and returns an HLO that zero-pads one or more dimensions in the given
-// instruction so that its shape is equal to the given shape.
-//
-// Padding is added to the end of each relevant dimension.
-//
-// If the instruction already has the given shape, simply returns it without an
-// intervening pad.
-static HloInstruction* PadInstruction(HloInstruction* instr,
-                                      const Shape& new_shape) {
-  HloComputation* comp = instr->parent();
-
-  const Shape& shape = instr->shape();
-  auto* zero = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
-
-  PaddingConfig pad_config = MakeNoPaddingConfig(shape.rank());
-
-  bool added_padding = false;
-  for (int64 dim = 0; dim < shape.rank(); ++dim) {
-    if (shape.dimensions(dim) == new_shape.dimensions(dim)) {
-      continue;
-    }
-    CHECK_GT(new_shape.dimensions(dim), shape.dimensions(dim));
-    pad_config.mutable_dimensions(dim)->set_edge_padding_high(
-        new_shape.dimensions(dim) - shape.dimensions(dim));
-    added_padding = true;
-  }
-
-  if (!added_padding) {
-    return instr;
-  }
-  return comp->AddInstruction(
-      HloInstruction::CreatePad(new_shape, instr, zero, pad_config));
-}
-
-// Modifies the given convolution to have the given LHS/RHS/result shapes.
-static Status PadConv(HloCustomCallInstruction* conv,
-                      const Shape& new_lhs_shape, const Shape& new_rhs_shape,
-                      const Shape& new_result_shape) {
-  CHECK_EQ(0, conv->shape().tuple_shapes(1).dimensions(0))
-      << "conv must use 0 scratch bytes, i.e. this pass must be run "
-         "before CudnnConvAlgorithmPicker.";
-
-  auto* lhs = conv->mutable_operand(0);
-  auto* rhs = conv->mutable_operand(1);
-  auto* new_lhs = PadInstruction(lhs, new_lhs_shape);
-  auto* new_rhs = PadInstruction(rhs, new_rhs_shape);
-  const Shape& result_shape = conv->shape().tuple_shapes(0);
-  CHECK(new_lhs != lhs || new_rhs != rhs)
-      << "We should have had to pad either LHS or RHS.";
-
-  auto add = [&](std::unique_ptr<HloInstruction> new_instr) {
-    return conv->parent()->AddInstruction(std::move(new_instr));
-  };
-
-  Shape new_conv_shape = ShapeUtil::MakeTupleShape(
-      {new_result_shape, ShapeUtil::MakeShape(U8, {0})});
-  auto* new_conv =
-      add(conv->CloneWithNewOperands(new_conv_shape, {new_lhs, new_rhs}));
-
-  // Slice the new conv result if necessary, keeping in mind that new_conv has
-  // tuple shape (new_result_shape, u8[0]).
-  if (!ShapeUtil::Equal(result_shape, new_result_shape)) {
-    std::vector<int64> start_indices(result_shape.dimensions_size(), 0);
-    std::vector<int64> end_indices(result_shape.dimensions().begin(),
-                                   result_shape.dimensions().end());
-    std::vector<int64> strides(result_shape.dimensions_size(), 1);
-
-    auto* new_conv_result = add(
-        HloInstruction::CreateGetTupleElement(new_result_shape, new_conv, 0));
-    auto* empty_temp_buffer =
-        add(HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8>({})));
-    auto* sliced_result = add(HloInstruction::CreateSlice(
-        result_shape, new_conv_result, start_indices, end_indices, strides));
-    new_conv =
-        add(HloInstruction::CreateTuple({sliced_result, empty_temp_buffer}));
-  }
-
-  VLOG(2) << "Padded features of " << conv->ToString() << ", replaced with "
-          << new_conv->ToString();
-  return conv->parent()->ReplaceInstruction(conv, new_conv);
-}
-
-static StatusOr<bool> PadForTensorCores(HloCustomCallInstruction* conv) {
+static StatusOr<bool> ResolvePadedShapes(
+    HloCustomCallInstruction* conv, std::vector<Shape>* new_input_shapes_ptr,
+    Shape* new_result_shape_ptr) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const auto& dnums = conv->convolution_dimension_numbers();
   auto* lhs = conv->mutable_operand(0);
@@ -138,7 +58,8 @@ static StatusOr<bool> PadForTensorCores(HloCustomCallInstruction* conv) {
 
   Shape new_lhs_shape = lhs->shape();
   Shape new_rhs_shape = rhs->shape();
-  Shape new_result_shape = conv->shape().tuple_shapes(0);
+  Shape& new_result_shape = *new_result_shape_ptr;
+  new_result_shape = conv->shape().tuple_shapes(0);
 
   // new_{input,filter_output}_shape points to the appropriate one of
   // new_{lhs,rhs,result}_shape.
@@ -211,32 +132,14 @@ static StatusOr<bool> PadForTensorCores(HloCustomCallInstruction* conv) {
     return false;
   }
 
-  // OK, let's do the transformation!
-  TF_RETURN_IF_ERROR(
-      PadConv(conv, new_lhs_shape, new_rhs_shape, new_result_shape));
+  new_input_shapes_ptr->push_back(new_lhs_shape);
+  new_input_shapes_ptr->push_back(new_rhs_shape);
   return true;
 }
 
-static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
-    HloComputation* comp) {
-  std::vector<HloCustomCallInstruction*> convs;
-  for (HloInstruction* instr : comp->instructions()) {
-    if (IsCustomCallToDnnConvolution(*instr)) {
-      convs.push_back(Cast<HloCustomCallInstruction>(instr));
-    }
-  }
-  return convs;
-}
-
 StatusOr<bool> CudnnConvPadForTensorCores::Run(HloModule* module) {
-  bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
-      TF_ASSIGN_OR_RETURN(bool result, PadForTensorCores(conv));
-      changed |= result;
-    }
-  }
-  return changed;
+  CudnnConvPadFeatures impl;
+  return impl.Run(module, ResolvePadedShapes);
 }
 
 }  // namespace gpu

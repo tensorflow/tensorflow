@@ -40,24 +40,35 @@ class CudnnFusedConvRewriterTest : public HloTestBase {
   }
 
   void TestMatchWithAllTypes(absl::string_view hlo_string) {
-    for (absl::string_view type : {"f16", "f32", "f64"}) {
-      const string hlo_with_new_type =
-          absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+    string alpha_conv_scalar, alpha_side_input_scalar;
+    for (absl::string_view type : {"f16", "f32", "f64", "s8"}) {
+      if(type == "s8") {
+        alpha_conv_scalar = "2";
+        alpha_side_input_scalar = "-3";
+      }
+      else {
+        alpha_conv_scalar = "0.999994934";
+        alpha_side_input_scalar = "0.899994934";
+      }
+      string hlo_resolved_string =
+          absl::StrReplaceAll(hlo_string, {{"TYPE", type}, {"ALPHA_CONV_SCALAR", alpha_conv_scalar}, {"ALPHA_SIDE_INPUT_SCALAR", alpha_side_input_scalar}});
+      string optimized_hlo_string = GetOptimizedHlo(hlo_resolved_string);
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvForwardCallTarget)));
       EXPECT_THAT(optimized_hlo_string,
                   HasSubstr(kCudnnConvBiasActivationForwardCallTarget));
-      EXPECT_TRUE(RunAndCompare(hlo_with_new_type, ErrorSpec{0.01}))
-          << optimized_hlo_string;
+      if (type != "s8") {
+        EXPECT_TRUE(RunAndCompare(hlo_resolved_string, ErrorSpec{0.01}))
+            << optimized_hlo_string;
+      }
     }
   }
 
   void TestNotMatchWithAllTypes(absl::string_view hlo_string) {
-    for (absl::string_view type : {"f16", "f32", "f64"}) {
-      const string hlo_with_new_type =
+    for (absl::string_view type : {"f16", "f32", "f64", "s8"}) {
+      string hlo_resolved_string =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
-      string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
+      string optimized_hlo_string = GetOptimizedHlo(hlo_resolved_string);
       EXPECT_THAT(optimized_hlo_string, HasSubstr(kCudnnConvForwardCallTarget));
       EXPECT_THAT(optimized_hlo_string,
                   Not(HasSubstr(kCudnnConvBiasActivationForwardCallTarget)));
@@ -144,14 +155,14 @@ TEST_F(CudnnFusedConvRewriterTest, TestBiasAndSideInput) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConv) {
-  // max(0, 0.999994934 * conv(x, w));
+  // max(0, ALPHA_CONV_SCALAR * conv(x, w));
   TestMatchWithAllTypes(R"(
     HloModule Test
 
     ENTRY Test {
       zero = TYPE[] constant(0)
       zeros = TYPE[1,32,9,9] broadcast(zero), dimensions={}
-      alpha_conv_scalar = TYPE[] constant(0.999994934)
+      alpha_conv_scalar = TYPE[] constant(ALPHA_CONV_SCALAR)
 
       input = TYPE[1,17,9,9] parameter(0)
       filter = TYPE[3,3,17,32] parameter(1)
@@ -164,14 +175,14 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndSideInput) {
-  // max(0, conv(x, w) + 0.899994934 * side_input);
+  // max(0, conv(x, w) + ALPHA_SIDE_INPUT_SCALAR * side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
 
     ENTRY Test {
       zero = TYPE[] constant(0)
       zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
-      alpha_side_input_scalar = TYPE[] constant(0.899994934)
+      alpha_side_input_scalar = TYPE[] constant(ALPHA_SIDE_INPUT_SCALAR)
       alpha_side_input = TYPE[1,3,3,64] broadcast(alpha_side_input_scalar), dimensions={}
 
       input = TYPE[1,3,3,64] parameter(0)
@@ -186,16 +197,16 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndSideInput) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInput) {
-  // max(0, 0.999994934 * conv(x, w) + 0.899994934 * side_input);
+  // max(0, ALPHA_CONV_SCALAR * conv(x, w) + ALPHA_SIDE_INPUT_SCALAR * side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
 
     ENTRY Test {
       zero = TYPE[] constant(0)
       zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
-      alpha_conv_scalar = TYPE[] constant(0.999994934)
+      alpha_conv_scalar = TYPE[] constant(ALPHA_CONV_SCALAR)
       alpha_conv = TYPE[1,3,3,64] broadcast(alpha_conv_scalar), dimensions={}
-      alpha_side_input_scalar = TYPE[] constant(0.899994934)
+      alpha_side_input_scalar = TYPE[] constant(ALPHA_SIDE_INPUT_SCALAR)
       alpha_side_input = TYPE[1,3,3,64] broadcast(alpha_side_input_scalar), dimensions={}
 
       input = TYPE[1,3,3,64] parameter(0)
@@ -211,16 +222,16 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInput) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInputWithBias) {
-  // max(0, 0.999994934 * conv(x, w) + 0.899994934 * side_input + bias);
+  // max(0, ALPHA_CONV_SCALAR * conv(x, w) + ALPHA_SIDE_INPUT_SCALAR * side_input + bias);
   TestMatchWithAllTypes(R"(
     HloModule Test
 
     ENTRY Test {
       zero = TYPE[] constant(0)
       zeros = TYPE[1,3,3,64] broadcast(zero), dimensions={}
-      alpha_conv_scalar = TYPE[] constant(0.999994934)
+      alpha_conv_scalar = TYPE[] constant(ALPHA_CONV_SCALAR)
       alpha_conv = TYPE[1,3,3,64] broadcast(alpha_conv_scalar), dimensions={}
-      alpha_side_input_scalar = TYPE[] constant(0.899994934)
+      alpha_side_input_scalar = TYPE[] constant(ALPHA_SIDE_INPUT_SCALAR)
       alpha_side_input = TYPE[1,3,3,64] broadcast(alpha_side_input_scalar), dimensions={}
 
       input = TYPE[1,3,3,64] parameter(0)
@@ -239,19 +250,19 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInputWithBias) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestMatchMaxZeroOnly) {
-  // max(0.1, conv(x, w)) shouldn't match.
+  // max(1, conv(x, w)) shouldn't match.
   TestNotMatchWithAllTypes(R"(
     HloModule Test
 
     ENTRY Test {
-      point_one = TYPE[] constant(0.1)
-      point_ones = TYPE[1,32,9,9] broadcast(point_one), dimensions={}
+      one = TYPE[] constant(1)
+      ones = TYPE[1,32,9,9] broadcast(one), dimensions={}
 
       input = TYPE[1,17,9,9] parameter(0)
       filter = TYPE[3,3,17,32] parameter(1)
 
       conv = TYPE[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
-      ROOT relu = TYPE[1,32,9,9] maximum(point_ones, conv)
+      ROOT relu = TYPE[1,32,9,9] maximum(ones, conv)
     })");
 }
 

@@ -852,10 +852,25 @@ cc_library(
 )
 
 cc_library(
+    name = "cudnn_conv_pad_features",
+    srcs = ["cudnn_conv_pad_features.cc"],
+    hdrs = ["cudnn_conv_pad_features.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+cc_library(
     name = "cudnn_conv_pad_for_tensor_cores",
     srcs = ["cudnn_conv_pad_for_tensor_cores.cc"],
     hdrs = ["cudnn_conv_pad_for_tensor_cores.h"],
     deps = [
+        ":cudnn_conv_pad_features",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
@@ -870,6 +885,36 @@ tf_cc_test(
     srcs = ["cudnn_conv_pad_for_tensor_cores_test.cc"],
     deps = [
         ":cudnn_conv_pad_for_tensor_cores",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
+cc_library(
+    name = "cudnn_conv_pad_for_integer_convolutions",
+    srcs = ["cudnn_conv_pad_for_integer_convolutions.cc"],
+    hdrs = ["cudnn_conv_pad_for_integer_convolutions.h"],
+    deps = [
+        ":cudnn_conv_pad_features",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_conv_pad_for_integer_convolutions_test",
+    srcs = ["cudnn_conv_pad_for_integer_convolutions_test.cc"],
+    deps = [
+        ":cudnn_conv_pad_for_integer_convolutions",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -915,6 +960,7 @@ cc_library(
         ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_pad_for_tensor_cores",
+        ":cudnn_conv_pad_for_integer_convolutions",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",

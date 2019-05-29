@@ -669,6 +669,12 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8>* scratch_memory) override;
 
+port::Status IntegerConvolutionSanityChecks(
+    const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const absl::optional<dnn::AlgorithmDesc>& algo_desc);
+
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
 };
 
