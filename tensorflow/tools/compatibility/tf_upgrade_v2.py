@@ -973,6 +973,12 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             deprecate_partition_strategy_comment,
         "tf.nn.sampled_softmax_loss":
             deprecate_partition_strategy_comment,
+        "tf.keras.estimator.model_to_estimator":
+            (ast_edits.WARNING,
+             "Estimators from <function name> will save object-based "
+             "checkpoints (format used by `keras_model.save_weights` and "
+             "`keras_model.load_weights`) by default in 2.0. To continue "
+             "saving name-based checkpoints, set `checkpoint_format='saver'`."),
         "tf.keras.initializers.Zeros":
             initializers_no_dtype_comment,
         "tf.keras.initializers.zeros":

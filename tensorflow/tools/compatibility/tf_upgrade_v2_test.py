@@ -2087,6 +2087,11 @@ def _log_prob(self, x):
       self.assertEqual(result_a[3], expected_text_a)
       self.assertEqual(result_b[3], expected_text_b)
 
+  def test_model_to_estimator_checkpoint_warning(self):
+    text = "tf.keras.estimator.model_to_estimator(model)"
+    _, report, _, _ = self._upgrade(text)
+    expected_info = "will save object-based checkpoints"
+    self.assertIn(expected_info, report)
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
