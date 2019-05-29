@@ -127,10 +127,12 @@ void StringToNcclUniqueId(const string& str_id, ncclUniqueId* nccl_id) {
 // 3 nodes with 4 GPUs each would have a `Collective` per node, each of which is
 // tracking the 4 GPUs local to that node.
 struct NcclManager::Collective : public core::RefCounted {
-  Collective(DataType data_type_in, CollectiveType type_in,
-             ncclRedOp_t reduction_op_in, int num_local_devices_in,
-             int num_global_devices_in, const string& communicator_key_in)
-      : data_type(data_type_in),
+  Collective(const string& collective_key_in, DataType data_type_in,
+             CollectiveType type_in, ncclRedOp_t reduction_op_in,
+             int num_local_devices_in, int num_global_devices_in,
+             const string& communicator_key_in)
+      : collective_key(collective_key_in),
+        data_type(data_type_in),
         type(type_in),
         reduction_op(reduction_op_in),
         num_local_devices(num_local_devices_in),
@@ -140,6 +142,7 @@ struct NcclManager::Collective : public core::RefCounted {
     participants.reserve(num_local_devices_in);
   }
 
+  const string collective_key;  // A unique key for debugging.
   const DataType data_type;
   const CollectiveType type;
   const ncclRedOp_t reduction_op;  // applies when <type> is a reduction.
@@ -421,9 +424,10 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
     auto collective_it = collectives_.find(context.collective_key);
     Collective* collective = nullptr;
     if (collective_it == collectives_.end()) {
-      collective = new Collective(
-          data_type, collective_type, reduction_op, context.num_local_devices,
-          context.num_global_devices, context.communicator_key);
+      collective =
+          new Collective(context.collective_key, data_type, collective_type,
+                         reduction_op, context.num_local_devices,
+                         context.num_global_devices, context.communicator_key);
       collectives_.emplace(context.collective_key, collective);
     } else {
       collective = collective_it->second;
@@ -568,7 +572,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
     // Find collective to run.
     std::pair<Collective*, int> next_launch;
     {
-      VLOG(2) << "Locking mutex nccl_stream " << nccl_stream;
+      VLOG(3) << "Locking mutex nccl_stream " << nccl_stream;
       mutex_lock l(nccl_stream->mu);
       while (nccl_stream->pending_launches_.empty()) {
         if (nccl_stream->shutdown_requested) {
@@ -593,9 +597,10 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         const void* sendbuff = p->input->tensor_data().data();
         void* recvbuff = const_cast<char*>(p->output->tensor_data().data());
 
-        VLOG(2) << "call NcclAllReduce participant " << p_idx << " sendbuff "
-                << sendbuff << " recvbuff " << recvbuff << " nccl_comm "
-                << nccl_comm << " comm_stream " << comm_stream
+        VLOG(2) << "call NcclAllReduce collective_key "
+                << collective->collective_key << " participant " << p_idx
+                << " sendbuff " << sendbuff << " recvbuff " << recvbuff
+                << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
                 << " cuda_stream " << cu_stream;
         nccl_result = ncclAllReduce(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, collective->reduction_op,
@@ -623,12 +628,13 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         const void* sendbuff = p->input->tensor_data().data();
         void* recvbuff = const_cast<char*>(p->output->tensor_data().data());
 
-        VLOG(2) << "call NcclAllGather participant " << p_idx << " sendbuff "
-                << sendbuff << " sendcount " << p->input->NumElements()
-                << " recvbuff " << recvbuff << " recvcount "
-                << p->output->NumElements() << " nccl_comm " << nccl_comm
-                << " comm_stream " << comm_stream << " cuda_stream "
-                << cu_stream;
+        VLOG(2) << "call NcclAllGather collective_key "
+                << collective->collective_key << " participant " << p_idx
+                << " sendbuff " << sendbuff << " sendcount "
+                << p->input->NumElements() << " recvbuff " << recvbuff
+                << " recvcount " << p->output->NumElements() << " nccl_comm "
+                << nccl_comm << " comm_stream " << comm_stream
+                << " cuda_stream " << cu_stream;
         nccl_result = ncclAllGather(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, nccl_comm, *cu_stream);
         break;
@@ -637,6 +643,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
     // Run the done_callback when the nccl kernel finishes running.
     auto done_callback = [collective, p_idx, nccl_result]() {
+      VLOG(2) << "done Nccl kernel collective_key "
+              << collective->collective_key << " participant " << p_idx
+              << " ncclResult " << nccl_result;
       if (nccl_result == ncclSuccess) {
         collective->participants[p_idx]->done_callback(Status::OK());
       } else {
