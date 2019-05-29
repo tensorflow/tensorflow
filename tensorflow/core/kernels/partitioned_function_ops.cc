@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -281,6 +282,10 @@ REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_GPU),
                         PartitionedCallOp);
 REGISTER_KERNEL_BUILDER(Name("StatefulPartitionedCall").Device(DEVICE_GPU),
                         PartitionedCallOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("PartitionedCall");
+REGISTER_INPUT_COLOCATION_EXEMPTION("StatefulPartitionedCall");
+
 #if TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("PartitionedCall").Device(DEVICE_SYCL),
                         PartitionedCallOp);

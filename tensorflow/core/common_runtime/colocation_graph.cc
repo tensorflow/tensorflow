@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -150,8 +151,8 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
   // ref inputs to operations that are appropriately placed, instead of
   // dereferencing them.
   const string& op_type = node->op_def().name();
-  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall" ||
-         op_type == "ReduceDataset" || op_type == "ExperimentalScanDataset";
+  auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  return exempt_ops.find(op_type) != exempt_ops.end();
 }
 
 bool HasPriorities(const PrioritizedDeviceTypeVector& device_types) {
