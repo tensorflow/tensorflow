@@ -241,7 +241,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
     mkldnn::post_ops post_ops;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "Activation") {
+        if (post_op_param.name == "activation") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
@@ -259,7 +259,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
             post_ops_attr.set_output_scales(2, post_op_param.param);
           }
         } else {
-          DCHECK((post_op_param.name == "Activation") ||
+          DCHECK((post_op_param.name == "activation") ||
                  (post_op_param.name == "sum") ||
                  (post_op_param.name == "output_scale"));
         }
@@ -369,7 +369,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
 
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
-      if (post_op_param.name == "Activation") {
+      if (post_op_param.name == "activation") {
         DCHECK_EQ(post_op_param.param.size(), 3);
       } else if (post_op_param.name == "sum") {
         DCHECK_EQ(post_op_param.param.size(), 1);
@@ -784,11 +784,13 @@ class MklConvOp : public OpKernel {
     // Add fusions as post ops
     // NOTE: Fusion of BiasAdd is handled directly inside MklConvOp by
     // checking `fuse_biasadd_` flag.
-    if (fuse_add_)
+    if (fuse_add_) {
       params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
-    if (fuse_activation_)
+    }
+    if (fuse_activation_) {
       params.post_op_params.push_back(
-          {"Activation", activation_alg_, {1.0, relu_up_bound_, 0.0}});
+          {"activation", activation_alg_, {1.0, relu_up_bound_, 0.0}});
+    }
   }
 
   virtual Tbias* GetBiasHandle(OpKernelContext* context,
@@ -1354,7 +1356,7 @@ class MklQuantizedConv2DReluOp
     MklQuantizedConv2DOp<Device, Tbias, Toutput, Ttemp_output, bias_enabled,
                          is_depthwise>::ExtendConvFwdParams(context, params);
     params.post_op_params.push_back(
-        {"Activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 };
 
@@ -1421,7 +1423,7 @@ class MklQuantizedConv2DSumReluOp
       params.post_op_params.push_back({"sum", mkldnn::algorithm_undef, {1.0}});
     }
     params.post_op_params.push_back(
-        {"Activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
+        {"activation", mkldnn::eltwise_relu, {1.0, 0.0, 0.0}});
   }
 
   void AllocateOutputTensor(OpKernelContext* context,

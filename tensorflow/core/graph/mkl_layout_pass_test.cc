@@ -1412,7 +1412,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive5) {
 }
 
 // Rewrite test for _FusedConv2D Op with BiasAdd+Add fusion
-TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive4) {
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive6) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
@@ -1441,7 +1441,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive4) {
 }
 
 // Rewrite test for _FusedConv2D Op with BiasAdd+Add+Relu fusion
-TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive5) {
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive7) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
       "node { name: 'B' op: 'Input'}"
