@@ -66,6 +66,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kExpandDims || type == OperatorType::kPack ||
          type == OperatorType::kUnpack || type == OperatorType::kTopK_V2 ||
          type == OperatorType::kRandomUniform ||
+         type == OperatorType::kFloorDiv ||
          type == OperatorType::kResizeNearestNeighbor ||
          type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
          type == OperatorType::kReduceMin ||

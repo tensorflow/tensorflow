@@ -131,6 +131,11 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.version = 2;
       break;
     }
+    case BuiltinOperator_FLOOR_DIV:
+      property.inputs = {{0, {}}, {1, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_MAX_POOL_2D:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};

@@ -1019,6 +1019,20 @@ TEST_F(OperatorTest, VersioningFloorDivOperatorTest) {
   OperatorSignature float_signature = {.op = &floordiv_op,
                                        .model = &float_model};
   EXPECT_EQ(op->GetVersion(float_signature), 2);
+
+  Model uint8_model;
+  Array& input_uint8_array =
+      uint8_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &floordiv_op,
+                                       .model = &uint8_model};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 3);
+
+  Model int8_model;
+  Array& input_int8_array = int8_model.GetOrCreateArray(floordiv_op.inputs[0]);
+  input_int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &floordiv_op, .model = &int8_model};
+  EXPECT_EQ(op->GetVersion(int8_signature), 3);
 }
 
 }  // namespace
