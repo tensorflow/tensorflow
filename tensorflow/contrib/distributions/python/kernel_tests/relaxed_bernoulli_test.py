@@ -96,8 +96,8 @@ class RelaxedBernoulliTest(test.TestCase):
     p = constant_op.constant([0.1, 0.4])
     with self.assertRaisesWithPredicateMatch(errors_impl.InvalidArgumentError,
                                              "x > 0 did not hold"):
-      dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p,
-                                                validate_args=True)
+      _ = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p,
+                                             validate_args=True)
       # Error detected statically; no need to run the op.
 
   def testDtype(self):

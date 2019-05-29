@@ -154,11 +154,16 @@ class _ReshapeBijectorTest(object):
 
   def _testInvalidDimensionsStatic(self, expected_error_message):
     """Version of _testInvalidDimensionsOpError for errors detected statically
-    at graph construction time."""
-    shape_in, shape_out, feed_dict = self.build_shapes([2, 3], [1, 2, -2,])
+    at graph construction time.
+
+    Args:
+        expected_error_message: String that should be present in the error
+            message that `Reshape` raises for invalid shapes.
+    """
+    shape_in, shape_out, _ = self.build_shapes([2, 3], [1, 2, -2,])
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                              expected_error_message):
-      bijector = Reshape(
+      _ = Reshape(
           event_shape_out=shape_out,
           event_shape_in=shape_in,
           validate_args=True)

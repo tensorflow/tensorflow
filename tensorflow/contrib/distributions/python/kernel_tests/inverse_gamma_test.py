@@ -250,7 +250,8 @@ class InverseGammaTest(test.TestCase):
           fails += 0 if self._kstest(a, b, s) else 1
       self.assertLess(fails, trials * 0.03)
 
-  def _kstest(self, alpha, beta, samples):
+  @staticmethod
+  def _kstest(alpha, beta, samples):
     # Uses the Kolmogorov-Smirnov test for goodness of fit.
     ks, _ = stats.kstest(samples, stats.invgamma(alpha, scale=beta).cdf)
     # Return True when the test passes.
@@ -298,16 +299,16 @@ class InverseGammaTest(test.TestCase):
       beta_v = constant_op.constant(1.0, name="beta")
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "alpha"):
-        inv_gamma = inverse_gamma.InverseGamma(
+        _ = inverse_gamma.InverseGamma(
             concentration=alpha_v, rate=beta_v, validate_args=True)
-        # Error detected statically; no need for inv_gamma.mean().eval()
+        # Error detected statically; no need for _.mean().eval()
       alpha_v = constant_op.constant(1.0, name="alpha")
       beta_v = constant_op.constant(0.0, name="beta")
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "beta"):
-        inv_gamma = inverse_gamma.InverseGamma(
+        _ = inverse_gamma.InverseGamma(
             concentration=alpha_v, rate=beta_v, validate_args=True)
-        # Error detected statically; no need for inv_gamma.mean().eval()
+        # Error detected statically; no need for _.mean().eval()
 
   def testInverseGammaWithSoftplusConcentrationRate(self):
     with self.cached_session():

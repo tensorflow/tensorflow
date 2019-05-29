@@ -403,8 +403,8 @@ class CauchyTest(test.TestCase):
     with self.cached_session():
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "Condition x > 0 did not hold"):
-        cauchy = cauchy_lib.Cauchy(loc=[1.], scale=[-5.], validate_args=True)
-        # Error detected statically; no need for cauchy.mode().eval()
+        _ = cauchy_lib.Cauchy(loc=[1.], scale=[-5.], validate_args=True)
+        # Error detected statically; no need for _.mode().eval()
 
   def testCauchyShape(self):
     with self.cached_session():

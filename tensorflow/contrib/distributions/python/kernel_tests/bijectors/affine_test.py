@@ -464,7 +464,7 @@ class AffineBijectorTest(test.TestCase):
       mu = [1., -1]
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "diagonal part must be non-zero"):
-        bijector = Affine(
+        _ = Affine(
             shift=mu,
             # Has zero on the diagonal.
             scale_diag=[0., 1],

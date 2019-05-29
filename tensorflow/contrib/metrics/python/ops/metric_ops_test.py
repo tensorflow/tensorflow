@@ -1736,7 +1736,7 @@ class StreamingAUCTest(test.TestCase):
       labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    r"predictions must be in \[0, 1\]"):
-        _, update_op = metrics.streaming_auc(predictions, labels)
+        _, _ = metrics.streaming_auc(predictions, labels)
         # Error detected statically; no need to run the op.
 
   def testAllCorrect(self):

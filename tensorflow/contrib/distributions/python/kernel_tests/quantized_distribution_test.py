@@ -364,12 +364,12 @@ class QuantizedDistributionTest(test.TestCase):
     with self.cached_session():
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "must be strictly less"):
-        qdist = distributions.QuantizedDistribution(
+        _ = distributions.QuantizedDistribution(
             distribution=distributions.Normal(loc=0., scale=1.),
             low=1.,  # not strictly less than high.
             high=1.,
             validate_args=True)
-        # Error detected statically; no need for qdist.sample().eval()
+        # Error detected statically; no need for _.sample().eval()
 
   def testCutoffsMustBeIntegerValuedIfValidateArgsTrue(self):
     with self.cached_session():

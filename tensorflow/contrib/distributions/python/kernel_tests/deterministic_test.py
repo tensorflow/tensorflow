@@ -43,9 +43,9 @@ class DeterministicTest(test.TestCase):
     loc = rng.rand(2, 3, 4).astype(np.float32)
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Condition x >= 0"):
-      deterministic = deterministic_lib.Deterministic(
+      _ = deterministic_lib.Deterministic(
           loc, atol=-1, validate_args=True)
-      # Error detected statically; no need for deterministic.prob(0.).eval()
+      # Error detected statically; no need for _.prob(0.).eval()
 
   def testProbWithNoBatchDimsIntegerType(self):
     deterministic = deterministic_lib.Deterministic(0)
@@ -198,9 +198,9 @@ class VectorDeterministicTest(test.TestCase):
     loc = rng.rand(2, 3, 4).astype(np.float32)
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Condition x >= 0"):
-      deterministic = deterministic_lib.VectorDeterministic(
+      _ = deterministic_lib.VectorDeterministic(
           loc, atol=-1, validate_args=True)
-      # Error detected statically; no need for deterministic.prob(loc).eval()
+      # Error detected statically; no need for _.prob(loc).eval()
 
   def testInvalidXRaises(self):
     loc = rng.rand(2, 3, 4).astype(np.float32)

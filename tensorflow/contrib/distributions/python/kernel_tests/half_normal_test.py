@@ -42,6 +42,7 @@ def try_import(name):  # pylint: disable=invalid-name
     tf_logging.warning("Could not import %s: %s" % (name, str(e)))
   return module
 
+
 stats = try_import("scipy.stats")
 
 
@@ -291,8 +292,8 @@ class HalfNormalTest(test.TestCase):
     with self.cached_session():
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "Condition x > 0 did not hold"):
-        halfnorm = hn_lib.HalfNormal(scale=[-5.], validate_args=True, name="G")
-        # Error detected statically; no need for halfnorm.mean().eval()
+        _ = hn_lib.HalfNormal(scale=[-5.], validate_args=True, name="G")
+        # Error detected statically; no need for _.mean().eval()
 
   def testHalfNormalShape(self):
     with self.cached_session():

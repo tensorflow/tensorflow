@@ -46,7 +46,7 @@ class SoftplusBijectorTest(test.TestCase):
     with self.cached_session():
       with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
                                                "must be non-zero"):
-        bijector = Softplus(hinge_softness=0., validate_args=True)
+        _ = Softplus(hinge_softness=0., validate_args=True)
         # Error detected statically; don't need to run op.
 
   def testBijectorForwardInverseEventDimsZero(self):
