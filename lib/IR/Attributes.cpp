@@ -322,6 +322,9 @@ ElementsAttr ElementsAttr::mapValues(
 SplatElementsAttr SplatElementsAttr::get(ShapedType type, Attribute elt) {
   assert(elt.getType() == type.getElementType() &&
          "value should be of the given element type");
+  assert((type.isa<RankedTensorType>() || type.isa<VectorType>()) &&
+         "type must be ranked tensor or vector");
+  assert(type.hasStaticShape() && "type must have static shape");
   return Base::get(type.getContext(), StandardAttributes::SplatElements, type,
                    elt);
 }
@@ -424,6 +427,9 @@ DenseElementsAttr DenseElementsAttr::get(ShapedType type, ArrayRef<char> data) {
   assert((static_cast<uint64_t>(type.getSizeInBits()) <=
           data.size() * APInt::APINT_WORD_SIZE) &&
          "Input data bit size should be larger than that type requires");
+  assert((type.isa<RankedTensorType>() || type.isa<VectorType>()) &&
+         "type must be ranked tensor or vector");
+  assert(type.hasStaticShape() && "type must have static shape");
   switch (type.getElementType().getKind()) {
   case StandardTypes::BF16:
   case StandardTypes::F16:
@@ -797,6 +803,9 @@ SparseElementsAttr SparseElementsAttr::get(ShapedType type,
                                            DenseElementsAttr values) {
   assert(indices.getType().getElementType().isInteger(64) &&
          "expected sparse indices to be 64-bit integer values");
+  assert((type.isa<RankedTensorType>() || type.isa<VectorType>()) &&
+         "type must be ranked tensor or vector");
+  assert(type.hasStaticShape() && "type must have static shape");
   return Base::get(type.getContext(), StandardAttributes::SparseElements, type,
                    indices, values);
 }
