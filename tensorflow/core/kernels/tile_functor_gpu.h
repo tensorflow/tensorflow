@@ -76,8 +76,8 @@ void TileSimple(const Eigen::GpuDevice& d, Tensor* out, const Tensor& in) {
   GpuLaunchConfig cfg = GetGpuLaunchConfig(out_nelem, d);
   TF_CHECK_OK(
       GpuLaunchKernel(TileKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
-                       d.stream(), cfg.virtual_thread_count, p,
-                       reinterpret_cast<const int32*>(dev_buf), ndims, q));
+                      d.stream(), cfg.virtual_thread_count, p,
+                      reinterpret_cast<const int32*>(dev_buf), ndims, q));
   // Safe to deallocate immediately after the kernel launch.
   d.deallocate(dev_buf);
 }

@@ -28,11 +28,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#endif // GOOGLE_CUDA
+#endif
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_cuda_alias.h"
 
@@ -47,7 +48,7 @@ namespace tensorflow {
 #undef assert
 #define assert(x) \
   {}
-#endif // TENSORFLOW_USE_ROCM
+#endif
 
 namespace detail {
 
@@ -633,17 +634,6 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(ptr,
                                     [value](double a) { return a + value; });
 }
-#elif __clang__
-// Clang cannot compile __nvvm_atom_add_gen_d builtin yet, use inline PTX.
-// see https://reviews.llvm.org/D39638
-__device__ inline double GpuAtomicAdd(double* ptr, double value) {
-  double result;
-  asm volatile("atom.add.f64 %0, [%1], %2;"
-               : "=d"(result)
-               : "l"(ptr), "d"(value)
-               : "memory");
-  return result;
-}
 #endif
 // GpuAtomicAdd
 // Specializations of GpuAtomicAdd for complex types, which GpuAtomicAdd does
@@ -800,7 +790,7 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
       ptr, [value](double a) { return min(a, value); });
 }
 
-#endif // TENSORFLOW_USE_ROCM
+#endif
 
 __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
                                            Eigen::half value) {
