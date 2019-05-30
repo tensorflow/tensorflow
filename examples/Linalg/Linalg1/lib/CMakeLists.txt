@@ -52,7 +52,7 @@ add_llvm_library(Linalg1DialectConstruction
   )
 target_link_libraries(Linalg1DialectConstruction PUBLIC Linalg1)
 
-add_executable(linalg1-opt
+add_llvm_executable(linalg1-opt
   DialectRegistration.cpp
   )
 llvm_update_compile_flags(linalg1-opt)

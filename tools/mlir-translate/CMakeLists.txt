@@ -12,7 +12,7 @@ set(LIBS
   MLIRSupport
   MLIRVectorOps
 )
-add_executable(mlir-translate
+add_llvm_executable(mlir-translate
   mlir-translate.cpp
 )
 llvm_update_compile_flags(mlir-translate)

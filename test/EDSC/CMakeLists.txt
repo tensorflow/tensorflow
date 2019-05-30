@@ -1,4 +1,4 @@
-add_executable(mlir-edsc-builder-api-test
+add_llvm_executable(mlir-edsc-builder-api-test
   builder-api-test.cpp
 )
 

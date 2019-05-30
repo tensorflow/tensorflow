@@ -34,7 +34,7 @@ set(LIBS
   MLIRSupport
   MLIRVectorOps
 )
-add_executable(mlir-opt
+add_llvm_executable(mlir-opt
  mlir-opt.cpp
 )
 llvm_update_compile_flags(mlir-opt)

@@ -16,7 +16,7 @@ target_link_libraries(MLIRTestDialect
   LLVMSupport
 )
 
-add_executable(mlir-test-opt
+add_llvm_executable(mlir-test-opt
   ${MLIR_MAIN_SRC_DIR}/../tools/mlir-opt/mlir-opt.cpp
 )
 llvm_update_compile_flags(mlir-test-opt)

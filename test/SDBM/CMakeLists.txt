@@ -1,4 +1,4 @@
-add_executable(mlir-sdbm-api-test
+add_llvm_executable(mlir-sdbm-api-test
   sdbm-api-test.cpp
 )
 
