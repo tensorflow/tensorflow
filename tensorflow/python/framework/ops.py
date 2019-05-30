@@ -5959,8 +5959,8 @@ def enable_eager_execution_internal(config=None,
         (context._context._config, config, context._context._device_policy,
          device_policy, context._context._execution_mode, execution_mode))
   else:
-    raise ValueError(
-        "tf.enable_eager_execution must be called at program startup.")
+    # We already created everything, so update the thread local data.
+    context._context._thread_local_data.is_eager = True
 
   # Monkey patch to get rid of an unnecessary conditional since the context is
   # now initialized.
