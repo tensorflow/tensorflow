@@ -489,6 +489,27 @@ class Layer(module.Module):
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
+  @doc_controls.for_subclass_implementers
+  def compute_output_signature(self, input_signature):
+    """Compute the output tensor signature of the layer based on the inputs.
+
+    Unlike a TensorShape object, a TensorSpec object contains both shape
+    and dtype information for a tensor. This method allows layers to provide
+    output dtype information if it is different from the input dtype.
+    For any layer that doesn't implement this function,
+    the framework will fall back to use `compute_output_shape`, and will
+    assume that the output dtype matches the input dtype.
+
+    Args:
+      input_signature: Single TensorSpec or nested structure of TensorSpec
+        objects, describing a candidate input for the layer.
+
+    Returns:
+      Single TensorSpec or nested structure of TensorSpec objects, describing
+        how the layer would transform the provided input.
+    """
+    raise NotImplementedError
+
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
