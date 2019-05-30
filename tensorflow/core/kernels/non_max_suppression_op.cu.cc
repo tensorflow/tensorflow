@@ -15,13 +15,14 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/non_max_suppression_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
-#include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 #include "third_party/cub/device/device_radix_sort.cuh"
 #include "third_party/cub/device/device_segmented_radix_sort.cuh"
 #include "third_party/cub/device/device_select.cuh"
@@ -31,10 +32,23 @@ limitations under the License.
 #define NMS_BLOCK_DIM_MAX 16
 #define NMS_CHUNK_SIZE 2000
 
-#define CUDA_CHECK(result)                                    \
-  do {                                                        \
-    cudaError_t error(result);                                \
-    CHECK(error == cudaSuccess) << cudaGetErrorString(error); \
+#define TF_RETURN_IF_CUDA_ERROR(result)                   \
+  do {                                                    \
+    cudaError_t error(result);                            \
+    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {         \
+      return errors::Internal("Cuda call failed with ",   \
+                              cudaGetErrorString(error)); \
+    }                                                     \
+  } while (0)
+
+#define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                   \
+  do {                                                                 \
+    cudaError_t error(result);                                         \
+    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                      \
+      context->SetStatus(errors::Internal("Cuda call failed with",     \
+                                          cudaGetErrorString(error))); \
+      return;                                                          \
+    }                                                                  \
   } while (0)
 
 struct __align__(16) Box {
@@ -45,7 +59,20 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-const int NMS_BOXES_PER_THREAD = 8 * sizeof(int);
+// This is the width of the bitmask for masking boxes for each thread.
+// This needs to be a multiple of 2(a POD width usually) so that division and
+// modulo can be implemented as bit operations during host selection.
+constexpr int kNmsBoxesPerThread = 8 * sizeof(int);
+// Helper to calculate modulo mask and shift bits.
+// For kNmsBoxesPerThread=32 ModuloMask will be 31, i.e 0x1F thus
+// i % 32 == i & 31. Similarly ShiftBits will be 5 so that
+// i / 32 == i >> 5. Using these bit operations should reduce the stall on host
+// thread.
+constexpr int NumBits(int n) { return (n == 0) ? 0 : NumBits(n >> 1) + 1; }
+constexpr int kNmsBoxesPerThreadModuloMask = kNmsBoxesPerThread - 1;
+constexpr int kNmsBoxesPerThreadShiftBits =
+    NumBits(kNmsBoxesPerThreadModuloMask);
+
 template <typename T>
 __device__ EIGEN_STRONG_INLINE void Swap(T& a, T& b) {
   T c(a);
@@ -53,9 +80,11 @@ __device__ EIGEN_STRONG_INLINE void Swap(T& a, T& b) {
   b = c;
 }
 
+// Check whether two boxes have an IoU greater than threshold.
 template <typename T>
 __device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
-                                                  float a_area, T threshold) {
+                                                  float a_area,
+                                                  T iou_threshold) {
   const float b_area = (b->x2 - b->x1 + 1.0f) * (b->y2 - b->y1 + 1.0f);
   if (a_area == 0.0f || b_area == 0.0f) return false;
   const float xx1 = fmaxf(a->x1, b->x1);
@@ -73,36 +102,46 @@ __device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
   // avoiding divisions.
   const float aa = intersection;
   const float bb = a_area + b_area - intersection;
-  const float bt = bb * threshold;
+  const float bt = bb * iou_threshold;
   return aa > bt;
 }
 
-template <bool T>
-__global__ void NMSKernel(const Box* d_desc_sorted_boxes, const int nboxes,
-               const float thresh, const int mask_ld, int* d_delete_mask);
-
-// Assume boxes may have x1>x2 and or y1>y2. If so change the coordinates such
-// that for all boxes x1<x2 and y1<y2.
+template <bool flip_box>
+inline void Flipped(Box& box);
 template <>
+__device__ EIGEN_STRONG_INLINE void Flipped<false>(Box& box){};
+template <>
+__device__ EIGEN_STRONG_INLINE void Flipped<true>(Box& box) {
+  if (box.x1 > box.x2) Swap(box.x1, box.x2);
+  if (box.y1 > box.y2) Swap(box.y1, box.y2);
+};
+
+// If flip_box is true boxes may have x1>x2 and or y1>y2. If so change the
+// coordinates such that for all boxes x1<x2 and y1<y2. Else boxes should have
+// x1<x2 and y1<y2.
+
+// Starting from highes scoring box, mark any box which has IoU>threshold with
+// given box each thread processes a kNmsBoxesPerThread boxes per stride, and
+// each box has bitmask of overlaps of bit_mask_len
+template <bool flip_box>
 __launch_bounds__(NMS_BLOCK_DIM* NMS_BLOCK_DIM, 4) __global__
-    void NMSKernel<true>(const Box* d_desc_sorted_boxes, const int nboxes,
-                         const float thresh, const int mask_ld,
-                         int* d_delete_mask) {
+    void NMSKernel(const Box* d_desc_sorted_boxes, const int num_boxes,
+                   const float iou_threshold, const int bit_mask_len,
+                   int* d_delete_mask) {
   // Storing boxes used by this CUDA block in the shared memory.
   __shared__ Box shared_i_boxes[NMS_BLOCK_DIM];
   // Same thing with areas
   __shared__ float shared_i_areas[NMS_BLOCK_DIM];
   // The condition of the for loop is common to all threads in the block.
   // This is necessary to be able to call __syncthreads() inside of the loop.
-  for (int i_block_offset = blockIdx.x * blockDim.x; i_block_offset < nboxes;
+  for (int i_block_offset = blockIdx.x * blockDim.x; i_block_offset < num_boxes;
        i_block_offset += blockDim.x * gridDim.x) {
     const int i = i_block_offset + threadIdx.x;
-    if (i < nboxes) {
+    if (i < num_boxes) {
       // One 1D line load the boxes for x-dimension.
       if (threadIdx.y == 0) {
         Box box = d_desc_sorted_boxes[i];
-        if (box.x1 > box.x2) Swap(box.x1, box.x2);
-        if (box.y1 > box.y2) Swap(box.y1, box.y2);
+        Flipped<flip_box>(box);
         shared_i_boxes[threadIdx.x] = box;
         shared_i_areas[threadIdx.x] =
             (box.x2 - box.x1 + 1.0f) * (box.y2 - box.y1 + 1.0f);
@@ -110,95 +149,37 @@ __launch_bounds__(NMS_BLOCK_DIM* NMS_BLOCK_DIM, 4) __global__
     }
     __syncthreads();
     for (int j_thread_offset =
-             NMS_BOXES_PER_THREAD * (blockIdx.y * blockDim.y + threadIdx.y);
-         j_thread_offset < nboxes;
-         j_thread_offset += NMS_BOXES_PER_THREAD * blockDim.y * gridDim.y) {
+             kNmsBoxesPerThread * (blockIdx.y * blockDim.y + threadIdx.y);
+         j_thread_offset < num_boxes;
+         j_thread_offset += kNmsBoxesPerThread * blockDim.y * gridDim.y) {
       // Note : We can do everything using multiplication,
       // and use fp16 - we are comparing against a low precision
       // threshold.
-      int above_thresh = 0;
+      int above_threshold = 0;
+      // Make sure that threads are within valid domain.
       bool valid = false;
-      for (int ib = 0; ib < NMS_BOXES_PER_THREAD; ++ib) {
+      // Loop over the next kNmsBoxesPerThread boxes and set corresponding bit
+      // if it is overlapping with current box
+      for (int ib = 0; ib < kNmsBoxesPerThread; ++ib) {
         // This thread will compare Box i and Box j.
         const int j = j_thread_offset + ib;
-        if (i >= j || i >= nboxes || j >= nboxes) continue;
+        if (i >= j || i >= num_boxes || j >= num_boxes) continue;
         valid = true;
         Box j_box = d_desc_sorted_boxes[j];
         const Box i_box = shared_i_boxes[threadIdx.x];
-        if (j_box.x1 > j_box.x2) {
-          Swap(j_box.x1, j_box.x2);
-        }
-        if (j_box.y1 > j_box.y2) {
-          Swap(j_box.y1, j_box.y2);
-        }
+        Flipped<flip_box>(j_box);
         if (OverThreshold(&i_box, &j_box, shared_i_areas[threadIdx.x],
-                          thresh)) {
+                          iou_threshold)) {
           // we have score[j] <= score[i].
-          above_thresh |= (1U << ib);
+          above_threshold |= (1U << ib);
         }
       }
       if (valid) {
-        d_delete_mask[i * mask_ld + j_thread_offset / NMS_BOXES_PER_THREAD] =
-            above_thresh;
+        d_delete_mask[i * bit_mask_len + j_thread_offset / kNmsBoxesPerThread] =
+            above_threshold;
       }
     }
-    __syncthreads();  // making sure everyone is done reading smem.
-  }
-}
-// Assume boxes are constructed such that x1<x2 and y1<y2
-template <>
-__launch_bounds__(NMS_BLOCK_DIM* NMS_BLOCK_DIM, 4) __global__
-    void NMSKernel<false>(const Box* d_desc_sorted_boxes, const int nboxes,
-                          const float thresh, const int mask_ld,
-                          int* d_delete_mask) {
-  // Storing boxes used by this CUDA block in the shared memory.
-  __shared__ Box shared_i_boxes[NMS_BLOCK_DIM];
-  // Same thing with areas
-  __shared__ float shared_i_areas[NMS_BLOCK_DIM];
-  // The condition of the for loop is common to all threads in the block.
-  // This is necessary to be able to call __syncthreads() inside of the loop.
-  for (int i_block_offset = blockIdx.x * blockDim.x; i_block_offset < nboxes;
-       i_block_offset += blockDim.x * gridDim.x) {
-    const int i_to_load = i_block_offset + threadIdx.x;
-    if (i_to_load < nboxes) {
-      // One 1D line load the boxes for x-dimension.
-      if (threadIdx.y == 0) {
-        const Box box = d_desc_sorted_boxes[i_to_load];
-        shared_i_boxes[threadIdx.x] = box;
-        shared_i_areas[threadIdx.x] =
-            (box.x2 - box.x1 + 1.0f) * (box.y2 - box.y1 + 1.0f);
-      }
-    }
-    __syncthreads();
-    const int i = i_block_offset + threadIdx.x;
-    for (int j_thread_offset =
-             NMS_BOXES_PER_THREAD * (blockIdx.y * blockDim.y + threadIdx.y);
-         j_thread_offset < nboxes;
-         j_thread_offset += NMS_BOXES_PER_THREAD * blockDim.y * gridDim.y) {
-      // Note : We can do everything using multiplication,
-      // and use fp16 - we are comparing against a low precision
-      // threshold.
-      int above_thresh = 0;
-      bool valid = false;
-      for (int ib = 0; ib < NMS_BOXES_PER_THREAD; ++ib) {
-        // This thread will compare Box i and Box j.
-        const int j = j_thread_offset + ib;
-        // score[j]<=score[i].
-        if (i >= j || i >= nboxes || j >= nboxes) continue;
-        valid = true;
-        // eq. to if ovr > thresh.
-        if (OverThreshold(&shared_i_boxes[threadIdx.x], &d_desc_sorted_boxes[j],
-                          shared_i_areas[threadIdx.x], thresh)) {
-          // we have score[j] <= score[i].
-          above_thresh |= (1U << ib);
-        }
-      }
-      if (valid) {
-        d_delete_mask[i * mask_ld + j_thread_offset / NMS_BOXES_PER_THREAD] =
-            above_thresh;
-      }
-    }
-    __syncthreads();  // making sure everyone is done reading smem.
+    __syncthreads();  // making sure everyone is done reading shared memory.
   }
 }
 
@@ -227,82 +208,102 @@ __global__ void Iota(const int num_elements, const T offset, T* to_fill) {
   }
 }
 
-tensorflow::Status NmsGpu(const float* d_desc_sorted_boxes_float_ptr,
+tensorflow::Status NmsGpu(const float* d_sorted_boxes_float_ptr,
                           const int num_boxes, const float thresh,
-                          int* d_keep_sorted_list, int* h_nkeep,
-                          int* dev_delete_mask, int* host_delete_mask,
+                          int* d_selected_indices, int* h_nkeep,
                           OpKernelContext* context, bool flip_boxes) {
-  // d_desc_sorted_boxes_float_ptr is a pointer
-  //    to device memory float array containing the box corners for N boxes.
-  // N is number of boxes.
-  // threshold is the intersection-over-union threshold for elimination
-  // d_keep_sorted_list is a device pointer to int array containing sorted
-  //    indices of the boxes to keep h_nkeep is the pointer to number of
-  //    elements to keep for the host.
-  // h_nkeep is a host pointer for returning number of items to keep.
-  // flip_boxes flag reorders the boxes use lower left and upper right corners
-  // if they are given in mixed format. Making sure we respect the __align(16)__
+  // Making sure we respect the __align(16)__
   // we promised to the compiler.
-  auto iptr = reinterpret_cast<std::uintptr_t>(d_desc_sorted_boxes_float_ptr);
-  CHECK_EQ((iptr & 15), 0);
-
-  // The next kernel expects squares
-
-  const int mask_ld =
-      (num_boxes + NMS_BOXES_PER_THREAD - 1) / NMS_BOXES_PER_THREAD;
-  const Box* d_desc_sorted_boxes =
-      reinterpret_cast<const Box*>(d_desc_sorted_boxes_float_ptr);
-  auto stream_exec = context->op_device_context()->stream();
-  auto device = context->eigen_gpu_device();
-  dim3 grid, block;
-  int block_size = (num_boxes + NMS_BLOCK_DIM - 1) / NMS_BLOCK_DIM;
-  block_size = std::max(std::min(block_size, NMS_BLOCK_DIM_MAX), 1);
-  grid.x = block_size;
-  grid.y = block_size;
-  block.x = NMS_BLOCK_DIM;
-  block.y = NMS_BLOCK_DIM;
-  if (flip_boxes) {
-    TF_CHECK_OK(GpuLaunchKernel(NMSKernel<true>, grid, block, 0,
-                                device.stream(), d_desc_sorted_boxes, num_boxes,
-                                thresh, mask_ld, dev_delete_mask));
-  } else {
-    TF_CHECK_OK(GpuLaunchKernel(NMSKernel<false>, grid, block, 0,
-                                device.stream(), d_desc_sorted_boxes, num_boxes,
-                                thresh, mask_ld, dev_delete_mask));
+  auto iptr = reinterpret_cast<std::uintptr_t>(d_sorted_boxes_float_ptr);
+  if ((iptr & 15) != 0) {
+    return errors::InvalidArgument("Boxes should be aligned to 16 Bytes.");
   }
-  CHECK_EQ(cudaGetLastError(), cudaSuccess);
+  // allocate bitmask arrays on host and on device
+  Tensor h_nms_mask, d_nms_mask;
+  const int bit_mask_len =
+      (num_boxes + kNmsBoxesPerThread - 1) / kNmsBoxesPerThread;
+
+  int64 max_nms_mask_size = num_boxes * bit_mask_len;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DataType::DT_INT32, TensorShape({max_nms_mask_size}), &d_nms_mask));
+  // reset data sensitive tensors
+  auto device = context->eigen_gpu_device();
+  auto config = GetCudaLaunchConfig(d_nms_mask.NumElements(), device);
+  TF_CHECK_OK(GpuLaunchKernel(SetZero<int>, config.block_count,
+                              config.thread_per_block, 0, device.stream(),
+                              config.virtual_thread_count,
+                              d_nms_mask.flat<int32>().data()));
+
+  AllocatorAttributes alloc_attr;
+  alloc_attr.set_on_host(true);
+  alloc_attr.set_gpu_compatible(true);
+  TF_RETURN_IF_ERROR(context->allocate_temp(DataType::DT_INT32,
+                                            TensorShape({max_nms_mask_size}),
+                                            &h_nms_mask, alloc_attr));
+
+  int* d_delete_mask = d_nms_mask.flat<int>().data();
+  int* h_delete_mask = h_nms_mask.flat<int>().data();
+  const Box* d_sorted_boxes =
+      reinterpret_cast<const Box*>(d_sorted_boxes_float_ptr);
+  auto stream_exec = context->op_device_context()->stream();
+  dim3 block_dim, thread_block;
+  int num_blocks = (num_boxes + NMS_BLOCK_DIM - 1) / NMS_BLOCK_DIM;
+  num_blocks = std::max(std::min(num_blocks, NMS_BLOCK_DIM_MAX), 1);
+  block_dim.x = num_blocks;
+  block_dim.y = num_blocks;
+  thread_block.x = NMS_BLOCK_DIM;
+  thread_block.y = NMS_BLOCK_DIM;
+  if (flip_boxes) {
+    TF_CHECK_OK(GpuLaunchKernel(NMSKernel<true>, block_dim, thread_block, 0,
+                                device.stream(), d_sorted_boxes, num_boxes,
+                                thresh, bit_mask_len, d_delete_mask));
+  } else {
+    TF_CHECK_OK(GpuLaunchKernel(NMSKernel<false>, block_dim, thread_block, 0,
+                                device.stream(), d_sorted_boxes, num_boxes,
+                                thresh, bit_mask_len, d_delete_mask));
+  }
+  TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   // Overlapping CPU computes and D2H memcpy
   // both take about the same time
-  int nto_copy = std::min(NMS_CHUNK_SIZE, num_boxes);
+  int num_to_copy = std::min(NMS_CHUNK_SIZE, num_boxes);
   cudaEvent_t copy_done;
   cudaEventCreate(&copy_done);
-  device.memcpyDeviceToHost(&host_delete_mask[0], &dev_delete_mask[0],
-                            nto_copy * mask_ld * sizeof(int));
-  CUDA_CHECK(cudaEventRecord(copy_done, device.stream()));
+  device.memcpyDeviceToHost(&h_delete_mask[0], &d_delete_mask[0],
+                            num_to_copy * bit_mask_len * sizeof(int));
+  TF_RETURN_IF_CUDA_ERROR(cudaEventRecord(copy_done, device.stream()));
   int offset = 0;
-  std::vector<int> h_keep_sorted_list;
-  std::vector<int> rmv(mask_ld, 0);
-  memset(host_delete_mask, num_boxes, sizeof(int));
+  std::vector<int> h_selected_indices;
+  // Reserve worst case scenario. Since box count is not huge, this should have
+  // negligible footprint.
+  h_selected_indices.reserve(num_boxes);
+  std::vector<int> to_remove(bit_mask_len, 0);
   while (offset < num_boxes) {
-    const int ncopied = nto_copy;
-    int next_offset = offset + ncopied;
-    nto_copy = std::min(NMS_CHUNK_SIZE, num_boxes - next_offset);
-    if (nto_copy > 0) {
-      device.memcpyDeviceToHost(&host_delete_mask[next_offset * mask_ld],
-                                &dev_delete_mask[next_offset * mask_ld],
-                                nto_copy * mask_ld * sizeof(int));
+    const int num_copied = num_to_copy;
+    int next_offset = offset + num_copied;
+    num_to_copy = std::min(NMS_CHUNK_SIZE, num_boxes - next_offset);
+    if (num_to_copy > 0) {
+      device.memcpyDeviceToHost(&h_delete_mask[next_offset * bit_mask_len],
+                                &d_delete_mask[next_offset * bit_mask_len],
+                                num_to_copy * bit_mask_len * sizeof(int));
     }
     // Waiting for previous copy
-    CUDA_CHECK(cudaEventSynchronize(copy_done));
-    if (nto_copy > 0) CUDA_CHECK(cudaEventRecord(copy_done, device.stream()));
+    TF_RETURN_IF_CUDA_ERROR(cudaEventSynchronize(copy_done));
+    if (num_to_copy > 0)
+      TF_RETURN_IF_CUDA_ERROR(cudaEventRecord(copy_done, device.stream()));
+    // Starting from highest scoring box, mark any box with iou>threshold and
+    // lower score for deletion if current box is not marked for deletion. Add
+    // current box to to_keep list.
     for (int i = offset; i < next_offset; ++i) {
-      int iblock = i / NMS_BOXES_PER_THREAD;
-      int inblock = i % NMS_BOXES_PER_THREAD;
-      if (!(rmv[iblock] & (1 << inblock))) {
-        h_keep_sorted_list.push_back(i);
-        int* p = &host_delete_mask[i * mask_ld];
-        for (int ib = 0; ib < mask_ld; ++ib) {
-          rmv[ib] |= p[ib];
+      // See the comment at the beginning of the file.
+      // Bit shift and logical And operations are used
+      // instead of division and modulo operations.
+      int iblock = i >> kNmsBoxesPerThreadShiftBits;
+      int inblock = i & kNmsBoxesPerThreadModuloMask;
+      if (!(to_remove[iblock] & (1 << inblock))) {
+        h_selected_indices.push_back(i);
+        int* p = &h_delete_mask[i * bit_mask_len];
+        for (int ib = 0; ib < bit_mask_len; ++ib) {
+          to_remove[ib] |= p[ib];
         }
       }
     }
@@ -310,8 +311,8 @@ tensorflow::Status NmsGpu(const float* d_desc_sorted_boxes_float_ptr,
   }
   cudaEventDestroy(copy_done);
 
-  const int nkeep = h_keep_sorted_list.size();
-  device.memcpyHostToDevice(d_keep_sorted_list, &h_keep_sorted_list[0],
+  const int nkeep = h_selected_indices.size();
+  device.memcpyHostToDevice(d_selected_indices, &h_selected_indices[0],
                             nkeep * sizeof(int));
 
   *h_nkeep = nkeep;
@@ -355,9 +356,6 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
         errors::InvalidArgument(
             "scores has incompatible shape"));  // message must be exactly this
                                                 // otherwise tests fail!
-    if (!context->status().ok()) {
-      return;
-    }
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape({0}),
@@ -366,20 +364,22 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
     }
     const int output_size = max_output_size.scalar<int>()();
     size_t cub_sort_temp_storage_bytes = 0;
-    float* flt_ptr = nullptr;
-    int* int_ptr = nullptr;
     auto cuda_stream = GetCudaStream(context);
     auto device = context->eigen_gpu_device();
+    // Calling cub with nullptrs as inputs will make it return
+    // workspace size needed for the operation instead of doing the operation.
+    // In this specific instance, cub_sort_temp_storage_bytes will contain the
+    // necessary workspace size for sorting after the call.
     cudaError_t cuda_ret = cub::DeviceRadixSort::SortPairsDescending(
         nullptr, cub_sort_temp_storage_bytes,
-        flt_ptr,               // scores
-        flt_ptr,               // sorted scores
-        int_ptr,               // input indices
-        int_ptr,               // sorted indices
-        num_boxes,             // num items
-        0, 8 * sizeof(float),  // sort all bits
+        static_cast<float*>(nullptr),  // scores
+        static_cast<float*>(nullptr),  // sorted scores
+        static_cast<int*>(nullptr),    // input indices
+        static_cast<int*>(nullptr),    // sorted indices
+        num_boxes,                     // num items
+        0, 8 * sizeof(float),          // sort all bits
         cuda_stream);
-    CHECK_EQ(cuda_ret, cudaSuccess);
+    TF_OP_REQUIRES_CUDA_SUCCESS(context, cuda_ret);
     Tensor d_cub_sort_buffer;
     OP_REQUIRES_OK(context,
                    context->allocate_temp(
@@ -406,37 +406,15 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_temp(DataType::DT_FLOAT,
                                                    TensorShape({num_boxes, 4}),
                                                    &d_sorted_boxes));
-    Tensor host_nms_mask, d_nms_mask;
-    int64 max_nms_mask_size =
-        num_boxes *
-        ((num_boxes + NMS_BOXES_PER_THREAD - 1) / NMS_BOXES_PER_THREAD);
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataType::DT_INT32,
-                                TensorShape({max_nms_mask_size}), &d_nms_mask));
-    // reset data sensitive tensors
-    auto config = GetCudaLaunchConfig(d_nms_mask.NumElements(), device);
-    SetZero<<<config.block_count, config.thread_per_block, 0,
-              device.stream()>>>(config.virtual_thread_count,
-                                 d_nms_mask.flat<int32>().data());
-
-    AllocatorAttributes alloc_attr;
-    alloc_attr.set_on_host(true);
-    alloc_attr.set_gpu_compatible(true);
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataType::DT_INT32,
-                                          TensorShape({max_nms_mask_size}),
-                                          &host_nms_mask, alloc_attr));
 
     // this will return sorted scores and their indices
-    config = GetCudaLaunchConfig(num_boxes, device);
+    auto config = GetCudaLaunchConfig(num_boxes, device);
     // initialize box and score indices
-    TF_CHECK_OK(CudaLaunchKernel(Iota<int>, config.block_count,
-                                 config.thread_per_block, 0, device.stream(),
-                                 config.virtual_thread_count, 0,
-                                 d_indices.flat<int>().data()));
-    cuda_ret = cudaGetLastError();
-    CUDA_CHECK(cuda_ret);
-    CHECK_EQ(cuda_ret, cudaSuccess);
+    TF_CHECK_OK(GpuLaunchKernel(Iota<int>, config.block_count,
+                                config.thread_per_block, 0, device.stream(),
+                                config.virtual_thread_count, 0,
+                                d_indices.flat<int>().data()));
+    TF_OP_REQUIRES_CUDA_SUCCESS(context, cudaGetLastError());
     cuda_ret = cub::DeviceRadixSort::SortPairsDescending(
         d_cub_sort_buffer.flat<int8>().data(), cub_sort_temp_storage_bytes,
         scores.flat<float>().data(), d_sorted_scores.flat<float>().data(),
@@ -444,8 +422,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
         num_boxes, 0,
         8 * sizeof(float),  // sort all bits
         cuda_stream);
-    CUDA_CHECK(cuda_ret);
-    CHECK_EQ(cuda_ret, cudaSuccess);
+    TF_OP_REQUIRES_CUDA_SUCCESS(context, cuda_ret);
 
     // get pointers for easy access
     const float4* original_boxes =
@@ -458,18 +435,16 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                 config.thread_per_block, 0, device.stream(),
                                 config.virtual_thread_count, original_boxes,
                                 sorted_indices, sorted_boxes));
-    CHECK_EQ(cuda_ret, cudaSuccess);
+
     int num_to_keep = 0;
-    bool flip_boxes = true;  // there is no guarantee that boxes are given in
-                             // lower left-upper right corners!
+    // There is no guarantee that boxes are given in the for x1<x2 and/or y1<y2,
+    // flip boxes if necessary!
+    const bool flip_boxes = true;
     auto status =
         NmsGpu(d_sorted_boxes.flat<float>().data(), num_boxes,
                iou_threshold_val, d_selected_indices.flat<int>().data(),
-               &num_to_keep, d_nms_mask.flat<int>().data(),
-               host_nms_mask.flat<int>().data(), context, flip_boxes);
-    cuda_ret = cudaGetLastError();
-    CUDA_CHECK(cuda_ret);
-    CHECK_EQ(cuda_ret, cudaSuccess);
+               &num_to_keep, context, flip_boxes);
+    TF_OP_REQUIRES_CUDA_SUCCESS(context, cudaGetLastError());
     if (!status.ok()) {
       context->SetStatus(status);
       return;
@@ -486,7 +461,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                 config.virtual_thread_count, sorted_indices,
                                 d_selected_indices.flat<int>().data(),
                                 (*output_indices).flat<int>().data()));
-    CHECK_EQ(cudaGetLastError(), cudaSuccess);
+    TF_OP_REQUIRES_CUDA_SUCCESS(context, cudaGetLastError());
   }
 };
 

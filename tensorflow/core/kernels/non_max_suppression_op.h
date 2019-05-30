@@ -34,12 +34,21 @@ struct NonMaxSuppression {
 };
 }  // namespace functor
 #if GOOGLE_CUDA
-extern const int NMS_BOXES_PER_THREAD;
-tensorflow::Status NmsGpu(const float* d_desc_sorted_boxes_float_ptr,
-                           const int num_boxes, const float thresh,
-                           int* d_keep_sorted_list, int* h_nkeep,
-                           int* dev_delete_mask, int* host_delete_mask,
-                           OpKernelContext* context, bool flip_boxes = false);
+extern const int kNmsBoxesPerTread;
+// d_sorted_boxes_float_ptr is a pointer to device memory float array
+// containing the box corners for N boxes sorted in descending order of scores.
+// num_boxes is number of boxes.
+// threshold is the intersection-over-union (iou) threshold for elimination.
+// d_keep_sorted_list is a device pointer to int array containing sorted indices
+// of the boxes to keep.
+// h_num_boxes_to_keep is a host pointer for returning number of items
+// to keep.
+// flip_boxes flag reorders the boxes use lower left and upper right
+// corners if they are given in mixed format.
+tensorflow::Status NmsGpu(const float* d_sorted_boxes_float_ptr,
+                          const int num_boxes, const float thresh,
+                          int* d_selected_indices, int* h_num_boxes_to_keep,
+                          OpKernelContext* context, bool flip_boxes = false);
 #endif
 
 }  // namespace tensorflow
