@@ -22,7 +22,7 @@ def remap(x, name=None):
   """Clone and map the input linearly across the IPU.
 
   Args:
-    x: The tensor to the remap.
+    x: The tensor to remap.
     name: Optional op name.
 
   Returns:
@@ -31,3 +31,17 @@ def remap(x, name=None):
 
   logging.warning("remap is a Graphcore internal op")
   return gen_poputil_ops.ipu_remap(x, name=name)
+
+
+def print_tensor(x, name=None):
+  """Clone and map the input linearly across the IPU.
+
+  Args:
+    x: The tensor to print.
+    name: Optional op name.
+
+  Returns:
+    The input, and will print the contents of the tensor.
+  """
+
+  return gen_poputil_ops.ipu_print_tensor(x, name=name)
