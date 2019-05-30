@@ -232,7 +232,7 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   constexpr int ReadRowPerPass = NumThreads / TileSizeJ;
   constexpr int WriteRowPerPass = NumThreads / TileSizeI;
   // One extra line in the inner dimension to avoid share memory bank conflict.
-#if GOOGLE_CUDA || __HIP__
+#if GOOGLE_CUDA || TENSORFLOW_COMPILER_IS_HIP_CLANG
   // This is to mimic the following, but no constructor of T can be invoked.
   //     __shared__ T shared_memory_tile[TileSizeI][TileSizeJ + 1];
   __shared__ __align__(
