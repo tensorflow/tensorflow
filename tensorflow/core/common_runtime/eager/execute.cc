@@ -563,7 +563,7 @@ Status EagerLocalExecute(EagerOperation* op,
         ctx, op, &input_resource_variable_dtypes_and_shapes, &cache_key));
   }
 
-  KernelAndDevice* kernel = ctx->GetCachedKernel(cache_key);
+  core::RefCountPtr<KernelAndDevice> kernel = ctx->GetCachedKernel(cache_key);
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << maybe_unspecified_device_name;
@@ -621,30 +621,29 @@ Status EagerLocalExecute(EagerOperation* op,
       VLOG(2) << "Running " << ndef.op() << " using multi-device function. "
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
-      kernel = new KernelAndDeviceFunc(
+      kernel.reset(new KernelAndDeviceFunc(
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_tensor_shapes),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name(),
           [ctx](const int64 step_id) {
             return ctx->CreateRendezvous(step_id);
-          });
+          }));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
-      kernel = new KernelAndDeviceOp(
+      kernel.reset(new KernelAndDeviceOp(
           ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
-          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU()));
     }
 
     status = kernel->Init(ndef, graph_collector);
     if (!status.ok()) {
-      delete kernel;
       return status;
     }
 
-    ctx->AddKernelToCache(cache_key, kernel);
+    ctx->AddKernelToCache(cache_key, kernel.get());
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
   const int output_dtypes_size = static_cast<int>(output_dtypes.size());
@@ -658,7 +657,7 @@ Status EagerLocalExecute(EagerOperation* op,
                                   ? unspecified_device_name
                                   : kernel->device()->name();
   status = ValidateInputTypeAndPlacement(
-      ctx, device_name, op, kernel,
+      ctx, device_name, op, kernel.get(),
       ctx->ShouldStoreStepStats() ? ctx->RunMetadataProto() : nullptr);
   if (!status.ok()) return status;
   std::unique_ptr<NodeExecStats> maybe_stats;
@@ -694,18 +693,17 @@ Status EagerLocalExecute(EagerOperation* op,
           /* resource_device= */ kernel->OutputResourceDevice(i),
           output_dtypes[i], ctx);
     }
-    EagerNode* node = new ExecuteNode(id, ctx, op->Inputs(), kernel,
+    EagerNode* node = new ExecuteNode(id, ctx, op->Inputs(), std::move(kernel),
                                       maybe_stats.release(), maybe_step_stats,
                                       graph_collector, output_dtypes, *retvals);
     ctx->ExecutorAdd(node);
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
-    status = EagerKernelExecute(ctx, op->Inputs(), kernel, maybe_stats.get(),
-                                maybe_step_stats, graph_collector,
-                                retvals->data(), *num_retvals);
+    status = EagerKernelExecute(ctx, op->Inputs(), kernel.get(),
+                                maybe_stats.get(), maybe_step_stats,
+                                graph_collector, retvals->data(), *num_retvals);
   }
-
   return status;
 }
 
