@@ -28,8 +28,8 @@ easy_install -U pip==18.1
 
 # Pin wheel==0.31.1 to work around issue
 # https://github.com/pypa/auditwheel/issues/102
-pip2 install wheel==0.31.1
-pip3 install wheel==0.31.1
+pip2 install wheel>=0.31.1
+pip3 install wheel>=0.31.1
 
 # Install last working version of setuptools. This must happen before we install
 # absl-py, which uses install_requires notation introduced in setuptools 20.5.
