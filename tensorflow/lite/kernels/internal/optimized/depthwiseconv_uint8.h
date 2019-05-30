@@ -2069,7 +2069,7 @@ inline void DepthwiseConvImpl(
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data, CpuBackendContext* cpu_backend_context,
     int thread_start, int thread_end, int thread_dim) {
-  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
+  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kUpward>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data, cpu_backend_context, thread_start,
       thread_end, thread_dim);
