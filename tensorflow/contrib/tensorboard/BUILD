@@ -41,7 +41,6 @@ py_library(
     name = "projector",
     srcs = ["plugins/projector/__init__.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
     deps = [
         ":protos_all_py",
         "//tensorflow/python:lib",
