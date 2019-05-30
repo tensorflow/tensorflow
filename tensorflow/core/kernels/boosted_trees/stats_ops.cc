@@ -18,6 +18,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -576,5 +577,265 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("BoostedTreesAggregateStats").Device(DEVICE_CPU),
                         BoostedTreesAggregateStatsOp);
+
+// Key based on node id, feature dimension and bucket id.
+struct StatsPartitionKey {
+  StatsPartitionKey(const int32 node_id, const int32 feature_dim,
+                    const int32 bucket_id)
+      : node_id(node_id), feature_dim(feature_dim), bucket_id(bucket_id) {}
+
+  bool operator==(const StatsPartitionKey& other) const {
+    return (node_id == other.node_id) && (feature_dim == other.feature_dim) &&
+           (bucket_id == other.bucket_id);
+  }
+
+  // Compare for StatsPartitionKey.
+  struct Less {
+    bool operator()(const StatsPartitionKey& a,
+                    const StatsPartitionKey& b) const {
+      if (a.node_id < b.node_id) {
+        return true;
+      }
+      if ((a.node_id == b.node_id) && (a.feature_dim < b.feature_dim)) {
+        return true;
+      }
+      if ((a.node_id == b.node_id) && (a.feature_dim == b.feature_dim) &&
+          (a.bucket_id < b.bucket_id)) {
+        return true;
+      }
+      return false;
+    }
+  };
+
+  // Tree node id.
+  int32 node_id;
+  // Dimension within feature column.
+  int32 feature_dim;
+  // bucketized feature value .
+  int32 bucket_id;
+};
+
+typedef std::map<StatsPartitionKey, std::vector<float>, StatsPartitionKey::Less>
+    StatsPartitionMap;
+typedef StatsPartitionMap::iterator StatsPartitionIterator;
+
+// Key based on instance and feature dimension.
+struct InstanceFeatureDimKey {
+  InstanceFeatureDimKey() : instance(-1), feature_dim(-1) {}
+
+  InstanceFeatureDimKey(const int32 instance, const int32 feature_dim)
+      : instance(instance), feature_dim(feature_dim) {}
+
+  bool operator==(const InstanceFeatureDimKey& other) const {
+    return (instance == other.instance) && (feature_dim == other.feature_dim);
+  }
+
+  // Compare for InstanceFeatureDimKey.
+  struct Less {
+    bool operator()(const InstanceFeatureDimKey& a,
+                    const InstanceFeatureDimKey& b) const {
+      if (a.instance < b.instance) {
+        return true;
+      }
+      if ((a.instance == b.instance) && (a.feature_dim < b.feature_dim)) {
+        return true;
+      }
+      return false;
+    }
+  };
+
+  // Instance id within a batch.
+  int32 instance;
+  // Dimension within feature column.
+  int32 feature_dim;
+};
+
+// Add statistics to StatsPartitionMap for (instance, feature dim, bucket id).
+static void AddInstanceStatsToMap(const int32 instance, const int32 feature_dim,
+                                  const int32 bucket_id,
+                                  const int32 logits_dims,
+                                  const int32 stats_dims,
+                                  StatsPartitionMap* stats_map,
+                                  const TTypes<float>::ConstMatrix& gradients,
+                                  const TTypes<float>::ConstMatrix& hessians,
+                                  const TTypes<int32>::ConstVec& node_ids) {
+  const int32 node_id = node_ids(instance);
+  const auto key = StatsPartitionKey(node_id, feature_dim, bucket_id);
+  std::pair<StatsPartitionIterator, bool> const& insert_result =
+      stats_map->insert(StatsPartitionIterator::value_type(
+          key, std::vector<float>(stats_dims, 0.0f)));
+  auto& stats = insert_result.first->second;
+  for (int stat_dim = 0; stat_dim < logits_dims; ++stat_dim) {
+    stats[stat_dim] += gradients(instance, stat_dim);
+  }
+  for (int stat_dim = logits_dims; stat_dim < stats_dims; ++stat_dim) {
+    stats[stat_dim] += hessians(instance, stat_dim - logits_dims);
+  }
+}
+
+// Add statistics to StatsPartitionMap for bucket_id ranging from
+// (start_instance, start_feature_dim) to (end_instance, end_feature_dim),
+// inclusive on start and end instances, exclusive on end feature dim.
+static void AddRangeStats(const int start_instance, const int end_instance,
+                          const int start_feature_dim,
+                          const int end_feature_dim,
+                          StatsPartitionMap* stats_map,
+                          const TTypes<float>::ConstMatrix& gradients,
+                          const TTypes<float>::ConstMatrix& hessians,
+                          const TTypes<int32>::ConstVec& node_ids,
+                          const int32 feature_dims, const int32 bucket_id,
+                          const int32 logits_dims, const int32 stats_dims) {
+  DCHECK_LE(start_instance, end_instance);
+  if (start_instance == end_instance) {
+    DCHECK_LT(start_feature_dim, end_feature_dim);
+  }
+  for (int32 instance = start_instance; instance <= end_instance; ++instance) {
+    const int32 start_f_dim =
+        (instance == start_instance) ? start_feature_dim + 1 : 0;
+    const int32 end_f_dim =
+        (instance == end_instance) ? end_feature_dim : feature_dims;
+    for (int32 f_dim = start_f_dim; f_dim < end_f_dim; ++f_dim) {
+      AddInstanceStatsToMap(instance, f_dim, bucket_id, logits_dims, stats_dims,
+                            stats_map, gradients, hessians, node_ids);
+    }
+  }
+}
+
+class BoostedTreesSparseAggregateStatsOp : public OpKernel {
+ public:
+  explicit BoostedTreesSparseAggregateStatsOp(
+      OpKernelConstruction* const context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
+  }
+
+  void Compute(OpKernelContext* const context) override {
+    // node_ids.
+    const Tensor* node_ids_t;
+    OP_REQUIRES_OK(context, context->input("node_ids", &node_ids_t));
+    const auto node_ids = node_ids_t->vec<int32>();
+
+    // gradients.
+    const Tensor* gradients_t;
+    OP_REQUIRES_OK(context, context->input("gradients", &gradients_t));
+    const auto gradients = gradients_t->matrix<float>();
+
+    // hessians.
+    const Tensor* hessians_t;
+    OP_REQUIRES_OK(context, context->input("hessians", &hessians_t));
+    const auto hessians = hessians_t->matrix<float>();
+
+    // feature indices.
+    const Tensor* feature_indices_t;
+    OP_REQUIRES_OK(context,
+                   context->input("feature_indices", &feature_indices_t));
+    const auto feature_indices = feature_indices_t->matrix<int32>();
+
+    // feature values.
+    const Tensor* feature_values_t;
+    OP_REQUIRES_OK(context,
+                   context->input("feature_values", &feature_values_t));
+    const auto feature_values = feature_values_t->vec<int32>();
+
+    // feature shape.
+    const Tensor* feature_shape_t;
+    OP_REQUIRES_OK(context, context->input("feature_shape", &feature_shape_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(feature_shape_t->shape()),
+                errors::InvalidArgument(
+                    "Input shapes should be a vector but received shapes ",
+                    feature_shape_t->shape().DebugString()));
+    const auto feature_shape = feature_shape_t->vec<int32>();
+
+    const int64 batch_size = gradients_t->dim_size(0);
+    const int64 logits_dims = gradients_t->dim_size(1);
+    const int64 hessians_dims = hessians_t->dim_size(1);
+    const int64 stats_dims = logits_dims + hessians_dims;
+    const int64 num_sparse_entries = feature_indices_t->dim_size(0);
+    const int32 feature_dims = feature_shape(1);
+    DCHECK_LE(num_sparse_entries, batch_size * feature_dims);
+
+    // Aggregate statistics info to map.
+    StatsPartitionMap stats_map;
+
+    int prev_instance = 0;
+    int prev_f_dim = -1;
+
+    for (int i = 0; i < num_sparse_entries; ++i) {
+      // the instance number within a batch
+      const int32 instance = feature_indices(i, 0);
+      DCHECK_LE(instance, batch_size);
+      DCHECK_GE(instance, prev_instance);
+      // the node id within a tree.
+      const int32 node_id = node_ids(instance);
+      DCHECK_LE(node_id, max_splits_);
+      // the feature dimension.
+      const int32 f_dim = feature_indices(i, 1);
+      DCHECK_LE(f_dim, feature_dims);
+      // the bucket id of the value.
+      const int32 bucket_id = feature_values(i);
+      DCHECK_LE(bucket_id, num_buckets_);
+
+      // Add statistics for the missing entries into default bucket.
+      // The last bucket is default bucket.
+      const int missing_entry_bucket = num_buckets_;
+      AddRangeStats(prev_instance, instance, prev_f_dim, f_dim, &stats_map,
+                    gradients, hessians, node_ids, feature_dims,
+                    missing_entry_bucket, logits_dims, stats_dims);
+      prev_instance = instance;
+      prev_f_dim = f_dim;
+      // Add statistics for the non-missing entry into
+      // (cur_instance, cur_f_dim, bucket_id).
+      AddInstanceStatsToMap(instance, f_dim, bucket_id, logits_dims, stats_dims,
+                            &stats_map, gradients, hessians, node_ids);
+    }
+    AddRangeStats(prev_instance, batch_size - 1, prev_f_dim, feature_dims,
+                  &stats_map, gradients, hessians, node_ids, feature_dims,
+                  num_buckets_, logits_dims, stats_dims);
+
+    // Serialize statistics info map to tensor output.
+    const int64 num_slots = stats_map.size() * stats_dims;
+    Tensor* summary_indices_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output("stats_summary_indices",
+                                            TensorShape({num_slots, 4}),
+                                            &summary_indices_t));
+    auto summary_indices = summary_indices_t->matrix<int32>();
+    Tensor* summary_values_t = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output("stats_summary_values",
+                                                     TensorShape({num_slots}),
+                                                     &summary_values_t));
+    auto summary_values = summary_values_t->vec<float>();
+    int entry_index = 0;
+    for (auto& iter : stats_map) {
+      for (int stat_dim = 0; stat_dim < stats_dims; ++stat_dim) {
+        summary_indices(entry_index, 0) = iter.first.node_id;
+        summary_indices(entry_index, 1) = iter.first.feature_dim;
+        summary_indices(entry_index, 2) = iter.first.bucket_id;
+        summary_indices(entry_index, 3) = stat_dim;
+        summary_values(entry_index) = iter.second[stat_dim];
+        ++entry_index;
+      }
+    }
+
+    Tensor* summary_shape_t = nullptr;
+    OP_REQUIRES_OK(
+        context, context->allocate_output("stats_summary_shape",
+                                          TensorShape({4}), &summary_shape_t));
+    auto summary_shape = summary_shape_t->vec<int32>();
+    summary_shape(0) = max_splits_;
+    summary_shape(1) = feature_dims;
+    summary_shape(2) = num_buckets_ + 1;
+    summary_shape(3) = stats_dims;
+  }
+
+ private:
+  int max_splits_;
+  int num_buckets_;
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("BoostedTreesSparseAggregateStats").Device(DEVICE_CPU),
+    BoostedTreesSparseAggregateStatsOp);
 
 }  // namespace tensorflow
