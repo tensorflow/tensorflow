@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_PROPERTIES_H_
 
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
@@ -129,7 +131,12 @@ class GraphProperties {
   void ClearOutputProperties(const string& node_name);
   // Returns true if we have *any* properties.
   bool has_properties() const {
-    return input_properties_.size() > 0 || output_properties_.size() > 0;
+    return !input_properties_.empty() || !output_properties_.empty();
+  }
+
+  bool CheckShapeIncompatible(const string& node_name) const {
+    return incompatible_shape_nodes_.find(node_name) !=
+           incompatible_shape_nodes_.end();
   }
 
  private:
@@ -181,6 +188,10 @@ class GraphProperties {
   std::unordered_map<string, std::vector<OpInfo::TensorProperties>>
       output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
+
+  // Nodes with output shape incompatible between shape inference and
+  // annotation.
+  std::unordered_set<string> incompatible_shape_nodes_;
 };
 
 }  // end namespace grappler
