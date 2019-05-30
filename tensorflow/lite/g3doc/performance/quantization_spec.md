@@ -83,3 +83,430 @@ pre-calculated.
 The $$\sum_{i=0}^{n} q_{a}^{(i)} z_b$$ term needs to be computed every inference
 since the activation changes every inference. By enforcing weights to be
 symmetric we can remove the cost of this term.
+
+### int8 quantized operator specifications
+
+Below we describe the quantization requirements for our int8 tflite kernels:
+
+```
+ADD
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+AVERAGE_POOL_2D
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+CONCATENATION
+  Input ...:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+CONV_2D
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1 (Weight):
+    data_type  : int8
+    range      : [-127, 127]
+    granularity: per-axis (dim = 0)
+    restriction: zero_point = 0
+  Input 2 (Bias):
+    data_type  : int32
+    range      : [int32_min, int32_max]
+    granularity: per-axis (dim = 0)
+    restriction: (scale, zero_point) = (input0_scale * input1_scale[...], 0)
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+DEPTHWISE_CONV_2D
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1 (Weight):
+    data_type  : int8
+    range      : [-127, 127]
+    granularity: per-axis (dim = 3)
+    restriction: zero_point = 0
+  Input 2 (Bias):
+    data_type  : int32
+    range      : [int32_min, int32_max]
+    granularity: per-axis (dim = 3)
+    restriction: (scale, zero_point) = (input0_scale * input1_scale[...], 0)
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+FULLY_CONNECTED
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1 (Weight):
+    data_type  : int8
+    range      : [-127, 127]
+    granularity: per-tensor
+    restriction: zero_point = 0
+  Input 2 (Bias):
+    data_type  : int32
+    range      : [int32_min, int32_max]
+    granularity: per-tensor
+    restriction: (scale, zero_point) = (input0_scale * input1_scale[...], 0)
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+L2_NORMALIZATION
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+    restriction: (scale, zero_point) = (1.0 / 128.0, 0)
+
+LOGISTIC
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+    restriction: (scale, zero_point) = (1.0 / 256.0, -128)
+
+MAX_POOL_2D
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+MUL
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+RESHAPE
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+RESIZE_BILINEAR
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+SOFTMAX
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+    restriction: (scale, zero_point) = (1.0 / 256.0, -128)
+
+SPACE_TO_DEPTH
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+TANH
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+    restriction: (scale, zero_point) = (1.0 / 128.0, 0)
+
+PAD
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+GATHER
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+BATCH_TO_SPACE_ND
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+SPACE_TO_BATCH_ND
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+TRANSPOSE
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+MEAN
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+SUB
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+SQUEEZE
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+LOG_SOFTMAX
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+    restriction: (scale, zero_point) = (16.0 / 256.0, 127)
+
+MAXIMUM
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+ARG_MAX
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+MINIMUM
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+LESS
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+PADV2
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+GREATER
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+GREATER_EQUAL
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+LESS_EQUAL
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+SLICE
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  restriction: Input and outputs must all have same scale/zero_point
+
+EQUAL
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+NOT_EQUAL
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Input 1:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+SHAPE
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+
+QUANTIZE (Requantization)
+  Input 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+  Output 0:
+    data_type  : int8
+    range      : [-128, 127]
+    granularity: per-tensor
+```
