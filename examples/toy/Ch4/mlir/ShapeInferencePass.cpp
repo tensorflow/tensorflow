@@ -115,7 +115,7 @@ public:
   struct FunctionToSpecialize {
     mlir::Function *function;
     std::string mangledName;
-    std::vector<mlir::Type> argumentsType;
+    SmallVector<mlir::Type, 4> argumentsType;
   };
 
   void runOnModule() override {
@@ -308,10 +308,8 @@ public:
         if (!mangledCallee) {
           // Can't find the target, this is where we queue the request for the
           // callee and stop the inference for the current function now.
-          std::vector<mlir::Type> funcArgs(op->operand_type_begin(),
-                                           op->operand_type_end());
-          funcWorklist.push_back(
-              {callee, std::move(mangledName), std::move(funcArgs)});
+          funcWorklist.push_back({callee, std::move(mangledName),
+                                  llvm::to_vector<4>(op->getOperandTypes())});
           return mlir::success();
         }
         // Found a specialized callee! Let's turn this into a normal call
