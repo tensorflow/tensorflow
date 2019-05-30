@@ -20,6 +20,7 @@ py_library(
     name = "core",
     srcs = [
         "config.py",
+        "config_lib.py",
         "converter.py",
         "function_wrapping.py",
         "naming.py",
