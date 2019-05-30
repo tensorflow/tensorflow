@@ -4009,15 +4009,19 @@ def _get_noise_shape(x, noise_shape):
     noise_shape_ = tensor_shape.as_shape(noise_shape)
   except (TypeError, ValueError):
     return noise_shape
+  
+  n_dims = len(x.shape.dims)
+  x_shape = array_ops.shape(x, out_type=tf.int64)
+  noise_shape_dims = noise_shape_.dims
 
-  if x.shape.dims is not None and len(x.shape.dims) == len(noise_shape_.dims):
+  if x.shape.dims is not None and n_dims == len(noise_shape_dims):
     new_dims = []
-    for i, dim in enumerate(tf.shape(x)):
-      if noise_shape_.dims[i].value is None:
-        new_dims.append(dim.numpy())
+    for i range(n_dims):
+      if noise_shape_dims[i].value is None:
+        new_dims.append(x_shape[i])
       else:
-        new_dims.append(noise_shape_.dims[i].value)
-    return tensor_shape.TensorShape(new_dims)
+        new_dims.append(noise_shape_dims[i].value)
+    return ops.convert_to_tensor(new_dims)
 
   return noise_shape
 
