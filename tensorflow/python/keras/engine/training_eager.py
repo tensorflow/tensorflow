@@ -143,7 +143,8 @@ def _model_loss(model,
           else:
             # Update dimensions of weights to match with mask if possible.
             mask, _, weights = (
-                losses_utils.squeeze_or_expand_dimensions(mask, None, weights))
+                losses_utils.squeeze_or_expand_dimensions(
+                    mask, sample_weight=weights))
             weights *= mask
 
         if hasattr(loss_fn, 'reduction'):

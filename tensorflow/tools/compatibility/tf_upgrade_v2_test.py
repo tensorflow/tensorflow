@@ -1494,7 +1494,8 @@ def _log_prob(self, x):
       self.assertIn("%s has been" % name, report)
 
   def test_assert_equal_graph_def(self):
-    text = "tf.test.assert_equal_graph_def(a, b, checkpoint_v2=x)"
+    text = ("tf.test.assert_equal_graph_def(a, b, checkpoint_v2=x, "
+            "hash_table_shared_name=y)")
     expected = "tf.test.assert_equal_graph_def(actual=a, expected=b)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
@@ -2087,6 +2088,11 @@ def _log_prob(self, x):
       self.assertEqual(result_a[3], expected_text_a)
       self.assertEqual(result_b[3], expected_text_b)
 
+  def test_model_to_estimator_checkpoint_warning(self):
+    text = "tf.keras.estimator.model_to_estimator(model)"
+    _, report, _, _ = self._upgrade(text)
+    expected_info = "will save object-based checkpoints"
+    self.assertIn(expected_info, report)
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

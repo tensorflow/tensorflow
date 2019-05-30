@@ -174,8 +174,8 @@ cc_test(
     name = "gl_buffer_test",
     srcs = ["gl_buffer_test.cc"],
     linkopts = [
-        "-lGLESv3",
         "-lEGL",
+        "-lGLESv2",
     ],
     tags = [
         "local",

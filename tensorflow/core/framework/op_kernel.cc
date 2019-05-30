@@ -375,11 +375,7 @@ Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
                                    "expected");
   }
   const TensorValue& value((*params_->inputs)[start]);
-  if (value.is_ref()) {
-    *dtype = MakeRefType(value->dtype());
-  } else {
-    *dtype = value->dtype();
-  }
+  *dtype = value.dtype();
   return Status::OK();
 }
 
@@ -955,7 +951,7 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                                        const DataTypeSlice expected_outputs) {
   DataTypeVector inputs;
   for (const TensorValue& t : *params_->inputs) {
-    inputs.push_back(t.is_ref() ? MakeRefType(t->dtype()) : t->dtype());
+    inputs.push_back(t.dtype());
   }
   DataTypeVector outputs = params_->op_kernel->output_types();
   return MatchSignatureHelper(expected_inputs, expected_outputs, inputs,

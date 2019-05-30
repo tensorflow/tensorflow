@@ -226,6 +226,17 @@ tf_cuda_library(
     ],
 )
 
+tf_cc_test(
+    name = "tf_status_helper_test",
+    srcs = ["tf_status_helper_test.cc"],
+    deps = [
+        ":tf_status_helper",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cuda_library(
     name = "checkpoint_reader",
     srcs = ["checkpoint_reader.cc"],

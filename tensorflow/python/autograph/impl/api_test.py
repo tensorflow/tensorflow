@@ -48,7 +48,7 @@ from tensorflow.python.util import tf_inspect
 tf = utils.fake_tf()
 
 
-testing_global_numeric = 2
+global_n = 2
 
 
 class TestResource(object):
@@ -108,7 +108,7 @@ class ApiTest(test.TestCase):
 
     class TestClass(object):
 
-      @api.do_not_convert(api.RunMode.GRAPH)
+      @api.do_not_convert(run_as=api.RunMode.GRAPH)
       def called_member(self, a):
         return tf.negative(a)
 
@@ -130,7 +130,7 @@ class ApiTest(test.TestCase):
     class TestClass(object):
 
       @api.do_not_convert(
-          api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
+          run_as=api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
       def called_member(self, a):
         return np.negative(a)
 
@@ -451,6 +451,25 @@ class ApiTest(test.TestCase):
                            (g, constant_op.constant(1)), {})
     self.assertEqual(self.evaluate(x), 1)
 
+  def test_converted_call_forced_when_explicitly_whitelisted(self):
+
+    @api.do_not_convert()
+    def f(x):
+      return x + 1
+
+    x = api.converted_call(
+        f, None,
+        converter.ConversionOptions(recursive=True, force_conversion=True),
+        (constant_op.constant(0),), {})
+    self.assertTrue(self.evaluate(x))
+
+    converted_f = api.to_graph(
+        f, experimental_optional_features=converter.Feature.ALL)
+    x = api.converted_call(converted_f, None,
+                           converter.ConversionOptions(recursive=True), (0,),
+                           {})
+    self.assertEqual(x, 1)
+
   @test_util.run_deprecated_v1
   def test_converted_call_no_user_code(self):
 
@@ -660,13 +679,14 @@ class ApiTest(test.TestCase):
   def test_to_graph_with_globals(self):
 
     def test_fn(x):
-      global testing_global_numeric
-      testing_global_numeric = x + testing_global_numeric
-      return testing_global_numeric
+      global global_n
+      global_n = x + global_n
+      return global_n
 
-    with self.assertRaisesRegex(
-        NotImplementedError, 'global keyword is not yet supported'):
-      api.to_graph(test_fn)
+    converted_fn = api.to_graph(test_fn)
+    prev_val = global_n
+    converted_fn(10)
+    self.assertGreater(global_n, prev_val)
 
   def test_to_graph_with_kwargs_clashing_converted_call(self):
 
@@ -683,7 +703,7 @@ class ApiTest(test.TestCase):
 
   def test_to_graph_with_kwargs_clashing_unconverted_call(self):
 
-    @api.do_not_convert()
+    @api.do_not_convert
     def called_fn(**kwargs):
       return kwargs['f'] + kwargs['owner']
 

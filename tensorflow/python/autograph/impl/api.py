@@ -201,12 +201,13 @@ def do_not_convert_internal(f):
 
 
 @tf_export('autograph.experimental.do_not_convert')
-def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
+def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
   """Decorator that suppresses the conversion of a function.
 
   See also: docs/pyfunc_dtypes.md
 
   Args:
+    func: function to decorate.
     run_as: RunMode, specifies how to use the function in TensorFlow.
     return_dtypes: Optional[Iterable[ Union[tf.DType,
       utils.py_func.MatchDType]]], the return data types of the converted
@@ -214,35 +215,39 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
       None if the function has no return values.
 
   Returns:
-    Callable, a decorator that wraps the original function.
+    If `func` is not None, returns a `Callable` which is equivalent to
+    `func`, but is not converted by AutoGraph.
+    If `func` is None, returns a decorator that, when invoked with a
+    single `func` argument, returns a `Callable` equivalent to the
+    above case.
   """
+  if func is None:
+    return functools.partial(
+        do_not_convert,
+        run_as=run_as,
+        return_dtypes=return_dtypes)
 
-  def decorator(f):
-    """Decorator implementation."""
+  @functools.wraps(func)
+  def graph_wrapper(*args, **kwargs):
+    return func(*args, **kwargs)
 
-    @functools.wraps(f)
-    def graph_wrapper(*args, **kwargs):
-      return f(*args, **kwargs)
+  @functools.wraps(func)
+  def py_func_wrapper(*args, **kwargs):
+    if kwargs:
+      raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
+    # TODO(mdan): Add support for kwargs.
+    return py_func.wrap_py_func(
+        func, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
 
-    @functools.wraps(f)
-    def py_func_wrapper(*args, **kwargs):
-      if kwargs:
-        raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
-      # TODO(mdan): Add support for kwargs.
-      return py_func.wrap_py_func(
-          f, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
+  if run_as == RunMode.GRAPH:
+    wrapper = graph_wrapper
+  elif run_as == RunMode.PY_FUNC:
+    wrapper = py_func_wrapper
+  else:
+    raise ValueError('unknown value for run_as: %s' % run_as)
 
-    if run_as == RunMode.GRAPH:
-      wrapper = graph_wrapper
-    elif run_as == RunMode.PY_FUNC:
-      wrapper = py_func_wrapper
-    else:
-      raise ValueError('unknown value for run_as: %s' % run_as)
-
-    setattr(wrapper, '__ag_compiled', True)
-    return wrapper
-
-  return decorator
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
 
 
 def _attach_metadata(e, f, converted):
@@ -337,6 +342,11 @@ def converted_call(f, owner, options, args, kwargs):
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
       return py_builtins.overload_of(f)(*args)
+
+  # TODO(mdan): Clean up the naming inconsistency.
+  if hasattr(f, 'autograph_info__') or hasattr(f, '__ag_compiled'):
+    logging.log(2, 'Permanently whitelisted: %s: already converted', f)
+    return _call_unconverted(f, args, kwargs)
 
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or

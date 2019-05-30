@@ -238,31 +238,11 @@ TfLiteStatus MicroInterpreter::Invoke() {
       user_data = registration->init(&context_, init_data, init_data_size);
     }
 
-    const int kMaxInputs = 16;
-    int inputs_data[kMaxInputs + 1];
-    TfLiteIntArray* inputs_array =
-        reinterpret_cast<TfLiteIntArray*>(inputs_data);
-    if (op->inputs()->size() >= kMaxInputs) {
-      error_reporter_->Report("Too many inputs (%d)\n", op->inputs()->size());
-      return kTfLiteError;
-    }
-    inputs_array->size = op->inputs()->size();
-    for (int n = 0; n < op->inputs()->size(); ++n) {
-      inputs_array->data[n] = op->inputs()->Get(n);
-    }
-
-    const int kMaxOutputs = 16;
-    int outputs_data[kMaxOutputs + 1];
-    TfLiteIntArray* outputs_array =
-        reinterpret_cast<TfLiteIntArray*>(outputs_data);
-    if (op->outputs()->size() >= kMaxOutputs) {
-      error_reporter_->Report("Too many outputs (%d)\n", op->outputs()->size());
-      return kTfLiteError;
-    }
-    outputs_array->size = op->outputs()->size();
-    for (int n = 0; n < op->outputs()->size(); ++n) {
-      outputs_array->data[n] = op->outputs()->Get(n);
-    }
+    // Disregard const qualifier to workaround with existing API.
+    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
+    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
 
     const int kMaxTemporaries = 16;
     int temporaries_data[kMaxTemporaries + 1];

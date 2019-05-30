@@ -594,7 +594,12 @@ class Layer(module.Module):
           # Wrapping `call` function in autograph to allow for dynamic control
           # dependencies in call. We are limiting this to subclassed layers as
           # autograph is strictly needed only for subclassed layers.
-          if base_layer_utils.is_subclassed(self):
+          # As an additional optimizatio, we avoid calling autograph if the
+          # function is already converted or marked for no conversion. The
+          # effect is largely cosmetic - it avoid four extra frames in the call
+          # stack.
+          if (base_layer_utils.is_subclassed(self)
+              and not hasattr(self.call, '__ag_compiled')):
             decorators, original_func = tf_decorator.unwrap(self.call)
             converted_func = autograph.convert(recursive=True)(original_func)
             if decorators:
@@ -973,6 +978,8 @@ class Layer(module.Module):
       raise ValueError('Please provide a name for your metric like '
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
+    elif from_metric_obj:
+      name = value._metric_obj.name
 
     if in_call_context:
       # TF Function path should take the eager path.

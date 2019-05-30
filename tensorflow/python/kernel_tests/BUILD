@@ -1420,6 +1420,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
     ],
+    tags = ["no_windows"],  # b/133869052
 )
 
 cuda_py_test(

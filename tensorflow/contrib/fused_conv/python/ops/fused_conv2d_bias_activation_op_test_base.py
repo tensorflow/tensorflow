@@ -909,14 +909,27 @@ class FusedConvInt8CPUTests(object):
               [batch_size, input_height, input_width, input_channels],
               minval=-0.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
+      self.assertTrue(
+          sess.run(
+              math_ops.reduce_all(
+                  math_ops.greater_equal(
+                      array_ops.bitcast(conv_input, dtypes.int8), 0))))
 
       kernel, _, _ = gen_array_ops.quantize_v2(
           random_ops.random_uniform(
               [filter_height, filter_width, input_channels, output_channels],
               minval=-1.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       output_height = _CalculateConvolvedOutputDim(input_height, filter_height,
                                                    vertical_stride,
@@ -932,7 +945,11 @@ class FusedConvInt8CPUTests(object):
               [batch_size, output_height, output_width, output_channels],
               minval=0.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       biases = random_ops.random_uniform([output_channels],
                                          minval=-10 * bias_scale,
@@ -1029,19 +1046,31 @@ class FusedConvInt8CorrespondenceTests(object):
       conv_input, _, _ = gen_array_ops.quantize_v2(
           random_ops.random_uniform(
               [batch_size, input_channels // 4, input_height, input_width, 4],
-              minval=-0.0,
+              minval=0.0,
               maxval=1.0,
-              dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
+              dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
+      self.assertTrue(
+          sess.run(
+              math_ops.reduce_all(
+                  math_ops.greater_equal(
+                      array_ops.bitcast(conv_input, dtypes.int8), 0))))
 
       kernel, _, _ = gen_array_ops.quantize_v2(
           random_ops.random_uniform([
               output_channels, input_channels // 4, filter_height, filter_width,
               4
           ],
-                                    minval=-1.0,
-                                    maxval=1.0,
-                                    dtype=dtypes.float32), -1.0, 1.0,
-          dtypes.qint8)
+                                    minval=-128.0,
+                                    maxval=127.0,
+                                    dtype=dtypes.float32),
+          -128.0,
+          127.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       output_height = _CalculateConvolvedOutputDim(input_height, filter_height,
                                                    vertical_stride,
@@ -1058,8 +1087,11 @@ class FusedConvInt8CorrespondenceTests(object):
           ],
                                     minval=0.0,
                                     maxval=1.0,
-                                    dtype=dtypes.float32), -1.0, 1.0,
-          dtypes.qint8)
+                                    dtype=dtypes.float32),
+          -1.0,
+          1.0,
+          dtypes.qint8,
+          mode="SCALED")
 
       biases = random_ops.random_uniform([output_channels],
                                          minval=-10 * bias_scale,

@@ -83,6 +83,7 @@ tf_kernel_library(
         ":resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )
@@ -106,6 +107,7 @@ tf_kernel_library(
         ":tree_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
         "//third_party/eigen3",
     ],
@@ -117,6 +119,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/boosted_trees/quantiles:weighted_quantiles",
     ],
 )

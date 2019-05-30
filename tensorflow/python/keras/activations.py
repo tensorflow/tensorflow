@@ -307,5 +307,6 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret '
-                     'activation function identifier:', identifier)
+    raise TypeError(
+        'Could not interpret activation function identifier: {}'.format(
+            repr(identifier)))

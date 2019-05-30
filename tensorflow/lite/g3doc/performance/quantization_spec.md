@@ -7,14 +7,14 @@ formula.
 
 $$real\_value = (int8\_value - zero\_point) \times scale$$
 
-Per-axis (aka per-channel) or per-layer weights are represented by `int8` two’s
-complement values in the range `[-127, 127]` with zero-point equal to 0.
-Per-layer activations/inputs are represented by `int8` two’s complement values
-in the range `[-128, 127]`, with a zero-point in range `[-128, 127]`.
+Per-axis (aka per-channel in Conv ops) or per-tensor weights are represented by
+`int8` two’s complement values in the range `[-127, 127]` with zero-point equal
+to 0. Per-tensor activations/inputs are represented by `int8` two’s complement
+values in the range `[-128, 127]`, with a zero-point in range `[-128, 127]`.
 
 There are other exceptions for particular operations that are documented below.
 
-Note: In the past our quantized tooling used per-layer, asymmetric, `uint8`
+Note: In the past our quantized tooling used per-tensor, asymmetric, `uint8`
 quantization. New tooling, reference kernels, and optimized kernels for 8-bit
 quantization will use this spec.
 
@@ -25,9 +25,9 @@ TensorFlow Lite quantization will primarily prioritize tooling and kernels for
 quantization being represented by zero-point equal to 0. Additionally many
 backends have additional optimizations for `int8xint8` accumulation.
 
-### Per-axis vs per-layer
+### Per-axis vs per-tensor
 
-Per-layer quantization means that there will be one scale and/or zero-point per
+Per-tensor quantization means that there will be one scale and/or zero-point per
 entire tensor. Per-axis quantization means that there will be one scale and/or
 `zero_point` per slice in the `quantized_dimension`. The quantized dimension
 specifies the dimension of the Tensor's shape that the scales and zero-points
