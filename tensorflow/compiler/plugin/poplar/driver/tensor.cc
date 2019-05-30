@@ -1685,9 +1685,9 @@ std::string GetTensorMappingJson(const std::string& module_name,
   json_builder["commentStyle"] = "None";
   std::string json_msg = Json::writeString(json_builder, root);
 
-  if (tensorflow::GetPoplarXlaFlags().executable_cache_path.size() > 0) {
+  if (tensorflow::GetPoplarXlaFlags().tensor_map_file_path.size() > 0) {
     VLOG(2) << "[Poplar] Dumping tensor mapping";
-    auto path = tensorflow::GetPoplarXlaFlags().executable_cache_path;
+    auto path = tensorflow::GetPoplarXlaFlags().tensor_map_file_path;
     auto filename =
         tensorflow::io::JoinPath(path, module_name + ".tensor_map.json");
     std::unique_ptr<tensorflow::WritableFile> file;
