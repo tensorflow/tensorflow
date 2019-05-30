@@ -52,7 +52,6 @@ from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -81,6 +80,10 @@ class _ConvertedEntityFactoryInfo(
     factory_factory_name: Text, the name of the dynamic factory.
     source_map: Dict.
   """
+
+  def __str__(self):
+    return '_ConvertedEntityFactoryInfo({} in {})'.format(
+        self.converted_name, self.module_name)
 
   def get_module(self):
     return sys.modules[self.module_name]
@@ -284,6 +287,8 @@ def _instantiate(entity, converted_entity_info, free_nonglobal_var_names):
   if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
     # Attach the default argument to the converted function.
     converted_entity.__defaults__ = entity.__defaults__
+    if hasattr(entity, '__kwdefaults__'):
+      converted_entity.__kwdefaults__ = entity.__kwdefaults__
 
   return converted_entity
 
@@ -332,21 +337,21 @@ def is_whitelisted_for_graph(o, check_call_override=True):
   else:
     m = tf_inspect.getmodule(o)
 
+  # Examples of callables that lack a __module__ property include builtins.
   if hasattr(m, '__name__'):
-    # Builtins typically have unnamed modules.
-    for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
-      if m.__name__.startswith(prefix + '.') or m.__name__ == prefix:
-        logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
+    for rule in config.CONVERSION_RULES:
+      action = rule.get_action(m)
+      if action == config.Action.CONVERT:
+        logging.log(2, 'Not whitelisted: %s: %s', o, rule)
+        return False
+      elif action == config.Action.DO_NOT_CONVERT:
+        logging.log(2, 'Whitelisted: %s: %s', o, rule)
         return True
-
-  if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
-    logging.log(2, 'Whitelisted: %s: already converted', o)
-    return True
 
   if tf_inspect.isgeneratorfunction(o):
     logging.warn(
-        'Entity {} appears to be a generator function. It will not be converted'
-        ' by AutoGraph.'.format(o), 1)
+        'Entity %s appears to be a generator function. It will not be converted'
+        ' by AutoGraph.', o)
     logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
     return True
 
@@ -393,11 +398,6 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     # Due to the way they're constructed, namedtuple types cannot be converted
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
-    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
-      logging.warn(
-          'Entity {} looks like a namedtuple subclass. Its constructor will'
-          ' not be converted by AutoGraph, but if it has any custom methods,'
-          ' those will be.'.format(o), 1)
     logging.log(2, 'Whitelisted: %s: named tuple', o)
     return True
 
@@ -622,12 +622,7 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
       future_features=future_features,
       namespace=namespace)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  try:
-    node = node_to_graph(node, context)
-  except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-    logging.error(1, 'Error converting %s', f, exc_info=True)
-    raise errors.InternalError('conversion', e)
-    # TODO(mdan): Catch and rethrow syntax errors.
+  node = node_to_graph(node, context)
 
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())

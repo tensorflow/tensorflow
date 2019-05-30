@@ -20,6 +20,7 @@ import os
 import tempfile
 import time
 
+import unittest
 import sqlite3
 
 import numpy as np
@@ -298,6 +299,8 @@ class EagerFileTest(test_util.TensorFlowTestCase):
 
 class EagerDbTest(summary_test_util.SummaryDbTest):
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testDbURIOpen(self):
     tmpdb_path = os.path.join(self.get_temp_dir(), 'tmpDbURITest.sqlite')
     tmpdb_uri = six.moves.urllib_parse.urljoin('file:', tmpdb_path)
@@ -311,6 +314,8 @@ class EagerDbTest(summary_test_util.SummaryDbTest):
     self.assertEqual(num, 1)
     tmpdb.close()
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testIntegerSummaries(self):
     step = training_util.create_global_step()
     writer = self.create_db_writer()
@@ -375,6 +380,8 @@ class EagerDbTest(summary_test_util.SummaryDbTest):
     with self.assertRaises(ValueError):
       self.create_db_writer(user_name='@')
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testGraphSummary(self):
     training_util.get_or_create_global_step()
     name = 'hi'

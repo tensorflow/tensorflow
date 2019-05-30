@@ -13,9 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 proto_library(
     name = "evaluation_stages_proto",

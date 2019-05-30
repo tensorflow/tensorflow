@@ -32,6 +32,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
+from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -254,6 +256,8 @@ def _get_func_graphs(op):
     with op.graph.as_default():
       func_graph = function_def_to_graph.function_def_to_graph(
           fdef, input_shapes)
+    for external_t, internal_t in zip(inputs, func_graph.inputs):
+      custom_gradient.copy_handle_data(external_t, internal_t)
     func_graph.captures = collections.OrderedDict(zip(inputs,
                                                       func_graph.inputs))
     # Link the op so that the gradient code can use it.
@@ -312,7 +316,8 @@ def _grad_fn(func_graph, grads):
     if result[i] is None:
       if func_graph.inputs[i].dtype == dtypes.resource:
         result[i] = array_ops.zeros(
-            gen_resource_variable_ops.variable_shape(func_graph.inputs[i]))
+            gen_resource_variable_ops.variable_shape(func_graph.inputs[i]),
+            dtype=default_gradient.get_zeros_dtype(func_graph.inputs[i]))
       else:
         result[i] = array_ops.zeros_like(func_graph.inputs[i])
 

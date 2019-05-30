@@ -359,7 +359,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   graph_properties_ = absl::make_unique<GraphProperties>(*item);
   if (use_static_shapes_) {
     TF_RETURN_IF_ERROR(graph_properties_->InferStatically(
-        true, use_aggressive_shape_inference_));
+        true, use_aggressive_shape_inference_, true));
   } else {
     TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }
@@ -517,7 +517,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
     // of feed and fetch nodes, by default we consider all placeholders as feed
     // nodes, but some of them may not be needed for the default fetch node.
     VLOG(1) << "Some feed nodes were not consumed by the fetch fanin: "
-            << str_util::Join(feed_nodes, ",");
+            << absl::StrJoin(feed_nodes, ",");
   }
 
   initialized_ = true;

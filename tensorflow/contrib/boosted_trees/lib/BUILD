@@ -1,16 +1,15 @@
 # Description:
 #   This directory contains common utilities used in boosted_trees.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 package(
     default_visibility = [
         "//tensorflow/contrib/boosted_trees:__subpackages__",
         "//tensorflow/contrib/boosted_trees:friends",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")

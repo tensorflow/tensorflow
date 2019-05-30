@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
-from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
@@ -446,7 +445,7 @@ def flip_up_down(image):
       of shape `[height, width, channels]`.
 
   Returns:
-    A tensor of the same type and shape as `image`.
+    A `Tensor` of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -468,7 +467,7 @@ def _flip(image, flip_index, scope_name):
     scope_name: string, scope name.
 
   Returns:
-    A tensor of the same type and shape as `image`.
+    A `Tensor` of the same type and shape as `image`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -558,8 +557,7 @@ def _rot90_4D(images, k, name_scope):
     name_scope: A valid TensorFlow name scope.
 
   Returns:
-    A 4-D tensor of the same type and shape as `images`.
-
+    A 4-D `Tensor` of the same type and shape as `images`.
   """
 
   def _rot90():
@@ -1471,21 +1469,23 @@ def resize_image_with_pad_v2(image,
 
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
-  """Linearly scales `image` to have zero mean and unit variance.
+  """Linearly scales each image in `image` to have mean 0 and variance 1.
 
-  This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
-  of all values in image, and
-  `adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
+  For each 3-D image `x` in `image`, computes `(x - mean) / adjusted_stddev`,
+  where
 
-  `stddev` is the standard deviation of all values in `image`. It is capped
-  away from zero to protect against division by 0 when handling uniform images.
+  - `mean` is the average of all values in `x`
+  - `adjusted_stddev = max(stddev, 1.0/sqrt(N))` is capped away from 0 to
+    protect against division by 0 when handling uniform images
+    - `N` is the number of elements in `x`
+    - `stddev` is the standard deviation of all values in `x`
 
   Args:
-    image: An n-D Tensor where the last 3 dimensions are `[height, width,
-      channels]`.
+    image: An n-D Tensor with at least 3 dimensions, the last 3 of which are the
+      dimensions of each image.
 
   Returns:
-    The standardized image with same shape as `image`.
+    A `Tensor` with same shape and dtype as `image`.
 
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
@@ -1493,26 +1493,23 @@ def per_image_standardization(image):
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
-    num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
 
-    image = math_ops.cast(image, dtype=dtypes.float32)
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+    if orig_dtype not in [dtypes.float16, dtypes.float32]:
+      image = convert_image_dtype(image, dtypes.float32)
+
+    num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
     image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
-    variance = (
-        math_ops.reduce_mean(
-            math_ops.square(image), axis=[-1, -2, -3], keepdims=True) -
-        math_ops.square(image_mean))
-    variance = gen_nn_ops.relu(variance)
-    stddev = math_ops.sqrt(variance)
-
     # Apply a minimum normalization that protects us against uniform images.
-    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
-    pixel_value_scale = math_ops.maximum(stddev, min_stddev)
-    pixel_value_offset = image_mean
+    stddev = math_ops.reduce_std(image, axis=[-1, -2, -3], keepdims=True)
+    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, image.dtype))
+    adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 
-    image = math_ops.subtract(image, pixel_value_offset)
-    image = math_ops.div(image, pixel_value_scale, name=scope)
-    return image
+    image -= image_mean
+    image = math_ops.div(image, adjusted_stddev, name=scope)
+    return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
 @tf_export('image.random_brightness')
@@ -1759,8 +1756,8 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
         return math_ops.multiply(cast, scale, name=name)
     elif image.dtype.is_floating and dtype.is_floating:
       # Both float: Just cast, no possible overflows in the allowed ranges.
-      # Note: We're ignoreing float overflows. If your image dynamic range
-      # exceeds float range you're on your own.
+      # Note: We're ignoring float overflows. If your image dynamic range
+      # exceeds float range, you're on your own.
       return math_ops.cast(image, dtype, name=name)
     else:
       if image.dtype.is_integer:
@@ -2072,7 +2069,7 @@ def is_jpeg(contents, name=None):
      is_jpeg is susceptible to false positives.
   """
   # Normal JPEGs start with \xff\xd8\xff\xe0
-  # JPEG with EXIF stats with \xff\xd8\xff\xe1
+  # JPEG with EXIF starts with \xff\xd8\xff\xe1
   # Use \xff\xd8\xff to cover both.
   with ops.name_scope(name, 'is_jpeg'):
     substr = string_ops.substr(contents, 0, 3)
@@ -2448,8 +2445,7 @@ def sample_distorted_bounding_box(image_size,
   original image. The output is returned as 3 tensors: `begin`, `size` and
   `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
   image. The latter may be supplied to `tf.image.draw_bounding_boxes` to
-  visualize
-  what the bounding box looks like.
+  visualize what the bounding box looks like.
 
   Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
   The
@@ -2475,7 +2471,7 @@ def sample_distorted_bounding_box(image_size,
   ```
 
   Note that if no bounding box information is available, setting
-  `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+  `use_image_if_no_bounding_boxes = True` will assume there is a single implicit
   bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
   false and no bounding boxes are supplied, an error is raised.
 
@@ -2923,7 +2919,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
     x: First set of images.
     y: Second set of images.
     reducer: Function that computes 'local' averages from set of images. For
-      non-covolutional version, this is usually tf.reduce_mean(x, [1, 2]), and
+      non-convolutional version, this is usually tf.reduce_mean(x, [1, 2]), and
       for convolutional version, this is usually tf.nn.avg_pool2d or
       tf.nn.conv2d with weighted-sum kernel.
     max_val: The dynamic range (i.e., the difference between the maximum

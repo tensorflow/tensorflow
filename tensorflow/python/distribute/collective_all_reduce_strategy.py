@@ -123,10 +123,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._num_workers = 1
 
     if ops.executing_eagerly_outside_functions():
-      context.context().configure_collective_ops(
-          scoped_allocator_enabled_ops=("CollectiveReduce",),
-          use_nccl_communication=(self._communication == cross_device_ops_lib
-                                  .CollectiveCommunication.NCCL))
+      try:
+        context.context().configure_collective_ops(
+            scoped_allocator_enabled_ops=("CollectiveReduce",),
+            use_nccl_communication=(self._communication == cross_device_ops_lib
+                                    .CollectiveCommunication.NCCL))
+      except RuntimeError:
+        logging.warning("Collective ops is not configured at program startup. "
+                        "Some performance features may not be enabled.")
       self._collective_ops_configured = True
 
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
@@ -164,9 +168,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # Save the num_gpus_per_worker and rpc_layer for configure method.
     self._num_gpus_per_worker = num_gpus
     self._rpc_layer = cluster_resolver.rpc_layer
+    self._warn_nccl_no_gpu()
 
-    logging.info("CollectiveAllReduceStrategy with local_devices = %r",
-                 local_devices)
+    logging.info("Single-worker CollectiveAllReduceStrategy with local_devices "
+                 "= %r, communication = %s", local_devices, self._communication)
 
   def _initialize_multi_worker(self, cluster_resolver):
     """Initializes the object for multi-worker training."""
@@ -258,6 +263,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # Save the num_gpus_per_worker and rpc_layer for configure method.
     self._num_gpus_per_worker = num_gpus
     self._rpc_layer = cluster_resolver.rpc_layer
+    self._warn_nccl_no_gpu()
 
     logging.info(
         "Multi-worker CollectiveAllReduceStrategy with cluster_spec = %r, "
@@ -307,7 +313,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
               with ops.device(device):
                 initial_value = initial_value_fn()
                 assert not callable(initial_value)
-                initial_value = ops.convert_to_tensor(initial_value)
+                initial_value = ops.convert_to_tensor(
+                    initial_value, dtype=kwargs.get("dtype", None))
 
                 assert index == 0, index
                 if self._num_workers > 1:
@@ -448,9 +455,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
 
-    if ((self._communication ==
-         cross_device_ops_lib.CollectiveCommunication.NCCL) and
-        self._num_gpus_per_worker > 0):
+    if self._communication == cross_device_ops_lib.CollectiveCommunication.NCCL:
       updated_config.experimental.collective_nccl = True
 
     if not self._cluster_spec:
@@ -494,6 +499,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           reduce_op, self._device_map, value, destinations)
     return self._get_cross_device_ops().reduce(
         reduce_op, value, destinations=destinations)
+
+  def _warn_nccl_no_gpu(self):
+    if ((self._communication ==
+         cross_device_ops_lib.CollectiveCommunication.NCCL) and
+        self._num_gpus_per_worker == 0):
+      logging.warning("Enabled NCCL communication but no GPUs detected/"
+                      "specified.")
 
   @property
   def experimental_between_graph(self):

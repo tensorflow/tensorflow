@@ -5,9 +5,10 @@
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -138,7 +139,6 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -156,7 +156,6 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -174,7 +173,6 @@ distribute_py_test(
     shard_count = 8,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -194,7 +192,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notap",  # b/131937016
         "notsan",
@@ -230,7 +227,6 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # b/129793413
         "no_windows_gpu",
         "notsan",
     ],
@@ -272,6 +268,7 @@ cuda_py_test(
         "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -307,6 +304,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -328,6 +326,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/132384649): Flakily times out.
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -345,6 +344,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

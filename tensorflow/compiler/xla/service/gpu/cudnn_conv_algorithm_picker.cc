@@ -178,8 +178,8 @@ struct ConvCacheStats {
   int64 cache_misses = 0;
 
   void LogStats() {
-    VLOG(1) << "Cache hits: " << cache_hits;
-    VLOG(1) << "Cache misses: " << cache_misses;
+    VLOG(2) << "Cache hits: " << cache_hits;
+    VLOG(2) << "Cache misses: " << cache_misses;
   }
 };
 
@@ -269,8 +269,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
-    se_allocator.emplace(stream_exec_->platform(),
-                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
+    se_allocator.emplace(stream_exec_);
     allocator = &*se_allocator;
   }
 
@@ -425,6 +424,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
             << AlgorithmToString(first_algorithm) << " vs "
             << AlgorithmToString(alg);
         PrintPlatformInfo(&stream);
+        VLOG(1) << "Full module on failure: \n"
+                << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         auto* reference_conv = fail->mutable_reference_conv();
@@ -462,12 +463,10 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
+    VLOG(1) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
-    // print more information instead of logging to the logger.
-    if (crash_on_checking_failure) {
-      LOG(INFO) << "Autotuning result: " << log.ShortDebugString();
-    } else {
-      VLOG(2) << "Autotuning result:\n" << log.DebugString();
+    // omitting logging through the logger.
+    if (!crash_on_checking_failure) {
       tensorflow::Logger::Singleton()->LogProto(log);
     }
   }
@@ -527,7 +526,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   }
 
   auto best_algo = std::move(best_algo_or).ValueOrDie();
-  VLOG(1) << "Setting cudnn conv to use algorithm "
+  VLOG(2) << "Setting cudnn conv to use algorithm "
           << best_algo.conv().algorithm() << " and "
           << NumBytesToString(best_algo.scratch_bytes())
           << " of scratch memory: " << instr->ToString()
@@ -548,7 +547,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
-  VLOG(1) << "Replacing convolution " << instr->ToString() << " with "
+  VLOG(2) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));

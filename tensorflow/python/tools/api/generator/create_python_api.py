@@ -89,6 +89,27 @@ def format_import(source_module_name, source_name, dest_name):
       return 'import %s as %s' % (source_name, dest_name)
 
 
+def get_canonical_import(import_set):
+  """Obtain one single import from a set of possible sources of a symbol.
+
+  One symbol might come from multiple places as it is being imported and
+  reexported. To simplify API changes, we always use the same import for the
+  same module, and give preference to imports coming from main tensorflow code.
+
+  Args:
+    import_set: (set) Imports providing the same symbol
+
+  Returns:
+    A module name to import
+  """
+  # We use the fact that list sorting is stable, so first we convert the set to
+  # a sorted list of the names and then we resort this list to move elements
+  # not in core tensorflow to the end.
+  import_list = sorted(import_set)
+  import_list.sort(key=lambda x: 'lite' in x)
+  return import_list[0]
+
+
 class _ModuleInitCodeBuilder(object):
   """Builds a map from module name to imports included in that module."""
 
@@ -184,8 +205,9 @@ class _ModuleInitCodeBuilder(object):
     for dest_module, dest_name_to_imports in self._module_imports.items():
       # Sort all possible imports for a symbol and pick the first one.
       imports_list = [
-          sorted(imports)[0]
-          for _, imports in dest_name_to_imports.items()]
+          get_canonical_import(imports)
+          for _, imports in dest_name_to_imports.items()
+      ]
       module_text_map[dest_module] = '\n'.join(sorted(imports_list))
 
     # Expose exported symbols with underscores in root module

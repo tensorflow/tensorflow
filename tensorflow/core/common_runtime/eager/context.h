@@ -162,7 +162,7 @@ class EagerContext : public core::RefCounted {
 
   Status RemoveFunction(const string& func);
 
-  KernelAndDevice* GetCachedKernel(Fprint128 cache_key);
+  core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
@@ -316,9 +316,15 @@ class EagerContext : public core::RefCounted {
   std::function<void(std::function<void()>)> runner_;
 
   mutex cache_mu_;
-  std::unordered_map<Fprint128, KernelAndDevice*, Fprint128Hasher> kernel_cache_
-      GUARDED_BY(cache_mu_);
-  std::unordered_map<string, std::vector<Fprint128>*> active_functions_
+  struct RegisteredFunction : public core::RefCounted {
+    ~RegisteredFunction() override {}
+
+    std::unique_ptr<std::vector<Fprint128>> cached_kernel_keys;
+  };
+  std::unordered_map<Fprint128, core::RefCountPtr<KernelAndDevice>,
+                     Fprint128Hasher>
+      kernel_cache_ GUARDED_BY(cache_mu_);
+  std::unordered_map<string, RegisteredFunction*> registered_functions_
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.

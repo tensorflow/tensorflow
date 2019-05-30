@@ -5061,29 +5061,6 @@ TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
   EXPECT_THAT(root, GmockMatch(m::Multiply()));
 }
 
-TEST_F(AlgebraicSimplifierTest, DivOfBroadcast) {
-  const char* hlo_string = R"(
-    HloModule module
-
-    ENTRY test {
-      p0 = f32[10] parameter(0)
-      b = f32[30,10] broadcast(f32[10] p0), dimensions={1}
-      p1 = f32[30,10] parameter(1)
-      ROOT d = f32[30,10] divide(p1,b)
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-
-  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-  auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Multiply(
-                        m::Parameter(1),
-                        m::Broadcast(m::Divide(m::Broadcast(m::Constant()),
-                                               m::Parameter(0))))));
-}
-
 // Test that 1/sqrt(X) is simplified to rsqrt(X).
 TEST_F(AlgebraicSimplifierTest, RecipSqrt) {
   const char* kModuleStr = R"(

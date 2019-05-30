@@ -282,9 +282,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       An `Iterator` over the elements of this dataset.
 
     Raises:
-      RuntimeError: If eager execution is not enabled.
+      RuntimeError: If not inside of tf.function and not executing eagerly.
     """
-    return iterator_ops.IteratorV2(self)
+    if (context.executing_eagerly()
+        or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+      return iterator_ops.IteratorV2(self)
+    else:
+      raise RuntimeError("__iter__() is only supported inside of tf.function "
+                         "or when eager execution is enabled.")
 
   @abc.abstractproperty
   def _element_structure(self):
@@ -699,8 +704,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def prefetch(self, buffer_size):
     """Creates a `Dataset` that prefetches elements from this dataset.
 
-    Note that if the dataset was batched using `Dataset.batch`, each element is
-    a batch and this operation will prefetch `buffer_size` batches.
+    Note: Like other `Dataset` methods, prefetch operates on the
+    elements of the input dataset. It has no concept of examples vs. batches.
+    `examples.prefetch(2)` will prefetch two elements (2 examples),
+    while `examples.batch(20).prefetch(2)` will prefetch 2 elements
+    (2 batches, of 20 examples each).
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum

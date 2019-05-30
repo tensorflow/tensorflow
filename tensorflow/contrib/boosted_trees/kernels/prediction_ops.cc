@@ -163,12 +163,11 @@ class GradientTreesPredictionOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     // Gets the resource. Grabs the mutex but releases it.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
     // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(ensemble_resource);
     if (use_locking_) {
       tf_shared_lock l(*ensemble_resource->get_mutex());
       DoCompute(context, ensemble_resource,
@@ -184,9 +183,10 @@ class GradientTreesPredictionOp : public OpKernel {
   // leaf index in prediction. Though this class invokes only with this param
   // value as false, the subclass GradientTreesPredictionVerboseOp will invoke
   // with the true value.
-  virtual void DoCompute(OpKernelContext* context,
-                         DecisionTreeEnsembleResource* ensemble_resource,
-                         const bool return_output_leaf_index) {
+  virtual void DoCompute(
+      OpKernelContext* context,
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& ensemble_resource,
+      const bool return_output_leaf_index) {
     // Read dense float features list;
     OpInputList dense_float_features_list;
     OP_REQUIRES_OK(context, TensorUtils::ReadDenseFloatFeatures(
@@ -352,9 +352,10 @@ class GradientTreesPredictionVerboseOp : public GradientTreesPredictionOp {
       : GradientTreesPredictionOp(context) {}
 
  protected:
-  void DoCompute(OpKernelContext* context,
-                 DecisionTreeEnsembleResource* ensemble_resource,
-                 bool return_output_leaf_index) override {
+  void DoCompute(
+      OpKernelContext* context,
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& ensemble_resource,
+      bool return_output_leaf_index) override {
     GradientTreesPredictionOp::DoCompute(context, ensemble_resource,
                                          /*return_output_leaf_index=*/true);
   }
@@ -372,12 +373,10 @@ class GradientTreesPartitionExamplesOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     // Gets the resource. Grabs the mutex but releases it.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
-    // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(ensemble_resource);
     if (use_locking_) {
       tf_shared_lock l(*ensemble_resource->get_mutex());
       DoCompute(context, ensemble_resource);
@@ -387,17 +386,18 @@ class GradientTreesPartitionExamplesOp : public OpKernel {
   }
 
  private:
-  void DoCompute(OpKernelContext* context,
-                 DecisionTreeEnsembleResource* ensemble_resource) {
+  void DoCompute(
+      OpKernelContext* context,
+      const core::RefCountPtr<DecisionTreeEnsembleResource>& resource) {
     // The last non-finalized tree in the ensemble is by convention the
     // one to partition on. If no such tree exists, a nodeless tree is
     // created.
     boosted_trees::trees::DecisionTreeConfig empty_tree_config;
     const boosted_trees::trees::DecisionTreeConfig& tree_config =
-        (ensemble_resource->num_trees() <= 0 ||
-         ensemble_resource->LastTreeMetadata()->is_finalized())
+        (resource->num_trees() <= 0 ||
+         resource->LastTreeMetadata()->is_finalized())
             ? empty_tree_config
-            : *ensemble_resource->LastTree();
+            : *resource->LastTree();
 
     // Read dense float features list;
     OpInputList dense_float_features_list;

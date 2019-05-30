@@ -104,21 +104,6 @@ ResourceMgr::ResourceMgr(const string& default_container)
 
 ResourceMgr::~ResourceMgr() { Clear(); }
 
-void ResourceMgr::GetContainerResources(
-    const string& container, std::vector<ResourceEntry>* resources) const {
-  resources->clear();
-  mutex_lock l(mu_);
-  Container* b = gtl::FindPtrOrNull(containers_, container);
-  if (b != nullptr) {
-    resources->reserve(b->size());
-    for (auto& key_resource : *b) {
-      ResourceBase* resource = key_resource.second;
-      resource->Ref();
-      resources->emplace_back(key_resource.first.second, resource);
-    }
-  }
-}
-
 void ResourceMgr::Clear() {
   mutex_lock l(mu_);
   for (const auto& p : containers_) {
@@ -158,7 +143,7 @@ string ResourceMgr::DebugString() const {
         line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
   }
   std::sort(text.begin(), text.end());
-  return str_util::Join(text, "\n");
+  return absl::StrJoin(text, "\n");
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,

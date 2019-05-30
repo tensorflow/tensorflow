@@ -580,8 +580,8 @@ class NodeProcessor : public GraphProcessor {
     string device;
     string not_used;
     if (DeviceNameUtils::SplitDeviceName(device_name, &not_used, &device) &&
-        str_util::StrContains(str_util::Lowercase(device),
-                              str_util::Lowercase(DEVICE_GPU))) {
+        absl::StrContains(absl::AsciiStrToLower(device),
+                          absl::AsciiStrToLower(DEVICE_GPU))) {
       return true;
     }
     return false;
@@ -2209,7 +2209,10 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   GraphProperties graph_properties(item);
-  TF_RETURN_IF_ERROR(graph_properties.InferStatically(false));
+  TF_RETURN_IF_ERROR(
+      graph_properties.InferStatically(/*assume_valid_feeds=*/false,
+                                       /*aggressive_shape_inference=*/false,
+                                       /*include_tensor_values=*/false));
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   virtual_placer_.reset(new VirtualPlacer(cluster->GetDevices()));

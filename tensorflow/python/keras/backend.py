@@ -37,6 +37,7 @@ from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
@@ -76,6 +77,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 py_all = all
 py_sum = sum
+py_any = any
 
 # INTERNAL UTILS
 
@@ -3023,7 +3025,8 @@ def set_value(x, value):
   """
   value = np.asarray(value, dtype=dtype(x))
   if ops.executing_eagerly_outside_functions():
-    x.assign(value)
+    with ops.init_scope():
+      x.assign(value)
   else:
     with get_graph().as_default():
       tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
@@ -3047,8 +3050,9 @@ def batch_set_value(tuples):
           `value` should be a Numpy array.
   """
   if ops.executing_eagerly_outside_functions():
-    for x, value in tuples:
-      x.assign(np.asarray(value, dtype=dtype(x)))
+    with ops.init_scope():
+      for x, value in tuples:
+        x.assign(np.asarray(value, dtype=dtype(x)))
   else:
     with get_graph().as_default():
       if tuples:
@@ -3102,6 +3106,61 @@ def print_tensor(x, message=''):
     return x
 
 
+def is_tensor_or_composite_tensor(value):
+  """Test if a passed value object is a tensor-like or composite tensor."""
+  return (tensor_util.is_tensor(value) or isinstance(value, np.ndarray) or
+          composite_tensor_utils.is_composite_or_composite_value(value))
+
+
+def _try_process_scipy_sparse_input(value):
+  """Converts 'value' to a SparseTensor if it is a scipy sparse matrix.
+
+  Arguments:
+    value: An object that may have the attributes of a scipy sparse matrix.
+
+  Returns:
+    Either a SparseTensor based off of 'value' or 'value' itself.
+  """
+  try:
+    sparse_coo = value.tocoo()
+    row, col = sparse_coo.row, sparse_coo.col
+    data, shape = sparse_coo.data, sparse_coo.shape
+  except AttributeError:
+    # If we can't convert this object, it could be either a single data
+    # element (ie, a bool/int/float) which is OK to pass on, or something
+    # that we don't understand (which may or may not be OK). In either
+    # case, don't die here: the data standardization code will catch
+    # those issues.
+    return value
+
+  indices = np.concatenate((np.expand_dims(row, 1), np.expand_dims(col, 1)), 1)
+  return sparse_tensor.SparseTensor(indices, data, shape)
+
+
+def try_convert_scipy_to_sparse(values):
+  """Converts scipy sparse matrices in 'values' to SparseTensors, if possible.
+
+  Arguments:
+    values: An input or list of inputs to convert. These may be TensorLikes,
+      ndarrays, composite tensors, or scipy sparse values.
+
+  Returns:
+    An input or list of inputs where scipy sparse tensors have been converted
+    to tf.SparseTensors.
+
+  Raises:
+    ValueError: If input cannot be converted to a SparseTensor.
+  """
+  # Convert scipy sparse data into sparse tensors.
+  value_structure = values
+  values = nest.flatten(values)
+  for idx, value in enumerate(values):
+    if not is_tensor_or_composite_tensor(value):
+      values[idx] = _try_process_scipy_sparse_input(value)
+  values = nest.pack_sequence_as(value_structure, values)
+
+  return values
+
 
 # GRAPH MANIPULATION
 
@@ -3132,7 +3191,8 @@ class GraphExecutionFunction(object):
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
-    self.inputs = nest.flatten(inputs)
+    self._inputs_structure = inputs
+    self.inputs = nest.flatten(inputs, expand_composites=True)
     self._outputs_structure = outputs
     self.outputs = cast_variables_to_tensor(
         nest.flatten(outputs, expand_composites=True))
@@ -3248,7 +3308,11 @@ class GraphExecutionFunction(object):
       return tensor
 
   def __call__(self, inputs):
-    inputs = nest.flatten(inputs)
+    inputs = try_convert_scipy_to_sparse(inputs)
+
+    # Ensure that input value types match any expected composite tensor types.
+    # TODO(momernick): Once TensorSpecs are implemented for CTs, use that here.
+    inputs = nest.flatten(inputs, expand_composites=True)
 
     session = get_session(inputs)
     feed_arrays = []
@@ -3258,11 +3322,7 @@ class GraphExecutionFunction(object):
     for tensor, value in zip(self.inputs, inputs):
       if value is None:
         continue
-      if is_sparse(tensor):
-        sparse_coo = value.tocoo()
-        indices = np.concatenate((np.expand_dims(sparse_coo.row, 1),
-                                  np.expand_dims(sparse_coo.col, 1)), 1)
-        value = (indices, sparse_coo.data, sparse_coo.shape)
+
       if tensor_util.is_tensor(value):
         # Case: feeding symbolic tensor.
         feed_symbols.append(tensor)
@@ -3317,8 +3377,9 @@ class EagerExecutionFunction(object):
 
   def __init__(self, inputs, outputs, updates=None, name=None):
     self.name = name
+    self._inputs_structure = inputs
+    inputs = nest.flatten(inputs, expand_composites=True)
     self._outputs_structure = outputs
-    inputs = nest.flatten(inputs)
     outputs = nest.flatten(outputs, expand_composites=True)
 
     updates = updates or []
@@ -3330,9 +3391,11 @@ class EagerExecutionFunction(object):
       # Edge case; never happens in practice
       raise ValueError('Cannot create a Keras backend function with updates'
                        ' but no outputs during eager execution.')
-
-    graphs = {i.graph for i in nest.flatten([inputs, outputs, updates])
-              if hasattr(i, 'graph')}
+    graphs = {
+        i.graph
+        for i in nest.flatten([inputs, outputs, updates])
+        if hasattr(i, 'graph')
+    }
     if len(graphs) > 1:
       raise ValueError('Cannot create an execution function which is comprised '
                        'of elements from multiple graphs.')
@@ -3422,7 +3485,10 @@ class EagerExecutionFunction(object):
               x.op.inputs[0])
 
   def __call__(self, inputs):
-    input_values = nest.flatten(inputs)
+    # Convert scipy sparse data into sparse tensors.
+    inputs = try_convert_scipy_to_sparse(inputs)
+
+    input_values = nest.flatten(inputs, expand_composites=True)
     if self._freezable_vars_values:
       input_values = input_values + self._freezable_vars_values
     converted_inputs = []
@@ -4140,7 +4206,6 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
         output.op.type != 'Softmax'):
-      axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
       # Compute cross entropy from probabilities.
@@ -4154,7 +4219,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       # See b/117284466
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
-  return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
+  return nn.softmax_cross_entropy_with_logits_v2(
+      labels=target, logits=output, axis=axis)
 
 
 @keras_export('keras.backend.sparse_categorical_crossentropy')
@@ -4192,20 +4258,45 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
 
-  rank = len(output.shape)
-  axis = axis % rank
-  if axis != rank - 1:
-    permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
-    output = array_ops.transpose(output, perm=permutation)
+  if isinstance(output.shape, (tuple, list)):
+    output_rank = len(output.shape)
+  else:
+    output_rank = output.shape.ndims
+  if output_rank is not None:
+    axis %= output_rank
+    if axis != output_rank - 1:
+      permutation = list(
+          itertools.chain(range(axis), range(axis + 1, output_rank), [axis]))
+      output = array_ops.transpose(output, perm=permutation)
+  elif axis != -1:
+    raise ValueError(
+        'Cannot compute sparse categorical crossentropy with `axis={}` on an '
+        'output tensor with unknown rank'.format(axis))
 
-  output_shape = output.shape
-  targets = cast(flatten(target), 'int64')
-  logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
-  res = nn.sparse_softmax_cross_entropy_with_logits(
-      labels=targets, logits=logits)
-  if len(output_shape) >= 3:
+  target = cast(target, 'int64')
+
+  # Try to adjust the shape so that rank of labels = 1 - rank of logits.
+  output_shape = array_ops.shape_v2(output)
+  target_rank = target.shape.ndims
+
+  update_shape = (
+      target_rank is not None and output_rank is not None and
+      target_rank != output_rank - 1)
+  if update_shape:
+    target = flatten(target)
+    output = array_ops.reshape(output, [-1, output_shape[-1]])
+
+  if py_any([_is_symbolic_tensor(v) for v in [target, output]]):
+    with get_graph().as_default():
+      res = nn.sparse_softmax_cross_entropy_with_logits_v2(
+          labels=target, logits=output)
+  else:
+    res = nn.sparse_softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output)
+
+  if update_shape and output_rank >= 3:
     # If our output includes timesteps or spatial dimensions we need to reshape
-    return array_ops.reshape(res, array_ops.shape(output)[:-1])
+    return array_ops.reshape(res, output_shape[:-1])
   else:
     return res
 
@@ -5608,3 +5699,7 @@ def cast_variables_to_tensor(tensors):
     return tensor
 
   return nest.map_structure(_cast_variables_to_tensor, tensors)
+
+
+def _is_symbolic_tensor(x):
+  return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)

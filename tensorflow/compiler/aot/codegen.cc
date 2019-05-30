@@ -465,7 +465,7 @@ namespace xla { class ExecutableRunOptions; }
 
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void {{ENTRY}}(
-    void* result, const xla::ExecutableRunOptions* run_options,
+    void* result, const ::xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
 {{DECLS_FROM_OBJ_FILE}}
@@ -630,14 +630,14 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   static const char** StaticResultNames() {{RESULT_NAMES_CODE}}
 
   // Shape of the args and results.
-  static const xla::ProgramShapeProto* StaticProgramShape() {
-    static const xla::ProgramShapeProto* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
+  static const ::xla::ProgramShapeProto* StaticProgramShape() {
+    static const ::xla::ProgramShapeProto* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
     return kShape;
   }
 
   // Metadata that can be used to pretty-print profile counters.
-  static const xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
-    static const xla::HloProfilePrinterData* kHloProfilePrinterData =
+  static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+    static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
       {{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}};
     return kHloProfilePrinterData;
   }
@@ -715,11 +715,11 @@ Status GenerateMetadata(const CodegenOpts& opts,
 
   ProtobufToEmbed program_shape_protobuf{
       CreateUniqueIdentifier(opts, "ProgramShapeProto"),
-      "xla::ProgramShapeProto", program_shape.get()};
+      "::xla::ProgramShapeProto", program_shape.get()};
 
   ProtobufToEmbed hlo_profile_printer_data_protobuf{
       CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
-      "xla::HloProfilePrinterData",
+      "::xla::HloProfilePrinterData",
       compile_result.aot->hlo_profile_printer_data()};
 
   TF_ASSIGN_OR_RETURN(

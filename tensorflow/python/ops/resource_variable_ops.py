@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
@@ -150,10 +151,13 @@ def variable_handle_from_shape_and_dtype(
     # When in eager mode, explicitly ensure so here. When in graph mode, it's
     # ensured by always generating different variable names.
     exists = gen_resource_variable_ops.var_is_initialized_op(handle)
-    if exists:
-      raise ValueError("variable object with name '%s' already created. Use "
-                       "get_variable() if reuse is desired." %
-                       shared_name)
+
+    # We create an assert Op instead of checking right away in order to be
+    # compatible with ASYNC execution mode. Further, since not all devices
+    # support string tensors, we encode the assertion string in the Op name
+    gen_logging_ops._assert(  # pylint: disable=protected-access
+        math_ops.logical_not(exists), [exists], name="EagerVariableNameReuse")
+
     with context.graph_mode(), ops.Graph().as_default() as graph:
       h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                   shared_name=shared_name,
@@ -360,7 +364,7 @@ class ResourceVariable(variables.VariableV1):
 
   def __init__(self,
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,  # pylint: disable=unused-argument
                caching_device=None,
@@ -384,6 +388,7 @@ class ResourceVariable(variables.VariableV1):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+         Defaults to `True` unless `synchronization` is set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: Ignored. Provided for compatibility with tf.Variable.
@@ -469,7 +474,7 @@ class ResourceVariable(variables.VariableV1):
 
   def _init_from_args(self,
                       initial_value=None,
-                      trainable=True,
+                      trainable=None,
                       collections=None,
                       caching_device=None,
                       name=None,
@@ -490,6 +495,7 @@ class ResourceVariable(variables.VariableV1):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True` unless `synchronization` is set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       caching_device: Optional device string or function describing where the
@@ -1651,6 +1657,11 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.METRIC_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
 
 
 def is_resource_variable(var):
@@ -1781,5 +1792,6 @@ def copy_to_graph_uninitialized(var):
   # pylint: enable=protected-access
   return new_variable
 
+ops.NotDifferentiable("Assert")
 ops.NotDifferentiable("VarIsInitializedOp")
 ops.NotDifferentiable("VariableShape")

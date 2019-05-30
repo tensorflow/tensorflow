@@ -8,10 +8,9 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
@@ -1715,9 +1714,9 @@ xla_test(
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests
         # unless they're also tagged "guitar".
-        "noguitar",  # TODO(b/131524578): Re-enable this.
+        "guitar",
         "manual",
-        "multi_gpu",
+        # "multi_gpu",  # b/133794781
         "no_oss",
         "notap",
     ],

@@ -58,7 +58,7 @@ Status ConditionalThunk::Initialize(const GpuExecutable& executable,
 
 Status ConditionalThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& run_id, HloExecutionProfiler* profiler) {
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   // Copy the predicate value from device.
   int32 branch_index = -1;
@@ -89,7 +89,7 @@ Status ConditionalThunk::ExecuteOnStream(
   // Execute the branch computation corresponding to the value of branch_index.
   profiler->StartHloComputation();
   TF_RETURN_IF_ERROR(branch_thunks_[branch_index]->ExecuteOnStream(
-      buffer_allocations, stream, profiler));
+      buffer_allocations, stream, run_id, profiler));
   profiler->FinishHloComputation(
       hlo_instruction()->branch_computation(branch_index));
 
