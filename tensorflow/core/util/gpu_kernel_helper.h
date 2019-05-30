@@ -51,12 +51,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
-#define GPU_GET_ERROR_STRING(error) cudaGetErrorString(error)
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
-#define GPU_GET_ERROR_STRING(error) hipGetErrorString(error)
 using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
@@ -75,6 +73,18 @@ using gpuError_t = hipError_t;
 #endif
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+// cudaGetErrorString is available to both host and device
+__host__ __device__ inline const char* GpuGetErrorString(cudaError_t error) {
+  return cudaGetErrorString(error);
+#elif TENSORFLOW_USE_ROCM
+// hipGetErrorString is available on host side only
+inline const char* GpuGetErrorString(hipError_t error) {
+  return hipGetErrorString(error);
+#endif
+}
+
 // Launches a GPU kernel through GpuLaunchKernel in Cuda environment, or
 // hipLaunchKernel in ROCm environment with the given arguments.
 //

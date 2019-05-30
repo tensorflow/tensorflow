@@ -533,7 +533,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
 
     OP_REQUIRES(
         ctx, success == 0,
-        errors::Internal("CUB reduce error", GPU_GET_ERROR_STRING(success)));
+        errors::Internal("CUB reduce error", GpuGetErrorString(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.
@@ -576,7 +576,7 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
 
     OP_REQUIRES(ctx, success == 0,
                 errors::Internal("CUB segmented reduce error",
-                                 GPU_GET_ERROR_STRING(success)));
+                                 GpuGetErrorString(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.
@@ -733,7 +733,7 @@ void Launch3DXZReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
     OP_REQUIRES(ctx, success == 0,
                 errors::Internal("CUB segmented reduce error",
-                                 GPU_GET_ERROR_STRING(success)));
+                                 GpuGetErrorString(success)));
   };
 
   reduce(nullptr);  // Get required amount of temp storage.
