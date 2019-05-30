@@ -537,10 +537,8 @@ using namespace mlir;
 
 #define DEBUG_TYPE "early-vect"
 
-using functional::apply;
 using functional::makePtrDynCaster;
 using functional::map;
-using functional::ScopeGuard;
 using llvm::dbgs;
 using llvm::DenseSet;
 using llvm::SetVector;

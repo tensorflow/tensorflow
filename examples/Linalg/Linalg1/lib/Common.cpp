@@ -28,7 +28,6 @@
 
 using llvm::ArrayRef;
 using mlir::ConstantIndexOp;
-using mlir::edsc::CapturableHandle;
 using mlir::edsc::ValueHandle;
 using mlir::edsc::intrinsics::alloc;
 using mlir::edsc::intrinsics::ret;

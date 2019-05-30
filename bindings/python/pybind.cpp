@@ -482,7 +482,7 @@ struct PythonAttributedType {
     std::string res;
     llvm::raw_string_ostream os(res);
     t.print(os);
-    if (attrs.size() == 0)
+    if (attrs.empty())
       return os.str();
 
     os << '{';

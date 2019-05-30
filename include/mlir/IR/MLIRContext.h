@@ -65,7 +65,7 @@ public:
 
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.
-  MLIRContextImpl &getImpl() { return *impl.get(); }
+  MLIRContextImpl &getImpl() { return *impl; }
 
   /// Emit an error message using the diagnostic engine.
   InFlightDiagnostic emitError(Location location);
