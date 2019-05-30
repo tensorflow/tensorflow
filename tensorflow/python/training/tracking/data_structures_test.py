@@ -19,6 +19,7 @@ from __future__ import print_function
 import copy
 import json
 import os
+import pickle
 
 import numpy
 import six
@@ -361,6 +362,13 @@ class ListWrapperTest(test.TestCase):
 
     if not_overridden:
       self.fail("_ListWrapper does not override %s" % (not_overridden))
+
+  def testPickle(self):
+    original = data_structures._ListWrapper([1, 2])
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual([1, 2], deserialized)
 
   def testSameStructure(self):
     l = [1]
@@ -813,6 +821,13 @@ class MappingTests(test.TestCase):
     result = data_structures._DictWrapper([(1, 2), (3, 4)])
     self.assertIsInstance(result, dict)
     self.assertEqual({1: 2, 3: 4}, result)
+
+  def testPickle(self):
+    original = data_structures._DictWrapper(dict(a=1, b=2))
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual(dict(a=1, b=2), deserialized)
 
   def testListAddOrder(self):
     self.assertEqual([1., 2.],
