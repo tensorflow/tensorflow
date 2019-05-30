@@ -3951,7 +3951,7 @@ Status ConvertMatMulHelper(OpConverterParams* params,
         params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
 
-  constexpr auto get_matrix_op =
+  const auto get_matrix_op =
       [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
     return (in->getDimensions().nbDims < 2)
                ? nvinfer1::MatrixOperation::kVECTOR
