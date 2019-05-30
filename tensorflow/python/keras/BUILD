@@ -202,6 +202,8 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_util",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -1508,4 +1510,20 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "metrics_utils_test",
+    size = "small",
+    srcs = ["utils/metrics_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
+    ],
 )
