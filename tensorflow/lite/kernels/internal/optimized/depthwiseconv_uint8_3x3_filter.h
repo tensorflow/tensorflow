@@ -9395,7 +9395,7 @@ inline void DepthwiseConvDotProduct3x3(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
   // Check kernel restrictions.
   constexpr int filter_size = 3;
   constexpr int kMaxStride = 2;
@@ -9432,6 +9432,7 @@ inline void DepthwiseConvDotProduct3x3(
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
   TFLITE_DCHECK_EQ(input_depth * depth_multiplier, output_depth);
   TFLITE_DCHECK_EQ(MatchingDim(filter_shape, 1, filter_shape, 2), filter_size);
+  TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   // Return now if nothing to do.
   if (output_width == 0 || output_height == 0) {
@@ -9472,9 +9473,26 @@ inline void DepthwiseConvDotProduct3x3(
   function_params.bias_increment = bias_increment;
   TFLITE_DCHECK_LE(2 * function_params.bias_increment, kMinBiasLoad);
 
-  // TODO(b/133753265): This will become the per-tranche row count when
-  // multi-threading.
-  const int row_count = output_height;
+  // Process multithreading.
+  int batch_start = 0;
+  int batch_end = batches;
+  int row_start = 0;
+  int row_end = output_height;
+  switch (thread_dim) {
+    case 0:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, batches);
+      batch_start = thread_start;
+      batch_end = thread_end;
+      break;
+    case 1:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, output_height);
+      row_start = thread_start;
+      row_end = thread_end;
+      break;
+  }
+  const int row_count = row_end - row_start;
 
   // Process padding.
   //
@@ -9483,18 +9501,27 @@ inline void DepthwiseConvDotProduct3x3(
   // we need to consider padding. This is true even if one or other of the
   // padding_values is 0.
   const int padded_width = (output_width - 1) * stride + filter_size;
+  int full_padding_top;
   {
     const int padding_left = params.padding_values.width;
     // Right padding would be -1 if discarding input because of stride.
     const int padding_right =
         std::max(padded_width - input_width - padding_left, 0);
-    const int padding_top = params.padding_values.height;
+    int padding_top = params.padding_values.height;
     const int padded_height = (output_height - 1) * stride + filter_size;
-    const int padding_bottom =
+    int padding_bottom =
         std::max(padded_height - input_height - padding_top, 0);
 
     TFLITE_DCHECK_LE(padding_left, padding_right);
     TFLITE_DCHECK_LE(padding_top, padding_bottom);
+
+    full_padding_top = padding_top;
+    if (row_start != 0) {
+      padding_top = 0;
+    }
+    if (row_end != output_height) {
+      padding_bottom = 0;
+    }
 
     function_params.padding_left = padding_left;
     function_params.padding_right = padding_right;
@@ -9763,7 +9790,7 @@ inline void DepthwiseConvDotProduct3x3(
   // depth_overall_macro_count = depth_macro_count + 1, so we can adjust the
   // dimensions for trailing macro blocks by looking for
   // j_depth == depth_macro_count.
-  for (int b = 0; b < batches; ++b) {
+  for (int b = batch_start; b < batch_end; ++b) {
     for (int k_width = 0; k_width < width_overall_macro_count; ++k_width) {
       // Figure out the work to be done for this macro block. If it trails in
       // any dimension, the work in that dimension is adjusted.
@@ -9810,9 +9837,11 @@ inline void DepthwiseConvDotProduct3x3(
             input_data + b * input_batch_stride +
             j_depth * input_depth_macro_stride +
             k_width * input_width_macro_stride -
-            function_params.padding_left * input_depth -
-            function_params.padding_top * input_height_stride;
+            function_params.padding_left * input_depth +
+            row_start * stride * input_height_stride -
+            full_padding_top * input_height_stride;
         uint8* output_data_block = output_data + b * output_batch_stride +
+                                   row_start * output_height_stride +
                                    j_depth * 64 +
                                    k_width * output_width_macro_stride;
 

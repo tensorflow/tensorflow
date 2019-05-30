@@ -2025,7 +2025,8 @@ inline void DepthwiseConvWithRounding(
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
       return;
     }
   }
