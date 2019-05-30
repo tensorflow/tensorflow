@@ -2523,9 +2523,7 @@ class Cropping2D(Layer):
 
 @tf_export('keras.layers.Cropping3D')
 class Cropping3D(Layer):
-  """Cropping layer for 3D data (e.g.
-
-  spatial or spatio-temporal).
+  """Cropping layer for 3D data (e.g. spatial or spatio-temporal).
 
   Arguments:
       cropping: int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
