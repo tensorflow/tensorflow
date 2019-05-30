@@ -27,6 +27,14 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const FlatMapDatasetOp::kDatasetType;
+/* static */ constexpr const char* const FlatMapDatasetOp::kInputDataset;
+/* static */ constexpr const char* const FlatMapDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const FlatMapDatasetOp::kFunc;
+/* static */ constexpr const char* const FlatMapDatasetOp::kTarguments;
+/* static */ constexpr const char* const FlatMapDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const FlatMapDatasetOp::kOutputShapes;
+
 constexpr char kElementIndex[] = "element_index";
 constexpr char kCapturedFuncInputsSize[] = "captured_func_inputs_size";
 constexpr char kCapturedFuncInputs[] = "captured_func_inputs";

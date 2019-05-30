@@ -33,6 +33,13 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const PrefetchDatasetOp::kDatasetType;
+/* static */ constexpr const char* const PrefetchDatasetOp::kInputDataset;
+/* static */ constexpr const char* const PrefetchDatasetOp::kBufferSize;
+/* static */ constexpr const char* const PrefetchDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const PrefetchDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const PrefetchDatasetOp::kSlackPeriod;
+
 // Determines the fraction of slack time by which to delay prefetching of data.
 constexpr double kSleepFactor = 0.2;
 constexpr char kBuffer[] = "buffer";

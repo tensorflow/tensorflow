@@ -25,6 +25,13 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const RangeDatasetOp::kDatasetType;
+/* static */ constexpr const char* const RangeDatasetOp::kStart;
+/* static */ constexpr const char* const RangeDatasetOp::kStop;
+/* static */ constexpr const char* const RangeDatasetOp::kStep;
+/* static */ constexpr const char* const RangeDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const RangeDatasetOp::kOutputShapes;
+
 constexpr char kNext[] = "next";
 
 class RangeDatasetOp::Dataset : public DatasetBase {

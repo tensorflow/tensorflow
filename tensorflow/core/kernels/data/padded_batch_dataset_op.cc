@@ -32,6 +32,17 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kDatasetType;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kInputDataset;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kBatchSize;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kPaddedShapes;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kPaddingValues;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kDropRemainder;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kParallelCopy;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kToutputTypes;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const PaddedBatchDatasetOp::kNumPaddedShapes;
+
 constexpr char kExhausted[] = "exhausted";
 
 class PaddedBatchDatasetOp::Dataset : public DatasetBase {

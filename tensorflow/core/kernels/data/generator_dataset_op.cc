@@ -30,6 +30,20 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const GeneratorDatasetOp::kDatasetType;
+/* static */ constexpr const char* const GeneratorDatasetOp::kInitFuncOtherArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kNextFuncOtherArgs;
+/* static */ constexpr const char* const
+    GeneratorDatasetOp::kFinalizeFuncOtherArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kInitFunc;
+/* static */ constexpr const char* const GeneratorDatasetOp::kNextFunc;
+/* static */ constexpr const char* const GeneratorDatasetOp::kFinalizeFunc;
+/* static */ constexpr const char* const GeneratorDatasetOp::kTinitFuncArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kTnextFuncArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kTfinalizeFuncArgs;
+/* static */ constexpr const char* const GeneratorDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const GeneratorDatasetOp::kOutputShapes;
+
 class GeneratorDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, std::unique_ptr<CapturedFunction> init_func,

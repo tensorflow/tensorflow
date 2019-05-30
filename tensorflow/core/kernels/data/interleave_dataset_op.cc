@@ -29,6 +29,16 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const InterleaveDatasetOp::kDatasetType;
+/* static */ constexpr const char* const InterleaveDatasetOp::kInputDataset;
+/* static */ constexpr const char* const InterleaveDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const InterleaveDatasetOp::kCycleLength;
+/* static */ constexpr const char* const InterleaveDatasetOp::kBlockLength;
+/* static */ constexpr const char* const InterleaveDatasetOp::kFunc;
+/* static */ constexpr const char* const InterleaveDatasetOp::kTarguments;
+/* static */ constexpr const char* const InterleaveDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const InterleaveDatasetOp::kOutputShapes;
+
 constexpr char kCycleIndex[] = "cycle_index";
 constexpr char kBlockIndex[] = "block_index";
 constexpr char kEndOfInput[] = "end_of_input";

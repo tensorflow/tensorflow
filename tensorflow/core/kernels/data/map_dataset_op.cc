@@ -27,6 +27,16 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const MapDatasetOp::kDatasetType;
+/* static */ constexpr const char* const MapDatasetOp::kInputDataset;
+/* static */ constexpr const char* const MapDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const MapDatasetOp::kFunc;
+/* static */ constexpr const char* const MapDatasetOp::kTarguments;
+/* static */ constexpr const char* const MapDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const MapDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const MapDatasetOp::kUseInterOpParallelism;
+/* static */ constexpr const char* const MapDatasetOp::kPreserveCardinality;
+
 class MapDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,

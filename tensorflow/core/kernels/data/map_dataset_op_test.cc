@@ -37,8 +37,8 @@ class MapDatasetOpTest : public DatasetOpsTestBase {
          {MapDatasetOp::kTarguments, {}},
          {MapDatasetOp::kOutputShapes, output_shapes},
          {MapDatasetOp::kOutputTypes, output_types},
-         {MapDatasetOp::kUseInterOpParallelism, {true}},
-         {MapDatasetOp::kPreserveCardinality, {false}}});
+         {MapDatasetOp::kUseInterOpParallelism, true},
+         {MapDatasetOp::kPreserveCardinality, false}});
     TF_RETURN_IF_ERROR(CreateOpKernel(map_dataset_node_def, map_kernel));
     return Status::OK();
   }

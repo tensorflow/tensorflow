@@ -24,6 +24,12 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const ConcatenateDatasetOp::kDatasetType;
+/* static */ constexpr const char* const ConcatenateDatasetOp::kInputDataset;
+/* static */ constexpr const char* const ConcatenateDatasetOp::kAnotherDataset;
+/* static */ constexpr const char* const ConcatenateDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const ConcatenateDatasetOp::kOutputShapes;
+
 constexpr char kIndex[] = "i";
 constexpr char kInputImplUninitialized[] = "input_impl_uninitialized";
 

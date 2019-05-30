@@ -32,6 +32,14 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
+/* static */ constexpr const char* const FilterDatasetOp::kDatasetType;
+/* static */ constexpr const char* const FilterDatasetOp::kInputDataset;
+/* static */ constexpr const char* const FilterDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const FilterDatasetOp::kPredicate;
+/* static */ constexpr const char* const FilterDatasetOp::kTarguments;
+/* static */ constexpr const char* const FilterDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const FilterDatasetOp::kOutputShapes;
+
 constexpr char kInputImplsEmpty[] = "input_impls_empty";
 constexpr char kFilteredElements[] = "filtered_elements";
 constexpr char kDroppedElements[] = "dropped_elements";
