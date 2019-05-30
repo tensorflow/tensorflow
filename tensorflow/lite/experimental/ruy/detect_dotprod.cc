@@ -13,14 +13,63 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// b/132973173: this signal-handling code does not work as intended on iOS,
-// resulting in 'EXC_BAD_INSTRUCTION' signals killing the process.
-// Is it because this code uses a signal handler for SIGILL, and Apple's
-// EXC_BAD_INSTRUCTION is actually a different signal?
-// Anyway, we don't need this code on Apple devices at the moment, as none of
-// them supports dot-product instructions at the moment.
-// In fact, for the moment, we only care about Linux, so restricting to it
-// limits our risk.
+/* Temporary dotprod-detection until we can rely on proper feature-detection
+such as getauxval on Linux (requires a newer Linux kernel than we can
+currently rely on on Android).
+
+There are two main ways that this could be implemented: using a signal
+handler or a fork. The current implementation uses a signal handler.
+This is because on current Android, an uncaught signal gives a latency
+of over 100 ms. In order for the fork approach to be worthwhile, it would
+have to save us the hassle of handling signals, and such an approach thus
+has an unavoidable 100ms latency. By contrast, the present signal-handling
+approach has low latency.
+
+Downsides of the current signal-handling approach include:
+ 1. Setting and restoring signal handlers is not thread-safe: we can't
+    prevent another thread from interfering with us. We at least prevent
+    other threads from calling our present code concurrently by using a lock,
+    but we can't do anything about other threads using their own code to
+    set signal handlers.
+ 2. Signal handlers are not entirely portable, e.g. b/132973173 showed that
+    on Apple platform the EXC_BAD_INSTRUCTION signal is not always caught
+    by a SIGILL handler (difference between Release and Debug builds).
+ 3. The signal handler approach looks confusing in a debugger (has to
+    tell the debugger to 'continue' past the signal every time). Fix:
+    ```
+    (gdb) handle SIGILL nostop noprint pass
+    ```
+
+Here is what the nicer fork-based alternative would look like.
+Its only downside, as discussed above, is high latency, 100 ms on Android.
+
+```
+bool try_asm_snippet(bool (*asm_snippet)()) {
+  int child_pid = fork();
+  if (child_pid == -1) {
+    // Fork failed.
+    return false;
+  }
+  if (child_pid == 0) {
+    // Child process code path. Pass the raw boolean return value of
+    // asm_snippet as exit code (unconventional: 1 means true == success).
+    _exit(asm_snippet());
+  }
+
+  int child_status;
+  waitpid(child_pid, &child_status, 0);
+  if (WIFSIGNALED(child_status)) {
+    // Child process terminated by signal, meaning the instruction was
+    // not supported.
+    return false;
+  }
+  // Return the exit code of the child, which per child code above was
+  // the return value of asm_snippet().
+  return WEXITSTATUS(child_status);
+}
+```
+*/
+
 #if defined __aarch64__ && defined __linux__
 #define RUY_IMPLEMENT_DETECT_DOTPROD
 #endif

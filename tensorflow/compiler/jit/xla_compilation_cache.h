@@ -63,11 +63,11 @@ class XlaCompilationCache : public ResourceBase {
   // and `out_executable`.  If `compile_mode` is `kStrict` then the compilation
   // cache always attempts the compilation on a cache miss.
   //
-  // The result of compilation is written to `*compilation_result`, which must
-  // be non-null. If `executable` is non-null, also builds an
-  // xla::LocalExecutable and sets `executable` to point to it. The resulting
-  // executable pointer may be null if the computation has no non-constant
-  // outputs.
+  // The result of compilation is written to `*out_compilation_result`, which
+  // must be non-null. If `out_executable` is non-null, also builds an
+  // xla::LocalExecutable and sets `out_executable` to point to it. The
+  // resulting executable pointer may be null if the computation has no
+  // non-constant outputs.
   Status Compile(const XlaCompiler::Options& options,
                  const NameAttrList& function,
                  absl::Span<const XlaCompiler::Argument> args,

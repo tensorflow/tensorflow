@@ -321,6 +321,30 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
+  def test_dataset_with_sample_weights_correctness(self):
+    x = keras.layers.Input(shape=(1,), name='input')
+    y = keras.layers.Dense(
+        1, kernel_initializer='ones', bias_initializer='zeros', name='dense')(x)
+    model = keras.Model(x, y)
+    optimizer = 'rmsprop'
+    loss = 'mse'
+    model.compile(optimizer, loss)
+    inputs = np.array([[0], [1], [2], [3]], np.float32)
+    targets = np.array([[2], [4], [6], [8]], np.float32)
+    sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
+    ds = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
+                                                 sample_weights)).batch(2)
+    result = model.evaluate(ds, verbose=1)
+    # The per sample loss is multipled by the corresponding sample weight. The
+    # average of these weighted losses is the return value of the `evaluate`
+    # call. For example, in the test above the average weighted loss is
+    # calculated in the following manner:
+    # ((2-0)^2) * 0.25 + ((4-1)^2) * 0.5 + ((6-2)^2 * 0.75) + ((8-3)^2 * 1)
+    #  equals 42.5 / 4 = 10.625
+    self.assertEqual(result, 10.625)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_dataset_with_sparse_labels(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = 'rmsprop'

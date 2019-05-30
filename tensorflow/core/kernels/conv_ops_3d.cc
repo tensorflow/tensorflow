@@ -16,15 +16,14 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/kernels/conv_3d.h"
-
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -521,7 +520,8 @@ namespace functor {
       typename TTypes<T, 5, int>::Tensor out);                        \
   template <>                                                         \
   void ReverseTransformFilter<GPUDevice, T, 5>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      const GPUDevice& d, FilterTensorFormat src_filter_format,       \
+      typename TTypes<T, 5>::ConstTensor in,                          \
       typename TTypes<T, 5>::Tensor out);                             \
   template <>                                                         \
   void PadInput<GPUDevice, T, int, 5>::operator()(                    \

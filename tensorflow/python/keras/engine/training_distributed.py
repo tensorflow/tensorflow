@@ -43,184 +43,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
-def fit_distributed(model,
-                    x=None,
-                    y=None,
-                    batch_size=None,
-                    epochs=1,
-                    verbose=1,
-                    callbacks=None,
-                    validation_split=0.,
-                    validation_data=None,
-                    shuffle=True,
-                    class_weight=None,
-                    sample_weight=None,
-                    initial_epoch=0,
-                    steps_per_epoch=None,
-                    validation_steps=None,
-                    validation_freq=1):
-  """Fit loop for Distribution Strategies."""
-  dist_utils.validate_callbacks(callbacks, model.optimizer)
-  dist_utils.validate_inputs(x, y)
-
-  first_x_value = nest.flatten(x)[0]
-  if isinstance(first_x_value, np.ndarray):
-    # Until support for partial batch is implemented across all
-    # functions and distribution strategy, we pass `mode` to selectively
-    # relax the costraint to consume all the training samples.
-    steps_per_epoch, batch_size = (
-        dist_utils.get_input_params(
-            model._distribution_strategy,
-            first_x_value,
-            steps_per_epoch,
-            batch_size,
-            mode=ModeKeys.TRAIN))
-  batch_size = model._validate_or_infer_batch_size(
-      batch_size, steps_per_epoch, x)
-  dataset = model._distribution_standardize_user_data(
-      x, y,
-      sample_weight=sample_weight,
-      class_weight=class_weight,
-      batch_size=batch_size,
-      validation_split=validation_split,
-      shuffle=shuffle,
-      epochs=epochs)
-  if not dist_utils.is_distributing_by_cloning(model):
-    with model._distribution_strategy.scope():
-      (dataset, _, _) = model._standardize_user_data(
-          dataset,
-          sample_weight=sample_weight,
-          class_weight=class_weight,
-          batch_size=batch_size,
-          validation_split=validation_split,
-          shuffle=shuffle)
-
-  val_dataset = None
-  if validation_data:
-    val_x, val_y, val_sample_weights = model._unpack_validation_data(
-        validation_data)
-    dist_utils.validate_inputs(val_x, val_y)
-    first_valx_value = nest.flatten(val_x)[0]
-    if isinstance(first_valx_value, np.ndarray):
-      validation_steps, _ = dist_utils.get_input_params(
-          model._distribution_strategy,
-          first_valx_value,
-          validation_steps,
-          batch_size,
-          mode=ModeKeys.TEST)
-    val_dataset = model._distribution_standardize_user_data(
-        val_x, val_y,
-        sample_weight=val_sample_weights,
-        class_weight=None,
-        batch_size=batch_size,
-        validation_split=validation_split,
-        shuffle=shuffle,
-        allow_partial_batch=True)
-  elif validation_split:
-    raise ValueError('validation_split argument is not supported with '
-                     'distribution strategies.')
-
-  if dist_utils.is_tpu_strategy(model._distribution_strategy):
-    return experimental_tpu_fit_loop(
-        model,
-        dataset,
-        epochs=epochs,
-        verbose=verbose,
-        callbacks=callbacks,
-        val_dataset=val_dataset,
-        initial_epoch=initial_epoch,
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps,
-        validation_freq=validation_freq)
-  else:
-    return training_arrays.fit_loop(
-        model,
-        dataset,
-        batch_size=batch_size,
-        epochs=epochs,
-        verbose=verbose,
-        callbacks=callbacks,
-        val_inputs=val_dataset,
-        shuffle=shuffle,
-        initial_epoch=initial_epoch,
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps,
-        validation_freq=validation_freq,
-        steps_name='steps_per_epoch')
-
-
-def evaluate_distributed(model,
-                         x=None,
-                         y=None,
-                         batch_size=None,
-                         verbose=1,
-                         sample_weight=None,
-                         steps=None,
-                         callbacks=None):
-  """Evaluate loop for Distribution Strategies."""
-  dist_utils.validate_inputs(x, y)
-  first_x_value = nest.flatten(x)[0]
-  if isinstance(first_x_value, np.ndarray):
-    steps, batch_size = dist_utils.get_input_params(
-        model._distribution_strategy,
-        first_x_value,
-        steps,
-        batch_size,
-        mode=ModeKeys.TEST)
-  batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
-  dataset = model._distribution_standardize_user_data(
-      x, y,
-      sample_weight=sample_weight,
-      batch_size=batch_size,
-      allow_partial_batch=True)
-
-  if dist_utils.is_tpu_strategy(model._distribution_strategy):
-    return experimental_tpu_test_loop(
-        model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
-  else:
-    return training_arrays.test_loop(
-        model,
-        inputs=dataset,
-        batch_size=batch_size,
-        verbose=verbose,
-        steps=steps,
-        callbacks=callbacks)
-
-
-def predict_distributed(model,
-                        x=None,
-                        batch_size=None,
-                        verbose=0,
-                        steps=None,
-                        callbacks=None):
-  """Predict loop for Distribution Strategies."""
-  dist_utils.validate_inputs(x, None)
-  first_x_value = nest.flatten(x)[0]
-  if isinstance(first_x_value, np.ndarray):
-    steps, batch_size = dist_utils.get_input_params(
-        model._distribution_strategy,
-        first_x_value,
-        steps,
-        batch_size,
-        mode=ModeKeys.PREDICT)
-  batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
-  dataset = model._distribution_standardize_user_data(
-      x,
-      batch_size=batch_size,
-      allow_partial_batch=True)
-  if dist_utils.is_tpu_strategy(model._distribution_strategy):
-    return experimental_tpu_predict_loop(
-        model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
-  else:
-    return training_arrays.predict_loop(
-        model,
-        dataset,
-        batch_size=batch_size,
-        verbose=verbose,
-        steps=steps,
-        callbacks=callbacks)
-
-
 def _per_replica_execution_function(model, mode):
   exec_func = model._make_execution_function(mode)
   return (exec_func.inputs, exec_func.outputs, exec_func.updates_op,
@@ -762,103 +584,6 @@ def experimental_tpu_predict_loop(model,
   return prediction_result
 
 
-class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
-  """Training loop for distribution strategy with multiple worker."""
-
-  def fit(self,
-          model,
-          x=None,
-          y=None,
-          batch_size=None,
-          epochs=1,
-          verbose=1,
-          callbacks=None,
-          validation_split=0.,
-          validation_data=None,
-          shuffle=True,
-          class_weight=None,
-          sample_weight=None,
-          initial_epoch=0,
-          steps_per_epoch=None,
-          validation_steps=None,
-          validation_freq=1,
-          **kwargs):
-    # Multi-Worker mode runs the Keras training loop on multiple
-    # servers via the Distribute Coordinator.
-    def _worker_fn(_):
-      """Run training inside the distributed coordinator."""
-      filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
-      return fit_distributed(
-          model,
-          x=x,
-          y=y,
-          batch_size=batch_size,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=filtered_callbacks,
-          validation_split=validation_split,
-          validation_data=validation_data,
-          shuffle=shuffle,
-          class_weight=class_weight,
-          sample_weight=sample_weight,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps,
-          validation_freq=validation_freq)
-
-    # Independent worker only for now.
-    return dc.run_distribute_coordinator(
-        _worker_fn,
-        model._distribution_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-
-  def evaluate(self,
-               model,
-               x=None,
-               y=None,
-               batch_size=None,
-               verbose=1,
-               sample_weight=None,
-               steps=None,
-               callbacks=None,
-               **kwargs):
-
-    def _worker_fn(_):
-      """Run evaluation inside the distributed coordinator."""
-      filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
-      return evaluate_distributed(
-          model,
-          x=x,
-          y=y,
-          batch_size=batch_size,
-          verbose=verbose,
-          sample_weight=sample_weight,
-          steps=steps,
-          callbacks=filtered_callbacks)
-
-    # Independent worker only for now.
-    return dc.run_distribute_coordinator(
-        _worker_fn,
-        model._distribution_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-
-  def predict(self,
-              model,
-              x,
-              batch_size=None,
-              verbose=0,
-              steps=None,
-              callbacks=None,
-              **kwargs):
-    return predict_distributed(
-        model,
-        x=x,
-        batch_size=batch_size,
-        verbose=verbose,
-        steps=steps,
-        callbacks=callbacks)
-
-
 class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
   """Training loop for distribution strategy with single worker."""
 
@@ -880,23 +605,80 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
           validation_steps=None,
           validation_freq=1,
           **kwargs):
-    return fit_distributed(
-        model,
-        x=x,
-        y=y,
-        batch_size=batch_size,
-        epochs=epochs,
-        verbose=verbose,
-        callbacks=callbacks,
-        validation_split=validation_split,
-        validation_data=validation_data,
-        shuffle=shuffle,
-        class_weight=class_weight,
+    """Fit loop for Distribution Strategies."""
+    dist_utils.validate_callbacks(input_callbacks=callbacks,
+                                  optimizer=model.optimizer)
+    dist_utils.validate_inputs(x, y)
+
+    batch_size, steps_per_epoch = self._process_batch_and_step_size(
+        model, x, batch_size, steps_per_epoch, ModeKeys.TRAIN)
+    batch_size = model._validate_or_infer_batch_size(
+        batch_size, steps_per_epoch, x)
+    dataset = model._distribution_standardize_user_data(
+        x, y,
         sample_weight=sample_weight,
-        initial_epoch=initial_epoch,
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps,
-        validation_freq=validation_freq)
+        class_weight=class_weight,
+        batch_size=batch_size,
+        validation_split=validation_split,
+        shuffle=shuffle,
+        epochs=epochs)
+    if not dist_utils.is_distributing_by_cloning(model):
+      with model._distribution_strategy.scope():
+        (dataset, _, _) = model._standardize_user_data(
+            dataset,
+            sample_weight=sample_weight,
+            class_weight=class_weight,
+            batch_size=batch_size,
+            validation_split=validation_split,
+            shuffle=shuffle)
+
+    val_dataset = None
+    if validation_data:
+      val_x, val_y, val_sample_weights = model._unpack_validation_data(
+          validation_data)
+      dist_utils.validate_inputs(val_x, val_y)
+      _, validation_steps = self._process_batch_and_step_size(
+          model, val_x, batch_size, validation_steps, ModeKeys.TEST)
+
+      val_dataset = model._distribution_standardize_user_data(
+          val_x, val_y,
+          sample_weight=val_sample_weights,
+          class_weight=None,
+          batch_size=batch_size,
+          validation_split=validation_split,
+          shuffle=shuffle,
+          allow_partial_batch=True)
+    elif validation_split:
+      raise ValueError('validation_split argument is not supported with '
+                       'distribution strategies.')
+
+    if dist_utils.is_tpu_strategy(model._distribution_strategy):
+      return experimental_tpu_fit_loop(
+          model,
+          dataset,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          val_dataset=val_dataset,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps,
+          validation_freq=validation_freq)
+    else:
+      return training_arrays.fit_loop(
+          model,
+          dataset,
+          batch_size=batch_size,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          val_inputs=val_dataset,
+          shuffle=shuffle,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps,
+          validation_freq=validation_freq,
+          steps_name='steps_per_epoch')
 
   def evaluate(self,
                model,
@@ -908,15 +690,28 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
                steps=None,
                callbacks=None,
                **kwargs):
-    return evaluate_distributed(
-        model,
-        x=x,
-        y=y,
-        batch_size=batch_size,
-        verbose=verbose,
+    """Evaluate loop for Distribution Strategies."""
+    dist_utils.validate_inputs(x, y)
+    batch_size, steps = self._process_batch_and_step_size(
+        model, x, batch_size, steps, ModeKeys.TEST)
+    batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+    dataset = model._distribution_standardize_user_data(
+        x, y,
         sample_weight=sample_weight,
-        steps=steps,
-        callbacks=callbacks)
+        batch_size=batch_size,
+        allow_partial_batch=True)
+
+    if dist_utils.is_tpu_strategy(model._distribution_strategy):
+      return experimental_tpu_test_loop(
+          model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
+    else:
+      return training_arrays.test_loop(
+          model,
+          inputs=dataset,
+          batch_size=batch_size,
+          verbose=verbose,
+          steps=steps,
+          callbacks=callbacks)
 
   def predict(self,
               model,
@@ -926,10 +721,68 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
               steps=None,
               callbacks=None,
               **kwargs):
-    return predict_distributed(
-        model,
-        x=x,
+    """Predict loop for Distribution Strategies."""
+    dist_utils.validate_inputs(x=x, y=None)
+    batch_size, steps = self._process_batch_and_step_size(
+        model, x, batch_size, steps, ModeKeys.PREDICT)
+    batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+    dataset = model._distribution_standardize_user_data(
+        x,
         batch_size=batch_size,
-        verbose=verbose,
-        steps=steps,
-        callbacks=callbacks)
+        allow_partial_batch=True)
+    if dist_utils.is_tpu_strategy(model._distribution_strategy):
+      return experimental_tpu_predict_loop(
+          model, dataset, verbose=verbose, steps=steps, callbacks=callbacks)
+    else:
+      return training_arrays.predict_loop(
+          model,
+          dataset,
+          batch_size=batch_size,
+          verbose=verbose,
+          steps=steps,
+          callbacks=callbacks)
+
+  def _process_batch_and_step_size(
+      self, model, inputs, batch_size, steps_per_epoch, mode):
+    first_x_value = nest.flatten(inputs)[0]
+    if isinstance(first_x_value, np.ndarray):
+      # Until support for partial batch is implemented across all
+      # functions and distribution strategy, we pass `mode` to selectively
+      # relax the constraint to consume all the training samples.
+      steps_per_epoch, batch_size = (
+          dist_utils.get_input_params(
+              model._distribution_strategy,
+              first_x_value,
+              steps_per_epoch,
+              batch_size,
+              mode=mode))
+    return batch_size, steps_per_epoch
+
+
+def train_with_multi_worker(fn):
+  """Decorator that handles multi worker training with distribution strategy."""
+
+  def wrapper(instance, model, **kwargs):
+
+    def _worker_fn(_):
+      callbacks = kwargs.pop('callbacks', None)
+      filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
+      kwargs['callbacks'] = filtered_callbacks
+      return fn(instance, model, **kwargs)
+
+    return dc.run_distribute_coordinator(
+        _worker_fn,
+        model._distribution_strategy,
+        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
+
+  return wrapper
+
+
+class DistributionMultiWorkerTrainingLoop(DistributionSingleWorkerTrainingLoop):
+  """Training loop for distribution strategy with multiple worker."""
+
+  fit = train_with_multi_worker(DistributionSingleWorkerTrainingLoop.fit)
+  evaluate = train_with_multi_worker(
+      DistributionSingleWorkerTrainingLoop.evaluate)
+  # Currently predict is still using the single worker implementation.
+

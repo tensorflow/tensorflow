@@ -81,6 +81,10 @@ class _ConvertedEntityFactoryInfo(
     source_map: Dict.
   """
 
+  def __str__(self):
+    return '_ConvertedEntityFactoryInfo({} in {})'.format(
+        self.converted_name, self.module_name)
+
   def get_module(self):
     return sys.modules[self.module_name]
 
@@ -343,10 +347,6 @@ def is_whitelisted_for_graph(o, check_call_override=True):
       elif action == config.Action.DO_NOT_CONVERT:
         logging.log(2, 'Whitelisted: %s: %s', o, rule)
         return True
-
-  if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
-    logging.log(2, 'Whitelisted: %s: already converted', o)
-    return True
 
   if tf_inspect.isgeneratorfunction(o):
     logging.warn(

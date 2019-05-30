@@ -74,7 +74,9 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
     def recalculate_output_shapes(output_shapes):
       """Recalculates the output_shapes after dividing it by num_workers."""
       if len(output_shapes) < 1:
-        raise ValueError("Input shape should have at least one dimension.")
+        raise ValueError(
+            "Input shape should have at least one dimension. "
+            "Perhaps your input dataset is not batched?")
       if (tensor_shape.dimension_value(output_shapes[0]) and
           tensor_shape.dimension_value(output_shapes[0]) % num_workers != 0):
         raise errors.InvalidArgumentError(

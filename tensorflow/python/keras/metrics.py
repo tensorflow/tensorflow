@@ -167,20 +167,27 @@ class Metric(Layer):
     Returns:
       The metric value tensor.
     """
-    update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
-    with ops.control_dependencies([update_op]):
-      result_t = self.result()  # pylint: disable=not-callable
 
-      # We are adding the metric object as metadata on the result tensor.
-      # This is required when we want to use a metric with `add_metric` API on
-      # a Model/Layer in graph mode. This metric instance will later be used
-      # to reset variable state after each epoch of training.
-      # Example:
-      #   model = Model()
-      #   mean = Mean()
-      #   model.add_metric(mean(values), name='mean')
-      result_t._metric_obj = self  # pylint: disable=protected-access
-      return result_t
+    def replica_local_fn(*args, **kwargs):
+      """Updates the state of the metric in a replica-local context."""
+      update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
+      with ops.control_dependencies([update_op]):
+        result_t = self.result()  # pylint: disable=not-callable
+
+        # We are adding the metric object as metadata on the result tensor.
+        # This is required when we want to use a metric with `add_metric` API on
+        # a Model/Layer in graph mode. This metric instance will later be used
+        # to reset variable state after each epoch of training.
+        # Example:
+        #   model = Model()
+        #   mean = Mean()
+        #   model.add_metric(mean(values), name='mean')
+        result_t._metric_obj = self  # pylint: disable=protected-access
+        return result_t
+
+    from tensorflow.python.keras.distribute import distributed_training_utils  # pylint:disable=g-import-not-at-top
+    return distributed_training_utils.call_replica_local_fn(
+        replica_local_fn, *args, **kwargs)
 
   @property
   def dtype(self):
@@ -292,7 +299,7 @@ class Reduce(Metric):
       sample_weight = math_ops.cast(sample_weight, self._dtype)
       # Update dimensions of weights to match with values if possible.
       values, _, sample_weight = squeeze_or_expand_dimensions(
-          values, None, sample_weight)
+          values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
         sample_weight = weights_broadcast_ops.broadcast_weights(
@@ -490,8 +497,7 @@ class MeanRelativeError(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
 
     y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
         y_pred, self.normalizer)
@@ -543,8 +549,7 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)
     return super(MeanMetricWrapper, self).update_state(
@@ -2128,8 +2133,7 @@ class RootMeanSquaredError(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
     error_sq = math_ops.squared_difference(y_pred, y_true)
     return super(RootMeanSquaredError, self).update_state(
         error_sq, sample_weight=sample_weight)
@@ -2424,7 +2428,7 @@ class MeanTensor(Metric):
 
       # Update dimensions of weights to match with values if possible.
       values, _, sample_weight = squeeze_or_expand_dimensions(
-          values, None, sample_weight)
+          values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
         sample_weight = weights_broadcast_ops.broadcast_weights(
@@ -2696,8 +2700,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
   def update_state(self, y_true, y_pred, sample_weight=None):
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        y_pred, y_true, sample_weight)
+    y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)
     return super(SumOverBatchSizeMetricWrapper, self).update_state(

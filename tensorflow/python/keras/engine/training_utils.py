@@ -874,7 +874,7 @@ def call_metric_function(metric_fn,
     else:
       # Update dimensions of weights to match with mask.
       mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
-          mask, None, weights)
+          mask, sample_weight=weights)
       weights *= mask
 
   if y_pred is not None:

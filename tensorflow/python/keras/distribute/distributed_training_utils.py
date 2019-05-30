@@ -1037,16 +1037,16 @@ def call_replica_local_fn(fn, *args, **kwargs):
   Returns:
     The result of calling `fn`.
   """
-  # TODO(b/120571621): We want to avoid reductions here since
-  # since TPUStrategy does not implement replica local variables.
-  # Remove this hack once we support TPUReplicaLocalVariables.
+  # TODO(b/132666209): Remove this function when we support assign_*
+  # for replica-local variables.
   strategy = None
   if 'strategy' in kwargs:
     strategy = kwargs.pop('strategy')
   else:
-    if ds_context.get_strategy():
+    if ds_context.has_strategy():
       strategy = ds_context.get_strategy()
 
+  # TODO(b/120571621): TPUStrategy does not implement replica-local variables.
   is_tpu = is_tpu_strategy(strategy)
   if ((not is_tpu) and strategy and ds_context.in_cross_replica_context()):
     with strategy.scope():

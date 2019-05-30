@@ -1504,6 +1504,133 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(outputs_val[2, :], outputs_val[3, :], atol=1e-5)
 
 
+class BackendCrossEntropyLossesTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_categorical_crossentropy_loss(self):
+    t = keras.backend.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
+
+    p = keras.backend.constant([[.9, .05, .05], [.05, .89, .06],
+                                [.05, .01, .94]])
+    result = keras.backend.categorical_crossentropy(t, p)
+    self.assertArrayNear(self.evaluate(result), [.105, .116, .062], 1e-3)
+
+    p = keras.backend.constant([[.9, .05, .05], [.05, .89, .01],
+                                [.05, .06, .94]])
+    result = keras.backend.categorical_crossentropy(t, p, axis=0)
+    self.assertArrayNear(self.evaluate(result), [.105, .116, .062], 1e-3)
+
+    p = keras.backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    result = keras.backend.categorical_crossentropy(t, p, from_logits=True),
+    self.assertArrayNear(self.evaluate(result)[0], [.002, 0, .17], 1e-3)
+
+    p = keras.backend.constant([[8., 0., 2.], [1., 9., 3.], [1., 1., 5.]])
+    result = keras.backend.categorical_crossentropy(
+        t, p, from_logits=True, axis=0),
+    self.assertArrayNear(self.evaluate(result)[0], [.002, 0, .17], 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    t = keras.backend.placeholder()
+    p = keras.backend.placeholder()
+    o = keras.backend.categorical_crossentropy(t, p)
+
+    t_val = ops.convert_to_tensor([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
+    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
+                                   [.05, .01, .94]])
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.105, .116, .062], 1e-3)
+
+    # With axis set
+    o = keras.backend.categorical_crossentropy(t, p, axis=0)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.105, .065, .111], 1e-3)
+
+    # from logits
+    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    o = keras.backend.categorical_crossentropy(t, p, from_logits=True)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.002, 0, .17], 1e-3)
+
+    # from logits and axis set
+    o = keras.backend.categorical_crossentropy(t, p, from_logits=True, axis=0)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.002, .003, .036], 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_crossentropy_loss(self):
+    t = keras.backend.constant([0, 1, 2])
+
+    p = keras.backend.constant([[.9, .05, .05], [.05, .89, .06],
+                                [.05, .01, .94]])
+    result = keras.backend.sparse_categorical_crossentropy(t, p)
+    self.assertArrayNear(self.evaluate(result), [.105, .116, .062], 1e-3)
+
+    p = keras.backend.constant([[.9, .05, .05], [.05, .89, .01],
+                                [.05, .06, .94]])
+    result = keras.backend.sparse_categorical_crossentropy(t, p, axis=0)
+    self.assertArrayNear(self.evaluate(result), [.105, .116, .062], 1e-3)
+
+    p = keras.backend.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    result = keras.backend.sparse_categorical_crossentropy(
+        t, p, from_logits=True),
+    self.assertArrayNear(self.evaluate(result)[0], [.002, 0, .17], 1e-3)
+
+    p = keras.backend.constant([[8., 0., 2.], [1., 9., 3.], [1., 1., 5.]])
+    result = keras.backend.sparse_categorical_crossentropy(
+        t, p, from_logits=True, axis=0),
+    self.assertArrayNear(self.evaluate(result)[0], [.002, 0, .17], 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    t = keras.backend.placeholder()
+    p = keras.backend.placeholder()
+    o = keras.backend.sparse_categorical_crossentropy(t, p)
+
+    t_val = ops.convert_to_tensor([0, 1, 2])
+    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
+                                   [.05, .01, .94]])
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.105, .116, .062], 1e-3)
+
+    # With axis set
+    with self.assertRaisesRegex(
+        ValueError,
+        'Cannot compute sparse categorical crossentropy with `axis=0`'):
+      o = keras.backend.sparse_categorical_crossentropy(t, p, axis=0)
+      f = keras.backend.function([t, p], o)
+
+      _ = f([t_val, p_val])
+
+    # from logits
+    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    o = keras.backend.sparse_categorical_crossentropy(t, p, from_logits=True)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.002, 0, .17], 1e-3)
+
+    # from logits and axis set
+    with self.assertRaisesRegex(
+        ValueError,
+        'Cannot compute sparse categorical crossentropy with `axis=0`'):
+      o = keras.backend.sparse_categorical_crossentropy(
+          t, p, from_logits=True, axis=0)
+      f = keras.backend.function([t, p], o)
+
+      _ = f([t_val, p_val])
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class TestCTC(test.TestCase):
 
