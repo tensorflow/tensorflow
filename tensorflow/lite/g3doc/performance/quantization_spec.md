@@ -7,10 +7,10 @@ formula.
 
 $$real\_value = (int8\_value - zero\_point) \times scale$$
 
-Per-axis (aka per-channel) or per-tensor weights are represented by `int8` two’s
-complement values in the range `[-127, 127]` with zero-point equal to 0.
-Per-tensor activations/inputs are represented by `int8` two’s complement values
-in the range `[-128, 127]`, with a zero-point in range `[-128, 127]`.
+Per-axis (aka per-channel in Conv ops) or per-tensor weights are represented by
+`int8` two’s complement values in the range `[-127, 127]` with zero-point equal
+to 0. Per-tensor activations/inputs are represented by `int8` two’s complement
+values in the range `[-128, 127]`, with a zero-point in range `[-128, 127]`.
 
 There are other exceptions for particular operations that are documented below.
 
