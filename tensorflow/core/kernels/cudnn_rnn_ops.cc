@@ -46,10 +46,10 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 /*
  * This module implements ops that fuse a multi-layer multi-step RNN/LSTM model
@@ -77,7 +77,7 @@ namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 using GPUDevice = Eigen::GpuDevice;
 using se::Stream;
@@ -1902,6 +1902,6 @@ TF_CALL_double(REGISTER_GPU);
 // TODO(zhengxq): Add the conversion of Cudnn RNN Params from and to
 // its canonical form.
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
