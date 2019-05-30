@@ -2130,8 +2130,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
                                  const TRT_TensorOrWeights& input,
                                  Container begin, Container size,
                                  const Container& stride,
-                                 bool reshape_after = false,
-                                 nvinfer1::Dims final_shape = {}) {
+                                 const nvinfer1::Dims* final_shape = nullptr) {
   const auto& node_def = params->node_def;
   // Get input dims.
   nvinfer1::Dims dims = input.GetTrtDims();
@@ -2172,9 +2171,9 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
       *input.tensor(), begin_dims, size_dims, stride_dims);
   nvinfer1::ITensor* tensor = layer->getOutput(0);
   // Reshape for shrink_axis.
-  if (reshape_after) {
+  if (final_shape) {
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(tensor), final_shape, /*validation_only=*/false,
+        TRT_TensorOrWeights(tensor), *final_shape, /*validation_only=*/false,
         &tensor));
   }
   params->outputs->push_back(TRT_TensorOrWeights(tensor));
@@ -2296,9 +2295,9 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
         tensor, inv_transpose_order, &tensor));
   }
   // Reshape for shrink_axis.
-  if (reshape_after) {
+  if (final_shape) {
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(tensor), final_shape, /*validation_only=*/false,
+        TRT_TensorOrWeights(tensor), *final_shape, /*validation_only=*/false,
         &tensor));
   } else if (need_reshape) {
     // Restore reshape.
@@ -2475,11 +2474,17 @@ Status ConvertStridedSlice(OpConverterParams* params) {
     // Divide by stride (round up)
     size[i] = (end[i] - begin[i] + strides[i] - 1) / strides[i];
   }
-  const bool reshape_after = shrink_axis_mask;
-  const nvinfer1::Dims final_shape_dims =
-      TensorShapeToTrtDims(final_shape, /*ignore_first_dim=*/true);
+
+  // shrink_axis_mask requires a reshape after the slice.
+  nvinfer1::Dims final_shape_dims;
+  nvinfer1::Dims* final_shape_dims_ptr = nullptr;
+  if (shrink_axis_mask) {
+    final_shape_dims =
+        TensorShapeToTrtDims(final_shape, /*ignore_first_dim=*/true);
+    final_shape_dims_ptr = &final_shape_dims;
+  }
   return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, strides,
-                                   reshape_after, final_shape_dims);
+                                   final_shape_dims_ptr);
 }
 
 Status ConvertConv2D(OpConverterParams* params) {
@@ -3565,32 +3570,23 @@ Status ConvertSplitHelper(OpConverterParams* params,
   begin.insert(begin.begin(), 0);
   size.insert(size.begin(), 1);
   stride.insert(stride.begin(), 1);
+  // Create final shape for Unpack/Unstack, where split axis is squeezed.
+  nvinfer1::Dims final_shape_for_unpack;
+  nvinfer1::Dims* final_shape_for_unpack_ptr = nullptr;
+  if (squeeze_after) {
+    std::vector<int> size_after_squeeze(size);
+    size_after_squeeze.erase(size_after_squeeze.begin() + trt_axis + 1);
+    TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(
+        size_after_squeeze, &final_shape_for_unpack, /*ignore_frst_dim=*/true));
+    final_shape_for_unpack_ptr = &final_shape_for_unpack;
+  }
 
   // Slice the input. ConvertStridedSliceHelper will push the outputs onto
   // params->outputs.
   for (int i = 0; i < num_splits; ++i) {
     begin[trt_axis + 1] = i * split_size_on_axis;
-    TF_RETURN_IF_ERROR(
-        ConvertStridedSliceHelper(params, input, begin, size, stride));
-  }
-  if (params->validation_only) return Status::OK();
-
-  // For Unpack/Unstack, remove axis that we split upon.
-  // TODO(tmorris): Could use final_shape in ConvertStridedSliceHelper for this.
-  if (squeeze_after) {
-    // Create the new shape.
-    size.erase(size.begin() + trt_axis + 1);
-    nvinfer1::Dims new_dims;
-    TF_RETURN_IF_ERROR(
-        TensorShapeArrayToTrtDims(size, &new_dims, /*ignore_frst_dim=*/true));
-    // Reshape each slice.
-    for (int i = 0; i < params->outputs->size(); i++) {
-      nvinfer1::ITensor* output_tensor = nullptr;
-      TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-          params->outputs->at(i), new_dims, /*validation_only=*/false,
-          &output_tensor));
-      (*params->outputs)[i] = TRT_TensorOrWeights(output_tensor);
-    }
+    TF_RETURN_IF_ERROR(ConvertStridedSliceHelper(
+        params, input, begin, size, stride, final_shape_for_unpack_ptr));
   }
   return Status::OK();
 }
