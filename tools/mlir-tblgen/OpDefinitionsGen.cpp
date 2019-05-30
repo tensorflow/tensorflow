@@ -368,6 +368,10 @@ private:
   // Generates verify method for the operation.
   void genVerifier();
 
+  // Generates verify statements for regions in the operation.
+  // The generated code will be attached to `body`.
+  void genRegionVerifier(OpMethodBody &body);
+
   // Generates the traits used by the object.
   void genTraits();
 
@@ -388,12 +392,17 @@ private:
 
   // The C++ code builder for this op
   OpClass opClass;
+
+  // The format context for verification code generation.
+  FmtContext verifyCtx;
 };
 } // end anonymous namespace
 
 OpEmitter::OpEmitter(const Record &def)
     : def(def), op(def),
       opClass(op.getCppClassName(), op.getExtraClassDeclaration()) {
+  verifyCtx.withOp("(*this->getOperation())");
+
   genTraits();
   // Generate C++ code for various op methods. The order here determines the
   // methods in the generated file.
@@ -900,13 +909,11 @@ void OpEmitter::genVerifier() {
 
   auto &method = opClass.newMethod("LogicalResult", "verify", /*params=*/"");
   auto &body = method.body();
-  FmtContext fctx;
-  fctx.withOp("(*this->getOperation())");
 
   // Populate substitutions for attributes and named operands and results.
   for (const auto &namedAttr : op.getAttributes())
-    fctx.addSubst(namedAttr.name,
-                  formatv("(&this->getAttr(\"{0}\"))", namedAttr.name));
+    verifyCtx.addSubst(namedAttr.name,
+                       formatv("(&this->getAttr(\"{0}\"))", namedAttr.name));
   for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
     auto &value = op.getOperand(i);
     // Skip from from first variadic operands for now. Else getOperand index
@@ -914,8 +921,8 @@ void OpEmitter::genVerifier() {
     if (value.isVariadic())
       break;
     if (!value.name.empty())
-      fctx.addSubst(value.name,
-                    formatv("this->getOperation()->getOperand({0})", i));
+      verifyCtx.addSubst(value.name,
+                         formatv("this->getOperation()->getOperand({0})", i));
   }
   for (int i = 0, e = op.getNumResults(); i < e; ++i) {
     auto &value = op.getResult(i);
@@ -924,8 +931,8 @@ void OpEmitter::genVerifier() {
     if (value.isVariadic())
       break;
     if (!value.name.empty())
-      fctx.addSubst(value.name,
-                    formatv("this->getOperation()->getResult({0})", i));
+      verifyCtx.addSubst(value.name,
+                         formatv("this->getOperation()->getResult({0})", i));
   }
 
   // Verify the attributes have the correct type.
@@ -955,11 +962,12 @@ void OpEmitter::genVerifier() {
 
     auto attrPred = attr.getPredicate();
     if (!attrPred.isNull()) {
-      body << tgfmt("    if (!($0)) return emitOpError(\"attribute '$1' "
-                    "failed to satisfy constraint: $2\");\n",
-                    /*ctx=*/nullptr,
-                    tgfmt(attrPred.getCondition(), &fctx.withSelf(varName)),
-                    attrName, attr.getDescription());
+      body << tgfmt(
+          "    if (!($0)) return emitOpError(\"attribute '$1' "
+          "failed to satisfy constraint: $2\");\n",
+          /*ctx=*/nullptr,
+          tgfmt(attrPred.getCondition(), &verifyCtx.withSelf(varName)),
+          attrName, attr.getDescription());
     }
 
     body << "  }\n";
@@ -977,10 +985,11 @@ void OpEmitter::genVerifier() {
     if (value.hasPredicate()) {
       auto description = value.constraint.getDescription();
       body << "  if (!("
-           << tgfmt(value.constraint.getConditionTemplate(),
-                    &fctx.withSelf("this->getOperation()->get" +
-                                   Twine(isOperand ? "Operand" : "Result") +
-                                   "(" + Twine(index) + ")->getType()"))
+           << tgfmt(
+                  value.constraint.getConditionTemplate(),
+                  &verifyCtx.withSelf("this->getOperation()->get" +
+                                      Twine(isOperand ? "Operand" : "Result") +
+                                      "(" + Twine(index) + ")->getType()"))
            << ")) {\n";
       body << "    return emitOpError(\"" << (isOperand ? "operand" : "result")
            << " #" << index
@@ -1000,24 +1009,49 @@ void OpEmitter::genVerifier() {
 
   for (auto &trait : op.getTraits()) {
     if (auto t = dyn_cast<tblgen::PredOpTrait>(&trait)) {
-      body << tgfmt("  if (!($0))\n    return emitOpError(\""
-                    "failed to verify that $1\");\n",
-                    &fctx, tgfmt(t->getPredTemplate(), &fctx),
+      body << tgfmt("  if (!($0)) {\n    "
+                    "return emitOpError(\"failed to verify that $1\");\n  }\n",
+                    &verifyCtx, tgfmt(t->getPredTemplate(), &verifyCtx),
                     t->getDescription());
     }
   }
 
-  // Verify this op has the correct number of regions
-  body << formatv(
-      "  if (this->getOperation()->getNumRegions() != {0}) \n    return "
-      "emitOpError(\"has incorrect number of regions: expected {0} but found "
-      "\") << this->getOperation()->getNumRegions();\n",
-      op.getNumRegions());
+  genRegionVerifier(body);
 
   if (hasCustomVerify)
     body << codeInit->getValue() << "\n";
   else
     body << "  return mlir::success();\n";
+}
+
+void OpEmitter::genRegionVerifier(OpMethodBody &body) {
+  unsigned numRegions = op.getNumRegions();
+
+  // Verify this op has the correct number of regions
+  body << formatv(
+      "  if (this->getOperation()->getNumRegions() != {0}) {\n    "
+      "return emitOpError(\"has incorrect number of regions: expected {0} but "
+      "found \") << this->getOperation()->getNumRegions();\n  }\n",
+      numRegions);
+
+  for (unsigned i = 0; i < numRegions; ++i) {
+    const auto &region = op.getRegion(i);
+
+    std::string name = formatv("#{0}", i);
+    if (!region.name.empty()) {
+      name += formatv(" ('{0}')", region.name);
+    }
+
+    auto getRegion = formatv("this->getOperation()->getRegion({0})", i).str();
+    auto constraint = tgfmt(region.constraint.getConditionTemplate(),
+                            &verifyCtx.withSelf(getRegion))
+                          .str();
+
+    body << formatv("  if (!({0})) {\n    "
+                    "return emitOpError(\"region {1} failed to verify "
+                    "constraint: {2}\");\n  }\n",
+                    constraint, name, region.constraint.getDescription());
+  }
 }
 
 void OpEmitter::genTraits() {

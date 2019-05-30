@@ -27,6 +27,7 @@
 #include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/Dialect.h"
 #include "mlir/TableGen/OpTrait.h"
+#include "mlir/TableGen/Region.h"
 #include "mlir/TableGen/Type.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/SmallVector.h"
@@ -129,8 +130,15 @@ public:
   // requiring the raw MLIR trait here.
   bool hasTrait(llvm::StringRef trait) const;
 
+  using const_region_iterator = const NamedRegion *;
+  const_region_iterator region_begin() const;
+  const_region_iterator region_end() const;
+  llvm::iterator_range<const_region_iterator> getRegions() const;
+
   // Returns the number of regions.
-  int getNumRegions() const;
+  unsigned getNumRegions() const;
+  // Returns the `index`-th region.
+  const NamedRegion &getRegion(unsigned index) const;
 
   // Trait.
   using const_trait_iterator = const OpTrait *;
@@ -177,8 +185,8 @@ private:
   // The traits of the op.
   SmallVector<OpTrait, 4> traits;
 
-  // The number of regions of this op.
-  int numRegions = 0;
+  // The regions of this op.
+  SmallVector<NamedRegion, 1> regions;
 
   // The number of native attributes stored in the leading positions of
   // `attributes`.

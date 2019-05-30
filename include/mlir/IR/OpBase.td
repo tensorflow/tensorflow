@@ -135,6 +135,8 @@ class Concat<string pre, Pred child, string suf> :
 // Constraint definitions
 //===----------------------------------------------------------------------===//
 
+// TODO(b/130064155): Merge Constraints into Pred.
+
 // Base class for named constraints.
 //
 // An op's operands/attributes/results can have various requirements, e.g.,
@@ -168,6 +170,10 @@ class TypeConstraint<Pred predicate, string description = ""> :
 
 // Subclass for constraints on an attribute.
 class AttrConstraint<Pred predicate, string description = ""> :
+    Constraint<predicate, description>;
+
+// Subclass for constraints on a region.
+class RegionConstraint<Pred predicate, string description = ""> :
     Constraint<predicate, description>;
 
 // How to use these constraint categories:
@@ -796,6 +802,21 @@ def IsNullAttr : AttrConstraint<
     CPred<"!$_self">, "empty attribute (for optional attributes)">;
 
 //===----------------------------------------------------------------------===//
+// Region definitions
+//===----------------------------------------------------------------------===//
+
+class Region<Pred condition, string descr = ""> :
+    RegionConstraint<condition, descr>;
+
+// Any region.
+def AnyRegion : Region<CPred<"true">, "any region">;
+
+// A region with the given number of blocks.
+class SizedRegion<int numBlocks> : Region<
+  CPred<"$_self.getBlocks().size() == " # numBlocks>,
+  "region with " # numBlocks # " blocks">;
+
+//===----------------------------------------------------------------------===//
 // OpTrait definitions
 //===----------------------------------------------------------------------===//
 
@@ -869,6 +890,9 @@ def ins;
 // Marker used to identify the result list for an op.
 def outs;
 
+// Marker used to identify the region list for an op.
+def region;
+
 // Class for defining a custom builder.
 //
 // TableGen generates several generic builders for each op by default (see
@@ -916,9 +940,8 @@ class Op<Dialect dialect, string mnemonic, list<OpTrait> props = []> {
   // The list of results of the op. Default to 0 results.
   dag results = (outs);
 
-  // How many regions this op has.
-  // TODO(b/133479568): Enhance to support advanced region usage cases
-  int numRegions = 0;
+  // The list of regions of the op. Default to 0 regions.
+  dag regions = (region);
 
   // Attribute getters can be added to the op by adding an Attr member
   // with the name and type of the attribute. E.g., adding int attribute

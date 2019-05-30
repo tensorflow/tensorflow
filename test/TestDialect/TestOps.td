@@ -129,7 +129,11 @@ def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
 //===----------------------------------------------------------------------===//
 
 def TwoRegionOp : TEST_Op<"two_region_op", []> {
-  let numRegions = 2;
+  let regions = (region AnyRegion, AnyRegion);
+}
+
+def SizedRegionOp : TEST_Op<"sized_region_op", []> {
+  let regions = (region SizedRegion<2>:$my_region, SizedRegion<1>);
 }
 
 #endif // TEST_OPS

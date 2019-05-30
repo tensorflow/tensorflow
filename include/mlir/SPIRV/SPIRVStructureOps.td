@@ -72,7 +72,7 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
 
   let results = (outs);
 
-  let numRegions = 1;
+  let regions = (region AnyRegion:$body);
 
   // Custom parser and printer implemented by static functions in SPVOps.cpp
   let parser = [{ return parseModule(parser, result); }];

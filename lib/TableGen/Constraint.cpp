@@ -30,6 +30,8 @@ Constraint::Constraint(const llvm::Record *record)
     kind = CK_Type;
   } else if (record->isSubClassOf("AttrConstraint")) {
     kind = CK_Attr;
+  } else if (record->isSubClassOf("RegionConstraint")) {
+    kind = CK_Region;
   } else {
     assert(record->isSubClassOf("Constraint"));
   }

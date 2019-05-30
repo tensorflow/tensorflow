@@ -146,7 +146,24 @@ bool tblgen::Operator::hasTrait(StringRef trait) const {
   return false;
 }
 
-int tblgen::Operator::getNumRegions() const { return numRegions; }
+tblgen::Operator::const_region_iterator tblgen::Operator::region_begin() const {
+  return regions.begin();
+}
+
+tblgen::Operator::const_region_iterator tblgen::Operator::region_end() const {
+  return regions.end();
+}
+
+llvm::iterator_range<tblgen::Operator::const_region_iterator>
+tblgen::Operator::getRegions() const {
+  return {region_begin(), region_end()};
+}
+
+unsigned tblgen::Operator::getNumRegions() const { return regions.size(); }
+
+const tblgen::NamedRegion &tblgen::Operator::getRegion(unsigned index) const {
+  return regions[index];
+}
 
 auto tblgen::Operator::trait_begin() const -> const_trait_iterator {
   return traits.begin();
@@ -269,9 +286,21 @@ void tblgen::Operator::populateOpStructure() {
     traits.push_back(OpTrait::create(traitInit));
 
   // Handle regions
-  numRegions = def.getValueAsInt("numRegions");
-  if (numRegions < 0)
-    PrintFatalError(def.getLoc(), "numRegions cannot be negative");
+  auto *regionsDag = def.getValueAsDag("regions");
+  auto *regionsOp = dyn_cast<DefInit>(regionsDag->getOperator());
+  if (!regionsOp || regionsOp->getDef()->getName() != "region") {
+    PrintFatalError(def.getLoc(), "'regions' must have 'region' directive");
+  }
+
+  for (unsigned i = 0, e = regionsDag->getNumArgs(); i < e; ++i) {
+    auto name = regionsDag->getArgNameStr(i);
+    auto *regionInit = dyn_cast<DefInit>(regionsDag->getArg(i));
+    if (!regionInit) {
+      PrintFatalError(def.getLoc(),
+                      Twine("undefined kind for region #") + Twine(i));
+    }
+    regions.push_back({name, Region(regionInit->getDef())});
+  }
 }
 
 ArrayRef<llvm::SMLoc> tblgen::Operator::getLoc() const { return def.getLoc(); }

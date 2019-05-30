@@ -57,7 +57,7 @@ public:
   StringRef getDescription() const;
 
   // Constraint kind
-  enum Kind { CK_Type, CK_Attr, CK_Uncategorized };
+  enum Kind { CK_Attr, CK_Region, CK_Type, CK_Uncategorized };
 
   Kind getKind() const { return kind; }
 
