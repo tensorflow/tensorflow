@@ -271,6 +271,7 @@ cc_library(
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
         ":ir_emission_utils",
+        ":target_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
