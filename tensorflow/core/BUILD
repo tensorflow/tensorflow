@@ -1871,6 +1871,9 @@ filegroup(
 # operators, use :android_tensorflow_lib if you want full operator
 # support.
 #
+# If you just need TensorFlow types, e.g. Tensors, use
+# :android_tensorflow_lib_lite_no_runtime.
+#
 # Compiles to a trivial library on non-Android to prevent irrelevant
 # build errors. If not building this as part of an android_binary,
 # a command such as the following must be used:
