@@ -1463,11 +1463,23 @@ class Model(network.Network):
     return recompile
 
   @trackable.no_automatic_dependency_tracking
-  def _compile_weights_loss_and_weighted_metrics(self):
-    """Compiles the model loss and weighted metric sub-graphs."""
+  def _compile_weights_loss_and_weighted_metrics(self, sample_weights=None):
+    """Compiles the model loss and weighted metric sub-graphs.
 
+    This may be used to set graph tensors as sample weights (instead of creating
+    placeholders). This functionality is necessary for
+    `tf.keras.estimator.model_to_estimator`, which calls Keras models in a v1
+    graph, and creates iterator tensors for inputs, targets, and sample weights.
+
+    Args:
+      sample_weights: List of tensors to use as the sample weights. Must be the
+        same length as the number of outputs. If left as `None`, placeholders
+        are used instead.
+    """
     with K.get_graph().as_default():
-      self._prepare_sample_weights()
+      if sample_weights is not None:
+        self._update_sample_weight_modes(sample_weights)
+      self._prepare_sample_weights(sample_weights)
 
       masks = self._prepare_output_masks()
 
@@ -1723,11 +1735,19 @@ class Model(network.Network):
             saving_utils.trace_model_call(self))
     return all_functions
 
-  def _prepare_sample_weights(self):
+  def _prepare_sample_weights(self, sample_weights=None):
     """Sets sample weight attribute on the model."""
     # List with the same length as model outputs.
-    for endpoint in self._training_endpoints:
-      endpoint.populate_sample_weight()
+    if sample_weights is not None:
+      if len(sample_weights) != len(self._training_endpoints):
+        raise ValueError('Provided sample weights must have same length as the '
+                         'number of outputs. Expected: {}, got: {}.'.format(
+                             len(self._training_endpoints),
+                             len(sample_weights)))
+    else:
+      sample_weights = [None] * len(self._training_endpoints)
+    for endpoint, weight in zip(self._training_endpoints, sample_weights):
+      endpoint.populate_sample_weight(weight)
 
   def _cache_output_metric_attributes(self, metrics, weighted_metrics):
     """Caches metric name and function attributes for every model output."""
@@ -2962,10 +2982,11 @@ class _TrainingEndpoint(object):
         (self.sample_weight_mode is not None and self.sample_weight is None) or
         (self.sample_weight_mode is None and self.sample_weight is not None))
 
-  def populate_sample_weight(self):
+  def populate_sample_weight(self, sample_weight=None):
     """Populate the sample weight and based on the sample weight mode."""
-    if (self.should_skip_target_weights() or
-        self.sample_weight_mode is None or context.executing_eagerly()):
+    if (sample_weight is None and (self.should_skip_target_weights() or
+                                   self.sample_weight_mode is None or
+                                   context.executing_eagerly())):
       self._sample_weight = None
       return
 
@@ -2978,10 +2999,16 @@ class _TrainingEndpoint(object):
       default_value = [1.]
       shape = [None]
 
-    self._sample_weight = array_ops.placeholder_with_default(
-        constant_op.constant(default_value, dtype=K.floatx()),
-        shape=shape,
-        name=self.output_name + '_sample_weights')
+    if sample_weight is not None:
+      if not sample_weight.shape.is_compatible_with(shape):
+        raise ValueError('Received sample weight with shape {}. Expected shape '
+                         '{}.'.format(sample_weight.shape, shape))
+      self._sample_weight = sample_weight
+    else:
+      self._sample_weight = array_ops.placeholder_with_default(
+          constant_op.constant(default_value, dtype=K.floatx()),
+          shape=shape,
+          name=self.output_name + '_sample_weights')
 
 
 class _TrainingTarget(object):
