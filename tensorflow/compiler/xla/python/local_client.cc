@@ -291,7 +291,7 @@ StatusOr<pybind11::object> PyLocalClient::TransferFromOutfeed(
     TF_ASSIGN_OR_RETURN(
         literal, client_->TransferFromOutfeedLocal(shape, device_ordinal));
   }
-  return LiteralToPython(absl::make_unique<Literal>(std::move(literal)));
+  return LiteralToPython(std::make_shared<Literal>(std::move(literal)));
 }
 
 static StatusOr<std::unique_ptr<PyLocalBuffer>> TransferHostToDeviceAsync(
@@ -504,32 +504,60 @@ PyLocalBuffer::PyLocalBuffer(
 void PyLocalBuffer::Delete() {
   absl::MutexLock lock(&mu_);
   device_buffer_ = nullptr;
+  host_value_ = nullptr;
 }
 
-StatusOr<py::object> PyLocalBuffer::ToPython() const {
+Status PyLocalBuffer::CopyToHostAsync() {
+  std::shared_ptr<PySharedDeviceBuffer> device_buffer;
+  std::shared_ptr<HostValue> host_value;
+  {
+    absl::MutexLock lock(&mu_);
+    if (!device_buffer_) {
+      return InvalidArgument("CopyToHostAsync() called on invalid buffer.");
+    }
+    device_buffer = device_buffer_;
+
+    if (host_value_) {
+      // The host value has already been requested or is available.
+      return Status::OK();
+    }
+    host_value = host_value_ = std::make_shared<HostValue>();
+  }
+  se::Stream* stream = client_->device(device_ordinal_).device_to_host_stream();
+  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
+  host_value->value = std::make_shared<Literal>(on_host_shape_);
+  TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, AsShapedBuffer());
+  client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
+      stream, shaped_buffer, *host_value->value,
+      [host_value](Status done_status) {
+        host_value->status = done_status;
+        host_value->ready.Notify();
+      });
+  return Status::OK();
+}
+
+StatusOr<py::object> PyLocalBuffer::ToPython() {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::ToPython");
   std::shared_ptr<PySharedDeviceBuffer> device_buffer = DeviceBuffer();
   if (!device_buffer) {
     return InvalidArgument("ToPython() called on invalid buffer.");
   }
 
-  auto literal = absl::make_unique<Literal>(on_host_shape_);
   client_->py_ref_manager().CollectGarbage();
+  std::shared_ptr<Literal> literal;
   {
     py::gil_scoped_release gil_release;
-    se::Stream* stream = client_->device(device_buffer->device_ordinal())
-                             .device_to_host_stream();
-    WaitForBufferDefinitionEventsOnStream(*device_buffer, stream);
-    absl::Notification done;
-    Status status;
-    TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, AsShapedBuffer());
-    client_->client()->backend().transfer_manager()->TransferLiteralFromDevice(
-        stream, shaped_buffer, *literal, [&](Status done_status) {
-          status = done_status;
-          done.Notify();
-        });
-    done.WaitForNotification();
+    TF_RETURN_IF_ERROR(CopyToHostAsync());
+    std::shared_ptr<HostValue> host_value;
+    {
+      absl::MutexLock lock(&mu_);
+      host_value = host_value_;
+    }
+    host_value->ready.WaitForNotification();
+    TF_RETURN_IF_ERROR(host_value->status);
+    literal = host_value->value;
   }
+
   return LiteralToPython(std::move(literal));
 }
 
