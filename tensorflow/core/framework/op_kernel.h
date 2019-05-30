@@ -533,8 +533,7 @@ class OpOutputList {
 // a mutex to prevent concurrent access to the tensor.
 struct TensorValue {
   TensorValue() : mutex_if_ref(nullptr), tensor(nullptr) {}
-  TensorValue(Tensor* t)  // NOLINT(runtime/explicit)
-      : mutex_if_ref(nullptr), tensor(t) {}
+  explicit TensorValue(Tensor* t) : mutex_if_ref(nullptr), tensor(t) {}
   TensorValue(mutex* mu, Tensor* t) : mutex_if_ref(mu), tensor(t) {}
   Tensor* operator->() const { return tensor; }
   bool is_ref() const { return mutex_if_ref != nullptr; }

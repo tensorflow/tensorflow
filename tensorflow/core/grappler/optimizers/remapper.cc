@@ -992,7 +992,7 @@ void AddBatchNormNodes(const FusedBatchNorm& matched,
   value.scalar<float>()() = epsilon;
   NodeDef* variance_epsilon = optimized_graph->add_node();
   TF_CHECK_OK(ConstantFolding::CreateNodeDef(
-      AddPrefixToNodeName("Const", fused_node.name()), &value,
+      AddPrefixToNodeName("Const", fused_node.name()), TensorValue(&value),
       variance_epsilon));
   variance_epsilon->set_device(fused_node.device());
 
