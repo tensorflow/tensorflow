@@ -41,7 +41,7 @@ allocMemRefDescriptor(Type type, bool allocateData = true,
   auto memRefType = type.dyn_cast<MemRefType>();
   if (!memRefType)
     return make_string_error("non-memref argument not supported");
-  if (memRefType.getNumDynamicDims() != 0)
+  if (!memRefType.hasStaticShape())
     return make_string_error("memref with dynamic shapes not supported");
 
   auto elementType = memRefType.getElementType();

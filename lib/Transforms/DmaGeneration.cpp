@@ -186,7 +186,7 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
     return false;
   }
   auto memRefType = region->memref->getType().cast<MemRefType>();
-  if (memRefType.getNumDynamicDims() > 0)
+  if (!memRefType.hasStaticShape())
     return false;
 
   auto *regionCst = region->getConstraints();

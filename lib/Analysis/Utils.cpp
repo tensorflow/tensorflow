@@ -365,7 +365,7 @@ Optional<int64_t> MemRefRegion::getRegionSize() {
 /// size of the vector as well.
 //  TODO(mlir-team): improve/complete this when we have target data.
 Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
-  if (memRefType.getNumDynamicDims() > 0)
+  if (!memRefType.hasStaticShape())
     return None;
   auto elementType = memRefType.getElementType();
   if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
