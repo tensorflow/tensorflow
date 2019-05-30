@@ -136,13 +136,6 @@ void VectorizerTestPass::testVectorShapeRatio(llvm::raw_ostream &outs) {
   }
 }
 
-static std::string toString(Operation *op) {
-  std::string res;
-  llvm::raw_string_ostream os(res);
-  op->print(os);
-  return res;
-}
-
 static NestedPattern patternTestSlicingOps() {
   using functional::map;
   using matcher::Op;
@@ -162,12 +155,10 @@ void VectorizerTestPass::testBackwardSlicing(llvm::raw_ostream &outs) {
   for (auto m : matches) {
     SetVector<Operation *> backwardSlice;
     getBackwardSlice(m.getMatchedOperation(), &backwardSlice);
-    auto strs = map(toString, backwardSlice);
     outs << "\nmatched: " << *m.getMatchedOperation()
          << " backward static slice: ";
-    for (const auto &s : strs) {
-      outs << "\n" << s;
-    }
+    for (auto *op : backwardSlice)
+      outs << "\n" << *op;
   }
 }
 
@@ -178,12 +169,10 @@ void VectorizerTestPass::testForwardSlicing(llvm::raw_ostream &outs) {
   for (auto m : matches) {
     SetVector<Operation *> forwardSlice;
     getForwardSlice(m.getMatchedOperation(), &forwardSlice);
-    auto strs = map(toString, forwardSlice);
     outs << "\nmatched: " << *m.getMatchedOperation()
          << " forward static slice: ";
-    for (const auto &s : strs) {
-      outs << "\n" << s;
-    }
+    for (auto *op : forwardSlice)
+      outs << "\n" << *op;
   }
 }
 
@@ -194,11 +183,9 @@ void VectorizerTestPass::testSlicing(llvm::raw_ostream &outs) {
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
     SetVector<Operation *> staticSlice = getSlice(m.getMatchedOperation());
-    auto strs = map(toString, staticSlice);
     outs << "\nmatched: " << *m.getMatchedOperation() << " static slice: ";
-    for (const auto &s : strs) {
-      outs << "\n" << s;
-    }
+    for (auto *op : staticSlice)
+      outs << "\n" << *op;
   }
 }
 
