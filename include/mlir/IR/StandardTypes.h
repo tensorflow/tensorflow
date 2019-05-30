@@ -199,7 +199,7 @@ public:
   /// If this is a ranked type, return the number of elements. Otherwise, abort.
   unsigned getNumElements() const;
 
-  /// If this is a ranked type, return the rank. Otherwise, return -1.
+  /// If this is a ranked type, return the rank. Otherwise, abort.
   int64_t getRank() const;
 
   /// Whether or not this is a ranked type. Vector and ranked tensors have a

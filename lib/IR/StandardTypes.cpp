@@ -125,7 +125,8 @@ unsigned ShapedType::getNumElements() const {
 }
 
 int64_t ShapedType::getRank() const {
-  return hasRank() ? getShape().size() : -1;
+  assert(hasRank());
+  return getShape().size();
 }
 
 bool ShapedType::hasRank() const { return !isa<UnrankedTensorType>(); }
