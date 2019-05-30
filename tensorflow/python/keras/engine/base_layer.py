@@ -489,6 +489,27 @@ class Layer(module.Module):
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
+  @doc_controls.for_subclass_implementers
+  def compute_output_signature(self, input_signature):
+    """Compute the output tensor signature of the layer based on the inputs.
+
+    Unlike a TensorShape object, a TensorSpec object contains both shape
+    and dtype information for a tensor. This method allows layers to provide
+    output dtype information if it is different from the input dtype.
+    For any layer that doesn't implement this function,
+    the framework will fall back to use `compute_output_shape`, and will
+    assume that the output dtype matches the input dtype.
+
+    Args:
+      input_signature: Single TensorSpec or nested structure of TensorSpec
+        objects, describing a candidate input for the layer.
+
+    Returns:
+      Single TensorSpec or nested structure of TensorSpec objects, describing
+        how the layer would transform the provided input.
+    """
+    raise NotImplementedError
+
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
@@ -594,7 +615,12 @@ class Layer(module.Module):
           # Wrapping `call` function in autograph to allow for dynamic control
           # dependencies in call. We are limiting this to subclassed layers as
           # autograph is strictly needed only for subclassed layers.
-          if base_layer_utils.is_subclassed(self):
+          # As an additional optimizatio, we avoid calling autograph if the
+          # function is already converted or marked for no conversion. The
+          # effect is largely cosmetic - it avoid four extra frames in the call
+          # stack.
+          if (base_layer_utils.is_subclassed(self)
+              and not hasattr(self.call, '__ag_compiled')):
             decorators, original_func = tf_decorator.unwrap(self.call)
             converted_func = autograph.convert(recursive=True)(original_func)
             if decorators:
@@ -973,6 +999,8 @@ class Layer(module.Module):
       raise ValueError('Please provide a name for your metric like '
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
+    elif from_metric_obj:
+      name = value._metric_obj.name
 
     if in_call_context:
       # TF Function path should take the eager path.
@@ -1029,14 +1057,7 @@ class Layer(module.Module):
         that returns an update op. A zero-arg callable should be passed in
         order to disable running the updates by setting `trainable=False`
         on this Layer, when executing in Eager mode.
-      inputs: If anything other than None is passed, it signals the updates
-        are conditional on some of the layer's inputs,
-        and thus they should only be run where these inputs are available.
-        This is the case for BatchNormalization updates, for instance.
-        If None, the updates will be taken into account unconditionally,
-        and you are responsible for making sure that any dependency they might
-        have is available at runtime.
-        A step counter might fall into this category.
+      inputs: Deprecated, will be automatically inferred.
     """
     updates = generic_utils.to_list(updates)
     call_context = base_layer_utils.call_context()

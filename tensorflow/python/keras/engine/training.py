@@ -1463,11 +1463,23 @@ class Model(network.Network):
     return recompile
 
   @trackable.no_automatic_dependency_tracking
-  def _compile_weights_loss_and_weighted_metrics(self):
-    """Compiles the model loss and weighted metric sub-graphs."""
+  def _compile_weights_loss_and_weighted_metrics(self, sample_weights=None):
+    """Compiles the model loss and weighted metric sub-graphs.
 
+    This may be used to set graph tensors as sample weights (instead of creating
+    placeholders). This functionality is necessary for
+    `tf.keras.estimator.model_to_estimator`, which calls Keras models in a v1
+    graph, and creates iterator tensors for inputs, targets, and sample weights.
+
+    Args:
+      sample_weights: List of tensors to use as the sample weights. Must be the
+        same length as the number of outputs. If left as `None`, placeholders
+        are used instead.
+    """
     with K.get_graph().as_default():
-      self._prepare_sample_weights()
+      if sample_weights is not None:
+        self._update_sample_weight_modes(sample_weights)
+      self._prepare_sample_weights(sample_weights)
 
       masks = self._prepare_output_masks()
 
@@ -1541,7 +1553,7 @@ class Model(network.Network):
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
                   losses_utils.squeeze_or_expand_dimensions(
-                      mask, None, sample_weight))
+                      mask, sample_weight=sample_weight))
               sample_weight *= mask
 
           if hasattr(loss_fn, 'reduction'):
@@ -1570,12 +1582,7 @@ class Model(network.Network):
 
         if len(self.outputs) > 1:
           # Keep track of stateful result tensor for the loss.
-          # TODO(b/120571621): Directly call metric when the bug is fixed.
-          aggregated_output_loss = (
-              distributed_training_utils.call_replica_local_fn(
-                  endpoint.output_loss_metric,
-                  output_loss,
-                  strategy=self._distribution_strategy))
+          aggregated_output_loss = endpoint.output_loss_metric(output_loss)
           self._compile_metrics_tensors[loss_name] = aggregated_output_loss
 
         # Scale output loss for distribution. For custom losses we assume
@@ -1728,11 +1735,19 @@ class Model(network.Network):
             saving_utils.trace_model_call(self))
     return all_functions
 
-  def _prepare_sample_weights(self):
+  def _prepare_sample_weights(self, sample_weights=None):
     """Sets sample weight attribute on the model."""
     # List with the same length as model outputs.
-    for endpoint in self._training_endpoints:
-      endpoint.populate_sample_weight()
+    if sample_weights is not None:
+      if len(sample_weights) != len(self._training_endpoints):
+        raise ValueError('Provided sample weights must have same length as the '
+                         'number of outputs. Expected: {}, got: {}.'.format(
+                             len(self._training_endpoints),
+                             len(sample_weights)))
+    else:
+      sample_weights = [None] * len(self._training_endpoints)
+    for endpoint, weight in zip(self._training_endpoints, sample_weights):
+      endpoint.populate_sample_weight(weight)
 
   def _cache_output_metric_attributes(self, metrics, weighted_metrics):
     """Caches metric name and function attributes for every model output."""
@@ -1859,18 +1874,6 @@ class Model(network.Network):
     self._per_output_metrics = updated_per_output_metrics
     self._per_output_weighted_metrics = updated_per_output_weighted_metrics
 
-  def _call_metric_fn(self, metric_fn, y_true, y_pred, weights, mask=None):
-    # TODO(b/120571621): Remove this function when the bug is fixed.
-    """Helper function to call metric function with distribution strategy."""
-    return distributed_training_utils.call_replica_local_fn(
-        training_utils.call_metric_function,
-        metric_fn,
-        y_true,
-        y_pred,
-        weights=weights,
-        mask=mask,
-        strategy=self._distribution_strategy)
-
   def _handle_per_output_metrics(self,
                                  metrics_dict,
                                  y_true,
@@ -1892,8 +1895,8 @@ class Model(network.Network):
     metric_results = []
     for metric_name, metric_fn in metrics_dict.items():
       with K.name_scope(metric_name):
-        metric_result = self._call_metric_fn(metric_fn, y_true, y_pred, weights,
-                                             mask)
+        metric_result = training_utils.call_metric_function(
+            metric_fn, y_true, y_pred, weights=weights, mask=mask)
         metric_results.append(metric_result)
         if not self.run_eagerly:
           self._compile_metrics_tensors[metric_name] = metric_result
@@ -2979,10 +2982,11 @@ class _TrainingEndpoint(object):
         (self.sample_weight_mode is not None and self.sample_weight is None) or
         (self.sample_weight_mode is None and self.sample_weight is not None))
 
-  def populate_sample_weight(self):
+  def populate_sample_weight(self, sample_weight=None):
     """Populate the sample weight and based on the sample weight mode."""
-    if (self.should_skip_target_weights() or
-        self.sample_weight_mode is None or context.executing_eagerly()):
+    if (sample_weight is None and (self.should_skip_target_weights() or
+                                   self.sample_weight_mode is None or
+                                   context.executing_eagerly())):
       self._sample_weight = None
       return
 
@@ -2995,10 +2999,16 @@ class _TrainingEndpoint(object):
       default_value = [1.]
       shape = [None]
 
-    self._sample_weight = array_ops.placeholder_with_default(
-        constant_op.constant(default_value, dtype=K.floatx()),
-        shape=shape,
-        name=self.output_name + '_sample_weights')
+    if sample_weight is not None:
+      if not sample_weight.shape.is_compatible_with(shape):
+        raise ValueError('Received sample weight with shape {}. Expected shape '
+                         '{}.'.format(sample_weight.shape, shape))
+      self._sample_weight = sample_weight
+    else:
+      self._sample_weight = array_ops.placeholder_with_default(
+          constant_op.constant(default_value, dtype=K.floatx()),
+          shape=shape,
+          name=self.output_name + '_sample_weights')
 
 
 class _TrainingTarget(object):

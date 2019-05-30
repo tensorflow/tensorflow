@@ -658,7 +658,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "remote_test",
     size = "medium",
     srcs = ["remote_test.py"],

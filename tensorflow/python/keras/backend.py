@@ -77,6 +77,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 py_all = all
 py_sum = sum
+py_any = any
 
 # INTERNAL UTILS
 
@@ -4205,7 +4206,6 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
         output.op.type != 'Softmax'):
-      axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
       # Compute cross entropy from probabilities.
@@ -4219,7 +4219,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       # See b/117284466
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
-  return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
+  return nn.softmax_cross_entropy_with_logits_v2(
+      labels=target, logits=output, axis=axis)
 
 
 @keras_export('keras.backend.sparse_categorical_crossentropy')
@@ -4257,20 +4258,45 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
       assert len(output.op.inputs) == 1
       output = output.op.inputs[0]
 
-  rank = len(output.shape)
-  axis = axis % rank
-  if axis != rank - 1:
-    permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
-    output = array_ops.transpose(output, perm=permutation)
+  if isinstance(output.shape, (tuple, list)):
+    output_rank = len(output.shape)
+  else:
+    output_rank = output.shape.ndims
+  if output_rank is not None:
+    axis %= output_rank
+    if axis != output_rank - 1:
+      permutation = list(
+          itertools.chain(range(axis), range(axis + 1, output_rank), [axis]))
+      output = array_ops.transpose(output, perm=permutation)
+  elif axis != -1:
+    raise ValueError(
+        'Cannot compute sparse categorical crossentropy with `axis={}` on an '
+        'output tensor with unknown rank'.format(axis))
 
-  output_shape = output.shape
-  targets = cast(flatten(target), 'int64')
-  logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
-  res = nn.sparse_softmax_cross_entropy_with_logits(
-      labels=targets, logits=logits)
-  if len(output_shape) >= 3:
+  target = cast(target, 'int64')
+
+  # Try to adjust the shape so that rank of labels = 1 - rank of logits.
+  output_shape = array_ops.shape_v2(output)
+  target_rank = target.shape.ndims
+
+  update_shape = (
+      target_rank is not None and output_rank is not None and
+      target_rank != output_rank - 1)
+  if update_shape:
+    target = flatten(target)
+    output = array_ops.reshape(output, [-1, output_shape[-1]])
+
+  if py_any([_is_symbolic_tensor(v) for v in [target, output]]):
+    with get_graph().as_default():
+      res = nn.sparse_softmax_cross_entropy_with_logits_v2(
+          labels=target, logits=output)
+  else:
+    res = nn.sparse_softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output)
+
+  if update_shape and output_rank >= 3:
     # If our output includes timesteps or spatial dimensions we need to reshape
-    return array_ops.reshape(res, array_ops.shape(output)[:-1])
+    return array_ops.reshape(res, output_shape[:-1])
   else:
     return res
 
@@ -5673,3 +5699,7 @@ def cast_variables_to_tensor(tensors):
     return tensor
 
   return nest.map_structure(_cast_variables_to_tensor, tensors)
+
+
+def _is_symbolic_tensor(x):
+  return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)

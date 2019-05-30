@@ -154,7 +154,8 @@ TEST_P(ParameterizedReduceDatasetOpTest, Compute) {
   TF_ASSERT_OK(
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   std::vector<Tensor> initial_state = test_case.initial_state;
-  gtl::InlinedVector<TensorValue, 4> inputs({&range_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_dataset_tensor)});
   for (auto &t : initial_state) {
     inputs.emplace_back(&t);
   }

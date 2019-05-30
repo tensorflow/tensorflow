@@ -137,16 +137,18 @@ static int64 GetMemoryLimitBytes() {
 
 StreamExecutor::StreamExecutor(
     const Platform *platform,
-    std::unique_ptr<internal::StreamExecutorInterface> implementation)
+    std::unique_ptr<internal::StreamExecutorInterface> implementation,
+    int device_ordinal)
     : platform_(platform),
       implementation_(std::move(implementation)),
-      device_ordinal_(-1),
+      device_ordinal_(device_ordinal),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
-      memory_limit_bytes_(GetMemoryLimitBytes()) {
+      memory_limit_bytes_(GetMemoryLimitBytes()),
+      allocator_(this) {
   string name = absl::AsciiStrToLower(platform_->Name());
   if (name == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
@@ -180,15 +182,11 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
-port::Status StreamExecutor::Init(int device_ordinal,
-                                  DeviceOptions device_options) {
-  device_ordinal_ = device_ordinal;
-  return implementation_->Init(device_ordinal, std::move(device_options));
+port::Status StreamExecutor::Init(DeviceOptions device_options) {
+  return implementation_->Init(device_ordinal_, std::move(device_options));
 }
 
-port::Status StreamExecutor::Init() {
-  return Init(0, DeviceOptions::Default());
-}
+port::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
 bool StreamExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
                                KernelBase *kernel) {

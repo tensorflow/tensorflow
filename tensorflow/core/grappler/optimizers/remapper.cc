@@ -992,7 +992,7 @@ void AddBatchNormNodes(const FusedBatchNorm& matched,
   value.scalar<float>()() = epsilon;
   NodeDef* variance_epsilon = optimized_graph->add_node();
   TF_CHECK_OK(ConstantFolding::CreateNodeDef(
-      AddPrefixToNodeName("Const", fused_node.name()), &value,
+      AddPrefixToNodeName("Const", fused_node.name()), TensorValue(&value),
       variance_epsilon));
   variance_epsilon->set_device(fused_node.device());
 
@@ -1170,7 +1170,11 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && IsFusedBatchNormCandidate(node)) {
-      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(false));
+      // TODO(rmlarsen): Get rid of tensor value copies.
+      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
+          /*assume_valid_feeds=*/false,
+          /*aggressive_shape_inference=*/false,
+          /*include_tensor_values=*/true));
       ctx.inferred_graph_properties = true;
     }
 

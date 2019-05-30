@@ -712,7 +712,10 @@ class SymbolicShapeRefiner {
 
     // Perform inference on function body.
     GraphProperties gp(grappler_function_item);
-    TF_RETURN_IF_ERROR(gp.InferStatically(true, aggressive_shape_inference_));
+    TF_RETURN_IF_ERROR(gp.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/aggressive_shape_inference_,
+        /*include_tensor_values=*/true));
 
     // Add return nodes for output shapes.
     int output = 0;
@@ -2066,7 +2069,8 @@ Status GraphProperties::UpdateEnqueue(
 }
 
 Status GraphProperties::InferStatically(bool assume_valid_feeds,
-                                        bool aggressive_shape_inference) {
+                                        bool aggressive_shape_inference,
+                                        bool include_tensor_values) {
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
   std::unordered_map<string, std::unordered_set<int>> fed_ports;
@@ -2225,20 +2229,23 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
                                           &input_properties[i]);
         input.port_id = i;
         GraphView::OutputPort fanin = graph_view.GetRegularFanin(input);
-        // Export tensor value to input_properties.value.
-        if (IsConstant(*fanin.node)) {
-          const TensorProto& raw_val = fanin.node->attr().at("value").tensor();
-          *input_properties[i].mutable_value() = raw_val;
-        } else if (ctx->input_tensor_protos.size() > i &&
-                   ctx->input_tensor_protos[i] != nullptr) {
-          *input_properties[i].mutable_value() = *ctx->input_tensor_protos[i];
-        } else if (ic->input_tensors_as_shapes().size() > i &&
-                   IsShapeFullyDefinedIntegerVectorOrScalar(
-                       ic, ic->input(i), ic->input_tensors_as_shapes()[i],
-                       ctx->input_types[i])) {
-          *input_properties[i].mutable_value() = MakeTensorProtoFromShape(
-              ic, ic->input(i), ic->input_tensors_as_shapes()[i],
-              ctx->input_types[i]);
+        if (include_tensor_values) {
+          // Export tensor value to input_properties.value.
+          if (IsConstant(*fanin.node)) {
+            const TensorProto& raw_val =
+                fanin.node->attr().at("value").tensor();
+            *input_properties[i].mutable_value() = raw_val;
+          } else if (ctx->input_tensor_protos.size() > i &&
+                     ctx->input_tensor_protos[i] != nullptr) {
+            *input_properties[i].mutable_value() = *ctx->input_tensor_protos[i];
+          } else if (ic->input_tensors_as_shapes().size() > i &&
+                     IsShapeFullyDefinedIntegerVectorOrScalar(
+                         ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                         ctx->input_types[i])) {
+            *input_properties[i].mutable_value() = MakeTensorProtoFromShape(
+                ic, ic->input(i), ic->input_tensors_as_shapes()[i],
+                ctx->input_types[i]);
+          }
         }
       }
     }
@@ -2254,20 +2261,24 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
       for (int i = 0; i < ic->num_outputs(); ++i) {
         shape_manager->AsTensorProperties(ic->output(i), ctx->output_types[i],
                                           &output_properties[i]);
-        // Export tensor value to output_properties.value.
-        if (IsConstant(node)) {
-          const TensorProto& raw_val = node.attr().at("value").tensor();
-          *output_properties[i].mutable_value() = raw_val;
-        } else if (ctx->output_tensor_protos.size() > i &&
-                   ctx->output_tensor_protos[i] != nullptr) {
-          *output_properties[i].mutable_value() = *ctx->output_tensor_protos[i];
-        } else if (ctx->output_tensors_as_shapes.size() > i &&
-                   IsShapeFullyDefinedIntegerVectorOrScalar(
-                       ic, ic->output(i), ctx->output_tensors_as_shapes[i],
-                       ctx->output_types[i])) {
-          *output_properties[i].mutable_value() = MakeTensorProtoFromShape(
-              ic, ic->output(i), ctx->output_tensors_as_shapes[i],
-              ctx->output_types[i]);
+        if (include_tensor_values) {
+          // Export tensor value to output_properties.value.
+          if (IsConstant(node)) {
+            // TODO(rmlarsen): Eliminate this copy.
+            const TensorProto& raw_val = node.attr().at("value").tensor();
+            *output_properties[i].mutable_value() = raw_val;
+          } else if (ctx->output_tensor_protos.size() > i &&
+                     ctx->output_tensor_protos[i] != nullptr) {
+            *output_properties[i].mutable_value() =
+                *ctx->output_tensor_protos[i];
+          } else if (ctx->output_tensors_as_shapes.size() > i &&
+                     IsShapeFullyDefinedIntegerVectorOrScalar(
+                         ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+                         ctx->output_types[i])) {
+            *output_properties[i].mutable_value() = MakeTensorProtoFromShape(
+                ic, ic->output(i), ctx->output_tensors_as_shapes[i],
+                ctx->output_types[i]);
+          }
         }
       }
     }

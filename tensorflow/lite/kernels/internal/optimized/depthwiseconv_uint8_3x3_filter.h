@@ -9395,7 +9395,7 @@ inline void DepthwiseConvDotProduct3x3(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
   // Check kernel restrictions.
   constexpr int filter_size = 3;
   constexpr int kMaxStride = 2;
@@ -9432,6 +9432,7 @@ inline void DepthwiseConvDotProduct3x3(
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
   TFLITE_DCHECK_EQ(input_depth * depth_multiplier, output_depth);
   TFLITE_DCHECK_EQ(MatchingDim(filter_shape, 1, filter_shape, 2), filter_size);
+  TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   // Return now if nothing to do.
   if (output_width == 0 || output_height == 0) {
@@ -9472,6 +9473,27 @@ inline void DepthwiseConvDotProduct3x3(
   function_params.bias_increment = bias_increment;
   TFLITE_DCHECK_LE(2 * function_params.bias_increment, kMinBiasLoad);
 
+  // Process multithreading.
+  int batch_start = 0;
+  int batch_end = batches;
+  int row_start = 0;
+  int row_end = output_height;
+  switch (thread_dim) {
+    case 0:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, batches);
+      batch_start = thread_start;
+      batch_end = thread_end;
+      break;
+    case 1:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, output_height);
+      row_start = thread_start;
+      row_end = thread_end;
+      break;
+  }
+  const int row_count = row_end - row_start;
+
   // Process padding.
   //
   // Whether "correct" or not, this matches ComputeConvSizes. When there is
@@ -9479,23 +9501,32 @@ inline void DepthwiseConvDotProduct3x3(
   // we need to consider padding. This is true even if one or other of the
   // padding_values is 0.
   const int padded_width = (output_width - 1) * stride + filter_size;
+  int full_padding_top;
   {
     const int padding_left = params.padding_values.width;
     // Right padding would be -1 if discarding input because of stride.
     const int padding_right =
         std::max(padded_width - input_width - padding_left, 0);
-    const int padding_top = params.padding_values.height;
+    int padding_top = params.padding_values.height;
     const int padded_height = (output_height - 1) * stride + filter_size;
-    const int padding_bottom =
+    int padding_bottom =
         std::max(padded_height - input_height - padding_top, 0);
+
+    TFLITE_DCHECK_LE(padding_left, padding_right);
+    TFLITE_DCHECK_LE(padding_top, padding_bottom);
+
+    full_padding_top = padding_top;
+    if (row_start != 0) {
+      padding_top = 0;
+    }
+    if (row_end != output_height) {
+      padding_bottom = 0;
+    }
 
     function_params.padding_left = padding_left;
     function_params.padding_right = padding_right;
     function_params.padding_top = padding_top;
     function_params.padding_bottom = padding_bottom;
-
-    TFLITE_DCHECK_LE(padding_left, padding_right);
-    TFLITE_DCHECK_LE(padding_top, padding_bottom);
   }
   // When stride == 1 left or top padding may only be non-zero.
   // This is when padding is specified but not needed on a trailing dimension.
@@ -9575,17 +9606,15 @@ inline void DepthwiseConvDotProduct3x3(
 
   // Stride-only variables.
   //
-  // stride == 1 ? 4 : 2:
-  const int output_height_per_macro = 6 - 2 * stride;
-  // output_height_per_macro * stride:
+  const int row_count_per_macro = stride == 1 ? 4 : 2;
+  // row_count_per_macro * stride:
   constexpr int input_height_per_macro = 4;
   // Number of rows per micro block (= rows per macro block) is
-  //   (output_height_per_macro - 1) * stride + 1 + (filter_size - 1)
-  //   = stride == 1 ? 3 + filter_size : 2 + filter_size:
-  const int height_block_size = 4 + filter_size - stride;
+  //   (row_count_per_macro - 1) * stride + 1 + (filter_size - 1)
+  const int height_block_size = stride == 1 ? 3 + filter_size : 2 + filter_size;
   const int input_height_overlap = filter_size - stride;
   // stride == 1 ? 4 : 2:
-  function_params.four_over_stride = output_height_per_macro;
+  function_params.four_over_stride = row_count_per_macro;
 
   TFLITE_DCHECK_EQ(stride * function_params.four_over_stride, 4);
   TFLITE_DCHECK_EQ(height_block_size,
@@ -9703,13 +9732,22 @@ inline void DepthwiseConvDotProduct3x3(
 
   // Height repetitions and residuals.
   //
-  const int height_macro_count = output_height / output_height_per_macro;
-  const int residual_output_height = output_height % output_height_per_macro;
-  const int height_overall_macro_count =
-      (output_height + output_height_per_macro - 1) / output_height_per_macro;
+  int height_macro_count;
+  int residual_row_count;
+  int height_overall_macro_count;
+  if (stride == 1) {
+    TFLITE_DCHECK_EQ(row_count_per_macro, 4);
+    height_macro_count = row_count / 4;
+    residual_row_count = row_count % 4;
+    height_overall_macro_count = (row_count + 3) / 4;
+  } else {
+    TFLITE_DCHECK_EQ(row_count_per_macro, 2);
+    height_macro_count = row_count / 2;
+    residual_row_count = row_count % 2;
+    height_overall_macro_count = (row_count + 1) / 2;
+  }
   TFLITE_DCHECK_EQ(
-      output_height,
-      residual_output_height + output_height_per_macro * height_macro_count);
+      row_count, residual_row_count + row_count_per_macro * height_macro_count);
   TFLITE_DCHECK_LE(height_overall_macro_count, height_macro_count + 1);
   TFLITE_DCHECK_GE(height_overall_macro_count, height_macro_count);
 
@@ -9752,7 +9790,7 @@ inline void DepthwiseConvDotProduct3x3(
   // depth_overall_macro_count = depth_macro_count + 1, so we can adjust the
   // dimensions for trailing macro blocks by looking for
   // j_depth == depth_macro_count.
-  for (int b = 0; b < batches; ++b) {
+  for (int b = batch_start; b < batch_end; ++b) {
     for (int k_width = 0; k_width < width_overall_macro_count; ++k_width) {
       // Figure out the work to be done for this macro block. If it trails in
       // any dimension, the work in that dimension is adjusted.
@@ -9799,9 +9837,11 @@ inline void DepthwiseConvDotProduct3x3(
             input_data + b * input_batch_stride +
             j_depth * input_depth_macro_stride +
             k_width * input_width_macro_stride -
-            function_params.padding_left * input_depth -
-            function_params.padding_top * input_height_stride;
+            function_params.padding_left * input_depth +
+            row_start * stride * input_height_stride -
+            full_padding_top * input_height_stride;
         uint8* output_data_block = output_data + b * output_batch_stride +
+                                   row_start * output_height_stride +
                                    j_depth * 64 +
                                    k_width * output_width_macro_stride;
 
@@ -9829,13 +9869,12 @@ inline void DepthwiseConvDotProduct3x3(
              ++i_height) {
           if (i_height != height_macro_count) {
             function_params.inbound_block_height = input_height_per_macro;
-            function_params.outbound_block_height = output_height_per_macro;
+            function_params.outbound_block_height = row_count_per_macro;
           } else {
-            function_params.inbound_block_height =
-                residual_output_height * stride;
-            function_params.outbound_block_height = residual_output_height;
+            function_params.inbound_block_height = residual_row_count * stride;
+            function_params.outbound_block_height = residual_row_count;
           }
-          TFLITE_DCHECK_LT(i_height * output_height_per_macro, output_height);
+          TFLITE_DCHECK_LT(i_height * row_count_per_macro, row_count);
           TFLITE_DCHECK_LT(i_height * input_height_per_macro, input_height);
           TFLITE_DCHECK_LT(k_width * output_width_per_macro_block,
                            output_width);
@@ -9863,7 +9902,7 @@ inline void DepthwiseConvDotProduct3x3(
               adjusted_bias_data, output_data_block, &function_params);
 
           input_data_block += input_height_stride * input_height_per_macro;
-          output_data_block += output_height_stride * output_height_per_macro;
+          output_data_block += output_height_stride * row_count_per_macro;
         }
       }
     }

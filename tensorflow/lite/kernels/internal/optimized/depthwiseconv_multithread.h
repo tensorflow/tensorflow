@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
 
@@ -36,8 +37,7 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
                           const RuntimeShape& filter_shape,
                           const T* filter_data, const RuntimeShape& bias_shape,
                           const TS* bias_data, const RuntimeShape& output_shape,
-                          T* output_data,
-                          CpuBackendContext* cpu_backend_context,
+                          T* output_data, const CpuFlags& cpu_flags,
                           int thread_start, int thread_end, int thread_dim)
       : params_(params),
         input_shape_(input_shape),
@@ -48,7 +48,7 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
         bias_data_(bias_data),
         output_shape_(output_shape),
         output_data_(output_data),
-        cpu_backend_context_(cpu_backend_context),
+        cpu_flags_(cpu_flags),
         thread_start_(thread_start),
         thread_end_(thread_end),
         thread_dim_(thread_dim) {}
@@ -56,8 +56,8 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
   void Run() override {
     DepthwiseConvImpl(params_, input_shape_, input_data_, filter_shape_,
                       filter_data_, bias_shape_, bias_data_, output_shape_,
-                      output_data_, cpu_backend_context_, thread_start_,
-                      thread_end_, thread_dim_);
+                      output_data_, cpu_flags_, thread_start_, thread_end_,
+                      thread_dim_);
   }
 
  private:
@@ -70,7 +70,7 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
   const TS* bias_data_;
   const RuntimeShape& output_shape_;
   T* output_data_;
-  CpuBackendContext* cpu_backend_context_;
+  const CpuFlags& cpu_flags_;
   int thread_start_;
   int thread_end_;
   int thread_dim_;
@@ -143,10 +143,13 @@ inline void DepthwiseConv(const DepthwiseParams& params,
   const int output_batches = output_shape.Dims(0);
   const int output_height = output_shape.Dims(1);
 
+  CpuFlags cpu_flags;
+  GetCpuFlags(cpu_backend_context, &cpu_flags);
+
   if (thread_count == 1) {
     DepthwiseConvImpl(params, input_shape, input_data, filter_shape,
                       filter_data, bias_shape, bias_data, output_shape,
-                      output_data, cpu_backend_context, /*thread_start=*/0,
+                      output_data, cpu_flags, /*thread_start=*/0,
                       /*thread_end=*/output_height, /*thread_dim=*/1);
     return;
   }
@@ -170,8 +173,8 @@ inline void DepthwiseConv(const DepthwiseParams& params,
         thread_start + (thread_dim_size - thread_start) / (thread_count - i);
     tasks.emplace_back(params, input_shape, input_data, filter_shape,
                        filter_data, bias_shape, bias_data, output_shape,
-                       output_data, cpu_backend_context, thread_start,
-                       thread_end, thread_dim);
+                       output_data, cpu_flags, thread_start, thread_end,
+                       thread_dim);
     thread_start = thread_end;
   }
   cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),

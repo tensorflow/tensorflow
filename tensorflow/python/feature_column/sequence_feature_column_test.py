@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import feature_column_v2_test as fc_test
 from tensorflow.python.feature_column import sequence_feature_column as sfc
+from tensorflow.python.feature_column import serialization
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -1529,6 +1530,27 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(
         expected_sequence_length, self.evaluate(sequence_length))
+
+  def test_serialization(self):
+    """Tests that column can be serialized."""
+    def _custom_fn(input_tensor):
+      return input_tensor + 42
+
+    column = sfc.sequence_numeric_column(
+        key='my-key', shape=(2,), default_value=3, dtype=dtypes.int32,
+        normalizer_fn=_custom_fn)
+    configs = serialization.serialize_feature_column(column)
+    column = serialization.deserialize_feature_column(
+        configs, custom_objects={_custom_fn.__name__: _custom_fn})
+    self.assertEqual(column.key, 'my-key')
+    self.assertEqual(column.shape, (2,))
+    self.assertEqual(column.default_value, 3)
+    self.assertEqual(column.normalizer_fn(3), 45)
+
+  def test_parents(self):
+    """Tests parents attribute of column."""
+    column = sfc.sequence_numeric_column(key='my-key')
+    self.assertEqual(column.parents, ['my-key'])
 
 
 if __name__ == '__main__':

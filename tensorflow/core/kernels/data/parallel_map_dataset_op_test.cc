@@ -305,7 +305,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, GetNext) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -359,7 +359,7 @@ TEST_F(ParallelMapDatasetOpTest, DatasetNodeName) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -396,7 +396,7 @@ TEST_F(ParallelMapDatasetOpTest, DatasetTypeString) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -433,7 +433,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetOutputDtypes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -471,7 +471,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetOutputShapes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -509,7 +509,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Cardinality) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -547,7 +547,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetSave) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -590,7 +590,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, IteratorOutputDtypes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -635,7 +635,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, IteratorOutputShapes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -680,7 +680,7 @@ TEST_F(ParallelMapDatasetOpTest, IteratorOutputPrefix) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -724,7 +724,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -794,7 +794,7 @@ TEST_F(ParallelMapDatasetOpTest, InvalidNumParallelCalls) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(

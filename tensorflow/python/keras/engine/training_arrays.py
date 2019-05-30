@@ -148,10 +148,6 @@ def model_iteration(model,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
 
-  model._update_sample_weight_modes(sample_weights=sample_weights)
-
-  # Get step function and loop type.
-  f = _make_execution_function(model, mode)
   use_steps = is_dataset or steps_per_epoch is not None
   do_validation = val_inputs is not None
 
@@ -178,6 +174,17 @@ def model_iteration(model,
                                                      steps_per_epoch)
   else:
     num_samples_or_steps = steps_per_epoch
+
+  # Update sample_weight_mode of the model if sample_weights is specified by the
+  # user. We need to call this function after we have a handle on the inputs
+  # (both numpy arrays and datasets) in order to determine if the user has
+  # specified sample_weights.
+  _update_sample_weight_mode(model, mode, ins)
+
+  # Get step function and loop type. As part of building the execution
+  # function we recompile the metrics based on the updated
+  # sample_weight_mode value.
+  f = _make_execution_function(model, mode)
 
   # Prepare validation data. Hold references to the iterator and the input list
   # to properly reinitialize and reuse in multiple validation passes.
@@ -540,6 +547,20 @@ def _make_execution_function(model, mode):
     return distributed_training_utils._make_execution_function(model, mode)
   return model._make_execution_function(mode)
 
+
+def _update_sample_weight_mode(model, mode, inputs):
+  """Updates the sample_weight_mode of a given model."""
+  if not model._distribution_strategy and mode != ModeKeys.PREDICT:
+    # `inputs` is the model's inputs + targets + sample_weights +
+    # learning phase placeholder if specified. To update the sample_weight_mode
+    # we need to determine if the user has passed sample weights as part of the
+    # input.
+    sample_weights = inputs[len(model._feed_inputs) + len(model._feed_targets):]
+    has_learning_phase_pl = (mode == ModeKeys.TRAIN and
+                             not isinstance(K.symbolic_learning_phase(), int))
+    if has_learning_phase_pl:
+      sample_weights = sample_weights[:-1]
+    model._update_sample_weight_modes(sample_weights=sample_weights)
 
 # For backwards compatibility for internal users of these loops.
 fit_loop = functools.partial(model_iteration, mode=ModeKeys.TRAIN)

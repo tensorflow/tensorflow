@@ -185,6 +185,10 @@ tf_class {
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compute_output_signature"
+    argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "count_params"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

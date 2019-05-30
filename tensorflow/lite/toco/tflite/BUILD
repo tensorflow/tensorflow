@@ -135,6 +135,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "op_version",
+    srcs = ["op_version.cc"],
+    hdrs = ["op_version.h"],
+    deps = [
+        ":operator",
+        "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/toco:tooling_util",
+    ],
+)
+
+tf_cc_test(
+    name = "op_version_test",
+    srcs = ["op_version_test.cc"],
+    deps = [
+        ":op_version",
+        "//tensorflow/lite/toco:model",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "import_test",
     srcs = [

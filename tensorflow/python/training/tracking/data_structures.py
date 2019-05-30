@@ -672,6 +672,10 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
          for key, value in self.__wrapped__.items()})
     self._update_snapshot()
 
+  def __reduce_ex__(self, protocol):
+    return (self.__class__,
+            (self.__wrapped__,))
+
   def __getattribute__(self, name):
     if (hasattr(type(self), name)
         and isinstance(getattr(type(self), name), property)):

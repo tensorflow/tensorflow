@@ -6,6 +6,7 @@ tensorflow/contrib/tpu/profiler/pip_package/cloud_tpu_profiler/main.py
 tensorflow/contrib/tpu/profiler/pip_package/cloud_tpu_profiler/__init__.py
 tensorflow/contrib/mpi/BUILD
 tensorflow/stream_executor/build_defs.bzl
+tensorflow/python/autograph/core/config.py
 tensorflow/tools/ci_build/remote/BUILD
 tensorflow/tools/pip_package/README
 tensorflow/tools/pip_package/MANIFEST.in

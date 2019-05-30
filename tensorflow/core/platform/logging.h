@@ -23,13 +23,11 @@ limitations under the License.
 #include "tensorflow/core/platform/google/build_config/logging.h"
 namespace tensorflow {
 // Adapt Google LogSink interface to the TF interface.
-using TFLogSink = ::base_logging::LogSink;
-using TFLogEntry = absl::LogEntry;
+using TFLogSink = ::absl::LogSink;
+using TFLogEntry = ::absl::LogEntry;
 
-inline void TFAddLogSink(TFLogSink* sink) { ::base_logging::AddLogSink(sink); }
-inline void TFRemoveLogSink(TFLogSink* sink) {
-  ::base_logging::RemoveLogSink(sink);
-}
+inline void TFAddLogSink(TFLogSink* sink) { ::absl::AddLogSink(sink); }
+inline void TFRemoveLogSink(TFLogSink* sink) { ::absl::RemoveLogSink(sink); }
 
 }  // namespace tensorflow
 
