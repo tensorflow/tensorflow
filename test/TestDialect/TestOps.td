@@ -77,6 +77,17 @@ def SameOperandAndResultShapeOp : TEST_Op<"same_operand_and_result_shape",
   let results = (outs AnyVectorOrTensor:$res);
 }
 
+def ArgAndResHaveFixedElementTypesOp :
+    TEST_Op<"arg_and_res_have_fixed_element_types",
+      [PredOpTrait<"fixed type combination",
+         Or<[And<[ArgOrResultElementTypeIs<"x", I32>,
+                  ArgOrResultElementTypeIs<"y", F32>,
+                  ArgOrResultElementTypeIs<"res", I16>]>,
+             ArgOrResultElementTypeIs<"attr", I8>]>>]> {
+  let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y, AnyAttr:$attr);
+  let results = (outs AnyVectorOrTensor:$res);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//

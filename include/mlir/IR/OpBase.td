@@ -996,6 +996,14 @@ class TCopVTEtIs<int idx, Type type> : And<[
      ")->getType().cast<ShapedType>().getElementType()",
      type.predicate>]>;
 
+// Predicate to verify that a named argument or result's element type matches a
+// given type.
+class ArgOrResultElementTypeIs<string name, Type type> : And<[
+   SubstLeaves<"$_self",  "$" # name # "->getType()", IsShapedTypePred>,
+   SubstLeaves<"$_self",  "$" # name #
+     "->getType().cast<ShapedType>().getElementType()",
+     type.predicate>]>;
+
 // Predicate to verify that the i'th operand and the j'th operand have the same
 // elemental type.
 // Type Constraint operand `i`'s Element type is Same As operand `j`'s Element

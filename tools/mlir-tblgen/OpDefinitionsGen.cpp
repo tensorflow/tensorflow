@@ -903,10 +903,34 @@ void OpEmitter::genVerifier() {
   FmtContext fctx;
   fctx.withOp("(*this->getOperation())");
 
+  // Populate substitutions for attributes and named operands and results.
+  for (const auto &namedAttr : op.getAttributes())
+    fctx.addSubst(namedAttr.name,
+                  formatv("(&this->getAttr(\"{0}\"))", namedAttr.name));
+  for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
+    auto &value = op.getOperand(i);
+    // Skip from from first variadic operands for now. Else getOperand index
+    // used below doesn't match.
+    if (value.isVariadic())
+      break;
+    if (!value.name.empty())
+      fctx.addSubst(value.name,
+                    formatv("this->getOperation()->getOperand({0})", i));
+  }
+  for (int i = 0, e = op.getNumResults(); i < e; ++i) {
+    auto &value = op.getResult(i);
+    // Skip from from first variadic results for now. Else getResult index used
+    // below doesn't match.
+    if (value.isVariadic())
+      break;
+    if (!value.name.empty())
+      fctx.addSubst(value.name,
+                    formatv("this->getOperation()->getResult({0})", i));
+  }
+
   // Verify the attributes have the correct type.
   for (const auto &namedAttr : op.getAttributes()) {
     const auto &attr = namedAttr.attr;
-
     if (attr.isDerivedAttr())
       continue;
 
