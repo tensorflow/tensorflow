@@ -56,6 +56,19 @@ using gpuError_t = hipError_t;
 #define GetGPUStream(context) context->eigen_gpu_device().stream()
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+// cudaGetErrorString is available to both host and device
+__host__ __device__ inline const char* GpuGetErrorString(cudaError_t error) {
+  return cudaGetErrorString(error);
+}
+#elif TENSORFLOW_USE_ROCM
+// hipGetErrorString is available on host side only
+inline const char* GpuGetErrorString(hipError_t error) {
+  return hipGetErrorString(error);
+}
+#endif
+
 // Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
 // hipLaunchKernel in ROCm environment with the given arguments.
 //
