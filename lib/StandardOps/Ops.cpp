@@ -1600,8 +1600,8 @@ static LogicalResult verify(ExtractElementOp op) {
       return op.emitOpError("index to extract_element must have 'index' type");
 
   // Verify the # indices match if we have a ranked type.
-  auto aggregateRank = aggregateType.getRank();
-  if (aggregateRank != -1 && aggregateRank != op.getNumOperands() - 1)
+  if (aggregateType.hasRank() &&
+      aggregateType.getRank() != op.getNumOperands() - 1)
     return op.emitOpError("incorrect number of indices for extract_element");
 
   return success();
