@@ -1602,5 +1602,80 @@ TEST(XlaCompilationTest, ClusterShapeConsumerWithProducerAndConsumer) {
   EXPECT_EQ(clusters["test/y"], clusters["test/z"]);
 }
 
+void AddCtrlEdge(const Scope& scope, Operation a, Operation b) {
+  scope.graph()->AddControlEdge(a.node(), b.node());
+}
+
+void AddCtrlEdge(const Scope& scope, Output a, Operation b) {
+  AddCtrlEdge(scope, a.op(), b);
+}
+
+void AddCtrlEdge(const Scope& scope, Operation a, Output b) {
+  AddCtrlEdge(scope, a, b.op());
+}
+
+// Tests that we pick a good clustering for graphs that have an integer
+// increment operation control dependent on gradient update operations.
+TEST(XlaCompilationTest, IterationIncrementAndGroupDeps) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+
+  Output iter =
+      ops::VarHandleOp(scope.WithOpName("iter"), DT_INT64, TensorShape({}));
+  Output weights_0 = ops::VarHandleOp(scope.WithOpName("weights_0"), DT_FLOAT,
+                                      TensorShape({1000}));
+  Output weights_1 = ops::VarHandleOp(scope.WithOpName("weights_1"), DT_FLOAT,
+                                      TensorShape({1000}));
+
+  // We update the weights by adding delta to them (to "simulate" a
+  // ResourceApplyGradientDescent and similar things).
+  Output delta = ops::Placeholder(scope.WithOpName("delta"), DT_FLOAT);
+
+  ops::AssignAddVariableOp increment_op(
+      scope.WithOpName("IncrementIteration"), iter,
+      ops::Const(scope.WithOpName("one"), static_cast<int64>(1)));
+
+  ops::AssignAddVariableOp weights_0_update_op(
+      scope.WithOpName("weights_0_update"), weights_0, delta);
+  ops::AssignAddVariableOp weights_1_update_op(
+      scope.WithOpName("weights_1_update"), weights_1, delta);
+
+  ops::NoOp group_deps(scope.WithOpName("group_deps"));
+
+  ops::NoOp some_ctrl_input(scope.WithOpName("some_ctrl_input"));
+
+  Output matmul_input =
+      ops::Placeholder(scope.WithOpName("matmul_input"), DT_FLOAT);
+  Output matmul_0 =
+      ops::MatMul(scope.WithOpName("matmul_0"), matmul_input, matmul_input);
+  Output matmul_1 =
+      ops::MatMul(scope.WithOpName("matmul_1"), matmul_input, matmul_input);
+
+  AddCtrlEdge(scope, increment_op, group_deps);
+  AddCtrlEdge(scope, weights_0_update_op, increment_op);
+  AddCtrlEdge(scope, weights_1_update_op, increment_op);
+
+  AddCtrlEdge(scope, some_ctrl_input, weights_0_update_op);
+  AddCtrlEdge(scope, some_ctrl_input, weights_1_update_op);
+
+  AddCtrlEdge(scope, matmul_0, group_deps);
+  AddCtrlEdge(scope, matmul_1, group_deps);
+
+  AddCtrlEdge(scope, weights_0_update_op, matmul_0);
+  AddCtrlEdge(scope, weights_1_update_op, matmul_1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+
+  EXPECT_NE(clusters["some_ctrl_input"], "");
+  EXPECT_EQ(clusters["some_ctrl_input"], clusters["weights_0_update"]);
+  EXPECT_EQ(clusters["some_ctrl_input"], clusters["weights_1_update"]);
+  EXPECT_EQ(clusters["some_ctrl_input"], clusters["matmul_0"]);
+  EXPECT_EQ(clusters["some_ctrl_input"], clusters["matmul_0"]);
+}
+
 }  // namespace
 }  // namespace tensorflow

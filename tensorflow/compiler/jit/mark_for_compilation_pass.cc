@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
@@ -222,6 +223,18 @@ class MarkForCompilationPassImpl {
     TF_DISALLOW_COPY_AND_ASSIGN(Cluster);
   };
 
+  // If `cluster` has only a single node then returns that, otherwise returns
+  // nullptr.
+  Node* GetOnlyNodeIn(const Cluster& cluster);
+
+  // Returns true if `cluster` is a trivial cluster containing a "sink like"
+  // node -- a NoOp node that only the Sink node control depends on.
+  bool IsSinkLike(const Cluster& cluster);
+
+  // Returns true if `cluster` looks like an "i++" operation on an integer
+  // scalar resource variable.
+  bool IsScalarIntegerResourceOperation(const Cluster& cluster);
+
   // ---------------------------------------------------------------------------
   // The pass proceeds in four steps, out of which `RunEdgeContractionLoop` and
   // `CreateClusters` do most of the heavy lifting.
@@ -236,11 +249,6 @@ class MarkForCompilationPassImpl {
   // Returns true if `fn` returned true for any edge.
   template <typename FnTy>
   StatusOr<bool> ForEachEdgeInPostOrder(FnTy fn);
-
-  // If from->to is a "preferred" edge (i.e. if we have a choice, we want to
-  // prioritize contracting from->to over contracting other edges) then
-  // contracts it and returns true.  Else returns false.
-  StatusOr<bool> ContractEdgeIfPreferred(Cluster* from, Cluster* to);
 
   // Contracts as many edges as possible to create XLA clusters.  After this
   // finishes the clustering decisions made are implicitly stored in
@@ -630,25 +638,57 @@ StatusOr<bool> MarkForCompilationPassImpl::ForEachEdgeInPostOrder(FnTy fn) {
   return changed;
 }
 
-StatusOr<bool> MarkForCompilationPassImpl::ContractEdgeIfPreferred(
-    Cluster* from, Cluster* to) {
-  if (to->cluster_size() == 1) {
-    Node* n = graph_->FindNodeId(to->GetIdOfOnlyNode());
+Node* MarkForCompilationPassImpl::GetOnlyNodeIn(const Cluster& cluster) {
+  return cluster.cluster_size() == 1
+             ? graph_->FindNodeId(cluster.GetIdOfOnlyNode())
+             : nullptr;
+}
 
-    // Shape consuming operations are desirable to cluster with their
-    // operands because they return a small set of scalar values after
-    // consuming a large amount of data. For example, given a graph X -> Y
-    // -> Size -> Z, where the possible clustering is [{X, Y, Size}, {Z}] or
-    // [{X, Y}, {Size, Z}], the better clustering is Size with Y because the
-    // output of size will be a small tensor while Y is a potentially large
-    // tensor that must be computed and possible transposed/copied before
-    // the second cluster executes.
-    if (IsShapeConsumerOp(*n)) {
-      return TryToContractEdge(from, to);
-    }
+bool MarkForCompilationPassImpl::IsSinkLike(const Cluster& cluster) {
+  if (Node* n = GetOnlyNodeIn(cluster)) {
+    return n->type_string() == "NoOp" && n->out_edges().size() == 1 &&
+           (*n->out_edges().begin())->dst()->IsSink();
   }
 
   return false;
+}
+
+bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
+    const Cluster& cluster) {
+  Node* n = GetOnlyNodeIn(cluster);
+  if (!n) {
+    return false;
+  }
+
+  if (n->type_string() != "AssignAddVariableOp" &&
+      n->type_string() != "AssignSubVariableOp") {
+    return false;
+  }
+
+  DataType dtype;
+  if (!GetNodeAttr(n->def(), "dtype", &dtype).ok() ||
+      !DataTypeIsInteger(dtype)) {
+    return false;
+  }
+
+  Node* const_input = nullptr;
+  for (const Edge* e : n->in_edges()) {
+    if (!e->IsControlEdge() && e->src()->IsConstant()) {
+      const_input = e->src();
+      break;
+    }
+  }
+
+  if (!const_input) {
+    return false;
+  }
+
+  const TensorProto* proto = nullptr;
+  if (!GetNodeAttr(const_input->def(), "value", &proto).ok()) {
+    return false;
+  }
+
+  return TensorShapeUtils::IsScalar(proto->tensor_shape());
 }
 
 Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
@@ -658,16 +698,11 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
   // example, from the Grappler fusion pass).
 
-  // Run twice, first only targeted at contracting very beneficial edges then
-  // without restrictions. This helps to minimize data output from clusters (and
-  // possible transpose operations before outputs) that might occur if a
-  // ShapeConsumingOp is on the edge of 2 clusters due to cycle considerations.
-  //
-  // There are potentially many maximal clustering results, but they will not
-  // all be equally performant. Some clustering decision are likely to improve
+  // In general there are multiple maximal clusterings, but they are not all
+  // equally performant.  Some clustering decision are likely to improve
   // performance much more than others, and we cannot order contractions on this
   // cost function, nor can we look at global information while deciding on
-  // individual edges to contract. Instead, we will make decisions on these
+  // individual edges to contract.  Instead, we will make decisions on these
   // important edges then make decisions on all other edges, causing the highest
   // chance of all most important edges to be contracted.
   //
@@ -677,37 +712,97 @@ Status MarkForCompilationPassImpl::RunEdgeContractionLoop() {
   // should be clustered with A because it will prevent a potentially large
   // tensor from A being computed and copied.
   //
-  // This pass will ensure that contraction happens, which cannot be enforced in
-  // a single pass with the current algorithm.
-  // graph and prevent B->C from being clusterd in anticipation of a later A->B
-  // cluster.
+  // To choose better maximal clusterings we make multiple iterations over the
+  // graph in post-order, where each such iteration is called a "phase".
 
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
-                        return ContractEdgeIfPreferred(from, to);
-                      }));
+  // Phase 0: contract metadata operations with their producer.
 
-  // Iterating over the whole graph once in post-order is sufficient to produce
-  // a maximal clustering:
+  TF_RETURN_IF_ERROR(
+      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
+        // Shape consuming operations are desirable to cluster with their
+        // operands because they return a small set of scalar values after
+        // consuming a large amount of data.  For example, given a graph X -> Y
+        // -> Size -> Z, where the possible clustering is [{X, Y, Size}, {Z}] or
+        // [{X, Y}, {Size, Z}], the better clustering is Size with Y because the
+        // output of size will be a small tensor while Y is a potentially large
+        // tensor that must be computed and possible transposed/copied before
+        // the second cluster executes.
+        Node* n = GetOnlyNodeIn(*to);
+        bool is_shape_consumer_op = n && IsShapeConsumerOp(*n);
+        if (!is_shape_consumer_op) {
+          return false;
+        }
+
+        return TryToContractEdge(from, to);
+      }).status());
+
+  // Phase 1: apply a heuristic to ensure that we don't mess up clusterig due to
+  // "group_deps".  After this phase most edges should have been contracted.
+
+  TF_RETURN_IF_ERROR(
+      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) -> StatusOr<bool> {
+        // We split out this phase to get good clustering in the presence of a
+        // specific pattern seen in some graphs:
+        //
+        // digraph {
+        //   ApplyWeightUpdates_0 -> "iteration++"
+        //   ApplyWeightUpdates_1 -> "iteration++"
+        //   ApplyWeightUpdates_2 -> "iteration++"
+        //   ApplyWeightUpdates_0 -> Computation_A
+        //   ApplyWeightUpdates_1 -> Computation_B
+        //   ApplyWeightUpdates_2 -> Computation_C
+        //   Computation_A -> NoOp
+        //   Computation_B -> NoOp
+        //   Computation_C -> NoOp
+        //   "iteration++" -> NoOp
+        // }
+        //
+        // In the graph above we can't cluster iteration++ with any of the
+        // gradient update operations since that will break the TF resource
+        // variable memory model.  Given that constraint the ideal clustering
+        // would be to put all the gradient updates and all of the Computation_*
+        // nodes in one cluster, and leave iteration++ and NoOp unclustered.
+        //
+        // A naive post-order traversal would not create this good clustering,
+        // however.  Instead it will first create a cluster that puts
+        // Computation_* nodes, the NoOp and iteration++ node in a single
+        // cluster, after which it will fail to put any of the
+        // ApplyWeightUpdates_* nodes into this cluster. To avoid this fate we
+        // instead run a pass that avoids contracting edges _into_ NoOps like
+        // the above, and avoid clustering edges _from_ "iteration++" like the
+        // above.  Then we run a second pass that contracts the edges we could
+        // not contract the first time around.
+
+        if (IsSinkLike(*to)) {
+          return false;
+        }
+
+        if (IsScalarIntegerResourceOperation(*from)) {
+          return false;
+        }
+
+        return TryToContractEdge(from, to);
+      }).status());
+
+  // Phase 2: contract any remaining edges.  After this phase we should have a
+  // maximal clustering:
   //
   // A. We visit a cluster only after maximally clustering all its children.
-  // B. By the time we're done with `node` (in `TryToContractEdgesFrom`) all of
-  //    its children that could have been absorbed into `node` have been
-  //    absorbed.
+  // B. By the time we're done with a node all of its children that could have
+  //    been absorbed into the node have been absorbed.
   // C. We have an invariant that making a cluster larger does not make edges
   //    leaving it more contractable. That is, if we have
   //    digraph { X->Y; Y->Z; } then collapsing X->Y does not make it possible
   //    to contract Y->Z if Y->Z was not contractible originally.
-  TF_ASSIGN_OR_RETURN(changed,
-                      ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
-                        return TryToContractEdge(from, to);
-                      }));
+  TF_RETURN_IF_ERROR(ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
+                       return TryToContractEdge(from, to);
+                     }).status());
 
   // Check that the conclusion made above (that iterating over the graph once in
   // post order gives a maximal clustering) holds.  Once the linear time
   // post-order scheme has been battle tested we can move this to happen only in
   // debug builds.
-  TF_ASSIGN_OR_RETURN(changed,
+  TF_ASSIGN_OR_RETURN(bool changed,
                       ForEachEdgeInPostOrder([&](Cluster* from, Cluster* to) {
                         return TryToContractEdge(from, to);
                       }));
