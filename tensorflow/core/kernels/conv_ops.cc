@@ -18,9 +18,9 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/conv_ops.h"
 
@@ -57,11 +57,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
@@ -574,7 +576,7 @@ template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
@@ -978,6 +980,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
     std::vector<AlgorithmDesc> algorithms;
     OP_REQUIRES(
         ctx,
@@ -1049,6 +1052,23 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                            output_tensor, input_desc, filter_desc, output_desc,
                            conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
+#elif TENSORFLOW_USE_ROCM
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+    ProfileResult best_result;
+    bool miopen_find_status =
+        stream
+            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                        filter_ptr, conv_desc, output_desc,
+                                        &output_ptr, &scratch_allocator,
+                                        AlgorithmConfig(), &best_result)
+            .ok();
+
+    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
+                errors::NotFound("Failed to find conv algorithm!"));
+
+    algorithm_config.set_algorithm(best_result.algorithm());
+    algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
@@ -1137,6 +1157,6 @@ template struct LaunchConv2DOp<GPUDevice, float>;
 template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<GPUDevice, double>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
