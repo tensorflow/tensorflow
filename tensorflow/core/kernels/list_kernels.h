@@ -478,12 +478,12 @@ class TensorListConcat : public OpKernel {
     }
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (std::is_same<Device, Eigen::GpuDevice>::value) {
       ConcatGPU<T>(c, inputs_flat, output, &output_flat);
       return;
     }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
   }
 
@@ -654,12 +654,12 @@ class TensorListGather : public OpKernel {
     }
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (std::is_same<Device, Eigen::GpuDevice>::value) {
       ConcatGPU<T>(c, inputs_flat, output, &output_flat);
       return;
     }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
   }
 
