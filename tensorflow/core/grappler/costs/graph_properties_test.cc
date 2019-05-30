@@ -1256,7 +1256,6 @@ TEST_F(GraphPropertiesTest, ArithmeticFunctionReturnTensorValue) {
     const auto out_props = properties.GetOutputProperties("MyFunc");
     const OpInfo::TensorProperties out_prop0 = out_props[0];
     EXPECT_EQ("int32: [2]", PropToString(out_prop0));
-    LOG(INFO) << out_prop0.DebugString();
     EXPECT_FALSE(out_prop0.has_value());
   }
 
