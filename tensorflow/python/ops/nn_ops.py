@@ -4016,7 +4016,7 @@ def _get_noise_shape(x, noise_shape):
 
   if x.shape.dims is not None and n_dims == len(noise_shape_dims):
     new_dims = []
-    for i range(n_dims):
+    for i in range(n_dims):
       if noise_shape_dims[i].value is None:
         new_dims.append(x_shape[i])
       else:
