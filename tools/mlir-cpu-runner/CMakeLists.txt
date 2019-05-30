@@ -28,4 +28,4 @@ add_llvm_executable(mlir-cpu-runner
 )
 llvm_update_compile_flags(mlir-cpu-runner)
 whole_archive_link(mlir-cpu-runner MLIRLLVMIR MLIRStandardOps MLIRTargetLLVMIR MLIRTransforms MLIRTranslation)
-target_link_libraries(mlir-cpu-runner MLIRIR ${LIBS} MLIRCPURunnerLib)
+target_link_libraries(mlir-cpu-runner PRIVATE MLIRIR ${LIBS} MLIRCPURunnerLib)

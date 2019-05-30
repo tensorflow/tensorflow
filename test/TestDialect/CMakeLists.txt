@@ -25,6 +25,7 @@ whole_archive_link(mlir-test-opt
   MLIRTestDialect
 )
 target_link_libraries(mlir-test-opt
+  PRIVATE
   MLIRTestDialect
   MLIRMlirOptLib
   LLVMSupport

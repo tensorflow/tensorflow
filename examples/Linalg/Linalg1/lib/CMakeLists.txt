@@ -62,6 +62,7 @@ whole_archive_link(linalg1-opt
   ${LIBS}
   )
 target_link_libraries(linalg1-opt
+  PRIVATE
   Linalg1
   Linalg1LLVMConversion
   Linalg1DialectConstruction

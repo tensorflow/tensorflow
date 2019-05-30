@@ -5,6 +5,7 @@ add_llvm_executable(mlir-edsc-builder-api-test
 llvm_update_compile_flags(mlir-edsc-builder-api-test)
 
 target_link_libraries(mlir-edsc-builder-api-test
+  PRIVATE
   MLIRAffineOps
   MLIRIR
   MLIREDSC

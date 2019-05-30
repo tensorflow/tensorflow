@@ -5,6 +5,7 @@ add_llvm_executable(mlir-sdbm-api-test
 llvm_update_compile_flags(mlir-sdbm-api-test)
 
 target_link_libraries(mlir-sdbm-api-test
+  PRIVATE
   MLIRIR
   MLIRSDBM
   LLVMCore
