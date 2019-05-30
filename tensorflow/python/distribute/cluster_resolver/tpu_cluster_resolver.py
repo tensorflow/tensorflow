@@ -30,6 +30,7 @@ from six.moves.urllib.request import urlopen
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import get_accelerator_devices
+from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -377,7 +378,9 @@ class TPUClusterResolver(ClusterResolver):
     return self.master()
 
   def get_job_name(self):
-    return self.task_type
+    if context.executing_eagerly() or self._should_resolve(
+    ) or is_running_in_gce():
+      return self.task_type
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
