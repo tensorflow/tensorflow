@@ -34,7 +34,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_state
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -115,7 +117,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
   # between from_ops and to_ops
 
   # 'loop_state' is None if there are no while loops.
-  loop_state = control_flow_ops.MaybeCreateControlFlowState(
+  loop_state = control_flow_state.MaybeCreateControlFlowState(
       between_op_list, between_ops, colocate_gradients_with_ops)
 
   # Initialize pending count for between ops.
@@ -663,7 +665,7 @@ def _GradientsHelper(ys,
               if loop_state:
                 out_grads[i] = loop_state.ZerosLike(op, i)
               else:
-                out_grads[i] = control_flow_ops.ZerosLikeOutsideLoop(op, i)
+                out_grads[i] = control_flow_state.ZerosLikeOutsideLoop(op, i)
           with ops.name_scope(op.name + "_grad"):
             # pylint: disable=protected-access
             with src_graph._original_op(op):
@@ -793,7 +795,7 @@ def _GetGrad(grads, t, unconnected_gradients):
   op_grads = grads.get(op)
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
-      t_dtype = t.dtype if t.dtype != dtypes.resource else dtypes.float32
+      t_dtype = default_gradient.get_zeros_dtype(t)
       return array_ops.zeros_like(t, dtype=t_dtype)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None

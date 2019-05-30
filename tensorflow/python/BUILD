@@ -2439,13 +2439,11 @@ py_library(
         ":constant_op",
         ":control_flow_ops_gen",
         ":control_flow_util",
-        ":data_flow_ops_gen",
         ":dtypes",
         ":framework_ops",
         ":logging_ops_gen",
         ":math_ops",
         ":platform",
-        ":resource_variable_ops_gen",
         ":sparse_tensor",
         ":tensor_array_ops",
         ":tensor_shape",
@@ -2663,7 +2661,9 @@ py_library(
     deps = [
         ":array_ops",
         ":control_flow_ops",
+        ":control_flow_state",
         ":control_flow_util",
+        ":default_gradient",
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_ops",
@@ -2678,6 +2678,37 @@ py_library(
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "default_gradient",
+    srcs = [
+        "ops/default_gradient.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":resource_variable_ops",
+    ],
+)
+
+py_library(
+    name = "control_flow_state",
+    srcs = [
+        "ops/control_flow_state.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":constant_op",
+        ":control_flow_ops",
+        ":control_flow_util",
+        ":data_flow_ops_gen",
+        ":dtypes",
+        ":framework_ops",
+        ":resource_variable_ops_gen",
+        ":tensor_util",
     ],
 )
 
@@ -3819,7 +3850,9 @@ cuda_py_test(
         ":tensor_array_grad",
         ":tensor_array_ops",
         ":test_ops",
+        ":unconnected_gradients",
         ":variable_scope",
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
     ],
     tags = ["no_oss"],  # b/118709825
