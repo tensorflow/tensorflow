@@ -61,6 +61,8 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsReallyConstant(const NodeDef& node) const;
 
+  bool GetTensorFromConstNode(const string& node_name_or_input, Tensor* tensor);
+
   Status MaterializeShapes(const GraphProperties& properties);
 
   Status MaterializeBroadcastGradientArgs(const NodeDef& node,
@@ -239,8 +241,9 @@ class ConstantFolding : public GraphOptimizer {
   void RemoveSplitOrSplitV(const GraphProperties& properties,
                            GraphDef* optimized_graph, NodeDef* node);
 
-  bool MergeConcat(const GraphProperties& properties, bool use_shape_info,
-                   GraphDef* optimized_graph, NodeDef* node);
+  bool GetConcatAxis(const NodeDef& node, int* axis);
+  bool MergeConcat(bool use_shape_info, GraphDef* optimized_graph,
+                   NodeDef* node);
 
   Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
                                                GraphDef* optimized_graph);

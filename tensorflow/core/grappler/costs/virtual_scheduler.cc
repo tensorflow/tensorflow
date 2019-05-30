@@ -359,7 +359,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   graph_properties_ = absl::make_unique<GraphProperties>(*item);
   if (use_static_shapes_) {
     TF_RETURN_IF_ERROR(graph_properties_->InferStatically(
-        true, use_aggressive_shape_inference_));
+        true, use_aggressive_shape_inference_, true));
   } else {
     TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }

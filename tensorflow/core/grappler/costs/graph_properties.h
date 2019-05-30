@@ -89,11 +89,15 @@ class GraphProperties {
   // output values when possible and does other aggressive strategies.
   // Similar to assuming_valid_feeds, this may cause incorrectness in graph
   // analyses, but is useful for simulation or scheduling.
+  // If include_values is true, the values of constant tensors will be
+  // included in the input and output properties.
   Status InferStatically(bool assume_valid_feeds,
-                         bool aggressive_shape_inference);
+                         bool aggressive_shape_inference,
+                         bool include_tensor_values);
   Status InferStatically(bool assume_valid_feeds) {
     return InferStatically(assume_valid_feeds,
-                           /*aggressive_shape_inference=*/false);
+                           /*aggressive_shape_inference=*/false,
+                           /*include_tensor_values=*/true);
   }
   // Infer the shape by running the graph on the specified cluster and recording
   // the shapes of the processed tensors.
@@ -117,6 +121,7 @@ class GraphProperties {
       const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
+
   // Invalidate input/output properties for nodes modified during graph
   // optimization pass, to prevent potential optimizations, based on incorrect
   // shape information.
