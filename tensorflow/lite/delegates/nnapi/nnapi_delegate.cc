@@ -1380,6 +1380,22 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_HASHTABLE_LOOKUP>;
         }
         break;
+      case kTfLiteBuiltinMaximum: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+             input_type == kTfLiteInt32)) {
+          return BasicMappingFn<ANEURALNETWORKS_MAXIMUM>;
+        }
+      } break;
+      case kTfLiteBuiltinMinimum: {
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+             input_type == kTfLiteInt32)) {
+          return BasicMappingFn<ANEURALNETWORKS_MINIMUM>;
+        }
+      } break;
       case kTfLiteBuiltinPrelu:
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
           if (!IsFloatOrUint8Operator(context, node)) {
