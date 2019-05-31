@@ -410,29 +410,18 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "parallel_map_iterator",
-    srcs = ["parallel_map_iterator.cc"],
-    hdrs = ["parallel_map_iterator.h"],
-    deps = [
-        ":stats_utils",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
 tf_kernel_library(
     name = "parallel_map_dataset_op",
-    srcs = ["parallel_map_dataset_op.cc"],
+    srcs = [
+        "parallel_map_dataset_op.cc",
+        "parallel_map_iterator.cc",
+    ],
     hdrs = ["parallel_map_dataset_op.h"],
     deps = [
         ":captured_function",
         ":dataset_utils",
         ":name_utils",
-        ":parallel_map_iterator",
+        ":stats_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/data/parallel_map_iterator.h"
+#include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
 #include <atomic>
 #include <deque>
@@ -30,6 +30,12 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace {
+
+constexpr char kInvocationResults[] = "invocation_results";
+constexpr char kSizeSuffix[] = ".size";
+constexpr char kEndOfInputSuffix[] = ".end_of_input";
+constexpr char kCodeSuffix[] = ".code";
+constexpr char kErrorMessage[] = ".error_message";
 
 class ParallelMapIterator : public DatasetBaseIterator {
  public:
@@ -126,24 +132,27 @@ class ParallelMapIterator : public DatasetBaseIterator {
     }
     CHECK_EQ(num_calls_, 0);
     TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
-    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("invocation_results.size"),
-                                           invocation_results_.size()));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(
+        full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
+        invocation_results_.size()));
     for (size_t i = 0; i < invocation_results_.size(); i++) {
       const auto& result = *(invocation_results_[i]);
       TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, result.status));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat("invocation_results[", i, "].size")),
-          result.return_values.size()));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(strings::StrCat(kInvocationResults, "[",
+                                                        i, "]", kSizeSuffix)),
+                              result.return_values.size()));
       for (size_t j = 0; j < result.return_values.size(); j++) {
-        TF_RETURN_IF_ERROR(writer->WriteTensor(
-            full_name(strings::StrCat("invocation_results[", i, "][", j, "]")),
-            result.return_values[j]));
+        TF_RETURN_IF_ERROR(
+            writer->WriteTensor(full_name(strings::StrCat(
+                                    kInvocationResults, "[", i, "][", j, "]")),
+                                result.return_values[j]));
       }
       if (result.end_of_input) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(strings::StrCat("invocation_results[",
-                                                          i, "].end_of_input")),
-                                ""));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name(strings::StrCat(kInvocationResults, "[", i, "]",
+                                      kEndOfInputSuffix)),
+            ""));
       }
     }
     return Status::OK();
@@ -154,8 +163,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
     mutex_lock l(*mu_);
     TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
     int64 invocation_results_size;
-    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("invocation_results.size"),
-                                          &invocation_results_size));
+    TF_RETURN_IF_ERROR(reader->ReadScalar(
+        full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
+        &invocation_results_size));
     if (!invocation_results_.empty()) invocation_results_.clear();
     for (size_t i = 0; i < invocation_results_size; i++) {
       invocation_results_.push_back(std::make_shared<InvocationResult>());
@@ -165,24 +175,27 @@ class ParallelMapIterator : public DatasetBaseIterator {
       {
         int64 size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat("invocation_results[", i, "].size")),
+            full_name(
+                strings::StrCat(kInvocationResults, "[", i, "]", kSizeSuffix)),
             &size));
         num_return_values = static_cast<size_t>(size);
         if (num_return_values != size) {
           return errors::InvalidArgument(strings::StrCat(
-              full_name(strings::StrCat("invocation_results[", i, "].size")),
+              full_name(strings::StrCat(kInvocationResults, "[", i, "]",
+                                        kSizeSuffix)),
               ": ", size, " is not a valid value of type size_t."));
         }
       }
       result.return_values.reserve(num_return_values);
       for (size_t j = 0; j < num_return_values; j++) {
         result.return_values.emplace_back();
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            full_name(strings::StrCat("invocation_results[", i, "][", j, "]")),
-            &result.return_values.back()));
+        TF_RETURN_IF_ERROR(
+            reader->ReadTensor(full_name(strings::StrCat(kInvocationResults,
+                                                         "[", i, "][", j, "]")),
+                               &result.return_values.back()));
       }
       result.end_of_input = reader->Contains(full_name(
-          strings::StrCat("invocation_results[", i, "].end_of_input")));
+          strings::StrCat(kInvocationResults, "[", i, "]", kEndOfInputSuffix)));
       result.notification.Notify();
     }
     return Status::OK();
@@ -378,12 +391,13 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   string CodeKey(size_t index) {
-    return full_name(strings::StrCat("invocation_results[", index, "].code"));
+    return full_name(
+        strings::StrCat(kInvocationResults, "[", index, "]", kCodeSuffix));
   }
 
   string ErrorMessageKey(size_t index) {
     return full_name(
-        strings::StrCat("invocation_results[", index, "].error_message"));
+        strings::StrCat(kInvocationResults, "[", index, "]", kErrorMessage));
   }
 
   const DatasetBase* const input_dataset_;  // Not owned.
