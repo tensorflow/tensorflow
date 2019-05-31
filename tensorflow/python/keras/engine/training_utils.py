@@ -49,6 +49,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -1000,7 +1001,7 @@ def call_metric_function(metric_fn,
       weights = mask
     else:
       # Update dimensions of weights to match with mask.
-      mask, _, weights = losses_utils.squeeze_or_expand_dimensions(
+      mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
           mask, sample_weight=weights)
       weights *= mask
 

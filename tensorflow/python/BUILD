@@ -4064,6 +4064,7 @@ cuda_py_test(
         ":variables",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,

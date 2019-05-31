@@ -52,6 +52,7 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -1549,7 +1550,7 @@ class Model(network.Network):
             else:
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
-                  losses_utils.squeeze_or_expand_dimensions(
+                  tf_losses_utils.squeeze_or_expand_dimensions(
                       mask, sample_weight=sample_weight))
               sample_weight *= mask
 
