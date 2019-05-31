@@ -1,3 +1,8 @@
+set(LLVM_OPTIONAL_SOURCES
+  TestDialect.cpp
+  TestPatterns.cpp
+)
+
 set(LLVM_TARGET_DEFINITIONS TestOps.td)
 mlir_tablegen(TestOps.h.inc -gen-op-decls)
 mlir_tablegen(TestOps.cpp.inc -gen-op-defs)
