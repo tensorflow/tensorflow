@@ -31,6 +31,12 @@ string OpName(const string& dataset_type) {
     return "FlatMapDataset";
   } else if (dataset_type == "Map") {
     return "MapDataset";
+  } else if (dataset_type == "PaddedBatch") {
+    return "PaddedBatchDataset";
+  } else if (dataset_type == "ParallelInterleave") {
+    return "ParallelInterleaveDataset";
+  } else if (dataset_type == "ParallelMap") {
+    return "ParallelMapDataset";
   } else if (dataset_type == "Prefetch") {
     return "PrefetchDataset";
   } else if (dataset_type == "Range") {
