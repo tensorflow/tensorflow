@@ -48,8 +48,12 @@ using llvm::SourceMgr;
 namespace {
 class Parser;
 
+//===----------------------------------------------------------------------===//
+// ParserState
+//===----------------------------------------------------------------------===//
+
 /// This class refers to all of the state maintained globally by the parser,
-/// such as the current lexer position etc.  The Parser base class provides
+/// such as the current lexer position etc. The Parser base class provides
 /// methods to access this.
 class ParserState {
 public:
@@ -81,9 +85,10 @@ private:
   // This is the next token that hasn't been consumed yet.
   Token curToken;
 };
-} // end anonymous namespace
 
-namespace {
+//===----------------------------------------------------------------------===//
+// Parser
+//===----------------------------------------------------------------------===//
 
 /// This class implement support for parsing global entities like types and
 /// shared entities like SSA names.  It is intended to be subclassed by
@@ -100,9 +105,33 @@ public:
   Module *getModule() { return state.module; }
   const llvm::SourceMgr &getSourceMgr() { return state.lex.getSourceMgr(); }
 
-  /// Return the current token the parser is inspecting.
-  const Token &getToken() const { return state.curToken; }
-  StringRef getTokenSpelling() const { return state.curToken.getSpelling(); }
+  /// Parse a comma-separated list of elements up until the specified end token.
+  ParseResult
+  parseCommaSeparatedListUntil(Token::Kind rightToken,
+                               const std::function<ParseResult()> &parseElement,
+                               bool allowEmptyList = true);
+
+  /// Parse a comma separated list of elements that must have at least one entry
+  /// in it.
+  ParseResult
+  parseCommaSeparatedList(const std::function<ParseResult()> &parseElement);
+
+  ParseResult parsePrettyDialectSymbolName(StringRef &prettyName);
+
+  // We have two forms of parsing methods - those that return a non-null
+  // pointer on success, and those that return a ParseResult to indicate whether
+  // they returned a failure.  The second class fills in by-reference arguments
+  // as the results of their action.
+
+  //===--------------------------------------------------------------------===//
+  // Error Handling
+  //===--------------------------------------------------------------------===//
+
+  /// Emit an error and return failure.
+  InFlightDiagnostic emitError(const Twine &message = {}) {
+    return emitError(state.curToken.getLoc(), message);
+  }
+  InFlightDiagnostic emitError(SMLoc loc, const Twine &message = {});
 
   /// Encode the specified source location information into an attribute for
   /// attachment to the IR.
@@ -110,11 +139,22 @@ public:
     return state.lex.getEncodedSourceLocation(loc);
   }
 
-  /// Emit an error and return failure.
-  InFlightDiagnostic emitError(const Twine &message = {}) {
-    return emitError(state.curToken.getLoc(), message);
+  //===--------------------------------------------------------------------===//
+  // Token Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Return the current token the parser is inspecting.
+  const Token &getToken() const { return state.curToken; }
+  StringRef getTokenSpelling() const { return state.curToken.getSpelling(); }
+
+  /// If the current token has the specified kind, consume it and return true.
+  /// If not, return false.
+  bool consumeIf(Token::Kind kind) {
+    if (state.curToken.isNot(kind))
+      return false;
+    consumeToken(kind);
+    return true;
   }
-  InFlightDiagnostic emitError(SMLoc loc, const Twine &message = {});
 
   /// Advance the current lexer onto the next token.
   void consumeToken() {
@@ -131,69 +171,77 @@ public:
     consumeToken();
   }
 
-  /// If the current token has the specified kind, consume it and return true.
-  /// If not, return false.
-  bool consumeIf(Token::Kind kind) {
-    if (state.curToken.isNot(kind))
-      return false;
-    consumeToken(kind);
-    return true;
-  }
-
   /// Consume the specified token if present and return success.  On failure,
   /// output a diagnostic and return failure.
   ParseResult parseToken(Token::Kind expectedToken, const Twine &message);
 
-  /// Parse a comma-separated list of elements up until the specified end token.
-  ParseResult
-  parseCommaSeparatedListUntil(Token::Kind rightToken,
-                               const std::function<ParseResult()> &parseElement,
-                               bool allowEmptyList = true);
+  //===--------------------------------------------------------------------===//
+  // Type Parsing
+  //===--------------------------------------------------------------------===//
 
-  /// Parse a comma separated list of elements that must have at least one entry
-  /// in it.
-  ParseResult
-  parseCommaSeparatedList(const std::function<ParseResult()> &parseElement);
-
-  // We have two forms of parsing methods - those that return a non-null
-  // pointer on success, and those that return a ParseResult to indicate whether
-  // they returned a failure.  The second class fills in by-reference arguments
-  // as the results of their action.
-
-  // Type parsing.
-  VectorType parseVectorType();
-  ParseResult parseXInDimensionList();
-  ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
-                                       bool allowDynamic);
-  Type parseExtendedType();
-  ParseResult parsePrettyDialectSymbolName(StringRef &prettyName);
-  Type parseTensorType();
-  Type parseComplexType();
-  Type parseTupleType();
-  Type parseMemRefType();
-  Type parseFunctionType();
-  Type parseNonFunctionType();
-  Type parseType();
+  ParseResult parseFunctionResultTypes(SmallVectorImpl<Type> &elements);
   ParseResult parseTypeListNoParens(SmallVectorImpl<Type> &elements);
   ParseResult parseTypeListParens(SmallVectorImpl<Type> &elements);
-  ParseResult parseFunctionResultTypes(SmallVectorImpl<Type> &elements);
 
-  // Attribute parsing.
-  Attribute parseExtendedAttribute(Type type);
+  /// Parse an arbitrary type.
+  Type parseType();
+
+  /// Parse a complex type.
+  Type parseComplexType();
+
+  /// Parse an extended type.
+  Type parseExtendedType();
+
+  /// Parse a function type.
+  Type parseFunctionType();
+
+  /// Parse a memref type.
+  Type parseMemRefType();
+
+  /// Parse a non function type.
+  Type parseNonFunctionType();
+
+  /// Parse a tensor type.
+  Type parseTensorType();
+
+  /// Parse a tuple type.
+  Type parseTupleType();
+
+  /// Parse a vector type.
+  VectorType parseVectorType();
+  ParseResult parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
+                                       bool allowDynamic = true);
+  ParseResult parseXInDimensionList();
+
+  //===--------------------------------------------------------------------===//
+  // Attribute Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse an arbitrary attribute with an optional type.
   Attribute parseAttribute(Type type = {});
 
+  /// Parse an attribute dictionary.
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
-  // Polyhedral structures.
-  ParseResult parseAffineMapOrIntegerSetReference(AffineMap &map,
-                                                  IntegerSet &set);
+  /// Parse an extended attribute.
+  Attribute parseExtendedAttribute(Type type);
+
+  /// Parse a dense elements attribute.
   DenseElementsAttr parseDenseElementsAttr(ShapedType type);
   DenseElementsAttr parseDenseElementsAttrAsTensor(Type eltType);
   ShapedType parseElementsLiteralType();
 
-  // Location Parsing.
+  //===--------------------------------------------------------------------===//
+  // Location Parsing
+  //===--------------------------------------------------------------------===//
 
-  /// Trailing locations.
+  /// Parse an inline location.
+  ParseResult parseLocation(llvm::Optional<Location> *loc);
+
+  /// Parse a raw location instance.
+  ParseResult parseLocationInstance(llvm::Optional<Location> *loc);
+
+  /// Parse an optional trailing location.
   ///
   ///   trailing-location     ::= location?
   ///
@@ -211,15 +259,16 @@ public:
     return success();
   }
 
-  /// Parse an inline location.
-  ParseResult parseLocation(llvm::Optional<Location> *loc);
+  //===--------------------------------------------------------------------===//
+  // Affine Parsing
+  //===--------------------------------------------------------------------===//
 
-  /// Parse a raw location instance.
-  ParseResult parseLocationInstance(llvm::Optional<Location> *loc);
+  ParseResult parseAffineMapOrIntegerSetReference(AffineMap &map,
+                                                  IntegerSet &set);
 
 private:
-  // The Parser is subclassed and reinstantiated.  Do not add additional
-  // non-trivial state here, add it to the ParserState class.
+  /// The Parser is subclassed and reinstantiated.  Do not add additional
+  /// non-trivial state here, add it to the ParserState class.
   ParserState &state;
 };
 } // end anonymous namespace
@@ -227,25 +276,6 @@ private:
 //===----------------------------------------------------------------------===//
 // Helper methods.
 //===----------------------------------------------------------------------===//
-
-InFlightDiagnostic Parser::emitError(SMLoc loc, const Twine &message) {
-  auto diag = getContext()->emitError(getEncodedSourceLocation(loc), message);
-
-  // If we hit a parse error in response to a lexer error, then the lexer
-  // already reported the error.
-  if (getToken().is(Token::error))
-    diag.abandon();
-  return diag;
-}
-
-/// Consume the specified token if present and return success.  On failure,
-/// output a diagnostic and return failure.
-ParseResult Parser::parseToken(Token::Kind expectedToken,
-                               const Twine &message) {
-  if (consumeIf(expectedToken))
-    return success();
-  return emitError(message);
-}
 
 /// Parse a comma separated list of elements that must have at least one entry
 /// in it.
@@ -284,185 +314,6 @@ ParseResult Parser::parseCommaSeparatedListUntil(
       parseToken(rightToken, "expected ',' or '" +
                                  Token::getTokenSpelling(rightToken) + "'"))
     return failure();
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Type Parsing
-//===----------------------------------------------------------------------===//
-
-/// Parse any type except the function type.
-///
-///   non-function-type ::= integer-type
-///                       | index-type
-///                       | float-type
-///                       | extended-type
-///                       | vector-type
-///                       | tensor-type
-///                       | memref-type
-///                       | complex-type
-///                       | tuple-type
-///                       | none-type
-///
-///   index-type ::= `index`
-///   float-type ::= `f16` | `bf16` | `f32` | `f64`
-///   none-type ::= `none`
-///
-Type Parser::parseNonFunctionType() {
-  switch (getToken().getKind()) {
-  default:
-    return (emitError("expected non-function type"), nullptr);
-  case Token::kw_memref:
-    return parseMemRefType();
-  case Token::kw_tensor:
-    return parseTensorType();
-  case Token::kw_complex:
-    return parseComplexType();
-  case Token::kw_tuple:
-    return parseTupleType();
-  case Token::kw_vector:
-    return parseVectorType();
-  // integer-type
-  case Token::inttype: {
-    auto width = getToken().getIntTypeBitwidth();
-    if (!width.hasValue())
-      return (emitError("invalid integer width"), nullptr);
-    auto loc = getEncodedSourceLocation(getToken().getLoc());
-    consumeToken(Token::inttype);
-    return IntegerType::getChecked(width.getValue(), builder.getContext(), loc);
-  }
-
-  // float-type
-  case Token::kw_bf16:
-    consumeToken(Token::kw_bf16);
-    return builder.getBF16Type();
-  case Token::kw_f16:
-    consumeToken(Token::kw_f16);
-    return builder.getF16Type();
-  case Token::kw_f32:
-    consumeToken(Token::kw_f32);
-    return builder.getF32Type();
-  case Token::kw_f64:
-    consumeToken(Token::kw_f64);
-    return builder.getF64Type();
-
-  // index-type
-  case Token::kw_index:
-    consumeToken(Token::kw_index);
-    return builder.getIndexType();
-
-  // none-type
-  case Token::kw_none:
-    consumeToken(Token::kw_none);
-    return builder.getNoneType();
-
-  // extended type
-  case Token::exclamation_identifier:
-    return parseExtendedType();
-  }
-}
-
-/// Parse an arbitrary type.
-///
-///   type ::= function-type
-///          | non-function-type
-///
-Type Parser::parseType() {
-  if (getToken().is(Token::l_paren))
-    return parseFunctionType();
-  return parseNonFunctionType();
-}
-
-/// Parse a vector type.
-///
-///   vector-type ::= `vector` `<` static-dimension-list primitive-type `>`
-///   static-dimension-list ::= (decimal-literal `x`)+
-///
-VectorType Parser::parseVectorType() {
-  consumeToken(Token::kw_vector);
-
-  if (parseToken(Token::less, "expected '<' in vector type"))
-    return nullptr;
-
-  SmallVector<int64_t, 4> dimensions;
-  if (parseDimensionListRanked(dimensions, /*allowDynamic=*/false))
-    return nullptr;
-  if (dimensions.empty())
-    return (emitError("expected dimension size in vector type"), nullptr);
-
-  // Parse the element type.
-  auto typeLoc = getToken().getLoc();
-  auto elementType = parseType();
-  if (!elementType || parseToken(Token::greater, "expected '>' in vector type"))
-    return nullptr;
-
-  return VectorType::getChecked(dimensions, elementType,
-                                getEncodedSourceLocation(typeLoc));
-}
-
-/// Parse an 'x' token in a dimension list, handling the case where the x is
-/// juxtaposed with an element type, as in "xf32", leaving the "f32" as the next
-/// token.
-ParseResult Parser::parseXInDimensionList() {
-  if (getToken().isNot(Token::bare_identifier) || getTokenSpelling()[0] != 'x')
-    return emitError("expected 'x' in dimension list");
-
-  // If we had a prefix of 'x', lex the next token immediately after the 'x'.
-  if (getTokenSpelling().size() != 1)
-    state.lex.resetPointer(getTokenSpelling().data() + 1);
-
-  // Consume the 'x'.
-  consumeToken(Token::bare_identifier);
-
-  return success();
-}
-
-/// Parse a dimension list of a tensor or memref type.  This populates the
-/// dimension list, using -1 for the `?` dimensions if `allowDynamic` is set and
-/// errors out on `?` otherwise.
-///
-///   dimension-list-ranked ::= (dimension `x`)*
-///   dimension ::= `?` | decimal-literal
-///
-/// When `allowDynamic` is not set, this can be also used to parse
-///
-///   static-dimension-list ::= (decimal-literal `x`)*
-ParseResult
-Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
-                                 bool allowDynamic = true) {
-  while (getToken().isAny(Token::integer, Token::question)) {
-    if (consumeIf(Token::question)) {
-      if (!allowDynamic)
-        return emitError("expected static shape");
-      dimensions.push_back(-1);
-    } else {
-      // Hexadecimal integer literals (starting with `0x`) are not allowed in
-      // aggregate type declarations.  Therefore, `0xf32` should be processed as
-      // a sequence of separate elements `0`, `x`, `f32`.
-      if (getTokenSpelling().size() > 1 && getTokenSpelling()[1] == 'x') {
-        // We can get here only if the token is an integer literal.  Hexadecimal
-        // integer literals can only start with `0x` (`1x` wouldn't lex as a
-        // literal, just `1` would, at which point we don't get into this
-        // branch).
-        assert(getTokenSpelling()[0] == '0' && "invalid integer literal");
-        dimensions.push_back(0);
-        state.lex.resetPointer(getTokenSpelling().data() + 1);
-        consumeToken();
-      } else {
-        // Make sure this integer value is in bound and valid.
-        auto dimension = getToken().getUnsignedIntegerValue();
-        if (!dimension.hasValue())
-          return emitError("invalid dimension");
-        dimensions.push_back((int64_t)dimension.getValue());
-        consumeToken(Token::integer);
-      }
-    }
-
-    // Make sure we have an 'x' or something like 'xbf32'.
-    if (parseXInDimensionList())
-      return failure();
-  }
 
   return success();
 }
@@ -603,64 +454,96 @@ static Symbol parseExtendedSymbol(Parser &p, Token::Kind identifierTok,
   return createSymbol(dialectName, symbolData, encodedLoc);
 }
 
-/// Parse an extended type.
-///
-///   extended-type ::= (dialect-type | type-alias)
-///   dialect-type  ::= `!` dialect-namespace `<` `"` type-data `"` `>`
-///   dialect-type  ::= `!` alias-name pretty-dialect-attribute-body?
-///   type-alias    ::= `!` alias-name
-///
-Type Parser::parseExtendedType() {
-  return parseExtendedSymbol<Type>(
-      *this, Token::exclamation_identifier, state.typeAliasDefinitions,
-      [&](StringRef dialectName, StringRef symbolData, Location loc) -> Type {
-        // If we found a registered dialect, then ask it to parse the type.
-        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-          return dialect->parseType(symbolData, loc);
+//===----------------------------------------------------------------------===//
+// Error Handling
+//===----------------------------------------------------------------------===//
 
-        // Otherwise, form a new opaque type.
-        return OpaqueType::getChecked(
-            Identifier::get(dialectName, state.context), symbolData,
-            state.context, loc);
-      });
+InFlightDiagnostic Parser::emitError(SMLoc loc, const Twine &message) {
+  auto diag = getContext()->emitError(getEncodedSourceLocation(loc), message);
+
+  // If we hit a parse error in response to a lexer error, then the lexer
+  // already reported the error.
+  if (getToken().is(Token::error))
+    diag.abandon();
+  return diag;
 }
 
-/// Parse a tensor type.
+//===----------------------------------------------------------------------===//
+// Token Parsing
+//===----------------------------------------------------------------------===//
+
+/// Consume the specified token if present and return success.  On failure,
+/// output a diagnostic and return failure.
+ParseResult Parser::parseToken(Token::Kind expectedToken,
+                               const Twine &message) {
+  if (consumeIf(expectedToken))
+    return success();
+  return emitError(message);
+}
+
+//===----------------------------------------------------------------------===//
+// Type Parsing
+//===----------------------------------------------------------------------===//
+
+/// Parse an arbitrary type.
 ///
-///   tensor-type ::= `tensor` `<` dimension-list element-type `>`
-///   dimension-list ::= dimension-list-ranked | `*x`
+///   type ::= function-type
+///          | non-function-type
 ///
-Type Parser::parseTensorType() {
-  consumeToken(Token::kw_tensor);
+Type Parser::parseType() {
+  if (getToken().is(Token::l_paren))
+    return parseFunctionType();
+  return parseNonFunctionType();
+}
 
-  if (parseToken(Token::less, "expected '<' in tensor type"))
-    return nullptr;
+/// Parse a function result type.
+///
+///   function-result-type ::= type-list-parens
+///                          | non-function-type
+///
+ParseResult Parser::parseFunctionResultTypes(SmallVectorImpl<Type> &elements) {
+  if (getToken().is(Token::l_paren))
+    return parseTypeListParens(elements);
 
-  bool isUnranked;
-  SmallVector<int64_t, 4> dimensions;
+  Type t = parseNonFunctionType();
+  if (!t)
+    return failure();
+  elements.push_back(t);
+  return success();
+}
 
-  if (consumeIf(Token::star)) {
-    // This is an unranked tensor type.
-    isUnranked = true;
+/// Parse a list of types without an enclosing parenthesis.  The list must have
+/// at least one member.
+///
+///   type-list-no-parens ::=  type (`,` type)*
+///
+ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type> &elements) {
+  auto parseElt = [&]() -> ParseResult {
+    auto elt = parseType();
+    elements.push_back(elt);
+    return elt ? success() : failure();
+  };
 
-    if (parseXInDimensionList())
-      return nullptr;
+  return parseCommaSeparatedList(parseElt);
+}
 
-  } else {
-    isUnranked = false;
-    if (parseDimensionListRanked(dimensions))
-      return nullptr;
-  }
+/// Parse a parenthesized list of types.
+///
+///   type-list-parens ::= `(` `)`
+///                      | `(` type-list-no-parens `)`
+///
+ParseResult Parser::parseTypeListParens(SmallVectorImpl<Type> &elements) {
+  if (parseToken(Token::l_paren, "expected '('"))
+    return failure();
 
-  // Parse the element type.
-  auto typeLocation = getEncodedSourceLocation(getToken().getLoc());
-  auto elementType = parseType();
-  if (!elementType || parseToken(Token::greater, "expected '>' in tensor type"))
-    return nullptr;
+  // Handle empty lists.
+  if (getToken().is(Token::r_paren))
+    return consumeToken(), success();
 
-  if (isUnranked)
-    return UnrankedTensorType::getChecked(elementType, typeLocation);
-  return RankedTensorType::getChecked(dimensions, elementType, typeLocation);
+  if (parseTypeListNoParens(elements) ||
+      parseToken(Token::r_paren, "expected ')'"))
+    return failure();
+  return success();
 }
 
 /// Parse a complex type.
@@ -683,28 +566,42 @@ Type Parser::parseComplexType() {
   return ComplexType::getChecked(elementType, typeLocation);
 }
 
-/// Parse a tuple type.
+/// Parse an extended type.
 ///
-///   tuple-type ::= `tuple` `<` (type (`,` type)*)? `>`
+///   extended-type ::= (dialect-type | type-alias)
+///   dialect-type  ::= `!` dialect-namespace `<` `"` type-data `"` `>`
+///   dialect-type  ::= `!` alias-name pretty-dialect-attribute-body?
+///   type-alias    ::= `!` alias-name
 ///
-Type Parser::parseTupleType() {
-  consumeToken(Token::kw_tuple);
+Type Parser::parseExtendedType() {
+  return parseExtendedSymbol<Type>(
+      *this, Token::exclamation_identifier, state.typeAliasDefinitions,
+      [&](StringRef dialectName, StringRef symbolData, Location loc) -> Type {
+        // If we found a registered dialect, then ask it to parse the type.
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
+          return dialect->parseType(symbolData, loc);
 
-  // Parse the '<'.
-  if (parseToken(Token::less, "expected '<' in tuple type"))
+        // Otherwise, form a new opaque type.
+        return OpaqueType::getChecked(
+            Identifier::get(dialectName, state.context), symbolData,
+            state.context, loc);
+      });
+}
+
+/// Parse a function type.
+///
+///   function-type ::= type-list-parens `->` type-list
+///
+Type Parser::parseFunctionType() {
+  assert(getToken().is(Token::l_paren));
+
+  SmallVector<Type, 4> arguments, results;
+  if (parseTypeListParens(arguments) ||
+      parseToken(Token::arrow, "expected '->' in function type") ||
+      parseFunctionResultTypes(results))
     return nullptr;
 
-  // Check for an empty tuple by directly parsing '>'.
-  if (consumeIf(Token::greater))
-    return TupleType::get(getContext());
-
-  // Parse the element types and the '>'.
-  SmallVector<Type, 4> types;
-  if (parseTypeListNoParens(types) ||
-      parseToken(Token::greater, "expected '>' in tuple type"))
-    return nullptr;
-
-  return TupleType::get(types, getContext());
+  return builder.getFunctionType(arguments, results);
 }
 
 /// Parse a memref type.
@@ -780,69 +677,229 @@ Type Parser::parseMemRefType() {
                                 memorySpace, getEncodedSourceLocation(typeLoc));
 }
 
-/// Parse a function type.
+/// Parse any type except the function type.
 ///
-///   function-type ::= type-list-parens `->` type-list
+///   non-function-type ::= integer-type
+///                       | index-type
+///                       | float-type
+///                       | extended-type
+///                       | vector-type
+///                       | tensor-type
+///                       | memref-type
+///                       | complex-type
+///                       | tuple-type
+///                       | none-type
 ///
-Type Parser::parseFunctionType() {
-  assert(getToken().is(Token::l_paren));
+///   index-type ::= `index`
+///   float-type ::= `f16` | `bf16` | `f32` | `f64`
+///   none-type ::= `none`
+///
+Type Parser::parseNonFunctionType() {
+  switch (getToken().getKind()) {
+  default:
+    return (emitError("expected non-function type"), nullptr);
+  case Token::kw_memref:
+    return parseMemRefType();
+  case Token::kw_tensor:
+    return parseTensorType();
+  case Token::kw_complex:
+    return parseComplexType();
+  case Token::kw_tuple:
+    return parseTupleType();
+  case Token::kw_vector:
+    return parseVectorType();
+  // integer-type
+  case Token::inttype: {
+    auto width = getToken().getIntTypeBitwidth();
+    if (!width.hasValue())
+      return (emitError("invalid integer width"), nullptr);
+    auto loc = getEncodedSourceLocation(getToken().getLoc());
+    consumeToken(Token::inttype);
+    return IntegerType::getChecked(width.getValue(), builder.getContext(), loc);
+  }
 
-  SmallVector<Type, 4> arguments, results;
-  if (parseTypeListParens(arguments) ||
-      parseToken(Token::arrow, "expected '->' in function type") ||
-      parseFunctionResultTypes(results))
+  // float-type
+  case Token::kw_bf16:
+    consumeToken(Token::kw_bf16);
+    return builder.getBF16Type();
+  case Token::kw_f16:
+    consumeToken(Token::kw_f16);
+    return builder.getF16Type();
+  case Token::kw_f32:
+    consumeToken(Token::kw_f32);
+    return builder.getF32Type();
+  case Token::kw_f64:
+    consumeToken(Token::kw_f64);
+    return builder.getF64Type();
+
+  // index-type
+  case Token::kw_index:
+    consumeToken(Token::kw_index);
+    return builder.getIndexType();
+
+  // none-type
+  case Token::kw_none:
+    consumeToken(Token::kw_none);
+    return builder.getNoneType();
+
+  // extended type
+  case Token::exclamation_identifier:
+    return parseExtendedType();
+  }
+}
+
+/// Parse a tensor type.
+///
+///   tensor-type ::= `tensor` `<` dimension-list element-type `>`
+///   dimension-list ::= dimension-list-ranked | `*x`
+///
+Type Parser::parseTensorType() {
+  consumeToken(Token::kw_tensor);
+
+  if (parseToken(Token::less, "expected '<' in tensor type"))
     return nullptr;
 
-  return builder.getFunctionType(arguments, results);
+  bool isUnranked;
+  SmallVector<int64_t, 4> dimensions;
+
+  if (consumeIf(Token::star)) {
+    // This is an unranked tensor type.
+    isUnranked = true;
+
+    if (parseXInDimensionList())
+      return nullptr;
+
+  } else {
+    isUnranked = false;
+    if (parseDimensionListRanked(dimensions))
+      return nullptr;
+  }
+
+  // Parse the element type.
+  auto typeLocation = getEncodedSourceLocation(getToken().getLoc());
+  auto elementType = parseType();
+  if (!elementType || parseToken(Token::greater, "expected '>' in tensor type"))
+    return nullptr;
+
+  if (isUnranked)
+    return UnrankedTensorType::getChecked(elementType, typeLocation);
+  return RankedTensorType::getChecked(dimensions, elementType, typeLocation);
 }
 
-/// Parse a list of types without an enclosing parenthesis.  The list must have
-/// at least one member.
+/// Parse a tuple type.
 ///
-///   type-list-no-parens ::=  type (`,` type)*
+///   tuple-type ::= `tuple` `<` (type (`,` type)*)? `>`
 ///
-ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type> &elements) {
-  auto parseElt = [&]() -> ParseResult {
-    auto elt = parseType();
-    elements.push_back(elt);
-    return elt ? success() : failure();
-  };
+Type Parser::parseTupleType() {
+  consumeToken(Token::kw_tuple);
 
-  return parseCommaSeparatedList(parseElt);
+  // Parse the '<'.
+  if (parseToken(Token::less, "expected '<' in tuple type"))
+    return nullptr;
+
+  // Check for an empty tuple by directly parsing '>'.
+  if (consumeIf(Token::greater))
+    return TupleType::get(getContext());
+
+  // Parse the element types and the '>'.
+  SmallVector<Type, 4> types;
+  if (parseTypeListNoParens(types) ||
+      parseToken(Token::greater, "expected '>' in tuple type"))
+    return nullptr;
+
+  return TupleType::get(types, getContext());
 }
 
-/// Parse a parenthesized list of types.
+/// Parse a vector type.
 ///
-///   type-list-parens ::= `(` `)`
-///                      | `(` type-list-no-parens `)`
+///   vector-type ::= `vector` `<` static-dimension-list primitive-type `>`
+///   static-dimension-list ::= (decimal-literal `x`)+
 ///
-ParseResult Parser::parseTypeListParens(SmallVectorImpl<Type> &elements) {
-  if (parseToken(Token::l_paren, "expected '('"))
-    return failure();
+VectorType Parser::parseVectorType() {
+  consumeToken(Token::kw_vector);
 
-  // Handle empty lists.
-  if (getToken().is(Token::r_paren))
-    return consumeToken(), success();
+  if (parseToken(Token::less, "expected '<' in vector type"))
+    return nullptr;
 
-  if (parseTypeListNoParens(elements) ||
-      parseToken(Token::r_paren, "expected ')'"))
-    return failure();
+  SmallVector<int64_t, 4> dimensions;
+  if (parseDimensionListRanked(dimensions, /*allowDynamic=*/false))
+    return nullptr;
+  if (dimensions.empty())
+    return (emitError("expected dimension size in vector type"), nullptr);
+
+  // Parse the element type.
+  auto typeLoc = getToken().getLoc();
+  auto elementType = parseType();
+  if (!elementType || parseToken(Token::greater, "expected '>' in vector type"))
+    return nullptr;
+
+  return VectorType::getChecked(dimensions, elementType,
+                                getEncodedSourceLocation(typeLoc));
+}
+
+/// Parse a dimension list of a tensor or memref type.  This populates the
+/// dimension list, using -1 for the `?` dimensions if `allowDynamic` is set and
+/// errors out on `?` otherwise.
+///
+///   dimension-list-ranked ::= (dimension `x`)*
+///   dimension ::= `?` | decimal-literal
+///
+/// When `allowDynamic` is not set, this can be also used to parse
+///
+///   static-dimension-list ::= (decimal-literal `x`)*
+ParseResult
+Parser::parseDimensionListRanked(SmallVectorImpl<int64_t> &dimensions,
+                                 bool allowDynamic) {
+  while (getToken().isAny(Token::integer, Token::question)) {
+    if (consumeIf(Token::question)) {
+      if (!allowDynamic)
+        return emitError("expected static shape");
+      dimensions.push_back(-1);
+    } else {
+      // Hexadecimal integer literals (starting with `0x`) are not allowed in
+      // aggregate type declarations.  Therefore, `0xf32` should be processed as
+      // a sequence of separate elements `0`, `x`, `f32`.
+      if (getTokenSpelling().size() > 1 && getTokenSpelling()[1] == 'x') {
+        // We can get here only if the token is an integer literal.  Hexadecimal
+        // integer literals can only start with `0x` (`1x` wouldn't lex as a
+        // literal, just `1` would, at which point we don't get into this
+        // branch).
+        assert(getTokenSpelling()[0] == '0' && "invalid integer literal");
+        dimensions.push_back(0);
+        state.lex.resetPointer(getTokenSpelling().data() + 1);
+        consumeToken();
+      } else {
+        // Make sure this integer value is in bound and valid.
+        auto dimension = getToken().getUnsignedIntegerValue();
+        if (!dimension.hasValue())
+          return emitError("invalid dimension");
+        dimensions.push_back((int64_t)dimension.getValue());
+        consumeToken(Token::integer);
+      }
+    }
+
+    // Make sure we have an 'x' or something like 'xbf32'.
+    if (parseXInDimensionList())
+      return failure();
+  }
+
   return success();
 }
 
-/// Parse a function result type.
-///
-///   function-result-type ::= type-list-parens
-///                          | non-function-type
-///
-ParseResult Parser::parseFunctionResultTypes(SmallVectorImpl<Type> &elements) {
-  if (getToken().is(Token::l_paren))
-    return parseTypeListParens(elements);
+/// Parse an 'x' token in a dimension list, handling the case where the x is
+/// juxtaposed with an element type, as in "xf32", leaving the "f32" as the next
+/// token.
+ParseResult Parser::parseXInDimensionList() {
+  if (getToken().isNot(Token::bare_identifier) || getTokenSpelling()[0] != 'x')
+    return emitError("expected 'x' in dimension list");
 
-  Type t = parseNonFunctionType();
-  if (!t)
-    return failure();
-  elements.push_back(t);
+  // If we had a prefix of 'x', lex the next token immediately after the 'x'.
+  if (getTokenSpelling().size() != 1)
+    state.lex.resetPointer(getTokenSpelling().data() + 1);
+
+  // Consume the 'x'.
+  consumeToken(Token::bare_identifier);
+
   return success();
 }
 
@@ -850,173 +907,7 @@ ParseResult Parser::parseFunctionResultTypes(SmallVectorImpl<Type> &elements) {
 // Attribute parsing.
 //===----------------------------------------------------------------------===//
 
-namespace {
-class TensorLiteralParser {
-public:
-  TensorLiteralParser(Parser &p, Type eltTy) : p(p), eltTy(eltTy) {}
-
-  ParseResult parse() {
-    if (p.getToken().is(Token::l_square)) {
-      return parseList(shape);
-    }
-    return parseElement();
-  }
-
-  ArrayRef<Attribute> getValues() const { return storage; }
-
-  ArrayRef<int64_t> getShape() const { return shape; }
-
-private:
-  /// Parse a single element, returning failure if it isn't a valid element
-  /// literal. For example:
-  /// parseElement(1) -> Success, 1
-  /// parseElement([1]) -> Failure
-  ParseResult parseElement();
-
-  /// Parse a list of either lists or elements, returning the dimensions of the
-  /// parsed sub-tensors in dims. For example:
-  ///   parseList([1, 2, 3]) -> Success, [3]
-  ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
-  ///   parseList([[1, 2], 3]) -> Failure
-  ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-  ParseResult parseList(llvm::SmallVectorImpl<int64_t> &dims);
-
-  Parser &p;
-  Type eltTy;
-  SmallVector<int64_t, 4> shape;
-  std::vector<Attribute> storage;
-};
-} // namespace
-
-ParseResult TensorLiteralParser::parseElement() {
-  switch (p.getToken().getKind()) {
-  case Token::floatliteral:
-  case Token::integer:
-  case Token::minus: {
-    auto result = p.parseAttribute(eltTy);
-    if (!result)
-      return failure();
-    // check result matches the element type.
-    switch (eltTy.getKind()) {
-    case StandardTypes::BF16:
-    case StandardTypes::F16:
-    case StandardTypes::F32:
-    case StandardTypes::F64: {
-      // Bitcast the APFloat value to APInt and store the bit representation.
-      auto fpAttrResult = result.dyn_cast<FloatAttr>();
-      if (!fpAttrResult)
-        return p.emitError(
-            "expected tensor literal element with floating point type");
-      auto apInt = fpAttrResult.getValue().bitcastToAPInt();
-
-      // FIXME: using 64 bits and double semantics for BF16 because APFloat does
-      // not support BF16 directly.
-      size_t bitWidth = eltTy.isBF16() ? 64 : eltTy.getIntOrFloatBitWidth();
-      assert(apInt.getBitWidth() == bitWidth);
-      (void)bitWidth;
-      (void)apInt;
-      break;
-    }
-    case StandardTypes::Integer: {
-      if (!result.isa<IntegerAttr>())
-        return p.emitError("expected tensor literal element has integer type");
-      auto value = result.cast<IntegerAttr>().getValue();
-      if (value.getMinSignedBits() > eltTy.getIntOrFloatBitWidth())
-        return p.emitError("tensor literal element has more bits than that "
-                           "specified in the type");
-      break;
-    }
-    default:
-      return p.emitError("expected integer or float tensor element");
-    }
-    storage.push_back(result);
-    break;
-  }
-  default:
-    return p.emitError("expected element literal of primitive type");
-  }
-  return success();
-}
-
-/// Parse a list of either lists or elements, returning the dimensions of the
-/// parsed sub-tensors in dims. For example:
-///   parseList([1, 2, 3]) -> Success, [3]
-///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
-///   parseList([[1, 2], 3]) -> Failure
-///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
-ParseResult
-TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
-  p.consumeToken(Token::l_square);
-
-  auto checkDims =
-      [&](const llvm::SmallVectorImpl<int64_t> &prevDims,
-          const llvm::SmallVectorImpl<int64_t> &newDims) -> ParseResult {
-    if (prevDims == newDims)
-      return success();
-    return p.emitError("tensor literal is invalid; ranks are not consistent "
-                       "between elements");
-  };
-
-  bool first = true;
-  llvm::SmallVector<int64_t, 4> newDims;
-  unsigned size = 0;
-  auto parseCommaSeparatedList = [&]() -> ParseResult {
-    llvm::SmallVector<int64_t, 4> thisDims;
-    if (p.getToken().getKind() == Token::l_square) {
-      if (parseList(thisDims))
-        return failure();
-    } else if (parseElement()) {
-      return failure();
-    }
-    ++size;
-    if (!first)
-      return checkDims(newDims, thisDims);
-    newDims = thisDims;
-    first = false;
-    return success();
-  };
-  if (p.parseCommaSeparatedListUntil(Token::r_square, parseCommaSeparatedList))
-    return failure();
-
-  // Return the sublists' dimensions with 'size' prepended.
-  dims.clear();
-  dims.push_back(size);
-  dims.append(newDims.begin(), newDims.end());
-  return success();
-}
-
-/// Parse an extended attribute.
-///
-///   extended-attribute ::= (dialect-attribute | attribute-alias)
-///   dialect-attribute  ::= `#` dialect-namespace `<` `"` attr-data `"` `>`
-///   dialect-attribute  ::= `#` alias-name pretty-dialect-sym-body?
-///   attribute-alias    ::= `#` alias-name
-///
-Attribute Parser::parseExtendedAttribute(Type type) {
-  Attribute attr = parseExtendedSymbol<Attribute>(
-      *this, Token::hash_identifier, state.attributeAliasDefinitions,
-      [&](StringRef dialectName, StringRef symbolData,
-          Location loc) -> Attribute {
-        // If we found a registered dialect, then ask it to parse the attribute.
-        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
-          return dialect->parseAttribute(symbolData, loc);
-
-        // Otherwise, form a new opaque attribute.
-        return OpaqueAttr::getChecked(
-            Identifier::get(dialectName, state.context), symbolData,
-            state.context, loc);
-      });
-
-  // Ensure that the attribute has the same type as requested.
-  if (type && attr.getType() != type) {
-    emitError("attribute type different than expected: expected ")
-        << type << ", but got " << attr.getType();
-    return nullptr;
-  }
-  return attr;
-}
-
-/// Attribute parsing.
+/// Parse an arbitrary attribute.
 ///
 ///  attribute-value ::= `unit`
 ///                    | bool-literal
@@ -1351,26 +1242,212 @@ Attribute Parser::parseAttribute(Type type) {
   }
 }
 
-/// Dense elements attribute.
+/// Attribute dictionary.
 ///
-///   dense-attr-list ::= `[` attribute-value `]`
-///   attribute-value ::= integer-literal
-///                     | float-literal
-///                     | `[` (attribute-value (`,` attribute-value)*)? `]`
+///   attribute-dict ::= `{` `}`
+///                    | `{` attribute-entry (`,` attribute-entry)* `}`
+///   attribute-entry ::= bare-id `:` attribute-value
 ///
-/// This method returns a constructed dense elements attribute of tensor type
-/// with the shape from the parsing result.
-DenseElementsAttr Parser::parseDenseElementsAttrAsTensor(Type eltType) {
-  TensorLiteralParser literalParser(*this, eltType);
-  if (literalParser.parse())
-    return nullptr;
+ParseResult
+Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
+  if (!consumeIf(Token::l_brace))
+    return failure();
 
-  auto type = builder.getTensorType(literalParser.getShape(), eltType);
-  return builder.getDenseElementsAttr(type, literalParser.getValues())
-      .cast<DenseElementsAttr>();
+  auto parseElt = [&]() -> ParseResult {
+    // We allow keywords as attribute names.
+    if (getToken().isNot(Token::bare_identifier, Token::inttype) &&
+        !getToken().isKeyword())
+      return emitError("expected attribute name");
+    Identifier nameId = builder.getIdentifier(getTokenSpelling());
+    consumeToken();
+
+    // Try to parse the ':' for the attribute value.
+    if (!consumeIf(Token::colon)) {
+      // If there is no ':', we treat this as a unit attribute.
+      attributes.push_back({nameId, builder.getUnitAttr()});
+      return success();
+    }
+
+    auto attr = parseAttribute();
+    if (!attr)
+      return failure();
+
+    attributes.push_back({nameId, attr});
+    return success();
+  };
+
+  if (parseCommaSeparatedListUntil(Token::r_brace, parseElt))
+    return failure();
+
+  return success();
 }
 
-/// Dense elements attribute.
+/// Parse an extended attribute.
+///
+///   extended-attribute ::= (dialect-attribute | attribute-alias)
+///   dialect-attribute  ::= `#` dialect-namespace `<` `"` attr-data `"` `>`
+///   dialect-attribute  ::= `#` alias-name pretty-dialect-sym-body?
+///   attribute-alias    ::= `#` alias-name
+///
+Attribute Parser::parseExtendedAttribute(Type type) {
+  Attribute attr = parseExtendedSymbol<Attribute>(
+      *this, Token::hash_identifier, state.attributeAliasDefinitions,
+      [&](StringRef dialectName, StringRef symbolData,
+          Location loc) -> Attribute {
+        // If we found a registered dialect, then ask it to parse the attribute.
+        if (auto *dialect = state.context->getRegisteredDialect(dialectName))
+          return dialect->parseAttribute(symbolData, loc);
+
+        // Otherwise, form a new opaque attribute.
+        return OpaqueAttr::getChecked(
+            Identifier::get(dialectName, state.context), symbolData,
+            state.context, loc);
+      });
+
+  // Ensure that the attribute has the same type as requested.
+  if (type && attr.getType() != type) {
+    emitError("attribute type different than expected: expected ")
+        << type << ", but got " << attr.getType();
+    return nullptr;
+  }
+  return attr;
+}
+
+namespace {
+class TensorLiteralParser {
+public:
+  TensorLiteralParser(Parser &p, Type eltTy) : p(p), eltTy(eltTy) {}
+
+  ParseResult parse() {
+    if (p.getToken().is(Token::l_square))
+      return parseList(shape);
+    return parseElement();
+  }
+
+  ArrayRef<Attribute> getValues() const { return storage; }
+
+  ArrayRef<int64_t> getShape() const { return shape; }
+
+private:
+  /// Parse a single element, returning failure if it isn't a valid element
+  /// literal. For example:
+  /// parseElement(1) -> Success, 1
+  /// parseElement([1]) -> Failure
+  ParseResult parseElement();
+
+  /// Parse a list of either lists or elements, returning the dimensions of the
+  /// parsed sub-tensors in dims. For example:
+  ///   parseList([1, 2, 3]) -> Success, [3]
+  ///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
+  ///   parseList([[1, 2], 3]) -> Failure
+  ///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
+  ParseResult parseList(llvm::SmallVectorImpl<int64_t> &dims);
+
+  Parser &p;
+  Type eltTy;
+  SmallVector<int64_t, 4> shape;
+  std::vector<Attribute> storage;
+};
+} // namespace
+
+ParseResult TensorLiteralParser::parseElement() {
+  switch (p.getToken().getKind()) {
+  case Token::floatliteral:
+  case Token::integer:
+  case Token::minus: {
+    auto result = p.parseAttribute(eltTy);
+    if (!result)
+      return failure();
+    // check result matches the element type.
+    switch (eltTy.getKind()) {
+    case StandardTypes::BF16:
+    case StandardTypes::F16:
+    case StandardTypes::F32:
+    case StandardTypes::F64: {
+      // Bitcast the APFloat value to APInt and store the bit representation.
+      auto fpAttrResult = result.dyn_cast<FloatAttr>();
+      if (!fpAttrResult)
+        return p.emitError(
+            "expected tensor literal element with floating point type");
+      auto apInt = fpAttrResult.getValue().bitcastToAPInt();
+
+      // FIXME: using 64 bits and double semantics for BF16 because APFloat does
+      // not support BF16 directly.
+      size_t bitWidth = eltTy.isBF16() ? 64 : eltTy.getIntOrFloatBitWidth();
+      assert(apInt.getBitWidth() == bitWidth);
+      (void)bitWidth;
+      (void)apInt;
+      break;
+    }
+    case StandardTypes::Integer: {
+      if (!result.isa<IntegerAttr>())
+        return p.emitError("expected tensor literal element has integer type");
+      auto value = result.cast<IntegerAttr>().getValue();
+      if (value.getMinSignedBits() > eltTy.getIntOrFloatBitWidth())
+        return p.emitError("tensor literal element has more bits than that "
+                           "specified in the type");
+      break;
+    }
+    default:
+      return p.emitError("expected integer or float tensor element");
+    }
+    storage.push_back(result);
+    break;
+  }
+  default:
+    return p.emitError("expected element literal of primitive type");
+  }
+  return success();
+}
+
+/// Parse a list of either lists or elements, returning the dimensions of the
+/// parsed sub-tensors in dims. For example:
+///   parseList([1, 2, 3]) -> Success, [3]
+///   parseList([[1, 2], [3, 4]]) -> Success, [2, 2]
+///   parseList([[1, 2], 3]) -> Failure
+///   parseList([[1, [2, 3]], [4, [5]]]) -> Failure
+ParseResult
+TensorLiteralParser::parseList(llvm::SmallVectorImpl<int64_t> &dims) {
+  p.consumeToken(Token::l_square);
+
+  auto checkDims =
+      [&](const llvm::SmallVectorImpl<int64_t> &prevDims,
+          const llvm::SmallVectorImpl<int64_t> &newDims) -> ParseResult {
+    if (prevDims == newDims)
+      return success();
+    return p.emitError("tensor literal is invalid; ranks are not consistent "
+                       "between elements");
+  };
+
+  bool first = true;
+  llvm::SmallVector<int64_t, 4> newDims;
+  unsigned size = 0;
+  auto parseCommaSeparatedList = [&]() -> ParseResult {
+    llvm::SmallVector<int64_t, 4> thisDims;
+    if (p.getToken().getKind() == Token::l_square) {
+      if (parseList(thisDims))
+        return failure();
+    } else if (parseElement()) {
+      return failure();
+    }
+    ++size;
+    if (!first)
+      return checkDims(newDims, thisDims);
+    newDims = thisDims;
+    first = false;
+    return success();
+  };
+  if (p.parseCommaSeparatedListUntil(Token::r_square, parseCommaSeparatedList))
+    return failure();
+
+  // Return the sublists' dimensions with 'size' prepended.
+  dims.clear();
+  dims.push_back(size);
+  dims.append(newDims.begin(), newDims.end());
+  return success();
+}
+
+/// Parse a dense elements attribute.
 ///
 ///   dense-attr-list ::= `[` attribute-value `]`
 ///   attribute-value ::= integer-literal
@@ -1393,6 +1470,25 @@ DenseElementsAttr Parser::parseDenseElementsAttr(ShapedType type) {
     return nullptr;
   }
 
+  return builder.getDenseElementsAttr(type, literalParser.getValues())
+      .cast<DenseElementsAttr>();
+}
+
+/// Parse a dense elements attribute.
+///
+///   dense-attr-list ::= `[` attribute-value `]`
+///   attribute-value ::= integer-literal
+///                     | float-literal
+///                     | `[` (attribute-value (`,` attribute-value)*)? `]`
+///
+/// This method returns a constructed dense elements attribute of tensor type
+/// with the shape from the parsing result.
+DenseElementsAttr Parser::parseDenseElementsAttrAsTensor(Type eltType) {
+  TensorLiteralParser literalParser(*this, eltType);
+  if (literalParser.parse())
+    return nullptr;
+
+  auto type = builder.getTensorType(literalParser.getShape(), eltType);
   return builder.getDenseElementsAttr(type, literalParser.getValues())
       .cast<DenseElementsAttr>();
 }
@@ -1420,7 +1516,11 @@ ShapedType Parser::parseElementsLiteralType() {
   return sType;
 }
 
-/// Debug Location.
+//===----------------------------------------------------------------------===//
+// Location parsing.
+//===----------------------------------------------------------------------===//
+
+/// Parse a location.
 ///
 ///   location           ::= `loc` inline-location
 ///   inline-location    ::= '(' location-inst ')'
@@ -1608,48 +1708,8 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
   return emitError("expected location instance");
 }
 
-/// Attribute dictionary.
-///
-///   attribute-dict ::= `{` `}`
-///                    | `{` attribute-entry (`,` attribute-entry)* `}`
-///   attribute-entry ::= bare-id `:` attribute-value
-///
-ParseResult
-Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
-  if (!consumeIf(Token::l_brace))
-    return failure();
-
-  auto parseElt = [&]() -> ParseResult {
-    // We allow keywords as attribute names.
-    if (getToken().isNot(Token::bare_identifier, Token::inttype) &&
-        !getToken().isKeyword())
-      return emitError("expected attribute name");
-    Identifier nameId = builder.getIdentifier(getTokenSpelling());
-    consumeToken();
-
-    // Try to parse the ':' for the attribute value.
-    if (!consumeIf(Token::colon)) {
-      // If there is no ':', we treat this as a unit attribute.
-      attributes.push_back({nameId, builder.getUnitAttr()});
-      return success();
-    }
-
-    auto attr = parseAttribute();
-    if (!attr)
-      return failure();
-
-    attributes.push_back({nameId, attr});
-    return success();
-  };
-
-  if (parseCommaSeparatedListUntil(Token::r_brace, parseElt))
-    return failure();
-
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
-// Polyhedral structures.
+// Affine parsing.
 //===----------------------------------------------------------------------===//
 
 /// Lower precedence ops (all at the same precedence level). LNoOp is false in
@@ -2144,6 +2204,85 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
 
   // Parsed a valid affine map.
   return builder.getAffineMap(numDims, numSymbols, exprs);
+}
+
+/// Parse an affine constraint.
+///  affine-constraint ::= affine-expr `>=` `0`
+///                      | affine-expr `==` `0`
+///
+/// isEq is set to true if the parsed constraint is an equality, false if it
+/// is an inequality (greater than or equal).
+///
+AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
+  AffineExpr expr = parseAffineExpr();
+  if (!expr)
+    return nullptr;
+
+  if (consumeIf(Token::greater) && consumeIf(Token::equal) &&
+      getToken().is(Token::integer)) {
+    auto dim = getToken().getUnsignedIntegerValue();
+    if (dim.hasValue() && dim.getValue() == 0) {
+      consumeToken(Token::integer);
+      *isEq = false;
+      return expr;
+    }
+    return (emitError("expected '0' after '>='"), nullptr);
+  }
+
+  if (consumeIf(Token::equal) && consumeIf(Token::equal) &&
+      getToken().is(Token::integer)) {
+    auto dim = getToken().getUnsignedIntegerValue();
+    if (dim.hasValue() && dim.getValue() == 0) {
+      consumeToken(Token::integer);
+      *isEq = true;
+      return expr;
+    }
+    return (emitError("expected '0' after '=='"), nullptr);
+  }
+
+  return (emitError("expected '== 0' or '>= 0' at end of affine constraint"),
+          nullptr);
+}
+
+/// Parse the constraints that are part of an integer set definition.
+///  integer-set-inline
+///                ::= dim-and-symbol-id-lists `:`
+///                '(' affine-constraint-conjunction? ')'
+///  affine-constraint-conjunction ::= affine-constraint (`,`
+///                                       affine-constraint)*
+///
+IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
+                                                    unsigned numSymbols) {
+  if (parseToken(Token::l_paren,
+                 "expected '(' at start of integer set constraint list"))
+    return IntegerSet();
+
+  SmallVector<AffineExpr, 4> constraints;
+  SmallVector<bool, 4> isEqs;
+  auto parseElt = [&]() -> ParseResult {
+    bool isEq;
+    auto elt = parseAffineConstraint(&isEq);
+    ParseResult res = elt ? success() : failure();
+    if (elt) {
+      constraints.push_back(elt);
+      isEqs.push_back(isEq);
+    }
+    return res;
+  };
+
+  // Parse a list of affine constraints (comma-separated).
+  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
+    return IntegerSet();
+
+  // If no constraints were parsed, then treat this as a degenerate 'true' case.
+  if (constraints.empty()) {
+    /* 0 == 0 */
+    auto zero = getAffineConstantExpr(0, getContext());
+    return builder.getIntegerSet(numDims, numSymbols, zero, true);
+  }
+
+  // Parsed a valid integer set.
+  return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
 }
 
 /// Parse an ambiguous reference to either and affine map or an integer set.
@@ -3345,85 +3484,6 @@ Operation *FunctionParser::parseCustomOperation() {
 
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
   return builder.createOperation(opState);
-}
-
-/// Parse an affine constraint.
-///  affine-constraint ::= affine-expr `>=` `0`
-///                      | affine-expr `==` `0`
-///
-/// isEq is set to true if the parsed constraint is an equality, false if it
-/// is an inequality (greater than or equal).
-///
-AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
-  AffineExpr expr = parseAffineExpr();
-  if (!expr)
-    return nullptr;
-
-  if (consumeIf(Token::greater) && consumeIf(Token::equal) &&
-      getToken().is(Token::integer)) {
-    auto dim = getToken().getUnsignedIntegerValue();
-    if (dim.hasValue() && dim.getValue() == 0) {
-      consumeToken(Token::integer);
-      *isEq = false;
-      return expr;
-    }
-    return (emitError("expected '0' after '>='"), nullptr);
-  }
-
-  if (consumeIf(Token::equal) && consumeIf(Token::equal) &&
-      getToken().is(Token::integer)) {
-    auto dim = getToken().getUnsignedIntegerValue();
-    if (dim.hasValue() && dim.getValue() == 0) {
-      consumeToken(Token::integer);
-      *isEq = true;
-      return expr;
-    }
-    return (emitError("expected '0' after '=='"), nullptr);
-  }
-
-  return (emitError("expected '== 0' or '>= 0' at end of affine constraint"),
-          nullptr);
-}
-
-/// Parse the constraints that are part of an integer set definition.
-///  integer-set-inline
-///                ::= dim-and-symbol-id-lists `:`
-///                '(' affine-constraint-conjunction? ')'
-///  affine-constraint-conjunction ::= affine-constraint (`,`
-///                                       affine-constraint)*
-///
-IntegerSet AffineParser::parseIntegerSetConstraints(unsigned numDims,
-                                                    unsigned numSymbols) {
-  if (parseToken(Token::l_paren,
-                 "expected '(' at start of integer set constraint list"))
-    return IntegerSet();
-
-  SmallVector<AffineExpr, 4> constraints;
-  SmallVector<bool, 4> isEqs;
-  auto parseElt = [&]() -> ParseResult {
-    bool isEq;
-    auto elt = parseAffineConstraint(&isEq);
-    ParseResult res = elt ? success() : failure();
-    if (elt) {
-      constraints.push_back(elt);
-      isEqs.push_back(isEq);
-    }
-    return res;
-  };
-
-  // Parse a list of affine constraints (comma-separated).
-  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
-    return IntegerSet();
-
-  // If no constraints were parsed, then treat this as a degenerate 'true' case.
-  if (constraints.empty()) {
-    /* 0 == 0 */
-    auto zero = getAffineConstantExpr(0, getContext());
-    return builder.getIntegerSet(numDims, numSymbols, zero, true);
-  }
-
-  // Parsed a valid integer set.
-  return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
 }
 
 //===----------------------------------------------------------------------===//
