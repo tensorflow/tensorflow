@@ -418,6 +418,10 @@ class _ListWrapper(List, collections.MutableSequence,
     return copied
   # pylint: enable=protected-access
 
+  def __reduce_ex__(self, protocol):
+    return (self.__class__,
+            (self._storage,))
+
   def _make_storage(self, wrapped_list):
     """Use the user's original list for storage."""
     return wrapped_list
