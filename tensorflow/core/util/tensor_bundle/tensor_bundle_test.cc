@@ -943,20 +943,6 @@ TEST(TensorBundleTest, Checksum) {
   }
 }
 
-TEST(TensorBundleTest, Endianness) {
-  BundleWriter writer(Env::Default(), Prefix("end"));
-  TF_EXPECT_OK(writer.Add("key", Constant_2x3<float>(1.0)));
-  TF_ASSERT_OK(writer.Finish());
-
-  // Flips the endianness bit.
-  TF_ASSERT_OK(FlipEndiannessBit(Prefix("end")));
-
-  BundleReader reader(Env::Default(), Prefix("end"));
-  EXPECT_TRUE(errors::IsUnimplemented(reader.status()));
-  EXPECT_TRUE(absl::StrContains(reader.status().ToString(),
-                                "different endianness from the reader"));
-}
-
 TEST(TensorBundleTest, TruncatedTensorContents) {
   Env* env = Env::Default();
   BundleWriter writer(env, Prefix("end"));
