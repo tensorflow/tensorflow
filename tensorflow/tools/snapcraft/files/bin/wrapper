@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+
+# On Fedora $SNAP is under /var and there is some magic to map it to /snap.
+# We need to handle that case and reset $SNAP
+SNAP=$(echo $SNAP | sed -e "s|/var/lib/snapd||g")
+
+if [ "$SNAP_ARCH" == "amd64" ]; then
+  ARCH="x86_64-linux-gnu"
+elif [ "$SNAP_ARCH" == "armhf" ]; then
+  ARCH="arm-linux-gnueabihf"
+elif [ "$SNAP_ARCH" == "arm64" ]; then
+  ARCH="aarch64-linux-gnu"
+else
+  ARCH="$SNAP_ARCH-linux-gnu"
+fi
+
+export XDG_CACHE_HOME=$SNAP_USER_COMMON/.cache
+if [[ -d $SNAP_USER_DATA/.cache && ! -e $XDG_CACHE_HOME ]]; then
+  # the .cache directory used to be stored under $SNAP_USER_DATA, migrate it
+  mv $SNAP_USER_DATA/.cache $SNAP_USER_COMMON/
+fi
+mkdir -p $XDG_CACHE_HOME
+
+# Gdk-pixbuf loaders
+export GDK_PIXBUF_MODULE_FILE=$XDG_CACHE_HOME/gdk-pixbuf-loaders.cache
+export GDK_PIXBUF_MODULEDIR=$SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/2.10.0/loaders
+if [ -f $SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders ]; then
+  $SNAP/usr/lib/$ARCH/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders > $GDK_PIXBUF_MODULE_FILE
+fi
+
+# Create $XDG_RUNTIME_DIR if not exists 
+[ -n "$XDG_RUNTIME_DIR" ] && mkdir -p $XDG_RUNTIME_DIR -m 700
+
+# Display migration alert
+$SNAP/usr/bin/yad \
+  --title="${MIGRATION_TITLE}" \
+  --text="${MIGRATION_TEXT}" \
+  --center \
+  --on-top \
+  --fixed
+
+exec "$@"

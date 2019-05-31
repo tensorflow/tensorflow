@@ -1,0 +1,115 @@
+name: tensorflow
+version: latest
+summary: Machine Learning.
+description: | An open-source software library used for machine learning models.
+ 
+grade: stable
+confinement: classic
+base: core18
+
+architectures:  
+  - build-on: amd64
+ 
+ tensorflow:
+    plugin: cmake
+    source:
+      # Tensorflow GPU is only available for amd64 (x86_64),
+      # so fail the build on other architectures.
+      - on amd64: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-repo-ubuntu1804_10.0.130-1_amd64.deb
+      
+    source-type: deb
+    override-build: |
+      ARCHITECTURE=$(dpkg --print-architecture)
+      if [ "${ARCHITECTURE}" = "amd64" ]; then
+        DEB_API="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/cuda-repo-ubuntu1804_10.0.130-1_amd64.deb"
+      else
+        echo "ERROR! Tensorflow GPU only produces debs for amd64. Failing the build here."
+        exit 1
+      fi
+      DEB_URL=$(curl -w "%{url_effective}\n" -I -L -s -S "${DEB_API}" -o /dev/null)
+      VERSION=$(echo "${DEB_URL}" | cut -d'_' -f2)
+      echo $VERSION > $SNAPCRAFT_STAGE/version
+      
+      snapcraftctl build
+      
+    build-packages:
+      - build-essential
+      - software-properties-common
+      - zlib1g-dev
+      - libzmq3-dev
+      - libhdf5-serial-dev
+      - libfreetype6-dev 
+      - libcurl3-dev
+      - curl
+      - dpkg
+      - sed
+      - wget
+      
+    stage-packages:
+      - libnvidia-cfg1-390
+      - libnvidia-cfg1-418
+      - libnvidia-common-390
+      - libnvidia-common-418
+      - libnvidia-compute-390
+      - libnvidia-compute-418
+      - libnvidia-decode-390
+      - libnvidia-decode-418
+      - libnvidia-encode-390
+      - libnvidia-encode-418
+      - libnvidia-fbc1-390
+      - libnvidia-fbc1-418
+      - libnvidia-gl-390
+      - libnvidia-gl-418
+      - libnvidia-ifr1-390
+      - libnvidia-ifr1-418
+      - libvdpau1
+      - libxnvctrl0
+      - mesa-vdpau-drivers
+      - nvidia-compute-utils-390
+      - nvidia-compute-utils-418
+      - nvidia-dkms-390
+      - nvidia-dkms-418
+      - nvidia-driver-390
+      - nvidia-driver-410
+      - nvidia-driver-418
+      - nvidia-kernel-common-390
+      - nvidia-kernel-common-418
+      - nvidia-kernel-source-390
+      - nvidia-kernel-source-418
+      - nvidia-prime
+      - nvidia-settings
+      - nvidia-utils-390
+      - nvidia-utils-418
+      - vdpau-driver-all
+      - xserver-xorg-video-nvidia-390
+      - xserver-xorg-video-nvidia-418
+
+    prime:
+      -usr/share/doc
+      -usr/share/fonts
+      -usr/share/icons
+      -usr/share/lintian
+      -usr/share/man
+
+  wrapper:
+    after:
+      - tensorflow
+    plugin: cmake
+    source: files/
+
+apps:
+ tensorflow:
+    command: bin/wrapper $SNAP/usr/share/tensorflow/bin/tensorflow
+    desktop: usr/share/applications/tensorflow.desktop
+    environment:
+      # Fallback to XWayland if running in a Wayland session.
+      DISABLE_WAYLAND: 1
+      GSETTINGS_SCHEMA_DIR: $SNAP/usr/share/glib-2.0/schemas
+
+  url-handler:
+    command: bin/wrapper $SNAP/usr/share/tensorflow/bin/tensorflow --open-url
+    desktop: usr/share/applications/tensorflow-url-handler.desktop
+    environment:
+      # Fallback to XWayland if running in a Wayland session.
+      DISABLE_WAYLAND: 1
+      GSETTINGS_SCHEMA_DIR: $SNAP/usr/share/glib-2.0/schemas
