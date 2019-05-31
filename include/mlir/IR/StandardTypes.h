@@ -180,10 +180,10 @@ public:
   const llvm::fltSemantics &getFloatSemantics();
 };
 
-// TODO(b/132735995) Add support for MemRef
-/// This is a common base class between Vector, UnrankedTensor, and RankedTensor
-/// types because they share behavior and semantics around shape, rank, and
-/// fixed element type.
+/// This is a common base class between Vector, UnrankedTensor, RankedTensor,
+/// and MemRef types because they share behavior and semantics around shape,
+/// rank, and fixed element type. Any type with these semantics should inherit
+/// from ShapedType.
 class ShapedType : public Type {
 public:
   using ImplType = detail::ShapedTypeStorage;
@@ -202,8 +202,8 @@ public:
   /// If this is a ranked type, return the rank. Otherwise, abort.
   int64_t getRank() const;
 
-  /// Whether or not this is a ranked type. Vector and ranked tensors have a
-  /// rank, while unranked tensors do not.
+  /// Whether or not this is a ranked type. Memrefs, vectors and ranked tensors
+  /// have a rank, while unranked tensors do not.
   bool hasRank() const;
 
   /// If this is a ranked type, return the shape. Otherwise, abort.
@@ -230,7 +230,8 @@ public:
   static bool classof(Type type) {
     return type.getKind() == StandardTypes::Vector ||
            type.getKind() == StandardTypes::RankedTensor ||
-           type.getKind() == StandardTypes::UnrankedTensor;
+           type.getKind() == StandardTypes::UnrankedTensor ||
+           type.getKind() == StandardTypes::MemRef;
   }
 };
 
@@ -359,7 +360,7 @@ public:
 /// unknown (represented by any negative integer). MemRef types also have an
 /// affine map composition, represented as an array AffineMap pointers.
 class MemRefType
-    : public Type::TypeBase<MemRefType, Type, detail::MemRefTypeStorage> {
+    : public Type::TypeBase<MemRefType, ShapedType, detail::MemRefTypeStorage> {
 public:
   using Base::Base;
 
@@ -389,16 +390,10 @@ public:
                    location);
   }
 
+  // TODO(b/132735995) Get rid of this unsigned override.
   unsigned getRank() const { return getShape().size(); }
 
-  /// Returns an array of memref shape dimension sizes.
   ArrayRef<int64_t> getShape() const;
-
-  /// Return the size of the specified dimension, or -1 if unspecified.
-  int64_t getDimSize(unsigned i) const { return getShape()[i]; }
-
-  /// Returns the elemental type for this memref shape.
-  Type getElementType() const;
 
   /// Returns an array of affine map pointers representing the memref affine
   /// map composition.
@@ -407,15 +402,18 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
+  // TODO(b/132735995) Extract into shaped type.
   /// Returns the number of dimensions with dynamic size.
   unsigned getNumDynamicDims() const;
 
+  // TODO(b/132735995) Extract into shaped type.
   /// If any dimension of the shape has unknown size (<0), it doesn't have
   /// static shape.
   bool hasStaticShape() const { return getNumDynamicDims() == 0; }
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 
+  // TODO(b/132735995) Extract into shaped type.
   /// Integer value indicating that the size in a dimension is dynamic.
   static constexpr int64_t kDynamicDimSize = -1;
 

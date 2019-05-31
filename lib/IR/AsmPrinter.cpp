@@ -203,8 +203,6 @@ void ModuleState::visitType(Type type) {
     // Visit affine maps in memref type.
     for (auto map : memref.getAffineMaps())
       recordAttributeReference(AffineMapAttr::get(map));
-    // TODO(b/132735995) Remove this when MemRef is a subclass of ShapedType.
-    visitType(memref.getElementType());
   }
   if (auto shapedType = type.dyn_cast<ShapedType>()) {
     visitType(shapedType.getElementType());

@@ -200,13 +200,13 @@ struct UnrankedTensorTypeStorage : public ShapedTypeStorage {
   }
 };
 
-struct MemRefTypeStorage : public TypeStorage {
+struct MemRefTypeStorage : public ShapedTypeStorage {
   MemRefTypeStorage(unsigned shapeSize, Type elementType,
                     const int64_t *shapeElements, const unsigned numAffineMaps,
                     AffineMap const *affineMapList, const unsigned memorySpace)
-      : TypeStorage(shapeSize), elementType(elementType),
-        shapeElements(shapeElements), numAffineMaps(numAffineMaps),
-        affineMapList(affineMapList), memorySpace(memorySpace) {}
+      : ShapedTypeStorage(elementType, shapeSize), shapeElements(shapeElements),
+        numAffineMaps(numAffineMaps), affineMapList(affineMapList),
+        memorySpace(memorySpace) {}
 
   /// The hash key used for uniquing.
   // MemRefs are uniqued based on their shape, element type, affine map
@@ -242,8 +242,6 @@ struct MemRefTypeStorage : public TypeStorage {
     return ArrayRef<AffineMap>(affineMapList, numAffineMaps);
   }
 
-  /// The type of each scalar element of the memref.
-  Type elementType;
   /// An array of integers which stores the shape dimension sizes.
   const int64_t *shapeElements;
   /// The number of affine maps in the 'affineMapList' array.

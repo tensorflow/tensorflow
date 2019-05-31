@@ -162,6 +162,8 @@ ArrayRef<int64_t> ShapedType::getShape() const {
     return cast<VectorType>().getShape();
   case StandardTypes::RankedTensor:
     return cast<RankedTensorType>().getShape();
+  case StandardTypes::MemRef:
+    return cast<MemRefType>().getShape();
   default:
     llvm_unreachable("not a ShapedType or not ranked");
   }
@@ -346,8 +348,6 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
 }
 
 ArrayRef<int64_t> MemRefType::getShape() const { return getImpl()->getShape(); }
-
-Type MemRefType::getElementType() const { return getImpl()->elementType; }
 
 ArrayRef<AffineMap> MemRefType::getAffineMaps() const {
   return getImpl()->getAffineMaps();
