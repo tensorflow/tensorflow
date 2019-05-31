@@ -1119,8 +1119,10 @@ def _cudnn_rnn(inputs,
     args["num_proj"] = 0 if num_proj is None else num_proj
     outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(**args)
   elif time_major is False or num_proj:
-    batch_size = array_ops.shape(inputs)[0]
-    max_time = array_ops.shape(inputs)[1]
+    batch_id = 1 if time_major else 0
+    time_id = 0 if time_major else 1
+    batch_size = array_ops.shape(inputs)[batch_id]
+    max_time = array_ops.shape(inputs)[time_id]
     sequence_lengths = array_ops.fill([batch_size], max_time)
     args["sequence_lengths"] = sequence_lengths
     args["time_major"] = time_major

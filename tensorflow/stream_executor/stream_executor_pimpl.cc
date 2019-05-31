@@ -336,8 +336,9 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
-    int num_layers, int hidden_size, int input_size, int c_size, int batch_size,
-    dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+    int num_layers, int hidden_size, int input_size, int cell_size,
+    int batch_size, dnn::RnnInputMode input_mode,
+    dnn::RnnDirectionMode direction_mode,
     dnn::RnnMode rnn_mode, dnn::DataType data_type,
     const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
     ScratchAllocator *state_allocator) {
@@ -347,7 +348,7 @@ StreamExecutor::createRnnDescriptor(
                         "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
-      num_layers, hidden_size, input_size, c_size, batch_size, input_mode,
+      num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
       direction_mode, rnn_mode, data_type, algorithm_config, dropout, seed,
       state_allocator);
 }

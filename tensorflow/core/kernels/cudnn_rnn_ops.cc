@@ -502,23 +502,23 @@ struct CudnnRnnModelShapes {
   int dir_count;
   int max_seq_length;
   int batch_size;
-  int c_num_units;
+  int cell_num_units = 0;
   TensorShape input_shape;
   TensorShape output_shape;
   TensorShape hidden_state_shape;
-  TensorShape c_state_shape;
+  TensorShape cell_state_shape;
   // At present only fields related to cached RnnDescriptor are concerned.
   bool IsCompatibleWith(const CudnnRnnModelShapes& rhs) const {
     return num_layers == rhs.num_layers && input_size == rhs.input_size &&
            num_units == rhs.num_units && dir_count == rhs.dir_count &&
-           c_num_units == rhs.c_num_units;
+           cell_num_units == rhs.cell_num_units;
   }
   string DebugString() const {
     return strings::Printf(
         "[num_layers, input_size, num_units, dir_count, max_seq_length, "
-        "batch_size, c_num_units]: [%d, %d, %d, %d, %d, %d, %d] ",
+        "batch_size, cell_num_units]: [%d, %d, %d, %d, %d, %d, %d] ",
         num_layers, input_size, num_units, dir_count, max_seq_length,
-        batch_size, c_num_units);
+        batch_size, cell_num_units);
   }
 };
 
@@ -619,16 +619,16 @@ Status ExtractForwardInput(OpKernelContext* context,
         model_shapes->hidden_state_shape.DebugString());
   }
   if (model_types.HasInputC()) {
-    model_shapes->c_num_units = (*input_c)->dim_size(2);
+    model_shapes->cell_num_units = (*input_c)->dim_size(2);
     if (time_major) {
-      model_shapes->c_state_shape =
+      model_shapes->cell_state_shape =
           TensorShape({model_shapes->dir_count * model_shapes->num_layers,
-                       model_shapes->batch_size, model_shapes->c_num_units});
+                       model_shapes->batch_size, model_shapes->cell_num_units});
     } else {
-      model_shapes->c_state_shape =
+      model_shapes->cell_state_shape =
           TensorShape({model_shapes->batch_size,
                        model_shapes->dir_count * model_shapes->num_layers,
-                       model_shapes->c_num_units});
+                       model_shapes->cell_num_units});
     }
     if (num_proj == 0) {
       if ((*input_h)->shape() != (*input_c)->shape()) {
@@ -649,18 +649,18 @@ Status ExtractForwardInput(OpKernelContext* context,
       }
     }
   } else {
-    // dummy c_state_shape TODO(kaixih): remove the time_major branch
+    // dummy cell_state_shape TODO(kaixih): remove the time_major branch
     if (time_major) {
-      model_shapes->c_state_shape =
+      model_shapes->cell_state_shape =
           TensorShape({model_shapes->dir_count * model_shapes->num_layers,
                        model_shapes->batch_size, model_shapes->num_units});
     } else {
-      model_shapes->c_state_shape =
+      model_shapes->cell_state_shape =
           TensorShape({model_shapes->batch_size,
                        model_shapes->dir_count * model_shapes->num_layers,
                        model_shapes->num_units});
     }
-    model_shapes->c_num_units = 0;
+    model_shapes->cell_num_units = 0;
   }
   if (time_major) {
     model_shapes->output_shape =
@@ -699,7 +699,7 @@ Status CreateForwardAndBackwardIODescriptors(
 
   const TensorShape& input_shape = model_shapes.input_shape;
   const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
-  const TensorShape& c_state_shape = model_shapes.c_state_shape;
+  const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
   const TensorShape& output_shape = model_shapes.output_shape;
 
   DCHECK_EQ(input_shape.dims(), 3);
@@ -740,19 +740,19 @@ Status CreateForwardAndBackwardIODescriptors(
     *h_state_desc = hidden_state_desc_s.ConsumeValueOrDie();
   }
 
-  DCHECK_EQ(c_state_shape.dims(), 3);
+  DCHECK_EQ(cell_state_shape.dims(), 3);
   if (time_major) {
-    auto c_state_desc_s = executor->createRnnStateTensorDescriptor(
-        c_state_shape.dim_size(0), c_state_shape.dim_size(1),
-        c_state_shape.dim_size(2), data_type);
-    TF_RETURN_IF_ERROR(c_state_desc_s.status());
-    *c_state_desc = c_state_desc_s.ConsumeValueOrDie();
+    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+        cell_state_shape.dim_size(0), cell_state_shape.dim_size(1),
+        cell_state_shape.dim_size(2), data_type);
+    TF_RETURN_IF_ERROR(cell_state_desc_s.status());
+    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
   } else {
-    auto c_state_desc_s = executor->createRnnStateTensorDescriptor(
-        c_state_shape.dim_size(1), c_state_shape.dim_size(0),
-        c_state_shape.dim_size(2), data_type);
-    TF_RETURN_IF_ERROR(c_state_desc_s.status());
-    *c_state_desc = c_state_desc_s.ConsumeValueOrDie();
+    auto cell_state_desc_s = executor->createRnnStateTensorDescriptor(
+        cell_state_shape.dim_size(1), cell_state_shape.dim_size(0),
+        cell_state_shape.dim_size(2), data_type);
+    TF_RETURN_IF_ERROR(cell_state_desc_s.status());
+    *c_state_desc = cell_state_desc_s.ConsumeValueOrDie();
   }
 
   DCHECK_EQ(output_shape.dims(), 3);
@@ -1025,7 +1025,7 @@ class CudnnRNNKernelCommon : public OpKernel {
     // random number generator, therefore set state_allocator to nullptr.
     const AlgorithmConfig algo_config;
     auto rnn_desc_s = stream->parent()->createRnnDescriptor(
-        num_layers, h_num_units, input_size, /*c_size=*/c_num_units,
+        num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
         /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
         ToDataType<T>::value, algo_config, dropout(), seed(),
         /* state_allocator=*/nullptr);
@@ -1047,7 +1047,7 @@ class CudnnRNNKernelCommon : public OpKernel {
     se::dnn::DataType data_type = ToDataType<T>::value;
     auto rnn_desc_s = executor->createRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
-        model_shapes.input_size, model_shapes.c_num_units,
+        model_shapes.input_size, model_shapes.cell_num_units,
         model_shapes.batch_size, input_mode, rnn_direction_mode(), rnn_mode(),
         data_type, algo_config, dropout(), seed(), dropout_state_allocator);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
@@ -1522,14 +1522,14 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                          Tensor** output_c) {
     const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
     const TensorShape& output_shape = model_shapes.output_shape;
-    const TensorShape& c_state_shape = model_shapes.c_state_shape;
+    const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
 
     TF_RETURN_IF_ERROR(context->allocate_output(0, output_shape, output));
     TF_RETURN_IF_ERROR(
         context->allocate_output(1, hidden_state_shape, output_h));
     if (HasInputC()) {
       TF_RETURN_IF_ERROR(
-          context->allocate_output(2, c_state_shape, output_c));
+          context->allocate_output(2, cell_state_shape, output_c));
     } else {
       // Only LSTM uses input_c and output_c. So for all other models, we only
       // need to create dummy outputs.
@@ -1928,7 +1928,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     TF_RETURN_IF_ERROR(context->input("reserve_space", reserve_space));
     const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
     const TensorShape& output_shape = model_shapes.output_shape;
-    const TensorShape& c_state_shape = model_shapes.c_state_shape;
+    const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
 
     if (output_shape != (*output)->shape()) {
       return errors::InvalidArgument(
@@ -1954,16 +1954,16 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     }
 
     if (model_types.HasInputC()) {
-      if (c_state_shape != (*output_c)->shape()) {
+      if (cell_state_shape != (*output_c)->shape()) {
         return errors::InvalidArgument(
             "Invalid output_c shape: ", (*output_c)->shape().DebugString(), " ",
-            c_state_shape.DebugString());
+            cell_state_shape.DebugString());
       }
-      if (c_state_shape != (*output_c_backprop)->shape()) {
+      if (cell_state_shape != (*output_c_backprop)->shape()) {
         return errors::InvalidArgument(
             "Invalid output_c_backprop shape: ",
             (*output_c_backprop)->shape().DebugString(), " ",
-            c_state_shape.DebugString());
+            cell_state_shape.DebugString());
       }
     }
     return Status::OK();
@@ -1976,7 +1976,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
                          Tensor** input_c_backprop, Tensor** params_backprop) {
     const TensorShape& input_shape = model_shapes.input_shape;
     const TensorShape& hidden_state_shape = model_shapes.hidden_state_shape;
-    const TensorShape& c_state_shape = model_shapes.c_state_shape;
+    const TensorShape& cell_state_shape = model_shapes.cell_state_shape;
 
     TF_RETURN_IF_ERROR(
         context->allocate_output(0, input_shape, input_backprop));
@@ -1984,7 +1984,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
         context->allocate_output(1, hidden_state_shape, input_h_backprop));
     if (HasInputC()) {
       TF_RETURN_IF_ERROR(
-          context->allocate_output(2, c_state_shape, input_c_backprop));
+          context->allocate_output(2, cell_state_shape, input_c_backprop));
     } else {
       // Only LSTM uses input_c and output_c. So for all other models, we only
       // need to create dummy outputs.
