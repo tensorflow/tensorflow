@@ -74,7 +74,7 @@ bool UniformParamsFromMinMaxSolver::compute() {
   double deltaMax =
       ((numLevelsDouble * deltaInit) + 2 * deltaInit) / numLevelsDouble;
   double deltaMid;
-  double prevDeltaMid;
+  double prevDeltaMid = 0.0;
   for (stepCount = 0; stepCount < 60; ++stepCount) {
     deltaMid = (deltaInit + deltaMax) / 2.0;
     auto fInit =
