@@ -29,7 +29,6 @@ We have used these examples to verify the accuracy and performance of TF-TRT.
 For more information see
 [Verified Models](https://docs.nvidia.com/deeplearning/frameworks/tf-trt-user-guide/index.html#verified-models).
 
-
 ## Documentation
 
 [TF-TRT documentation](https://docs.nvidia.com/deeplearning/frameworks/tf-trt-user-guide/index.html)
