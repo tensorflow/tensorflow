@@ -410,7 +410,12 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
                                  CollectiveType collective_type,
                                  ncclRedOp_t reduction_op) {
   Collective* to_run = nullptr;
-  const DataType data_type = participant->input->dtype();
+  DataType data_type;
+  if (participant->input != nullptr) {
+    data_type = participant->input->dtype();
+  } else {
+    data_type = participant->output->dtype();
+  }
   {
     mutex_lock l(mu_);
     auto collective_it = collectives_.find(context.collective_key);
