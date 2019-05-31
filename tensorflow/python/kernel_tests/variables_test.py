@@ -132,14 +132,15 @@ class VariablesTestCase(test.TestCase):
       return fibonacci[-1]
 
     measurements = []
-    for depth in range(15, 25):
-      with ops.Graph().as_default():
-        tensor = _build_tensor(depth)
+    with self.cached_session():
+      for depth in range(15, 25):
+        with ops.Graph().as_default():
+          tensor = _build_tensor(depth)
 
-      start_time = time.time()
-      variables._has_cycle(tensor.op, {})
-      end_time = time.time()
-      measurements.append(end_time - start_time)
+        start_time = time.time()
+        variables._has_cycle(tensor.op, {})
+        end_time = time.time()
+        measurements.append(end_time - start_time)
 
     self.assertLess(max(measurements) / min(measurements), 10)
 
