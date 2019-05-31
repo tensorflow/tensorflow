@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 
 
 class BatchMatMulTwoTensorTest(trt_test.TfTrtIntegrationTestBase):
-  """Testing conversion of BatchMatMul(V2) where both inputs are tensors."""
+  """Testing conversion of BatchMatMul where both inputs are tensors."""
 
   def GraphFn(self, inp, inp1):
     x1 = math_ops.matmul(inp, inp1, name="matmul")
@@ -39,7 +39,6 @@ class BatchMatMulTwoTensorTest(trt_test.TfTrtIntegrationTestBase):
     return array_ops.identity(x1, name="output_0")
 
   def GetParams(self):
-    # TODO(aaroey): test graph with different dtypes.
     return self.BuildParams(self.GraphFn, dtypes.float32,
                             [[12, 5, 8, 12], [12, 5, 12, 7]],
                             [[12, 5, 8, 7]])
@@ -49,7 +48,8 @@ class BatchMatMulTwoTensorTest(trt_test.TfTrtIntegrationTestBase):
     return {"TRTEngineOp_0": ["matmul", "relu"]}
 
 class BatchMatMulWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
-  """Testing conversion of BatchMatMul in TF-TRT conversion."""
+  """Testing conversion of BatchMatMulV2 where one operand is a weight and both
+  have the same rank."""
 
   def GraphFn(self, inp):
     dtype = inp.dtype
@@ -59,7 +59,6 @@ class BatchMatMulWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
     return array_ops.identity(x1, name="output_0")
 
   def GetParams(self):
-    # TODO(aaroey): test graph with different dtypes.
     return self.BuildParams(self.GraphFn, dtypes.float32,
                             [[12, 9, 5]], [[12, 9, 7]])
 
@@ -68,7 +67,8 @@ class BatchMatMulWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
     return {"TRTEngineOp_0": ["matmul", "kernel"]}
 
 class BatchMatMulWeightBroadcastDims2Test(trt_test.TfTrtIntegrationTestBase):
-  """Testing conversion of BatchMatMul in TF-TRT conversion."""
+  """Testing conversion of BatchMatMulV2 where weight operand must be
+  broadcasted."""
 
   def GraphFn(self, inp):
     dtype = inp.dtype
@@ -77,7 +77,6 @@ class BatchMatMulWeightBroadcastDims2Test(trt_test.TfTrtIntegrationTestBase):
     return array_ops.identity(x1, name="output_0")
 
   def GetParams(self):
-    # TODO(aaroey): test graph with different dtypes.
     return self.BuildParams(self.GraphFn, dtypes.float32, [[12, 9, 5]],
                             [[12, 9, 7]])
 
