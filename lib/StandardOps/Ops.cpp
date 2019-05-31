@@ -338,7 +338,8 @@ struct SimplifyAllocConst : public OpRewritePattern<AllocOp> {
     auto newMemRefType = MemRefType::get(
         newShapeConstants, memrefType.getElementType(),
         memrefType.getAffineMaps(), memrefType.getMemorySpace());
-    assert(newOperands.size() == newMemRefType.getNumDynamicDims());
+    assert(static_cast<int64_t>(newOperands.size()) ==
+           newMemRefType.getNumDynamicDims());
 
     // Create and insert the alloc op for the new memref.
     auto newAlloc =
@@ -1459,15 +1460,15 @@ ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   }
 
   // Check that source/destination index list size matches associated rank.
-  if (srcIndexInfos.size() !=
-          static_cast<size_t>(types[0].cast<MemRefType>().getRank()) ||
-      dstIndexInfos.size() !=
-          static_cast<size_t>(types[1].cast<MemRefType>().getRank()))
+  if (static_cast<int64_t>(srcIndexInfos.size()) !=
+          types[0].cast<MemRefType>().getRank() ||
+      static_cast<int64_t>(dstIndexInfos.size()) !=
+          types[1].cast<MemRefType>().getRank())
     return parser->emitError(parser->getNameLoc(),
                              "memref rank not equal to indices count");
 
-  if (tagIndexInfos.size() !=
-      static_cast<size_t>(types[2].cast<MemRefType>().getRank()))
+  if (static_cast<int64_t>(tagIndexInfos.size()) !=
+      types[2].cast<MemRefType>().getRank())
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 
@@ -1546,8 +1547,8 @@ ParseResult DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "expected tag to be of memref type");
 
-  if (tagIndexInfos.size() !=
-      static_cast<size_t>(type.cast<MemRefType>().getRank()))
+  if (static_cast<int64_t>(tagIndexInfos.size()) !=
+      type.cast<MemRefType>().getRank())
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 
