@@ -294,6 +294,9 @@ class Reduce(Metric):
     Returns:
       Update op.
     """
+    [values], sample_weight = \
+        metrics_utils.ragged_assert_compatible_and_get_flat_values(
+            [values], sample_weight)
     values = math_ops.cast(values, self._dtype)
     if sample_weight is not None:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
@@ -497,6 +500,9 @@ class MeanRelativeError(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
+    [y_pred, y_true], sample_weight = \
+        metrics_utils.ragged_assert_compatible_and_get_flat_values(
+            [y_pred, y_true], sample_weight)
     y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
 
     y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
@@ -549,6 +555,9 @@ class MeanMetricWrapper(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
+    [y_true, y_pred], sample_weight = \
+        metrics_utils.ragged_assert_compatible_and_get_flat_values(
+            [y_true, y_pred], sample_weight)
     y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
 
     matches = self._fn(y_true, y_pred, **self._fn_kwargs)
@@ -2715,6 +2724,9 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
 
 def accuracy(y_true, y_pred):
+  [y_pred, y_true], _ = \
+      metrics_utils.ragged_assert_compatible_and_get_flat_values(
+          [y_pred, y_true])
   y_pred.shape.assert_is_compatible_with(y_true.shape)
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)

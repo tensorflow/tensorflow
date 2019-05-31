@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -276,9 +278,19 @@ class PyLocalBuffer {
   PyLocalBuffer& operator=(const PyLocalBuffer&) = delete;
   PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
 
-  StatusOr<pybind11::object> ToPython() const;
   const Shape& on_host_shape() const { return on_host_shape_; }
   int device_ordinal() const { return device_ordinal_; }
+
+  // Returns the buffer's value as a tuple DAG of Python arrays. If the value
+  // has previously been prefetched to the host, then returns the prefetched
+  // version, otherwise copies the buffer to the host. Blocks until the
+  // value is ready.
+  StatusOr<pybind11::object> ToPython();
+
+  // Initiates a copy of the buffer to the host. Does not block waiting for
+  // the transfer to complete. The value can be retrieved by a later call to
+  // ToPython().
+  Status CopyToHostAsync();
 
   // Returns the associated device buffer. Returns a nullptr if the buffer is
   // invalid.
@@ -305,6 +317,18 @@ class PyLocalBuffer {
   const int device_ordinal_;
   mutable absl::Mutex mu_;
   std::shared_ptr<PySharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+
+  // The cached value of the buffer on the host, produced either from a call to
+  // CopyToHost or from a call to ToPython. Once a value has been fetched to
+  // the host, it persists Delete() is called or the PyLocalBuffer is destroyed.
+  struct HostValue {
+    absl::Notification ready;
+    // status and value are valid for reading only after `ready` has been
+    // notified.
+    Status status;
+    std::shared_ptr<xla::Literal> value;
+  };
+  std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to

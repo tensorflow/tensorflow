@@ -162,7 +162,7 @@ void EagerContext::ClearCaches() {
   // well.
   mutex_lock ml(cache_mu_);
   executor_.WaitForAllPendingNodes().IgnoreError();
-  gtl::STLDeleteValues(&kernel_cache_);
+  kernel_cache_.clear();
   for (auto& entry : registered_functions_) {
     entry.second->cached_kernel_keys->clear();
   }
@@ -406,7 +406,7 @@ Status EagerContext::RemoveFunction(const string& func) {
     is_last_ref = registered_function->RefCountIsOne();
     if (is_last_ref) {
       for (auto& key : *registered_function->cached_kernel_keys) {
-        delete gtl::EraseKeyReturnValuePtr(&kernel_cache_, key);
+        kernel_cache_.erase(key);
       }
       registered_functions_.erase(func);
     }
@@ -420,15 +420,24 @@ Status EagerContext::RemoveFunction(const string& func) {
   return Status::OK();
 }
 
-KernelAndDevice* EagerContext::GetCachedKernel(Fprint128 cache_key) {
+core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
+    Fprint128 cache_key) {
   tf_shared_lock l(cache_mu_);
-  return gtl::FindPtrOrNull(kernel_cache_, cache_key);
+  auto iter = kernel_cache_.find(cache_key);
+  if (iter == kernel_cache_.end()) {
+    return nullptr;
+  }
+  core::RefCountPtr<KernelAndDevice> new_ref(iter->second.get());
+  new_ref->Ref();
+  return new_ref;
 }
 
 void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
-  gtl::InsertOrUpdate(&kernel_cache_, cache_key, kernel);
+  core::RefCountPtr<KernelAndDevice> new_ref(kernel);
+  new_ref->Ref();
+  kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
       gtl::FindPtrOrNull(registered_functions_, kernel->name());
   // The kernel name can be either a primitive op or a function.

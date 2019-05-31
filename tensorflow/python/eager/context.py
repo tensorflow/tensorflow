@@ -1135,6 +1135,9 @@ class Context(object):
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
 
+    if dev.device_type != "GPU":
+      raise ValueError("Cannot set memory growth on non-GPU devices")
+
     self._memory_growth_map[dev] = enable
 
   def get_virtual_device_configuration(self, dev):

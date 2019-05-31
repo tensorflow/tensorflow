@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 import warnings
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
@@ -53,13 +54,14 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
 
-class GradientsTest(test_util.TensorFlowTestCase):
+class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testGradients(self):
     with ops.Graph().as_default():
@@ -266,6 +268,20 @@ class GradientsTest(test_util.TensorFlowTestCase):
       init = constant_op.constant(100.0)
       var = variables.Variable(init)
       gradient = gradients.gradients(var.read_value(), var)
+      self.assertIsNotNone(gradient)
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testVariableDefaultGrad(self, dtype):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, dtype=dtype)
+      var = variables.Variable(init)
+      dummy_const = constant_op.constant(0.0)
+      gradient = gradients.gradients(
+          dummy_const,
+          var,
+          unconnected_gradients=unconnected_gradients.UnconnectedGradients.ZERO
+      )[0]
+      self.assertEqual(gradient.dtype, dtype)
       self.assertIsNotNone(gradient)
 
   def testVariableAsGraphElementGradient(self):

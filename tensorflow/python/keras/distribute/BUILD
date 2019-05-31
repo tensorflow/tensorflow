@@ -41,11 +41,20 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
+)
+
+py_library(
+    name = "multi_worker_training_state",
+    srcs = [
+        "multi_worker_training_state.py",
+    ],
+    srcs_version = "PY2AND3",
 )
 
 py_library(

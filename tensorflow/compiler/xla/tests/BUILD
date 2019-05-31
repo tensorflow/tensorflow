@@ -1716,7 +1716,7 @@ xla_test(
         # unless they're also tagged "guitar".
         "guitar",
         "manual",
-        "multi_gpu",
+        # "multi_gpu",  # b/133794781
         "no_oss",
         "notap",
     ],

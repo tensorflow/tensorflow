@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 
+#include <limits>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -143,6 +145,11 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim) {
     ShapeUtil::AppendMajorDimension(1, &index_shape);
     std::vector<XlaOp> to_concat;
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    if (ShapeUtil::ElementHasBitWidth(index_shape, 64) &&
+        input_shape.dimensions(dim) < std::numeric_limits<uint32>::max()) {
+      index = ConvertElementType(index, U32);
+      index_shape.set_element_type(U32);
+    }
     to_concat.reserve(input_shape.rank());
     for (int64 i = 0; i < input_shape.rank(); ++i) {
       if (i == dim) {
@@ -172,6 +179,11 @@ XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim, int64 batch_dims) {
       return InvalidArgument(
           "Gather dim must be greater than or equal to the number of batch "
           "dims");
+    }
+    if (ShapeUtil::ElementHasBitWidth(index_shape, 64) &&
+        input_shape.dimensions(dim) < std::numeric_limits<uint32>::max()) {
+      index = ConvertElementType(index, U32);
+      index_shape.set_element_type(U32);
     }
     std::vector<int64> slice_sizes = input_shape.dimensions();
     GatherDimensionNumbers gather_dnums;

@@ -198,8 +198,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
         accum += dst->zero_point;
         accum = std::min<AccumScalar>(accum, spec.clamp_max);
         accum = std::max<AccumScalar>(accum, spec.clamp_min);
-        relaxed_atomic_store(ElementPtr(dst, i, j),
-                             static_cast<DstScalar>(accum));
+        *ElementPtr(dst, i, j) = static_cast<DstScalar>(accum);
       }
     }
   }

@@ -424,6 +424,11 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     const int64 height = GetTensorDim(x, tensor_format, 'H');
     const int64 width = GetTensorDim(x, tensor_format, 'W');
 
+    // We have reserve_space_3 output only in FusedBatchNormV3 op, and in this
+    // case we pass non-nullptr allocators.
+    bool has_reserve_space_3 =
+        reserve_space_allocator != nullptr && workspace_allocator != nullptr;
+
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) In inference mode it's always fast.
     //   (2) Tensorflow enabled batchnorm spatial persistence, and
@@ -431,8 +436,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     const bool fast_nhwc_batch_norm =
         !is_training ||
         (BatchnormSpatialPersistentEnabled() &&
-         DataTypeToEnum<T>::value == DT_HALF &&
-         reserve_space_allocator != nullptr && workspace_allocator != nullptr);
+         DataTypeToEnum<T>::value == DT_HALF && has_reserve_space_3);
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -451,9 +455,11 @@ struct FusedBatchNorm<GPUDevice, T, U> {
 
     // If input is empty, return NaN mean/variance
     if (x.shape().num_elements() == 0) {
-      Tensor* dummy_reserve_space = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(5, {}, &dummy_reserve_space));
+      if (has_reserve_space_3) {
+        Tensor* dummy_reserve_space = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(5, {}, &dummy_reserve_space));
+      }
       functor::SetNanFunctor<U> f;
       f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
       f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
@@ -947,11 +953,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
         nullptr;
 
 #if CUDNN_VERSION >= 7402
+    functor::CudnnBatchNormAllocatorInTemp<uint8> workspace_allocator(context);
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
       reserve_space_data = &reserve_space;
-      functor::CudnnBatchNormAllocatorInTemp<uint8> workspace_allocator(
-          context);
       workspace_allocator_ptr = &workspace_allocator;
     }
 #endif  // CUDNN_VERSION >= 7402

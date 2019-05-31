@@ -355,34 +355,124 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     }
     // We want to repeat 'filter' in the 'input_feature_dim' dimension
     // 'group_count' times.
-    Shape reshaped_filter_shape =
-        ShapeUtil::DeleteDimension(kernel_input_feature_dim, filter->shape());
-    auto reshaped_filter =
-        add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
-    std::vector<int64> broadcast_dims;
-    for (int64 i = 0; i < filter->shape().dimensions_size(); ++i) {
-      if (i == kernel_input_feature_dim) {
-        continue;
+    if (filter_expansion_) {
+      Shape reshaped_filter_shape =
+          ShapeUtil::DeleteDimension(kernel_input_feature_dim, filter->shape());
+      auto reshaped_filter =
+          add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
+      std::vector<int64> broadcast_dims;
+      for (int64 i = 0; i < filter->shape().dimensions_size(); ++i) {
+        if (i == kernel_input_feature_dim) {
+          continue;
+        }
+        broadcast_dims.push_back(i);
       }
-      broadcast_dims.push_back(i);
+      expanded_filter = add(HloInstruction::CreateBroadcast(
+          expanded_filter_shape, reshaped_filter, broadcast_dims));
+
+      auto zero = add(HloInstruction::CreateConstant(
+          LiteralUtil::Zero(expanded_filter_shape.element_type())));
+      auto zero_filter =
+          add(HloInstruction::CreateBroadcast(expanded_filter_shape, zero, {}));
+      auto new_filter = add(HloInstruction::CreateTernary(
+          expanded_filter_shape, HloOpcode::kSelect, filter_mask,
+          expanded_filter, zero_filter));
+
+      auto new_convolution = HloInstruction::CreateConvolve(
+          convolution->shape(), convolution->mutable_operand(0), new_filter,
+          /*feature_group_count=*/1, /*batch_group_count=*/1,
+          convolution->window(), dim_numbers, convolution->precision_config());
+      TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
+          convolution, std::move(new_convolution)));
+    } else {
+      // Add a spatial dimension to emulate a larger output feature dimension
+      // to avoid creating a convolution with group_count = 1.
+      std::vector<int64> new_filter_dimension;
+      new_filter_dimension.reserve(filter->shape().rank() + 1);
+      const int64 depthwise_multiplier =
+          filter->shape().dimensions(kernel_output_feature_dim) / group_count;
+      // Split the kernel output feature dimension into group count and
+      // depthwise mutlipler.
+      for (int64 i = 0; i < filter->shape().rank(); ++i) {
+        if (i == kernel_output_feature_dim) {
+          new_filter_dimension.push_back(group_count);
+          new_filter_dimension.push_back(depthwise_multiplier);
+        } else {
+          new_filter_dimension.push_back(filter->shape().dimensions(i));
+        }
+      }
+      if (kernel_input_feature_dim > kernel_output_feature_dim) {
+        dim_numbers.set_kernel_input_feature_dimension(
+            kernel_input_feature_dim + 1);
+      }
+      for (auto& dim : *dim_numbers.mutable_kernel_spatial_dimensions()) {
+        if (dim > kernel_output_feature_dim) {
+          ++dim;
+        }
+      }
+      dim_numbers.add_kernel_spatial_dimensions(kernel_output_feature_dim + 1);
+      HloInstruction* new_filter =
+          computation_->AddInstruction(HloInstruction::CreateReshape(
+              ShapeUtil::MakeShape(filter->shape().element_type(),
+                                   new_filter_dimension),
+              filter));
+
+      auto new_activation_shape = convolution->operand(0)->shape();
+      dim_numbers.add_input_spatial_dimensions(new_activation_shape.rank());
+
+      // Create and activations spatial dimension of size 1 with a reversed
+      // window and high and low padding equal to the depthwise_multiplier -1.
+      // This emulates a larger output feature dimension with an extra spatial
+      // dimension.
+      ShapeUtil::AppendMajorDimension(1, &new_activation_shape);
+      HloInstruction* new_activation =
+          computation_->AddInstruction(HloInstruction::CreateReshape(
+              new_activation_shape, convolution->mutable_operand(0)));
+      auto new_window = convolution->window();
+      auto new_dim = new_window.add_dimensions();
+      new_dim->set_size(depthwise_multiplier);
+      new_dim->set_window_reversal(true);
+      new_dim->set_padding_low(depthwise_multiplier - 1);
+      new_dim->set_padding_high(depthwise_multiplier - 1);
+      new_dim->set_stride(1);
+      new_dim->set_window_dilation(1);
+      new_dim->set_base_dilation(1);
+
+      // Split the output feature dimension into and output featrue of group
+      // count and depthwise multipler as an output spatial dimension.
+      std::vector<int64> new_output_dimension;
+      new_output_dimension.reserve(convolution->shape().rank() + 1);
+      for (int64 i = 0; i < convolution->shape().rank(); ++i) {
+        if (i == dim_numbers.output_feature_dimension()) {
+          new_output_dimension.push_back(group_count);
+          new_output_dimension.push_back(depthwise_multiplier);
+        } else {
+          new_output_dimension.push_back(convolution->shape().dimensions(i));
+        }
+      }
+      if (dim_numbers.output_batch_dimension() >
+          dim_numbers.output_feature_dimension()) {
+        dim_numbers.set_output_batch_dimension(
+            dim_numbers.output_batch_dimension() + 1);
+      }
+      for (auto& dim : *dim_numbers.mutable_output_spatial_dimensions()) {
+        if (dim > dim_numbers.output_feature_dimension()) {
+          ++dim;
+        }
+      }
+      dim_numbers.add_output_spatial_dimensions(
+          dim_numbers.output_feature_dimension() + 1);
+      auto new_convolution_output_shape = ShapeUtil::MakeShape(
+          convolution->shape().element_type(), new_output_dimension);
+      HloInstruction* new_convolution =
+          computation_->AddInstruction(HloInstruction::CreateConvolve(
+              new_convolution_output_shape, new_activation, new_filter,
+              /*feature_group_count=*/group_count, /*batch_group_count=*/1,
+              new_window, dim_numbers, convolution->precision_config()));
+      TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
+          convolution, HloInstruction::CreateReshape(convolution->shape(),
+                                                     new_convolution)));
     }
-    expanded_filter = add(HloInstruction::CreateBroadcast(
-        expanded_filter_shape, reshaped_filter, broadcast_dims));
-
-    auto zero = add(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(expanded_filter_shape.element_type())));
-    auto zero_filter =
-        add(HloInstruction::CreateBroadcast(expanded_filter_shape, zero, {}));
-    auto new_filter = add(HloInstruction::CreateTernary(
-        expanded_filter_shape, HloOpcode::kSelect, filter_mask, expanded_filter,
-        zero_filter));
-
-    auto new_convolution = HloInstruction::CreateConvolve(
-        convolution->shape(), convolution->mutable_operand(0), new_filter,
-        /*feature_group_count=*/1, /*batch_group_count=*/1,
-        convolution->window(), dim_numbers, convolution->precision_config());
-    TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-        convolution, std::move(new_convolution)));
   } else {
     int64 activation_input_feature_dim = dim_numbers.input_feature_dimension();
 

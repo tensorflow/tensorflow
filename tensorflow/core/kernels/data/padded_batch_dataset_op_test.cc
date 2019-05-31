@@ -560,7 +560,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, GetNext) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -618,7 +618,7 @@ TEST_F(PaddedBatchDatasetOpTest, DatasetNodeName) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -660,7 +660,7 @@ TEST_F(PaddedBatchDatasetOpTest, DatasetTypeString) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -702,7 +702,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, DatasetOutputDtypes) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -745,7 +745,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, DatasetOutputShapes) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -788,7 +788,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, Cardinality) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -831,7 +831,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, DatasetSave) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -878,7 +878,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, IteratorOutputDtypes) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -928,7 +928,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, IteratorOutputShapes) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -978,7 +978,7 @@ TEST_F(PaddedBatchDatasetOpTest, IteratorOutputPrefix) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -1027,7 +1027,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, Roundtrip) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -1109,7 +1109,7 @@ TEST_F(PaddedBatchDatasetOpTest, ShortPadding) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -1162,7 +1162,7 @@ TEST_F(PaddedBatchDatasetOpTest, InvalidPaddedShapes) {
   std::vector<Tensor> padding_values = test_case.padding_values;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&concatenate_dataset_tensor, &batch_size});
+      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
   for (auto &padded_shape : padded_shapes) {
     inputs.emplace_back(&padded_shape);
   }
@@ -1219,7 +1219,7 @@ TEST_F(PaddedBatchDatasetOpTest, InvalidArguments) {
     std::vector<Tensor> padding_values = test_case.padding_values;
     Tensor drop_remainder = test_case.drop_remainder;
     gtl::InlinedVector<TensorValue, 4> inputs(
-        {&concatenate_dataset_tensor, &batch_size});
+        {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
     for (auto &padded_shape : padded_shapes) {
       inputs.emplace_back(&padded_shape);
     }
