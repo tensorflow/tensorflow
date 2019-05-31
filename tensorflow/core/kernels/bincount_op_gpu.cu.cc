@@ -82,7 +82,7 @@ struct BincountFunctor<GPUDevice, T> {
     if (err != gpuSuccess) {
       return errors::Internal(
           "Could not launch HistogramEven to get temp storage: ",
-          GPU_GET_ERROR_STRING(err), ".");
+          GpuGetErrorString(err), ".");
     }
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -104,7 +104,7 @@ struct BincountFunctor<GPUDevice, T> {
         /* stream */ stream);
     if (err != gpuSuccess) {
       return errors::Internal("Could not launch HistogramEven: ",
-                              GPU_GET_ERROR_STRING(err), ".");
+                              GpuGetErrorString(err), ".");
     }
     return Status::OK();
   }

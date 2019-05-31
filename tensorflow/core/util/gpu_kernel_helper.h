@@ -18,18 +18,12 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/util/gpu_cuda_alias.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
 #endif
 #include "tensorflow/core/util/gpu_cuda_alias.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
-
-#if GPU_VERSION >= 7050
-#include "cuda/include/cuda_fp16.h"
-#define TF_HAS_GPU_FP16
-#endif
 
 #if GOOGLE_CUDA
 #define TF_RED_WARPSIZE 32
@@ -51,12 +45,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
-#define GPU_GET_ERROR_STRING(error) cudaGetErrorString(error)
 using gpuStream_t = cudaStream_t;
 using gpuError_t = cudaError_t;
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
-#define GPU_GET_ERROR_STRING(error) hipGetErrorString(error)
 using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
@@ -75,6 +67,18 @@ using gpuError_t = hipError_t;
 #endif
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+// cudaGetErrorString is available to both host and device
+__host__ __device__ inline const char* GpuGetErrorString(cudaError_t error) {
+  return cudaGetErrorString(error);
+#elif TENSORFLOW_USE_ROCM
+// hipGetErrorString is available on host side only
+inline const char* GpuGetErrorString(hipError_t error) {
+  return hipGetErrorString(error);
+#endif
+}
+
 // Launches a GPU kernel through GpuLaunchKernel in Cuda environment, or
 // hipLaunchKernel in ROCm environment with the given arguments.
 //
@@ -220,10 +224,10 @@ __device__ OutType lower_bound(const T* first, OutType count, T val) {
   return first - orig;
 }
 
-}  // namespace cuda_helper
+}  // namespace gpu_helper
 
 #ifndef TENSORFLOW_USE_ROCM
-  namespace cuda_helper = gpu_helper;
+namespace cuda_helper = gpu_helper;
 #endif
 
 }  // namespace tensorflow
