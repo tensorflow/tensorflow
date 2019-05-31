@@ -308,7 +308,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
     for (unsigned r = 0; r < rank; r++) {
       cst.addConstantLowerBound(r, 0);
       int64_t dimSize = memRefType.getDimSize(r);
-      if (dimSize == MemRefType::kDynamicDimSize)
+      if (ShapedType::isDynamic(dimSize))
         continue;
       cst.addConstantUpperBound(r, dimSize - 1);
     }

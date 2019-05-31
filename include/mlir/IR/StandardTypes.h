@@ -214,6 +214,10 @@ public:
   /// has static shape.
   bool hasStaticShape() const;
 
+  /// If this is a ranked type, return the number of dimensions with dynamic
+  /// size. Otherwise, abort.
+  unsigned getNumDynamicDims() const;
+
   /// If this is ranked type, return the size of the specified dimension.
   /// Otherwise, abort.
   int64_t getDimSize(unsigned i) const;
@@ -233,6 +237,9 @@ public:
            type.getKind() == StandardTypes::UnrankedTensor ||
            type.getKind() == StandardTypes::MemRef;
   }
+
+  /// Whether the given dimension size indicates a dynamic dimension.
+  static constexpr bool isDynamic(int64_t dSize) { return dSize < 0; }
 };
 
 /// Vector types represent multi-dimensional SIMD vectors, and have a fixed
@@ -402,20 +409,7 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
-  // TODO(b/132735995) Extract into shaped type.
-  /// Returns the number of dimensions with dynamic size.
-  unsigned getNumDynamicDims() const;
-
-  // TODO(b/132735995) Extract into shaped type.
-  /// If any dimension of the shape has unknown size (<0), it doesn't have
-  /// static shape.
-  bool hasStaticShape() const { return getNumDynamicDims() == 0; }
-
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
-
-  // TODO(b/132735995) Extract into shaped type.
-  /// Integer value indicating that the size in a dimension is dynamic.
-  static constexpr int64_t kDynamicDimSize = -1;
 
 private:
   /// Get or create a new MemRefType defined by the arguments.  If the resulting

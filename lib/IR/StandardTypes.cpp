@@ -116,7 +116,7 @@ unsigned ShapedType::getElementTypeBitWidth() const {
 }
 
 unsigned ShapedType::getNumElements() const {
-  assert(hasStaticShape() && "expected type to have static shape");
+  assert(hasStaticShape() && "cannot get element count of dynamic shaped type");
   auto shape = getShape();
   unsigned num = 1;
   for (auto dim : shape)
@@ -124,18 +124,11 @@ unsigned ShapedType::getNumElements() const {
   return num;
 }
 
-int64_t ShapedType::getRank() const {
-  assert(hasRank());
-  return getShape().size();
-}
+int64_t ShapedType::getRank() const { return getShape().size(); }
 
 bool ShapedType::hasRank() const { return !isa<UnrankedTensorType>(); }
 
-int64_t ShapedType::getDimSize(unsigned i) const {
-  if (hasRank())
-    return getShape()[i];
-  llvm_unreachable("not a ShapedType or not ranked");
-}
+int64_t ShapedType::getDimSize(unsigned i) const { return getShape()[i]; }
 
 /// Get the number of bits require to store a value of the given shaped type.
 /// Compute the value recursively since tensors are allowed to have vectors as
@@ -169,10 +162,12 @@ ArrayRef<int64_t> ShapedType::getShape() const {
   }
 }
 
+unsigned ShapedType::getNumDynamicDims() const {
+  return llvm::count_if(getShape(), isDynamic);
+}
+
 bool ShapedType::hasStaticShape() const {
-  if (!hasRank())
-    return false;
-  return llvm::none_of(getShape(), [](int64_t i) { return i < 0; });
+  return hasRank() && llvm::none_of(getShape(), isDynamic);
 }
 
 //===----------------------------------------------------------------------===//
@@ -291,9 +286,6 @@ LogicalResult UnrankedTensorType::verifyConstructionInvariants(
 // MemRefType
 //===----------------------------------------------------------------------===//
 
-// static constexpr must have a definition (until in C++17 and inline variable).
-constexpr int64_t MemRefType::kDynamicDimSize;
-
 /// Get or create a new MemRefType defined by the arguments.  If the resulting
 /// type would be ill-formed, return nullptr.  If the location is provided,
 /// emit detailed error messages.  To emit errors when the location is unknown,
@@ -354,10 +346,6 @@ ArrayRef<AffineMap> MemRefType::getAffineMaps() const {
 }
 
 unsigned MemRefType::getMemorySpace() const { return getImpl()->memorySpace; }
-
-unsigned MemRefType::getNumDynamicDims() const {
-  return llvm::count_if(getShape(), [](int64_t i) { return i < 0; });
-}
 
 //===----------------------------------------------------------------------===//
 /// ComplexType
