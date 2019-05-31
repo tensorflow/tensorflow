@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "parallel_map_dataset";
-constexpr char kOpName[] = "ParallelMapDataset";
 
 class ParallelMapDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -29,14 +29,17 @@ class ParallelMapDatasetOpTest : public DatasetOpsTestBase {
       bool use_inter_op_parallelism, bool sloppy, bool preserve_cardinality,
       std::unique_ptr<OpKernel>* parallel_map_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "num_parallel_calls"},
-        {{"f", func},
-         {"Targuments", {}},
-         {"output_types", output_types},
-         {"output_shapes", output_shapes},
-         {"use_inter_op_parallelism", use_inter_op_parallelism},
-         {"sloppy", sloppy},
-         {"preserve_cardinality", preserve_cardinality}});
+        kNodeName, name_utils::OpName(ParallelMapDatasetOp::kDatasetType),
+        {ParallelMapDatasetOp::kInputDataset,
+         ParallelMapDatasetOp::kNumParallelCalls},
+        {{ParallelMapDatasetOp::kFunc, func},
+         {ParallelMapDatasetOp::kTarguments, {}},
+         {ParallelMapDatasetOp::kOutputTypes, output_types},
+         {ParallelMapDatasetOp::kOutputShapes, output_shapes},
+         {ParallelMapDatasetOp::kUseInterOpParallelism,
+          use_inter_op_parallelism},
+         {ParallelMapDatasetOp::kSloppy, sloppy},
+         {ParallelMapDatasetOp::kPreserveCardinality, preserve_cardinality}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, parallel_map_kernel));
     return Status::OK();
   }
@@ -408,7 +411,8 @@ TEST_F(ParallelMapDatasetOpTest, DatasetTypeString) {
                              &parallel_map_dataset));
   core::ScopedUnref scoped_unref_map_dataset(parallel_map_dataset);
 
-  EXPECT_EQ(parallel_map_dataset->type_string(), kOpName);
+  EXPECT_EQ(parallel_map_dataset->type_string(),
+            name_utils::OpName(ParallelMapDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetOutputDtypes) {
@@ -699,7 +703,9 @@ TEST_F(ParallelMapDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(parallel_map_dataset->MakeIterator(iterator_ctx.get(),
                                                   "Iterator", &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::ParallelMap");
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix(ParallelMapDatasetOp::kDatasetType,
+                                       "Iterator"));
 }
 
 TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {

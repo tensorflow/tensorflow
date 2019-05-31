@@ -53,7 +53,7 @@ string DatasetDebugString(const string& dataset_type,
   }
 
   string debug_str;
-  strings::StrAppend(&debug_str, dataset_type, "Op(");
+  strings::StrAppend(&debug_str, OpName(dataset_type), "Op(");
   auto iter = args.begin();
   while (iter != args.end() - 1) {
     strings::StrAppend(&debug_str, *iter, ", ");
