@@ -484,6 +484,8 @@ struct SourceMgrDiagnosticHandlerImpl;
 /// This class is a utility diagnostic handler for use with llvm::SourceMgr.
 class SourceMgrDiagnosticHandler : public ScopedDiagnosticHandler {
 public:
+  SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr, MLIRContext *ctx,
+                             llvm::raw_ostream &os);
   SourceMgrDiagnosticHandler(llvm::SourceMgr &mgr, MLIRContext *ctx);
   ~SourceMgrDiagnosticHandler();
 
@@ -500,6 +502,9 @@ protected:
 
   /// The source manager that we are wrapping.
   llvm::SourceMgr &mgr;
+
+  /// The output stream to use when printing diagnostics.
+  llvm::raw_ostream &os;
 
 private:
   /// Convert a location into the given memory buffer into an SMLoc.
@@ -525,6 +530,8 @@ struct SourceMgrDiagnosticVerifierHandlerImpl;
 /// corresponding line of the source file.
 class SourceMgrDiagnosticVerifierHandler : public SourceMgrDiagnosticHandler {
 public:
+  SourceMgrDiagnosticVerifierHandler(llvm::SourceMgr &srcMgr, MLIRContext *ctx,
+                                     llvm::raw_ostream &out);
   SourceMgrDiagnosticVerifierHandler(llvm::SourceMgr &srcMgr, MLIRContext *ctx);
   ~SourceMgrDiagnosticVerifierHandler();
 
