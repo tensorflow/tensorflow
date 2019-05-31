@@ -268,7 +268,7 @@ class NormalizeTest(test_lib.TestCase):
             norm = np.expand_dims(norm, d)
       return x / norm
     elif axis is None:
-        # Tensorlfow handles None differently
+        # Tensorflow handles None differently
         norm = np.linalg.norm(x.flatten(), ord, axis)
         return x / norm
     else:
