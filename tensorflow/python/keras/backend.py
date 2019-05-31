@@ -3507,8 +3507,15 @@ class EagerExecutionFunction(object):
         value = math_ops.cast(value, tensor.dtype)
       converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
+
+    # EagerTensor.numpy() will often make a copy to ensure memory safety.
+    # However in this case `outputs` is not directly returned, so it is always
+    # safe to reuse the underlying buffer without checking. In such a case the
+    # private numpy conversion method is preferred to guarantee performance. We
+    # also have to call `_cpu_nograd()` since the Tensor may not be on the CPU.
+    # (otherwise it's just a no-op.)
     return nest.pack_sequence_as(
-        self._outputs_structure, [x.numpy() for x in outputs],
+        self._outputs_structure, [x._cpu_nograd()._numpy() for x in outputs],  # pylint: disable=protected-access
         expand_composites=True)
 
 
