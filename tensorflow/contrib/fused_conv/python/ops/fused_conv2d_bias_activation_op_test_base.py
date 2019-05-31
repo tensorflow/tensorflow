@@ -641,6 +641,21 @@ def _GetFusedConvInt8TestParams():
   """Returns test parameters shared by all Int8 FusedConv tests."""
   _test_params = [
       {
+          "batch_size": 4,
+          "input_channels": 256,
+          "output_channels": 256,
+          "input_height": 228,
+          "input_width": 228,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 1,
+          "horizontal_stride": 1,
+          "conv_input_scale": 0.00002,
+          "side_input_scale": 0.2,
+          "bias_scale": 1.0,
+          "padding_type": "SAME"
+      },
+      {
           "batch_size": 1,
           "input_channels": 4,
           "output_channels": 4,
