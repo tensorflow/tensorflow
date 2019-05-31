@@ -427,9 +427,11 @@ cc_library(
 tf_kernel_library(
     name = "parallel_map_dataset_op",
     srcs = ["parallel_map_dataset_op.cc"],
+    hdrs = ["parallel_map_dataset_op.h"],
     deps = [
         ":captured_function",
         ":dataset_utils",
+        ":name_utils",
         ":parallel_map_iterator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -563,9 +565,11 @@ tf_cc_test(
 tf_kernel_library(
     name = "parallel_interleave_dataset_op",
     srcs = ["parallel_interleave_dataset_op.cc"],
+    hdrs = ["parallel_interleave_dataset_op.h"],
     deps = [
         ":captured_function",
         ":dataset_utils",
+        ":name_utils",
         ":stats_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
