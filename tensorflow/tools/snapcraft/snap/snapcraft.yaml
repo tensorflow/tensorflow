@@ -9,8 +9,25 @@ base: core18
 
 architectures:  
   - build-on: amd64
+
+parts:
+  tensorflow:
+    source: https://github.com/tensorflow/tensorflow.git
+    source-tag: v1.12.0
+    plugin: python
+    python-version: python3
+    build-packages:
+      - build-essential
+      - software-properties-common
+      - zlib1g-dev
+      - libzmq3-dev
+      - libhdf5-serial-dev
+      - libfreetype6-dev 
+      - libcurl3-dev
+      - python3-pip
+      - python3-numpy
  
- tensorflow:
+ tensorflow-gpu:
     plugin: cmake
     source:
       # Tensorflow GPU is only available for amd64 (x86_64),
@@ -33,13 +50,6 @@ architectures:
       snapcraftctl build
       
     build-packages:
-      - build-essential
-      - software-properties-common
-      - zlib1g-dev
-      - libzmq3-dev
-      - libhdf5-serial-dev
-      - libfreetype6-dev 
-      - libcurl3-dev
       - curl
       - dpkg
       - sed
