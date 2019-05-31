@@ -204,7 +204,7 @@ Status GraphCompiler::Compile() {
 
         AssignExpressionToTensor(control_dep_tensor.get(),
                                  XlaExpression::XlaOp(op0, tensor->dtype()));
-        tensor_inputs_.at(0) = control_dep_tensor.get();
+        tensor_inputs_.at(0) = TensorValue(control_dep_tensor.get());
       }
     }
 

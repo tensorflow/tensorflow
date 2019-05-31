@@ -93,8 +93,8 @@ StatusOr<se::StreamExecutor*> PoplarPlatform::GetExecutor(
 StatusOr<std::unique_ptr<se::StreamExecutor>>
 PoplarPlatform::GetUncachedExecutor(const se::StreamExecutorConfig& config) {
   auto executor = absl::make_unique<se::StreamExecutor>(
-      this, absl::make_unique<PoplarExecutor>());
-  TF_RETURN_IF_ERROR(executor->Init(config.ordinal, config.device_options));
+      this, absl::make_unique<PoplarExecutor>(), config.ordinal);
+  TF_RETURN_IF_ERROR(executor->Init(config.device_options));
 
   return std::move(executor);
 }
