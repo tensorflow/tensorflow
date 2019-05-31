@@ -60,7 +60,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.13.0, < 1.14.0',
-    'tf-estimator-nightly >= 1.14.0.dev2019042301, < 1.14.0.dev2019042302',
+    'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
 ]
