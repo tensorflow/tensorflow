@@ -253,6 +253,58 @@ class L2LossTest(test_lib.TestCase):
     self.assertLess(err, err_tolerance)
 
 
+class NormalizeTest(test_lib.TestCase):
+
+  def _Normalize(x, ord, axis):
+    if isinstance(axis, (list, tuple)):
+      norm = np.linalg.norm(x, ord, tuple(axis))
+      if axis[0] < axis[1]:
+        # This prevents axis to be inserted in-between
+        # e.g. when (-2, -1)
+        for d in reversed(axis):
+            norm = np.expand_dims(norm, d)
+      else:
+        for d in axis:
+            norm = np.expand_dims(norm, d)
+      return x / norm
+    elif axis is None:
+        # Tensorlfow handles None differently
+        norm = np.linalg.norm(x.flatten(), ord, axis)
+        return x / norm
+    else:
+      norm = np.apply_along_axis(np.linalg.norm, axis, x, ord)
+      return x / np.expand_dims(norm, axis)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNormalize(self):
+      for use_static_shape in False, True:
+        for dtype in np.float32, np.float64, np.complex64, np.complex128:
+          for rows in 2, 5:
+            for cols in 2, 5:
+              for batch in [], [2], [2, 3]:
+                shape = batch + [rows, cols]
+                for ord in "euclidean", "fro", 0.5, 1, 2, np.inf:
+                  for axis in [
+                      None, (-2, -1), (-1, -2), -len(shape), 0, len(shape) - 1
+                  ]:
+                    is_matrix_norm = (isinstance(axis, tuple) or
+                          isinstance(axis, list)) and len(axis) == 2
+                    is_fancy_p_norm = np.isreal(ord) and np.floor(ord) != ord
+                    if ((not is_matrix_norm and ord == "fro") or
+                        (is_matrix_norm and is_fancy_p_norm)):
+                      # Not supported by neither numpy.linalg.norm nor tf.norm
+                      continue
+                    if ord == "euclidean" or (axis is None and len(shape) > 2):
+                      # Not supported by numpy.linalg.norm"
+                      continue
+                    matrix = np.random.randn(*shape).astype(dtype)
+                    if dtype in (np.complex64, np.complex128):
+                      matrix += 1j * np.random.randn(*shape).astype(dtype)
+                    tf_n = nn_impl.normalize(matrix, ord, axis)
+                    np_n = _Normalize(matrix, ord, axis)
+                    self.assertAllClose(tf_n, np_n, rtol=1e-5, atol=1e-5)
+
+
 class L2NormalizeTest(test_lib.TestCase):
 
   def _l2Normalize(self, x, dim):
