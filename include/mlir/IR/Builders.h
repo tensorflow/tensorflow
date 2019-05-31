@@ -103,6 +103,7 @@ public:
 
   UnitAttr getUnitAttr();
   BoolAttr getBoolAttr(bool value);
+  DictionaryAttr getDictionaryAttr(ArrayRef<NamedAttribute> value);
   IntegerAttr getIntegerAttr(Type type, int64_t value);
   IntegerAttr getIntegerAttr(Type type, const APInt &value);
   FloatAttr getFloatAttr(Type type, double value);

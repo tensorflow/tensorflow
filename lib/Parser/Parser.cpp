@@ -1025,6 +1025,7 @@ Attribute Parser::parseExtendedAttribute(Type type) {
 ///                    | string-literal
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
+///                    | `{` (attribute-entry (`,` attribute-entry)*)? `}`
 ///                    | function-id `:` function-type
 ///                    | (`splat` | `dense`) `<` (tensor-type | vector-type) `,`
 ///                      attribute-value `>`
@@ -1153,6 +1154,12 @@ Attribute Parser::parseAttribute(Type type) {
     return builder.getStringAttr(val);
   }
 
+  case Token::l_brace: {
+    SmallVector<NamedAttribute, 4> elements;
+    if (parseAttributeDict(elements))
+      return nullptr;
+    return builder.getDictionaryAttr(elements);
+  }
   case Token::l_square: {
     consumeToken(Token::l_square);
     SmallVector<Attribute, 4> elements;

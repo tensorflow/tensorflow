@@ -630,6 +630,15 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
   case StandardAttributes::Bool:
     os << (attr.cast<BoolAttr>().getValue() ? "true" : "false");
     break;
+  case StandardAttributes::Dictionary:
+    os << '{';
+    interleaveComma(attr.cast<DictionaryAttr>().getValue(),
+                    [&](NamedAttribute attr) {
+                      os << attr.first << ": ";
+                      printAttribute(attr.second);
+                    });
+    os << '}';
+    break;
   case StandardAttributes::Integer: {
     auto intAttr = attr.cast<IntegerAttr>();
     // Print all integer attributes as signed unless i1.

@@ -117,6 +117,10 @@ BoolAttr Builder::getBoolAttr(bool value) {
   return BoolAttr::get(value, context);
 }
 
+DictionaryAttr Builder::getDictionaryAttr(ArrayRef<NamedAttribute> value) {
+  return DictionaryAttr::get(value, context);
+}
+
 IntegerAttr Builder::getI64IntegerAttr(int64_t value) {
   return IntegerAttr::get(getIntegerType(64), APInt(64, value));
 }

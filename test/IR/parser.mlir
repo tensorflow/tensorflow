@@ -369,6 +369,13 @@ func @attributes() {
   // CHECK: "foo"() {set12: [#set{{[0-9]+}}, #set{{[0-9]+}}]}
   "foo"() {set12: [#set1, #set2]} : () -> ()
 
+  // CHECK: "foo"() {dictionary: {bool: true, fn: @ifinst}}
+  "foo"() {dictionary: {bool: true, fn: @ifinst}} : () -> ()
+
+  // Check that the dictionary attribute elements are sorted.
+  // CHECK: "foo"() {dictionary: {bar: false, bool: true, fn: @ifinst}}
+  "foo"() {dictionary: {fn: @ifinst, bar: false, bool: true}} : () -> ()
+
   // CHECK: "foo"() {d: 1.000000e-09 : f64, func: [], i123: 7 : i64, if: "foo"} : () -> ()
   "foo"() {if: "foo", func: [], i123: 7, d: 1.e-9} : () -> ()
 

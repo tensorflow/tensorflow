@@ -104,6 +104,98 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
 bool BoolAttr::getValue() const { return getImpl()->value; }
 
 //===----------------------------------------------------------------------===//
+// DictionaryAttr
+//===----------------------------------------------------------------------===//
+
+/// Perform a three-way comparison between the names of the specified
+/// NamedAttributes.
+static int compareNamedAttributes(const NamedAttribute *lhs,
+                                  const NamedAttribute *rhs) {
+  return lhs->first.str().compare(rhs->first.str());
+}
+
+DictionaryAttr DictionaryAttr::get(ArrayRef<NamedAttribute> value,
+                                   MLIRContext *context) {
+  assert(llvm::all_of(value,
+                      [](const NamedAttribute &attr) { return attr.second; }) &&
+         "value cannot have null entries");
+
+  // We need to sort the element list to canonicalize it, but we also don't want
+  // to do a ton of work in the super common case where the element list is
+  // already sorted.
+  SmallVector<NamedAttribute, 8> storage;
+  switch (value.size()) {
+  case 0:
+    break;
+  case 1:
+    // A single element is already sorted.
+    break;
+  case 2:
+    assert(value[0].first != value[1].first &&
+           "DictionaryAttr element names must be unique");
+
+    // Don't invoke a general sort for two element case.
+    if (value[0].first.strref() > value[1].first.strref()) {
+      storage.push_back(value[1]);
+      storage.push_back(value[0]);
+      value = storage;
+    }
+    break;
+  default:
+    // Check to see they are sorted already.
+    bool isSorted = true;
+    for (unsigned i = 0, e = value.size() - 1; i != e; ++i) {
+      if (value[i].first.strref() > value[i + 1].first.strref()) {
+        isSorted = false;
+        break;
+      }
+    }
+    // If not, do a general sort.
+    if (!isSorted) {
+      storage.append(value.begin(), value.end());
+      llvm::array_pod_sort(storage.begin(), storage.end(),
+                           compareNamedAttributes);
+      value = storage;
+    }
+
+    // Ensure that the attribute elements are unique.
+    assert(std::adjacent_find(value.begin(), value.end(),
+                              [](NamedAttribute l, NamedAttribute r) {
+                                return l.first == r.first;
+                              }) == value.end() &&
+           "DictionaryAttr element names must be unique");
+  }
+
+  return Base::get(context, StandardAttributes::Dictionary, value);
+}
+
+ArrayRef<NamedAttribute> DictionaryAttr::getValue() const {
+  return getImpl()->getElements();
+}
+
+/// Return the specified attribute if present, null otherwise.
+Attribute DictionaryAttr::get(StringRef name) const {
+  for (auto elt : getValue())
+    if (elt.first.is(name))
+      return elt.second;
+  return nullptr;
+}
+Attribute DictionaryAttr::get(Identifier name) const {
+  for (auto elt : getValue())
+    if (elt.first == name)
+      return elt.second;
+  return nullptr;
+}
+
+DictionaryAttr::iterator DictionaryAttr::begin() const {
+  return getValue().begin();
+}
+DictionaryAttr::iterator DictionaryAttr::end() const {
+  return getValue().end();
+}
+size_t DictionaryAttr::size() const { return getValue().size(); }
+
+//===----------------------------------------------------------------------===//
 // IntegerAttr
 //===----------------------------------------------------------------------===//
 
@@ -675,10 +767,10 @@ void DenseIntElementsAttr::getValues(SmallVectorImpl<APInt> &values) const {
   values.assign(raw_begin(), raw_end());
 }
 
-template<typename Fn, typename Attr>
-static ShapedType mappingHelper(
-    Fn mapping, Attr& attr, ShapedType inType, Type newElementType,
-    llvm::SmallVectorImpl<char>& data) {
+template <typename Fn, typename Attr>
+static ShapedType mappingHelper(Fn mapping, Attr &attr, ShapedType inType,
+                                Type newElementType,
+                                llvm::SmallVectorImpl<char> &data) {
   size_t bitWidth = getDenseElementBitwidth(newElementType);
 
   ShapedType newArrayType;
@@ -692,7 +784,7 @@ static ShapedType mappingHelper(
     assert(newArrayType && "Unhandled tensor type");
 
   data.resize(APInt::getNumWords(bitWidth * inType.getNumElements()) *
-               APInt::APINT_WORD_SIZE);
+              APInt::APINT_WORD_SIZE);
 
   uint64_t elementIdx = 0;
   for (auto value : attr) {
@@ -709,8 +801,8 @@ DenseElementsAttr DenseIntElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APInt &)> mapping) const {
   llvm::SmallVector<char, 8> elementData;
-  auto newArrayType = mappingHelper(
-      mapping, *this, getType(), newElementType, elementData);
+  auto newArrayType =
+      mappingHelper(mapping, *this, getType(), newElementType, elementData);
 
   return get(newArrayType, elementData);
 }
@@ -746,8 +838,8 @@ DenseElementsAttr DenseFPElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APFloat &)> mapping) const {
   llvm::SmallVector<char, 8> elementData;
-  auto newArrayType = mappingHelper(
-      mapping, *this, getType(), newElementType, elementData);
+  auto newArrayType =
+      mappingHelper(mapping, *this, getType(), newElementType, elementData);
 
   return get(newArrayType, elementData);
 }
@@ -862,37 +954,18 @@ NamedAttributeList::NamedAttributeList(ArrayRef<NamedAttribute> attributes) {
   setAttrs(attributes);
 }
 
-/// Return all of the attributes on this operation.
-ArrayRef<NamedAttribute> NamedAttributeList::getAttrs() const {
-  return attrs ? attrs->getElements() : llvm::None;
-}
-
 /// Replace the held attributes with ones provided in 'newAttrs'.
 void NamedAttributeList::setAttrs(ArrayRef<NamedAttribute> attributes) {
   // Don't create an attribute list if there are no attributes.
-  if (attributes.empty()) {
+  if (attributes.empty())
     attrs = nullptr;
-    return;
-  }
-
-  assert(llvm::all_of(attributes,
-                      [](const NamedAttribute &attr) { return attr.second; }) &&
-         "attributes cannot have null entries");
-  attrs = AttributeListStorage::get(attributes);
+  else
+    attrs = DictionaryAttr::get(attributes, attributes[0].second.getContext());
 }
 
 /// Return the specified attribute if present, null otherwise.
-Attribute NamedAttributeList::get(StringRef name) const {
-  for (auto elt : getAttrs())
-    if (elt.first.is(name))
-      return elt.second;
-  return nullptr;
-}
 Attribute NamedAttributeList::get(Identifier name) const {
-  for (auto elt : getAttrs())
-    if (elt.first == name)
-      return elt.second;
-  return nullptr;
+  return attrs ? attrs.get(name) : nullptr;
 }
 
 /// If the an attribute exists with the specified name, change it to the new
@@ -906,13 +979,13 @@ void NamedAttributeList::set(Identifier name, Attribute value) {
   for (auto &elt : newAttrs)
     if (elt.first == name) {
       elt.second = value;
-      attrs = AttributeListStorage::get(newAttrs);
+      attrs = DictionaryAttr::get(newAttrs, value.getContext());
       return;
     }
 
   // Otherwise, add it.
   newAttrs.push_back({name, value});
-  attrs = AttributeListStorage::get(newAttrs);
+  attrs = DictionaryAttr::get(newAttrs, value.getContext());
 }
 
 /// Remove the attribute with the specified name if it exists.  The return
@@ -931,7 +1004,7 @@ auto NamedAttributeList::remove(Identifier name) -> RemoveResult {
       newAttrs.reserve(origAttrs.size() - 1);
       newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
       newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
-      attrs = AttributeListStorage::get(newAttrs);
+      attrs = DictionaryAttr::get(newAttrs, newAttrs[0].second.getContext());
       return RemoveResult::Removed;
     }
   }

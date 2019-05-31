@@ -229,6 +229,53 @@ struct ArrayAttributeStorage : public AttributeStorage {
   ArrayRef<Attribute> value;
 };
 
+/// An attribute representing a dictionary of sorted named attributes.
+struct DictionaryAttributeStorage final
+    : public AttributeStorage,
+      private llvm::TrailingObjects<DictionaryAttributeStorage,
+                                    NamedAttribute> {
+  using KeyTy = ArrayRef<NamedAttribute>;
+
+  /// Given a list of NamedAttribute's, canonicalize the list (sorting
+  /// by name) and return the unique'd result.
+  static DictionaryAttributeStorage *get(ArrayRef<NamedAttribute> attrs);
+
+  /// Key equality function.
+  bool operator==(const KeyTy &key) const { return key == getElements(); }
+
+  /// Construct a new storage instance.
+  static DictionaryAttributeStorage *
+  construct(AttributeStorageAllocator &allocator, const KeyTy &key) {
+    auto size = DictionaryAttributeStorage::totalSizeToAlloc<NamedAttribute>(
+        key.size());
+    auto rawMem = allocator.allocate(size, alignof(NamedAttribute));
+
+    // Initialize the storage and trailing attribute list.
+    auto result = ::new (rawMem) DictionaryAttributeStorage(key.size());
+    std::uninitialized_copy(key.begin(), key.end(),
+                            result->getTrailingObjects<NamedAttribute>());
+    return result;
+  }
+
+  /// Return the elements of this dictionary attribute.
+  ArrayRef<NamedAttribute> getElements() const {
+    return {getTrailingObjects<NamedAttribute>(), numElements};
+  }
+
+private:
+  friend class llvm::TrailingObjects<DictionaryAttributeStorage,
+                                     NamedAttribute>;
+
+  // This is used by the llvm::TrailingObjects base class.
+  size_t numTrailingObjects(OverloadToken<NamedAttribute>) const {
+    return numElements;
+  }
+  DictionaryAttributeStorage(unsigned numElements) : numElements(numElements) {}
+
+  /// This is the number of attributes.
+  const unsigned numElements;
+};
+
 // An attribute representing a reference to an affine map.
 struct AffineMapAttributeStorage : public AttributeStorage {
   using KeyTy = AffineMap;
@@ -402,36 +449,6 @@ struct SparseElementsAttributeStorage : public AttributeStorage {
 
   DenseIntElementsAttr indices;
   DenseElementsAttr values;
-};
-
-/// A raw list of named attributes stored as a trailing array.
-class AttributeListStorage final
-    : private llvm::TrailingObjects<AttributeListStorage, NamedAttribute> {
-  friend class llvm::TrailingObjects<AttributeListStorage, NamedAttribute>;
-
-public:
-  /// Given a list of NamedAttribute's, canonicalize the list (sorting
-  /// by name) and return the unique'd result.  Note that the empty list is
-  /// represented with a null pointer.
-  static AttributeListStorage *get(ArrayRef<NamedAttribute> attrs);
-
-  /// Return the element constants for this aggregate constant.  These are
-  /// known to all be constants.
-  ArrayRef<NamedAttribute> getElements() const {
-    return {getTrailingObjects<NamedAttribute>(), numElements};
-  }
-
-private:
-  // This is used by the llvm::TrailingObjects base class.
-  size_t numTrailingObjects(OverloadToken<NamedAttribute>) const {
-    return numElements;
-  }
-  AttributeListStorage() = delete;
-  AttributeListStorage(const AttributeListStorage &) = delete;
-  AttributeListStorage(unsigned numElements) : numElements(numElements) {}
-
-  /// This is the number of attributes.
-  const unsigned numElements;
 };
 } // namespace detail
 } // namespace mlir

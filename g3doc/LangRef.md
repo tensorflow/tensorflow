@@ -693,6 +693,7 @@ Attributes values are represented by the following forms:
 attribute-value ::= affine-map-attribute
                   | array-attribute
                   | bool-attribute
+                  | dictionary-attribute
                   | elements-attribute
                   | integer-attribute
                   | integer-set-attribute
@@ -734,6 +735,18 @@ bool-attribute ::= bool-literal
 
 A boolean attribute is a literal attribute that represents a one-bit boolean
 value, true or false.
+
+#### Dictionary Attribute
+
+Syntax:
+
+``` {.ebnf}
+dictionary-attribute ::= `{` (attribute-entry (`,` attribute-entry)*)? `}`
+```
+
+A dictionary attribute is an attribute that represents a sorted collection of
+named attribute values. The elements are sorted by name, and each name must be
+unique within the collection.
 
 #### Elements Attributes
 

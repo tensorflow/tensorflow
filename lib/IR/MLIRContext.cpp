@@ -136,8 +136,8 @@ namespace {
 struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
     addAttributes<AffineMapAttr, ArrayAttr, BoolAttr, DenseIntElementsAttr,
-                  DenseFPElementsAttr, FloatAttr, FunctionAttr, IntegerAttr,
-                  IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
+                  DenseFPElementsAttr, DictionaryAttr, FloatAttr, FunctionAttr,
+                  IntegerAttr, IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
                   SparseElementsAttr, SplatElementsAttr, StringAttr, TypeAttr,
                   UnitAttr>();
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
@@ -195,26 +195,6 @@ struct IntegerSetKeyInfo : DenseMapInfo<IntegerSet> {
       return false;
     return lhs == std::make_tuple(rhs.getNumDims(), rhs.getNumSymbols(),
                                   rhs.getConstraints(), rhs.getEqFlags());
-  }
-};
-
-struct AttributeListKeyInfo : DenseMapInfo<AttributeListStorage *> {
-  // Array attributes are uniqued based on their elements.
-  using KeyTy = ArrayRef<NamedAttribute>;
-  using DenseMapInfo<AttributeListStorage *>::isEqual;
-
-  static unsigned getHashValue(AttributeListStorage *key) {
-    return getHashValue(KeyTy(key->getElements()));
-  }
-
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine_range(key.begin(), key.end());
-  }
-
-  static bool isEqual(const KeyTy &lhs, const AttributeListStorage *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
-      return false;
-    return lhs == rhs->getElements();
   }
 };
 
@@ -360,14 +340,6 @@ public:
   // Attribute uniquing
   //===--------------------------------------------------------------------===//
   StorageUniquer attributeUniquer;
-
-  // Attribute list allocator and mutex for thread safety.
-  llvm::BumpPtrAllocator attributeAllocator;
-  llvm::sys::SmartRWMutex<true> attributeMutex;
-
-  using AttributeListSet =
-      DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
-  AttributeListSet attributeLists;
 
 public:
   MLIRContextImpl()
@@ -718,72 +690,6 @@ AttributeUniquer::getInitFn(MLIRContext *ctx, const ClassID *const attrID) {
     if (!storage->getType())
       storage->setType(NoneType::get(ctx));
   };
-}
-
-/// Perform a three-way comparison between the names of the specified
-/// NamedAttributes.
-static int compareNamedAttributes(const NamedAttribute *lhs,
-                                  const NamedAttribute *rhs) {
-  return lhs->first.str().compare(rhs->first.str());
-}
-
-/// Given a list of NamedAttribute's, canonicalize the list (sorting
-/// by name) and return the unique'd result.  Note that the empty list is
-/// represented with a null pointer.
-AttributeListStorage *
-AttributeListStorage::get(ArrayRef<NamedAttribute> attrs) {
-  // We need to sort the element list to canonicalize it, but we also don't want
-  // to do a ton of work in the super common case where the element list is
-  // already sorted.
-  SmallVector<NamedAttribute, 8> storage;
-  switch (attrs.size()) {
-  case 0:
-    // An empty list is represented with a null pointer.
-    return nullptr;
-  case 1:
-    // A single element is already sorted.
-    break;
-  case 2:
-    // Don't invoke a general sort for two element case.
-    if (attrs[0].first.str() > attrs[1].first.str()) {
-      storage.push_back(attrs[1]);
-      storage.push_back(attrs[0]);
-      attrs = storage;
-    }
-    break;
-  default:
-    // Check to see they are sorted already.
-    bool isSorted = true;
-    for (unsigned i = 0, e = attrs.size() - 1; i != e; ++i) {
-      if (attrs[i].first.str() > attrs[i + 1].first.str()) {
-        isSorted = false;
-        break;
-      }
-    }
-    // If not, do a general sort.
-    if (!isSorted) {
-      storage.append(attrs.begin(), attrs.end());
-      llvm::array_pod_sort(storage.begin(), storage.end(),
-                           compareNamedAttributes);
-      attrs = storage;
-    }
-  }
-
-  auto &impl = attrs[0].second.getContext()->getImpl();
-
-  // Safely get or create an attribute instance.
-  return safeGetOrCreate(impl.attributeLists, attrs, impl.attributeMutex, [&] {
-    auto byteSize =
-        AttributeListStorage::totalSizeToAlloc<NamedAttribute>(attrs.size());
-    auto rawMem =
-        impl.attributeAllocator.Allocate(byteSize, alignof(NamedAttribute));
-
-    //  Placement initialize the AggregateSymbolicValue.
-    auto result = ::new (rawMem) AttributeListStorage(attrs.size());
-    std::uninitialized_copy(attrs.begin(), attrs.end(),
-                            result->getTrailingObjects<NamedAttribute>());
-    return result;
-  });
 }
 
 //===----------------------------------------------------------------------===//

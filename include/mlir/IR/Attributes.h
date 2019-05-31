@@ -37,6 +37,7 @@ namespace detail {
 
 struct OpaqueAttributeStorage;
 struct BoolAttributeStorage;
+struct DictionaryAttributeStorage;
 struct IntegerAttributeStorage;
 struct FloatAttributeStorage;
 struct StringAttributeStorage;
@@ -50,8 +51,6 @@ struct DenseIntElementsAttributeStorage;
 struct DenseFPElementsAttributeStorage;
 struct OpaqueElementsAttributeStorage;
 struct SparseElementsAttributeStorage;
-
-class AttributeListStorage;
 
 } // namespace detail
 
@@ -144,6 +143,7 @@ enum Kind {
   Unit = Attribute::FIRST_STANDARD_ATTR,
   Opaque,
   Bool,
+  Dictionary,
   Integer,
   Float,
   String,
@@ -310,15 +310,51 @@ public:
 
   ArrayRef<Attribute> getValue() const;
 
-  size_t size() const { return getValue().size(); }
-
+  /// Support range iteration.
   using iterator = llvm::ArrayRef<Attribute>::iterator;
   iterator begin() const { return getValue().begin(); }
   iterator end() const { return getValue().end(); }
+  size_t size() const { return getValue().size(); }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::Array;
+  }
+};
+
+/// NamedAttribute is used for dictionary attributes, it holds an identifier for
+/// the name and a value for the attribute. The attribute pointer should always
+/// be non-null.
+using NamedAttribute = std::pair<Identifier, Attribute>;
+
+/// Dictionary attribute is an attribute that represents a sorted collection of
+/// named attribute values. The elements are sorted by name, and each name must
+/// be unique within the collection.
+class DictionaryAttr
+    : public Attribute::AttrBase<DictionaryAttr, Attribute,
+                                 detail::DictionaryAttributeStorage> {
+public:
+  using Base::Base;
+  using ValueType = ArrayRef<NamedAttribute>;
+
+  static DictionaryAttr get(ArrayRef<NamedAttribute> value,
+                            MLIRContext *context);
+
+  ArrayRef<NamedAttribute> getValue() const;
+
+  /// Return the specified attribute if present, null otherwise.
+  Attribute get(StringRef name) const;
+  Attribute get(Identifier name) const;
+
+  /// Support range iteration.
+  using iterator = llvm::ArrayRef<NamedAttribute>::iterator;
+  iterator begin() const;
+  iterator end() const;
+  size_t size() const;
+
+  /// Methods for supporting type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::Dictionary;
   }
 };
 
@@ -757,31 +793,30 @@ inline ::llvm::hash_code hash_value(Attribute arg) {
   return ::llvm::hash_value(arg.impl);
 }
 
-/// NamedAttribute is used for named attribute lists, it holds an identifier for
-/// the name and a value for the attribute. The attribute pointer should always
-/// be non-null.
-using NamedAttribute = std::pair<Identifier, Attribute>;
-
 /// A NamedAttributeList is used to manage a list of named attributes. This
 /// provides simple interfaces for adding/removing/finding attributes from
-/// within a raw AttributeListStorage.
+/// within a DictionaryAttr.
 ///
-/// We assume there will be relatively few attributes on a given function
+/// We assume there will be relatively few attributes on a given operation
 /// (maybe a dozen or so, but not hundreds or thousands) so we use linear
 /// searches for everything.
 class NamedAttributeList {
 public:
-  NamedAttributeList() : attrs(nullptr) {}
+  NamedAttributeList(DictionaryAttr attrs = nullptr) : attrs(attrs) {}
   NamedAttributeList(ArrayRef<NamedAttribute> attributes);
 
   /// Return all of the attributes on this operation.
-  ArrayRef<NamedAttribute> getAttrs() const;
+  ArrayRef<NamedAttribute> getAttrs() const {
+    return attrs ? attrs.getValue() : llvm::None;
+  }
 
   /// Replace the held attributes with ones provided in 'newAttrs'.
   void setAttrs(ArrayRef<NamedAttribute> attributes);
 
   /// Return the specified attribute if present, null otherwise.
-  Attribute get(StringRef name) const;
+  Attribute get(StringRef name) const {
+    return attrs ? attrs.get(name) : nullptr;
+  }
   Attribute get(Identifier name) const;
 
   /// If the an attribute exists with the specified name, change it to the new
@@ -795,7 +830,7 @@ public:
   RemoveResult remove(Identifier name);
 
 private:
-  detail::AttributeListStorage *attrs;
+  DictionaryAttr attrs;
 };
 
 } // end namespace mlir.
