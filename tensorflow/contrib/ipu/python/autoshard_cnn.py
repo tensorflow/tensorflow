@@ -43,13 +43,20 @@ def convert_ops_to_nx(fwd_ops, bwd_ops=None):
   graph = nx.DiGraph()
   dictionary = dict()
   # collect all variables including momentum types
-  variable_ops = [op for op in fwd_ops + bwd_ops if op.type == 'ReadVariableOp' and op.inputs[0].op.type == 'VarHandleOp']
+  variable_ops = [
+      op for op in fwd_ops + bwd_ops
+      if op.type == 'ReadVariableOp' and op.inputs[0].op.type == 'VarHandleOp'
+  ]
   var_mem = dict()
   all_variables = [t.name for t in trainable_variables()]
   for var in all_variables:
     # assign all memory for momentum type variables to root trainable variable
-    var_ops = [op for op in variable_ops if op.inputs[0].name.startswith(var.split(":")[0])]
-    var_mem[var] = np.sum([tensor_memory_use(t) for op in var_ops for t in op.outputs])
+    var_ops = [
+        op for op in variable_ops
+        if op.inputs[0].name.startswith(var.split(":")[0])
+    ]
+    var_mem[var] = np.sum(
+        [tensor_memory_use(t) for op in var_ops for t in op.outputs])
   variables_seen = []
   for op in fwd_ops:
     if op.type == 'ReadVariableOp' \
@@ -61,7 +68,8 @@ def convert_ops_to_nx(fwd_ops, bwd_ops=None):
     else:
       parameter_mem = 0
     bwd_links = [t for t in op.outputs if t in bwd_inputs]
-    if bwd_links != [] and op.type != 'ReadVariableOp' and not (op.type == 'Cast' and list(op.inputs)[0].op.type == 'ReadVariableOp'):
+    if bwd_links != [] and op.type != 'ReadVariableOp' and not (
+        op.type == 'Cast' and list(op.inputs)[0].op.type == 'ReadVariableOp'):
       saved_mem = np.sum([tensor_memory_use(t) for t in bwd_links])
     else:
       saved_mem = 0
@@ -201,7 +209,10 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
 
     fwd_ops = [op for op in fwd_ops if op.name in graph.nodes]
 
-  assert nx.number_weakly_connected_components(graph) == 1
+  if nx.number_weakly_connected_components(graph) != 1:
+    logging.fatal('Error: number of disconnected subgraphs in autosharder is '
+                  + str(nx.number_weakly_connected_components(graph)))
+    assert False
 
   graph_fwd = graph.subgraph([op.name for op in fwd_ops])
 
@@ -224,14 +235,23 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
                                         loss_op.name)
 
   subgraph_mem = [calculate_memory(graph_fwd, g) for g in subgraphs]
-  logging.debug('Subgraph memory use ' + str(
-    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g)) / (1024 * 1024)) for g in subgraphs]))
+  logging.debug('Subgraph memory use ' + str([
+      "{:.4g} MiB".format(
+          float(calculate_memory(graph_fwd, g)) / (1024 * 1024))
+      for g in subgraphs
+  ]))
 
-  logging.debug('Subgraph memory use (variables only) ' + str(
-    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, saved=False)) / (1024 * 1024)) for g in subgraphs]))
+  logging.debug('Subgraph memory use (variables only) ' + str([
+      "{:.4g} MiB".format(
+          float(calculate_memory(graph_fwd, g, saved=False)) / (1024 * 1024))
+      for g in subgraphs
+  ]))
 
-  logging.debug('Subgraph memory use (activations only) ' + str(
-    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, parameter=False)) / (1024 * 1024)) for g in subgraphs]))
+  logging.debug('Subgraph memory use (activations only) ' + str([
+      "{:.4g} MiB".format(
+          float(calculate_memory(graph_fwd, g, parameter=False)) /
+          (1024 * 1024)) for g in subgraphs
+  ]))
 
   # Verify that we have enough subgraphs to fill all of the available shards
   if len(edges) + 1 < num_shards:
@@ -289,12 +309,21 @@ def automatic_sharding(num_shards, input_ts, loss_ts, edge_filter=None):
       for i in range(len(ind) + 1)
   ]
 
-  logging.debug('Per shard subgraph memory use ' + str(
-    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g)) / (1024 * 1024)) for g in per_shard_subgraphs]))
-  logging.debug('Per shard subgraph memory use (variables only) ' + str(
-    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, saved=False)) / (1024 * 1024)) for g in per_shard_subgraphs]))
-  logging.debug('Per shard subgraph memory use (activations only) ' + str(
-    ["{:.4g} MiB".format(float(calculate_memory(graph_fwd, g, parameter=False)) / (1024 * 1024)) for g in per_shard_subgraphs]))
+  logging.debug('Per shard subgraph memory use ' + str([
+      "{:.4g} MiB".format(
+          float(calculate_memory(graph_fwd, g)) / (1024 * 1024))
+      for g in per_shard_subgraphs
+  ]))
+  logging.debug('Per shard subgraph memory use (variables only) ' + str([
+      "{:.4g} MiB".format(
+          float(calculate_memory(graph_fwd, g, saved=False)) / (1024 * 1024))
+      for g in per_shard_subgraphs
+  ]))
+  logging.debug('Per shard subgraph memory use (activations only) ' + str([
+      "{:.4g} MiB".format(
+          float(calculate_memory(graph_fwd, g, parameter=False)) /
+          (1024 * 1024)) for g in per_shard_subgraphs
+  ]))
 
   for op in fwd_ops:
     shard_set = False

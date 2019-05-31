@@ -110,6 +110,7 @@ cc_library(
 
         # Place HloPoplarInstructionFactory files below here.
         "driver/tools/custom_ops/dropout_hlo.cc",
+        "driver/tools/custom_ops/arg_min_max.cc",
         "driver/tools/custom_ops/group_norm_infer.cc",
         "driver/tools/custom_ops/group_norm_train.cc",
         "driver/tools/custom_ops/group_norm_grad.cc",
@@ -169,6 +170,7 @@ cc_library(
         "driver/passes/while_loop_to_repeat_simplify.h",
         "driver/passes/wide_const_finder.h",
         "driver/tools/classification_predicates.h",
+        "driver/tools/custom_ops/arg_min_max.h",
         "driver/tools/custom_ops/dropout_hlo.h",
         "driver/tools/custom_ops/hlo_poplar_instruction.h",
         "driver/tools/custom_ops/ipu_inter_copy.h",
@@ -231,6 +233,7 @@ cc_library(
         "driver/ops/conv_ops.cc",
         "driver/ops/custom_ops/custom_ops.cc",
         "driver/ops/custom_ops/poplibs_ops.cc",
+        "driver/ops/custom_ops/popnn/arg_min_max.cc",
         "driver/ops/custom_ops/popnn/lstm.cc",
         "driver/ops/custom_ops/popnn/norm.cc",
         "driver/ops/custom_ops/popnn/onehot.cc",
@@ -350,6 +353,7 @@ cc_library(
     srcs = [
         "kernels/datastream/feeds.cc",
         "kernels/ipu_kernels.cc",
+        "kernels/popnn/arg_min_max.cc",
         "kernels/popnn/lstm.cc",
         "kernels/popnn/norm.cc",
         "kernels/popnn/onehot.cc",
@@ -993,6 +997,22 @@ py_library(
         "//tensorflow/compiler/tf2xla/python:xla",
     ],
     srcs_version = "PY2AND3"
+)
+
+py_test(
+    name = "arg_min_max_test",
+    size = "small",
+    srcs = ["tests/arg_min_max_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
 )
 
 py_test(

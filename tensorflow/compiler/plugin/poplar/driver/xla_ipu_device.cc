@@ -106,10 +106,6 @@ REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_IPU, XlaRunOp, kIpuAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
 
 // Additional ops not explicitly defined by standard JIT
-REGISTER_XLA_OP(Name("ArgMax")
-                    .Device(DEVICE_IPU_XLA_JIT)
-                    .CompileTimeConstantInput("dimension"),
-                XlaArgMaxOp);
 
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_IPU_XLA_JIT), NoOp);
