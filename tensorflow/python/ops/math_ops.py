@@ -3052,7 +3052,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
     axis: A `Tensor` of type `int32` (default: 0). Must be in the range
       `[-rank(x), rank(x))`.
-    exclusive: If `True`, perform exclusive cumsum.
+    exclusive: If `True`, perform exclusive cumsum (default: False).
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
 
