@@ -236,8 +236,7 @@ class SliceAggregator(Aggregator):
       is_finished = threading.Event()
       self._pool.apply_async(
           self._slice_assign,
-          args=(batch_element, batch_start, batch_end, is_finished),
-          callback=self._callback)
+          args=(batch_element, batch_start, batch_end, is_finished))
       self._async_copies.append(is_finished)
 
   def _slice_assign(self, batch_element, batch_start, batch_end, is_finished):
@@ -245,21 +244,14 @@ class SliceAggregator(Aggregator):
       self.results[batch_start:batch_end] = batch_element
 
     except Exception as e:  # pylint: disable=broad-except
-      # See `_callback` for details.
-      return e
+      # `_slice_assign` should only be called in threads and exceptions raised
+      # in threads do not carry over to the main thread. So instead we perform a
+      # a broad catch in the thread and then store the exception to be re-raised
+      # in the main thread.
+      self._errors.append(e)
 
     finally:
       is_finished.set()
-
-  def _callback(self, result):
-    # `_slice_assign` should only be called in threads and exceptions raised in
-    # threads do not carry over to the main thread. So instead we perform a
-    # a broad catch in the thread and then immediately pass the resultant
-    # exception to a callback to reraise in the main thread. We cannot use
-    # the `error_callback` argument of `apply_async` because it is not present
-    # in Python 2.
-    if result is not None:
-      self._errors.append(result)
 
   def finalize(self):
     start_time = time.time()
