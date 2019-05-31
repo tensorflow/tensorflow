@@ -20,10 +20,13 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import rnn
 
 
+@six.add_metaclass(abc.ABCMeta)
 class FusedRNNCell(object):
   """Abstract object representing a fused RNN cell.
 
@@ -37,8 +40,6 @@ class FusedRNNCell(object):
 
   Every `FusedRNNCell` must implement `__call__` with the following signature.
   """
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def __call__(self,
@@ -135,7 +136,7 @@ class TimeReversedFusedRNN(FusedRNNCell):
   For example,
 
   ```python
-  cell = tf.contrib.rnn.BasicRNNCell(10)
+  cell = tf.compat.v1.nn.rnn_cell.BasicRNNCell(10)
   fw_lstm = tf.contrib.rnn.FusedRNNCellAdaptor(cell, use_dynamic_rnn=True)
   bw_lstm = tf.contrib.rnn.TimeReversedFusedRNN(fw_lstm)
   fw_out, fw_state = fw_lstm(inputs)

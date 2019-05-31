@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -37,8 +38,12 @@ class HloModuleConfig {
   // ComputationLayout. The default ctor creates it without -- in this case
   // accessing entry_computation_layout will CHECK-fail. The ctor accepting a
   // ProgramShape creates a computation layout using this shape.
-  HloModuleConfig();
-  explicit HloModuleConfig(const ProgramShape& program_shape);
+  // The layouts in the ProgramShape will be reset to default unless
+  // ignore_layouts is set to false.
+  HloModuleConfig() = default;
+
+  explicit HloModuleConfig(const ProgramShape& program_shape,
+                           bool ignore_layouts = true);
 
   // Checks if this config has an entry computation layout already.
   bool has_entry_computation_layout() const {
@@ -56,16 +61,17 @@ class HloModuleConfig {
     return *entry_computation_layout_;
   }
 
-  // Returns a mutable pointer to the layout of the entry computation. Assumes
-  // the layout was set.
+  // Returns a mutable pointer to the layout of the entry computation.
+  // Assumes the layout was set.
   ComputationLayout* mutable_entry_computation_layout() {
     CHECK(entry_computation_layout_.has_value());
     return &(*entry_computation_layout_);
   }
 
-  // Sets/returns whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
-  void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
+  // Returns whether to enable HLO-level profiling.
+  bool hlo_profiling_enabled() const {
+    return debug_options_.xla_hlo_profile();
+  }
 
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
@@ -96,13 +102,24 @@ class HloModuleConfig {
     return intra_op_parallelism_threads_;
   }
 
+  // Checks if this config has a static device assignment.
+  bool has_static_device_assignment() const {
+    return static_device_assignment_.has_value();
+  }
+
+  // Getter and setter of the compile-time known device assignment.
+  const DeviceAssignment& static_device_assignment() const {
+    CHECK(static_device_assignment_.has_value());
+    return *static_device_assignment_;
+  }
+  void set_static_device_assignment(const DeviceAssignment& device_assignment) {
+    static_device_assignment_ = device_assignment;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
-
-  // Whether to enable HLO-level profiling.
-  bool hlo_profiling_enabled_ = false;
+  absl::optional<ComputationLayout> entry_computation_layout_;
 
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
@@ -115,6 +132,9 @@ class HloModuleConfig {
   int64 intra_op_parallelism_threads_ = -1;
 
   DebugOptions debug_options_;
+
+  // Compile-time known device assignment.
+  absl::optional<DeviceAssignment> static_device_assignment_;
 };
 
 }  // namespace xla

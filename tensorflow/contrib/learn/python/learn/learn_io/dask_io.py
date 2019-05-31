@@ -13,13 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Methods to allow dask.DataFrame."""
+"""Methods to allow dask.DataFrame (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
+from tensorflow.python.util.deprecation import deprecated
 
 try:
   # pylint: disable=g-import-not-at-top
@@ -60,6 +67,7 @@ def _construct_dask_df_with_divisions(df):
     return dd.Series(merge(dsk, df.dask), name, df.name, divisions)
 
 
+@deprecated(None, 'Please feed input to tf.data to support dask.')
 def extract_dask_data(data):
   """Extract data from dask.Series or dask.DataFrame for predictors.
 
@@ -81,6 +89,7 @@ def extract_dask_data(data):
     return data
 
 
+@deprecated(None, 'Please feed input to tf.data to support dask.')
 def extract_dask_labels(labels):
   """Extract data from dask.Series or dask.DataFrame for labels.
 

@@ -61,9 +61,9 @@ TEST_F(SparseAddOpTest, TwoD_AddSparseTensorWithSelf) {
   // [3   4]
 
   const auto indices_shape = TensorShape({4, 2});
-  std::initializer_list<int64> in{ 0, 1, 1, 0, 2, 0, 2, 1 };
+  std::initializer_list<int64> in{0, 1, 1, 0, 2, 0, 2, 1};
   const gtl::ArraySlice<int64> indices(in);
-  std::initializer_list<int64> sh{ 3, 2 };
+  std::initializer_list<int64> sh{3, 2};
   const gtl::ArraySlice<int64> shape(sh);
 
 #define ADD_TENSOR_INPUT()                                  \

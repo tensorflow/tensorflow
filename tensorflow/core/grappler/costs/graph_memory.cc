@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/graph_memory.h"
-#include <list>
+
+#include <deque>
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -35,7 +37,7 @@ Status GraphMemory::InferStatically(
   TF_RETURN_IF_ERROR(cluster.Provision());
   TF_RETURN_IF_ERROR(cluster.Initialize(item_));
   RunMetadata metadata;
-  Status s = cluster.Run(item_.graph, item_.feed, item_.fetch, &metadata);
+  Status s = cluster.Run(item_, &metadata);
   // The virtual cluster returns the RESOURCE_EXHAUSTED error when it detects
   // that the model would run out of memory. We still get the metadata we need
   // out of the simulation, so we just ignore this error.
@@ -53,8 +55,7 @@ Status GraphMemory::InferDynamically(Cluster* cluster) {
 
   TF_RETURN_IF_ERROR(cluster->Initialize(item_));
   RunMetadata metadata;
-  TF_RETURN_IF_ERROR(
-      cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
+  TF_RETURN_IF_ERROR(cluster->Run(item_, &metadata));
   InferFromTrace(metadata.step_stats());
   return Status::OK();
 }
@@ -120,7 +121,7 @@ int64 GraphMemory::InferMemUsageForNeighbors(
 static GraphMemory::LiveTensor* FindOrCreateLiveTensor(
     const string& node_name, int output_id,
     std::unordered_map<string, GraphMemory::LiveTensor*>* live_tensors,
-    std::list<GraphMemory::LiveTensor>* device_tensors) {
+    std::deque<GraphMemory::LiveTensor>* device_tensors) {
   string name = strings::StrCat(node_name, ":", output_id);
   GraphMemory::LiveTensor* live;
   auto it = live_tensors->find(name);
@@ -141,6 +142,10 @@ static GraphMemory::LiveTensor* FindOrCreateLiveTensor(
 
 namespace {
 struct Event {
+  Event(int64 _timestamp, bool _allocated,
+        const GraphMemory::LiveTensor* _tensor)
+      : timestamp(_timestamp), allocated(_allocated), tensor(_tensor) {}
+
   int64 timestamp;
   bool allocated;
   const GraphMemory::LiveTensor* tensor;
@@ -160,13 +165,15 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
   }
 
   std::unordered_map<string, LiveTensor*> live_tensors;
-  std::unordered_map<string, std::list<LiveTensor>> live_tensors_per_device;
-
-  NodeMap node_map(&item_.graph);
+  std::unordered_map<string, std::deque<LiveTensor>> live_tensors_per_device;
+  std::unordered_map<string, const NodeDef*> node_map;
+  for (const NodeDef& node : item_.graph.node()) {
+    node_map[node.name()] = &node;
+  }
   for (const auto& dev_stats : timeline.dev_stats()) {
     const string& device_name = dev_stats.device();
     const bool is_gpu = (device_name.find("GPU:") || device_name.find("gpu:"));
-    std::list<LiveTensor>& device_tensors =
+    std::deque<LiveTensor>& device_tensors =
         live_tensors_per_device[dev_stats.device()];
     for (const auto& node_stats : dev_stats.node_stats()) {
       for (int i = 0; i < node_stats.output_size(); ++i) {
@@ -191,12 +198,13 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
                                     node_stats.op_end_rel_micros()));
       }
 
-      const NodeDef* node = node_map.GetNode(node_stats.node_name());
-      if (!node) {
+      auto it = node_map.find(node_stats.node_name());
+      if (it == node_map.end()) {
         // Skip nodes inserted by TF since they don't exist in the original
         // graph (e.g _Send/_Recv nodes).
         continue;
       }
+      const NodeDef* node = it->second;
       std::unordered_set<int> swapped_inputs;
       if (is_gpu) {
         auto it = node->attr().find("_swap_to_host");
@@ -237,14 +245,16 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
     std::vector<Event> events;
     events.reserve(2 * live_per_device.second.size());
     for (const auto& live : live_per_device.second) {
-      events.push_back(Event{live.allocation_time.count(), true, &live});
-      events.push_back(Event{live.deallocation_time.count(), false, &live});
+      events.emplace_back(static_cast<int64>(live.allocation_time.count()),
+                          true, &live);
+      events.emplace_back(static_cast<int64>(live.deallocation_time.count()),
+                          false, &live);
     }
     std::stable_sort(events.begin(), events.end());
     size_t peak = 0;
-    std::set<const LiveTensor*> live_at_peak;
+    std::unordered_set<const LiveTensor*> live_at_peak;
     size_t current = 0;
-    std::set<const LiveTensor*> currently_live;
+    std::unordered_set<const LiveTensor*> currently_live;
     for (int i = 0; i < events.size(); ++i) {
       const auto& event = events[i];
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -47,6 +48,7 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
         recv_args_(recv_args) {
     req_.set_step_id(step_id);
     req_.set_rendezvous_key(key.data(), key.size());
+    req_.set_request_id(GetUniqueRequestId());
   }
 
   ~GdrRecvTensorCall() override {}
@@ -56,11 +58,9 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
     resp_.InitAlloc(dst_device_, recv_args_.alloc_attrs);
     StatusCallback cb = [this, recv_done](const Status& s) {
       bool dma_ok = resp_.metadata().has_transport_options();
-      if (s.ok() && tensor().TotalBytes() > 0 && (!is_dead()) && dma_ok) {
+      if (s.ok() && tensor().TotalBytes() > 1024 && (!is_dead()) && dma_ok) {
         auto transport_options = resp_.metadata().transport_options();
-        const bool on_host =
-            (dst_device_->tensorflow_gpu_device_info() == nullptr) ||
-            recv_args_.alloc_attrs.on_host();
+        const bool on_host = recv_args_.alloc_attrs.on_host();
         remote_memory_manager_->TensorFromTransportOptions(
             const_cast<Tensor*>(&tensor()), transport_options, dst_device_,
             recv_args_.device_context, on_host,
@@ -68,9 +68,6 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
               if (!s.ok()) {
                 mutex_lock l(mu_);
                 status_.Update(s);
-                LOG(ERROR) << "Cannot find pinned memory region from allocator "
-                           << dst_device_->GetAllocator(recv_args_.alloc_attrs)
-                                  ->Name();
               }
               recv_done();
             });
@@ -153,7 +150,7 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
     }
 
     Device* dst_device;
-    Status s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+    Status s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
     if (!s.ok()) {
       sess->worker_cache->ReleaseWorker(src_worker, rwi);
       done(s, Args(), recv_args, Tensor{}, false);
@@ -168,6 +165,17 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
     // Record "call" in active_ so that it can be aborted cleanly.
     RegisterCall(call);
 
+    // RendezvousMgr already aborted, shouldn't send RPC call any more
+    if (!call->status().ok()) {
+      // NOTE: `*session()` can potentially be deleted before we return from
+      // `call->done()(...)`, so we must release the worker before calling the
+      // callback.
+      session()->worker_cache->ReleaseWorker(src_worker, rwi);
+      done(call->status(), Args(), Args(), Tensor(), false);
+      delete call;
+      return;
+    }
+
     // Start "call".
     Ref();
     call->Start([this, call, src_worker, rwi, done]() {
@@ -176,8 +184,11 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
       // If StartAbort was called prior to DeregisterCall, then the
       // current status should be bad.
       Status s = call->status();
-      done(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
+      // NOTE: `*session()` can potentially be deleted before we return from
+      // `call->done()(...)`, so we must release the worker before calling the
+      // callback.
       session()->worker_cache->ReleaseWorker(src_worker, rwi);
+      done(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
       delete call;
       Unref();
     });

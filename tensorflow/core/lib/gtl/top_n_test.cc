@@ -28,10 +28,10 @@ limitations under the License.
 
 namespace {
 
+using tensorflow::string;
 using tensorflow::gtl::TopN;
 using tensorflow::random::PhiloxRandom;
 using tensorflow::random::SimplePhilox;
-using tensorflow::string;
 
 // Move the contents from an owned raw pointer, returning by value.
 // Objects are easier to manage by value.

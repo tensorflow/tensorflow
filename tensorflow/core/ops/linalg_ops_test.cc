@@ -80,12 +80,18 @@ TEST(LinalgOpsTest, SelfAdjointEig_ShapeFn) {
 TEST(LinalgOpsTest, SelfAdjointEigV2_ShapeFn) {
   ShapeInferenceTestOp op("SelfAdjointEigV2");
   auto set_compute_v = [&op](bool compute_v) {
+    // Test for float32
     TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
                      .Input({{"input", 0, DT_FLOAT}})
                      .Attr("compute_v", compute_v)
                      .Finalize(&op.node_def));
-  };
 
+    // Test for float16
+    TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
+                     .Input({{"input", 0, DT_HALF}})
+                     .Attr("compute_v", compute_v)
+                     .Finalize(&op.node_def));
+  };
   set_compute_v(false);
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
   INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,2]");
@@ -174,8 +180,15 @@ TEST(LinalgOpsTest, MatrixSolveLs_ShapeFn) {
 TEST(LinalgOpsTest, Qr_ShapeFn) {
   ShapeInferenceTestOp op("Qr");
   auto set_attrs = [&op](bool full_matrices) {
+    // Test float32
     TF_ASSERT_OK(NodeDefBuilder("test", "Qr")
                      .Input({"input", 0, DT_FLOAT})
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
+
+    // Test float16
+    TF_ASSERT_OK(NodeDefBuilder("test", "Qr")
+                     .Input({"input", 0, DT_HALF})
                      .Attr("full_matrices", full_matrices)
                      .Finalize(&op.node_def));
   };
@@ -218,8 +231,16 @@ TEST(LinalgOpsTest, Qr_ShapeFn) {
 TEST(LinalgOpsTest, Svd_ShapeFn) {
   ShapeInferenceTestOp op("Svd");
   auto set_attrs = [&op](bool compute_uv, bool full_matrices) {
+    // Test for float32
     TF_ASSERT_OK(NodeDefBuilder("test", "Svd")
                      .Input({"input", 0, DT_FLOAT})
+                     .Attr("compute_uv", compute_uv)
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
+
+    // Test for float16
+    TF_ASSERT_OK(NodeDefBuilder("test", "Svd")
+                     .Input({"input", 0, DT_HALF})
                      .Attr("compute_uv", compute_uv)
                      .Attr("full_matrices", full_matrices)
                      .Finalize(&op.node_def));
@@ -272,6 +293,98 @@ TEST(LinalgOpsTest, Svd_ShapeFn) {
   INFER_OK(op, "[?,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
   INFER_OK(op, "[4,2,3]", "[d0_0,d0_1];[d0_0,d0_1,d0_1];[d0_0,d0_2,d0_2]");
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+}
+
+TEST(LinalgOpsTest, Lu_ShapeFn) {
+  ShapeInferenceTestOp op("Lu");
+  INFER_OK(op, "?", "?;?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,?,3,4,1,2]");
+
+  INFER_OK(op, "[?,?]", "[d0_0,d0_0];[d0_0]");
+  INFER_OK(op, "[1,?]", "[d0_0,d0_0];[d0_0]");
+  INFER_OK(op, "[?,1]", "[d0_1,d0_1];[d0_1]");
+
+  // Repeat previous block of tests with input rank > 2.
+  INFER_OK(op, "[1,?,3,4,?,?]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_4,d0_4];[d0_0,d0_1,d0_2,d0_3,d0_4]");
+  INFER_OK(op, "[1,?,3,4,1,?]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_4,d0_4];[d0_0,d0_1,d0_2,d0_3,d0_4]");
+  INFER_OK(op, "[1,?,3,4,?,1]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_5,d0_5];[d0_0,d0_1,d0_2,d0_3,d0_5]");
+}
+
+TEST(LinalgOpsTest, TridiagonalMatMul_ShapeFn) {
+  ShapeInferenceTestOp op("TridiagonalMatMul");
+  INFER_OK(op, "?;?;?;?", "in3");
+  INFER_OK(op, "[1,5];[1,5];[1,5];[?,1]", "in3");
+  INFER_OK(op, "[1,5];[1,5];[1,5];[5,1]", "in3");
+
+  INFER_OK(op, "[?,1,?];[?,1,?];[?,1,?];[?,?,?]", "in3");
+  INFER_OK(op, "[?,1,5];[?,1,5];[?,1,5];[7,5,2]", "in3");
+  INFER_OK(op, "[7,1,5];[7,1,5];[7,1,5];[?,5,2]", "in3");
+  INFER_OK(op, "[7,1,5];[7,1,5];[7,1,5];[7,5,2]", "in3");
+
+  INFER_OK(op, "[7,?,1,5];[7,?,1,5];[7,?,1,5];[7,8,5,2]", "in3");
+  INFER_OK(op, "[7,8,1,5];[7,8,1,5];[7,8,1,5];[7,8,5,2]", "in3");
+
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[3];[3];[3];[5,1]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op,
+              "[3,5];[3,5];[3,5];[5]");
+  INFER_ERROR(
+      "Dimension 1 in both shapes must be equal, but are 4 and 8. "
+      "Shapes are [6,4] and [6,8].",
+      op, "[6,4,3,5];[6,4,3,5];[6,4,3,5];[6,8,5,2]");
+  INFER_ERROR(
+      "Dimension 1 in both shapes must be equal, but are 4 and 8. "
+      "Shapes are [?,4] and [6,8].",
+      op, "[?,4,3,5];[?,4,3,5];[?,4,3,5];[6,8,5,2]");
+
+  // Diagonals must have the same length.
+  INFER_ERROR(
+      "Dimension 1 in both shapes must be equal, but are 5 and 6. "
+      "Shapes are [1,5] and [1,6]",
+      op, "[1,5];[1,6];[1,5];[6,2]");
+
+  // Diagonals must be 1-row matrices.
+  INFER_ERROR("Dimension must be 1 but is 3", op, "[3,5];[3,5];[3,5];[5,2]");
+}
+
+TEST(LinalgOpsTest, TridiagonalSolve_ShapeFn) {
+  ShapeInferenceTestOp op("TridiagonalSolve");
+  INFER_OK(op, "?;?", "in1");
+  INFER_OK(op, "[3,5];[?,1]", "in1");
+  INFER_OK(op, "[?,5];[5,1]", "in1");
+  INFER_OK(op, "[?,5];[?,?]", "in1");
+  INFER_OK(op, "[?,?];[?,?]", "in1");
+  INFER_OK(op, "[3,5];[5,1]", "in1");
+  INFER_OK(op, "[3,5];[5,2]", "in1");
+
+  INFER_OK(op, "[?,?,?];[?,?,?]", "in1");
+  INFER_OK(op, "[?,3,5];[7,5,2]", "in1");
+  INFER_OK(op, "[7,3,5];[?,5,2]", "in1");
+  INFER_OK(op, "[7,?,5];[?,5,?]", "in1");
+  INFER_OK(op, "[7,3,5];[7,5,2]", "in1");
+
+  INFER_OK(op, "[7,?,3,5];[7,8,5,2]", "in1");
+  INFER_OK(op, "[7,8,3,5];[7,8,5,2]", "in1");
+
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[3];[5,1]");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[3,5];[5]");
+  INFER_ERROR(
+      "Dimension 1 in both shapes must be equal, but are 4 and 8. "
+      "Shapes are [6,4] and [6,8].",
+      op, "[6,4,3,5];[6,8,5,2]");
+  INFER_ERROR(
+      "Dimension 1 in both shapes must be equal, but are 4 and 8. "
+      "Shapes are [?,4] and [6,8].",
+      op, "[?,4,3,5];[6,8,5,2]");
+  INFER_ERROR("Dimension must be 3 but is 4", op, "[4,5];[5,2]");
+  INFER_ERROR("Dimension must be 3 but is 4", op, "[6,4,5];[6,5,2]");
+  INFER_ERROR("Dimensions must be equal, but are 9 and 5", op, "[3,9];[5,2]");
+  INFER_ERROR("Dimensions must be equal, but are 9 and 5", op,
+              "[6,3,9];[6,5,2]");
 }
 
 }  // end namespace tensorflow

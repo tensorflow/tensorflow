@@ -27,7 +27,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.summary.writer import writer
@@ -41,14 +40,13 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertAllEqual([[4.]], y.numpy())
 
   def testInstantError(self):
+    if test_util.is_gpu_available():
+      # TODO(nareshmodi): make this test better
+      self.skipTest("Gather doesn't do index checking on GPUs")
+
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'indices = 7 is not in \[0, 3\)'):
       array_ops.gather([0, 1, 2], 7)
-
-  def testVariableError(self):
-    with self.assertRaisesRegexp(
-        RuntimeError, r'Variable not supported in Eager mode'):
-      variables.Variable(initial_value=1.0)
 
   def testGradients(self):
 
@@ -56,7 +54,7 @@ class TFETest(test_util.TensorFlowTestCase):
       return math_ops.multiply(x, x)
 
     grad = tfe.gradients_function(square)
-    self.assertEquals([6], [x.numpy() for x in grad(3)])
+    self.assertEquals([6], [x.numpy() for x in grad(3.)])
 
   def testGradOfGrad(self):
 
@@ -65,7 +63,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     grad = tfe.gradients_function(square)
     gradgrad = tfe.gradients_function(lambda x: grad(x)[0])
-    self.assertEquals([2], [x.numpy() for x in gradgrad(3)])
+    self.assertEquals([2], [x.numpy() for x in gradgrad(3.)])
 
   def testCustomGrad(self):
 
@@ -79,12 +77,10 @@ class TFETest(test_util.TensorFlowTestCase):
       return y, grad_fn
 
     grad = tfe.gradients_function(f)
-    self.assertEquals([12], [x.numpy() for x in grad(3)])
+    self.assertEquals([12], [x.numpy() for x in grad(3.)])
 
+  @test_util.run_gpu_only
   def testGPU(self):
-    if tfe.num_gpus() <= 0:
-      self.skipTest('No GPUs available')
-
     # tf.Tensor.as_gpu_device() moves a tensor to GPU.
     x = constant_op.constant([[1., 2.], [3., 4.]]).gpu()
     # Alternatively, tf.device() as a context manager places tensors and
@@ -93,18 +89,14 @@ class TFETest(test_util.TensorFlowTestCase):
       x += 1.
     # Without a device context, heuristics are used to place ops.
     # In this case, ops.reduce_mean runs on the GPU.
-    reduction_indices = range(x.shape.ndims)
-    m = math_ops.reduce_mean(x, reduction_indices)
+    axis = range(x.shape.ndims)
+    m = math_ops.reduce_mean(x, axis)
     # m is on GPU, bring it back to CPU and compare.
     self.assertEqual(3.5, m.cpu().numpy())
 
   def testListDevices(self):
     # Expect at least one device.
     self.assertTrue(tfe.list_devices())
-
-  def testNumGPUs(self):
-    devices = tfe.list_devices()
-    self.assertEqual(len(devices) - 1, tfe.num_gpus())
 
   def testAddCheckNumericsOpsRaisesError(self):
     with self.assertRaisesRegexp(

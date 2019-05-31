@@ -183,6 +183,13 @@ TEST(ImageOpsTest, ExtractGlimpse_ShapeFn) {
   op.input_tensors.resize(2);
 
   // Inputs are input, size, offsets.
+  TF_ASSERT_OK(NodeDefBuilder("test", "ExtractGlimpse")
+                   .Input({"input", 0, DT_FLOAT})
+                   .Input({"size", 1, DT_INT32})
+                   .Input({"offsets", 2, DT_FLOAT})
+                   .Attr("uniform_noise", true)
+                   .Attr("noise", "")
+                   .Finalize(&op.node_def));
 
   // Rank and size checks.
   INFER_ERROR("Shape must be rank 4 but is rank 5", op, "[1,2,3,4,5];?;?");
@@ -312,4 +319,23 @@ TEST(ImageOpsTest, QuantizedResizeBilinear_ShapeFn) {
   INFER_OK(op, "[1,?,3,?];[2];[];[]", "[d0_0,20,30,d0_3];[];[]");
 }
 
+TEST(ImageOpsTest, DrawBoundingBoxes_ShapeFn) {
+  ShapeInferenceTestOp op("DrawBoundingBoxes");
+  op.input_tensors.resize(2);
+
+  // Check images.
+  INFER_ERROR("must be rank 4", op, "[1,?,3];?");
+  INFER_ERROR("should be either 1 (GRY), 3 (RGB), or 4 (RGBA)",
+      op, "[1,?,?,5];?");
+
+  // Check boxes.
+  INFER_ERROR("must be rank 3", op, "[1,?,?,4];[1,4]");
+  INFER_ERROR("Dimension must be 4", op, "[1,?,?,4];[1,2,2]");
+
+  // OK shapes.
+  INFER_OK(op, "[4,?,?,4];?", "in0");
+  INFER_OK(op, "[?,?,?,?];[?,?,?]", "in0");
+  INFER_OK(op, "[4,?,?,4];[?,?,?]", "in0");
+  INFER_OK(op, "[4,?,?,4];[?,?,4]", "in0");
+}
 }  // end namespace tensorflow

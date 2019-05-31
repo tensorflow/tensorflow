@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "Square"
+  endpoint {
+    name: "math.square"
+  }
+  endpoint {
+    name: "square"
+  }
+}

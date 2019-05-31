@@ -160,6 +160,5 @@ void RegressionLeafModelOperator::ExportModel(
   }
 }
 
-
 }  // namespace tensorforest
 }  // namespace tensorflow

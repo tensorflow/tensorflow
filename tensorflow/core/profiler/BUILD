@@ -1,27 +1,12 @@
 package(
     default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_profiler_all_protos")
 
 tf_cc_binary(
     name = "profiler",
@@ -38,7 +23,7 @@ tf_cc_binary(
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
-        "@linenoise//:linenoise",
+        "@linenoise",
     ],
 )
 
@@ -54,11 +39,41 @@ cc_library(
 )
 
 tf_proto_library(
-    name = "protos_all",
-    srcs = glob(["**/*.proto"]),
+    name = "profiler_service_proto",
+    srcs = ["profiler_service.proto"],
+    has_services = 1,
     cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
+    cc_grpc_version = 1,
+    protodeps = tf_profiler_all_protos() + tf_additional_all_protos(),
+)
+
+tf_proto_library(
+    name = "profiler_analysis_proto",
+    srcs = ["profiler_analysis.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    protodeps = [":profiler_service_proto"] + tf_additional_all_protos(),
+)
+
+tf_proto_library(
+    name = "protos_all",
+    srcs = glob(
+        ["**/*.proto"],
+        exclude = [
+            "profiler_service.proto",
+            "profiler_analysis.proto",
+        ],
+    ),
+    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        "//tensorflow/core/profiler/internal:mobile_srcs",
+        "//tensorflow/core/profiler/lib:mobile_srcs",
+    ],
     visibility = ["//visibility:public"],
 )

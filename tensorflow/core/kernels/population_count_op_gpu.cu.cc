@@ -18,14 +18,13 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/population_count_op.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/population_count_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -63,17 +62,17 @@ __global__ void PopulationCountKernel<int64>(const int size, const int64* input,
   CUDA_1D_KERNEL_LOOP(i, size) { output[i] = __popcll(ldg(input + i)); }
 }
 
-#define DEFINE_GPU_SPECS(T)                                               \
-  template <>                                                             \
-  void PopulationCount<GPUDevice, T>::operator()(                         \
-      OpKernelContext* c, typename TTypes<T>::ConstFlat input,            \
-      TTypes<uint8>::Flat output) {                                       \
-    const GPUDevice& d = c->eigen_device<GPUDevice>();                    \
-    int64 total_count = input.size();                                     \
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);        \
-    PopulationCountKernel<T>                                              \
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>( \
-            total_count, input.data(), output.data());                    \
+#define DEFINE_GPU_SPECS(T)                                                    \
+  template <>                                                                  \
+  void PopulationCount<GPUDevice, T>::operator()(                              \
+      OpKernelContext* c, typename TTypes<T>::ConstFlat input,                 \
+      TTypes<uint8>::Flat output) {                                            \
+    const GPUDevice& d = c->eigen_device<GPUDevice>();                         \
+    int64 total_count = input.size();                                          \
+    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);              \
+    TF_CHECK_OK(CudaLaunchKernel(PopulationCountKernel<T>, config.block_count, \
+                                 config.thread_per_block, 0, d.stream(),       \
+                                 total_count, input.data(), output.data()));   \
   }
 
 TF_CALL_uint8(DEFINE_GPU_SPECS);

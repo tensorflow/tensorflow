@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================
 */
 
+#ifndef TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_
+#define TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_
+
 // This header declares the class CudaSolver, which contains wrappers of linear
 // algebra solvers in the cuBlas and cuSolverDN libraries for use in TensorFlow
 // kernels.
@@ -23,8 +26,8 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
-#include "cuda/include/cublas_v2.h"
-#include "cuda/include/cusolverDn.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -232,13 +235,14 @@ class CudaSolver {
                       int batch_size) TF_MUST_USE_RESULT;
 
   // Batched linear solver using LU factorization from getrfBatched.
-  // See:
+  // Notice that lapack_info is returned on the host, as opposed to
+  // most of the other functions that return it on the device. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
   template <typename Scalar>
   Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
                       const Scalar* const dev_Aarray[], int lda,
                       const int* devIpiv, const Scalar* const dev_Barray[],
-                      int ldb, DeviceLapackInfo* dev_lapack_info,
+                      int ldb, int* host_lapack_info,
                       int batch_size) TF_MUST_USE_RESULT;
 
   // Computes matrix inverses for a batch of small matrices. Uses the outputs
@@ -308,6 +312,11 @@ class CudaSolver {
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
                int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
                int ldvt, int* dev_lapack_info) TF_MUST_USE_RESULT;
+  template <typename Scalar>
+  Status GesvdjBatched(cusolverEigMode_t jobz, int m, int n, Scalar* dev_A,
+                       int lda, Scalar* dev_S, Scalar* dev_U, int ldu,
+                       Scalar* dev_V, int ldv, int* dev_lapack_info,
+                       int batch_size);
 
  private:
   OpKernelContext* context_;  // not owned.
@@ -398,7 +407,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     CHECK(success != nullptr);
     HostLapackInfo copy(context(), size(), debug_info());
     auto stream = context()->op_device_context()->stream();
-    perftools::gputools::DeviceMemoryBase wrapped_src(
+    se::DeviceMemoryBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
         stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())
@@ -427,9 +436,11 @@ inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
     int64 size, const string& debug_info) {
   DeviceLapackInfo new_dev_info(context_, size, debug_info);
   scratch_tensor_refs_.emplace_back(new_dev_info.tensor());
-  return std::move(new_dev_info);
+  return new_dev_info;
 }
 
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_CUDA_SOLVERS_H_

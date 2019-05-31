@@ -18,25 +18,30 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace interpreter {
 
-class InterpreterPlatform : public Platform {
+class XlaInterpreterPlatform : public Platform {
  public:
-  InterpreterPlatform();
-  ~InterpreterPlatform() override;
+  XlaInterpreterPlatform()
+      : XlaInterpreterPlatform("Interpreter", kXlaInterpreterPlatformId) {}
+  XlaInterpreterPlatform(const string& name, const Platform::Id& id);
+  ~XlaInterpreterPlatform() override;
 
   Platform::Id id() const override;
 
   int VisibleDeviceCount() const override;
 
   const string& Name() const override;
+
+  port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
+      int ordinal) const override;
 
   port::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
@@ -56,15 +61,16 @@ class InterpreterPlatform : public Platform {
  private:
   // This platform's name.
   string name_;
+  // This platform's id.
+  Platform::Id id_;
 
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(InterpreterPlatform);
+  SE_DISALLOW_COPY_AND_ASSIGN(XlaInterpreterPlatform);
 };
 
 }  // namespace interpreter
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_H_

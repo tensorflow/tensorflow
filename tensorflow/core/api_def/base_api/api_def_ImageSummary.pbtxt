@@ -61,7 +61,7 @@ build the `tag` of the summary values:
    generated sequentially as '*tag*/image/0', '*tag*/image/1', etc.
 
 The `bad_color` argument is the color to use in the generated images for
-non-finite input values.  It is a `unit8` 1-D tensor of length `channels`.
+non-finite input values.  It is a `uint8` 1-D tensor of length `channels`.
 Each element must be in the range `[0, 255]` (It represents the value of a
 pixel in the output image).  Non-finite values in the input tensor are
 replaced by this tensor in the output image.  The default value is the color

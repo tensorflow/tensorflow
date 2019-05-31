@@ -24,13 +24,15 @@ class MemoryStatsOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     Allocator* allocator =
         context->device()->GetAllocator(AllocatorAttributes());
-    AllocatorStats allocator_stats;
-    allocator->GetStats(&allocator_stats);
+    absl::optional<AllocatorStats> allocator_stats = allocator->GetStats();
+    if (!allocator_stats) {
+      *allocator_stats = AllocatorStats();
+    }
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape({}), &output_tensor));
-    output_tensor->scalar<int64>()() = ExtractAllocatorStats(allocator_stats);
+    output_tensor->scalar<int64>()() = ExtractAllocatorStats(*allocator_stats);
   }
 
  protected:
@@ -71,7 +73,7 @@ class BytesLimitOp : public MemoryStatsOp {
  private:
   int64 ExtractAllocatorStats(
       const AllocatorStats& allocator_stats) const override {
-    return allocator_stats.bytes_limit;
+    return allocator_stats.bytes_limit ? *allocator_stats.bytes_limit : -1;
   }
 };
 
@@ -80,9 +82,9 @@ REGISTER_KERNEL_BUILDER(Name("BytesLimit").Device(DEVICE_GPU).HostMemory("out"),
                         BytesLimitOp);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("BytesLimit").Device(DEVICE_SYCL).HostMemory("out"),
-                        BytesLimitOp);
-#endif // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("BytesLimit").Device(DEVICE_SYCL).HostMemory("out"), BytesLimitOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 // Op that measures the peak memory in bytes.
 class MaxBytesInUseOp : public MemoryStatsOp {
@@ -93,7 +95,7 @@ class MaxBytesInUseOp : public MemoryStatsOp {
  private:
   int64 ExtractAllocatorStats(
       const AllocatorStats& allocator_stats) const override {
-    return allocator_stats.max_bytes_in_use;
+    return allocator_stats.peak_bytes_in_use;
   }
 };
 
@@ -107,6 +109,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("MaxBytesInUse").Device(DEVICE_SYCL).HostMemory("out"),
     MaxBytesInUseOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

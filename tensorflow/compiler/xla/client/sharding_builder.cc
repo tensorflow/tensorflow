@@ -36,7 +36,7 @@ OpSharding Tile(const Shape& tile_shape,
                 const TileAssignment& tile_assignment) {
   OpSharding result;
   result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
-  *result.mutable_tile_shape() = tile_shape;
+  *result.mutable_tile_shape() = tile_shape.ToProto();
   for (int64 dim : tile_assignment.dimensions()) {
     result.add_tile_assignment_dimensions(dim);
   }
@@ -50,9 +50,9 @@ OpSharding Tile1D(const Shape& tile_shape, int64 num_tiles) {
   OpSharding result;
   result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
 
-  CHECK_EQ(ShapeUtil::Rank(tile_shape), 1);
+  CHECK_EQ(tile_shape.rank(), 1);
   std::vector<int64> dimensions(1, num_tiles);
-  *result.mutable_tile_shape() = tile_shape;
+  *result.mutable_tile_shape() = tile_shape.ToProto();
   auto& tile_dimension =
       (*result.mutable_tile_shape()->mutable_dimensions())[0];
   tile_dimension = CeilOfRatio(static_cast<int64>(tile_dimension), num_tiles);

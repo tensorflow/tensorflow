@@ -15,9 +15,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#include "tensorflow/cc/ops/nn_ops.h"
 
 #include <functional>
 #include <memory>
@@ -26,10 +29,8 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -735,8 +736,8 @@ static void BM_LRNFloat(int iters, int depth, int cols, int rows,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -817,8 +818,8 @@ static void BM_AvgPool(int iters, int batch_size, int rows, int cols, int depth,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -909,8 +910,8 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -1013,8 +1014,8 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
       DeviceFactory::NewDevice("CPU", options, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -1193,8 +1194,8 @@ static void BM_ReluFloat(int iters, int batch_size, int rows, int cols,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;

@@ -1,6 +1,4 @@
 op {
   graph_op_name: "CropAndResize"
-  endpoint {
-    name: "image.crop_and_resize"
-  }
+  visibility: HIDDEN
 }

@@ -20,10 +20,8 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.build.number>${build_number}</project.build.number>
     <project.build.commitid>${build_commit_id}</project.build.commitid>
     <project.build.type>${build_type}</project.build.type>
-    <project.build.url>${build_url}</project.build.url>
   </properties>
 
 </project>

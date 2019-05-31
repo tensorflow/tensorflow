@@ -25,42 +25,6 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-const char kDecodeJpegCommonDocStr[] = R"doc(
-The attr `channels` indicates the desired number of color channels for the
-decoded image.
-
-Accepted values are:
-
-*   0: Use the number of channels in the JPEG-encoded image.
-*   1: output a grayscale image.
-*   3: output an RGB image.
-
-If needed, the JPEG-encoded image is transformed to match the requested number
-of color channels.
-
-The attr `ratio` allows downscaling the image by an integer factor during
-decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-downscaling the image later.
-
-)doc";
-
-const char kDecodeJpegCommonParamsDocStr[] = R"doc(
-channels: Number of color channels for the decoded image.
-ratio: Downscaling ratio.
-fancy_upscaling: If true use a slower but nicer upscaling of the
-  chroma planes (yuv420/422 only).
-try_recover_truncated:  If true try to recover an image from truncated input.
-acceptable_fraction: The minimum required fraction of lines before a truncated
-  input is accepted.
-dct_method: string specifying a hint about the algorithm used for
-  decompression.  Defaults to "" which maps to a system-specific
-  default.  Currently valid values are ["INTEGER_FAST",
-  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-  jpeg library changes to a version that does not have that specific
-  option.)
-image: 3-D with shape `[height, width, channels]`..
-)doc";
-
 // Sets output[0] to shape [batch_dim,height,width,channel_dim], where
 // height and width come from the size_tensor.
 Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
@@ -144,6 +108,119 @@ Status ColorspaceShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status NMSShapeFn(InferenceContext* c) {
+  // Get inputs and validate ranks.
+  ShapeHandle boxes;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
+  ShapeHandle scores;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+  ShapeHandle max_output_size;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+  ShapeHandle iou_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+  ShapeHandle score_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+  // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+  DimensionHandle unused;
+  // The boxes[0] and scores[0] are both num_boxes.
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+  // The boxes[1] is 4.
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+  c->set_output(0, c->Vector(c->UnknownDim()));
+  return Status::OK();
+}
+
+Status SoftNMSShapeFn(InferenceContext* c) {
+  // Get inputs and validate ranks.
+  ShapeHandle boxes;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
+  ShapeHandle scores;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+  ShapeHandle max_output_size;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+  ShapeHandle iou_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+  ShapeHandle score_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+  ShapeHandle soft_nms_sigma;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &soft_nms_sigma));
+  // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+  DimensionHandle unused;
+  // The boxes[0] and scores[0] are both num_boxes.
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+  // The boxes[1] is 4.
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+  c->set_output(0, c->Vector(c->UnknownDim()));
+  c->set_output(1, c->Vector(c->UnknownDim()));
+  return Status::OK();
+}
+
+Status CombinedNMSShapeFn(InferenceContext* c) {
+  // Get inputs and validate ranks
+  ShapeHandle boxes;
+  // boxes is a tensor of Dimensions [batch_size, num_anchors, q, 4]
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &boxes));
+  ShapeHandle scores;
+  // scores is a tensor of Dimensions [batch_size, num_anchors, num_classes]
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &scores));
+  ShapeHandle max_output_size_per_class;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size_per_class));
+  ShapeHandle max_total_size;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &max_total_size));
+  ShapeHandle unused_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused_shape));
+
+  DimensionHandle unused;
+  // boxes[0] and scores[0] are both batch_size
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+  // boxes[1] and scores[1] are both num_anchors
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 1), c->Dim(scores, 1), &unused));
+  // The boxes[3] is 4.
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 3), 4, &unused));
+
+  DimensionHandle d = c->Dim(boxes, 2);
+  DimensionHandle class_dim = c->Dim(scores, 2);
+  if (c->ValueKnown(d) && c->ValueKnown(class_dim)) {
+    if (c->Value(d) != 1 && c->Value(d) != c->Value(class_dim)) {
+      return errors::InvalidArgument(
+          "third dimension of boxes must be either "
+          "1 or equal to the third dimension of scores");
+    }
+  }
+  DimensionHandle output_dim;
+  DimensionHandle batch_dim = c->Dim(boxes, 0);
+
+  TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
+  if (c->ValueKnown(output_dim) && c->Value(output_dim) <= 0) {
+    return errors::InvalidArgument("max_total_size should be > 0 ");
+  }
+  DimensionHandle size_per_class;
+  TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &size_per_class));
+
+  int64 output_size;
+  bool pad_per_class;
+  TF_RETURN_IF_ERROR(c->GetAttr("pad_per_class", &pad_per_class));
+  if (!pad_per_class) {
+    output_size = c->Value(output_dim);
+  } else {
+    if (c->ValueKnown(size_per_class) && c->Value(size_per_class) <= 0) {
+      return errors::InvalidArgument(
+          "max_output_size_per_class must be > 0 "
+          "if pad_per_class is set to true ");
+    }
+    output_size = std::min(c->Value(output_dim),
+                           c->Value(size_per_class) * c->Value(class_dim));
+  }
+  c->set_output(0, c->MakeShape({batch_dim, output_size, 4}));
+  c->set_output(1, c->MakeShape({batch_dim, output_size}));
+  c->set_output(2, c->MakeShape({batch_dim, output_size}));
+  c->set_output(3, c->Vector(batch_dim));
+  return Status::OK();
+}
+
 }  // namespace
 
 // --------------------------------------------------------------------------
@@ -162,6 +239,7 @@ REGISTER_OP("ResizeBicubic")
     .Output("resized_images: float")
     .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
@@ -171,6 +249,7 @@ REGISTER_OP("ResizeBicubicGrad")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();
@@ -181,8 +260,25 @@ REGISTER_OP("ResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
+        "float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
+    .SetShapeFn(ResizeShapeFn);
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ScaleAndTranslate")
+    .Input("images: T")
+    .Input("size: int32")
+    .Input("scale: float")
+    .Input("translation: float")
+    .Output("resized_images: float")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
+        "float, double}")
+    .Attr("kernel_type: string = 'lanczos3'")
+    .Attr("antialias: bool = true")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
@@ -196,6 +292,7 @@ REGISTER_OP("QuantizedResizeBilinear")
     .Output("out_max: float")
     .Attr("T: {quint8, qint32, float}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(ResizeShapeFn(c));
       ShapeHandle min_shape;
@@ -212,8 +309,24 @@ REGISTER_OP("ResizeBilinearGrad")
     .Input("grads: float")
     .Input("original_image: T")
     .Output("output: T")
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, bfloat16, half, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    });
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ScaleAndTranslateGrad")
+    .Input("grads: T")
+    .Input("original_image: T")
+    .Input("scale: float")
+    .Input("translation: float")
+    .Output("output: T")
+    .Attr("T: {float}")
+    .Attr("kernel_type: string = 'lanczos3'")
+    .Attr("antialias: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();
@@ -226,6 +339,7 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Output("resized_images: T")
     .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
@@ -235,6 +349,7 @@ REGISTER_OP("ResizeNearestNeighborGrad")
     .Output("output: T")
     .Attr("T: {uint8, int8, int32, half, float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
@@ -361,6 +476,13 @@ REGISTER_OP("EncodeJpeg")
     .SetShapeFn(EncodeImageShapeFn);
 
 // --------------------------------------------------------------------------
+REGISTER_OP("EncodeJpegVariableQuality")
+    .Input("images: uint8")
+    .Input("quality: int32")
+    .Output("contents: string")
+    .SetShapeFn(EncodeImageShapeFn);
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ExtractJpegShape")
     .Input("contents: string")
     .Output("image_shape: output_type")
@@ -382,32 +504,43 @@ REGISTER_OP("AdjustContrast")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Deprecated(2, "Use AdjustContrastv2 instead")
     .SetShapeFn([](InferenceContext* c) {
+      // The contrast_factor, min_value, max_value should be scalar only.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
 // --------------------------------------------------------------------------
 REGISTER_OP("AdjustContrastv2")
-    .Input("images: float")
+    .Input("images: T")
     .Input("contrast_factor: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
+      // The contrast_factor should be scalar only.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
 // --------------------------------------------------------------------------
 REGISTER_OP("AdjustHue")
-    .Input("images: float")
+    .Input("images: T")
     .Input("delta: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
 // --------------------------------------------------------------------------
 REGISTER_OP("AdjustSaturation")
-    .Input("images: float")
+    .Input("images: T")
     .Input("scale: float")
-    .Output("output: float")
+    .Output("output: T")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
@@ -469,6 +602,39 @@ REGISTER_OP("DrawBoundingBoxes")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
+      // The rank of images should be 4.
+      ShapeHandle images;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &images));
+      // Channel depth should be either 1 (GRY), 3 (RGB), or 4 (RGBA).
+      if (c->ValueKnown(c->Dim(images, 3))) {
+        int64 depth = c->Value(c->Dim(images, 3));
+        if (!(depth == 1 || depth == 3 || depth == 4)) {
+          return errors::InvalidArgument(
+              "Channel depth should be either 1 (GRY), "
+              "3 (RGB), or 4 (RGBA)");
+        }
+      }
+
+      // The rank of boxes is 3: [batch, num_bounding_boxes, 4].
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &boxes));
+      // The last value of boxes shape is 4.
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 2), 4, &unused));
+
+      // The rank of the input image (rank = 4) has already been restricted
+      // above, and the output is of the same shape as the input.
+      return shape_inference::UnchangedShape(c);
+    });
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DrawBoundingBoxesV2")
+    .Input("images: T")
+    .Input("boxes: float")
+    .Input("colors: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
@@ -489,6 +655,17 @@ REGISTER_OP("SampleDistortedBoundingBox")
     .Attr("use_image_if_no_bounding_boxes: bool = false")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle image_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &image_size));
+      ShapeHandle bounding_boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &bounding_boxes));
+      // image_size: 1-D with [height, width, channels]
+      // bounding_boxes: 3-D with shape [batch, N, 4]
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(image_size, 0), 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(bounding_boxes, 2), 4, &unused));
+
       c->set_output(0, c->Vector(3));
       c->set_output(1, c->Vector(3));
       c->set_output(2, c->MakeShape({1, 1, 4}));
@@ -511,6 +688,19 @@ REGISTER_OP("SampleDistortedBoundingBoxV2")
     .Attr("use_image_if_no_bounding_boxes: bool = false")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle image_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &image_size));
+      ShapeHandle bounding_boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &bounding_boxes));
+      ShapeHandle min_object_covered;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &min_object_covered));
+      // image_size: 1-D with [height, width, channels]
+      // bounding_boxes: 3-D with shape [batch, N, 4]
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(image_size, 0), 3, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(bounding_boxes, 2), 4, &unused));
+
       c->set_output(0, c->Vector(3));
       c->set_output(1, c->Vector(3));
       c->set_output(2, c->MakeShape({1, 1, 4}));
@@ -533,6 +723,7 @@ REGISTER_OP("ExtractGlimpse")
     .Attr("centered: bool = true")
     .Attr("normalized: bool = true")
     .Attr("uniform_noise: bool = true")
+    .Attr("noise: string = 'uniform'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
@@ -544,6 +735,16 @@ REGISTER_OP("ExtractGlimpse")
           c->Merge(c->Dim(input, 0), c->Dim(offsets, 0), &batch_dim));
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(offsets, 1), 2, &unused));
+
+      bool uniform_noise = false;
+      TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
+      string noise;
+      TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
+      if (uniform_noise && (!noise.empty() && noise != "uniform")) {
+        return errors::InvalidArgument(
+            "The uniform_noise and noise should not be specified at the same "
+            "time");
+      }
 
       return SetOutputToSizedImage(c, batch_dim, 1 /* size_input_idx */,
                                    c->Dim(input, 3));
@@ -558,7 +759,7 @@ REGISTER_OP("CropAndResize")
     .Input("crop_size: int32")
     .Output("crops: float")
     .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
-    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .Attr("extrapolation_value: float = 0")
     .SetShapeFn([](InferenceContext* c) {
       // Get inputs and validate ranks.
@@ -589,7 +790,7 @@ REGISTER_OP("CropAndResizeGradImage")
     .Input("image_size: int32")
     .Output("output: T")
     .Attr("T: {float, half, double}")
-    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(3, &out));
@@ -620,19 +821,166 @@ REGISTER_OP("NonMaxSuppression")
     .Output("selected_indices: int32")
     .Attr("iou_threshold: float = 0.5")
     .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+      // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+      DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
       c->set_output(0, c->Vector(c->UnknownDim()));
       return Status::OK();
     });
 
 REGISTER_OP("NonMaxSuppressionV2")
-    .Input("boxes: float")
-    .Input("scores: float")
+    .Input("boxes: T")
+    .Input("scores: T")
     .Input("max_output_size: int32")
-    .Input("iou_threshold: float")
+    .Input("iou_threshold: T_threshold")
     .Output("selected_indices: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("T_threshold: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+      ShapeHandle iou_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+      // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+      DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
       c->set_output(0, c->Vector(c->UnknownDim()));
       return Status::OK();
     });
+
+REGISTER_OP("NonMaxSuppressionV3")
+    .Input("boxes: T")
+    .Input("scores: T")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: T_threshold")
+    .Input("score_threshold: T_threshold")
+    .Output("selected_indices: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("T_threshold: {half, float} = DT_FLOAT")
+    .SetShapeFn(NMSShapeFn);
+
+REGISTER_OP("NonMaxSuppressionV4")
+    .Input("boxes: T")
+    .Input("scores: T")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: T_threshold")
+    .Input("score_threshold: T_threshold")
+    .Output("selected_indices: int32")
+    .Output("valid_outputs: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("T_threshold: {half, float} = DT_FLOAT")
+    .Attr("pad_to_max_output_size: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(NMSShapeFn(c));
+
+      bool pad_to_max;
+      TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_output_size", &pad_to_max));
+      if (pad_to_max) {
+        // If padded, overwrite the shape of the output to be static.
+        DimensionHandle output_dim;
+        TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &output_dim));
+        c->set_output(0, c->MakeShape({output_dim}));
+      }
+      c->set_output(1, c->MakeShape({}));
+      return Status::OK();
+    });
+
+REGISTER_OP("NonMaxSuppressionV5")
+    .Input("boxes: T")
+    .Input("scores: T")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: T")
+    .Input("score_threshold: T")
+    .Input("soft_nms_sigma: T")
+    .Output("selected_indices: int32")
+    .Output("selected_scores: T")
+    .Output("valid_outputs: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("pad_to_max_output_size: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(SoftNMSShapeFn(c));
+
+      bool pad_to_max;
+      TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_output_size", &pad_to_max));
+      if (pad_to_max) {
+        // If padded, overwrite the shape of the output to be static.
+        DimensionHandle output_dim;
+        TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &output_dim));
+        c->set_output(0, c->MakeShape({output_dim}));
+        c->set_output(1, c->MakeShape({output_dim}));
+      }
+
+      c->set_output(2, c->MakeShape({}));
+      return Status::OK();
+    });
+
+REGISTER_OP("NonMaxSuppressionWithOverlaps")
+    .Input("overlaps: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Input("overlap_threshold: float")
+    .Input("score_threshold: float")
+    .Output("selected_indices: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle overlaps;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &overlaps));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+      ShapeHandle overlap_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &overlap_threshold));
+      ShapeHandle score_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+      // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+      DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(overlaps, 1), &unused));
+
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    });
+
+REGISTER_OP("CombinedNonMaxSuppression")
+    .Input("boxes: float")
+    .Input("scores: float")
+    .Input("max_output_size_per_class: int32")
+    .Input("max_total_size: int32")
+    .Input("iou_threshold: float")
+    .Input("score_threshold: float")
+    .Output("nmsed_boxes: float")
+    .Output("nmsed_scores: float")
+    .Output("nmsed_classes: float")
+    .Output("valid_detections: int32")
+    .Attr("pad_per_class: bool = false")
+    .Attr("clip_boxes: bool = true")
+    .SetShapeFn(CombinedNMSShapeFn);
 
 }  // namespace tensorflow

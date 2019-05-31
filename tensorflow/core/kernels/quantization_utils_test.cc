@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #define EIGEN_USE_THREADS
 
 #include <limits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -212,8 +212,8 @@ void TestRequantizeManyInNewRange8To32Bit() {
 template <typename InputType, typename OutputType>
 void TestRequantizeManyInNewRangeEigenVsNonEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   const size_t ranges_count = 6;
   const float ranges[ranges_count][4] = {
@@ -294,8 +294,8 @@ void TimeRequantizeManyInNewRange(int64 num_elements, int64 iterations,
   }
 
   thread::ThreadPool threadpool(Env::Default(), "test", 4 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 4 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       4 /* num_threads */);
 
   Tensor i_tensor =
       tensorflow::test::AsTensor(gtl::ArraySlice<InputType>(values_quantized));
@@ -385,8 +385,12 @@ void TestQuantizedToFloatInPlaceUsingEigen(
   // These are the float values we're going to test the conversions on.
   typedef std::pair<float, float> FPair;
   for (FPair min_and_max : std::vector<FPair>{
-           FPair(-255.0f, 255.0f), FPair(-1.0f, 1.0f), FPair(-1.0f, 255.0f),
-           FPair(0.0f, 1e6), FPair(0.0f, 1.0f), FPair(-31.0f, 13.0f),
+           FPair(-255.0f, 255.0f),
+           FPair(-1.0f, 1.0f),
+           FPair(-1.0f, 255.0f),
+           FPair(0.0f, 1e6),
+           FPair(0.0f, 1.0f),
+           FPair(-31.0f, 13.0f),
            FPair(-5.89505e+08, 5.89505e+08),
        }) {
     const float f_min = min_and_max.first;
@@ -495,7 +499,7 @@ void TestAvoidBias() {
   const float step_size = (max - min) / 255.0f;
   const float tolerance = step_size / 1000.0f;
   // This is the smallest perfectly representable float in the range.
-  float first_float = ceil(min / step_size) * step_size;
+  float first_float = std::ceil(min / step_size) * step_size;
   for (float f = first_float; f <= max; f += step_size) {
     const int as_int = FloatToQuantized<quint8>(f, min, max);
     const float back_to_float = QuantizedToFloat<quint8>(as_int, min, max);
@@ -602,8 +606,8 @@ void TestRequantizeManyInNewRange32To8Bit() {
 
 void TestRequantizeManyInNewRange32To8BitUsingEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
   TestRequantizeManyInNewRange32To8Bit(&eigen_device);
 }
 
@@ -633,8 +637,8 @@ void TestFloatTensorToQuantized() {
 // FloatToQuantized.
 void TestFloatToQuantizedInPlaceUsingEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   TestFloatToQuantizedInPlaceUsingEigen<quint8>(&eigen_device);
   TestFloatToQuantizedInPlaceUsingEigen<qint8>(&eigen_device);
@@ -644,8 +648,8 @@ void TestFloatToQuantizedInPlaceUsingEigen() {
 
 void TestOverflowWithEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   const int num_vals = 4;
   const float input_min = 0.0f;
@@ -712,8 +716,8 @@ void TestQuantizedTensorToFloat() {
 // QuantizedToFloat.
 void TestQuantizedToFloatInPlaceUsingEigen() {
   thread::ThreadPool threadpool(Env::Default(), "test", 2 /* num_threads */);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, 2 /* num_threads */);
+  Eigen::ThreadPoolDevice eigen_device(threadpool.AsEigenThreadPool(),
+                                       2 /* num_threads */);
 
   TestQuantizedToFloatInPlaceUsingEigen<quint8>(&eigen_device);
   TestQuantizedToFloatInPlaceUsingEigen<qint8>(&eigen_device);

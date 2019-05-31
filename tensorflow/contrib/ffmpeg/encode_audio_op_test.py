@@ -61,7 +61,7 @@ class EncodeAudioOpTest(test.TestCase):
 
   def testRoundTrip(self):
     """Reads a wav file, writes it, and compares them."""
-    with self.test_session():
+    with self.cached_session():
       audio_op = ffmpeg.decode_audio(
           self._contents,
           file_format='wav',
@@ -73,7 +73,7 @@ class EncodeAudioOpTest(test.TestCase):
       self._compareWavFiles(self._contents, encoded_contents)
 
   def testRoundTripWithPlaceholderSampleRate(self):
-    with self.test_session():
+    with self.cached_session():
       placeholder = array_ops.placeholder(dtypes.int32)
       audio_op = ffmpeg.decode_audio(
           self._contents,
@@ -86,7 +86,7 @@ class EncodeAudioOpTest(test.TestCase):
       self._compareWavFiles(self._contents, encoded_contents)
 
   def testFloatingPointSampleRateInvalid(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(TypeError):
         ffmpeg.encode_audio(
             [[0.0], [1.0]],
@@ -94,7 +94,7 @@ class EncodeAudioOpTest(test.TestCase):
             samples_per_second=12345.678)
 
   def testZeroSampleRateInvalid(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       encode_op = ffmpeg.encode_audio(
           [[0.0], [1.0]],
           file_format='wav',
@@ -103,7 +103,7 @@ class EncodeAudioOpTest(test.TestCase):
         sess.run(encode_op)
 
   def testNegativeSampleRateInvalid(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       encode_op = ffmpeg.encode_audio(
           [[0.0], [1.0]],
           file_format='wav',

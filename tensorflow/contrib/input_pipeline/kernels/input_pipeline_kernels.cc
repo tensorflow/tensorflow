@@ -34,9 +34,8 @@ class ObtainNextOp : public OpKernel {
 
     // Allocate output.
     Tensor* output_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx,
-        ctx->allocate_output("out_element", TensorShape({}), &output_tensor));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("out_element", TensorShape({}),
+                                             &output_tensor));
 
     // Obtain mutex for the "counter" tensor.
     mutex* mu;

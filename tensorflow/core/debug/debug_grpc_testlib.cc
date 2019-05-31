@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -30,7 +31,7 @@ namespace test {
 
 ::grpc::Status TestEventListenerImpl::SendEvents(
     ::grpc::ServerContext* context,
-    ::grpc::ServerReaderWriter< ::tensorflow::EventReply, ::tensorflow::Event>*
+    ::grpc::ServerReaderWriter<::tensorflow::EventReply, ::tensorflow::Event>*
         stream) {
   Event event;
 

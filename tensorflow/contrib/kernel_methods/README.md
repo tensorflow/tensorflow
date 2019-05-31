@@ -21,13 +21,15 @@ Currently, there is a [RandomFourierFeatureMapper](https://www.tensorflow.org/co
 output. More mappers are on the way.
 
 ## Kernel-based Estimators
-These are estimators inheriting from the @{tf.contrib.learn.Estimator} class and
-use kernel mappers internally to discover non-linearities in the data. These
-canned estimators map their input features using kernel mapper Ops and then
-apply linear models to the mapped features. Combining kernel mappers with linear
-models and different loss functions leads to a variety of models: linear and
-non-linear SVMs, linear regression (with and without kernels) and (multinomial)
-logistic regression (with and without kernels).
+
+These estimators inherit from the
+[`tf.contrib.learn.Estimator`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/estimator.py)
+class and use kernel mappers internally to discover non-linearities in the
+data. These canned estimators map their input features using kernel mapper
+Ops and then apply linear models to the mapped features. Combining kernel
+mappers with linear models and different loss functions leads to a variety of
+models: linear and non-linear SVMs, linear regression (with and without
+kernels) and (multinomial) logistic regression (with and without kernels).
 
 Currently there is a [KernelLinearClassifier](https://www.tensorflow.org/code/tensorflow/contrib/kernel_methods/python/kernel_estimators.py) implemented but more pre-packaged estimators
 are on the way.

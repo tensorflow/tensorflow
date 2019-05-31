@@ -1,15 +1,17 @@
 # Description:
 #   Ops that get statistics on memory allocators.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_cc")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -45,6 +47,28 @@ tf_gen_op_wrapper_py(
     deps = [":memory_stats_ops_op_lib"],
 )
 
+tf_gen_op_wrapper_cc(
+    name = "memory_stats_ops",
+    out_ops_file = "memory_stats_ops",
+)
+
+cc_library(
+    name = "memory_stats_cc",
+    srcs = ["memory_stats_ops.cc"],
+    hdrs = ["memory_stats_ops.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":memory_stats_kernels",
+        ":memory_stats_ops_op_lib",
+        "//tensorflow/cc:const_op",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
 tf_custom_op_py_library(
     name = "memory_stats_py",
     srcs = [
@@ -78,16 +102,4 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

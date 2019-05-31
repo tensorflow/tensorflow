@@ -1,4 +1,6 @@
 op {
   graph_op_name: "RealDiv"
-  visibility: HIDDEN
+  endpoint {
+    name: "realdiv"
+  }
 }

@@ -26,19 +26,19 @@ namespace {
 using tensorflow::decision_trees::Leaf;
 using tensorflow::tensorforest::DenseClassificationLeafModelOperator;
 using tensorflow::tensorforest::LeafModelOperator;
-using tensorflow::tensorforest::SparseClassificationLeafModelOperator;
-using tensorflow::tensorforest::SparseOrDenseClassificationLeafModelOperator;
 using tensorflow::tensorforest::LeafStat;
 using tensorflow::tensorforest::RegressionLeafModelOperator;
-using tensorflow::tensorforest::TestableInputTarget;
+using tensorflow::tensorforest::SparseClassificationLeafModelOperator;
+using tensorflow::tensorforest::SparseOrDenseClassificationLeafModelOperator;
 using tensorflow::tensorforest::TensorForestParams;
+using tensorflow::tensorforest::TestableInputTarget;
 
 const int32 kNumClasses = 3;
 
 constexpr char kRegressionStatProto[] =
-  "weight_sum: 3 "
-  "regression { "
-  "mean_output { "
+    "weight_sum: 3 "
+    "regression { "
+    "mean_output { "
     "value { "
     "  float_value: 27 "
     "} "
@@ -48,8 +48,8 @@ constexpr char kRegressionStatProto[] =
     "value { "
     "  float_value: 10 "
     "} "
-  "} "
-  "mean_output_squares { "
+    "} "
+    "mean_output_squares { "
     "value {"
     "  float_value: 245"
     "}"
@@ -59,8 +59,8 @@ constexpr char kRegressionStatProto[] =
     "value {"
     "  float_value: 46"
     "}"
-  "}"
-"}";
+    "}"
+    "}";
 
 void TestClassificationNormalUse(const std::unique_ptr<LeafModelOperator>& op) {
   Leaf l;
@@ -82,7 +82,6 @@ void TestClassificationNormalUse(const std::unique_ptr<LeafModelOperator>& op) {
 
   EXPECT_FLOAT_EQ(op->GetOutputValue(l, 1), 3.4);
 }
-
 
 TEST(DenseLeafModelOperatorsTest, NormalUse) {
   TensorForestParams params;
@@ -182,7 +181,7 @@ TEST(SparseLeafModelOperatorsTest, InitWithExisting) {
 
   std::unique_ptr<Leaf> leaf(new Leaf);
 
-  op->ExportModel( *stat, leaf.get());
+  op->ExportModel(*stat, leaf.get());
 
   // Make sure it was initialized correctly.
   EXPECT_FLOAT_EQ(op->GetOutputValue(*leaf, 0), 1.1);
@@ -193,7 +192,6 @@ TEST(SparseLeafModelOperatorsTest, InitWithExisting) {
   EXPECT_FLOAT_EQ(op->GetOutputValue(*leaf, 100), 0);
   EXPECT_EQ(leaf->sparse_vector().sparse_value().size(), kNumClasses);
 }
-
 
 TEST(RegressionLeafModelOperatorsTest, NormalUse) {
   TensorForestParams params;

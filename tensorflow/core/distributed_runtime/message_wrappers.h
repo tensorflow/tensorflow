@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
@@ -87,6 +87,11 @@ class RunStepRequestWrapper {
   // truncate long metadata messages.
   virtual bool store_errors_in_response_body() const = 0;
 
+  // Unique identifier for this request. Every RunGraphRequest must have a
+  // unique request_id, and retried RunGraphRequests must have the same
+  // request_id. If request_id is zero, retry detection is disabled.
+  virtual int64 request_id() const = 0;
+
   // Returns a human-readable representation of this message for debugging.
   virtual string DebugString() const = 0;
 
@@ -127,6 +132,7 @@ class InMemoryRunStepRequest : public MutableRunStepRequestWrapper {
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunStepRequestWrapper methods.
   void set_session_handle(const string& handle) override;
@@ -177,6 +183,7 @@ class MutableProtoRunStepRequest : public MutableRunStepRequestWrapper {
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunStepRequestWrapper methods.
   void set_session_handle(const string& handle) override;
@@ -189,6 +196,7 @@ class MutableProtoRunStepRequest : public MutableRunStepRequestWrapper {
 
  private:
   RunStepRequest request_;
+  friend class MasterInterface;
 };
 
 // Wrapper for immutable RunStep requests that use a non-owned
@@ -216,6 +224,7 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
  private:
   const RunStepRequest* const request_;  // Not owned.
@@ -234,7 +243,7 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-// Abstract interface for an immutable RunStepRequest message.
+// Abstract interface for an immutable RunGraphRequest message.
 //
 // This interface is typically used by server-side components in the
 // TensorFlow worker.
@@ -245,6 +254,9 @@ class RunGraphRequestWrapper {
   // The session handle used to register the graph. If empty, a single global
   // namespace is used.
   virtual const string& session_handle() const = 0;
+
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  virtual bool create_worker_session_called() const = 0;
 
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
@@ -283,6 +295,8 @@ class RunGraphRequestWrapper {
   // truncate long metadata messages.
   virtual bool store_errors_in_response_body() const = 0;
 
+  virtual int64 request_id() const = 0;
+
   // Returns the wrapped data as a protocol buffer message.
   virtual const RunGraphRequest& ToProto() const = 0;
 };
@@ -293,6 +307,7 @@ class RunGraphRequestWrapper {
 class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
  public:
   virtual void set_session_handle(const string& handle) = 0;
+  virtual void set_create_worker_session_called(bool called) = 0;
   virtual void set_graph_handle(const string& handle) = 0;
   virtual void set_step_id(int64 step_id) = 0;
   virtual ExecutorOpts* mutable_exec_opts() = 0;
@@ -302,11 +317,15 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
   virtual Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
       const string& send_key) = 0;
+  virtual Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
+      const string& send_key) = 0;
 
   virtual void add_recv_key(const string& recv_key) = 0;
   virtual void set_is_partial(bool is_partial) = 0;
   virtual void set_is_last_partial_run(bool is_last_partial_run) = 0;
   virtual void set_store_errors_in_response_body(bool store_errors) = 0;
+  virtual void set_request_id(int64 request_id) = 0;
 };
 
 class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
@@ -314,6 +333,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   // RunGraphRequestWrapper methods.
   const string& session_handle() const override;
   const string& graph_handle() const override;
+  bool create_worker_session_called() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
   size_t num_sends() const override;
@@ -325,22 +345,29 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   bool is_last_partial_run() const override;
   const RunGraphRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunGraphRequestWrapper methods.
   void set_session_handle(const string& handle) override;
+  void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
       const string& send_key) override;
+  Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
+      const string& send_key) override;
   void add_recv_key(const string& recv_key) override;
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
   void set_store_errors_in_response_body(bool store_errors) override;
+  void set_request_id(int64 request_id) override;
 
  private:
   string session_handle_;
+  bool create_worker_session_called_ = false;
   string graph_handle_;
   int64 step_id_;
   ExecutorOpts exec_opts_;
@@ -349,6 +376,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   bool is_partial_ = false;
   bool is_last_partial_run_ = false;
   bool store_errors_in_response_body_ = false;
+  int64 request_id_ = 0;
 
   // Holds a cached and owned representation of the proto
   // representation of this request, if needed, so that `ToProto()`
@@ -364,6 +392,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
   const string& session_handle() const override;
+  bool create_worker_session_called() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -375,20 +404,26 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   bool is_partial() const override;
   bool is_last_partial_run() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
   const RunGraphRequest& ToProto() const override;
 
   // MutableRunGraphRequestWrapper methods.
   void set_session_handle(const string& handle) override;
+  void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
       const string& send_key) override;
+  Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
+      const string& send_key) override;
   void add_recv_key(const string& recv_key) override;
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
   void set_store_errors_in_response_body(bool store_errors) override;
+  void set_request_id(int64 request_id) override;
 
  private:
   RunGraphRequest request_;
@@ -400,6 +435,7 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
 
   // RunGraphRequestWrapper methods.
   const string& session_handle() const override;
+  bool create_worker_session_called() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -411,6 +447,7 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
   bool is_partial() const override;
   bool is_last_partial_run() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
   const RunGraphRequest& ToProto() const override;
 
  private:
@@ -702,4 +739,4 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_

@@ -76,6 +76,11 @@ REGISTER_OP("TestStringOutput")
     .Output("output2: string")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("TestAttr")
+    .Output("out: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 namespace {
 enum KernelLabel { DEFAULT_LABEL, OVERLOAD_1_LABEL, OVERLOAD_2_LABEL };
 }  // namespace
@@ -152,7 +157,7 @@ REGISTER_KERNEL_BUILDER(Name("Old").Device(DEVICE_CPU), OldOp);
 // Stubbed-out resource to test resource handle ops.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
 };
 
 REGISTER_RESOURCE_HANDLE_KERNEL(StubResource);
@@ -187,6 +192,20 @@ class ResourceUsingOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ResourceUsingOp").Device(DEVICE_CPU),
                         ResourceUsingOp);
+
+class TestAttrOp : public OpKernel {
+ public:
+  explicit TestAttrOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<float>()() = 1.0;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("TestAttr").Device(DEVICE_CPU).TypeConstraint<float>("T"), TestAttrOp);
 
 // Various test ops without kernels. These are used to test graph construction.
 
@@ -385,6 +404,10 @@ REGISTER_OP("DefaultAttrs")
 
 REGISTER_OP("FuncAttr")
     .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FuncListAttr")
+    .Attr("f: list(func)")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("Simple")
@@ -638,4 +661,27 @@ REGISTER_OP("ComplexStruct")
     .Attr("t_c: list(type) >= 0")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// An op which returns its own device placement as a string, useful for testing
+// where ops get placed.
+REGISTER_OP("DevicePlacementOp")
+    .Output("device: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+class DevicePlacementOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("device", TensorShape({}), &output));
+    output->scalar<string>()() = ctx->device()->name();
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_CPU),
+                        DevicePlacementOp);
+REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_GPU),
+                        DevicePlacementOp);
 }  // end namespace tensorflow

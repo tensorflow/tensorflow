@@ -28,7 +28,7 @@
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 
 using tensorflow::strings::StrCat;
@@ -44,41 +44,43 @@ std::vector<string> FfmpegAudioCommandLine(const string& input_filename,
                                            const string& output_filename,
                                            const string& input_format_id,
                                            int32 samples_per_second,
-                                           int32 channel_count) {
-  return {"-nostats",             // No additional progress display.
-          "-nostdin",             // No interactive commands accepted.
-          "-f", input_format_id,  // eg: "mp3"
-          "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
-          "-loglevel", "error",   // Print errors only.
-          "-hide_banner",         // Skip printing build options, version, etc.
-          "-map_metadata", "-1",  // Copy global metadata from input to output.
-          "-vn",                  // No video recording.
-          "-ac:a:0", StrCat(channel_count), "-ar:a:0",
-          StrCat(samples_per_second),
-          // Output set (in several ways) to signed 16-bit little-endian ints.
-          "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
-          "-sn",  // No subtitle recording.
-          "-y",   // Overwrite output file.
-          StrCat(output_filename)};
+                                           int32 channel_count,
+                                           const string& stream) {
+  std::vector<string> command({
+      "-nostats",             // No additional progress display.
+      "-nostdin",             // No interactive commands accepted.
+      "-f", input_format_id,  // eg: "mp3"
+      "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
+      "-loglevel", "error",   // Print errors only.
+      "-hide_banner",         // Skip printing build options, version, etc.
+      "-map_metadata", "-1",  // Copy global metadata from input to output.
+      "-vn",                  // No video recording.
+      "-ac:a:0", StrCat(channel_count), "-ar:a:0", StrCat(samples_per_second),
+      // Output set (in several ways) to signed 16-bit little-endian ints.
+      "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
+      "-sn",  // No subtitle recording.
+      "-y"    // Overwrite output file.
+  });
+  if (!stream.empty()) {
+    command.emplace_back("-map");
+    command.emplace_back(StrCat("0:", stream));
+  }
+  command.emplace_back(StrCat(output_filename));
+
+  return command;
 }
 
 std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
                                            const string& output_filename) {
   return {"-nostats",  // No additional progress display.
           "-nostdin",  // No interactive commands accepted.
-          "-i",
-          input_filename,
-          "-f",
-          "image2pipe",
-          "-probesize",
-          StrCat(kDefaultProbeSize),
-          "-loglevel",
-          "error",  // Print errors only.
+          "-i", input_filename, "-f", "image2pipe", "-probesize",
+          StrCat(kDefaultProbeSize), "-loglevel",
+          // Info is needed to get the information about stream, etc.
+          // It is generated to a separate file, not stdout/stderr.
+          "info",
           "-hide_banner",  // Skip printing build options, version, etc.
-          "-vcodec",
-          "rawvideo",
-          "-pix_fmt",
-          "rgb24",
+          "-vcodec", "rawvideo", "-pix_fmt", "rgb24",
           "-y",  // Overwrite output file.
           StrCat(output_filename)};
 }
@@ -123,7 +125,6 @@ bool IsBinaryInstalled(const string& binary_name) {
   std::transform(args.begin(), args.end(), std::back_inserter(args_chars),
                  [](const string& s) { return const_cast<char*>(s.c_str()); });
   args_chars.push_back(nullptr);
-
   ::execvp(kFfmpegExecutable, args_chars.data());
   // exec only returns on error.
   const int error = errno;
@@ -255,6 +256,9 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
         if (p != std::string::npos) {
           string rgb24 = line.substr(p + 9, line.find(" ", p + 9));
           rgb24 = rgb24.substr(0, rgb24.find(","));
+          // Strip anything after " ", in case the format is
+          // `640x360 [SAR 1:1 DAR 16:9]`
+          rgb24 = rgb24.substr(0, rgb24.find(" "));
           string rgb24_width = rgb24.substr(0, rgb24.find("x"));
           string rgb24_height = rgb24.substr(rgb24_width.length() + 1);
           if (strings::safe_strtou32(rgb24_width, &width_value) &&
@@ -269,8 +273,10 @@ Status ReadInfoFile(const string& filename, uint32* width, uint32* height,
       // We only look for the first stream mapping to have the number of the
       // frames.
       // Once processed we will not further process stream mapping section.
-      if (line.find("frame=  ") == 0) {
-        string number = line.substr(8, line.find(" ", 8));
+      if (line.find("frame=") == 0) {
+        // The format might be `frame=  166 ` or `frame=12488 `
+        string number = line.substr(6);
+        number = number.substr(number.find_first_not_of(" "));
         number = number.substr(0, number.find(" "));
         if (strings::safe_strtou32(number, &frames_value)) {
           in_mapping = false;
@@ -308,13 +314,12 @@ Status WriteFile(const string& filename, StringPiece contents) {
 
 Status ReadAudioFile(const string& filename, const string& audio_format_id,
                      int32 samples_per_second, int32 channel_count,
-                     std::vector<float>* output_samples) {
+                     const string& stream, std::vector<float>* output_samples) {
   // Create an argument list.
   string output_filename = io::GetTempFilename("raw");
   const std::vector<string> args =
       FfmpegAudioCommandLine(filename, output_filename, audio_format_id,
-                             samples_per_second, channel_count);
-
+                             samples_per_second, channel_count, stream);
   // Unfortunately, it's impossible to differentiate an exec failure due to the
   // binary being missing and an error from the binary's execution. Therefore,
   // check to see if the binary *should* be available. If not, return an error
@@ -368,7 +373,6 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
   // Create an argument list.
   const std::vector<string> args =
       FfmpegVideoCommandLine(filename, output_filename);
-
   // Execute ffmpeg and report errors.
   pid_t child_pid = ::fork();
   if (child_pid < 0) {

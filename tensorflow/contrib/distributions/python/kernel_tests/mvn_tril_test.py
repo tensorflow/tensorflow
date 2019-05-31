@@ -45,7 +45,7 @@ class MultivariateNormalTriLTest(test.TestCase):
     return chol.eval(), sigma.eval()
 
   def testLogPDFScalarBatch(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[1, 1] = -chol[1, 1]
@@ -65,7 +65,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval())
 
   def testLogPDFXIsHigherRank(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[0, 0] = -chol[0, 0]
@@ -85,7 +85,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval(), atol=0., rtol=0.03)
 
   def testLogPDFXLowerDimension(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 2)
       chol, sigma = self._random_chol(3, 2, 2)
       chol[0, 0, 0] = -chol[0, 0, 0]
@@ -108,7 +108,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval()[1])
 
   def testEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[0, 0] = -chol[0, 0]
@@ -121,7 +121,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_entropy, entropy.eval())
 
   def testEntropyMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, sigma = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -136,7 +136,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_entropy, entropy.eval()[1, 1])
 
   def testSample(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[0, 0] = -chol[0, 0]
@@ -152,7 +152,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(np.cov(sample_values, rowvar=0), sigma, atol=0.06)
 
   def testSingularScaleRaises(self):
-    with self.test_session():
+    with self.cached_session():
       mu = None
       chol = [[1., 0.], [0., 0.]]
       mvn = ds.MultivariateNormalTriL(mu, chol, validate_args=True)
@@ -160,7 +160,7 @@ class MultivariateNormalTriLTest(test.TestCase):
         mvn.sample().eval()
 
   def testSampleWithSampleShape(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, sigma = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -185,7 +185,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_log_pdf, x_log_pdf)
 
   def testSampleMultiDimensional(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, sigma = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -205,7 +205,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           atol=1e-1)
 
   def testShapes(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, _ = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -235,9 +235,9 @@ class MultivariateNormalTriLTest(test.TestCase):
     return mu, sigma
 
   def testKLNonBatch(self):
-    batch_shape = ()
-    event_shape = (2,)
-    with self.test_session():
+    batch_shape = []
+    event_shape = [2]
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
       mvn_a = ds.MultivariateNormalTriL(
@@ -257,9 +257,9 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_kl, kl_v)
 
   def testKLBatch(self):
-    batch_shape = (2,)
-    event_shape = (3,)
-    with self.test_session():
+    batch_shape = [2]
+    event_shape = [3]
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
       mvn_a = ds.MultivariateNormalTriL(
@@ -282,10 +282,37 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_kl_0, kl_v[0])
       self.assertAllClose(expected_kl_1, kl_v[1])
 
+  def testKLBatchBroadcast(self):
+    batch_shape = [2]
+    event_shape = [3]
+    with self.cached_session():
+      mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
+      # No batch shape.
+      mu_b, sigma_b = self._random_mu_and_sigma([], event_shape)
+      mvn_a = ds.MultivariateNormalTriL(
+          loc=mu_a,
+          scale_tril=np.linalg.cholesky(sigma_a),
+          validate_args=True)
+      mvn_b = ds.MultivariateNormalTriL(
+          loc=mu_b,
+          scale_tril=np.linalg.cholesky(sigma_b),
+          validate_args=True)
+
+      kl = ds.kl_divergence(mvn_a, mvn_b)
+      self.assertEqual(batch_shape, kl.get_shape())
+
+      kl_v = kl.eval()
+      expected_kl_0 = _compute_non_batch_kl(mu_a[0, :], sigma_a[0, :, :],
+                                            mu_b, sigma_b)
+      expected_kl_1 = _compute_non_batch_kl(mu_a[1, :], sigma_a[1, :, :],
+                                            mu_b, sigma_b)
+      self.assertAllClose(expected_kl_0, kl_v[0])
+      self.assertAllClose(expected_kl_1, kl_v[1])
+
   def testKLTwoIdenticalDistributionsIsZero(self):
-    batch_shape = (2,)
-    event_shape = (3,)
-    with self.test_session():
+    batch_shape = [2]
+    event_shape = [3]
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mvn_a = ds.MultivariateNormalTriL(
           loc=mu_a,
@@ -309,7 +336,7 @@ class MultivariateNormalTriLTest(test.TestCase):
     true_variance = np.diag(true_covariance)
     true_stddev = np.sqrt(true_variance)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = ds.MultivariateNormalTriL(
           loc=mu,
           scale_tril=scale_tril,

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
 
 namespace tensorflow {
 namespace fuzzing {
@@ -30,9 +30,9 @@ class FuzzIdentity : public FuzzSession {
       flat_tensor(i) = data[i];
     }
 
-    Status s = RunOneInput(input_tensor);
     // Note:  For many ops, we don't care about this success -- but when
     // testing to make sure the harness actually works, it's useful.
+    Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.error_message();
     }

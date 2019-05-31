@@ -29,24 +29,21 @@ import argparse
 import os
 import re
 import shutil
-import subprocess
+import tempfile
 import zipfile
 
-UNZIP_CMD = "/usr/bin/unzip"
-ZIP_CMD = "/usr/bin/zip"
-SED_CMD = "/bin/sed"
-
-TF_NIGHTLY_REGEX = r"(.+)tf_nightly(|_gpu)-(\d\.\d\.\d.dev[\d]{0,8})-(.+)\.whl"
+TF_NIGHTLY_REGEX = (r"(.+)(tf_nightly.*)-(\d\.[\d]{1,2}"
+                    r"\.\d.dev[\d]{0,8})-(.+)\.whl")
 BINARY_STRING_TEMPLATE = "%s-%s-%s.whl"
 
 
 def check_existence(filename):
   """Check the existence of file or dir."""
   if not os.path.exists(filename):
-    raise RuntimeError("%s not found.")
+    raise RuntimeError("%s not found." % filename)
 
 
-def copy_binary(directory, origin_tag, new_tag, version, gpu=False):
+def copy_binary(directory, origin_tag, new_tag, version, package):
   """Rename and copy binaries for different python versions.
 
   Arguments:
@@ -54,37 +51,42 @@ def copy_binary(directory, origin_tag, new_tag, version, gpu=False):
     origin_tag: str of the old python version tag
     new_tag: str of the new tag
     version: the version of the package
-    gpu: bool if its a gpu build or not
+    package: str, name of the package
 
   """
   print("Rename and copy binaries with %s to %s." % (origin_tag, new_tag))
-  if gpu:
-    package = "tf_nightly_gpu"
-  else:
-    package = "tf_nightly"
   origin_binary = BINARY_STRING_TEMPLATE % (package, version, origin_tag)
   new_binary = BINARY_STRING_TEMPLATE % (package, version, new_tag)
-  zip_ref = zipfile.ZipFile(directory + origin_binary, "r")
-  zip_ref.extractall()
-  zip_ref.close()
-  old_py_ver = re.search(r"(cp\d\d-cp\d\d)", origin_tag).group(1)
-  new_py_ver = re.search(r"(cp\d\d-cp\d\d)", new_tag).group(1)
-  subprocess.check_call(
-      "%s -i s/%s/%s/g %s-%s.dist-info/WHEEL" % (SED_CMD, old_py_ver,
-                                                 new_py_ver, package, version),
-      shell=True)
-  zout = zipfile.ZipFile(directory + new_binary, "w", zipfile.ZIP_DEFLATED)
-  zip_these_files = [
-      "%s-%s.dist-info" % (package, version),
-      "%s-%s.data" % (package, version)
-  ]
-  for dirname in zip_these_files:
-    for root, _, files in os.walk(dirname):
-      for filename in files:
-        zout.write(os.path.join(root, filename))
-  zout.close()
-  for dirname in zip_these_files:
-    shutil.rmtree(dirname)
+  zip_ref = zipfile.ZipFile(os.path.join(directory, origin_binary), "r")
+
+  try:
+    tmpdir = tempfile.mkdtemp()
+    os.chdir(tmpdir)
+
+    zip_ref.extractall()
+    zip_ref.close()
+    old_py_ver = re.search(r"(cp\d\d-cp\d\d)", origin_tag).group(1)
+    new_py_ver = re.search(r"(cp\d\d-cp\d\d)", new_tag).group(1)
+
+    wheel_file = os.path.join(
+        tmpdir, "%s-%s.dist-info" % (package, version), "WHEEL")
+    with open(wheel_file, "r") as f:
+      content = f.read()
+    with open(wheel_file, "w") as f:
+      f.write(content.replace(old_py_ver, new_py_ver))
+
+    zout = zipfile.ZipFile(directory + new_binary, "w", zipfile.ZIP_DEFLATED)
+    zip_these_files = [
+        "%s-%s.dist-info" % (package, version),
+        "%s-%s.data" % (package, version),
+    ]
+    for dirname in zip_these_files:
+      for root, _, files in os.walk(dirname):
+        for filename in files:
+          zout.write(os.path.join(root, filename))
+    zout.close()
+  finally:
+    shutil.rmtree(tmpdir)
 
 
 def main():
@@ -110,10 +112,11 @@ def main():
   args = parser.parse_args()
 
   # Argument checking
+  args.filename = os.path.abspath(args.filename)
   check_existence(args.filename)
   regex_groups = re.search(TF_NIGHTLY_REGEX, args.filename)
   directory = regex_groups.group(1)
-  gpu = regex_groups.group(2)
+  package = regex_groups.group(2)
   version = regex_groups.group(3)
   origin_tag = regex_groups.group(4)
   old_py_ver = re.search(r"(cp\d\d)", origin_tag).group(1)
@@ -122,7 +125,7 @@ def main():
   new_tag = origin_tag.replace(old_py_ver, "cp" + args.new_py_ver)
 
   # Copy the binary with the info we have
-  copy_binary(directory, origin_tag, new_tag, version, gpu)
+  copy_binary(directory, origin_tag, new_tag, version, package)
 
 
 if __name__ == "__main__":

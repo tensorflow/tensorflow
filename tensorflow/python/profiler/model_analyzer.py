@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.profiler import option_builder
 from tensorflow.python.profiler import tfprof_logger
+from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_PROFILE_OPTIONS = 0
 _DEFAULT_ADVISE_OPTIONS = 0
@@ -121,6 +122,7 @@ def _build_advisor_options(options):
   return opts
 
 
+@tf_export(v1=['profiler.Profiler'])
 class Profiler(object):
   """TensorFlow multi-step profiler.
 
@@ -133,9 +135,9 @@ class Profiler(object):
 
     for i in xrange(total_steps):
       if i % 10000 == 0:
-        run_meta = tf.RunMetadata()
+        run_meta = tf.compat.v1.RunMetadata()
         _ = sess.run(...,
-                     options=tf.RunOptions(
+                     options=tf.compat.v1.RunOptions(
                          trace_level=tf.RunOptions.FULL_TRACE),
                      run_metadata=run_meta)
         profiler.add_step(i, run_meta)
@@ -170,7 +172,7 @@ class Profiler(object):
       op_log: optional. tensorflow::tfprof::OpLogProto proto. Used to define
           extra op types.
     """
-    if not graph and context.in_graph_mode():
+    if not graph and not context.executing_eagerly():
       graph = ops.get_default_graph()
     self._coverage = 0.0
     self._graph = graph
@@ -304,6 +306,7 @@ class Profiler(object):
     print_mdl.WriteProfile(filename)
 
 
+@tf_export(v1=['profiler.profile'])
 def profile(graph=None,
             run_meta=None,
             op_log=None,
@@ -333,7 +336,7 @@ def profile(graph=None,
     If cmd is 'op' or 'code', returns MultiGraphNodeProto proto.
     Side effect: stdout/file/timeline.json depending on options['output']
   """
-  if not graph and context.in_graph_mode():
+  if not graph and not context.executing_eagerly():
     graph = ops.get_default_graph()
 
   if options == _DEFAULT_PROFILE_OPTIONS:
@@ -378,6 +381,7 @@ def profile(graph=None,
   return tfprof_node
 
 
+@tf_export(v1=['profiler.advise'])
 def advise(graph=None, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
   """Auto profile and advise.
 
@@ -394,7 +398,7 @@ def advise(graph=None, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
   Returns:
     Returns AdviceProto proto
   """
-  if not graph and context.in_eager_execution():
+  if not graph and not context.executing_eagerly():
     graph = ops.get_default_graph()
 
   if options == _DEFAULT_ADVISE_OPTIONS:

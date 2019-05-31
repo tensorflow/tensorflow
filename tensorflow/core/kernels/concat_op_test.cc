@@ -78,6 +78,9 @@ static void BM_ConcatDim1Float(int iters, int dim2) {
 BENCHMARK(BM_ConcatDim0Float)->Arg(1000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ConcatDim1Float)->Arg(1000)->Arg(100000)->Arg(1000000);
 
+static void BM_ConcatDim1uint8(int iters, int dim2) {
+  ConcatHelper<uint8>(iters, 1, dim2);
+}
 static void BM_ConcatDim1int16(int iters, int dim2) {
   ConcatHelper<int16>(iters, 1, dim2);
 }
@@ -85,6 +88,7 @@ static void BM_ConcatDim1bfloat16(int iters, int dim2) {
   ConcatHelper<bfloat16>(iters, 1, dim2);
 }
 
+BENCHMARK(BM_ConcatDim1uint8)->Arg(1000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ConcatDim1int16)->Arg(1000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ConcatDim1bfloat16)->Arg(1000)->Arg(100000)->Arg(1000000);
 
@@ -157,7 +161,8 @@ BENCHMARK(BM_MemcpyAlternativeDim0)->Arg(1000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_MemcpyAlternativeDim1)->Arg(1000)->Arg(100000)->Arg(1000000);
 
 typedef Eigen::TensorMap<Eigen::Tensor<bfloat16, 1, Eigen::RowMajor>,
-                         Eigen::Unaligned> EigenMap;
+                         Eigen::Unaligned>
+    EigenMap;
 static void MemcpyManyAlternative1(int iters, int dim2) {
   testing::StopTiming();
 

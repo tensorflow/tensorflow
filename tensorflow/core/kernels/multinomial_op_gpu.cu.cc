@@ -17,17 +17,17 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/multinomial_op.h"
-
 #include <assert.h>
 #include <stdio.h>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/multinomial_op.h"
 #include "tensorflow/core/kernels/random_op.h"
+#include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
+#include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -67,7 +67,6 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
                                                  noises.size(), Dist());
 
 #if defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::IndexList<Eigen::type2index<2>> kTwo;
     Eigen::IndexList<int, int, int> bsc;
     bsc.set(0, batch_size);
     bsc.set(1, num_samples);
@@ -80,7 +79,6 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     Eigen::IndexList<Eigen::type2index<1>, int, Eigen::type2index<1>> oso;
     oso.set(1, num_samples);
 #else
-    Eigen::array<int, 1> kTwo{2};
     Eigen::array<int, 3> bsc{batch_size, num_samples, num_classes};
     Eigen::array<int, 3> boc{batch_size, 1, num_classes};
     Eigen::array<int, 3> oso{1, num_samples, 1};
@@ -98,17 +96,24 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
         ((-((To32Bit(noises) + 2e-30f).log())).log());
 
     // Max-reduce along classes for each (batch, sample).
-    To32Bit(maxima).device(d) = To32Bit(scores).reshape(bsc).maximum(kTwo);
+    typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;
+    Constants<GPUDevice> constants;
+    cub::Max op;
+    functor::ReduceImpl<float, cub::Max, float*, const float*, ReductionAxes>(
+        /*ctx=*/ctx, /*out=*/maxima.data(), /*in=*/scores.data(), /*in_rank=*/2,
+        /*in_dim0=*/batch_size * num_samples,
+        /*in_dim1=*/num_classes, /*in_dim2=*/1, /*out_rank=*/1,
+        /*reduction_axes=*/constants.kOne, /*Op=*/op);
 
     // Necessary for atomicMax() inside the kernel.
     output.device(d) = output.constant(0LL);
 
     const int32 work_items = batch_size * num_samples * num_classes;
-    CudaLaunchConfig config = GetCudaLaunchConfig(work_items, d);
-    MultinomialKernel<<<config.block_count, config.thread_per_block, 0,
-                        d.stream()>>>(config.virtual_thread_count, num_classes,
-                                      num_samples, scores.data(), maxima.data(),
-                                      output.data());
+    GpuLaunchConfig config = GetCudaLaunchConfig(work_items, d);
+    TF_CHECK_OK(CudaLaunchKernel(
+        MultinomialKernel<OutputType>, config.block_count,
+        config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+        num_classes, num_samples, scores.data(), maxima.data(), output.data()));
   }
 };
 

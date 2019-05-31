@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -27,8 +27,12 @@ struct WorkerSession;
 // functions across processes by making RPCs.
 class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
  public:
-  ClusterFunctionLibraryRuntime(WorkerSession* worker_session)
-      : worker_session_(worker_session) {}
+  ClusterFunctionLibraryRuntime(WorkerSession* worker_session,
+                                bool create_worker_session_called,
+                                DeviceMgr* remote_device_mgr)
+      : worker_session_(worker_session),
+        create_worker_session_called_(create_worker_session_called),
+        remote_device_mgr_(remote_device_mgr) {}
 
   ~ClusterFunctionLibraryRuntime() override;
 
@@ -42,6 +46,11 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
+  void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+               FunctionLibraryRuntime::DoneCallback done) override;
+
+  DeviceMgr* remote_device_mgr() const override { return remote_device_mgr_; }
+
  private:
   static Status ConstructFunctionGraph(
       const OpDef& sig, AttrSlice attrs,
@@ -51,6 +60,9 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   mutable mutex mu_;
   WorkerSession* const worker_session_ = nullptr;  // not owned.
+  const bool create_worker_session_called_;
+
+  DeviceMgr* remote_device_mgr_;  // not owned.
 
   struct FunctionData {
     const string graph_handle;
@@ -74,4 +86,4 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_

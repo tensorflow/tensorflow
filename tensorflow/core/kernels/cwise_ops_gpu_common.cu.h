@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with Cuda support
 #endif
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_
-#define TENSORFLOW_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_
 
 #define EIGEN_USE_GPU
 
@@ -136,6 +136,9 @@ struct ApproximateEqual<GPUDevice, T> {
 #define DEFINE_UNARY7(F, T0, T1, T2, T3, T4, T5, T6) \
   DEFINE_UNARY2(F, T0, T1);                          \
   DEFINE_UNARY5(F, T2, T3, T4, T5, T6)
+#define DEFINE_UNARY8(F, T0, T1, T2, T3, T4, T5, T6, T7) \
+  DEFINE_UNARY4(F, T0, T1, T2, T3);                      \
+  DEFINE_UNARY4(F, T4, T5, T6, T7)
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for BinaryFunctor.
@@ -185,4 +188,4 @@ struct ApproximateEqual<GPUDevice, T> {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_

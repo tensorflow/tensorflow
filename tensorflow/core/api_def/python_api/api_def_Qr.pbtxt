@@ -5,5 +5,6 @@ op {
   }
   endpoint {
     name: "qr"
+    deprecation_version: 2
   }
 }

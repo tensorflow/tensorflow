@@ -61,7 +61,7 @@ def _compute_output_resolution(input_spatial_resolution, kernel_size, stride,
     stride: Stride (int).
     total_padding: Total padding to be applied (int).
   Returns:
-    output_resolution: Ouput dimension (int) or None.
+    output_resolution: Output dimension (int) or None.
   """
   if (input_spatial_resolution is None) or (kernel_size is None) or (
       stride is None) or (total_padding is None):

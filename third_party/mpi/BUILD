@@ -1,17 +1,5 @@
 licenses(["restricted"])
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 load("//third_party/mpi:mpi.bzl", "mpi_hdr")
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 

@@ -18,9 +18,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <complex>
+
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/kernels/diag_op.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace functor {
@@ -28,10 +29,8 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-__global__ void DiagCudaKernel(const int num_threads,
-                               const int64 size,
-                               const T* in,
-                               T* out) {
+__global__ void DiagCudaKernel(const int num_threads, const int64 size,
+                               const T* in, T* out) {
   CUDA_1D_KERNEL_LOOP(index, num_threads) {
     // Fill the diagonal elements or set to zero in other place.
     if (index % (1 + size) == 0) {
@@ -44,37 +43,34 @@ __global__ void DiagCudaKernel(const int num_threads,
 
 template <typename T>
 struct DiagFunctor<GPUDevice, T> {
-  EIGEN_ALWAYS_INLINE Status
-  operator() (OpKernelContext* context, const int64 size,
-              const T* in, T* out) {
+  EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
+                                        const int64 size, const T* in, T* out) {
     // Empty tensor couldn't launch the kernel.
     if (size == 0) {
       return Status::OK();
     }
 
-    // CudaLaunchConfig uses an int for virtual_thread_count,
+    // GpuLaunchConfig uses an int for virtual_thread_count,
     // so this may overflow for `size*size` in extreme cases,
     // here is checking the multiplication overflow for integer.
     if (size && (int(size * size) / size) != size) {
-      return errors::Internal(
-          "DiagOp got input size too large.");
+      return errors::Internal("DiagOp got input size too large.");
     }
     int virtual_thread_count = int(size * size);
 
     // Launch the GPU kernel.
     const GPUDevice& device = context->eigen_device<GPUDevice>();
-    CudaLaunchConfig diag_config = GetCudaLaunchConfig(
-        virtual_thread_count, device);
-    DiagCudaKernel<<<diag_config.block_count,
-                     diag_config.thread_per_block,
-                     0, device.stream()>>>(
-        diag_config.virtual_thread_count, size, in, out);
+    GpuLaunchConfig diag_config =
+        GetGpuLaunchConfig(virtual_thread_count, device);
+    TF_CHECK_OK(
+        CudaLaunchKernel(DiagCudaKernel<T>, diag_config.block_count,
+                         diag_config.thread_per_block, 0, device.stream(),
+                         diag_config.virtual_thread_count, size, in, out));
 
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
       return errors::Internal(
-          "Could not launch DiagOp kernel: ",
-          cudaGetErrorString(err), ".");
+          "Could not launch DiagOp kernel: ", cudaGetErrorString(err), ".");
     }
     return Status::OK();
   }
@@ -87,12 +83,9 @@ template struct DiagFunctor<GPUDevice, int64>;
 template struct DiagFunctor<GPUDevice, complex64>;
 template struct DiagFunctor<GPUDevice, complex128>;
 
-
 template <typename T>
-__global__ void DiagPartCudaKernel(const int num_threads,
-                                   const int64 size,
-                                   const T* in,
-                                   T* out) {
+__global__ void DiagPartCudaKernel(const int num_threads, const int64 size,
+                                   const T* in, T* out) {
   CUDA_1D_KERNEL_LOOP(index, num_threads) {
     out[index] = in[(1 + size) * index];
   }
@@ -100,9 +93,8 @@ __global__ void DiagPartCudaKernel(const int num_threads,
 
 template <typename T>
 struct DiagPartFunctor<GPUDevice, T> {
-  EIGEN_ALWAYS_INLINE Status
-  operator() (OpKernelContext* context, const int64 size,
-              const T* in, T* out) {
+  EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
+                                        const int64 size, const T* in, T* out) {
     // Empty tensor couldn't launch the kernel.
     if (size == 0) {
       return Status::OK();
@@ -110,17 +102,16 @@ struct DiagPartFunctor<GPUDevice, T> {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
 
     // Extract the diagonal elements.
-    CudaLaunchConfig diag_config = GetCudaLaunchConfig(size, device);
-    DiagPartCudaKernel<<<diag_config.block_count,
-                     diag_config.thread_per_block,
-                     0, device.stream()>>>(
-        diag_config.virtual_thread_count, size, in, out);
+    GpuLaunchConfig diag_config = GetCudaLaunchConfig(size, device);
+    TF_CHECK_OK(
+        CudaLaunchKernel(DiagPartCudaKernel<T>, diag_config.block_count,
+                         diag_config.thread_per_block, 0, device.stream(),
+                         diag_config.virtual_thread_count, size, in, out));
 
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
       return errors::Internal(
-          "Could not launch DiagPartOp kernel: ",
-          cudaGetErrorString(err), ".");
+          "Could not launch DiagPartOp kernel: ", cudaGetErrorString(err), ".");
     }
     return Status::OK();
   }

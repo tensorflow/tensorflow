@@ -29,7 +29,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _product(t):
@@ -151,6 +153,16 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta,
     and "y_size" columns where "x_size" is the number of elements in x and
     "y_size" is the number of elements in y.
   """
+  # bfloat16 doesn't have enough bits to represent high precision numbers such
+  # as delta. Convert to float32 here. Since numeric_jacobian is expected to
+  # be the groundtruth to compare against, it shouldn't lose any information.
+  if x.dtype == dtypes.bfloat16:
+    x = math_ops.cast(x, dtypes.float32)  # TODO(wangpeng): Now that the new x
+            # is an output of the old x, isn't feeding to the new x a mistake?
+  if y.dtype == dtypes.bfloat16:
+    y = math_ops.cast(y, dtypes.float32)
+  if x_data.dtype == dtypes.bfloat16.as_numpy_dtype:
+    x_data = x_data.astype(np.float32)
 
   # To compute the jacobian, we treat x and y as one-dimensional vectors
   x_size = _product(x_shape) * (2 if x.dtype.is_complex else 1)
@@ -206,8 +218,8 @@ def _compute_gradient(x,
                       extra_feed_dict=None):
   """Computes the theoretical and numerical jacobian."""
   t = dtypes.as_dtype(x.dtype)
-  allowed_types = [dtypes.float16, dtypes.float32, dtypes.float64,
-                   dtypes.complex64, dtypes.complex128]
+  allowed_types = [dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                   dtypes.float64, dtypes.complex64, dtypes.complex128]
   assert t.base_dtype in allowed_types, "Don't support type %s for x" % t.name
   t2 = dtypes.as_dtype(y.dtype)
   assert t2.base_dtype in allowed_types, "Don't support type %s for y" % t2.name
@@ -254,6 +266,7 @@ def _compute_gradient_list(x,
   return ret
 
 
+@tf_export(v1=["test.compute_gradient"])
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -288,7 +301,6 @@ def compute_gradient(x,
       as the initial value.
     delta: (optional) the amount of perturbation.
     init_targets: list of targets to run to initialize model params.
-      TODO(mrry): remove this argument.
     extra_feed_dict: dict that allows fixing specified tensor values
       during the Jacobian calculation.
 
@@ -298,6 +310,7 @@ def compute_gradient(x,
     where "x_size" is the number of elements in x and "y_size" is the
     number of elements in y. If x is a list, returns a list of two numpy arrays.
   """
+  # TODO(mrry): remove argument `init_targets`
   if extra_feed_dict is None:
     extra_feed_dict = {}
 
@@ -315,6 +328,17 @@ def compute_gradient(x,
     return ret
 
 
+def _compute_error(grad):
+  if isinstance(grad, tuple):
+    grad = [grad]
+  error = 0
+  for j_t, j_n in grad:
+    if j_t.size or j_n.size:  # Handle zero size tensors correctly
+      error = np.maximum(error, np.fabs(j_t - j_n).max())
+  return error
+
+
+@tf_export(v1=["test.compute_gradient_error"])
 def compute_gradient_error(x,
                            x_shape,
                            y,
@@ -356,10 +380,4 @@ def compute_gradient_error(x,
   """
   grad = compute_gradient(x, x_shape, y, y_shape, x_init_value, delta,
                           init_targets, extra_feed_dict=extra_feed_dict)
-  if isinstance(grad, tuple):
-    grad = [grad]
-  error = 0
-  for j_t, j_n in grad:
-    if j_t.size or j_n.size:  # Handle zero size tensors correctly
-      error = np.maximum(error, np.fabs(j_t - j_n).max())
-  return error
+  return _compute_error(grad)

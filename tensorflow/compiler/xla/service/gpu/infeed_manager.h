@@ -20,11 +20,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INFEED_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
-#include <deque>
-
+#include "tensorflow/compiler/xla/service/gpu/xfeed_queue.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -46,85 +44,41 @@ namespace gpu {
 // the client. The client manages the memory of the buffer.
 class InfeedBuffer {
  public:
-  InfeedBuffer(perftools::gputools::StreamExecutor* executor, int64 length)
-      : executor_(executor), length_(length) {
-    device_memory_ = executor_->AllocateArray<uint8>(length);
-    CHECK(!device_memory_.is_null());
+  InfeedBuffer() = default;
+  InfeedBuffer(se::StreamExecutor* executor, int64 length)
+      : device_memory_(executor, executor->AllocateArray<uint8>(length)),
+        length_(length) {
+    CHECK(!device_memory_->is_null());
   }
-
-  ~InfeedBuffer() { executor_->Deallocate(&device_memory_); }
 
   int64 length() const { return length_; }
 
-  // Callback to signal that this buffer is consumed. This helps the
-  // client to manage memory for the infeed buffers.
-  void Done() { delete this; }
-
-  perftools::gputools::DeviceMemoryBase* device_memory() {
-    return &device_memory_;
-  }
+  se::DeviceMemoryBase* device_memory() { return device_memory_.ptr(); }
 
  private:
-  perftools::gputools::StreamExecutor* executor_;  // Not owned.
-  const int64 length_;
-  perftools::gputools::DeviceMemoryBase device_memory_;
+  se::ScopedDeviceMemory<uint8> device_memory_;
+  int64 length_;
 };
 
 // Client-side class used to enqueue infeed buffers.
-class InfeedManager {
+class InfeedManager : public XfeedQueue<ShapeTree<InfeedBuffer>> {
  public:
-  InfeedManager();
-
-  // Calls the completion callback for any enqueued buffers that have
-  // not been dequeued by the runtime, and empties the infeed
-  // queue. Reset may not be called while a runtime computation is
-  // processing a dequeued buffer. The only safe way to ensure this
-  // condition is to call Reset when no computation is taking place.
-  void Reset();
-
-  // Adds a set of buffers to the infeed queue atomically. buffer->Done
-  // will be called when the buffer will no longer be accessed by the
-  // InfeedManager, either as a result of a call to Reset or because the
-  // runtime has dequeued and used the buffer.
-  void EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers);
-
-  // Blocks until the infeed queue is non-empty, then returns the
-  // buffer at the head of the queue. Adds the current buffer to the
-  // to-be released set.
-  InfeedBuffer* BlockingDequeueBuffer();
-
-  // Releases a set of buffers from the to-be released set.
-  void ReleaseBuffers(const std::vector<InfeedBuffer*>& buffers);
-
   // Returns a cached stream associated with an executor. Allocates a
   // new stream on the first invocation. On subsequent invocations, if
   // the cached executor is not the same as the requested executor,
   // returns null.
-  perftools::gputools::Stream* GetStream(
-      perftools::gputools::StreamExecutor* executor);
+  se::Stream* GetStream(se::StreamExecutor* executor);
 
  private:
-  // TODO(b/30467474): Revisit if this mutex becomes a point of
-  // contention.
-  tensorflow::mutex mu_;
-
-  // Condition variable that is signaled every time a buffer is
-  // enqueued to an empty queue.
-  tensorflow::condition_variable cv_;
-
-  // InfeedBuffer* queue contents are not owned, but buffer->Done must
-  // be called when the buffer is no longer needed by the runtime.
-  std::deque<InfeedBuffer*> enqueued_buffer_;
-
-  // Buffers that are dequeued and currently being processed by the
-  // runtime. Not owned.
-  tensorflow::gtl::FlatSet<const InfeedBuffer*> dequeued_buffer_;
+  // Mutex for serializing the creation of host_to_device_stream_.
+  tensorflow::mutex host_to_device_stream_mu_;
 
   // Cached host to device stream for queuing infeed data.
-  std::unique_ptr<perftools::gputools::Stream> host_to_device_stream_;
+  std::unique_ptr<se::Stream> host_to_device_stream_
+      GUARDED_BY(host_to_device_stream_mu_);
 
   // Executor that the host_to_device_stream belongs to. Not owned.
-  perftools::gputools::StreamExecutor* host_to_device_executor_;
+  se::StreamExecutor* host_to_device_executor_ = nullptr;
 };
 
 // Singleton creator-or-accessor: Returns the GPU infeed manager.

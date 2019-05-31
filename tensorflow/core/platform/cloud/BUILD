@@ -9,23 +9,9 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_windows",
     "tf_cc_test",
     "tf_copts",
-    "if_windows",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(
@@ -38,11 +24,22 @@ cc_library(
 
 cc_library(
     name = "file_block_cache",
-    srcs = ["file_block_cache.cc"],
     hdrs = ["file_block_cache.h"],
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "ram_file_block_cache",
+    srcs = ["ram_file_block_cache.cc"],
+    hdrs = ["ram_file_block_cache.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":file_block_cache",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -58,6 +55,17 @@ cc_library(
 )
 
 cc_library(
+    name = "gcs_throttle",
+    srcs = ["gcs_throttle.cc"],
+    hdrs = ["gcs_throttle.h"],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "gcs_file_system",
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
@@ -65,16 +73,21 @@ cc_library(
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
     deps = [
+        ":compute_engine_metadata_client",
+        ":compute_engine_zone_provider",
         ":curl_http_request",
         ":expiring_lru_cache",
         ":file_block_cache",
         ":gcs_dns_cache",
+        ":gcs_throttle",
         ":google_auth_provider",
         ":http_request",
+        ":ram_file_block_cache",
         ":retrying_file_system",
         ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
     ],
@@ -102,7 +115,7 @@ cc_library(
         ":http_request",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
-        "@curl//:curl",
+        "@curl",
     ],
 )
 
@@ -119,7 +132,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
-        "@curl//:curl",
+        "@curl",
     ],
 )
 
@@ -133,12 +146,50 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        ":curl_http_request",
+        ":compute_engine_metadata_client",
         ":oauth_client",
         ":retrying_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+cc_library(
+    name = "compute_engine_metadata_client",
+    srcs = [
+        "compute_engine_metadata_client.cc",
+    ],
+    hdrs = [
+        "compute_engine_metadata_client.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":curl_http_request",
+        ":http_request",
+        ":retrying_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "compute_engine_zone_provider",
+    srcs = [
+        "compute_engine_zone_provider.cc",
+    ],
+    hdrs = [
+        "compute_engine_zone_provider.h",
+        "zone_provider.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":compute_engine_metadata_client",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -163,6 +214,7 @@ cc_library(
         "oauth_client.h",
     ],
     copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
         ":http_request",
@@ -190,9 +242,6 @@ cc_library(
 
 cc_library(
     name = "retrying_file_system",
-    srcs = [
-        "retrying_file_system.cc",
-    ],
     hdrs = [
         "retrying_file_system.h",
     ],
@@ -233,12 +282,12 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "file_block_cache_test",
+    name = "ram_file_block_cache_test",
     size = "small",
-    srcs = ["file_block_cache_test.cc"],
+    srcs = ["ram_file_block_cache_test.cc"],
     deps = [
-        ":file_block_cache",
         ":now_seconds_env",
+        ":ram_file_block_cache",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
@@ -253,6 +302,7 @@ tf_cc_test(
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -265,6 +315,19 @@ tf_cc_test(
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         ":gcs_dns_cache",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gcs_throttle_test",
+    size = "small",
+    srcs = ["gcs_throttle_test.cc"],
+    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
+    deps = [
+        ":gcs_throttle",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -314,6 +377,34 @@ tf_cc_test(
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "compute_engine_metadata_client_test",
+    size = "small",
+    srcs = ["compute_engine_metadata_client_test.cc"],
+    deps = [
+        ":compute_engine_metadata_client",
+        ":http_request_fake",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "compute_engine_zone_provider_test",
+    size = "small",
+    srcs = ["compute_engine_zone_provider_test.cc"],
+    deps = [
+        ":compute_engine_zone_provider",
+        ":http_request_fake",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

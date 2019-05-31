@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#define TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
 
 #include <stddef.h>
 #include <functional>
@@ -76,6 +76,10 @@ class FlatMap {
 
   FlatMap(const FlatMap& src) : rep_(src.rep_) {}
 
+  // Move constructor leaves src in a valid but unspecified state (same as
+  // std::unordered_map).
+  FlatMap(FlatMap&& src) : rep_(std::move(src.rep_)) {}
+
   template <typename InputIter>
   FlatMap(InputIter first, InputIter last, size_t N = 1,
           const Hash& hf = Hash(), const Eq& eq = Eq())
@@ -89,6 +93,13 @@ class FlatMap {
 
   FlatMap& operator=(const FlatMap& src) {
     rep_.CopyFrom(src.rep_);
+    return *this;
+  }
+
+  // Move-assignment operator leaves src in a valid but unspecified state (same
+  // as std::unordered_map).
+  FlatMap& operator=(FlatMap&& src) {
+    rep_.MoveFrom(std::move(src.rep_));
     return *this;
   }
 
@@ -379,4 +390,4 @@ class FlatMap {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_

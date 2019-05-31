@@ -18,6 +18,16 @@ END
 Scalar defining the number of characters to include in each substring
 END
   }
+  attr {
+    name: "unit"
+    description: <<END
+The unit that is used to create the substring.  One of: `"BYTE"` (for
+defining position and length by bytes) or `"UTF8_CHAR"` (for the UTF-8
+encoded Unicode code points).  The default is `"BYTE"`. Results are undefined if
+`unit=UTF8_CHAR` and the `input` strings do not contain structurally valid
+UTF-8.
+END
+  }
   out_arg {
     name: "output"
     description: <<END
@@ -32,8 +42,10 @@ For each string in the input `Tensor`, creates a substring starting at index
 If `len` defines a substring that would extend beyond the length of the input
 string, then as many characters as possible are used.
 
-If `pos` is negative or specifies a character index larger than any of the input
-strings, then an `InvalidArgumentError` is thrown.
+A negative `pos` indicates distance within the string backwards from the end.
+
+If `pos` specifies an index which is out of range for any of the input strings,
+then an `InvalidArgumentError` is thrown.
 
 `pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
 Op creation.

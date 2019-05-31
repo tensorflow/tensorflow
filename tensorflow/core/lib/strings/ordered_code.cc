@@ -472,7 +472,8 @@ void OrderedCode::WriteSignedNumIncreasing(string* dest, int64 val) {
   // buf = val in network byte order, sign extended to 10 bytes
   const char sign_byte = val < 0 ? '\xff' : '\0';
   char buf[10] = {
-      sign_byte, sign_byte,
+      sign_byte,
+      sign_byte,
   };
   StoreBigEndian64(buf + 2, val);
   static_assert(sizeof(buf) == kMaxSigned64Length, "max length size mismatch");

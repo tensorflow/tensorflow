@@ -99,7 +99,7 @@ class StackBidirectionalRNNTest(test.TestCase):
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
   def _testStackBidirectionalRNN(self, use_gpu, use_shape):
-    with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+    with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createStackBidirectionalRNN(use_gpu, use_shape, True))
       variables.global_variables_initializer().run()
@@ -159,7 +159,7 @@ class StackBidirectionalRNNTest(test.TestCase):
     # - Check that the state_5 and state_5' (forward and backward) are the
     #   same for the first layer (it does not apply for the second layer since
     #   it has forward-backward dependencies).
-    with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+    with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
       batch_size = 2
       # Create states placeholders.
       initial_states_fw = [
@@ -281,7 +281,7 @@ class StackBidirectionalRNNTest(test.TestCase):
 
   def _testStackBidirectionalDynamicRNN(self, use_gpu, use_shape,
                                         use_state_tuple):
-    with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+    with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
       input_value, inputs, outputs, state_fw, state_bw, sequence_length = (
           self._createStackBidirectionalDynamicRNN(use_gpu, use_shape,
                                                    use_state_tuple))
@@ -343,7 +343,7 @@ class StackBidirectionalRNNTest(test.TestCase):
     # - Check that the state_5 and state_5' (forward and backward) are the
     #   same for the first layer (it does not apply for the second layer since
     #   it has forward-backward dependencies).
-    with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+    with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
       batch_size = 2
       # Create states placeholders.
       initial_states_fw = [
@@ -414,7 +414,7 @@ class StackBidirectionalRNNTest(test.TestCase):
     # REMARKS: factory(scope) is a function accepting a scope
     #          as an argument, such scope can be None, a string
     #          or a VariableScope instance.
-    with self.test_session(use_gpu=True, graph=ops.Graph()):
+    with self.session(use_gpu=True, graph=ops.Graph()):
       if use_outer_scope:
         with variable_scope.variable_scope(prefix) as scope:
           factory(scope)

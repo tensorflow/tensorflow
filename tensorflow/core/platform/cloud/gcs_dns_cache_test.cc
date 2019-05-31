@@ -36,7 +36,7 @@ class TestHttpRequest : public HttpRequest {
   }
 
   void AddAuthBearerHeader(const string& auth_token) override {}
-
+  void SetRequestStats(HttpRequest::RequestStats* stats) override {}
   void SetDeleteRequest() override {}
 
   Status SetPutFromFile(const string& body_filepath, size_t offset) override {
@@ -68,7 +68,7 @@ class GcsDnsCacheTest : public ::testing::Test {
  protected:
   void ResolveNameTest() {
     auto response = GcsDnsCache::ResolveName("www.googleapis.com");
-    EXPECT_LT(1, response.size()) << str_util::Join(response, ", ");
+    EXPECT_LT(1, response.size()) << absl::StrJoin(response, ", ");
   }
 
   void AnnotateRequestTest() {

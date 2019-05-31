@@ -87,7 +87,7 @@ EPSILON_ATTR = {
 
 
 def optimize_for_inference(input_graph_def, input_node_names, output_node_names,
-                           placeholder_type_enum):
+                           placeholder_type_enum, toco_compatible=False):
   """Applies a series of inference optimizations on the input graph.
 
   Args:
@@ -98,6 +98,8 @@ def optimize_for_inference(input_graph_def, input_node_names, output_node_names,
       results.
     placeholder_type_enum: The AttrValue enum for the placeholder data type, or
         a list that specifies one value per input node name.
+    toco_compatible: Boolean, if True, only runs optimizations that result in
+      TOCO compatible graph operations (default=False).
 
   Returns:
     An optimized version of the input graph.
@@ -110,8 +112,9 @@ def optimize_for_inference(input_graph_def, input_node_names, output_node_names,
   optimized_graph_def = graph_util.remove_training_nodes(
       optimized_graph_def, output_node_names)
   optimized_graph_def = fold_batch_norms(optimized_graph_def)
-  optimized_graph_def = fuse_resize_and_conv(optimized_graph_def,
-                                             output_node_names)
+  if not toco_compatible:
+    optimized_graph_def = fuse_resize_and_conv(optimized_graph_def,
+                                               output_node_names)
   ensure_graph_is_valid(optimized_graph_def)
   return optimized_graph_def
 
@@ -130,14 +133,14 @@ def ensure_graph_is_valid(graph_def):
   """
   node_map = {}
   for node in graph_def.node:
-    if node.name not in node_map.keys():
+    if node.name not in node_map:
       node_map[node.name] = node
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
   for node in graph_def.node:
     for input_name in node.input:
       input_node_name = node_name_from_input(input_name)
-      if input_node_name not in node_map.keys():
+      if input_node_name not in node_map:
         raise ValueError("Input for ", node.name, " not found: ", input_name)
 
 
@@ -208,8 +211,9 @@ def fold_batch_norms(input_graph_def):
   scaling into the convolution weights. This function identifies the typical
   pattern of batch normalization subgraphs, and performs the transformation to
   fold the computations down into a simpler form. It currently only spots batch
-  normalization that's performed by the BatchNormWithGlobalNormalization op, and
-  will need to be extended in the future to handle the newer style.
+  normalization that's performed by the BatchNormWithGlobalNormalization and
+  FusedBatchNorm ops, and will need to be extended in the future to handle the
+  newer style.
 
   Args:
     input_graph_def: A GraphDef containing a model.
@@ -222,7 +226,7 @@ def fold_batch_norms(input_graph_def):
   """
   input_node_map = {}
   for node in input_graph_def.node:
-    if node.name not in input_node_map.keys():
+    if node.name not in input_node_map:
       input_node_map[node.name] = node
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
@@ -349,6 +353,7 @@ def fold_batch_norms(input_graph_def):
     bias_add_op.op = "BiasAdd"
     bias_add_op.name = node.name
     bias_add_op.attr["T"].CopyFrom(conv_op.attr["T"])
+    bias_add_op.attr["data_format"].CopyFrom(conv_op.attr["data_format"])
     bias_add_op.input.extend([new_conv_op.name, offset_op.name])
     new_ops.extend([scaled_weights_op, new_conv_op, offset_op, bias_add_op])
 
@@ -386,7 +391,7 @@ def fuse_resize_and_conv(input_graph_def, output_node_names):
 
   input_node_map = {}
   for node in input_graph_def.node:
-    if node.name not in input_node_map.keys():
+    if node.name not in input_node_map:
       input_node_map[node.name] = node
     else:
       raise ValueError("Duplicate node names detected for ", node.name)

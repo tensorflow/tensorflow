@@ -23,8 +23,10 @@ from collections import defaultdict
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -48,7 +50,7 @@ def _extract_node(run_meta, node_name):
       dev = dev[dev.find('cpu:'):]
     elif dev.find('gpu:') > 0:
       dev = dev[dev.find('gpu:'):]
-    else:
+    elif '/host:cpu' not in dev:
       assert False, 'Unrecognized device name: %s' % dev
 
     for node_stat in dev_stat.node_stats:
@@ -65,7 +67,10 @@ def _run_model():
   w = random_ops.random_normal(shape=[SIZE, 2 * SIZE])
   y = math_ops.matmul(x, w)
 
-  with session.Session() as sess:
+  config = config_pb2.ConfigProto()
+  config.graph_options.rewrite_options.arithmetic_optimization = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  with session.Session(config=config) as sess:
     run_metadata = config_pb2.RunMetadata()
     opts = builder.time_and_memory()
     opts['min_micros'] = 0
@@ -85,7 +90,11 @@ def _run_model():
 
 
 def _run_loop_model():
-  with session.Session() as sess:
+  config = config_pb2.ConfigProto()
+  # Grappler might fuse MatMul with BiasAdd in remapper optimizer.
+  config.graph_options.rewrite_options.remapping = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  with session.Session(config=config) as sess:
     x = lib.BuildFullModel()
 
     sess.run(variables.global_variables_initializer())
@@ -106,6 +115,7 @@ def _run_loop_model():
 
 class RunMetadataTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGPU(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -121,6 +131,7 @@ class RunMetadataTest(test.TestCase):
     self.assertEqual(len(ret['gpu:0']), 1)
     self.assertEqual(len(ret['gpu:0/stream:all']), 1, '%s' % run_meta)
 
+  @test_util.run_deprecated_v1
   def testAllocationHistory(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -150,6 +161,7 @@ class RunMetadataTest(test.TestCase):
     # deallocates the memory after matmul started.
     self.assertGreater(random_allocs[1].alloc_micros, mm.all_start_micros)
 
+  @test_util.run_deprecated_v1
   def testCPU(self):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):
@@ -163,6 +175,7 @@ class RunMetadataTest(test.TestCase):
     ret = _extract_node(run_meta, 'MatMul:MatMul')
     self.assertEqual(len(ret), 0)
 
+  @test_util.run_v1_only('b/120545219')
   def testLoopCPU(self):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):
@@ -192,7 +205,7 @@ class RunMetadataTest(test.TestCase):
     graph = ops.get_default_graph()
     forward_op = set()
     backward_op = set()
-    back_to_forward = dict()
+    back_to_forward = {}
     for op in graph.get_operations():
       if op.name.find('gradients/') > 0 and op.name.find('_grad/') > 0:
         backward_op.add(op.name)
@@ -205,17 +218,13 @@ class RunMetadataTest(test.TestCase):
     for _, f in six.iteritems(back_to_forward):
       self.assertTrue(f in forward_op)
 
-  # pylint: disable=pointless-string-statement
-  """
-  # TODO(xpan): This test is flaky because RunMetadata returned from TensorFlow
-  # is random. Still being investigated.
   def testLoopGPU(self):
     if not test.is_gpu_available():
       return
 
     ops.reset_default_graph()
     with ops.device('/device:GPU:0'):
-      tfprof_node, run_meta = _run_loop_model()
+      _, run_meta = _run_loop_model()
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
                           'rnn/while/basic_rnn_cell/MatMul')
@@ -226,11 +235,6 @@ class RunMetadataTest(test.TestCase):
         total_cpu_execs += node.op_end_rel_micros
 
       self.assertGreaterEqual(len(ret['gpu:0/stream:all']), 4, '%s' % run_meta)
-
-      total_accelerator_execs = 0
-      for node in ret['gpu:0/stream:all']:
-        total_accelerator_execs += node.op_end_rel_micros
-  """
 
 
 if __name__ == '__main__':

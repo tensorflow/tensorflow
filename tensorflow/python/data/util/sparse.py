@@ -34,7 +34,7 @@ def any_sparse(classes):
   Returns:
     `True` if `classes` contains a sparse tensor type and `False` otherwise.
   """
-  return any([c is sparse_tensor.SparseTensor for c in nest.flatten(classes)])
+  return any(c is sparse_tensor.SparseTensor for c in nest.flatten(classes))
 
 
 def as_dense_shapes(shapes, classes):
@@ -141,7 +141,7 @@ def serialize_sparse_tensors(tensors):
     tensors: a tensor structure to serialize.
 
   Returns:
-    `tensors` with any sparse tensors replaced by the their serialized version.
+    `tensors` with any sparse tensors replaced by their serialized version.
   """
 
   ret = nest.pack_sequence_as(tensors, [

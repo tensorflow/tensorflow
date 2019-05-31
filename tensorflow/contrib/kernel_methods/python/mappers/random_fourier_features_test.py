@@ -31,10 +31,10 @@ from tensorflow.python.platform import googletest
 
 
 def _inner_product(x, y):
-  """Inner product between tensors x and y.
+  r"""Inner product between tensors x and y.
 
   The input tensors are assumed to be in ROW representation, that is, the method
-  returns x * y^T.
+  returns \\(x * y^T\\).
 
   Args:
     x: input tensor in row format
@@ -58,7 +58,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
   def testInvalidInputShape(self):
     x = constant_op.constant([[2.0, 1.0]])
 
-    with self.test_session():
+    with self.cached_session():
       rffm = RandomFourierFeatureMapper(3, 10)
       with self.assertRaisesWithPredicateMatch(
           dense_kernel_mapper.InvalidShapeError,
@@ -70,7 +70,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
     x2 = constant_op.constant([[1.0, -1.0, 2.0], [-1.0, 10.0, 1.0],
                                [4.0, -2.0, -1.0]])
 
-    with self.test_session():
+    with self.cached_session():
       rffm = RandomFourierFeatureMapper(3, 10, 1.0)
       mapped_x1 = rffm.map(x1)
       mapped_x2 = rffm.map(x2)
@@ -80,7 +80,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
   def testSameOmegaReused(self):
     x = constant_op.constant([[2.0, 1.0, 0.0]])
 
-    with self.test_session():
+    with self.cached_session():
       rffm = RandomFourierFeatureMapper(3, 100)
       mapped_x = rffm.map(x)
       mapped_x_copy = rffm.map(x)
@@ -93,7 +93,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
     y = constant_op.constant([[1.0, -1.0, 2.0]])
     stddev = 3.0
 
-    with self.test_session():
+    with self.cached_session():
       # The mapped dimension is fairly small, so the kernel approximation is
       # very rough.
       rffm1 = RandomFourierFeatureMapper(3, 100, stddev)
@@ -113,7 +113,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
     y = constant_op.constant([[1.0, -1.0, 2.0]])
     stddev = 3.0
 
-    with self.test_session():
+    with self.cached_session():
       # The mapped dimension is fairly small, so the kernel approximation is
       # very rough.
       rffm = RandomFourierFeatureMapper(3, 100, stddev, seed=0)
@@ -131,10 +131,6 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
     mapped_dim = 5000
     stddev = 5.0
 
-    # TODO(sibyl-vie3Poto): Reduce test's running time before moving to third_party. One
-    # possible way to speed the test up is to compute both the approximate and
-    # the exact kernel matrix directly using matrix operations instead of
-    # computing the values for each pair of points separately.
     points_shape = [1, input_dim]
     points = [
         random_ops.random_uniform(shape=points_shape, maxval=1.0)
@@ -143,7 +139,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
 
     normalized_points = [nn.l2_normalize(point, dim=1) for point in points]
     total_absolute_error = 0.0
-    with self.test_session():
+    with self.cached_session():
       rffm = RandomFourierFeatureMapper(input_dim, mapped_dim, stddev, seed=0)
       # Cache mappings so that they are not computed multiple times.
       cached_mappings = dict((point, rffm.map(point))

@@ -64,10 +64,10 @@ class SaveRestoreShardedTest(test.TestCase):
       # v2 is an unsaved variable derived from v0 and v1.  It is used to
       # exercise the ability to run an init op when restoring a graph.
       with sess.graph.device("/cpu:0"):
-        v0 = variables.Variable(10, name="v0")
+        v0 = variables.VariableV1(10, name="v0")
       with sess.graph.device("/cpu:1"):
-        v1 = variables.Variable(20, name="v1")
-      v2 = variables.Variable(1, name="v2", trainable=False, collections=[])
+        v1 = variables.VariableV1(20, name="v1")
+      v2 = variables.VariableV1(1, name="v2", trainable=False, collections=[])
       assign_v2 = state_ops.assign(v2, math_ops.add(v0, v1))
       init_op = control_flow_ops.group(assign_v2, name="init_op")
 
@@ -88,12 +88,12 @@ class SaveRestoreShardedTest(test.TestCase):
       asset_file = constant_op.constant(asset_filepath_orig, name="filename42")
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset_file)
 
-      with gfile.FastGFile(asset_filepath_orig, "w") as f:
+      with gfile.GFile(asset_filepath_orig, "w") as f:
         f.write("your data here")
       assets_collection = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
 
       ignored_asset = os.path.join(test.get_temp_dir(), "ignored.txt")
-      with gfile.FastGFile(ignored_asset, "w") as f:
+      with gfile.GFile(ignored_asset, "w") as f:
         f.write("additional data here")
 
       variables.global_variables_initializer().run()

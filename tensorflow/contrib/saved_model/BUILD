@@ -16,11 +16,12 @@
 # Description:
 # SavedModel contrib libraries.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
@@ -36,6 +37,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":keras_saved_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
@@ -48,15 +50,14 @@ py_library(
     ],
 )
 
-py_test(
-    name = "reader_test",
-    size = "small",
-    srcs = ["python/saved_model/reader_test.py"],
+py_library(
+    name = "reader",
+    srcs = ["python/saved_model/reader.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:private"],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    visibility = ["//visibility:public"],
     deps = [
         ":saved_model_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
@@ -66,30 +67,25 @@ py_test(
 )
 
 py_test(
-    name = "signature_def_utils_test",
+    name = "reader_test",
     size = "small",
-    srcs = ["python/saved_model/signature_def_utils_test.py"],
+    srcs = ["python/saved_model/reader_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    visibility = ["//visibility:private"],
     deps = [
-        ":saved_model_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
+        ":reader",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:signature_def_utils",
-        "//tensorflow/python/saved_model:utils",
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "keras_saved_model",
+    srcs = ["python/saved_model/keras_saved_model.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python/keras",
+    ],
 )

@@ -25,17 +25,20 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
-class ResizeBilinearOpTest : public OpsTestBase {
+class ResizeBilinearOpTestBase : public OpsTestBase {
  protected:
-  ResizeBilinearOpTest() {
+  explicit ResizeBilinearOpTestBase(bool half_pixel_centers)
+      : half_pixel_centers_(half_pixel_centers) {
     TF_EXPECT_OK(NodeDefBuilder("resize_bilinear_op", "ResizeBilinear")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
                      .Attr("align_corners", false)
+                     .Attr("half_pixel_centers", half_pixel_centers_)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -80,17 +83,25 @@ class ResizeBilinearOpTest : public OpsTestBase {
 
     for (int b = 0; b < batch; ++b) {
       for (int64 y = 0; y < out_height; ++y) {
-        const float in_y = y * height_scale;
-        const int64 top_y_index = static_cast<int64>(floorf(in_y));
+        const float in_y =
+            half_pixel_centers_
+                ? (static_cast<float>(y) + 0.5f) * height_scale - 0.5f
+                : y * height_scale;
+        const int64 top_y_index =
+            std::max(static_cast<int64>(floorf(in_y)), static_cast<int64>(0));
         const int64 bottom_y_index =
             std::min(static_cast<int64>(ceilf(in_y)), in_height - 1);
-        const float y_lerp = in_y - top_y_index;
+        const float y_lerp = in_y - std::floor(in_y);
         for (int64 x = 0; x < out_width; ++x) {
-          const float in_x = x * width_scale;
-          const int64 left_x_index = static_cast<int64>(floorf(in_x));
+          const float in_x =
+              half_pixel_centers_
+                  ? (static_cast<float>(x) + 0.5f) * width_scale - 0.5f
+                  : x * width_scale;
+          const int64 left_x_index =
+              std::max(static_cast<int64>(floorf(in_x)), static_cast<int64>(0));
           const int64 right_x_index =
               std::min(static_cast<int64>(ceilf(in_x)), in_width - 1);
-          const float x_lerp = in_x - left_x_index;
+          const float x_lerp = in_x - std::floor(in_x);
           for (int c = 0; c < channels; ++c) {
             const float top_left = images(b, top_y_index, left_x_index, c);
             const float top_right = images(b, top_y_index, right_x_index, c);
@@ -121,7 +132,7 @@ class ResizeBilinearOpTest : public OpsTestBase {
         TensorShape({batch_size, output_width, output_height, channels})));
     ResizeBilinearBaseline(input->tensor<float, 4>(),
                            expected->tensor<float, 4>());
-    test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
+    test::ExpectClose(*expected, *GetOutput(0));
   }
 
   void RunManyRandomTests(int channels) {
@@ -138,6 +149,17 @@ class ResizeBilinearOpTest : public OpsTestBase {
       }
     }
   }
+  bool half_pixel_centers_;
+};
+
+class ResizeBilinearOpTest : public ResizeBilinearOpTestBase {
+ public:
+  ResizeBilinearOpTest() : ResizeBilinearOpTestBase(false) {}
+};
+
+class ResizeBilinearHalfPixelCentersOpTest : public ResizeBilinearOpTestBase {
+ public:
+  ResizeBilinearHalfPixelCentersOpTest() : ResizeBilinearOpTestBase(true) {}
 };
 
 class ResizeBilinearOpAlignCornersTest : public OpsTestBase {
@@ -176,7 +198,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To1x1) {
   // original input. In this case, we choose the top/left most pixel.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillValues<float>(&expected, {1.0});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinearRandom2x2To1x1) {
@@ -193,7 +215,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinearRandom2x2To1x1) {
   ResizeBilinearBaseline(input->tensor<float, 4>(),
                          expected->tensor<float, 4>());
   EXPECT_EQ(input->flat<float>()(0), output->flat<float>()(0));
-  test::ExpectTensorEqual<float>(*expected, *output);
+  test::ExpectClose(*expected, *output);
 }
 
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To1x1) {
@@ -208,7 +230,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To1x1) {
   // original input. In this case, we choose the top/left most pixel.
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
   test::FillValues<float>(&expected, {1.0});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3) {
@@ -228,7 +250,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3) {
      3,        11.0f / 3, 4});
 
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To3x3) {
@@ -251,7 +273,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To3x3) {
      3,  3.5,  4});
 
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinear3x3To2x2) {
@@ -272,7 +294,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear3x3To2x2) {
      5.5,   7});
 
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners3x3To2x2) {
@@ -293,7 +315,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners3x3To2x2) {
      7,  9});
 
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinear3x3To4x4) {
@@ -315,7 +337,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear3x3To4x4) {
      7,  7.75, 8.5, 9});
 
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinear4x4To3x3) {
@@ -339,7 +361,15 @@ TEST_F(ResizeBilinearOpTest, TestBilinear4x4To3x3) {
      35.0f/3, 39.0f/3, 43.0f/3});
 
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
+}
+
+TEST_F(ResizeBilinearHalfPixelCentersOpTest, TestDownsamples) {
+  TestResize(4, 298, 297, 3, 61, 71);
+}
+
+TEST_F(ResizeBilinearHalfPixelCentersOpTest, TestUpsamples) {
+  TestResize(4, 61, 71, 3, 298, 297);
 }
 
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners4x4To3x3) {
@@ -363,7 +393,7 @@ TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners4x4To3x3) {
      13, 14.5, 16});
 
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3Batch2) {
@@ -383,7 +413,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To3x3Batch2) {
      1, 5.0f/3, 2, 7.0f/3, 3, 10.0f/3, 3, 11.0f/3, 4
     });
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinear2x2x2To3x3x2) {
@@ -407,7 +437,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2x2To3x3x2) {
       4,       -4
     });
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinear2x2To4x4) {
@@ -426,7 +456,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To4x4) {
      3,  3.5, 4, 4,
      3,  3.5, 4, 4});
   // clang-format on
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+  test::ExpectClose(expected, *GetOutput(0));
 }
 
 // similar_size case
@@ -457,9 +487,8 @@ TEST_F(ResizeBilinearOpTest, TestInvalidOutputSize) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      StringPiece(s.ToString())
-          .contains("Invalid argument: output dimensions must be positive"))
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Invalid argument: output dimensions must be positive"))
       << s;
 }
 
@@ -467,8 +496,8 @@ TEST_F(ResizeBilinearOpTest, TestInvalidInputShape) {
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Invalid argument: input must be 4-dimensional"))
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Invalid argument: input must be 4-dimensional"))
       << s;
 }
 
@@ -476,8 +505,8 @@ TEST_F(ResizeBilinearOpTest, TestInvalidSizeDim) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2, 1}), {4, 4});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Invalid argument: shape_t must be 1-dimensional"))
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Invalid argument: shape_t must be 1-dimensional"))
       << s;
 }
 
@@ -485,8 +514,8 @@ TEST_F(ResizeBilinearOpTest, TestInvalidSizeElements) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({3}), {4, 4, 1});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Invalid argument: shape_t must have two elements"))
+  EXPECT_TRUE(absl::StrContains(
+      s.ToString(), "Invalid argument: shape_t must have two elements"))
       << s;
 }
 

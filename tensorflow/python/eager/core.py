@@ -47,3 +47,28 @@ class _NotOkStatusException(Exception):
 
 
 pywrap_tensorflow.TFE_Py_RegisterExceptionClass(_NotOkStatusException)
+
+
+class _FallbackException(Exception):
+  """Exception class to handle fallback from the fastpath.
+
+  The fastpath that we refer to here is the one implemented to reduce per-op
+  overheads (TFE_Py_FastPathExecute_C). If the conditions for executing the op
+  on the fastpath are not met, we fallback to a safer (and more complete)
+  slowpath, and this Exception is raised to signal that transition.
+  """
+  pass
+
+
+class _SymbolicException(Exception):
+  """Exception class to handle use of symbolic tensors when executing eagerly.
+
+  `keras.Input()` creates symbolic tensors (in a FuncGraph managed by the
+  Keras backend) while in eager execution. This exception is used to
+  identify this case (raised in `convert_to_tensor` cause generated functions
+  for ops to construct graphs instead of executing the kernel).
+  """
+  pass
+
+
+pywrap_tensorflow.TFE_Py_RegisterFallbackExceptionClass(_FallbackException)

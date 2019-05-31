@@ -74,16 +74,14 @@ class InitializeTableOp : public OpKernel {
                     "Keys and values must have the same size ",
                     keys.NumElements(), " vs ", values.NumElements()));
 
-    lookup::KeyValueTensorIterator iter(&keys, &values);
-
     int memory_used_before = 0;
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }
-    OP_REQUIRES_OK(ctx, table->Initialize(iter));
+    OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 
@@ -144,8 +142,8 @@ class InitializeTableFromTextFileOp : public OpKernel {
                             vocab_filename, vocab_size_, delimiter_, key_index_,
                             value_index_, ctx->env(), table));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 

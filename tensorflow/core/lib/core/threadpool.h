@@ -13,15 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_THREADPOOL_H_
-#define TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
+#define TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
 
 #include <functional>
 #include <memory>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+namespace Eigen {
+class Allocator;
+class ThreadPoolInterface;
+}  // namespace Eigen
 namespace tensorflow {
 namespace thread {
 
@@ -37,7 +42,8 @@ class ThreadPool {
   //
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
-             int num_threads, bool low_latency_hint);
+             int num_threads, bool low_latency_hint,
+             Eigen::Allocator* allocator = nullptr);
 
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual
@@ -58,6 +64,24 @@ class ThreadPool {
 
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
+
+  void SetStealPartitions(
+      const std::vector<std::pair<unsigned, unsigned>>& partitions);
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int limit);
+  // Requires 0 < block_size <= total.
+  // Spawns k threads and calls fn(i*block_size, (i+1)*block_size) from the
+  // ith thread (i>=0). When (i+1)*block_size > total, fn(i*block_size, total)
+  // is called instead. k = NumShardsUsedByTransformRangeConcurrently(...).
+  // Note that when there aren't enough threads in the pool to achieve full
+  // parallelism, function calls will be automatically queued.
+  void TransformRangeConcurrently(const int64 block_size, const int64 total,
+                                  const std::function<void(int64, int64)>& fn);
+
+  // Returns the number of threads spawned by calling TransformRangeConcurrently
+  // with these parameters.
+  int NumShardsUsedByTransformRangeConcurrently(const int64 block_size,
+                                                const int64 total);
 
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
@@ -98,6 +122,11 @@ class ThreadPool {
   // thread in the pool. Returns -1 otherwise.
   int CurrentThreadId() const;
 
+  // If ThreadPool implementation is compatible with Eigen::ThreadPoolInterface,
+  // returns a non-null pointer. The caller does not own the object the returned
+  // pointer points to, and should not attempt to delete.
+  Eigen::ThreadPoolInterface* AsEigenThreadPool();
+
   struct Impl;
 
  private:
@@ -108,4 +137,4 @@ class ThreadPool {
 }  // namespace thread
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_

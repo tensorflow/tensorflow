@@ -29,23 +29,38 @@ from __future__ import print_function
 import functools
 import re
 
+import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.framework.python import ops as contrib_framework_ops
-from tensorflow.python.framework import function
+from tensorflow.python.eager import backprop
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.layers import base
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 __all__ = ["rev_block", "RevBlock", "recompute_grad"]
 
 LAYER_RE = re.compile(".*revlayer_([0-9]*)/([fg])/.*")
+_USE_DEFAULT = "__rev_block_lib_default"
+_WRONG_VARS_ERR = """\
+The variables used on recompute were different than the variables originally
+used. The function wrapped with @recompute_grad likley creates its own variable
+scope with a default name and has been called twice in the same enclosing scope.
+To fix, ensure each call to the function happens in its own unique variable
+scope.
+"""
 
 
 def _acc_grads(*lists_of_grads):
@@ -138,11 +153,21 @@ def _rev_block_forward(x1,
   return y1, y2
 
 
+def _safe_wraps(fn):
+  if isinstance(fn, functools.partial):
+    # functools.partial objects cannot be wrapped as they are missing the
+    # necessary properties (__name__, __module__, __doc__).
+    def passthrough(f):
+      return f
+    return passthrough
+  return functools.wraps(fn)
+
+
 def _scope_wrap(fn, scope):
 
-  @functools.wraps(fn)
+  @_safe_wraps(fn)
   def wrap(*args, **kwargs):
-    with variable_scope.variable_scope(scope):
+    with variable_scope.variable_scope(scope, use_resource=True):
       return fn(*args, **kwargs)
 
   return wrap
@@ -217,91 +242,95 @@ class RevBlock(base.Layer):
                  "build.")
     self.built = True
 
-  def _efficient_grad_fn(self, inputs, variables, ys, grad_ys):
-    """Custom gradient fn for a block of reversible residual layers."""
-    side_inputs = inputs[2:]
-    f_side_idxs = [None] * len(self.f_side_input)
-    g_side_idxs = [None] * len(self.g_side_input)
-    assert len(side_inputs) == len(self.f_side_input) + len(self.g_side_input)
+  def _make_efficient_grad_fn(self, inputs_, ys_):
+    def _efficient_grad_fn(*grad_ys, **kwargs):
+      """Custom gradient fn for a block of reversible residual layers."""
+      inputs = inputs_
+      ys = ys_
+      variables = kwargs["variables"]
+      side_inputs = inputs[2:]
 
-    for i, t in enumerate(side_inputs):
-      if t in self.f_side_input:
-        f_side_idxs[self.f_side_input.index(t)] = i
-      elif t in self.g_side_input:
-        g_side_idxs[self.g_side_input.index(t)] = i
-      else:
-        assert False
+      f_side_idxs = [None] * len(self.f_side_input)
+      g_side_idxs = [None] * len(self.g_side_input)
+      assert len(side_inputs) == len(self.f_side_input) + len(self.g_side_input)
 
-    f_vars = [[] for _ in range(self.num_layers)]
-    g_vars = [[] for _ in range(self.num_layers)]
-    f_vars_idxs = [[] for _ in range(self.num_layers)]
-    g_vars_idxs = [[] for _ in range(self.num_layers)]
+      for i, t in enumerate(side_inputs):
+        if t in self.f_side_input:
+          f_side_idxs[self.f_side_input.index(t)] = i
+        elif t in self.g_side_input:
+          g_side_idxs[self.g_side_input.index(t)] = i
+        else:
+          assert False
 
-    for i, t in enumerate(variables):
-      ref = _underlying_variable_ref(t)
+      f_vars = [[] for _ in range(self.num_layers)]
+      g_vars = [[] for _ in range(self.num_layers)]
+      f_vars_idxs = [[] for _ in range(self.num_layers)]
+      g_vars_idxs = [[] for _ in range(self.num_layers)]
 
-      # Use the name to identify the layer number and function (f or g)
-      regex = LAYER_RE.match(ref.name)
-      layer_no = int(regex.group(1))
-      fn_name = regex.group(2)
-      if fn_name == "f":
-        f_vars[layer_no].append(ref)
-        f_vars_idxs[layer_no].append(i)
-      else:
-        assert fn_name == "g"
-        g_vars[layer_no].append(ref)
-        g_vars_idxs[layer_no].append(i)
+      for i, ref in enumerate(variables):
+        # Use the name to identify the layer number and function (f or g)
+        regex = LAYER_RE.match(ref.name)
+        layer_no = int(regex.group(1))
+        fn_name = regex.group(2)
+        if fn_name == "f":
+          f_vars[layer_no].append(ref)
+          f_vars_idxs[layer_no].append(i)
+        else:
+          assert fn_name == "g"
+          g_vars[layer_no].append(ref)
+          g_vars_idxs[layer_no].append(i)
 
-    f_var_grads = []
-    g_var_grads = []
-    f_side_grads = []
-    g_side_grads = []
+      f_var_grads = []
+      g_var_grads = []
+      f_side_grads = []
+      g_side_grads = []
 
-    # Reverse variable containers to go backward
-    f_vars.reverse()
-    g_vars.reverse()
-    f = list(self.f)
-    g = list(self.g)
-    f.reverse()
-    g.reverse()
+      # Reverse variable containers to go backward
+      f_vars.reverse()
+      g_vars.reverse()
+      f = list(self.f)
+      g = list(self.g)
+      f.reverse()
+      g.reverse()
 
-    with variable_scope.variable_scope(self.scope_name, reuse=True):
-      for i in xrange(self.num_layers):
-        ys, grad_ys, f_ret, g_ret = _rev_layer_backward(
-            ys, grad_ys, f[i], g[i], f_vars[i], self.f_side_input, g_vars[i],
-            self.g_side_input)
+      with variable_scope.variable_scope(self.scope_name, reuse=True):
+        for i in xrange(self.num_layers):
+          ys, grad_ys, f_ret, g_ret = _rev_layer_backward(
+              ys, grad_ys, f[i], g[i], f_vars[i], self.f_side_input, g_vars[i],
+              self.g_side_input)
 
-        grad_f_vars, grad_f_side = f_ret
-        grad_g_vars, grad_g_side = g_ret
-        f_var_grads.append(grad_f_vars)
-        g_var_grads.append(grad_g_vars)
-        f_side_grads.append(grad_f_side)
-        g_side_grads.append(grad_g_side)
+          grad_f_vars, grad_f_side = f_ret
+          grad_g_vars, grad_g_side = g_ret
+          f_var_grads.append(grad_f_vars)
+          g_var_grads.append(grad_g_vars)
+          f_side_grads.append(grad_f_side)
+          g_side_grads.append(grad_g_side)
 
-    # Accumulate layer gradients for f_side_input and g_side_input
-    acc_f_side_grads = _acc_grads(*f_side_grads)
-    acc_g_side_grads = _acc_grads(*g_side_grads)
+      # Accumulate layer gradients for f_side_input and g_side_input
+      acc_f_side_grads = _acc_grads(*f_side_grads)
+      acc_g_side_grads = _acc_grads(*g_side_grads)
 
-    # Use the stored idxs to put gradients in the passed-in order.
-    side_input_grads = [None] * len(side_inputs)
-    variable_grads = [None] * len(variables)
+      # Use the stored idxs to put gradients in the passed-in order.
+      side_input_grads = [None] * len(side_inputs)
+      variable_grads = [None] * len(variables)
 
-    # Variable gradients were collected in reverse layer order. Reverse to match
-    # idxs.
-    f_var_grads.reverse()
-    g_var_grads.reverse()
-    for idxs, grads in list(zip(f_vars_idxs, f_var_grads)) + list(
-        zip(g_vars_idxs, g_var_grads)):
-      for i, grad in zip(idxs, grads):
-        variable_grads[i] = grad
+      # Variable gradients were collected in reverse layer order. Reverse to
+      # match idxs.
+      f_var_grads.reverse()
+      g_var_grads.reverse()
+      for idxs, grads in list(zip(f_vars_idxs, f_var_grads)) + list(
+          zip(g_vars_idxs, g_var_grads)):
+        for i, grad in zip(idxs, grads):
+          variable_grads[i] = grad
 
-    for i, grad in zip(f_side_idxs, acc_f_side_grads):
-      side_input_grads[i] = grad
-    for i, grad in zip(g_side_idxs, acc_g_side_grads):
-      side_input_grads[i] = grad
+      for i, grad in zip(f_side_idxs, acc_f_side_grads):
+        side_input_grads[i] = grad
+      for i, grad in zip(g_side_idxs, acc_g_side_grads):
+        side_input_grads[i] = grad
 
-    grad_x1, grad_x2 = grad_ys
-    return [grad_x1, grad_x2] + side_input_grads, variable_grads
+      grad_x1, grad_x2 = grad_ys
+      return [grad_x1, grad_x2] + side_input_grads, variable_grads
+    return _efficient_grad_fn
 
   def _forward(self, x1, x2):
     """Run forward through the reversible layers."""
@@ -309,10 +338,6 @@ class RevBlock(base.Layer):
     side_inputs = [self.f_side_input, self.g_side_input]
     flat_side_inputs = nest.flatten(side_inputs)
 
-    custom_grad_fn = (
-        self._efficient_grad_fn if self._use_efficient_backprop else None)
-
-    @_fn_with_custom_grad(custom_grad_fn)
     def _forward_wrap(x1_, x2_, *flat_side_inputs):
       f_side, g_side = nest.pack_sequence_as(side_inputs, flat_side_inputs)
       return _rev_block_forward(
@@ -325,7 +350,16 @@ class RevBlock(base.Layer):
           g_side_input=g_side,
           gate_outputs=self._use_efficient_backprop)
 
-    return _forward_wrap(x1, x2, *flat_side_inputs)
+    @custom_gradient.custom_gradient
+    def _forward_with_custom_grad(*args):
+      out = _forward_wrap(*args)  # pylint: disable=no-value-for-parameter
+      grad_fn = self._make_efficient_grad_fn(args, out)
+      return out, grad_fn
+
+    if self._use_efficient_backprop:
+      return _forward_with_custom_grad(x1, x2, *flat_side_inputs)
+    else:
+      return _forward_wrap(x1, x2, *flat_side_inputs)
 
   def _backward(self, y1, y2):
     """Run backward through the reversible layers."""
@@ -405,58 +439,199 @@ def rev_block(x1,
   return block.forward(x1, x2)
 
 
-def recompute_grad(fn):
+def enable_with_args(dec):
+  """A decorator for decorators to enable their usage with or without args."""
+
+  @_safe_wraps(dec)
+  def new_dec(*args, **kwargs):
+    if len(args) == 1 and not kwargs and callable(args[0]):
+      # Used as decorator without args
+      fn = args[0]
+      return dec(fn)
+    else:
+      return lambda fn: dec(fn, *args, **kwargs)
+
+  return new_dec
+
+
+@enable_with_args
+def recompute_grad(fn, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   """Decorator that recomputes the function on the backwards pass.
+
+  To use this function, you must use `ResourceVariable`s (i.e.
+  `variable_scope(name, use_resource=True), which are the default in Eager mode
+  and when running on TPU.
+
+  Warning: Because the function will be called again on the backwards pass, the
+  user should be careful to not use ops in their function that mutate state or
+  have randomness (for example, batch normalization or dropout). If the function
+  does have such operations, it is recommended that the function take the
+  `is_recomputing` keyword argument which will be `False` on the forward pass
+  and `True` on the backwards pass so that it can disable state changes when
+  `is_recomputing=True` (for example, not updating the moving averages in batch
+  normalization).
 
   Args:
     fn: a function that takes Tensors (all as positional arguments) and returns
-      a tuple of Tensors.
+      a tuple of Tensors. Note that `fn` should not close over any other
+      Tensors or Variables.
+    use_data_dep: `bool`, if `True` will use a dummy data dependency to force
+      the recompute to happen. If `False` will use a control dependency. By
+      default will be `True` if in an XLA context and `False` otherwise. XLA
+      ignores control dependencies and so this data dependency is necessary.
+    tupleize_grads: `bool`, if `True` will use control dependencies to ensure
+      that all gradients are produced before any are consumed by downstream ops.
+      If `use_data_dep` is also `True`, will use a data dependency instead of
+      a control dependency.
 
   Returns:
     A wrapped fn that is identical to fn when called, but its activations will
     be discarded and recomputed on the backwards pass (i.e. on a call to
     tf.gradients).
-  """
 
-  @functools.wraps(fn)
+  Raises:
+    ValueError: if `fn` closes over any Tensors or Variables.
+  """
+  # Check for closed-over Tensors/Variables
+  if fn.__code__.co_freevars:
+    closed_over_vars = dict(zip(fn.__code__.co_freevars,
+                                [c.cell_contents for c in fn.__closure__]))
+    for var_name, value in six.iteritems(closed_over_vars):
+      if isinstance(value, (framework_ops.Tensor, variables_lib.Variable)):
+        raise ValueError(
+            "fn decorated with @recompute_grad closes over Tensor %s "
+            "(local variable name: %s). The decorated fn must not close over "
+            "Tensors or Variables because gradients will NOT be computed for "
+            "them through fn. To ensure correct gradients, make the "
+            "Tensor an input to fn." % (value.name, var_name))
+
+  @_safe_wraps(fn)
   def wrapped(*args):
-    return _recompute_grad(fn, args)
+    return _recompute_grad(
+        fn, args, use_data_dep=use_data_dep, tupleize_grads=tupleize_grads)
 
   return wrapped
 
 
-def _recompute_grad(fn, args):
-  """See recompute_grad."""
+def _is_on_tpu():
+  ctxt = framework_ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  return control_flow_util.GetContainingXLAContext(ctxt) is not None
 
-  cached_vs = []
-  cached_arg_scope = []
 
-  def grad_fn(inputs, variables, outputs, output_grads):
-    """Recompute outputs for gradient computation."""
-    del outputs
-    # Recompute outputs
-    with framework_ops.control_dependencies(output_grads):
-      with contrib_framework_ops.arg_scope(cached_arg_scope[0]):
-        with variable_scope.variable_scope(cached_vs[0], reuse=True):
-          outputs = fn(*inputs)
+def _recomputing_grad_fn(compute_fn,
+                         original_args,
+                         original_vars,
+                         output_grads,
+                         grad_fn_variables,
+                         use_data_dep,
+                         tupleize_grads,
+                         arg_scope,
+                         var_scope,
+                         has_is_recompute_kwarg):
+  """Grad fn for recompute_grad."""
+  variables = grad_fn_variables or []
 
-    if not (isinstance(outputs, list) or isinstance(outputs, tuple)):
-      outputs = [outputs]
-    outputs = list(outputs)
-    grads = gradients_impl.gradients(outputs, inputs + variables, output_grads)
-    grad_inputs = grads[:len(inputs)]
-    grad_vars = grads[len(inputs):]
-    return grad_inputs, grad_vars
+  # Identity ops around the inputs ensures correct gradient graph-walking.
+  inputs = [array_ops.identity(x) for x in list(original_args)]
 
-  @_fn_with_custom_grad(grad_fn)
-  def fn_with_recompute(*args):
-    cached_vs.append(variable_scope.get_variable_scope())
-    # TODO(rsepassi): Rm conditional in TF 1.4
-    if hasattr(contrib_framework_ops, "current_arg_scope"):
-      cached_arg_scope.append(contrib_framework_ops.current_arg_scope())
+  # Recompute outputs
+  # Use a control dependency to ensure that the recompute is not eliminated by
+  # CSE and that it happens on the backwards pass.
+  ctrl_dep_grads = [g for g in output_grads if g is not None]
+  with framework_ops.control_dependencies(ctrl_dep_grads):
+    if use_data_dep:
+      inputs = _force_data_dependency(output_grads, inputs)
+    # Re-enter scopes
+    with contrib_framework_ops.arg_scope(arg_scope):
+      with variable_scope.variable_scope(var_scope, reuse=True):
+        # Re-call the function and ensure that the touched variables are the
+        # same as in the first call.
+        with backprop.GradientTape() as tape:
+          fn_kwargs = {}
+          if has_is_recompute_kwarg:
+            fn_kwargs["is_recomputing"] = True
+          outputs = compute_fn(*inputs, **fn_kwargs)
+        recompute_vars = set(tape.watched_variables())
+        if original_vars != recompute_vars:
+          raise ValueError(_WRONG_VARS_ERR)
+
+  if not isinstance(outputs, (list, tuple)):
+    outputs = [outputs]
+  outputs = list(outputs)
+
+  # Compute gradients
+  grads = gradients_impl.gradients(outputs, inputs + variables,
+                                   output_grads)
+
+  if tupleize_grads:
+    if use_data_dep:
+      grads = _tuple_with_data_dep(grads)
     else:
-      cached_arg_scope.append({})
-    return fn(*args)
+      grads = control_flow_ops.tuple(grads)
+
+  grad_inputs = grads[:len(inputs)]
+  grad_vars = grads[len(inputs):]
+  return grad_inputs, grad_vars
+
+
+def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
+  """See recompute_grad."""
+  has_is_recompute_kwarg = "is_recomputing" in tf_inspect.getargspec(fn).args
+  for arg in args:
+    if not isinstance(arg, framework_ops.Tensor):
+      raise ValueError("All inputs to function must be Tensors")
+  use_data_dep_ = use_data_dep
+  if use_data_dep_ == _USE_DEFAULT:
+    use_data_dep_ = _is_on_tpu()
+
+  # Use custom_gradient and return a grad_fn that recomputes on the backwards
+  # pass.
+  @custom_gradient.custom_gradient
+  def fn_with_recompute(*args):
+    """Wrapper for fn."""
+    # Capture the variable and arg scopes so we can re-enter them when
+    # recomputing.
+    vs = variable_scope.get_variable_scope()
+    arg_scope = contrib_framework_ops.current_arg_scope()
+    # Track all variables touched in the function.
+    with backprop.GradientTape() as tape:
+      fn_kwargs = {}
+      if has_is_recompute_kwarg:
+        fn_kwargs["is_recomputing"] = False
+      outputs = fn(*args, **fn_kwargs)
+    original_vars = set(tape.watched_variables())
+
+    def _grad_fn(output_grads, variables=None):
+      # Validate that custom_gradient passes the right variables into grad_fn.
+      if original_vars:
+        assert variables, ("Fn created variables but the variables were not "
+                           "passed to the gradient fn.")
+        if set(variables) != original_vars:
+          raise ValueError(_WRONG_VARS_ERR)
+
+      return _recomputing_grad_fn(
+          compute_fn=fn,
+          original_args=args,
+          original_vars=original_vars,
+          output_grads=output_grads,
+          grad_fn_variables=variables,
+          use_data_dep=use_data_dep_,
+          tupleize_grads=tupleize_grads,
+          arg_scope=arg_scope,
+          var_scope=vs,
+          has_is_recompute_kwarg=has_is_recompute_kwarg)
+
+    # custom_gradient inspects the signature of the function to determine
+    # whether the user expects variables passed in the grad_fn. If the function
+    # created variables, the grad_fn should accept the "variables" kwarg.
+    if original_vars:
+      def grad_fn(*output_grads, **kwargs):
+        return _grad_fn(output_grads, kwargs["variables"])
+    else:
+      def grad_fn(*output_grads):
+        return _grad_fn(output_grads)
+
+    return outputs, grad_fn
 
   return fn_with_recompute(*args)
 
@@ -483,101 +658,46 @@ def _underlying_variable_ref(t):
     return None
 
 
-def _fn_with_custom_grad(grad_fn, use_global_vars=False):
-  """Decorator to create a subgraph with a custom gradient function.
+def _force_data_dependency(first_compute, then_compute):
+  """Force all of `then_compute` to depend on all of `first_compute`.
 
-  The subgraph created by the decorated function is NOT put in a Defun and so
-  does not suffer from the limitations of the Defun (all subgraph ops on the
-  same device, no summaries).
-
-  Args:
-    grad_fn: function with signature
-      (inputs, variables, outputs, output_grads) -> (grad_inputs, grad_vars),
-      all of which are lists of Tensors.
-    use_global_vars: if True, variables will be the global variables created.
-      If False, will be the trainable variables.
-
-  Returns:
-    Decorator for function such that the gradient is defined by grad_fn.
-  """
-
-  def dec(fn):
-
-    @functools.wraps(fn)
-    def wrapped(*args):
-      return _fn_with_custom_grad_internal(
-          fn, args, grad_fn, use_global_vars=use_global_vars)
-
-    return wrapped
-
-  return dec
-
-
-def _fn_with_custom_grad_internal(fn, inputs, grad_fn, use_global_vars=False):
-  """Create a subgraph with a custom gradient.
+  Uses a dummy data dependency, which is useful when running on TPUs because
+  XLA ignores control dependencies. Only supports float arguments.
 
   Args:
-    fn: function that takes inputs as arguments and produces 1 or more Tensors.
-    inputs: list<Tensor>, will be passed as fn(*inputs).
-    grad_fn: function with signature
-      (inputs, vars, outputs, output_grads) -> (grad_inputs, grad_vars),
-      all of which are lists of Tensors.
-    use_global_vars: if True, variables will be the global variables created.
-      If False, will be the trainable variables.
+    first_compute: `list<Tensor>`. These will be made to run before the
+      `Tensor`s `then_compute`.
+    then_compute: `list<Tensor>`. These will run after all the `Tensor`s in
+      `first_compute`.
 
   Returns:
-    fn(*inputs)
+    `list<Tensor>`, same length as `then_compute`.
+
+  Raises:
+    ValueError: if ranks are unknown or types are not floating.
   """
-  vs = variable_scope.get_variable_scope()
-  get_vars_fn = (
-      vs.global_variables if use_global_vars else vs.trainable_variables)
-  len_before_vars = len(get_vars_fn())
-  inputs = list(inputs)
-  outputs = fn(*inputs)
-  train_vars = get_vars_fn()[len_before_vars:]
 
-  if grad_fn is None:
-    return outputs
+  def _first_element(x):
+    if x.get_shape().ndims is None:
+      raise ValueError("Rank of Tensor %s must be known" % x)
+    ndims = x.get_shape().ndims
+    begin = framework_ops.convert_to_tensor([0] * ndims, dtype=dtypes.int32)
+    size = framework_ops.convert_to_tensor([1] * ndims, dtype=dtypes.int32)
+    return array_ops.reshape(array_ops.slice(x, begin, size), [])
 
-  if not (isinstance(outputs, tuple) or isinstance(outputs, list)):
-    outputs = [outputs]
-  outputs = list(outputs)
+  first_compute_sum = math_ops.add_n(
+      [_first_element(x) for x in first_compute if x is not None])
+  dtype = first_compute_sum.dtype
+  if not dtype.is_floating:
+    raise ValueError("_force_data_dependency only supports floating dtypes.")
+  epsilon = np.finfo(dtype.as_numpy_dtype).tiny
+  zero = array_ops.stop_gradient(epsilon * first_compute_sum)
 
-  defun_inputs = [inputs, train_vars, outputs]
+  return [
+      array_ops.identity(x) + zero if x is not None else None
+      for x in then_compute
+  ]
 
-  def custom_grad_fn(op, *dys):
-    """Custom grad fn applying grad_fn for identity Defun."""
-    fn_inputs, fn_vars, fn_outputs = nest.pack_sequence_as(
-        defun_inputs, list(op.inputs))
-    dys = list(dys)
-    assert len(fn_outputs) == len(outputs)
-    assert len(fn_outputs) == len(dys)
 
-    grad_inputs, grad_vars = grad_fn(fn_inputs, fn_vars, fn_outputs, dys)
-    grad_outputs = [None] * len(fn_outputs)
-    return tuple(grad_inputs + grad_vars + grad_outputs)
-
-  # The Defun takes as input the original inputs, the trainable variables
-  # created in fn, and the outputs. In the forward it passes through the
-  # outputs. In the backwards, it produces gradients for the original inputs
-  # and the trainable variables.
-  in_types = [t.dtype for t in inputs]
-  out_types = [t.dtype for t in outputs]
-  var_types = [t.dtype for t in train_vars]
-
-  # Get a unique name for the Defun
-  with framework_ops.name_scope("identity_custom_grad") as ns:
-    defun_name = ns
-
-  @function.Defun(
-      *(in_types + var_types + out_types),
-      func_name=defun_name,
-      python_grad_func=custom_grad_fn,
-      shape_func=lambda _: [t.get_shape() for t in outputs])
-  def identity(*args):
-    _, _, outs = nest.pack_sequence_as(defun_inputs, args)
-    return tuple([array_ops.identity(t) for t in outs])
-
-  flat_inputs = nest.flatten(defun_inputs)
-  id_out = identity(*flat_inputs)
-  return id_out
+def _tuple_with_data_dep(tensors):
+  return _force_data_dependency(tensors, tensors)

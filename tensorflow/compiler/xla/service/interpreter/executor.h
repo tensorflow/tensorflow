@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the InterpreterExecutor class, which is a CPU-only implementation of
-// the StreamExecutor interface. For now, this is used for testing and to
+// Declares the XlaInterpreterExecutor class, which is a CPU-only implementation
+// of the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
@@ -22,9 +22,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_description.h"
@@ -44,16 +44,15 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/timer.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace interpreter {
 
-using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
+using Args = absl::Span<const DeviceMemoryBase>;
 
-class InterpreterExecutor : public internal::StreamExecutorInterface {
+class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit InterpreterExecutor(const PluginConfig &plugin_config);
-  ~InterpreterExecutor() override;
+  explicit XlaInterpreterExecutor(const PluginConfig &plugin_config);
+  ~XlaInterpreterExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
     return port::Status::OK();
@@ -70,8 +69,8 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   void *Allocate(uint64 size) override;
-  void *AllocateSubBuffer(DeviceMemoryBase *mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+  void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
+                     uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
   void *HostMemoryAllocate(uint64 size) override { return new char[size]; }
@@ -81,9 +80,9 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
   bool HostMemoryRegister(void *mem, uint64 size) override { return true; }
   bool HostMemoryUnregister(void *mem) override { return true; }
 
-  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &pop_src,
+  bool Memcpy(Stream *stream, void *host_dst, const DeviceMemoryBase &dev_src,
               uint64 size) override;
-  bool Memcpy(Stream *stream, DeviceMemoryBase *pop_dst, const void *host_src,
+  bool Memcpy(Stream *stream, DeviceMemoryBase *dev_dst, const void *host_src,
               uint64 size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
                             const DeviceMemoryBase &host_src,
@@ -105,7 +104,7 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
-  bool SynchronizeAllActivity() override { return false; }
+  bool SynchronizeAllActivity() override { return true; }
   bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override {
     return false;
   }
@@ -115,10 +114,10 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  port::Status SynchronousMemcpy(DeviceMemoryBase *pop_dst,
+  port::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst,
                                  const void *host_src, uint64 size) override;
   port::Status SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &pop_src,
+                                 const DeviceMemoryBase &dev_src,
                                  uint64 size) override;
   port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
                                                const DeviceMemoryBase &pop_src,
@@ -126,7 +125,8 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
     return port::Status{port::error::UNIMPLEMENTED, ""};
   }
 
-  bool HostCallback(Stream *stream, std::function<void()> callback) override;
+  bool HostCallback(Stream *stream,
+                    std::function<port::Status()> callback) override;
 
   port::Status AllocateEvent(Event *event) override {
     return port::Status{port::error::UNIMPLEMENTED, ""};
@@ -165,7 +165,13 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  DeviceDescription *PopulateDeviceDescription() const override;
+  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override {
+    return CreateDeviceDescription(0);
+  }
+
+  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription(int device_ordinal);
 
   port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
     return port::Status::OK();
@@ -213,7 +219,6 @@ class InterpreterExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace interpreter
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_

@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Debug estimators.
+"""Debug estimators (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 Debug estimators are bias-only estimators that can be used for debugging
 and as simple baselines.
@@ -117,6 +121,10 @@ def debug_model_fn(features, labels, mode, params, config=None):
 
 class DebugClassifier(estimator.Estimator):
   """A classifier for TensorFlow Debug models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Example:
 
@@ -236,6 +244,10 @@ class DebugClassifier(estimator.Estimator):
 
 class DebugRegressor(estimator.Estimator):
   """A regressor for TensorFlow Debug models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Example:
 

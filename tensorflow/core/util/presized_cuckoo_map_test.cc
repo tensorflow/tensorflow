@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/presized_cuckoo_map.h"
 #include <array>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/presized_cuckoo_map.h"
 
 namespace tensorflow {
 namespace {
@@ -48,6 +49,14 @@ TEST(PresizedCuckooMapTest, Basic) {
   int out;
   EXPECT_TRUE(pscm.Find(1, &out));
   EXPECT_EQ(out, 2);
+}
+
+TEST(PresizedCuckooMapTest, Prefetch) {
+  PresizedCuckooMap<int64> pscm(2);
+  EXPECT_TRUE(pscm.InsertUnique(1, 2));
+  // Works for both present and absent keys.
+  pscm.PrefetchKey(1);
+  pscm.PrefetchKey(2);
 }
 
 TEST(PresizedCuckooMapTest, TooManyItems) {

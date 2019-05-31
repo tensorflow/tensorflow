@@ -67,7 +67,7 @@ class PowerSignTest(test.TestCase):
                  base=math.e,
                  beta=0.9):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -81,9 +81,9 @@ class PowerSignTest(test.TestCase):
           global_step = resource_variable_ops.ResourceVariable(
               0, trainable=False)
         else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
-          global_step = variables.Variable(
+          var0 = variables.VariableV1(var0_np)
+          var1 = variables.VariableV1(var1_np)
+          global_step = variables.VariableV1(
               0, trainable=False)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -99,7 +99,7 @@ class PowerSignTest(test.TestCase):
         neg_update = opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
                                          global_step=global_step)
 
-        if context.in_graph_mode():
+        if not context.executing_eagerly():
           self.evaluate(variables.global_variables_initializer())
           # Fetch params to validate initial values
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -110,13 +110,13 @@ class PowerSignTest(test.TestCase):
         # last 3 steps with negative gradient (sign(gm) should be -1)
         for t in range(1, 8):
           if t < 5:
-            if context.in_graph_mode():
+            if not context.executing_eagerly():
               self.evaluate(update)
             elif t > 1:
               opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
                                   global_step=global_step)
           else:
-            if context.in_graph_mode():
+            if not context.executing_eagerly():
               self.evaluate(neg_update)
             elif t > 1:
               opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
@@ -173,7 +173,7 @@ class PowerSignTest(test.TestCase):
                   py_sign_decay_fn=None,
                   base=math.e,
                   beta=0.9):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
@@ -188,9 +188,9 @@ class PowerSignTest(test.TestCase):
           global_step = resource_variable_ops.ResourceVariable(
               0, trainable=False)
         else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
-          global_step = variables.Variable(
+          var0 = variables.VariableV1(var0_np)
+          var1 = variables.VariableV1(var1_np)
+          global_step = variables.VariableV1(
               0, trainable=False)
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
         grads0 = ops.IndexedSlices(
@@ -216,7 +216,7 @@ class PowerSignTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
 
-        # Run 3 steps of powersign
+        # Run 7 steps of powersign
         # first 4 steps with positive gradient
         # last 3 steps with negative gradient (sign(gm) should be -1)
         for t in range(1, 8):

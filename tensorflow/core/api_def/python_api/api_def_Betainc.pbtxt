@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Betainc"
+  endpoint {
+    name: "math.betainc"
+  }
+  endpoint {
+    name: "betainc"
+    deprecation_version: 2
+  }
+}

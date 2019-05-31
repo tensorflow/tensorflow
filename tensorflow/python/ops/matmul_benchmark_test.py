@@ -33,11 +33,11 @@ def BuildGraphTest(n, m, k, transpose_a, transpose_b, dtype):
 
   def Test(self):
     if not googletest.is_gpu_available():
-      tf_logging.info("Skipping BuildGraphTest %s", (n, m, k, transpose_a,
-                                                     transpose_b))
+      tf_logging.info("Skipping BuildGraphTest %s",
+                      (n, m, k, transpose_a, transpose_b))
       return
-    tf_logging.info("Testing BuildGraphTest %s", (n, m, k, transpose_a,
-                                                  transpose_b))
+    tf_logging.info("Testing BuildGraphTest %s",
+                    (n, m, k, transpose_a, transpose_b))
     self._VerifyBuildGraph(n, m, k, transpose_a, transpose_b, dtype)
 
   return Test
@@ -47,11 +47,11 @@ def RunGraphTest(n, m, k, transpose_a, transpose_b, dtype):
 
   def Test(self):
     if not googletest.is_gpu_available():
-      tf_logging.info("Skipping RunGraphTest %s", (n, m, k, transpose_a,
-                                                   transpose_b))
+      tf_logging.info("Skipping RunGraphTest %s",
+                      (n, m, k, transpose_a, transpose_b))
       return
-    tf_logging.info("Testing RunGraphTest %s", (n, m, k, transpose_a,
-                                                transpose_b))
+    tf_logging.info("Testing RunGraphTest %s",
+                    (n, m, k, transpose_a, transpose_b))
     self._VerifyRunGraph(n, m, k, transpose_a, transpose_b, dtype)
 
   return Test
@@ -71,40 +71,41 @@ class MatmulBenchmarkTest(googletest.TestCase):
   def _VerifyBuildGraph(self, n, m, k, transpose_a, transpose_b, dtype):
     graph = ops.Graph()
     with graph.as_default():
-      matmul_benchmark.build_graph(googletest.gpu_device_name(), n, m, k, transpose_a, transpose_b,
-                                   dtype)
+      matmul_benchmark.build_graph(googletest.gpu_device_name(), n, m, k,
+                                   transpose_a, transpose_b, dtype)
       gd = graph.as_graph_def()
-      dev=googletest.gpu_device_name()
+      dev = googletest.gpu_device_name()
       proto_expected = """
-      node { name: "random_uniform/shape" op: "Const" device: \""""+ dev +"""\" }
-      node { name: "random_uniform/min" op: "Const" device: \""""+ dev +"""\" }
-      node { name: "random_uniform/max" op: "Const" device: \""""+ dev +"""\" }
-      node { name: "random_uniform/RandomUniform" op: "RandomUniform" input: "random_uniform/shape" device: \""""+ dev +"""\" }
-      node { name: "random_uniform/sub" op: "Sub" input: "random_uniform/max" input: "random_uniform/min" device: \""""+ dev +"""\" }
-      node { name: "random_uniform/mul" op: "Mul" input: "random_uniform/RandomUniform" input: "random_uniform/sub" device: \""""+ dev +"""\" }
-      node { name: "random_uniform" op: "Add" input: "random_uniform/mul" input: "random_uniform/min" device: \""""+ dev +"""\" }
-      node { name: "Variable" op: "VariableV2" device: \""""+ dev +"""\" }
-      node { name: "Variable/Assign" op: "Assign" input: "Variable" input: "random_uniform" device: \""""+ dev +"""\" }
-      node { name: "Variable/read" op: "Identity" input: "Variable" device: \""""+ dev +"""\" }
-      node { name: "random_uniform_1/shape" op: "Const" device: \""""+ dev +"""\" }
-      node { name: "random_uniform_1/min" op: "Const" device: \""""+ dev +"""\" }
-      node { name: "random_uniform_1/max" op: "Const" device: \""""+ dev +"""\" }
-      node { name: "random_uniform_1/RandomUniform" op: "RandomUniform" input: "random_uniform_1/shape" device: \""""+ dev +"""\" }
-      node { name: "random_uniform_1/sub" op: "Sub" input: "random_uniform_1/max" input: "random_uniform_1/min" device: \""""+ dev +"""\" }
-      node { name: "random_uniform_1/mul" op: "Mul" input: "random_uniform_1/RandomUniform" input: "random_uniform_1/sub" device: \""""+ dev +"""\" }
-      node { name: "random_uniform_1" op: "Add" input: "random_uniform_1/mul" input: "random_uniform_1/min" device: \""""+ dev +"""\" }
-      node { name: "Variable_1" op: "VariableV2" device: \""""+ dev +"""\" }
-      node { name: "Variable_1/Assign" op: "Assign" input: "Variable_1" input: "random_uniform_1" device: \""""+ dev +"""\" }
-      node { name: "Variable_1/read" op: "Identity" input: "Variable_1" device: \""""+ dev +"""\" }
-      node { name: "MatMul" op: "MatMul" input: "Variable/read" input: "Variable_1/read" device: \""""+ dev +"""\" }
-      node { name: "group_deps" op: "NoOp" input: "^MatMul" device: \""""+ dev +"""\" }
+      node { name: "random_uniform/shape" op: "Const" device: \"""" + dev + """\" }
+      node { name: "random_uniform/min" op: "Const" device: \"""" + dev + """\" }
+      node { name: "random_uniform/max" op: "Const" device: \"""" + dev + """\" }
+      node { name: "random_uniform/RandomUniform" op: "RandomUniform" input: "random_uniform/shape" device: \"""" + dev + """\" }
+      node { name: "random_uniform/sub" op: "Sub" input: "random_uniform/max" input: "random_uniform/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform/mul" op: "Mul" input: "random_uniform/RandomUniform" input: "random_uniform/sub" device: \"""" + dev + """\" }
+      node { name: "random_uniform" op: "Add" input: "random_uniform/mul" input: "random_uniform/min" device: \"""" + dev + """\" }
+      node { name: "Variable" op: "VariableV2" device: \"""" + dev + """\" }
+      node { name: "Variable/Assign" op: "Assign" input: "Variable" input: "random_uniform" device: \"""" + dev + """\" }
+      node { name: "Variable/read" op: "Identity" input: "Variable" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/shape" op: "Const" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/min" op: "Const" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/max" op: "Const" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/RandomUniform" op: "RandomUniform" input: "random_uniform_1/shape" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/sub" op: "Sub" input: "random_uniform_1/max" input: "random_uniform_1/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/mul" op: "Mul" input: "random_uniform_1/RandomUniform" input: "random_uniform_1/sub" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1" op: "Add" input: "random_uniform_1/mul" input: "random_uniform_1/min" device: \"""" + dev + """\" }
+      node { name: "Variable_1" op: "VariableV2" device: \"""" + dev + """\" }
+      node { name: "Variable_1/Assign" op: "Assign" input: "Variable_1" input: "random_uniform_1" device: \"""" + dev + """\" }
+      node { name: "Variable_1/read" op: "Identity" input: "Variable_1" device: \"""" + dev + """\" }
+      node { name: "MatMul" op: "MatMul" input: "Variable/read" input: "Variable_1/read" device: \"""" + dev + """\" }
+      node { name: "group_deps" op: "NoOp" input: "^MatMul" device: \"""" + dev + """\" }
                        """
       self.assertProtoEquals(str(proto_expected), self._StripGraph(gd))
 
   def _VerifyRunGraph(self, n, m, k, transpose_a, transpose_b, dtype):
     benchmark_instance = matmul_benchmark.MatmulBenchmark()
-    duration = benchmark_instance.run_graph(googletest.gpu_device_name(), n, m, k, transpose_a,
-                                            transpose_b, 1, dtype)
+    duration = benchmark_instance.run_graph(googletest.gpu_device_name(), n, m,
+                                            k, transpose_a, transpose_b, 1,
+                                            dtype)
     self.assertTrue(duration > 1e-6)
 
 
@@ -113,8 +114,8 @@ if __name__ == "__main__":
   index = 0
   for _dtype in dtypes:
     for _n, _m, (_transpose_a, _transpose_b) in itertools.product(
-        [512, 1024], [1, 8, 16, 128], [(False, False), (True, False), (False,
-                                                                       True)]):
+        [512, 1024], [1, 8, 16, 128], [(False, False), (True, False),
+                                       (False, True)]):
       _k = _n
       setattr(MatmulBenchmarkTest, "testBuildGraph_" + str(index),
               BuildGraphTest(_n, _m, _k, _transpose_a, _transpose_b, _dtype))

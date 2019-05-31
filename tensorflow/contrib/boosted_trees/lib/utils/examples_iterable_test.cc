@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 #include "tensorflow/contrib/boosted_trees/lib/utils/examples_iterable.h"
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -43,27 +44,35 @@ TEST_F(ExamplesIterableTest, Iterate) {
       test::AsTensor<int64>({0, 0, 2, 0, 3, 0, 4, 0}, {4, 2});
   auto sparse_float_values1 = test::AsTensor<float>({-3.0f, 0.0f, 5.0f, 0.0f});
   auto sparse_float_shape1 = TensorShape({8, 1});
-  sparse::SparseTensor sparse_float_tensor1(
-      sparse_float_indices1, sparse_float_values1, sparse_float_shape1);
+  sparse::SparseTensor sparse_float_tensor1;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_float_indices1, sparse_float_values1,
+                                   sparse_float_shape1, &sparse_float_tensor1));
   auto sparse_float_indices2 = test::AsTensor<int64>(
       {0, 1, 1, 0, 2, 1, 3, 0, 4, 1, 5, 0, 5, 1, 7, 0}, {8, 2});
   auto sparse_float_values2 =
       test::AsTensor<float>({1.f, 4.0f, 3.f, 7.0f, 4.3f, 9.0f, 0.8f, -4.0f});
   auto sparse_float_shape2 = TensorShape({8, 2});
-  sparse::SparseTensor sparse_float_tensor2(
-      sparse_float_indices2, sparse_float_values2, sparse_float_shape2);
+  sparse::SparseTensor sparse_float_tensor2;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_float_indices2, sparse_float_values2,
+                                   sparse_float_shape2, &sparse_float_tensor2));
   auto sparse_int_indices1 =
       test::AsTensor<int64>({0, 0, 0, 1, 1, 0, 3, 0, 3, 1, 7, 0}, {6, 2});
   auto sparse_int_values1 = test::AsTensor<int64>({1, 8, 0, 2, 0, 5});
   auto sparse_int_shape1 = TensorShape({8, 2});
-  sparse::SparseTensor sparse_int_tensor1(
-      sparse_int_indices1, sparse_int_values1, sparse_int_shape1);
+  sparse::SparseTensor sparse_int_tensor1;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_int_indices1, sparse_int_values1,
+                                   sparse_int_shape1, &sparse_int_tensor1));
   auto sparse_int_indices2 =
       test::AsTensor<int64>({1, 0, 2, 0, 3, 0, 4, 0}, {4, 2});
   auto sparse_int_values2 = test::AsTensor<int64>({7, 13, 4, 0});
   auto sparse_int_shape2 = TensorShape({8, 1});
-  sparse::SparseTensor sparse_int_tensor2(
-      sparse_int_indices2, sparse_int_values2, sparse_int_shape2);
+  sparse::SparseTensor sparse_int_tensor2;
+  TF_ASSERT_OK(
+      sparse::SparseTensor::Create(sparse_int_indices2, sparse_int_values2,
+                                   sparse_int_shape2, &sparse_int_tensor2));
 
   auto validate_example_features = [](int64 example_idx,
                                       const Example& example) {
@@ -82,8 +91,8 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_EQ(1.0f, example.sparse_float_features[1][1].get_value());
 
         EXPECT_EQ(2, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(1));
-        EXPECT_EQ(1, example.sparse_int_features[0].count(8));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 1));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 8));
         EXPECT_EQ(0, example.sparse_int_features[1].size());
       } break;
       case 1: {
@@ -97,9 +106,9 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_FALSE(example.sparse_float_features[1][1].has_value());
 
         EXPECT_EQ(1, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(0));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 0));
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(7));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 7));
       } break;
       case 2: {
         EXPECT_EQ(2, example.example_idx);
@@ -114,7 +123,7 @@ TEST_F(ExamplesIterableTest, Iterate) {
 
         EXPECT_EQ(0, example.sparse_int_features[0].size());
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(13));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 13));
       } break;
       case 3: {
         EXPECT_EQ(3, example.example_idx);
@@ -128,10 +137,10 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_FALSE(example.sparse_float_features[1][1].has_value());
 
         EXPECT_EQ(2, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(2));
-        EXPECT_EQ(1, example.sparse_int_features[0].count(0));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 2));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 0));
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(4));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 4));
       } break;
       case 4: {
         EXPECT_EQ(4, example.example_idx);
@@ -146,7 +155,7 @@ TEST_F(ExamplesIterableTest, Iterate) {
 
         EXPECT_EQ(0, example.sparse_int_features[0].size());
         EXPECT_EQ(1, example.sparse_int_features[1].size());
-        EXPECT_EQ(1, example.sparse_int_features[1].count(0));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[1], 0));
       } break;
       case 5: {
         EXPECT_EQ(5, example.example_idx);
@@ -183,7 +192,7 @@ TEST_F(ExamplesIterableTest, Iterate) {
         EXPECT_FALSE(example.sparse_float_features[1][1].has_value());
 
         EXPECT_EQ(1, example.sparse_int_features[0].size());
-        EXPECT_EQ(1, example.sparse_int_features[0].count(5));
+        EXPECT_EQ(1, absl::c_count(example.sparse_int_features[0], 5));
       } break;
       default: { LOG(QFATAL) << "Invalid example index."; } break;
     }

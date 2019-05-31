@@ -21,9 +21,11 @@ from __future__ import print_function
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.layers import rev_block_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.layers import normalization as normalization_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -56,12 +58,12 @@ class RevBlockTest(test.TestCase):
     y1, y2 = block.forward(x1, x2)
     x1_inv, x2_inv = block.backward(y1, y2)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       x1, x2, x1_inv, x2_inv = sess.run([x1, x2, x1_inv, x2_inv])
 
-      self.assertAllClose(x1, x1_inv)
-      self.assertAllClose(x2, x2_inv)
+      self.assertAllClose(x1, x1_inv, atol=1e-5)
+      self.assertAllClose(x2, x2_inv, atol=1e-5)
 
   def testBackwardForward(self):
 
@@ -79,12 +81,12 @@ class RevBlockTest(test.TestCase):
     x1, x2 = block.backward(y1, y2)
     y1_inv, y2_inv = block.forward(x1, x2)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       y1, y2, y1_inv, y2_inv = sess.run([y1, y2, y1_inv, y2_inv])
 
-      self.assertAllClose(y1, y1_inv)
-      self.assertAllClose(y2, y2_inv)
+      self.assertAllClose(y1, y1_inv, rtol=1e-5)
+      self.assertAllClose(y2, y2_inv, rtol=1e-5)
 
   def _testRevBlock(self,
                     x=None,
@@ -149,12 +151,12 @@ class RevBlockTest(test.TestCase):
     grads_rev = gradients_impl.gradients(loss_rev, wrt)
     grads = gradients_impl.gradients(loss, wrt)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       y_val, yd_val, gd_val, g_val = sess.run([y, y_rev, grads_rev, grads])
       self.assertAllClose(y_val, yd_val)
       for g1, g2 in zip(gd_val, g_val):
-        self.assertAllClose(g1, g2)
+        self.assertAllClose(g1, g2, rtol=1e-5)
 
   def testRevBlock(self):
     self._testRevBlock()
@@ -179,18 +181,16 @@ class RevBlockTest(test.TestCase):
 
     self._testRevBlock(f=[f1, f2, f1, f2])
 
-  # TODO(rsepassi): Recent change to conv seems to have broken this test. Find
-  # out why.
-  def _testConvAndBatchNorm(self):
+  def testConvAndBatchNorm(self):
 
     x = random_ops.random_uniform(
         [self.BATCH_SIZE, 10, self.CHANNELS], dtype=dtypes.float32)
 
     def f(x):
       x = convolutional.conv1d(x, self.CHANNELS // 2, 3, padding="same")
-      x = layers.batch_norm(x, is_training=True)
+      x = layers.batch_norm(x, is_training=False)
       x = convolutional.conv1d(x, self.CHANNELS // 2, 3, padding="same")
-      x = layers.batch_norm(x, is_training=True)
+      x = layers.batch_norm(x, is_training=False)
       return x
 
     self._testRevBlock(x=x, f=f)
@@ -255,109 +255,152 @@ class RecomputeTest(test.TestCase):
     def fn_recompute(x):
       return fn(x)
 
+    @rev_block_lib.recompute_grad(use_data_dep=True)
+    def fn_use_data_dep(x):
+      return fn(x)
+
+    @rev_block_lib.recompute_grad(tupleize_grads=True)
+    def fn_tupleize(x):
+      return fn(x)
+
+    @rev_block_lib.recompute_grad(use_data_dep=True, tupleize_grads=True)
+    def fn_both(x):
+      return fn(x)
+
     x = random_ops.random_uniform((3, 1, 3))
-    recompute_vars = None
-    with variable_scope.variable_scope("recompute") as vs:
-      out1 = math_ops.reduce_sum(fn_recompute(x))
-      recompute_vars = vs.trainable_variables()
-    reg_vars = None
-    with variable_scope.variable_scope("regular") as vs:
-      out2 = math_ops.reduce_sum(fn(x))
-      reg_vars = vs.trainable_variables()
 
-    grad1 = gradients_impl.gradients(out1, recompute_vars)
-    grad2 = gradients_impl.gradients(out2, reg_vars)
-
-    with self.test_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      outs = sess.run([out1, out2, grad1, grad2])
-      self.assertAllClose(outs[0], outs[1])
-      for g1, g2 in zip(outs[2], outs[3]):
-        self.assertAllClose(g1, g2)
-
-
-class FnWithCustomGradTest(test.TestCase):
-
-  def testCorrectness(self):
-
-    w = random_ops.random_uniform([6, 10])
-
-    def fn(a, b, c):
-      return core_layers.dense(
-          a,
-          10,
-          use_bias=False,
-          kernel_initializer=lambda shape, dtype, partition_info: w
-      ) + math_ops.matmul(b, c)
-
-    def grad_fn(inputs, trainable_variables, outputs, grad_outputs):
-      outputs = outputs[0]
-      grad_outputs = grad_outputs[0]
-      grad_inputs = gradients_impl.gradients(
-          outputs, inputs, grad_ys=grad_outputs)
-      grad_vars = gradients_impl.gradients(
-          outputs, trainable_variables, grad_ys=grad_outputs)
-      return grad_inputs, grad_vars
-
-    custom_fn = rev_block_lib._fn_with_custom_grad(grad_fn)(fn)
-
-    a = random_ops.random_uniform([11, 6])
-    b = random_ops.random_uniform([11, 7])
-    c = random_ops.random_uniform([7, 10])
-
-    out = fn(a, b, c)
-    custom_out = custom_fn(a, b, c)
-    self.assertEqual(out.get_shape().as_list(),
-                     custom_out.get_shape().as_list())
-
-    loss = math_ops.reduce_mean(out)
-    custom_loss = math_ops.reduce_mean(custom_out)
-
-    grads = gradients_impl.gradients(
-        loss, [a, b, c] + [variables.trainable_variables()[0]])
-    custom_grads = gradients_impl.gradients(
-        custom_loss, [a, b, c] + [variables.trainable_variables()[1]])
-
-    with self.test_session() as sess:
-      sess.run(variables.global_variables_initializer())
-      out_val, custom_out_val, grads_val, custom_grads_val = sess.run(
-          [out, custom_out, grads, custom_grads])
-      self.assertAllClose(out_val, custom_out_val)
-      for g1, g2 in zip(grads_val, custom_grads_val):
-        self.assertAllClose(g1, g2)
-
-  def testCustomGrad(self):
-
-    def fn(a, b, c):
-      return core_layers.dense(a, 10, use_bias=False) + math_ops.matmul(b, c)
-
-    def grad_fn(inputs, trainable_variables, unused_outputs,
-                unused_grad_outputs):
-      grad_inputs = [
-          array_ops.ones_like(t) * (i + 1.) for i, t in enumerate(inputs)
-      ]
-      grad_vars = [
-          array_ops.ones_like(t) * (i + len(inputs) + 1.)
-          for i, t in enumerate(trainable_variables)
-      ]
-      return grad_inputs, grad_vars
-
-    a = random_ops.random_uniform([11, 6])
-    b = random_ops.random_uniform([11, 7])
-    c = random_ops.random_uniform([7, 10])
-    w = random_ops.random_uniform([6, 10])
-    out = rev_block_lib._fn_with_custom_grad(grad_fn)(fn)(a, b, c)
-    loss = math_ops.reduce_mean(out)
-    grads = gradients_impl.gradients(
-        loss, [a, b, c, variables.trainable_variables()[0]])
-    expected_grads = [
-        array_ops.ones_like(t) * (i + 1.) for i, t in enumerate([a, b, c, w])
+    names_and_fns = [
+        ("recompute", fn_recompute),
+        ("regular", fn),
+        ("use_data_dep", fn_use_data_dep),
+        ("tupleize", fn_tupleize),
+        ("tuple_and_data_dep", fn_both),
     ]
-    with self.test_session() as sess:
+    outputs_and_vars = []
+    for name, wrapped_fn in names_and_fns:
+      with variable_scope.variable_scope(name, use_resource=True) as vs:
+        out = math_ops.reduce_sum(wrapped_fn(x))
+        outputs_and_vars.append((out, vs.trainable_variables()))
+
+    all_grads = []
+    for out, scope_vars in outputs_and_vars:
+      all_grads.append(gradients_impl.gradients(out, scope_vars))
+
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
-      g_val, eg_val = sess.run([grads, expected_grads])
-      for g1, g2 in zip(g_val, eg_val):
-        self.assertAllClose(g1, g2)
+      outputs = list(zip(*outputs_and_vars))[0]
+      outs, all_grads_val = sess.run([outputs, all_grads])
+
+      # All outputs are the same
+      current = outs[0]
+      for out in outs[1:]:
+        self.assertAllClose(current, out)
+        current = out
+
+      # All gradients are the same
+      for grads in zip(all_grads_val):
+        current = grads[0]
+        for g in grads[1:]:
+          self.assertAllClose(current, g)
+          current = g
+
+  def testDoubleCallInSameScopeFails(self):
+
+    @rev_block_lib.recompute_grad
+    def layer_with_recompute(inputs):
+      return core_layers.dense(inputs, 2)
+
+    with variable_scope.variable_scope("layer", use_resource=True):
+      inputs = array_ops.ones((2, 4), dtypes.float32)
+      out1 = layer_with_recompute(inputs)
+      out2 = layer_with_recompute(inputs) + out1
+      out = math_ops.reduce_sum(out2)
+
+    tvars = variables.trainable_variables()
+    assert len(tvars) == 4
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "called twice in the same enclosing scope"):
+      gradients_impl.gradients(out, [inputs] + tvars)
+
+  def testDoubleCallInUniqueScope(self):
+
+    @rev_block_lib.recompute_grad
+    def layer_with_recompute(inputs):
+      with variable_scope.variable_scope("inner", use_resource=True):
+        return core_layers.dense(inputs, 2)
+
+    with variable_scope.variable_scope("layer", use_resource=True):
+      inputs = array_ops.ones((2, 4), dtypes.float32)
+
+      with variable_scope.variable_scope("layer1", use_resource=True):
+        out1 = layer_with_recompute(inputs)
+      with variable_scope.variable_scope("layer2", use_resource=True):
+        out2 = layer_with_recompute(inputs) + out1
+      out = math_ops.reduce_sum(out2)
+
+    tvars = variables.trainable_variables()
+    assert len(tvars) == 4
+    grads = gradients_impl.gradients(out, [inputs] + tvars)
+    for grad in grads:
+      self.assertTrue(grad is not None)
+
+  def testWithIsRecomputeKwarg(self):
+
+    kwarg_values = []
+
+    @rev_block_lib.recompute_grad
+    def layer_with_recompute(inputs, is_recomputing=False):
+      kwarg_values.append(is_recomputing)
+      out = core_layers.dense(inputs, 2)
+      out = normalization_layers.batch_normalization(out, training=True)
+      if is_recomputing:
+        # Ensure that the updates are not duplicated by popping off the latest
+        # 2 additions.
+        update_ops = ops.get_collection_ref(ops.GraphKeys.UPDATE_OPS)
+        update_ops.pop()
+        update_ops.pop()
+      return out
+
+    x = array_ops.ones((2, 4), dtypes.float32)
+    with variable_scope.variable_scope("layer1", use_resource=True):
+      y = layer_with_recompute(x)
+    loss = math_ops.reduce_sum(y)
+    tvars = variables.trainable_variables()
+    gradients_impl.gradients(loss, [x] + tvars)
+
+    update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+    self.assertEqual(2, len(update_ops))
+    self.assertEqual([False, True], kwarg_values)
+
+  def testWithoutVariables(self):
+
+    def concat_n(layer_list, num_inputs):
+      return math_ops.reduce_sum(
+          array_ops.concat([x for x in layer_list[-num_inputs:]], axis=-1),
+          axis=1, keepdims=True)
+
+    @rev_block_lib.recompute_grad
+    def concat_n_wrap(*args):
+      return concat_n(args, 3)
+
+    # DenseNet-style layers
+    layer_list = [random_ops.random_uniform((4, 8))]
+    for _ in range(5):
+      layer_list.append(math_ops.sqrt(concat_n_wrap(*layer_list)))
+
+    grads = gradients_impl.gradients(layer_list[-1], layer_list[0])
+    with self.cached_session() as sess:
+      sess.run(grads)
+
+  def testErrorOnClosedOverTensor(self):
+    x = random_ops.random_uniform((4, 8))
+    y = random_ops.random_uniform((4, 8))
+    z = x * y
+
+    with self.assertRaisesWithPredicateMatch(ValueError, "closes over"):
+      @rev_block_lib.recompute_grad
+      def fn_with_capture(a):  # pylint: disable=unused-variable
+        return a * z
 
 
 if __name__ == "__main__":

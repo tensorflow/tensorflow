@@ -89,7 +89,7 @@ class FractionalMaxPoolOp : public OpKernel {
       // This must match the same logic in the shape function in
       // core/ops/nn_ops.cc.
       output_size[i] =
-          static_cast<int>(floor(input_size[i] / pooling_ratio_[i]));
+          static_cast<int>(std::floor(input_size[i] / pooling_ratio_[i]));
       DCHECK_GT(output_size[i], 0);
     }
 

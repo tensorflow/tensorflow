@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Log1p"
+  endpoint {
+    name: "math.Log1p"
+  }
+}

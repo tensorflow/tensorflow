@@ -21,6 +21,7 @@ import os
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -35,6 +36,7 @@ builder = option_builder.ProfileOptionBuilder
 
 class ProfilerContextTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasics(self):
     ops.reset_default_graph()
     outfile = os.path.join(test.get_temp_dir(), "dump")
@@ -48,10 +50,10 @@ class ProfilerContextTest(test.TestCase):
     with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
       pctx.add_auto_profiling("op", options=opts, profile_steps=[15, 50, 100])
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         total_steps = 101
         for i in range(total_steps):
-          sess.run(x)
+          self.evaluate(x)
           if i == 14 or i == 49:
             self.assertTrue(gfile.Exists(outfile))
             gfile.Remove(outfile)
@@ -61,51 +63,55 @@ class ProfilerContextTest(test.TestCase):
               profile_str = f.read()
             gfile.Remove(outfile)
 
+      self.assertEqual(set([15, 50, 100]), set(pctx.get_profiles("op").keys()))
+
     with lib.ProfilerFromFile(
         os.path.join(test.get_temp_dir(), "profile_100")) as profiler:
       profiler.profile_operations(options=opts)
       with gfile.Open(outfile, "r") as f:
         self.assertEqual(profile_str, f.read())
 
+  @test_util.run_deprecated_v1
   def testAutoTracingInDeubMode(self):
     ops.reset_default_graph()
     x = lib.BuildFullModel()
 
     with profile_context.ProfileContext(test.get_temp_dir(), debug=True):
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run(x)
+          self.evaluate(x)
           for f in gfile.ListDirectory(test.get_temp_dir()):
             # Warm up, no tracing.
             self.assertFalse("run_meta" in f)
-        sess.run(x)
+        self.evaluate(x)
         self.assertTrue(
             gfile.Exists(os.path.join(test.get_temp_dir(), "run_meta_11")))
         gfile.Remove(os.path.join(test.get_temp_dir(), "run_meta_11"))
         # fetched already.
-        sess.run(x)
+        self.evaluate(x)
         for f in gfile.ListDirectory(test.get_temp_dir()):
           self.assertFalse("run_meta" in f)
 
+  @test_util.run_deprecated_v1
   def testDisabled(self):
     ops.reset_default_graph()
     x = lib.BuildFullModel()
     with profile_context.ProfileContext(test.get_temp_dir(),
                                         enabled=False) as pctx:
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run(x)
+          self.evaluate(x)
       self.assertTrue(pctx.profiler is None)
       self.assertTrue(
           getattr(session.BaseSession, "profile_context", None) is None)
 
     with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
-          sess.run(x)
+          self.evaluate(x)
       self.assertFalse(pctx.profiler is None)
       self.assertFalse(
           getattr(session.BaseSession, "profile_context", None) is None)

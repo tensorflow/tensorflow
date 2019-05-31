@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_RDMA_UTIL_H_
-#define TENSORFLOW_CONTRIB_RDMA_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_VERBS_VERBS_UTIL_H_
+#define TENSORFLOW_CONTRIB_VERBS_VERBS_UTIL_H_
 
 #include <string>
 
@@ -30,4 +30,4 @@ class VerbsUtil {
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_RDMA_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_VERBS_VERBS_UTIL_H_

@@ -15,9 +15,10 @@ limitations under the License.
 
 // Null implementation of the Gauge metric for mobile platforms.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -58,6 +59,8 @@ class Gauge {
     return &default_gauge_cell_;
   }
 
+  Status GetStatus() { return Status::OK(); }
+
  private:
   Gauge() {}
 
@@ -69,4 +72,4 @@ class Gauge {
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_MOBILE_GAUGE_H_

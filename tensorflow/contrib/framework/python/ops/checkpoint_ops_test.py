@@ -50,7 +50,7 @@ class LoadMulticlassBiasTest(test.TestCase):
       bias = variables.Variable(
           array_ops.reshape(flat_data, (num, dim)), name='bias')
     save = saver.Saver([bias])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables.global_variables_initializer().run()
       self.bundle_file = os.path.join(test.get_temp_dir(), 'bias_checkpoint')
       save.save(sess, self.bundle_file)
@@ -90,7 +90,7 @@ class LoadMulticlassBiasTest(test.TestCase):
         initializer=bias_loading_initializer,
         partitioner=partitioned_variables.fixed_size_partitioner(3))
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       self.assertAllClose(expected_remapped_bias_vector,
                           remapped_bias_vector.as_tensor().eval())
@@ -109,7 +109,7 @@ class LoadVariableSlotTest(test.TestCase):
       accum = variables.Variable(
           array_ops.reshape(flat_data, (num, dim)), name='accum')
     save = saver.Saver([accum])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables.global_variables_initializer().run()
       self.bundle_file = os.path.join(test.get_temp_dir(), 'accum_checkpoint')
       save.save(sess, self.bundle_file)
@@ -179,7 +179,7 @@ class LoadVariableSlotTest(test.TestCase):
         shape=[2, 1],
         initializer=variable_slot_initializer_part_1)
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       self.assertAllClose(expected_remapped_accum_vector_part_0,
                           remapped_accum_vector_part_0.eval())

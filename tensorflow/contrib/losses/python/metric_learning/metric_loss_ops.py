@@ -50,16 +50,12 @@ def pairwise_distance(feature, squared=False):
     pairwise_distances: 2-D Tensor of size [number of data, number of data].
   """
   pairwise_distances_squared = math_ops.add(
+      math_ops.reduce_sum(math_ops.square(feature), axis=[1], keepdims=True),
       math_ops.reduce_sum(
-          math_ops.square(feature),
-          axis=[1],
-          keep_dims=True),
-      math_ops.reduce_sum(
-          math_ops.square(
-              array_ops.transpose(feature)),
+          math_ops.square(array_ops.transpose(feature)),
           axis=[0],
-          keep_dims=True)) - 2.0 * math_ops.matmul(
-              feature, array_ops.transpose(feature))
+          keepdims=True)) - 2.0 * math_ops.matmul(feature,
+                                                  array_ops.transpose(feature))
 
   # Deal with numerical inaccuracies. Set small negatives to zero.
   pairwise_distances_squared = math_ops.maximum(pairwise_distances_squared, 0.0)
@@ -71,11 +67,13 @@ def pairwise_distance(feature, squared=False):
     pairwise_distances = pairwise_distances_squared
   else:
     pairwise_distances = math_ops.sqrt(
-        pairwise_distances_squared + math_ops.to_float(error_mask) * 1e-16)
+        pairwise_distances_squared +
+        math_ops.cast(error_mask, dtypes.float32) * 1e-16)
 
   # Undo conditionally adding 1e-16.
   pairwise_distances = math_ops.multiply(
-      pairwise_distances, math_ops.to_float(math_ops.logical_not(error_mask)))
+      pairwise_distances,
+      math_ops.cast(math_ops.logical_not(error_mask), dtypes.float32))
 
   num_data = array_ops.shape(feature)[0]
   # Explicitly set diagonals to zero.
@@ -109,13 +107,14 @@ def contrastive_loss(labels, embeddings_anchor, embeddings_positive,
   # Get per pair distances
   distances = math_ops.sqrt(
       math_ops.reduce_sum(
-          math_ops.square(embeddings_anchor - embeddings_positive), 1))
+          math_ops.squared_difference(embeddings_anchor, embeddings_positive),
+          1))
 
   # Add contrastive loss for the siamese network.
   #   label here is {0,1} for neg, pos.
   return math_ops.reduce_mean(
-      math_ops.to_float(labels) * math_ops.square(distances) +
-      (1. - math_ops.to_float(labels)) *
+      math_ops.cast(labels, dtypes.float32) * math_ops.square(distances) +
+      (1. - math_ops.cast(labels, dtypes.float32)) *
       math_ops.square(math_ops.maximum(margin - distances, 0.)),
       name='contrastive_loss')
 
@@ -132,10 +131,10 @@ def masked_maximum(data, mask, dim=1):
     masked_maximums: N-D `Tensor`.
       The maximized dimension is of size 1 after the operation.
   """
-  axis_minimums = math_ops.reduce_min(data, dim, keep_dims=True)
+  axis_minimums = math_ops.reduce_min(data, dim, keepdims=True)
   masked_maximums = math_ops.reduce_max(
-      math_ops.multiply(
-          data - axis_minimums, mask), dim, keep_dims=True) + axis_minimums
+      math_ops.multiply(data - axis_minimums, mask), dim,
+      keepdims=True) + axis_minimums
   return masked_maximums
 
 
@@ -151,10 +150,10 @@ def masked_minimum(data, mask, dim=1):
     masked_minimums: N-D `Tensor`.
       The minimized dimension is of size 1 after the operation.
   """
-  axis_maximums = math_ops.reduce_max(data, dim, keep_dims=True)
+  axis_maximums = math_ops.reduce_max(data, dim, keepdims=True)
   masked_minimums = math_ops.reduce_min(
-      math_ops.multiply(
-          data - axis_maximums, mask), dim, keep_dims=True) + axis_maximums
+      math_ops.multiply(data - axis_maximums, mask), dim,
+      keepdims=True) + axis_maximums
   return masked_minimums
 
 
@@ -202,8 +201,7 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0):
   mask_final = array_ops.reshape(
       math_ops.greater(
           math_ops.reduce_sum(
-              math_ops.cast(
-                  mask, dtype=dtypes.float32), 1, keep_dims=True),
+              math_ops.cast(mask, dtype=dtypes.float32), 1, keepdims=True),
           0.0), [batch_size, batch_size])
   mask_final = array_ops.transpose(mask_final)
 
@@ -288,9 +286,9 @@ def npairs_loss(labels, embeddings_anchor, embeddings_positive,
   assert lshape.shape == 1
   labels = array_ops.reshape(labels, [lshape[0], 1])
 
-  labels_remapped = math_ops.to_float(
-      math_ops.equal(labels, array_ops.transpose(labels)))
-  labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keep_dims=True)
+  labels_remapped = math_ops.cast(
+      math_ops.equal(labels, array_ops.transpose(labels)), dtypes.float32)
+  labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keepdims=True)
 
   # Add the softmax loss.
   xent_loss = nn.softmax_cross_entropy_with_logits(
@@ -322,9 +320,10 @@ def _build_multilabel_adjacency(sparse_labels):
   adjacency_matrix = array_ops.zeros([num_pairs, num_pairs])
   for i in range(num_pairs):
     for j in range(num_pairs):
-      sparse_dot_product = math_ops.to_float(
+      sparse_dot_product = math_ops.cast(
           sparse_ops.sparse_reduce_sum(sparse_ops.sparse_minimum(
-              sparse_labels[i], sparse_labels[j])))
+              sparse_labels[i], sparse_labels[j])),
+          dtypes.float32)
       sparse_dot_product = array_ops.expand_dims(sparse_dot_product, 0)
       sparse_dot_product = array_ops.expand_dims(sparse_dot_product, 1)
       one_hot_matrix = array_ops.pad(sparse_dot_product,
@@ -394,8 +393,8 @@ def npairs_loss_multilabel(sparse_labels, embeddings_anchor,
     # TODO(coreylynch): are composed only of 0's and 1's.
 
     multilabel_adjacency_matrix = _build_multilabel_adjacency(sparse_labels)
-    labels_remapped = math_ops.to_float(multilabel_adjacency_matrix)
-    labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keep_dims=True)
+    labels_remapped = math_ops.cast(multilabel_adjacency_matrix, dtypes.float32)
+    labels_remapped /= math_ops.reduce_sum(labels_remapped, 1, keepdims=True)
 
     # Add the softmax loss.
     xent_loss = nn.softmax_cross_entropy_with_logits(
@@ -448,10 +447,10 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
   # Safe maximum: Temporarily shift negative distances
   #   above zero before taking max.
   #     this is to take the max only among negatives.
-  row_minimums = math_ops.reduce_min(diff, 1, keep_dims=True)
+  row_minimums = math_ops.reduce_min(diff, 1, keepdims=True)
   row_negative_maximums = math_ops.reduce_max(
-      math_ops.multiply(
-          diff - row_minimums, mask), 1, keep_dims=True) + row_minimums
+      math_ops.multiply(diff - row_minimums, mask), 1,
+      keepdims=True) + row_minimums
 
   # Compute the loss.
   # Keep track of matrix of maximums where M_ij = max(m_i, m_j)
@@ -467,10 +466,11 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
       array_ops.transpose(max_elements), [-1, 1])
 
   loss_exp_left = array_ops.reshape(
-      math_ops.reduce_sum(math_ops.multiply(
-          math_ops.exp(
-              diff_tiled - max_elements_vect),
-          mask_tiled), 1, keep_dims=True), [batch_size, batch_size])
+      math_ops.reduce_sum(
+          math_ops.multiply(
+              math_ops.exp(diff_tiled - max_elements_vect), mask_tiled),
+          1,
+          keepdims=True), [batch_size, batch_size])
 
   loss_mat = max_elements + math_ops.log(
       loss_exp_left + array_ops.transpose(loss_exp_left))
@@ -545,7 +545,8 @@ def get_cluster_assignment(pairwise_distances, centroid_ids):
                         array_ops.constant(0, dtype=dtypes.int64),
                         axis=0,
                         dtype=dtypes.int64),
-      math_ops.to_int64(math_ops.range(array_ops.shape(centroid_ids)[0])))
+      math_ops.cast(math_ops.range(array_ops.shape(centroid_ids)[0]),
+                    dtypes.int64))
   constraint_vect = math_ops.reduce_sum(
       array_ops.transpose(constraint_one_hot), axis=0)
 
@@ -609,46 +610,51 @@ def compute_clustering_score(labels, predictions, margin_type):
 
 
 def _compute_nmi_score(labels, predictions):
-  return math_ops.to_float(
+  return math_ops.cast(
       script_ops.py_func(
           metrics.normalized_mutual_info_score, [labels, predictions],
           [dtypes.float64],
-          name='nmi'))
+          name='nmi'),
+      dtypes.float32)
 
 
 def _compute_ami_score(labels, predictions):
-  ami_score = math_ops.to_float(
+  ami_score = math_ops.cast(
       script_ops.py_func(
           metrics.adjusted_mutual_info_score, [labels, predictions],
           [dtypes.float64],
-          name='ami'))
+          name='ami'),
+      dtypes.float32)
   return math_ops.maximum(0.0, ami_score)
 
 
 def _compute_ari_score(labels, predictions):
-  ari_score = math_ops.to_float(
+  ari_score = math_ops.cast(
       script_ops.py_func(
           metrics.adjusted_rand_score, [labels, predictions], [dtypes.float64],
-          name='ari'))
+          name='ari'),
+      dtypes.float32)
   # ari score can go below 0
   # http://scikit-learn.org/stable/modules/clustering.html#adjusted-rand-score
   return math_ops.maximum(0.0, ari_score)
 
 
 def _compute_vmeasure_score(labels, predictions):
-  vmeasure_score = math_ops.to_float(
+  vmeasure_score = math_ops.cast(
       script_ops.py_func(
           metrics.v_measure_score, [labels, predictions], [dtypes.float64],
-          name='vmeasure'))
+          name='vmeasure'),
+      dtypes.float32)
   return math_ops.maximum(0.0, vmeasure_score)
 
 
 def _compute_zeroone_score(labels, predictions):
-  zeroone_score = math_ops.to_float(
+  zeroone_score = math_ops.cast(
       math_ops.equal(
           math_ops.reduce_sum(
-              math_ops.to_int32(math_ops.equal(labels, predictions))),
-          array_ops.shape(labels)[0]))
+              math_ops.cast(math_ops.equal(labels, predictions), dtypes.int32)),
+          array_ops.shape(labels)[0]),
+      dtypes.float32)
   return zeroone_score
 
 
@@ -686,7 +692,7 @@ def _find_loss_augmented_facility_idx(pairwise_distances, labels, chosen_ids,
                   array_ops.reshape(pairwise_distances_candidate, [1, -1])
               ], 0),
               axis=0,
-              keep_dims=True), [num_candidates, -1]),
+              keepdims=True), [num_candidates, -1]),
       axis=1)
 
   nmi_scores = array_ops.zeros([num_candidates])
@@ -714,8 +720,8 @@ def _find_loss_augmented_facility_idx(pairwise_distances, labels, chosen_ids,
   candidate_scores = math_ops.add(
       candidate_scores, margin_multiplier * nmi_scores)
 
-  argmax_index = math_ops.to_int32(
-      math_ops.argmax(candidate_scores, dimension=0))
+  argmax_index = math_ops.cast(
+      math_ops.argmax(candidate_scores, axis=0), dtypes.int32)
 
   return candidate_ids[argmax_index]
 
@@ -790,7 +796,7 @@ def update_medoid_per_cluster(pairwise_distances, pairwise_distances_subset,
 
   def func_body(iteration, scores_margin):
     # swap the current medoid with the candidate cluster member
-    candidate_medoid = math_ops.to_int32(cluster_member_ids[iteration])
+    candidate_medoid = math_ops.cast(cluster_member_ids[iteration], dtypes.int32)
     tmp_chosen_ids = update_1d_tensor(chosen_ids, cluster_idx, candidate_medoid)
     predictions = get_cluster_assignment(pairwise_distances, tmp_chosen_ids)
     metric_score = compute_clustering_score(labels, predictions, margin_type)
@@ -814,10 +820,10 @@ def update_medoid_per_cluster(pairwise_distances, pairwise_distances_subset,
                                                  [iteration, scores_margin])
   candidate_scores = math_ops.add(scores_fac, margin_multiplier * scores_margin)
 
-  argmax_index = math_ops.to_int32(
-      math_ops.argmax(candidate_scores, dimension=0))
+  argmax_index = math_ops.cast(
+      math_ops.argmax(candidate_scores, axis=0), dtypes.int32)
 
-  best_medoid = math_ops.to_int32(cluster_member_ids[argmax_index])
+  best_medoid = math_ops.cast(cluster_member_ids[argmax_index], dtypes.int32)
   chosen_ids = update_1d_tensor(chosen_ids, cluster_idx, best_medoid)
   return chosen_ids
 
@@ -845,7 +851,8 @@ def update_all_medoids(pairwise_distances, predictions, labels, chosen_ids,
   def func_body_augmented_pam(iteration, chosen_ids):
     """Call the update_medoid_per_cluster subroutine."""
     mask = math_ops.equal(
-        math_ops.to_int64(predictions), math_ops.to_int64(iteration))
+        math_ops.cast(predictions, dtypes.int64),
+        math_ops.cast(iteration, dtypes.int64))
     this_cluster_ids = array_ops.where(mask)
 
     pairwise_distances_subset = array_ops.transpose(

@@ -21,7 +21,7 @@ limitations under the License.
 #include <stdio.h>
 #include <string>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -40,8 +40,8 @@ int main(int argc, char **argv) {
   xla::LiteralProto literal_proto;
   TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), argv[1],
                                           &literal_proto));
-  std::unique_ptr<xla::Literal> literal =
+  xla::Literal literal =
       xla::Literal::CreateFromProto(literal_proto).ConsumeValueOrDie();
   LOG(INFO) << "literal: " << literal_proto.ShortDebugString();
-  fprintf(stderr, "%s\n", literal->ToString().c_str());
+  fprintf(stderr, "%s\n", literal.ToString().c_str());
 }

@@ -48,7 +48,7 @@ class GrapplerTest(test.TestCase):
     for test_case in test_cases:
       with ops.Graph().as_default() as g:
         dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -73,7 +73,7 @@ class GrapplerTest(test.TestCase):
     for test_case in test_cases:
       with ops.Graph().as_default() as g:
         dataset = dataset_ops.Dataset.from_tensor_slices(test_case['tensor'])
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -109,7 +109,7 @@ class GrapplerTest(test.TestCase):
             make_generator(test_case['tensor']),
             dtypes.int64,
             output_shapes=test_case['shape'])
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -122,7 +122,7 @@ class GrapplerTest(test.TestCase):
   def testRange(self):
     with ops.Graph().as_default() as g:
       dataset = dataset_ops.Dataset.range(42)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       get_next = iterator.get_next()
       train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
       train_op.append(get_next)
@@ -148,7 +148,7 @@ class GrapplerTest(test.TestCase):
       with ops.Graph().as_default() as g:
         dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
         dataset = fn(dataset, test_case['tensor'], test_case['shape'])
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -252,7 +252,7 @@ class GrapplerTest(test.TestCase):
       with ops.Graph().as_default() as g:
         dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
         dataset = dataset.batch(42)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -261,7 +261,7 @@ class GrapplerTest(test.TestCase):
         op_properties = grappler_item.GetOpProperties()
         inferred_shape = self.as_tensor_shape(
             op_properties['IteratorGetNext'][0].shape)
-        self.assertTrue(test_case['shape'][0].is_compatible_with(
+        self.assertTrue(test_case['shape'].dims[0].is_compatible_with(
             inferred_shape[0]))
         self.assertEqual(test_case['shape'][1:], inferred_shape[1:])
 
@@ -281,7 +281,7 @@ class GrapplerTest(test.TestCase):
       with ops.Graph().as_default() as g:
         dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
         dataset = dataset.padded_batch(42, padded_shapes=test_case['shape'][1:])
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -290,7 +290,7 @@ class GrapplerTest(test.TestCase):
         op_properties = grappler_item.GetOpProperties()
         inferred_shape = self.as_tensor_shape(
             op_properties['IteratorGetNext'][0].shape)
-        self.assertTrue(test_case['shape'][0].is_compatible_with(
+        self.assertTrue(test_case['shape'].dims[0].is_compatible_with(
             inferred_shape[0]))
         self.assertEqual(test_case['shape'][1:], inferred_shape[1:])
 
@@ -318,7 +318,7 @@ class GrapplerTest(test.TestCase):
           return dataset_fn
 
         dataset = dataset.flat_map(make_dataset(test_case['tensor']))
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -353,7 +353,7 @@ class GrapplerTest(test.TestCase):
 
         dataset = dataset.interleave(
             make_dataset(test_case['tensor']), cycle_length=42)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)
@@ -382,7 +382,7 @@ class GrapplerTest(test.TestCase):
       with ops.Graph().as_default() as g:
         dataset = dataset_ops.Dataset.from_tensors(test_case['tensor'])
         dataset = dataset.map(array_ops.transpose)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
         get_next = iterator.get_next()
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         train_op.append(get_next)

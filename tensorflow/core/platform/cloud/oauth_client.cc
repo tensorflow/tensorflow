@@ -95,9 +95,14 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   if (!md) {
     return errors::Internal("Could not get a sha256 encryptor.");
   }
+
+  // EVP_MD_CTX_destroy is renamed to EVP_MD_CTX_free in OpenSSL 1.1.0 but
+  // the old name is still retained as a compatibility macro.
+  // Keep this around until support is dropped for OpenSSL 1.0
+  // https://www.openssl.org/news/cl110.txt
   std::unique_ptr<EVP_MD_CTX, std::function<void(EVP_MD_CTX*)>> md_ctx(
       EVP_MD_CTX_create(), [](EVP_MD_CTX* ptr) { EVP_MD_CTX_destroy(ptr); });
-  if (!md_ctx.get()) {
+  if (!md_ctx) {
     return errors::Internal("Could not create MD_CTX.");
   }
 
@@ -119,7 +124,6 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   if (EVP_DigestSignFinal(md_ctx.get(), sig.get(), &sig_len) != 1) {
     return errors::Internal("DigestFinal (signature compute) failed.");
   }
-  EVP_MD_CTX_cleanup(md_ctx.get());
   return Base64Encode(StringPiece(reinterpret_cast<char*>(sig.get()), sig_len),
                       signature);
 }
@@ -137,8 +141,8 @@ Status EncodeJwtClaim(StringPiece client_email, StringPiece scope,
   const auto expiration_timestamp_sec =
       request_timestamp_sec + kRequestedTokenLifetimeSec;
 
-  root["iat"] = request_timestamp_sec;
-  root["exp"] = expiration_timestamp_sec;
+  root["iat"] = Json::Value::UInt64(request_timestamp_sec);
+  root["exp"] = Json::Value::UInt64(expiration_timestamp_sec);
 
   // Step 2: represent the JSON as a string.
   string claim = root.toStyledString();
@@ -196,7 +200,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   std::unique_ptr<RSA, std::function<void(RSA*)>> private_key(
       PEM_read_bio_RSAPrivateKey(bio.get(), nullptr, nullptr, nullptr),
       [](RSA* ptr) { RSA_free(ptr); });
-  if (!private_key.get()) {
+  if (!private_key) {
     return errors::Internal("Could not deserialize the private key.");
   }
 
@@ -216,7 +220,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  request->SetUri(oauth_server_uri.ToString());
+  request->SetUri(string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
@@ -248,7 +252,7 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  request->SetUri(oauth_server_uri.ToString());
+  request->SetUri(string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
@@ -280,7 +284,7 @@ Status OAuthClient::ParseOAuthResponse(StringPiece response,
     return errors::FailedPrecondition("Unexpected Oauth token type: " +
                                       token_type);
   }
-  int64 expires_in;
+  int64 expires_in = 0;
   TF_RETURN_IF_ERROR(ReadJsonInt(root, "expires_in", &expires_in));
   *expiration_timestamp_sec = request_timestamp_sec + expires_in;
   TF_RETURN_IF_ERROR(ReadJsonString(root, "access_token", token));

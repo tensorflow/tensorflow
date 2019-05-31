@@ -13,20 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_UTILS_H_
-#define TENSORFLOW_GRAPPLER_UTILS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_H_
 
 #include <functional>
-#include <unordered_map>
+#include <iterator>
+#include <set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
-
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -55,14 +63,14 @@ class NodeMap {
 
  private:
   const std::set<NodeDef*> empty_set_;
-  std::unordered_map<string, NodeDef*> nodes_;
-  std::unordered_map<string, std::set<NodeDef*>> outputs_;
+  gtl::FlatMap<string, NodeDef*> nodes_;
+  gtl::FlatMap<string, std::set<NodeDef*>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
 // quickly answers whether a value is in the vector. Duplicated elements are not
 // allowed for now.
-template <class T>
+template <class T, class Hash = std::hash<T>>
 class SetVector {
  public:
   // Returns false if value already existed in the set, true otherwise.
@@ -88,26 +96,128 @@ class SetVector {
   void Reserve(int64 size) { vector_.reserve(size); }
 
  private:
-  std::unordered_set<T> set_;
+  gtl::FlatSet<T, Hash> set_;
   std::vector<T> vector_;
 };
+
+// Returns formatted string from TensorId specific to grappler. Specifically,
+// for the 0 port (first output), only the node name is returned.
+string TensorIdToString(const TensorId& tensor_id);
+
+// Returns formatted string from SafeTensorId specific to grappler.
+// Specifically, for the 0 port (first output), only the node name is returned.
+string SafeTensorIdToString(const SafeTensorId& tensor_id);
 
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
 bool IsControlInput(const string& name);
 
+// True iff tensor index refers to a control input.
+bool IsControlInput(const TensorId& tensor_id);
+
 // True iff 'name1' and 'name2' refer to the same input.
 bool IsSameInput(const string& name1, const string& name2);
 
+// Returns the trailing position number (or zero if no number is present) if
+// NodeName(input_name) is equal to node_name. Returns -1 for control inputs.
+// Returns -2 if NodeName(input_name) is not equal to node_name.
+// Note: This function is used very heavily, and this hand-optimized
+// version is 3-4x faster than the version using Scanner, which it replaced.
+// This is worth the reduction in readability.
+inline int NodePositionIfSameNode(const string& input_name,
+                                  const string& node_name) {
+  if (input_name.empty()) return -2;
+  const bool is_ctrl = input_name[0] == '^';
+  auto input_it = is_ctrl ? input_name.begin() + 1 : input_name.begin();
+  auto node_it = node_name.begin();
+  if (node_name.empty() ||
+      std::distance(input_it, input_name.end()) < node_name.size()) {
+    return -2;
+  }
+  while (node_it != node_name.end()) {
+    if (*input_it++ != *node_it++) {
+      return -2;
+    }
+  }
+  if (input_it == input_name.end()) {
+    return is_ctrl ? -1 : 0;
+  } else if (*input_it++ == ':') {
+    StringPiece remaining(&(*input_it),
+                          std::distance(input_it, input_name.end()));
+    int position;
+    if (!strings::safe_strto32(remaining, &position)) {
+      return -2;
+    }
+    return is_ctrl ? -1 : position;
+  } else {
+    return -2;
+  }
+}
+
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
-string NodeName(const string& name);
+inline StringPiece NodeNameAsStringPiece(const string& name) {
+  static const string empty;
+  if (name.empty()) return StringPiece(empty);
+  const auto begin_it = name[0] == '^' ? name.begin() + 1 : name.begin();
+  auto end_it = begin_it;
+  while (end_it != name.end() && *end_it != ':') {
+    ++end_it;
+  }
+  if (end_it != name.end() && *end_it != ':') {
+    return StringPiece(empty);
+  }
+  return StringPiece(&(*begin_it), std::distance(begin_it, end_it));
+}
 
-// Get the trailing position number ":{digits}" (if any) of a node name.
-int NodePosition(const string& name);
+// Return the node name corresponding to 'name' if name is valid, or the empty
+// string otherwise.
+inline string NodeName(const string& name) {
+  return string(NodeNameAsStringPiece(name));
+}
 
 // Returns the node name and position in a single call.
-string ParseNodeName(const string& name, int* position);
+// DEPRECATED(ezhulenev): Use TensorId and ParseTensorName.
+inline StringPiece ParseNodeNameAsStringPiece(const string& name,
+                                              int* position) {
+  static const string empty;
+  if (name.empty()) {
+    *position = 0;
+    return StringPiece(empty);
+  }
+  const bool is_ctrl = name[0] == '^';
+  const auto begin_it = is_ctrl ? name.begin() + 1 : name.begin();
+  *position = is_ctrl ? -1 : 0;
+  auto end_it = begin_it;
+  while (end_it != name.end() && *end_it != ':') {
+    ++end_it;
+  }
+  const StringPiece node_name(&(*begin_it), std::distance(begin_it, end_it));
+  if (end_it != name.end()) {
+    if (*end_it != ':') {
+      return StringPiece(empty);
+    } else if (!is_ctrl) {
+      ++end_it;
+      StringPiece remaining(&(*end_it), std::distance(end_it, name.end()));
+      if (!strings::safe_strto32(remaining, position)) {
+        return StringPiece(empty);
+      }
+    }
+  }
+  return node_name;
+}
+
+// Returns the node name and position in a single call.
+// DEPRECATED(ezhulenev): Use SafeTensorId and ParseTensorName.
+inline string ParseNodeName(const string& name, int* position) {
+  return string(ParseNodeNameAsStringPiece(name, position));
+}
+
+inline int NodePosition(const string& name) {
+  int position;
+  ParseNodeNameAsStringPiece(name, &position);
+  return position;
+}
 
 // Add a prefix to a node name with a custom delimiter.
 string AddPrefixToNodeName(const string& name, const string& prefix,
@@ -133,9 +243,18 @@ string AsControlDependency(const NodeDef& node);
 // for control dependency, given a node name
 string AsControlDependency(const string& node);
 
+// Returns true if the node is assigned to run on CPU device.
+bool NodeIsOnCpu(const NodeDef* node);
+
+// Returns true if the node is assigned to run on GPU device.
+bool NodeIsOnGpu(const NodeDef* node);
+
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
-int NumOutputs(const NodeDef& node);
+int NumOutputs(const NodeDef& node, GraphDef* graph);
+
+// Returns true iff the node has at least one control input.
+bool HasControlInputs(const NodeDef& node);
 
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
@@ -143,9 +262,22 @@ int NumNonControlInputs(const NodeDef& node);
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
 
+// Number of connected non-control data outputs (Ops that consume output tensor
+// data, not just it's shape).
+int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Removes redundant control inputs from node.
+void DedupControlInputs(NodeDef* node);
+
+// Returns an error if an attribute with the given key does not exist in node.
+Status CheckAttrExists(const NodeDef& node, const string& key);
+
+// Returns an error if attributes with the given keys do not exist in node.
+Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys);
+
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name);
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& type_attr);
 
 // Returns the last node in the simple chain starting at source and traversing
 // through the input(0) edge from each node as long as the next node satisfies
@@ -164,40 +296,25 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
 void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
                          bool invert_permutation);
 
-class SimpleGraphView {
- public:
-  Status Initialize(const GraphDef& graph) {
-    return Initialize(graph, true, true);
-  }
-  Status Initialize(const GraphDef& graph, bool dedup_inputs,
-                    bool dedup_outputs);
+// Returns Status::OK() if a kernel is registered for node.op() on the device
+// type corresponding to node.device().
+Status IsKernelRegisteredForNode(
+    absl::string_view node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs);
+Status IsKernelRegisteredForNode(const NodeDef& node);
 
-  inline int num_nodes() const { return index_to_name_.size(); }
-  inline const int index(const string& node_name) const {
-    const auto& it = name_to_index_.find(node_name);
-    DCHECK(it != name_to_index_.end());
-    return it == name_to_index_.end() ? -1 : it->second;
-  }
-  inline const string& node_name(int node_idx) const {
-    return index_to_name_[node_idx];
-  }
-  inline const gtl::InlinedVector<int, 4>& inputs(int node_idx) const {
-    return inputs_[node_idx];
-  }
-  inline const gtl::InlinedVector<int, 2>& outputs(int node_idx) const {
-    return outputs_[node_idx];
-  }
+Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
-  string PrintToString() const;
+void EraseNodesFromGraph(const std::set<int>& nodes_to_delete, GraphDef* graph);
 
- private:
-  std::vector<string> index_to_name_;
-  std::unordered_map<string, int> name_to_index_;
-  std::vector<gtl::InlinedVector<int, 4>> inputs_;
-  std::vector<gtl::InlinedVector<int, 2>> outputs_;
-};
+void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph);
+
+void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
+                         GraphDef* graph);
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_UTILS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_H_

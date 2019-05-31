@@ -19,7 +19,9 @@ limitations under the License.
 //
 // Reads one serilized Hlo module, convert it into JSON format and dump into
 // some output directory. some_binaray_proto is obtained by serializing Hlo
-// module to disk using --xla_dump_hlo_proto_to debug optoin.
+// module to disk using the debug options
+//
+//   --xla_dump_to=DIR --xla_dump_hlo_as_proto
 
 #include <stdio.h>
 #include <string>

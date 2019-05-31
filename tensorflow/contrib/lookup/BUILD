@@ -1,11 +1,12 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -28,12 +29,13 @@ py_library(
 
 tf_py_test(
     name = "lookup_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["lookup_ops_test.py"],
     additional_deps = [
         ":lookup_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
+        "//tensorflow/contrib/data",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -46,16 +48,5 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
 )

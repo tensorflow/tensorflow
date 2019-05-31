@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -110,24 +109,29 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
                                     const string& conv_output_name,
                                     std::vector<NodeDef>* new_nodes) {
   const NodeDef& conv_node = conv_node_match.node;
-  CHECK_EQ("Conv2D", conv_node.op());
+  // CHECK_EQ("Conv2D", conv_node.op());
   const NodeDef& input_node = conv_node_match.inputs[0].node;
   const NodeDef& weights_node = conv_node_match.inputs[1].node;
   CHECK_EQ("Const", weights_node.op());
 
   Tensor weights = GetNodeTensorAttr(weights_node, "value");
-  const int64 weights_cols = weights.shape().dim_size(3);
+  int64 weights_cols;
+  if (conv_node.op() == "Conv2D") {
+    weights_cols = weights.shape().dim_size(3);
+  } else if (conv_node.op() == "DepthwiseConv2dNative") {
+    weights_cols = weights.shape().dim_size(2) * weights.shape().dim_size(3);
+  } else {
+    weights_cols = weights.shape().dim_size(1);
+  }
   CHECK_EQ(weights_cols, scale_values.size());
 
   // Multiply the original weights by the scale vector.
-  auto weights_matrix = weights.flat_inner_dims<float>();
+  auto weights_vector = weights.flat<float>();
   Tensor scaled_weights(DT_FLOAT, weights.shape());
-  auto scaled_weights_matrix = scaled_weights.flat_inner_dims<float>();
-  for (int64 row = 0; row < weights_matrix.dimension(0); ++row) {
-    for (int64 col = 0; col < weights_cols; ++col) {
-      scaled_weights_matrix(row, col) =
-          weights_matrix(row, col) * scale_values[col];
-    }
+  auto scaled_weights_vector = scaled_weights.flat<float>();
+  for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
+    scaled_weights_vector(row) =
+        weights_vector(row) * scale_values[row % weights_cols];
   }
   // Figure out the remaining bias to add on.
   Tensor bias_offset(DT_FLOAT, {weights_cols});
@@ -159,6 +163,9 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   NodeDef bias_add_node;
   bias_add_node.set_op("BiasAdd");
   bias_add_node.set_name(conv_output_name);
+  if (conv_node.attr().count("data_format")) {
+    CopyNodeAttr(conv_node, "data_format", "data_format", &bias_add_node);
+  }
   CopyNodeAttr(conv_node, "T", "T", &bias_add_node);
   AddNodeInput(conv_node.name(), &bias_add_node);
   AddNodeInput(bias_offset_node.name(), &bias_add_node);
@@ -179,6 +186,35 @@ Status FuseBatchNormWithConv(const NodeMatch& match,
   TF_RETURN_IF_ERROR(
       FuseScaleOffsetToConvWeights(scale_values, offset_values, match.inputs[0],
                                    batch_norm_node.name(), new_nodes));
+  return Status::OK();
+}
+
+Status FuseBatchNormWithBatchToSpace(const NodeMatch& match,
+                                     std::vector<NodeDef>* new_nodes) {
+  // Calculate the scale and offset values to apply.
+  std::vector<float> scale_values;
+  std::vector<float> offset_values;
+  TF_RETURN_IF_ERROR(
+      GetScaleAndOffsetValues(match, &scale_values, &offset_values));
+
+  // Fuse conv weights, and set the final output node name as batch_norm_node.
+  const NodeDef& batch_norm_node = match.node;
+  const NodeMatch& batch_to_space_node_match = match.inputs[0];
+  const NodeMatch& conv_node_match = batch_to_space_node_match.inputs[0];
+  const NodeDef& batch_to_space_node = batch_to_space_node_match.node;
+  const NodeDef& conv_node = conv_node_match.node;
+
+  string biasadd_name = conv_node.name() + "/biasadd";
+  TF_RETURN_IF_ERROR(FuseScaleOffsetToConvWeights(
+      scale_values, offset_values, conv_node_match, biasadd_name, new_nodes));
+
+  NodeDef new_batch_to_space_node = batch_to_space_node;
+  // reuse batch_norm node name
+  new_batch_to_space_node.set_name(batch_norm_node.name());
+  new_batch_to_space_node.set_input(0, biasadd_name);
+  new_nodes->push_back(batch_to_space_node_match.inputs[1].node);
+  new_nodes->push_back(batch_to_space_node_match.inputs[2].node);
+  new_nodes->push_back(new_batch_to_space_node);
   return Status::OK();
 }
 
@@ -260,7 +296,7 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
         current_graph_def,  // clang-format off
       {"BatchNormWithGlobalNormalization|FusedBatchNorm",    // batch_norm_node
         {
-          {"Conv2D",                          // conv_node
+          {"Conv2D|DepthwiseConv2dNative",                          // conv_node
             {
               {"*"},                          // input_node
               {"Const"},                      // weights_node
@@ -287,6 +323,43 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
   do {
     did_graph_change = false;
     GraphDef replaced_graph_def;
+    TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
+        current_graph_def,  // clang-format off
+        {"BatchNormWithGlobalNormalization|FusedBatchNorm",    // batch_norm_node
+         {
+             {"BatchToSpaceND",                  // batch_to_space_node
+              {
+                  {"Conv2D|DepthwiseConv2dNative",                     // conv_node
+                   {
+                       {"*"},                    // input_node
+                       {"Const"},                // weights_node
+                   }
+                  },
+                  {"Const"},                     // block_shape
+                  {"Const"},                     // crops
+              }
+             },
+             {"Const"},                          // mean_node
+             {"Const"},                          // variance_node
+             {"Const"},                          // beta_node
+             {"Const"},                          // gamma_node
+         }
+        },  // clang-format on
+        [&did_graph_change](const NodeMatch& match,
+                            const std::set<string>& input_nodes,
+                            const std::set<string>& output_nodes,
+                            std::vector<NodeDef>* new_nodes) {
+          TF_RETURN_IF_ERROR(FuseBatchNormWithBatchToSpace(match, new_nodes));
+          did_graph_change = true;
+          return Status::OK();
+        },
+        {}, &replaced_graph_def));
+    current_graph_def = replaced_graph_def;
+  } while (did_graph_change);
+
+  do {
+    did_graph_change = false;
+    GraphDef replaced_graph_def;
     // Replace BatchNorm with concat as input.
     TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
         current_graph_def,  // clang-format off
@@ -294,13 +367,13 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
         {
           {"ConcatV2|Concat",                     // concat two conv2d.
             {
-              {"Conv2D",                          // conv_node
+              {"Conv2D|DepthwiseConv2dNative",                          // conv_node
                 {
                   {"*"},                          // input_node
                   {"Const"},                      // weights_node
                 }
               },
-              {"Conv2D",                          // conv_node
+              {"Conv2D|DepthwiseConv2dNative",                          // conv_node
                 {
                   {"*"},                          // input_node
                   {"Const"},                      // weights_node

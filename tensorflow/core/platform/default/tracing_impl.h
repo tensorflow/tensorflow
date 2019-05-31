@@ -13,21 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_TRACING_IMPL_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_TRACING_IMPL_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_TRACING_IMPL_H_
+#define TENSORFLOW_CORE_PLATFORM_DEFAULT_TRACING_IMPL_H_
 
 // Stub implementations of tracing functionality.
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/tracing.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/tracing.h
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/tracing.h"
-
-namespace tensorflow {
-namespace port {
 
 // Definitions that do nothing for platforms that don't have underlying thread
 // tracing support.
@@ -41,21 +35,12 @@ namespace port {
   do {                           \
   } while (0)
 
-inline uint64 Tracing::UniqueId() { return random::New64(); }
-inline bool Tracing::IsActive() { return false; }
-inline void Tracing::RegisterCurrentThread(const char* name) {}
+namespace tensorflow {
+namespace tracing {
 
-// Posts an atomic threadscape event with the supplied category and arg.
-inline void Tracing::RecordEvent(EventCategory category, uint64 arg) {
-  // TODO(opensource): Implement
-}
+inline bool EventCollector::IsEnabled() { return false; }
 
-inline Tracing::ScopedActivity::ScopedActivity(EventCategory category,
-                                               uint64 arg) {}
-
-inline Tracing::ScopedActivity::~ScopedActivity() {}
-
-}  // namespace port
+}  // namespace tracing
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_TRACING_IMPL_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_TRACING_IMPL_H_

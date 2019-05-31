@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ANALYZER_H_
-#define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ANALYZER_H_
+#ifndef TENSORFLOW_PYTHON_GRAPPLER_COST_ANALYZER_H_
+#define TENSORFLOW_PYTHON_GRAPPLER_COST_ANALYZER_H_
 
 #include <iostream>
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
@@ -50,7 +51,7 @@ class CostAnalyzer {
  public:
   explicit CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
                         const string& suffix);
-  Status GenerateReport(std::ostream& os, bool per_node_report);
+  Status GenerateReport(std::ostream& os, bool per_node_report, bool verbose);
 
  private:
   void PredictCosts(CostEstimator* cost_estimator, CostGraphDef* cost_graph,
@@ -59,7 +60,8 @@ class CostAnalyzer {
   void PreprocessCosts();
   void AnalyzeCosts();
   void SortOpsByTime(std::map<string, OpPerfSummary> ops);
-  void PrintAnalysis(std::ostream& os, bool per_node_report) const;
+  void PrintAnalysis(std::ostream& os, bool per_node_report,
+                     bool verbose) const;
 
   const GrapplerItem* item_;
   MeasuringCostEstimator measure_estimator_;
@@ -78,4 +80,4 @@ class CostAnalyzer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ANALYZER_H_
+#endif  // TENSORFLOW_PYTHON_GRAPPLER_COST_ANALYZER_H_

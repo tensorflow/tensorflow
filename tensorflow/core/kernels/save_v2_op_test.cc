@@ -67,9 +67,8 @@ TEST_F(SaveV2OpTest, Simple) {
                    [&tensornames](int x) -> string { return tensornames[x]; });
 
   // Add the slice specs
-  AddInput<string>(TensorShape({13}), [&tensornames](int x) -> string {
-    return "" /* saves in full */;
-  });
+  AddInput<string>(TensorShape({13}),
+                   [](int x) -> string { return "" /* saves in full */; });
 
   // Add a 1-d bool tensor
   AddInput<bool>(TensorShape({2}), [](int x) -> bool { return x != 0; });

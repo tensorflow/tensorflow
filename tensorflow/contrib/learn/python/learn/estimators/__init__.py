@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""An estimator is a rule for calculating an estimate of a given quantity.
+"""An estimator is a rule for calculating an estimate of a given quantity (deprecated).
+
+These classes are deprecated and replaced with `tf.estimator`.
+
+See [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 # Estimators
 
@@ -96,7 +101,7 @@ my_features = [embedding_feature_a, embedding_feature_b]
 estimator = DNNClassifier(
     feature_columns=my_features,
     hidden_units=[1024, 512, 256],
-    optimizer=tf.train.ProximalAdagradOptimizer(
+    optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
     ))
@@ -118,7 +123,7 @@ hidden_units=[1024, 512, 256])
 estimator = DNNRegressor(
     feature_columns=my_features,
     hidden_units=[1024, 512, 256],
-    optimizer=tf.train.ProximalAdagradOptimizer(
+    optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
     ))
@@ -140,11 +145,11 @@ estimator = DNNLinearCombinedClassifier(
       weight_column_name=weight_column_name,
       # Wide settings
       linear_feature_columns=my_linear_features,
-      linear_optimizer=tf.train.FtrlOptimizer(...),
+      linear_optimizer=tf.compat.v1.train.FtrlOptimizer(...),
       # Deep settings
       dnn_feature_columns=my_deep_features,
       dnn_hidden_units=[1000, 500, 100],
-      dnn_optimizer=tf.train.AdagradOptimizer(...))
+      dnn_optimizer=tf.compat.v1.train.AdagradOptimizer(...))
 ```
 
 #### LinearClassifier
@@ -156,7 +161,7 @@ classes. When number of possible classes is 2, this is binary classification.
 my_features = [sparse_feature_b, crossed_feature_a_x_b]
 estimator = LinearClassifier(
     feature_columns=my_features,
-    optimizer=tf.train.FtrlOptimizer(
+    optimizer=tf.compat.v1.train.FtrlOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
     ))

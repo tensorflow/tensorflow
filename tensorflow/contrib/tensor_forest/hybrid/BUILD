@@ -1,27 +1,16 @@
 # TensorFlow code for training hybrid neural network / decision tree models.
 
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 filegroup(
     name = "custom_op_sources",
@@ -134,6 +123,7 @@ py_test(
     name = "hybrid_layer_test",
     size = "small",
     srcs = ["python/hybrid_layer_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":fully_connected_layer",
@@ -175,6 +165,7 @@ py_test(
     name = "routing_function_op_test",
     size = "small",
     srcs = ["python/kernel_tests/routing_function_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -189,6 +180,7 @@ py_test(
     name = "k_feature_routing_function_op_test",
     size = "small",
     srcs = ["python/kernel_tests/k_feature_routing_function_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -218,6 +210,7 @@ py_library(
 py_test(
     name = "decisions_to_data_test",
     srcs = ["python/layers/decisions_to_data_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":decisions_to_data_layer",
@@ -259,6 +252,7 @@ py_test(
     name = "decisions_to_data_then_nn_test",
     size = "small",
     srcs = ["python/models/decisions_to_data_then_nn_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":decisions_to_data_then_nn",
@@ -286,6 +280,7 @@ py_test(
     name = "k_feature_decisions_to_data_then_nn_test",
     size = "small",
     srcs = ["python/models/k_feature_decisions_to_data_then_nn_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":k_feature_decisions_to_data_then_nn",
@@ -313,6 +308,7 @@ py_test(
     name = "forest_to_data_then_nn_test",
     size = "small",
     srcs = ["python/models/forest_to_data_then_nn_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":forest_to_data_then_nn",

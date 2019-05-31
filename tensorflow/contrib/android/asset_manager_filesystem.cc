@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 
 namespace tensorflow {
 namespace {
@@ -26,8 +27,8 @@ namespace {
 string RemoveSuffix(const string& name, const string& suffix) {
   string output(name);
   StringPiece piece(output);
-  str_util::ConsumeSuffix(&piece, suffix);
-  return piece.ToString();
+  absl::ConsumeSuffix(&piece, suffix);
+  return string(piece);
 }
 
 // Closes the given AAsset when variable is destructed.
@@ -228,10 +229,9 @@ string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {
 }
 
 string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
-  string output(name);
-  StringPiece piece(output);
-  piece.Consume(prefix_);
-  return piece.ToString();
+  StringPiece piece(name);
+  absl::ConsumePrefix(&piece, prefix_);
+  return string(piece);
 }
 
 bool AssetManagerFileSystem::DirectoryExists(const std::string& fname) {
@@ -241,6 +241,11 @@ bool AssetManagerFileSystem::DirectoryExists(const std::string& fname) {
   // Note that openDir will return something even if the directory doesn't
   // exist. Therefore, we need to ensure one file exists in the folder.
   return AAssetDir_getNextFileName(dir.get()) != NULL;
+}
+
+Status AssetManagerFileSystem::GetMatchingPaths(const string& pattern,
+                                                std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status AssetManagerFileSystem::NewWritableFile(

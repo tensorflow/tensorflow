@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_GRAPH_MEMORY_H_
-#define TENSORFLOW_GRAPPLER_COSTS_GRAPH_MEMORY_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_MEMORY_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_MEMORY_H_
 
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -69,7 +69,7 @@ class GraphMemory {
 
   void InferFromTrace(const StepStats& timeline);
 
-  GrapplerItem item_;
+  const GrapplerItem& item_;
   std::unordered_map<string, int64> worst_case_memory_usage_;
   std::unordered_map<string, MemoryUsage> peak_usage_;
   const MemoryUsage unknown_usage_;
@@ -78,4 +78,4 @@ class GraphMemory {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_GRAPH_MEMORY_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_GRAPH_MEMORY_H_

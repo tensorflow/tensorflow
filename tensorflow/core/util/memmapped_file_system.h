@@ -53,7 +53,7 @@ class MemmappedFileSystem : public FileSystem {
  public:
   // Memmapped regions use this prefix to distinguish from
   // the filesystem.
-#if defined(COMPILER_MSVC)
+#if defined(_MSC_VER)
   static constexpr char* kMemmappedPackagePrefix =
 #else
   static constexpr char kMemmappedPackagePrefix[] =
@@ -61,7 +61,7 @@ class MemmappedFileSystem : public FileSystem {
       "memmapped_package://";
 
 // The default graphdef in the package.
-#if defined(COMPILER_MSVC)
+#if defined(_MSC_VER)
   static constexpr char* kMemmappedPackageDefaultGraphDef =
 #else
   static constexpr char kMemmappedPackageDefaultGraphDef[] =
@@ -85,6 +85,8 @@ class MemmappedFileSystem : public FileSystem {
   Status NewAppendableFile(const string& fname,
                            std::unique_ptr<WritableFile>* result) override;
   Status GetChildren(const string& dir, std::vector<string>* r) override;
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
   Status DeleteFile(const string& f) override;
   Status CreateDir(const string& d) override;
   Status DeleteDir(const string& d) override;

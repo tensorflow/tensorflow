@@ -1,0 +1,35 @@
+book_path: /xla/_book.yaml
+project_path: /xla/_project.yaml
+description: <!--no description-->
+landing_page:
+  custom_css_path: /site-assets/css/style.css
+  rows:
+  - heading: XLA is a compiler that optimizes TensorFlow computations.
+    items:
+    - classname: devsite-landing-row-50
+      description: >
+        XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
+        algebra that optimizes TensorFlow computations. The results are
+        improvements in speed, memory usage, and portability on server and mobile
+        platforms. The XLA framework is experimental and in active development.
+        For details, read the <a href="./overview">XLA guide</a>.
+
+  - classname: devsite-landing-row-cards
+    items:
+    - heading: XLA - TensorFlow, compiled
+      image_path: /resources/images/tf-logo-card-16x9.png
+      path: https://developers.googleblog.com/2017/03/xla-tensorflow-compiled.html
+      buttons:
+      - label: Read on Google Developers blog
+        path: https://developers.googleblog.com/2017/03/xla-tensorflow-compiled.html
+    - heading: XLA at the Dev Summit
+      youtube_id: kAOanJczHA0
+      buttons:
+      - label: Watch the video
+        path: https://www.youtube.com/watch?v=kAOanJczHA0
+    - heading: XLA on GitHub
+      image_path: /resources/images/github-card-16x9.png
+      path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla
+      buttons:
+      - label: View on GitHub
+        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla

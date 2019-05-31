@@ -1,0 +1,24 @@
+path: "tensorflow.image.ResizeMethod"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.image_ops_impl.ResizeMethodV1\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "AREA"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "BICUBIC"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "BILINEAR"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "NEAREST_NEIGHBOR"
+    mtype: "<type \'int\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

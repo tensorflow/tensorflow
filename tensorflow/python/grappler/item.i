@@ -72,10 +72,10 @@ struct GItem {
 
 static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
-    bool ignore_user_placement, TF_Status* out_status) {
+    bool ignore_user_placement, TF_Status* status) {
   if (meta_graph.collection_def().count("train_op") == 0) {
     tensorflow::Set_TF_Status_from_Status(
-        out_status,
+        status,
         tensorflow::errors::InvalidArgument("train_op not specified in the metagraph"));
     return nullptr;
   }
@@ -83,23 +83,22 @@ static GItem TF_NewItem(
   tensorflow::grappler::ItemConfig cfg;
   cfg.ignore_user_placement = ignore_user_placement;
   cfg.ignore_colocation = ignore_colocation;
-  cfg.inline_functions = true;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef("item", meta_graph, cfg);
   if (!item) {
     tensorflow::Set_TF_Status_from_Status(
-        out_status,
+        status,
         tensorflow::errors::InvalidArgument("Invalid metagraph"));
     return nullptr;
   }
-  tensorflow::Set_TF_Status_from_Status(out_status, tensorflow::Status::OK());
+  tensorflow::Set_TF_Status_from_Status(status, tensorflow::Status::OK());
   return GItem(item.release());
 }
 
-static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+static PyObject* TF_IdentifyImportantOps(GItem item, bool sort_topologically,
                                                    TF_Status* status) {
   if (item.is_none()) {
-    return {};
+    Py_RETURN_NONE;
   }
 
   std::vector<const tensorflow::NodeDef*> main_ops = item->MainOpsFanin();
@@ -132,7 +131,13 @@ static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topolog
     }
   }
 
-  return ops;
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  PyObject* result = PyList_New(ops.size());
+  for (int i = 0; i < ops.size(); ++i) {
+    PyList_SetItem(result, i, PyString_FromString(ops[i].c_str()));
+  }
+  PyGILState_Release(gstate);
+  return result;
 }
 
 static PyObject* TF_GetOpProperties(GItem item) {
@@ -267,7 +272,6 @@ static PyObject* TF_GetColocationGroups(GItem item) {
     if (!s.ok()) {
       continue;
     }
-    int i = 0;
     for (const auto& arg : op_def->input_arg()) {
       if (!arg.is_ref()) {
         continue;
@@ -304,8 +308,8 @@ static PyObject* TF_GetColocationGroups(GItem item) {
 // Wrap these functions.
 static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
-    bool ignore_user_placement, TF_Status* out_status);
-static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
-                                                   TF_Status* status);
+    bool ignore_user_placement, TF_Status* status);
+static PyObject* TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+                                         TF_Status* status);
 static PyObject* TF_GetOpProperties(GItem item);
 static PyObject* TF_GetColocationGroups(GItem item);

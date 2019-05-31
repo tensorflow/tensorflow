@@ -70,7 +70,6 @@ versions {
   TF_ASSERT_OK(session->Run(run_options, {}, {"myconstant:0"}, {}, &outputs,
                             &run_metadata));
 
-  StatSummarizerOptions opts;
   StatSummarizer stats(graph_def);
   stats.ProcessStepStats(run_metadata.step_stats());
 

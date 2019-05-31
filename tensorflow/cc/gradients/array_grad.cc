@@ -120,6 +120,24 @@ Status SplitGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Split", SplitGrad);
 
+Status FillGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = fill(fill_shape, x)
+  // No gradient returned for the fill_shape argument.
+  grad_outputs->push_back(NoGradient());
+  // The gradient for x (which must be a scalar) is just the sum of
+  // all the gradients from the shape it fills.
+  // We use ReduceSum to implement this, which needs an argument providing
+  // the indices of all the dimensions of the incoming gradient.
+  // grad(x) = reduce_sum(grad(y), [0..rank(grad(y))])
+  auto all_dims = Range(scope, Const(scope, 0), Rank(scope, grad_inputs[0]),
+                        Const(scope, 1));
+  grad_outputs->push_back(ReduceSum(scope, grad_inputs[0], all_dims));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Fill", FillGrad);
+
 Status DiagGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
@@ -384,6 +402,94 @@ Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("MirrorPadGrad", MirrorPadGradGrad);
+
+Status StridedSliceGradHelper(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
+  Input x = Shape(scope, op.input(0));
+  Input begin = op.input(1);
+  Input end = op.input(2);
+  Input strides = op.input(3);
+  int64 begin_mask;
+  int64 end_mask;
+  int64 ellipsis_mask;
+  int64 new_axis_mask;
+  int64 shrink_axis_mask;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "begin_mask", &begin_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "end_mask", &end_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "ellipsis_mask", &ellipsis_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "new_axis_mask", &new_axis_mask));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "shrink_axis_mask", &shrink_axis_mask));
+  grad_outputs->push_back(
+      StridedSliceGrad(scope, x, begin, end, strides, grad_inputs[0],
+                       StridedSliceGrad::BeginMask(begin_mask)
+                           .EndMask(end_mask)
+                           .EllipsisMask(ellipsis_mask)
+                           .NewAxisMask(new_axis_mask)
+                           .ShrinkAxisMask(shrink_axis_mask)));
+  // No gradients returned for begin, end and strides
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("StridedSlice", StridedSliceGradHelper);
+
+Status SliceGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // Propagate the incoming gradient along all the selected values,
+  // and zero everywhere else. Use the Pad operator for this.
+  //
+  // First create an Nx2 padding where N is the number of input
+  // dimensions. The first column is the number of prepended zeros
+  // for each dimension, and the second column is the number of
+  // appended zeros.
+  //
+  // The first column is just the begin vector.
+  // The second column is the shape of the input element-wise
+  // subtracted by begin+size
+
+  // Running example:
+  // input.shape = [3, 5, 3]
+  // begin = [1, 2, 1], size = [1, 3, 2]
+  Input input = op.input(0);
+  Input begin = op.input(1);
+  // input_rank = 3
+  auto input_rank = Rank(scope, input);
+  // slice_size = [1, 3, 2]
+  auto slice_size = Shape(scope, op.output(0));
+  // padding_shape = [3, 1]
+  auto padding_shape = Stack(scope, {input_rank, 1});
+  // before_padding = [[1]
+  //                   [2]
+  //                   [1]]
+  Input before_padding = Reshape(scope, begin, padding_shape);
+  // after_padding_sizes = shape(input) - slice_size - begin
+  //                     = [3, 5, 3] - [1, 3, 2] - [1, 2, 1]
+  //                     = [1, 0, 0]
+  auto after_padding_sizes =
+      Sub(scope, Sub(scope, Shape(scope, input), slice_size), begin);
+  // after_padding = [[1]
+  //                  [0]
+  //                  [0]]
+  Input after_padding = Reshape(scope, after_padding_sizes, padding_shape);
+  // paddings = [[1 1]
+  //             [2 0]
+  //             [1 0]]
+  auto paddings =
+      Concat(scope, {before_padding, after_padding}, Const(scope, 1));
+  grad_outputs->push_back(Pad(scope, grad_inputs[0], paddings));
+  // Nothing propagated for "begin" and "size" inputs
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Slice", SliceGrad);
 
 }  // anonymous namespace
 }  // namespace ops

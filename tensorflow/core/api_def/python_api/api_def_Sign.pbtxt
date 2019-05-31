@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "Sign"
+  endpoint {
+    name: "math.sign"
+  }
+  endpoint {
+    name: "sign"
+  }
+}

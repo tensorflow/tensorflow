@@ -77,7 +77,7 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
 
   Args:
     inputs: A list of tensors, each of which has a shape of `[batch_size, ...]`
-    rates: A tensor of shape `[batch_size]` contiaining the resampling rates
+    rates: A tensor of shape `[batch_size]` containing the resampling rates
        for each input.
     scope: Scope for the op.
     seed: Random seed to use.

@@ -21,13 +21,13 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -77,26 +77,26 @@ StatusOr<DisassemblerResult> Disassembler::DisassembleObjectFile(
     }
 
     // Sort the symbols in increasing address order.
-    std::sort(
-        symbols.begin(), symbols.end(),
-        [](const llvm::object::SymbolRef& a, const llvm::object::SymbolRef& b) {
-          // getAddress returns a Expected object. Assert there is no error
-          // before extracting the address.
-          llvm::Expected<uint64_t> a_address_or_error = a.getAddress();
-          CHECK(a_address_or_error);
-          llvm::Expected<uint64_t> b_address_or_error = b.getAddress();
-          CHECK(b_address_or_error);
-          return a_address_or_error.get() < b_address_or_error.get();
-        });
+    absl::c_sort(symbols, [](const llvm::object::SymbolRef& a,
+                             const llvm::object::SymbolRef& b) {
+      // getAddress returns a Expected object. Assert there is no error
+      // before extracting the address.
+      llvm::Expected<uint64_t> a_address_or_error = a.getAddress();
+      CHECK(a_address_or_error);
+      llvm::Expected<uint64_t> b_address_or_error = b.getAddress();
+      CHECK(b_address_or_error);
+      return a_address_or_error.get() < b_address_or_error.get();
+    });
 
     // Construct ArrayRef pointing to section contents.
-    llvm::StringRef section_content_string;
-    if (section.getContents(section_content_string)) {
+    llvm::Expected<llvm::StringRef> section_content_string =
+        section.getContents();
+    if (!section_content_string) {
       continue;
     }
     llvm::ArrayRef<uint8_t> section_content_bytes(
-        reinterpret_cast<const uint8*>(section_content_string.data()),
-        section_content_string.size());
+        reinterpret_cast<const uint8*>(section_content_string->data()),
+        section_content_string->size());
 
     // Use int types from LLVM (eg, uint64_t) for values passed to and returned
     // from the LLVM API. These values map to different types in LLVM and
@@ -151,7 +151,7 @@ StatusOr<DisassemblerResult> Disassembler::DisassembleObjectFile(
           size = 1;
         }
 
-        ostream << tensorflow::strings::Printf("0x%08lx", index) << " ";
+        ostream << absl::StrFormat("0x%08lx", index) << " ";
 
         if (decode_status == llvm::MCDisassembler::Success) {
           // For branches, try to determine the actual address and emit it as an
@@ -163,7 +163,7 @@ StatusOr<DisassemblerResult> Disassembler::DisassembleObjectFile(
             uint64_t target;
             if (inst_analysis_->evaluateBranch(
                     instruction, section_address + index, size, target)) {
-              annotation = tensorflow::strings::Printf("[0x%08lx]", target);
+              annotation = absl::StrFormat("[0x%08lx]", target);
             }
           }
           inst_printer_->printInst(&instruction, ostream, annotation.c_str(),

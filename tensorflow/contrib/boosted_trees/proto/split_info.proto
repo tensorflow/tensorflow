@@ -17,3 +17,12 @@ message SplitInfo {
   // Right Leaf node.
   tensorflow.boosted_trees.trees.Leaf right_child = 3;
 }
+
+message ObliviousSplitInfo {
+  tensorflow.boosted_trees.trees.TreeNode split_node = 1;
+  repeated tensorflow.boosted_trees.trees.Leaf children = 2;
+  // For each child, children_parent_id stores the node_id of its parent when it
+  // was a leaf. For the idx-th child it corresponds the idx/2-th
+  // children_parent_id.
+  repeated int32 children_parent_id = 3;
+}

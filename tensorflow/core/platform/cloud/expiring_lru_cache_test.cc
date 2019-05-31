@@ -174,5 +174,22 @@ TEST(ExpiringLRUCacheTest, Clear) {
   EXPECT_FALSE(cache.Lookup("d", &value));
 }
 
+TEST(ExpiringLRUCacheTest, Delete) {
+  // Insert an entry.
+  ExpiringLRUCache<int> cache(1, 4);
+  cache.Insert("a", 1);
+  int value = 0;
+  EXPECT_TRUE(cache.Lookup("a", &value));
+  EXPECT_EQ(value, 1);
+
+  // Delete the entry.
+  EXPECT_TRUE(cache.Delete("a"));
+  EXPECT_FALSE(cache.Lookup("a", &value));
+
+  // Try deleting the entry again.
+  EXPECT_FALSE(cache.Delete("a"));
+  EXPECT_FALSE(cache.Lookup("a", &value));
+}
+
 }  // namespace
 }  // namespace tensorflow

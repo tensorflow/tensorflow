@@ -37,7 +37,7 @@ const char* const kGradientSuffix = " (gradient)";
 
 // Convert to Trace proto into a short readable string.
 string GetTraceString(const CallStack::Trace& trace) {
-  string ntrace = io::Basename(trace.file()).ToString();
+  string ntrace(io::Basename(trace.file()));
   ntrace += strings::StrCat(":", trace.lineno());
   if (trace.function().length() < 20) {
     ntrace += ":" + trace.function();
@@ -113,7 +113,7 @@ class FunctionTable {
     // function index should start from 1.
     func_pb->set_id(function_table_.size());
 
-    string file_base = io::Basename(file_path).ToString();
+    string file_base(io::Basename(file_path));
     file_base = file_base.substr(0, file_base.find_last_of("."));
     func_pb->set_name(
         string_table_->GetIndex(strings::StrCat(file_base, ":", func_name)));
@@ -183,7 +183,7 @@ class Samples {
   // This method adds the statistics of graph nodes created by the python
   // call.
   void Add(const CodeNode* node, const std::vector<uint64>& location_ids) {
-    // displayed leaf might not be true leaf. Retrive the true leaves for
+    // displayed leaf might not be true leaf. Retrieve the true leaves for
     // stats.
     std::vector<const CodeNode*> all_leaf = FetchAllLeaf(node);
     CHECK(!all_leaf.empty()) << node->name();
@@ -672,11 +672,11 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts,
 
   if (opts.select.find(kShown[5]) != opts.select.end() &&
       !node->node->devices().empty()) {
-    attrs.push_back(str_util::Join(node->node->devices(), "|"));
+    attrs.push_back(absl::StrJoin(node->node->devices(), "|"));
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     std::set<string> op_types = node->node->op_types();
-    attrs.push_back(str_util::Join(op_types, "|"));
+    attrs.push_back(absl::StrJoin(op_types, "|"));
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
     // TODO(xpan): Make op count available in code view?
@@ -688,7 +688,7 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts,
 
   return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),
                          node->name().c_str(),
-                         str_util::Join(attrs, ", ").c_str());
+                         absl::StrJoin(attrs, ", ").c_str());
 }
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -62,7 +62,8 @@ TF_CALL_complex128(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
   }
 
 #define TENSOR_ARRAY_SET_ZERO_CPU(T) TENSOR_ARRAY_SET_ZERO(CPUDevice, T)
-TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
+TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU);
+TF_CALL_bool(TENSOR_ARRAY_SET_ZERO_CPU);
 #undef TENSOR_ARRAY_SET_ZERO_CPU
 
 #if GOOGLE_CUDA
@@ -81,7 +82,8 @@ TF_CALL_complex128(TENSOR_ARRAY_SET_ZERO_GPU);
 
 std::atomic<int64> TensorArray::tensor_array_counter{0};
 
-Status TensorArray::CopyShapesFrom(TensorArray* rhs) {
+Status TensorArray::CopyShapesFrom(TensorArray* rhs,
+                                   const TensorShape* shape_to_prepend) {
   mutex_lock l(mu_);
   mutex_lock l_rhs(rhs->mu_);
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());
@@ -97,7 +99,12 @@ Status TensorArray::CopyShapesFrom(TensorArray* rhs) {
     if (!rhs->tensors_[i].written) continue;
 
     // Copy the shape over.
-    tensors_[i].shape = rhs->tensors_[i].shape;
+    if (shape_to_prepend) {
+      tensors_[i].shape = *shape_to_prepend;
+      tensors_[i].shape.AppendShape(rhs->tensors_[i].shape);
+    } else {
+      tensors_[i].shape = rhs->tensors_[i].shape;
+    }
     // Mark as written.  Reads will know that if written is true and
     // read is false, and cleared is false, to return zeros of the
     // appropriate shape.  Future aggregating writes will only use the shape

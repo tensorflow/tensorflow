@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONSTANTS_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONSTANTS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONSTANTS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONSTANTS_H_
 
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace gpu {
 
-// Minimum alignment of cudaMalloc.  We require that buffers created by our
-// DeviceMemoryAllocator, and all input/output buffers, have this alignment.
-extern const int64 kCudaMallocAlignBytes;
+// Minimum alignment for buffers passed as incoming arguments by TensorFlow.
+extern const int64 kEntryParameterAlignBytes;
+
+// Minimum alignment for buffers allocated by XLA: the temp buffers and the live
+// out (result) buffers.
+extern const int64 kXlaAllocatedBufferAlignBytes;
+
+// Minimum alignment for constant buffers.
+extern const int64 kConstantBufferAlignBytes;
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONSTANTS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_CONSTANTS_H_

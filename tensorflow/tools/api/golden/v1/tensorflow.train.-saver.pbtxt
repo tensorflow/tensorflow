@@ -1,0 +1,53 @@
+path: "tensorflow.train.Saver"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.saver.Saver\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "last_checkpoints"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'var_list\', \'reshape\', \'sharded\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\', \'name\', \'restore_sequentially\', \'saver_def\', \'builder\', \'defer_build\', \'allow_empty\', \'write_version\', \'pad_step_number\', \'save_relative_paths\', \'filename\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\', \'5\', \'10000.0\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\', \'2\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "as_saver_def"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "export_meta_graph"
+    argspec: "args=[\'self\', \'filename\', \'collection_list\', \'as_text\', \'export_scope\', \'clear_devices\', \'clear_extraneous_savers\', \'strip_default_attrs\', \'save_debug_info\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\', \'False\', \'False\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "from_proto"
+    argspec: "args=[\'saver_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "recover_last_checkpoints"
+    argspec: "args=[\'self\', \'checkpoint_paths\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "restore"
+    argspec: "args=[\'self\', \'sess\', \'save_path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'self\', \'sess\', \'save_path\', \'global_step\', \'latest_filename\', \'meta_graph_suffix\', \'write_meta_graph\', \'write_state\', \'strip_default_attrs\', \'save_debug_info\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'meta\', \'True\', \'True\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "set_last_checkpoints"
+    argspec: "args=[\'self\', \'last_checkpoints\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_last_checkpoints_with_time"
+    argspec: "args=[\'self\', \'last_checkpoints_with_time\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_proto"
+    argspec: "args=[\'self\', \'export_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

@@ -101,16 +101,30 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
+  bool sync_dst_compute = true;
   if (in.dtype() != DT_VARIANT) {
     // Variants are handled by CopyTensor::ViaDMA.
-    Tensor copy(out_allocator, in.dtype(), in.shape());
+    AllocationAttributes aa;
+    uint64 safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
+    std::function<uint64()> freed_by_func = [dst_device,
+                                             &safe_alloc_frontier]() {
+      safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
+      return safe_alloc_frontier;
+    };
+    if (parsed.dst.type == "GPU" && safe_alloc_frontier > 0) {
+      // There's a timestamped allocator at work, so use it instead
+      // of sync_dst_compute.
+      aa.freed_by_func = &freed_by_func;
+      sync_dst_compute = false;
+    }
+    Tensor copy(out_allocator, in.dtype(), in.shape(), aa);
     *out = copy;
   }
 
-  CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
-                     recv_args.device_context, src_device, dst_device,
-                     send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     std::move(done));
+  CopyTensor::ViaDMA(
+      parsed.edge_name, send_args.device_context, recv_args.device_context,
+      src_device, dst_device, send_args.alloc_attrs, recv_args.alloc_attrs, &in,
+      out, 0 /*dev_to_dev_stream_index*/, std::move(done), sync_dst_compute);
 }
 
 void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
@@ -121,27 +135,36 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
   // Recv the tensor from local_.
   local_->RecvAsync(
       parsed, recv_args,
-      [this, parsed, done](
-          const Status& status, const Rendezvous::Args& send_args,
-          const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
-        // If "in" is an uninitialized tensor, do copy-construction to preserve
-        // the uninitialized state, along with data type and shape info, which
-        // is useful for debugger purposes.
-        Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
+      std::bind(
+          [this, parsed](DoneCallback done,
+                         // Begin unbound arguments.
+                         const Status& status,
+                         const Rendezvous::Args& send_args,
+                         const Rendezvous::Args& recv_args, const Tensor& in,
+                         bool is_dead) {
+            // If "in" is an uninitialized tensor, do copy-construction to
+            // preserve the uninitialized state, along with data type and shape
+            // info, which is useful for debugger purposes.
+            Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
 
-        StatusCallback final_callback = [done, send_args, recv_args, out,
-                                         is_dead](const Status& s) {
-          done(s, send_args, recv_args, *out, is_dead);
-          delete out;
-        };
+            auto final_callback = std::bind(
+                [send_args, recv_args, out, is_dead](DoneCallback done,
+                                                     // Begin unbound arguments.
+                                                     const Status& s) {
+                  done(s, send_args, recv_args, *out, is_dead);
+                  delete out;
+                },
+                std::move(done), std::placeholders::_1);
 
-        if (status.ok() && in.IsInitialized()) {
-          SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
-                             std::move(final_callback));
-        } else {
-          final_callback(status);
-        }
-      });
+            if (status.ok() && in.IsInitialized()) {
+              SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
+                                 std::move(final_callback));
+            } else {
+              final_callback(status);
+            }
+          },
+          std::move(done), std::placeholders::_1, std::placeholders::_2,
+          std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 }
 
 void IntraProcessRendezvous::StartAbort(const Status& s) {

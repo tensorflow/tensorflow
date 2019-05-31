@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Sparse feature column."""
+"""Sparse feature column (deprecated).
+
+This module and all its submodules are deprecated. To UPDATE or USE linear
+optimizers, please check its latest version in core:
+tensorflow_estimator/python/estimator/canned/linear_optimizer/.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +26,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.ops import internal_convert_to_tensor
 from tensorflow.python.framework.ops import name_scope
+from tensorflow.python.util import deprecation
 
 
 class SparseFeatureColumn(object):
@@ -68,6 +74,10 @@ class SparseFeatureColumn(object):
   @@feature_values
   """
 
+  @deprecation.deprecated(
+      None, 'This class is deprecated. To UPDATE or USE linear optimizers, '
+      'please check its latest version in core: '
+      'tensorflow_estimator/python/estimator/canned/linear_optimizer/.')
   def __init__(self, example_indices, feature_indices, feature_values):
     """Creates a `SparseFeatureColumn` representation.
 

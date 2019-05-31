@@ -1,25 +1,14 @@
 # Description:
 #   GPU Direct RDMA Out-of-Band Tensor transport for TensorFlow.
 
-package(default_visibility = [
-    "//tensorflow:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 filegroup(
     name = "c_srcs",
@@ -27,11 +16,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
 )
 
 # For platform specific build config
@@ -49,7 +33,7 @@ tf_proto_library_cc(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "gdr_memory_manager",
     srcs = ["gdr_memory_manager.cc"],
     hdrs = ["gdr_memory_manager.h"],
@@ -70,7 +54,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "gdr_worker",
     srcs = ["gdr_worker.cc"],
     hdrs = ["gdr_worker.h"],
@@ -78,10 +62,10 @@ tf_cuda_library(
         ":gdr_memory_manager",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:graph_mgr",
+        "//tensorflow/core/distributed_runtime:recent_request_ids",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker",
         "//tensorflow/core/distributed_runtime:worker_cache",
@@ -103,10 +87,29 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:request_id",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
+    ],
+)
+
+cc_library(
+    name = "gdr_collective_executor_mgr",
+    srcs = ["gdr_collective_executor_mgr.cc"],
+    hdrs = ["gdr_collective_executor_mgr.h"],
+    deps = [
+        ":gdr_memory_manager",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/distributed_runtime:cancellable_call",
+        "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
+        "//tensorflow/core/distributed_runtime:device_resolver_distributed",
+        "//tensorflow/core/distributed_runtime:request_id",
+        "//tensorflow/core/distributed_runtime:rpc_collective_executor_mgr",
+        "//tensorflow/core/distributed_runtime:worker_cache",
     ],
 )
 
@@ -116,9 +119,13 @@ cc_library(
     hdrs = ["gdr_server_lib.h"],
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
+        ":gdr_collective_executor_mgr",
         ":gdr_memory_manager",
         ":gdr_rendezvous_mgr",
         ":gdr_worker",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
+        "//tensorflow/core/distributed_runtime:device_resolver_distributed",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
     alwayslink = 1,

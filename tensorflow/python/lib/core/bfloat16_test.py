@@ -25,6 +25,7 @@ import numpy as np
 
 # pylint: disable=unused-import,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
 
@@ -160,6 +161,24 @@ class Bfloat16Test(test.TestCase):
       for w in self.float_values():
         self.assertEqual(v != w, bfloat16(v) != bfloat16(w))
 
+  def testNan(self):
+    a = np.isnan(bfloat16(float("nan")))
+    self.assertTrue(a)
+    np.testing.assert_allclose(np.array([1.0, a]), np.array([1.0, a]))
+
+    a = np.array(
+        [bfloat16(1.34375),
+         bfloat16(1.4375),
+         bfloat16(float("nan"))],
+        dtype=dtypes.bfloat16.as_numpy_dtype)
+    b = np.array(
+        [bfloat16(1.3359375),
+         bfloat16(1.4375),
+         bfloat16(float("nan"))],
+        dtype=dtypes.bfloat16.as_numpy_dtype)
+    np.testing.assert_allclose(
+        a, b, rtol=0.1, atol=0.1, equal_nan=True, err_msg="", verbose=True)
+
 
 class Bfloat16NumPyTest(test.TestCase):
 
@@ -225,6 +244,20 @@ class Bfloat16NumPyTest(test.TestCase):
     self.assertAllClose(np.logaddexp(x, y),
                         np.logaddexp(x.astype(bfloat16), y.astype(bfloat16)),
                         atol=2e-2)
+
+  def testArange(self):
+    self.assertAllEqual(
+        np.arange(100, dtype=np.float32).astype(bfloat16),
+        np.arange(100, dtype=bfloat16))
+    self.assertAllEqual(
+        np.arange(-10.5, 7.8, 0.5, dtype=np.float32).astype(bfloat16),
+        np.arange(-10.5, 7.8, 0.5, dtype=bfloat16))
+    self.assertAllEqual(
+        np.arange(-0., -7., -0.25, dtype=np.float32).astype(bfloat16),
+        np.arange(-0., -7., -0.25, dtype=bfloat16))
+    self.assertAllEqual(
+        np.arange(-16384., 16384., 64., dtype=np.float32).astype(bfloat16),
+        np.arange(-16384., 16384., 64., dtype=bfloat16))
 
 
 if __name__ == "__main__":

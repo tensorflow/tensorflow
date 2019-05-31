@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SaveSlices"
+  endpoint {
+    name: "train.SaveSlices"
+  }
+}

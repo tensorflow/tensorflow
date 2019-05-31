@@ -1,0 +1,113 @@
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/core/platform/test.h"
+
+namespace xla {
+namespace {
+
+class DummyInstruction : public HloInstruction {
+ public:
+  DummyInstruction()
+      : HloInstruction(HloOpcode::kConstant, ShapeUtil::MakeShape(F32, {})) {}
+};
+
+class AnotherDummyInstruction : public HloInstruction {
+ public:
+  AnotherDummyInstruction()
+      : HloInstruction(HloOpcode::kParameter, ShapeUtil::MakeShape(F32, {})) {}
+};
+
+TEST(HloCastingUtilsTest, CastSucceeds) {
+  DummyInstruction instruction;
+  DummyInstruction* casted =
+      Cast<DummyInstruction>(static_cast<HloInstruction*>(&instruction));
+  ASSERT_EQ(casted, &instruction);
+}
+
+TEST(HloCastingUtilsTest, CastDiesForWrongType) {
+  AnotherDummyInstruction instruction;
+  ASSERT_DEATH(
+      Cast<DummyInstruction>(static_cast<HloInstruction*>(&instruction)), "");
+}
+
+TEST(HloCastingUtilsTest, CastDiesForNullptr) {
+  HloInstruction* null = nullptr;
+  ASSERT_DEATH(Cast<DummyInstruction>(null), "");
+}
+
+TEST(HloCastingUtilsTest, CastOrNullSucceeds) {
+  DummyInstruction instruction;
+  DummyInstruction* casted =
+      Cast<DummyInstruction>(static_cast<HloInstruction*>(&instruction));
+  ASSERT_EQ(casted, &instruction);
+}
+
+TEST(HloCastingUtilsTest, CastOrNullDiesForWrongType) {
+  AnotherDummyInstruction instruction;
+  ASSERT_DEATH(
+      Cast<DummyInstruction>(static_cast<HloInstruction*>(&instruction)), "");
+}
+
+TEST(HloCastingUtilsTest, CastOrNullReturnsNullptrForNullptr) {
+  HloInstruction* null = nullptr;
+  DummyInstruction* casted = CastOrNull<DummyInstruction>(null);
+  ASSERT_EQ(casted, nullptr);
+}
+
+TEST(HloCastingUtilsTest, DynCastSucceeds) {
+  DummyInstruction instruction;
+  DummyInstruction* casted =
+      DynCast<DummyInstruction>(static_cast<HloInstruction*>(&instruction));
+  ASSERT_EQ(casted, &instruction);
+}
+
+TEST(HloCastingUtilsTest, DynCastReturnsNullptrForWrongType) {
+  AnotherDummyInstruction instruction;
+  DummyInstruction* casted =
+      DynCast<DummyInstruction>(static_cast<HloInstruction*>(&instruction));
+  ASSERT_EQ(casted, nullptr);
+}
+
+TEST(HloCastingUtilsTest, DynCastDiesForNullptr) {
+  HloInstruction* null = nullptr;
+  ASSERT_DEATH(DynCast<DummyInstruction>(null), "");
+}
+
+TEST(HloCastingUtilsTest, DynCastOrNullSucceeds) {
+  DummyInstruction instruction;
+  DummyInstruction* casted = DynCastOrNull<DummyInstruction>(
+      static_cast<HloInstruction*>(&instruction));
+  ASSERT_EQ(casted, &instruction);
+}
+
+TEST(HloCastingUtilsTest, DynCastOrNullReturnsNullptrForWrongType) {
+  AnotherDummyInstruction instruction;
+  DummyInstruction* casted = DynCastOrNull<DummyInstruction>(
+      static_cast<HloInstruction*>(&instruction));
+  ASSERT_EQ(casted, nullptr);
+}
+
+TEST(HloCastingUtilsTest, DynCastOrNullReturnsNullptrForNullptr) {
+  HloInstruction* null = nullptr;
+  DummyInstruction* casted = DynCastOrNull<DummyInstruction>(null);
+  ASSERT_EQ(casted, nullptr);
+}
+
+}  // namespace
+}  // namespace xla

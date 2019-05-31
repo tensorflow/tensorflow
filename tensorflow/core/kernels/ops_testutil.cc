@@ -24,7 +24,7 @@ namespace tensorflow {
 
 void OpsTestBase::SetDevice(const DeviceType& device_type,
                             std::unique_ptr<Device> device) {
-  CHECK(device_.get()) << "No device provided";
+  CHECK(device_) << "No device provided";
   device_type_ = device_type;
   device_ = std::move(device);
 #ifdef GOOGLE_CUDA
@@ -53,8 +53,8 @@ Tensor* OpsTestBase::GetOutput(int output_index) {
           new Tensor(allocator(), output->dtype(), output->shape());
       auto src = output->tensor_data();
       auto dst = managed_output->tensor_data();
-      context_->eigen_gpu_device().memcpy(const_cast<char*>(dst.data()),
-                                          src.data(), src.size());
+      context_->eigen_gpu_device().memcpyDeviceToHost(
+          const_cast<char*>(dst.data()), src.data(), src.size());
       context_->eigen_gpu_device().synchronize();
       managed_outputs_[output_index] = managed_output;
     }

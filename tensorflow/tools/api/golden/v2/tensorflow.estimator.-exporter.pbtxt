@@ -1,0 +1,16 @@
+path: "tensorflow.estimator.Exporter"
+tf_class {
+  is_instance: "<class \'tensorflow_estimator.python.estimator.exporter.Exporter\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "name"
+    mtype: "<class \'abc.abstractproperty\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "export"
+    argspec: "args=[\'self\', \'estimator\', \'export_path\', \'checkpoint_path\', \'eval_result\', \'is_the_final_export\'], varargs=None, keywords=None, defaults=None"
+  }
+}

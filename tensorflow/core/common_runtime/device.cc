@@ -36,6 +36,8 @@ Device::~Device() {
   }
 }
 
+void Device::Sync(const DoneCallback& done) { done(Sync()); }
+
 // static
 DeviceAttributes Device::BuildDeviceAttributes(
     const string& name, DeviceType device, Bytes memory_limit,

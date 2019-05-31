@@ -17,13 +17,15 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 
-#include <math.h>
 #include <algorithm>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -60,13 +62,13 @@ template <typename T>
 struct CheckNumericsLaunch {
   void Run(const GPUDevice &d, const T *data, int size,
            int abnormal_detected[2]) {
-    const int32 block_size = d.maxCudaThreadsPerBlock();
+    const int32 block_size = d.maxGpuThreadsPerBlock();
     const int32 num_blocks =
-        (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
+        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
-    CheckNumericsKernel<T><<<num_blocks, block_size, 0, d.stream()>>>(
-        data, size, abnormal_detected);
+    TF_CHECK_OK(CudaLaunchKernel(CheckNumericsKernel<T>, num_blocks, block_size,
+                                 0, d.stream(), data, size, abnormal_detected));
   }
 };
 

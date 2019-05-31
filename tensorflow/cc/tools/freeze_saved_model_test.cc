@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/tools/freeze_saved_model.h"
 
+#include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -71,7 +72,7 @@ class FreezeTest : public ::testing::Test {
     return Status::OK();
   }
 
-  // Adds `graph_def` to `saved_model_bundle` and intializes a session with
+  // Adds `graph_def` to `saved_model_bundle` and initializes a session with
   // `init_node`.
   Status AddGraphDefToSavedModelBundle(const GraphDef& graph_def,
                                        const string& init_node,
@@ -112,6 +113,160 @@ class FreezeTest : public ::testing::Test {
                                      /* targets */ {}, &frozen_outputs));
 
     test::ExpectTensorEqual<float>(unfrozen_outputs[0], frozen_outputs[0]);
+  }
+
+  void TestFreezeGraphWithoutDependentVariables(bool use_resource) {
+    // Test freezing a graph with variables that are not needed by the outputs
+    // in the SignatureDef. The resulting graph shouldn't be frozen, but
+    // non-dependent nodes should be pruned.
+    SavedModelBundle saved_model_bundle;
+    GraphDef graph_def;
+    Scope scope = Scope::NewRootScope();
+    Output a = ops::Const(scope.WithOpName("a"), 10.0f, {});
+    Output b = ops::Const(scope.WithOpName("b"), 10.0f, {});
+    Output c = ops::Mul(scope.WithOpName("c"), a, b);
+    if (use_resource) {
+      Output var =
+          ops::VarHandleOp(scope.WithOpName("var"), DataType::DT_FLOAT, {});
+      Output read_var = ops::ReadVariableOp(
+          scope.WithOpName("var/Read/ReadVariableOp"), var, DataType::DT_FLOAT);
+      auto assign = ops::AssignVariableOp(scope.WithOpName("assign"), var, a);
+    } else {
+      Output var =
+          ops::Variable(scope.WithOpName("var"), {}, DataType::DT_FLOAT);
+      Output assign = ops::Assign(scope.WithOpName("assign"), var, a);
+    }
+
+    TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
+    // "c" isnt dependent on the variable, so nothing should be frozen.
+    TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
+        graph_def, {"c:0"}, "assign", &saved_model_bundle));
+
+    GraphDef frozen_graph_def;
+    std::unordered_set<string> inputs;
+    std::unordered_set<string> outputs;
+    TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def,
+                                  &inputs, &outputs));
+
+    GraphDef expected_graph_def;
+    Scope expected_scope = Scope::NewRootScope();
+    Output expected_a = ops::Const(expected_scope.WithOpName("a"), 10.0f, {});
+    Output expected_b = ops::Const(expected_scope.WithOpName("b"), 10.0f, {});
+    Output expected_c =
+        ops::Mul(expected_scope.WithOpName("c"), expected_a, expected_b);
+    TF_ASSERT_OK(expected_scope.ToGraphDef(&expected_graph_def));
+
+    GraphDefEqual(frozen_graph_def, expected_graph_def);
+
+    RunAndCompareFrozenAndUnfrozenGraphs(saved_model_bundle.session.get(),
+                                         frozen_graph_def, "c:0");
+  }
+
+  void TestFreezeGraphWithDependentVariables(bool use_resource) {
+    // Test freezing a graph with variables that are needed by outputs in the
+    // SignatureDef. The variables should be frozen.
+    SavedModelBundle saved_model_bundle;
+    GraphDef graph_def;
+    Scope scope = Scope::NewRootScope();
+    Output a = ops::Const(scope.WithOpName("a"), 10.0f, {});
+    Output read_var;
+    if (use_resource) {
+      Output var =
+          ops::VarHandleOp(scope.WithOpName("var"), DataType::DT_FLOAT, {});
+      read_var = ops::ReadVariableOp(
+          scope.WithOpName("var/Read/ReadVariableOp"), var, DataType::DT_FLOAT);
+      auto assign = ops::AssignVariableOp(scope.WithOpName("assign"), var, a);
+    } else {
+      Output read_var =
+          ops::Variable(scope.WithOpName("var"), {}, DataType::DT_FLOAT);
+      Output assign = ops::Assign(scope.WithOpName("assign"), read_var, a);
+    }
+    Output c = ops::Mul(scope.WithOpName("c"), a, read_var);
+    TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
+    // "c" isnt dependent on the variable, so nothing should be frozen.
+    TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
+        graph_def, {"c:0"}, "assign", &saved_model_bundle));
+
+    GraphDef frozen_graph_def;
+    std::unordered_set<string> inputs;
+    std::unordered_set<string> outputs;
+    TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def,
+                                  &inputs, &outputs));
+
+    // If using normal variables there should be 3 nodes in the resulting
+    // graph_def. If using resource variables there should be 4 nodes in the
+    // resulting graph_def.
+    // In both cases, none should be variables.
+    size_t expected_nodes = use_resource ? 4 : 3;
+    EXPECT_EQ(frozen_graph_def.node_size(), expected_nodes);
+    for (const NodeDef& node : frozen_graph_def.node()) {
+      EXPECT_NE(node.op(), "Variable") << node.name();
+      EXPECT_NE(node.op(), "VariableV2") << node.name();
+      EXPECT_NE(node.op(), "VarHandleOp") << node.name();
+      EXPECT_NE(node.op(), "ReadVariableOp") << node.name();
+    }
+
+    RunAndCompareFrozenAndUnfrozenGraphs(saved_model_bundle.session.get(),
+                                         frozen_graph_def, "c:0");
+  }
+
+  void TestFreezeGraphWithAndWithoutDependentVariables(bool use_resource) {
+    // Test freezing a graph with some variables that are needed and not needed
+    // by
+    // the outputs in the SignatureDef. The resulting graph should only freeze
+    // dependent variables.
+    SavedModelBundle saved_model_bundle;
+    GraphDef graph_def;
+    Scope scope = Scope::NewRootScope();
+    Output a = ops::Const(scope.WithOpName("a"), 10.0f, {});
+    Output read_var;
+
+    if (use_resource) {
+      Output var =
+          ops::VarHandleOp(scope.WithOpName("var"), DataType::DT_FLOAT, {});
+      read_var = ops::ReadVariableOp(
+          scope.WithOpName("var/Read/ReadVariableOp"), var, DataType::DT_FLOAT);
+      auto assign = ops::AssignVariableOp(scope.WithOpName("assign"), var, a);
+      Output var_1 =
+          ops::VarHandleOp(scope.WithOpName("var_1"), DataType::DT_FLOAT, {});
+      Output read_var_1 =
+          ops::ReadVariableOp(scope.WithOpName("var_1/Read/ReadVariableOp"),
+                              var, DataType::DT_FLOAT);
+      auto assign_1 =
+          ops::AssignVariableOp(scope.WithOpName("assign_1"), var_1, a);
+    } else {
+      read_var = ops::Variable(scope.WithOpName("var"), {}, DataType::DT_FLOAT);
+      Output assign = ops::Assign(scope.WithOpName("assign"), read_var, a);
+      Output var_1 =
+          ops::Variable(scope.WithOpName("var_1"), {}, DataType::DT_FLOAT);
+      Output assign_1 = ops::Assign(scope.WithOpName("assign_1"), var_1, a);
+    }
+
+    Output c = ops::Mul(scope.WithOpName("c"), a, read_var);
+    TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
+    // "c" isnt dependent on the variable, so nothing should be frozen.
+    TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
+        graph_def, {"c:0"}, "assign", &saved_model_bundle));
+
+    GraphDef frozen_graph_def;
+    std::unordered_set<string> inputs;
+    std::unordered_set<string> outputs;
+    TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def,
+                                  &inputs, &outputs));
+
+    // There should be 3 nodes in the resulting graph_def, and none should be
+    // variables.
+    size_t expected_nodes = use_resource ? 4 : 3;
+    EXPECT_EQ(frozen_graph_def.node_size(), expected_nodes);
+    for (const NodeDef& node : frozen_graph_def.node()) {
+      EXPECT_NE(node.op(), "Variable") << node.name();
+      EXPECT_NE(node.op(), "VariableV2") << node.name();
+      EXPECT_NE(node.op(), "VarHandleOp") << node.name();
+      EXPECT_NE(node.op(), "ReadVariableOp") << node.name();
+    }
+
+    RunAndCompareFrozenAndUnfrozenGraphs(saved_model_bundle.session.get(),
+                                         frozen_graph_def, "c:0");
   }
 };
 
@@ -196,22 +351,46 @@ TEST_F(FreezeTest, GraphDefWithNoVariables) {
   GraphDefEqual(frozen_graph_def, graph_def);
 }
 
-TEST_F(FreezeTest, GraphDefWithVariablesNotNeededByOutputs) {
-  // Test freezing a graph with variables that are not needed by the outputs in
-  // the SignatureDef. The resulting graph shouldn't be frozen, but
-  // non-dependent nodes should be pruned.
+TEST_F(FreezeTest, GraphDefWithMultiOutputOperation) {
+  // Tensors from operations with multiple outputs get tensor suffixes when used
+  // in input fields of following nodes, i.e. split:0, split:1.
+  // Test that we traverse those correctly.
   SavedModelBundle saved_model_bundle;
   GraphDef graph_def;
   Scope scope = Scope::NewRootScope();
-  Output a = ops::Const(scope.WithOpName("a"), 10.0f, {});
+  Output a = ops::Const(scope.WithOpName("a"), {10.0f, 10.0f}, {2});
+  Output axis = ops::Const(scope.WithOpName("axis"), 0, {});
+  OutputList split = ops::Split(scope.WithOpName("split"), axis, a, 2).output;
+  Output b = ops::Const(scope.WithOpName("b"), 10.0f, {});
+  Output c = ops::Mul(scope.WithOpName("c"), split[1], b);
+  TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
+  TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(graph_def, {"c:0"}, "",
+                                                        &saved_model_bundle));
+
+  GraphDef frozen_graph_def;
+  std::unordered_set<string> inputs;
+  std::unordered_set<string> outputs;
+  TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
+                                &outputs));
+
+  GraphDefEqual(frozen_graph_def, graph_def);
+}
+
+TEST_F(FreezeTest, GraphDefWithControlDependency) {
+  // Inputs that are control dependencies get tensor prefixes,
+  // i.e. ^control_dependency.
+  // Test that we traverse those correctly.
+  SavedModelBundle saved_model_bundle;
+  GraphDef graph_def;
+  Scope scope = Scope::NewRootScope();
+  Output source = ops::Const(scope.WithOpName("source"), 10.0f, {});
+  Output a = ops::Const(scope.WithOpName("a").WithControlDependencies(source),
+                        {10.0f, 10.0f}, {2});
   Output b = ops::Const(scope.WithOpName("b"), 10.0f, {});
   Output c = ops::Mul(scope.WithOpName("c"), a, b);
-  Output var = ops::Variable(scope.WithOpName("var"), {}, DataType::DT_FLOAT);
-  Output assign = ops::Assign(scope.WithOpName("assign"), var, a);
   TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-  // "c" isnt dependent on the variable, so nothing should be frozen.
-  TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
-      graph_def, {"c:0"}, assign.name(), &saved_model_bundle));
+  TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(graph_def, {"c:0"}, "",
+                                                        &saved_model_bundle));
 
   GraphDef frozen_graph_def;
   std::unordered_set<string> inputs;
@@ -219,88 +398,31 @@ TEST_F(FreezeTest, GraphDefWithVariablesNotNeededByOutputs) {
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
 
-  GraphDef expected_graph_def;
-  Scope expected_scope = Scope::NewRootScope();
-  Output expected_a = ops::Const(expected_scope.WithOpName("a"), 10.0f, {});
-  Output expected_b = ops::Const(expected_scope.WithOpName("b"), 10.0f, {});
-  Output expected_c =
-      ops::Mul(expected_scope.WithOpName("c"), expected_a, expected_b);
-  TF_ASSERT_OK(expected_scope.ToGraphDef(&expected_graph_def));
-
-  GraphDefEqual(frozen_graph_def, expected_graph_def);
-
-  RunAndCompareFrozenAndUnfrozenGraphs(saved_model_bundle.session.get(),
-                                       frozen_graph_def, "c:0");
+  GraphDefEqual(frozen_graph_def, graph_def);
 }
 
-TEST_F(FreezeTest, GraphDefWithVariablesNeededByOutputs) {
-  // Test freezing a graph with variables that are needed by outputs in the
-  // SignatureDef. The variables should be frozen.
-  SavedModelBundle saved_model_bundle;
-  GraphDef graph_def;
-  Scope scope = Scope::NewRootScope();
-  Output a = ops::Const(scope.WithOpName("a"), 10.0f, {});
-  Output var = ops::Variable(scope.WithOpName("var"), {}, DataType::DT_FLOAT);
-  Output c = ops::Mul(scope.WithOpName("c"), a, var);
-  Output assign = ops::Assign(scope.WithOpName("assign"), var, a);
-  TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-  // "c" isnt dependent on the variable, so nothing should be frozen.
-  TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
-      graph_def, {"c:0"}, assign.name(), &saved_model_bundle));
-
-  GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
-  TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
-                                &outputs));
-
-  // There should be 3 nodes in the resulting graph_def, and none should be
-  // variables.
-  EXPECT_EQ(frozen_graph_def.node_size(), 3);
-  for (const NodeDef& node : frozen_graph_def.node()) {
-    EXPECT_NE(node.op(), "Variable") << node.name();
-    EXPECT_NE(node.op(), "VariableV2") << node.name();
-  }
-
-  RunAndCompareFrozenAndUnfrozenGraphs(saved_model_bundle.session.get(),
-                                       frozen_graph_def, "c:0");
+TEST_F(FreezeTest, GraphDefWithoutDependentVariables) {
+  TestFreezeGraphWithoutDependentVariables(false);
 }
 
-TEST_F(FreezeTest, GraphDefWithVariablesNeededAndNotNeededByOutputs) {
-  // Test freezing a graph with some variables that are needed and not needed by
-  // the outputs in the SignatureDef. The resulting graph should only freeze
-  // dependent variables.
-  SavedModelBundle saved_model_bundle;
-  GraphDef graph_def;
-  Scope scope = Scope::NewRootScope();
-  Output a = ops::Const(scope.WithOpName("a"), 10.0f, {});
-  Output var = ops::Variable(scope.WithOpName("var"), {}, DataType::DT_FLOAT);
-  Output c = ops::Mul(scope.WithOpName("c"), a, var);
-  Output assign = ops::Assign(scope.WithOpName("assign"), var, a);
-  Output var_1 =
-      ops::Variable(scope.WithOpName("var_1"), {}, DataType::DT_FLOAT);
-  Output assign_1 = ops::Assign(scope.WithOpName("assign_1"), var, a);
-  TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-  // "c" isnt dependent on the variable, so nothing should be frozen.
-  TF_ASSERT_OK(AddGraphDefWithOutputsToSavedModelBundle(
-      graph_def, {"c:0"}, assign.name(), &saved_model_bundle));
+TEST_F(FreezeTest, GraphDefWithoutDependentResourceVariables) {
+  TestFreezeGraphWithoutDependentVariables(true);
+}
 
-  GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
-  TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
-                                &outputs));
+TEST_F(FreezeTest, GraphDefWithDependentVariables) {
+  TestFreezeGraphWithDependentVariables(false);
+}
 
-  // There should be 3 nodes in the resulting graph_def, and none should be
-  // variables.
-  EXPECT_EQ(frozen_graph_def.node_size(), 3);
-  for (const NodeDef& node : frozen_graph_def.node()) {
-    EXPECT_NE(node.op(), "Variable") << node.name();
-    EXPECT_NE(node.op(), "VariableV2") << node.name();
-  }
+TEST_F(FreezeTest, GraphDefWithDependentResourceVariables) {
+  TestFreezeGraphWithDependentVariables(true);
+}
 
-  RunAndCompareFrozenAndUnfrozenGraphs(saved_model_bundle.session.get(),
-                                       frozen_graph_def, "c:0");
+TEST_F(FreezeTest, GraphDefWithAndWithoutDependentVariables) {
+  TestFreezeGraphWithAndWithoutDependentVariables(false);
+}
+
+TEST_F(FreezeTest, GraphDefWithAndWithoutDependentResourceVariables) {
+  TestFreezeGraphWithAndWithoutDependentVariables(true);
 }
 
 }  // namespace

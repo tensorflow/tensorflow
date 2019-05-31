@@ -66,8 +66,11 @@ class SparseSliceOp : public OpKernel {
                     "Expected size to be a vector of length ", input_dims,
                     " but got length ", input_size.NumElements()));
 
-    sparse::SparseTensor sparse_tensor(input_indices, input_values,
-                                       TensorShape(input_shape.vec<int64>()));
+    sparse::SparseTensor sparse_tensor;
+    OP_REQUIRES_OK(context,
+                   sparse::SparseTensor::Create(
+                       input_indices, input_values,
+                       TensorShape(input_shape.vec<int64>()), &sparse_tensor));
 
     const gtl::ArraySlice<int64> start(input_start.flat<int64>().data(),
                                        input_dims);

@@ -26,13 +26,13 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/cuda.h"
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -137,8 +137,10 @@ class WhereCPUOp : public OpKernel {
     const int input_dims = input.dims();
 
     Tensor num_true;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(DT_INT64, TensorShape({}), &num_true));
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_INT64, TensorShape({}),
+                                                   &num_true, attr));
     auto num_true_t = num_true.scalar<int64>();
 
     Status s = functor::NumTrue<CPUDevice, T, int64>::Compute(
@@ -278,8 +280,7 @@ class WhereGPUOp : public AsyncOpKernel {
 
     auto num_true_t = num_true.scalar<Tindex>();
 
-    perftools::gputools::DeviceMemoryBase num_true_ptr(
-        static_cast<void*>(num_true_t.data()));
+    se::DeviceMemoryBase num_true_ptr(static_cast<void*>(num_true_t.data()));
     // Push kernel to stream to get number of true elements.
     const GPUDevice& d = context->eigen_device<GPUDevice>();
     Status s = functor::NumTrue<GPUDevice, T, Tindex>::Compute(
@@ -369,6 +370,12 @@ class WhereGPUOp : public AsyncOpKernel {
       Name("Where").Device(DEVICE_GPU).TypeConstraint<T>("T"), WhereGPUOp<T>);
 
 TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
+REGISTER_KERNEL_BUILDER(Name("Where")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("input")
+                            .HostMemory("index"),
+                        WhereCPUOp<int32>);
 
 #undef REGISTER_GPU_WHERE_OP
 

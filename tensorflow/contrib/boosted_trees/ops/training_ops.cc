@@ -56,6 +56,8 @@ REGISTER_OP("GrowTreeEnsemble")
     .Input("next_stamp_token: int64")
     .Input("learning_rate: float")
     .Input("dropout_seed: int64")
+    .Input("max_tree_depth: int32")
+    .Input("weak_learner_type: int32")
     .Input("partition_ids: num_handlers * int32")
     .Input("gains: num_handlers * float")
     .Input("splits: num_handlers * string")
@@ -67,6 +69,8 @@ REGISTER_OP("GrowTreeEnsemble")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused_input));
       // Dropout seed.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_input));
+      // Maximum tree depth.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused_input));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -79,6 +83,7 @@ tree_ensemble_handle: Handle to the ensemble variable.
 stamp_token: Stamp token for validating operation consistency.
 next_stamp_token: Stamp token to be used for the next iteration.
 learning_rate: Scalar learning rate.
+weak_learner_type: The type of weak learner to use.
 partition_ids: List of Rank 1 Tensors containing partition Id per candidate.
 gains: List of Rank 1 Tensors containing gains per candidate.
 splits: List of Rank 1 Tensors containing serialized SplitInfo protos per candidate.

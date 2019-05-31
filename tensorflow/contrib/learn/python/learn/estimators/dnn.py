@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Deep Neural Network estimators."""
+"""Deep Neural Network estimators (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +28,6 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -33,11 +37,12 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
-from tensorflow.python.feature_column import feature_column as fc_core
+from tensorflow.python.feature_column import feature_column_lib as fc_core
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training_util
 
 # The default learning rate of 0.05 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
@@ -145,10 +150,10 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
         "input_from_feature_columns",
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as input_layer_scope:
-      if all([
+      if all(
           isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
           for fc in feature_columns
-      ]):
+      ):
         net = layers.input_from_feature_columns(
             columns_to_tensors=features,
             feature_columns=feature_columns,
@@ -212,6 +217,10 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
 class DNNClassifier(estimator.Estimator):
   """A classifier for TensorFlow DNN models.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Example:
 
   ```python
@@ -232,7 +241,7 @@ class DNNClassifier(estimator.Estimator):
   estimator = DNNClassifier(
       feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       hidden_units=[1024, 512, 256],
-      optimizer=tf.train.ProximalAdagradOptimizer(
+      optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
       ))
@@ -521,6 +530,10 @@ class DNNClassifier(estimator.Estimator):
 class DNNRegressor(estimator.Estimator):
   """A regressor for TensorFlow DNN models.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Example:
 
   ```python
@@ -541,7 +554,7 @@ class DNNRegressor(estimator.Estimator):
   estimator = DNNRegressor(
       feature_columns=[sparse_feature_a, sparse_feature_b],
       hidden_units=[1024, 512, 256],
-      optimizer=tf.train.ProximalAdagradOptimizer(
+      optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
       ))
@@ -795,6 +808,10 @@ class DNNRegressor(estimator.Estimator):
 
 class DNNEstimator(estimator.Estimator):
   """A Estimator for TensorFlow DNN models with user specified _Head.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Example:
 

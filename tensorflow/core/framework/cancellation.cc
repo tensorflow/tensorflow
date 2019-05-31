@@ -27,6 +27,12 @@ CancellationManager::CancellationManager()
       is_cancelled_(false),
       next_cancellation_token_(0) {}
 
+void CancellationManager::Reset() {
+  mutex_lock l(mu_);
+  is_cancelling_ = false;
+  is_cancelled_.store(false);
+}
+
 void CancellationManager::StartCancel() {
   gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
   {
@@ -89,6 +95,20 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
   }
 }
 
-CancellationManager::~CancellationManager() { StartCancel(); }
+bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
+  mutex_lock lock(mu_);
+  if (is_cancelled_ || is_cancelling_) {
+    return false;
+  } else {
+    callbacks_.erase(token);
+    return true;
+  }
+}
+
+CancellationManager::~CancellationManager() {
+  if (!callbacks_.empty()) {
+    StartCancel();
+  }
+}
 
 }  // end namespace tensorflow

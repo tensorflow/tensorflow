@@ -22,7 +22,6 @@
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/logging.h"
 
-
 namespace tensorflow {
 
 using tensorforest::CheckTensorBounds;
@@ -38,20 +37,19 @@ class ScatterAddNdim : public OpKernel {
 
     if (indices_tensor.shape().dim_size(0) > 0) {
       OP_REQUIRES(context, indices_tensor.shape().dims() == 2,
-                  errors::InvalidArgument(
-                      "indices should be two-dimensional"));
+                  errors::InvalidArgument("indices should be two-dimensional"));
       const int32 delta_dims = deltas_tensor.shape().dims();
       OP_REQUIRES(
           context,
           indices_tensor.shape().dim_size(1) + delta_dims ==
-          input_tensor.shape().dims() + 1,
+              input_tensor.shape().dims() + 1,
           errors::InvalidArgument(
               "Number of indices dimensions should be the same as input "
               "rank."));
       OP_REQUIRES(
           context,
           indices_tensor.shape().dim_size(0) ==
-          deltas_tensor.shape().dim_size(0),
+              deltas_tensor.shape().dim_size(0),
           errors::InvalidArgument(
               "Number of updates should be same as number of indices."));
     } else {
@@ -68,8 +66,8 @@ class ScatterAddNdim : public OpKernel {
     const auto indices = indices_tensor.tensor<int32, 2>();
     const auto deltas = deltas_tensor.unaligned_flat<float>();
 
-    const int32 num_dims = static_cast<int32>(
-        indices_tensor.shape().dim_size(1));
+    const int32 num_dims =
+        static_cast<int32>(indices_tensor.shape().dim_size(1));
 
     // Figure out if indices don't specify a complete position in the
     // input tensor.
@@ -80,10 +78,9 @@ class ScatterAddNdim : public OpKernel {
 
     // Calculate index multipliers.
     std::vector<int32> multipliers;
-    OP_REQUIRES(
-        context, input.size() < std::numeric_limits<int32>::max(),
-        errors::InvalidArgument(
-            "Input must contain less than 2^31 total elements"));
+    OP_REQUIRES(context, input.size() < std::numeric_limits<int32>::max(),
+                errors::InvalidArgument(
+                    "Input must contain less than 2^31 total elements"));
     int32 last_size = static_cast<int32>(input.size());
 
     for (int32 j = 0; j < num_dims; j++) {

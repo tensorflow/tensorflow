@@ -12,17 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
 
 #include <vector>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
+namespace data {
 
 // Creates a dataset representing an eagerly-collected window of elements.
 //
@@ -31,7 +32,7 @@ namespace tensorflow {
 //
 // This dataset is constructed internally for use in datasets that
 // build nested dataset expressions (e.g. the reducer function for
-// GroupByBatchDataset). It efficiently supports multiple iterators on
+// GroupByWindowDataset). It efficiently supports multiple iterators on
 // the same window without recomputation.
 //
 // REQUIRES: `output_types` must match the types of the respective
@@ -43,6 +44,7 @@ Status NewWindowDataset(std::vector<std::vector<Tensor>> elements,
                         std::vector<PartialTensorShape> output_shapes,
                         DatasetBase** out_dataset);
 
+}  // namespace data
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_

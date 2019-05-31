@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -43,7 +45,7 @@ namespace {
 
 // Compiles the XLA computation into executable code.
 Status CompileXla(xla::CompileOnlyClient* client,
-                  const xla::Computation& computation,
+                  const xla::XlaComputation& computation,
                   const xla::cpu::CpuAotCompilationOptions& aot_opts,
                   CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
@@ -54,17 +56,23 @@ Status CompileXla(xla::CompileOnlyClient* client,
     return errors::Unknown("Couldn't get XLA program shape: ",
                            pshape_or.status().error_message());
   }
-  compile_result->program_shape = *pshape_or.ValueOrDie();
-  xla::ProgramShape* pshape = &compile_result->program_shape;
-  std::vector<const xla::Shape*> arg_layouts;
-  arg_layouts.reserve(pshape->parameters_size());
+  compile_result->program_shape = pshape_or.ValueOrDie()->ToProto();
+  xla::ProgramShapeProto* pshape = &compile_result->program_shape;
+
+  // AotXlaComputationInstance::argument_layouts is a vector of Shape
+  // pointers. Accumulate the Shape objects themselves in a separate vector
+  // while building the vector of pointers.
+  std::vector<const xla::Shape*> arg_layout_ptrs(pshape->parameters_size());
+  std::vector<xla::Shape> arg_layouts(pshape->parameters_size());
   for (int i = 0; i < pshape->parameters_size(); ++i) {
-    arg_layouts.push_back(pshape->mutable_parameters(i));
+    arg_layouts[i] = xla::Shape(*pshape->mutable_parameters(i));
+    arg_layout_ptrs[i] = &arg_layouts[i];
   }
-  xla::CompileOnlyClient::AotComputationInstance instance;
+  xla::CompileOnlyClient::AotXlaComputationInstance instance;
   instance.computation = &computation;
-  instance.argument_layouts = std::move(arg_layouts);
-  instance.result_layout = &pshape->result();
+  instance.argument_layouts = std::move(arg_layout_ptrs);
+  xla::Shape result_shape(pshape->result());
+  instance.result_layout = &result_shape;
   xla::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
       aot_or = client->CompileAheadOfTime({instance}, aot_opts);
   if (!aot_or.ok()) {
@@ -87,29 +95,32 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   // Converts the graph into an XLA computation, and compiles the
   // computation.
   // TODO(toddw): Should we let the user pick the XLA cpu vs. gpu client?
-  namespace gpu = perftools::gputools;
-  gpu::Platform* cpu_platform =
-      gpu::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
+  se::Platform* cpu_platform =
+      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
   xla::CompileOnlyClient* client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
           .ValueOrDie();
-  xla::Computation computation;
+  xla::XlaComputation computation;
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToXla(graph_def, config, client, &computation));
   if (!flags.out_session_module.empty()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::SessionModule> module,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
                         computation.Snapshot());
-    // Serialize the SessionModule deterministically so that all the outputs of
-    // a tf_library genrule are deterministic.
-    string proto;
-    TF_RET_CHECK(SerializeToStringDeterministic(*module, &proto));
+    // Serialize the HloSnapshot deterministically so that all the outputs of a
+    // tf_library genrule are deterministic.
+    const size_t size = module->ByteSizeLong();
+    auto serialized = absl::make_unique<char[]>(size);
+    TF_RET_CHECK(
+        SerializeToBufferDeterministic(*module, serialized.get(), size));
     TF_RETURN_IF_ERROR(
-        WriteStringToFile(Env::Default(), flags.out_session_module, proto));
+        WriteStringToFile(Env::Default(), flags.out_session_module,
+                          absl::string_view(serialized.get(), size)));
   }
   xla::cpu::CpuAotCompilationOptions aot_opts(
       flags.target_triple, flags.target_cpu, flags.target_features,
       flags.entry_point,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
+
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 

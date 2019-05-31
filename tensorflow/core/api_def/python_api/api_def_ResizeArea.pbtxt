@@ -1,6 +1,4 @@
 op {
   graph_op_name: "ResizeArea"
-  endpoint {
-    name: "image.resize_area"
-  }
+  visibility: HIDDEN
 }

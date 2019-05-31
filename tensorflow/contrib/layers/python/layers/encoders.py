@@ -84,8 +84,7 @@ def bow_encoder(ids,
       if isinstance(ids, sparse_tensor.SparseTensor):
         raise TypeError('ids are expected to be dense Tensor, got: %s', ids)
       return math_ops.reduce_mean(
-          embedding_ops.embedding_lookup(embeddings, ids),
-          reduction_indices=1)
+          embedding_ops.embedding_lookup(embeddings, ids), axis=1)
 
 
 def embed_sequence(ids,
@@ -125,7 +124,7 @@ def embed_sequence(ids,
       `reuse` is `None` or `False`.
   """
   if not (reuse or (vocab_size and embed_dim)):
-    raise ValueError('Must specify vocab size and embedding dimension when not'
+    raise ValueError('Must specify vocab size and embedding dimension when not '
                      'reusing. Got vocab_size=%s and embed_dim=%s' % (
                          vocab_size, embed_dim))
   with variable_scope.variable_scope(

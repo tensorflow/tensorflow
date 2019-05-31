@@ -1,7 +1,5 @@
 # TensorFlow code for training random forests.
 
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
@@ -12,23 +10,12 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "kernels/v4/*",
-            "proto/*",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
 
 # ---------------------------------- V2 ops ------------------------------------------#
 filegroup(
@@ -237,7 +224,6 @@ tf_kernel_library(
         ":model_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )
@@ -333,7 +319,6 @@ tf_kernel_library(
         ":stats_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )
@@ -452,6 +437,7 @@ py_test(
     name = "eval_metrics_test",
     size = "small",
     srcs = ["client/eval_metrics_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":eval_metrics",
@@ -477,8 +463,12 @@ py_test(
     name = "scatter_add_ndim_op_test",
     size = "small",
     srcs = ["python/kernel_tests/scatter_add_ndim_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_pip_gpu"],
+    tags = [
+        "no_gpu",
+        "no_pip_gpu",
+    ],
     deps = [
         ":tensor_forest_ops_py",
         "//tensorflow/python:framework_test_lib",
@@ -497,6 +487,7 @@ py_library(
         ":tensor_forest_v4_ops_py",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_py",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -514,6 +505,7 @@ py_test(
     name = "tensor_forest_test",
     size = "small",
     srcs = ["python/tensor_forest_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_py",
@@ -530,6 +522,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
+        "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
@@ -550,9 +543,11 @@ py_test(
     name = "random_forest_test",
     size = "medium",
     srcs = ["client/random_forest_test.py"],
+    python_version = "PY2",
+    shard_count = 6,
     srcs_version = "PY2AND3",
     tags = [
-        "no_windows",
+        "noasan",
         "nomac",  # b/63258195
         "notsan",
     ],

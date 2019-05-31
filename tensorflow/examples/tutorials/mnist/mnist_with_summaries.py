@@ -111,12 +111,12 @@ def train():
   with tf.name_scope('cross_entropy'):
     # The raw formulation of cross-entropy,
     #
-    # tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(tf.softmax(y)),
+    # tf.reduce_mean(-tf.reduce_sum(y_ * tf.math.log(tf.softmax(y)),
     #                               reduction_indices=[1]))
     #
     # can be numerically unstable.
     #
-    # So here we use tf.losses.sparse_softmax_cross_entropy on the
+    # So here we use tf.compat.v1.losses.sparse_softmax_cross_entropy on the
     # raw logit outputs of the nn_layer above, and then average across
     # the batch.
     with tf.name_scope('total'):
@@ -183,7 +183,8 @@ def main(_):
   if tf.gfile.Exists(FLAGS.log_dir):
     tf.gfile.DeleteRecursively(FLAGS.log_dir)
   tf.gfile.MakeDirs(FLAGS.log_dir)
-  train()
+  with tf.Graph().as_default():
+    train()
 
 
 if __name__ == '__main__':

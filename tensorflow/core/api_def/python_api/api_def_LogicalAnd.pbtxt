@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "LogicalAnd"
+  endpoint {
+    name: "math.logical_and"
+  }
+  endpoint {
+    name: "logical_and"
+  }
+}

@@ -22,6 +22,10 @@ message TreeConstraintsConfig {
 
   // Min hessian weight per node.
   float min_node_weight = 2;
+
+  // Maximum number of unique features used in the tree. Zero means there is no
+  // limit.
+  int64 max_number_of_unique_feature_columns = 3;
 }
 
 // LearningRateConfig describes all supported learning rate tuners.
@@ -104,6 +108,11 @@ message LearnerConfig {
     DIAGONAL_HESSIAN = 3;
   }
 
+  enum WeakLearnerType {
+    NORMAL_DECISION_TREE = 0;
+    OBLIVIOUS_DECISION_TREE = 1;
+  }
+
   // Number of classes.
   uint32 num_classes = 1;
 
@@ -137,4 +146,7 @@ message LearnerConfig {
   // If you want to average the ensembles (for regularization), provide the
   // config below.
   AveragingConfig averaging_config = 11;
+
+  // By default we use NORMAL_DECISION_TREE as weak learner.
+  WeakLearnerType weak_learner_type = 12;
 }

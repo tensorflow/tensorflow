@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Enum for model prediction keys.
+"""Enum for model prediction keys (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 This file is obsoleted in the move of Estimator to core.
 """
@@ -22,6 +26,8 @@ from __future__ import print_function
 
 
 class PredictionKey(object):
+  """THIS CLASS IS DEPRECATED."""
+
   CLASSES = "classes"
   PROBABILITIES = "probabilities"
   LOGITS = "logits"

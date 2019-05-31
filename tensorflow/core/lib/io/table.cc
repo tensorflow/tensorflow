@@ -133,7 +133,6 @@ Status Table::InternalGet(const StringPiece& k, void* arg,
   Iterator* iiter = rep_->index_block->NewIterator();
   iiter->Seek(k);
   if (iiter->Valid()) {
-    BlockHandle handle;
     Iterator* block_iter = BlockReader(this, iiter->value());
     block_iter->Seek(k);
     if (block_iter->Valid()) {

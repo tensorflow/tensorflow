@@ -19,19 +19,23 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
 #if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA
@@ -187,14 +191,14 @@ struct LaunchLRN<GPUDevice, T> {
     const int cols = static_cast<int>(in.dim_size(2));
     const int depth = static_cast<int>(in.dim_size(3));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    se::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+        .set_layout(se::dnn::DataLayout::kBatchYXDepth);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    se::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -229,10 +233,11 @@ class LRNOp : public OpKernel {
   explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
     OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
@@ -247,9 +252,10 @@ class LRNOp : public OpKernel {
     const Tensor& in = context->input(0);
     OP_REQUIRES(context, in.dims() == 4,
                 errors::InvalidArgument("in must be 4-dimensional"));
-    OP_REQUIRES(context, FastBoundsCheck(in.NumElements(),
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("argument to LRN too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(in.NumElements(), std::numeric_limits<int>::max()),
+        errors::InvalidArgument("argument to LRN too large"));
     // Cast to platform-specific int to avoid conversion warnings.
     const int batch = static_cast<int>(in.dim_size(0));
     const int rows = static_cast<int>(in.dim_size(1));
@@ -306,7 +312,11 @@ struct LaunchLRNGrad;
 template <typename T>
 struct LaunchLRNGrad<CPUDevice, T> {
   LaunchLRNGrad(int depth_radius, T bias, T alpha, T beta)
-      : depth_radius_(depth_radius), bias_(bias), alpha_(alpha), beta_(beta) {}
+      : depth_radius_(depth_radius),
+        bias_(bias),
+        alpha_(alpha),
+        beta_(beta),
+        alpha_beta_2_(T(-2) * alpha * beta) {}
 
   void launch(OpKernelContext* context, OpKernel* kernel,
               const Tensor& in_grads, const Tensor& in_image,
@@ -352,13 +362,15 @@ struct LaunchLRNGrad<CPUDevice, T> {
           }
           norm = alpha_ * norm + bias_;
           DCHECK_GT(norm, T(1e-6));
+          T pre_computed_pow = Eigen::numext::pow(norm, -beta_);
+          T activations_ab2 = alpha_beta_2_ * activations(i, j);
+          T gs = grads_shaped(i, j);
           for (int64 k = depth_begin; k < depth_end; ++k) {
-            T dyi = T(-2) * alpha_ * beta_ * in_shaped(i, k) *
-                    activations(i, j) / norm;
+            T dyi = in_shaped(i, k) * activations_ab2 / norm;
             if (k == j) {
-              dyi += Eigen::numext::pow(norm, -beta_);
+              dyi += pre_computed_pow;
             }
-            dyi *= grads_shaped(i, j);
+            dyi *= gs;
             const_cast<typename TTypes<T, 2>::Tensor&>(out_shaped)(i, k) += dyi;
           }
         }
@@ -373,6 +385,7 @@ struct LaunchLRNGrad<CPUDevice, T> {
   T bias_;
   T alpha_;
   T beta_;
+  T alpha_beta_2_;
 };
 
 #if GOOGLE_CUDA
@@ -402,14 +415,14 @@ struct LaunchLRNGrad<GPUDevice, T> {
     const int64 cols = in_grads.dim_size(2);
     const int64 depth = in_grads.dim_size(3);
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    se::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+        .set_layout(se::dnn::DataLayout::kBatchYXDepth);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    se::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -448,10 +461,11 @@ class LRNGradOp : public OpKernel {
   explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
     OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));

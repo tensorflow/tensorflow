@@ -1,0 +1,24 @@
+path: "tensorflow.lite.TocoConverter"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.lite.TocoConverter\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "from_frozen_graph"
+    argspec: "args=[\'cls\', \'graph_def_file\', \'input_arrays\', \'output_arrays\', \'input_shapes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_keras_model_file"
+    argspec: "args=[\'cls\', \'model_file\', \'input_arrays\', \'input_shapes\', \'output_arrays\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_saved_model"
+    argspec: "args=[\'cls\', \'saved_model_dir\', \'input_arrays\', \'input_shapes\', \'output_arrays\', \'tag_set\', \'signature_key\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_session"
+    argspec: "args=[\'cls\', \'sess\', \'input_tensors\', \'output_tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+}

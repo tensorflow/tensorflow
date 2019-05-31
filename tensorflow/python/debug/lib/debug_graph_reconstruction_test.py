@@ -44,7 +44,9 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
 
   def _no_rewrite_session_config(self):
     rewriter_config = rewriter_config_pb2.RewriterConfig(
-        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        pin_to_host_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        min_graph_nodes=-1)
     graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
     return config_pb2.ConfigProto(graph_options=graph_options)
 
@@ -124,8 +126,8 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
       u = variables.Variable([12.0], name="u")
       v = variables.Variable([30.0], name="v")
       w = math_ops.add(u, v, name="w")
-      sess.run(u.initializer)
-      sess.run(v.initializer)
+      self.evaluate(u.initializer)
+      self.evaluate(v.initializer)
 
       self._compareOriginalAndReconstructedGraphDefs(
           sess, w, expected_output=[42.0])
@@ -137,7 +139,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
         b = math_ops.add(a, a, name="b")
       with ops.control_dependencies([a, b]):
         c = math_ops.multiply(b, b, name="c")
-      sess.run(a.initializer)
+      self.evaluate(a.initializer)
 
       self._compareOriginalAndReconstructedGraphDefs(
           sess, c, expected_output=400.0)
@@ -148,14 +150,14 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
       y = variables.Variable(20.0, name="y")
       cond = control_flow_ops.cond(
           x > y, lambda: math_ops.add(x, 1), lambda: math_ops.add(y, 1))
-      sess.run(x.initializer)
-      sess.run(y.initializer)
+      self.evaluate(x.initializer)
+      self.evaluate(y.initializer)
 
       self._compareOriginalAndReconstructedGraphDefs(
           sess, cond, expected_output=21.0)
 
   def testReconstructGraphWithWhileLoop(self):
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       loop_body = lambda i: math_ops.add(i, 2)
       loop_cond = lambda i: math_ops.less(i, 16)
       i = constant_op.constant(10, name="i")
@@ -171,8 +173,8 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
       toy_loss = x * (u - v)
       train_op = gradient_descent.GradientDescentOptimizer(
           learning_rate=0.1).minimize(toy_loss, name="train_op")
-      sess.run(u.initializer)
-      sess.run(v.initializer)
+      self.evaluate(u.initializer)
+      self.evaluate(v.initializer)
 
       self._compareOriginalAndReconstructedGraphDefs(sess, train_op)
 

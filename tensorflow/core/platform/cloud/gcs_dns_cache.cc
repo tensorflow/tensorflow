@@ -18,9 +18,9 @@ limitations under the License.
 #include <arpa/inet.h>
 #include <netdb.h>
 #else
+#include <Windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <Windows.h>
 #endif
 #include <sys/types.h>
 
@@ -71,8 +71,8 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
     addresses_ = ResolveNames(kCachedDomainNames);
 
     // Note: we opt to use a thread instead of a delayed closure.
-    worker_.reset(env_->StartThread(
-        {}, "gcs_dns_worker", std::bind(&GcsDnsCache::WorkerThread, this)));
+    worker_.reset(env_->StartThread({}, "gcs_dns_worker",
+                                    [this]() { return WorkerThread(); }));
     started_ = true;
   }
 

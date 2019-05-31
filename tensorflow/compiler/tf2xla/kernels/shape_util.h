@@ -31,4 +31,4 @@ Status TensorShapeToConstant(const TensorShape& input_shape,
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_TF2XLA_KERNELS_SHAPE_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_SHAPE_UTIL_H_

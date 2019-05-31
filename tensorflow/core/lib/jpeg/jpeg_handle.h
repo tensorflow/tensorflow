@@ -16,8 +16,8 @@ limitations under the License.
 // This file declares the functions and structures for memory I/O with libjpeg
 // These functions are not meant to be used directly, see jpeg_mem.h instead.
 
-#ifndef TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
-#define TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
+#ifndef TENSORFLOW_CORE_LIB_JPEG_JPEG_HANDLE_H_
+#define TENSORFLOW_CORE_LIB_JPEG_JPEG_HANDLE_H_
 
 #include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/types.h"
@@ -57,4 +57,4 @@ void SetDest(j_compress_ptr cinfo, void *buffer, int bufsize,
 }  // namespace jpeg
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_JPEG_JPEG_HANDLE_H_
+#endif  // TENSORFLOW_CORE_LIB_JPEG_JPEG_HANDLE_H_

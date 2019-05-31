@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
-#include <unordered_map>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -69,7 +69,7 @@ class UniqueOp : public OpKernel {
                      axis_tensor.dtype() == DT_INT64),
                     errors::InvalidArgument(
                         "axis tensor should be int32 or int64, but got ",
-                        axis_tensor.dtype()));
+                        DataTypeString(axis_tensor.dtype())));
         if (axis_tensor.dtype() == DT_INT32) {
           axis = internal::SubtleMustCopy(axis_tensor.scalar<int32>()());
         } else {
@@ -106,9 +106,9 @@ class UniqueOp : public OpKernel {
       auto Tin = input.flat<T>();
       const int64 N = static_cast<int64>(Tin.size());
 
-      std::unordered_map<T, TIndex> uniq;
+      absl::flat_hash_map<T, TIndex> uniq;
       uniq.reserve(2 * N);
-      for (int64 i = 0, j = 0; i < N; ++i) {
+      for (Eigen::Index i = 0, j = 0; i < N; ++i) {
         auto it = uniq.insert(std::make_pair(Tin(i), j));
         idx_vec(i) = it.first->second;
         if (it.second) {
@@ -131,19 +131,20 @@ class UniqueOp : public OpKernel {
       // General implementation when unique is run over multiple elements.
       auto Tin = input.shaped<T, 3>(new_sizes);
 
-      auto hash_fn = [&Tin](const int64& key) {
+      auto hash_fn = [&Tin](const Eigen::Index& key) {
         size_t h = 0;
-        for (int64 i = 0; i < Tin.dimension(0); i++) {
-          for (int64 j = 0; j < Tin.dimension(2); j++) {
+        for (Eigen::Index i = 0; i < Tin.dimension(0); i++) {
+          for (Eigen::Index j = 0; j < Tin.dimension(2); j++) {
             h = Hash64Combine(h, hash<T>{}(Tin(i, key, j)));
           }
         }
         return h;
       };
 
-      auto equal_to_fn = [&Tin](const int64& lhs, const int64& rhs) {
-        for (int64 i = 0; i < Tin.dimension(0); i++) {
-          for (int64 j = 0; j < Tin.dimension(2); j++) {
+      auto equal_to_fn = [&Tin](const Eigen::Index& lhs,
+                                const Eigen::Index& rhs) {
+        for (Eigen::Index i = 0; i < Tin.dimension(0); i++) {
+          for (Eigen::Index j = 0; j < Tin.dimension(2); j++) {
             if (Tin(i, lhs, j) != Tin(i, rhs, j)) {
               return false;
             }
@@ -152,7 +153,8 @@ class UniqueOp : public OpKernel {
         return true;
       };
 
-      std::unordered_map<int64, int64, decltype(hash_fn), decltype(equal_to_fn)>
+      absl::flat_hash_map<int64, int64, decltype(hash_fn),
+                          decltype(equal_to_fn)>
           uniq(0, hash_fn, equal_to_fn);
 
       uniq.reserve(2 * Tin.dimension(1));
@@ -220,6 +222,16 @@ class UniqueOp : public OpKernel {
                               .TypeConstraint<int32>("out_idx"), \
                           UniqueOp<type, int32>)                 \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int64>("out_idx"), \
+                          UniqueOp<type, int64>);                \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
+                              .Device(DEVICE_CPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("out_idx"), \
+                          UniqueOp<type, int32>)                 \
+  REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \

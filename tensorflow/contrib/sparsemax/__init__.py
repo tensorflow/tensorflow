@@ -14,7 +14,7 @@
 # ==============================================================================
 """Module that implements sparsemax and sparsemax loss, see [1].
 
-[1] https://arxiv.org/abs/1602.02068
+[1]: https://arxiv.org/abs/1602.02068
 
 ## Sparsemax
 

@@ -1,0 +1,5 @@
+platform :ios, '8.0'
+inhibit_all_warnings!
+
+target 'tflite_simple_example'
+       pod 'TensorFlowLite', '1.13.1'

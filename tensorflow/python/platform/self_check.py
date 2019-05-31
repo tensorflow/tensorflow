@@ -78,7 +78,7 @@ def preload_check():
               "Could not find %r. TensorFlow requires that this DLL be "
               "installed in a directory that is named in your %%PATH%% "
               "environment variable. Download and install CUDA %s from "
-              "this URL: https://developer.nvidia.com/cuda-toolkit"
+              "this URL: https://developer.nvidia.com/cuda-90-download-archive"
               % (build_info.cudart_dll_name, build_info.cuda_version_number))
 
       if hasattr(build_info, "cudnn_dll_name") and hasattr(

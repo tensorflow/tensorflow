@@ -131,6 +131,7 @@ class QuantizeV2Op : public OpKernel {
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
+    typename TTypes<T>::Vec o = output->template flat<T>();
     if (mode_ == QUANTIZE_MODE_MIN_COMBINED) {
       const float scale_factor =
           (static_cast<double>(std::numeric_limits<T>::max()) -
@@ -147,7 +148,6 @@ class QuantizeV2Op : public OpKernel {
       // semantic of std::round, which implements "round-half-away-zero",
       // e.g., -5.5 gets rounded to -6, -5.4 goes to -5, 5.4 goes to 5,
       // and 5.5 goes to 6.
-      typename TTypes<T>::Vec o = output->template flat<T>();
       bool is_signed = std::is_signed<T>::value;
       if (is_signed) {
         // The slow path.
@@ -180,29 +180,20 @@ class QuantizeV2Op : public OpKernel {
             output);
       }
     } else if (mode_ == QUANTIZE_MODE_SCALED) {
-      // The quantization logic for mode SCALED matches that of
-      // QuantizeAndDequantizeV2 and QuantizeAndDequantizeV3.
-      typename TTypes<T>::Vec o = output->template flat<T>();
-      static constexpr int num_bits = sizeof(T) * 8;
-      const float max_abs = std::max(std::abs(min_range), std::abs(max_range));
-      const bool is_signed = std::is_signed<T>::value;
-      float target_range;
-      if (is_signed) {
-        max_range = max_abs;
-        min_range = -max_abs;
-        // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
-        // example, if it is 8 bits, we have the range [-127, 127]. So for input
-        // range of [-x, x], the scale should be 254/(2*x).
-        target_range = static_cast<float>((uint64_t{1} << (num_bits - 1)) - 1);
-      } else {
-        max_range = max_abs;
-        min_range = 0.0;
-        // If it is unsigned and num_bits == 8, the range with 8 bits is [0,
-        // 255].  If the input range is [0, x], then the scale is x/255 instead
-        // of 254 as in the case above.
-        target_range = static_cast<float>((uint64_t{1} << num_bits) - 1);
-      }
-      const float scale_factor = target_range / max_abs;
+      const int min_output_value = std::numeric_limits<T>::min();
+      const int max_output_value = std::numeric_limits<T>::max();
+      const float scale_factor_from_min_side =
+          (min_output_value * min_range > 0)
+              ? min_output_value / min_range
+              : std::numeric_limits<float>::max();
+      const float scale_factor_from_max_side =
+          (max_output_value * max_range > 0)
+              ? max_output_value / max_range
+              : std::numeric_limits<float>::max();
+      const float scale_factor =
+          std::min(scale_factor_from_min_side, scale_factor_from_max_side);
+      min_range = min_output_value / scale_factor;
+      max_range = max_output_value / scale_factor;
       if (round_mode_ == ROUND_HALF_TO_EVEN) {
         // scalar_round_op_google implements "round-half-to-even".
         o.device(ctx->template eigen_device<Device>()) =

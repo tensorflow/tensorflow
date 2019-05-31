@@ -45,6 +45,9 @@ def get_json(url):
 
 def get_commit_id(build_info):
   """Fetch the git commit id from the build info json object."""
+  release_commit_id = build_info.get('build_commit_id')
+  if release_commit_id:
+    return release_commit_id
   actions = build_info.get('actions')
   build_data = next(
       a for a in actions
@@ -83,32 +86,15 @@ def read_template(path):
 def main():
   args = get_args()
 
-  # Artifacts are downloaded from the ci build. A SNAPSHOT release is
-  # associated with artifacts from the last successful nightly build. Otherwise,
-  # it comes from the officially blessed release artifacts.
-  if args.version.endswith('SNAPSHOT'):
-    info_url = ('https://ci.tensorflow.org/view/Nightly/job/nightly-android'
-                '/lastSuccessfulBuild/api/json')
-    aar_url = None
-    build_type = 'nightly-android'
-  else:
-    release_prefix = 'https://storage.googleapis.com/tensorflow/libtensorflow'
-    info_url = '%s/android_buildinfo-%s.json' % (release_prefix, args.version)
-    aar_url = '%s/tensorflow-%s.aar' % (release_prefix, args.version)
-    build_type = 'release-matrix-android'
+  release_prefix = 'https://storage.googleapis.com/tensorflow/libtensorflow'
+  info_url = '%s/android_buildinfo-%s.json' % (release_prefix, args.version)
+  aar_url = '%s/tensorflow-%s.aar' % (release_prefix, args.version)
+  build_type = 'release-android'
 
   # Retrieve build information
   build_info = get_json(info_url)
 
   # Check all required build info is present
-  if build_info.get('result') != 'SUCCESS':
-    raise ValueError('Invalid json: %s' % build_info)
-  build_url = build_info.get('url')
-  if not build_url:
-    raise ValueError('Missing url: %s' % build_info)
-  build_number = build_info.get('number')
-  if not build_number:
-    raise ValueError('Missing build number: %s' % build_info)
   build_commit_id = get_commit_id(build_info)
   if not build_commit_id:
     raise ValueError('Missing commit id: %s' % build_info)
@@ -119,9 +105,7 @@ def main():
     f.write(
         template.substitute({
             'build_commit_id': build_commit_id,
-            'build_number': build_number,
             'build_type': build_type,
-            'build_url': build_url,
             'version': args.version
         }))
 

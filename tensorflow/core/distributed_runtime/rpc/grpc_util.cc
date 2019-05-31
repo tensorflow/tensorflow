@@ -15,118 +15,97 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 
-GrpcByteBufferSource::GrpcByteBufferSource() {}
+namespace {
 
-bool GrpcByteBufferSource::Init(const grpc::ByteBuffer& src) {
-  cur_ = -1;
-  left_ = 0;
-  ptr_ = nullptr;
-  byte_count_ = 0;
-  bool ok = src.Dump(&slices_).ok();
-  if (!ok) {
-    slices_.clear();
+double GenerateUniformRandomNumber() {
+  return random::New64() * (1.0 / std::numeric_limits<uint64>::max());
+}
+
+double GenerateUniformRandomNumberBetween(double a, double b) {
+  if (a == b) return a;
+  DCHECK_LT(a, b);
+  return a + GenerateUniformRandomNumber() * (b - a);
+}
+
+}  // namespace
+
+int64 ComputeBackoffMicroseconds(int current_retry_attempt, int64 min_delay,
+                                 int64 max_delay) {
+  DCHECK_GE(current_retry_attempt, 0);
+
+  // This function with the constants below is calculating:
+  //
+  // (0.4 * min_delay) + (random[0.6,1.0] * min_delay * 1.3^retries)
+  //
+  // Note that there is an extra truncation that occurs and is documented in
+  // comments below.
+  constexpr double kBackoffBase = 1.3;
+  constexpr double kBackoffRandMult = 0.4;
+
+  // This first term does not vary with current_retry_attempt or a random
+  // number. It exists to ensure the final term is >= min_delay
+  const double first_term = kBackoffRandMult * min_delay;
+
+  // This is calculating min_delay * 1.3^retries
+  double uncapped_second_term = min_delay;
+  while (current_retry_attempt > 0 &&
+         uncapped_second_term < max_delay - first_term) {
+    current_retry_attempt--;
+    uncapped_second_term *= kBackoffBase;
   }
-  return ok;
+  // Note that first_term + uncapped_second_term can exceed max_delay here
+  // because of the final multiply by kBackoffBase.  We fix that problem with
+  // the min() below.
+  double second_term = std::min(uncapped_second_term, max_delay - first_term);
+
+  // This supplies the random jitter to ensure that retried don't cause a
+  // thundering herd problem.
+  second_term *=
+      GenerateUniformRandomNumberBetween(1.0 - kBackoffRandMult, 1.0);
+
+  return std::max(static_cast<int64>(first_term + second_term), min_delay);
 }
 
-bool GrpcByteBufferSource::Next(const void** data, int* size) {
-  // Use loop instead of if in case buffer contained empty slices.
-  while (left_ == 0) {
-    // Advance to next slice.
-    cur_++;
-    if (cur_ >= slices_.size()) {
-      return false;
-    }
-    const ::grpc::Slice& s = slices_[cur_];
-    left_ = s.size();
-    ptr_ = reinterpret_cast<const char*>(s.begin());
-  }
-
-  *data = ptr_;
-  *size = left_;
-  byte_count_ += left_;
-  ptr_ += left_;
-  left_ = 0;
-  return true;
-}
-
-void GrpcByteBufferSource::BackUp(int count) {
-  ptr_ -= count;
-  left_ += count;
-  byte_count_ -= count;
-}
-
-bool GrpcByteBufferSource::Skip(int count) {
-  const void* data;
-  int size;
-  while (Next(&data, &size)) {
-    if (size >= count) {
-      BackUp(size - count);
-      return true;
-    }
-    // size < count;
-    count -= size;
-  }
-  // error or we have too large count;
-  return false;
-}
-
-grpc::protobuf::int64 GrpcByteBufferSource::ByteCount() const {
-  return byte_count_;
-}
-
-void GrpcMaybeUnparseProto(const protobuf::Message& src,
-                           grpc::ByteBuffer* dst) {
-  // TODO(sanjay): For bigger protos, serialize into a ZeroCopyOutputStream.
-  ::grpc::Slice s(src.ByteSizeLong());
-  src.SerializeWithCachedSizesToArray(
-      const_cast<uint8*>(reinterpret_cast<const uint8*>(s.begin())));
-  ::grpc::ByteBuffer buffer(&s, 1);
-  dst->Swap(&buffer);
+::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
+                                     grpc::ByteBuffer* dst) {
+  bool own_buffer;
+  return ::grpc::GenericSerialize<::grpc::ProtoBufferWriter,
+                                  protobuf::Message>(src, dst, &own_buffer);
 }
 
 // GrpcMaybeUnparseProto from a string simply copies the string to the
 // ByteBuffer.
-void GrpcMaybeUnparseProto(const string& src, grpc::ByteBuffer* dst) {
+::grpc::Status GrpcMaybeUnparseProto(const string& src, grpc::ByteBuffer* dst) {
   ::grpc::Slice s(src.data(), src.size());
   ::grpc::ByteBuffer buffer(&s, 1);
   dst->Swap(&buffer);
+  return ::grpc::Status::OK;
 }
 
-bool GrpcMaybeParseProto(const grpc::ByteBuffer& src, protobuf::Message* dst) {
-  GrpcByteBufferSource stream;
-  if (!stream.Init(src)) return false;
-  return dst->ParseFromZeroCopyStream(&stream);
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
+  ::grpc::ProtoBufferReader reader(src);
+  return dst->ParseFromZeroCopyStream(&reader);
 }
 
 // Overload of GrpcParseProto so we can decode a TensorResponse without
 // extra copying.  This overload is used by the RPCState class in
 // grpc_state.h.
-bool GrpcMaybeParseProto(const ::grpc::ByteBuffer& src, TensorResponse* dst) {
-  struct ByteSource : public TensorResponse::Source {
-    const ::grpc::ByteBuffer* buffer;
-    GrpcByteBufferSource src;
-    bool ok;
-
-    ::tensorflow::protobuf::io::ZeroCopyInputStream* contents() override {
-      ok = src.Init(*buffer);
-      return &src;
-    }
-  };
-  ByteSource bs;
-  bs.buffer = &src;
-  return dst->ParseFrom(&bs).ok() && bs.ok;
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, TensorResponse* dst) {
+  ::tensorflow::GrpcByteSource byte_source(src);
+  auto s = dst->ParseFrom(&byte_source);
+  return s.ok();
 }
 
 // GrpcMaybeParseProto into a string simply copies bytes into the string.
-bool GrpcMaybeParseProto(const grpc::ByteBuffer& src, string* dst) {
+bool GrpcMaybeParseProto(grpc::ByteBuffer* src, string* dst) {
   dst->clear();
-  dst->reserve(src.Length());
+  dst->reserve(src->Length());
   std::vector<::grpc::Slice> slices;
-  if (!src.Dump(&slices).ok()) {
+  if (!src->Dump(&slices).ok()) {
     return false;
   }
   for (const ::grpc::Slice& s : slices) {

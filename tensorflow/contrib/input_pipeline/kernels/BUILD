@@ -1,11 +1,12 @@
 # Description:
 #   Contains kernels for the input pipeline.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 cc_library(
     name = "input_pipeline_kernels",
@@ -16,15 +17,4 @@ cc_library(
         "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

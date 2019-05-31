@@ -23,13 +23,16 @@ import os
 import weakref
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import function_utils
 
 # pylint: disable=protected-access
 # Explanation for protected-access disable: Network has lots of same-class and
@@ -45,14 +48,45 @@ def _network_name_scope_naming(current_variable_scope):
 
   Args:
     current_variable_scope: A VariableScope object.
+
   Returns:
     A name scope name.
   """
   return current_variable_scope.name + "/"
 
 
+_NETWORK_DEPRECATION_MESSAGE = (
+    "Please inherit from `tf.keras.Model`, and see its documentation for "
+    "details. `tf.keras.Model` should be a drop-in replacement for "
+    "`tfe.Network` in most cases, but note that `track_layer` is no longer "
+    "necessary or supported. Instead, `Layer` instances are tracked on "
+    "attribute assignment (see the section of `tf.keras.Model`'s documentation "
+    "on subclassing). Since the output of `track_layer` is often assigned to "
+    "an attribute anyway, most code can be ported by simply removing the "
+    "`track_layer` calls.\n\n`tf.keras.Model` works with all TensorFlow "
+    "`Layer` instances, including those from `tf.layers`, but switching to "
+    "the `tf.keras.layers` versions along with the migration to "
+    "`tf.keras.Model` is recommended, since it will preserve variable names. "
+    "Feel free to import it with an alias to avoid excess typing :).")
+
+
 class Network(base.Layer):
   """Represents the composition of a set of Layers.
+
+  *Deprecated*. Please inherit from `tf.keras.Model`, and see its documentation
+  for details. `tf.keras.Model` should be a drop-in replacement for
+  `tfe.Network` in most cases, but note that `track_layer` is no longer
+  necessary or supported. Instead, `Layer` instances are tracked on attribute
+  assignment (see the section of `tf.keras.Model`'s documentation on
+  subclassing). Since the output of `track_layer` is often assigned to an
+  attribute anyway, most code can be ported by simply removing the `track_layer`
+  calls.
+
+  `tf.keras.Model` works with all TensorFlow `Layer` instances, including those
+  from `tf.layers`, but switching to the `tf.keras.layers` versions along with
+  the migration to `tf.keras.Model` is recommended, since it will preserve
+  variable names.  Feel free to import it with an alias to avoid excess typing
+  :).
 
   `Network` implements the `Layer` interface and adds convenience methods for
   managing sub-`Layer`s, such as listing variables.
@@ -65,8 +99,10 @@ class Network(base.Layer):
 
     def __init__(self, name):
       super(TwoLayerNetwork, self).__init__(name=name)
-      self.layer_one = self.track_layer(tf.layers.Dense(16, input_shape=(8,)))
-      self.layer_two = self.track_layer(tf.layers.Dense(1, input_shape=(16,)))
+      self.layer_one = self.track_layer(tf.compat.v1.layers.Dense(16,
+      input_shape=(8,)))
+      self.layer_two = self.track_layer(tf.compat.v1.layers.Dense(1,
+      input_shape=(16,)))
 
     def call(self, inputs):
       return self.layer_two(self.layer_one(inputs))
@@ -82,7 +118,7 @@ class Network(base.Layer):
   ```
 
   This example prints variable names, one kernel and one bias per
-  `tf.layers.Dense` layer:
+  `tf.compat.v1.layers.Dense` layer:
 
   ```
   ['net/dense/kernel:0',
@@ -91,9 +127,10 @@ class Network(base.Layer):
    'net/dense_1/bias:0']
   ```
 
-  These variables can be passed to a `Saver` (`tf.train.Saver`, or
+  These variables can be passed to a `Saver` (`tf.compat.v1.train.Saver`, or
   `tf.contrib.eager.Saver` when executing eagerly) to save or restore the
-  `Network`, typically alongside a global step and `tf.train.Optimizer`
+  `Network`, typically alongside a global step and
+  `tf.compat.v1.train.Optimizer`
   variables when checkpointing during training.
 
   Note that the semantics of calling a `Network` with graph execution (i.e. not
@@ -111,24 +148,27 @@ class Network(base.Layer):
   # - Detect layers used in __call__ that weren't registered with track_layer.
   # - Convert inputs to __call__ to tensors.
 
+  @deprecation.deprecated(date=None, instructions=_NETWORK_DEPRECATION_MESSAGE)
   def __init__(self, name=None):
     """Configure the `Network`.
 
     Args:
       name: The name to use for this `Network`. If specified, it must be unique
-        in the context where this `Network` is first
-         (1) added to another `Network` (in which case it must not share a name
-           with other `Layers` added to that `Network`), or
-         (2) built/called (in which case no other 'top-level' `Network`s may
-          share this name).
-        If unspecified or None, the `Network` will be named using its class
-        name, with a number appended if necessary for uniqueness (e.g. MyNetwork
-        -> 'my_network_1').
+        in the context where this `Network` is first (1) added to another
+        `Network` (in which case it must not share a name with other `Layers`
+        added to that `Network`), or (2) built/called (in which case no other
+        'top-level' `Network`s may share this name). If unspecified or None, the
+        `Network` will be named using its class name, with a number appended if
+        necessary for uniqueness (e.g. MyNetwork -> 'my_network_1').
 
     Raises:
       ValueError: If `name` is not valid. Note that some naming errors will
         instead be raised when the `Network` is called.
     """
+    if context.executing_eagerly():
+      logging.warning(
+          ("** tfe.Network is deprecated and will be removed in a future "
+           "version.\n\n%s"), _NETWORK_DEPRECATION_MESSAGE)
     if isinstance(name, variable_scope.VariableScope):
       raise ValueError("VariableScopes are not valid Network names.")
     if name is not None and "/" in name:
@@ -149,7 +189,12 @@ class Network(base.Layer):
     # check we might have name collisions if the parent scope on init gets
     # closed before build is called.
     self._variable_scope_counts_on_init = (
-        variable_scope._get_default_variable_store().variable_scopes_count)
+        variable_scope.get_variable_scope_store().variable_scopes_count)
+
+  def _gather_saveables_for_checkpoint(self):
+    raise NotImplementedError(
+        "tfe.Network does not support object-based checkpointing.\n\n%s" %
+        _NETWORK_DEPRECATION_MESSAGE)
 
   def _name_scope_name(self, current_variable_scope):
     """Overrides Layer op naming to match variable naming."""
@@ -176,22 +221,26 @@ class Network(base.Layer):
         avoid_names = parent_network._owned_layers
         name_uid_map = parent_network._sub_layer_name_uids
       else:
-        name_uid_map = base._get_default_graph_uid_map()
+        name_uid_map = backend.get_default_graph_uid_map()
         # Figure out which names we have to avoid based on which variable scope
         # we're nested in.
         strip_name = self._default_parent_variable_scope.name
         if strip_name:
           strip_name += "/"
+
         def _strip_on_init_scope(name):
           if name.startswith(strip_name):
             return name[len(strip_name):]
           else:
             return None
+
         avoid_names = set(
             _strip_on_init_scope(name)
-            for name in self._variable_scope_counts_on_init.keys() if name)
+            for name in self._variable_scope_counts_on_init.keys()
+            if name)
       self._name, self._base_name = self._make_unique_name(
-          name_uid_map=name_uid_map, avoid_names=avoid_names,
+          name_uid_map=name_uid_map,
+          avoid_names=avoid_names,
           namespace=self._default_parent_variable_scope.name,
           zero_based=True)
     if self._first_parent is None or (self._first_parent  # False = no parent
@@ -228,8 +277,8 @@ class Network(base.Layer):
         if expected_scope_name in self._variable_scope_counts_on_init:
           raise ValueError(
               ("A Network named '%s' already exists (or a variable_scope was "
-               "created with this name). Names must be unique.") % (
-                   self._name,))
+               "created with this name). Names must be unique.") %
+              (self._name,))
         # Make sure variables with this prefix will be unique.
         with variable_scope.variable_scope(
             None, use_resource=True, default_name=self._name) as scope:
@@ -243,19 +292,16 @@ class Network(base.Layer):
           if scope_suffix != self._name:
             raise ValueError(
                 ("A Network named '%s' already exists (or a variable_scope was "
-                 "created with this name). Names must be unique.") % (
-                     self._name,))
-          if (first_parent
-              and scope_prefix[:-1] != first_parent.scope_name):
+                 "created with this name). Names must be unique.") %
+                (self._name,))
+          if (first_parent and scope_prefix[:-1] != first_parent.scope_name):
             raise ValueError(
                 ("Network variable names must match a nesting of sub-Network "
                  "names. Expected prefix '%s' from parent network, but got "
                  "'%s' when attempting to create a variable_scope for Network "
                  "'%s'. Likely an explicit variable_scope was inserted into "
-                 "the nesting.") % (
-                     first_parent.scope_name,
-                     scope_prefix[:-1],
-                     self._name))
+                 "the nesting.") %
+                (first_parent.scope_name, scope_prefix[:-1], self._name))
           elif not first_parent and scope_prefix:
             # For the case when this Network is not nested inside any other
             # Network, but is in a variable_scope. This Network's name takes on
@@ -279,15 +325,13 @@ class Network(base.Layer):
         raise ValueError(
             ("The parent of a Layer added to Network %s was garbage collected "
              "before the Layer was built. If this limitation bothers you "
-             "please file a feature request.") %
-            (self.name,))
+             "please file a feature request.") % (self.name,))
       with variable_scope.variable_scope(parent_scope):
         # Horrid hack to make Layer variable names which are direct
         # sub-layers of Networks conform to the Network variable naming
         # conventions.
         with variable_scope.variable_scope(
-            None, use_resource=True,
-            default_name=sublayer.name) as sub_scope:
+            None, use_resource=True, default_name=sublayer.name) as sub_scope:
           sublayer._scope = sub_scope
           # Also switch op naming for this Layer to match Network conventions,
           # i.e. op naming matching variable naming.
@@ -310,7 +354,7 @@ class Network(base.Layer):
     `Network` can export a complete list of variables.
 
     Args:
-      layer: A `tf.layers.Layer` object.
+      layer: A `tf.compat.v1.layers.Layer` object.
 
     Returns:
       The passed in `layer`.
@@ -326,6 +370,8 @@ class Network(base.Layer):
       raise TypeError(
           "Network.track_layer() passed type %s, not a tf.layers.Layer" %
           (type(layer),))
+    # Always use `ResourceVariable` with legacy layers.
+    layer._use_resource_variables = True
     if isinstance(layer, Network):
       layer._finalize_name(parent_network=self)
     else:
@@ -352,9 +398,8 @@ class Network(base.Layer):
             )
           layer._first_parent = weakref.ref(self)
         self._non_network_sublayers.append(layer)
-    if (not layer.built
-        and layer._first_parent
-        and self is layer._first_parent()):
+    if (not layer.built and layer._first_parent and
+        self is layer._first_parent()):
       if layer.name in self._owned_layers:
         if self._owned_layers[layer.name] is layer:
           return layer
@@ -366,7 +411,7 @@ class Network(base.Layer):
     return layer
 
   def get_layer(self, name=None, index=None):
-    """Get a contained `tf.layers.Layer` either by name or index.
+    """Get a contained `tf.compat.v1.layers.Layer` either by name or index.
 
     Args:
       name: String matching one of the names of a contained `Layer`. Note that
@@ -374,11 +419,11 @@ class Network(base.Layer):
         layer sharing (i.e. adding a `Layer` to this `Network` which was already
         added to another `Network`). The lowest index `Layer` with a matching
         name will be returned.
-      index: Integer in [0, number of layers). Layers are assigned an index
-        by the order they are added.
+      index: Integer in [0, number of layers). Layers are assigned an index by
+        the order they are added.
 
     Returns:
-      A `tf.layers.Layer` object.
+      A `tf.compat.v1.layers.Layer` object.
 
     Raises:
       ValueError: If neither or both of 'index' or 'name' is specified, or the
@@ -444,8 +489,14 @@ class Network(base.Layer):
   def layers(self):
     return self._layers
 
-  def add_variable(self, name, shape, dtype=None, initializer=None,
-                   regularizer=None, trainable=True, constraint=None):
+  def add_variable(self,
+                   name,
+                   shape,
+                   dtype=None,
+                   initializer=None,
+                   regularizer=None,
+                   trainable=True,
+                   constraint=None):
     raise RuntimeError(
         "add_variable not supported in Network class yet. Please file an issue "
         "at https://github.com/tensorflow/tensorflow/issues/new if this is "
@@ -486,7 +537,7 @@ class Sequential(Network):
 
   Args:
     layers_funcs: An optional sequence where each element is either a
-      tf.layers.Layer object or a callable.
+      tf.compat.v1.layers.Layer object or a callable.
     name: An optional string name to use for this Network.
   """
 
@@ -499,10 +550,10 @@ class Sequential(Network):
 
   def add(self, layer_func):
     if isinstance(layer_func, base.Layer):
-      args = estimator_util.fn_args(layer_func.call)
+      args = function_utils.fn_args(layer_func.call)
       self.track_layer(layer_func)
     elif callable(layer_func):
-      args = estimator_util.fn_args(layer_func)
+      args = function_utils.fn_args(layer_func)
     else:
       raise TypeError(
           "Sequential.add() takes only tf.layers.Layer objects or callables; "
@@ -525,7 +576,6 @@ class Sequential(Network):
 
 
 _DeferredRestoration = collections.namedtuple(
-
     "_DeferredRestoration",
     [
         # The map_func to use (either user-specified or the default).
@@ -549,9 +599,9 @@ _DeferredRestoration = collections.namedtuple(
     ])
 
 
-def _default_naming_conflict_error_message(
-    mapped_name, first_variable, second_variable,
-    network_name, network_scope_name):
+def _default_naming_conflict_error_message(mapped_name, first_variable,
+                                           second_variable, network_name,
+                                           network_scope_name):
   return (
       ("The default checkpoint variable name mapping strategy for Network "
        "'%s' resulted in a naming conflict. We attempted to strip off the "
@@ -563,17 +613,15 @@ def _default_naming_conflict_error_message(
        "`map_func=lambda n: n` to save and restore to use fully qualified "
        "variable names in the checkpoint, although this will require that the "
        "variable prefix of the Network being restored into is also '%s'. You "
-       "may alternatively write an arbitrary mapping.")
-      % (
-          network_name, network_scope_name, mapped_name,
-          first_variable._shared_name,
-          second_variable._shared_name, network_scope_name
-      ))
+       "may alternatively write an arbitrary mapping.") %
+      (network_name, network_scope_name, mapped_name,
+       first_variable._shared_name, second_variable._shared_name,
+       network_scope_name))
 
 
-def _restore_custom_map_func_error_message(
-    mapped_name, first_variable, second_variable,
-    network_name, network_scope_name):
+def _restore_custom_map_func_error_message(mapped_name, first_variable,
+                                           second_variable, network_name,
+                                           network_scope_name):
   return (
       ("The map_func passed to restore_network_checkpoint for the Network '%s' "
        "resulted in two variables named '%s' (originally '%s' and '%s'). Since "
@@ -585,11 +633,9 @@ def _restore_custom_map_func_error_message(
        "of the Network. For reference, variables created by sub-Layers "
        "of this Network are prefixed with '%s', but if they are "
        "re-used after being added to another Network they will have "
-       "that Network's full variable prefix instead.") % (
-           network_name, mapped_name,
-           first_variable._shared_name,
-           second_variable._shared_name,
-           network_scope_name))
+       "that Network's full variable prefix instead.") %
+      (network_name, mapped_name, first_variable._shared_name,
+       second_variable._shared_name, network_scope_name))
 
 
 def _make_custom_getter_for_deferred_restorations():
@@ -605,9 +651,13 @@ def _make_custom_getter_for_deferred_restorations():
   """
   deferred_restorations = []
 
-  def _custom_getter(getter, name, shape=None, dtype=None,
+  def _custom_getter(getter,
+                     name,
+                     shape=None,
+                     dtype=None,
                      initializer=None,
-                     *args, **kwargs):
+                     *args,
+                     **kwargs):
     """A custom getter which processes deferred restorations."""
     # Iterate over restorations, newest first (newer restorations will take
     # precedence over older restorations, just like with immediate restorations
@@ -615,15 +665,14 @@ def _make_custom_getter_for_deferred_restorations():
     delayed_restoration = None
     found_value = False
     value_to_restore = None
-    for delayed_restoration in reversed(
-        deferred_restorations):
+    for delayed_restoration in reversed(deferred_restorations):
       checkpoint_name = delayed_restoration.map_func(name)
-      if (checkpoint_name
-          in delayed_restoration.checkpointed_variables_to_restore):
+      if (checkpoint_name in
+          delayed_restoration.checkpointed_variables_to_restore):
         found_value = True
         value_to_restore = (
-            delayed_restoration.checkpointed_variables_to_restore[
-                checkpoint_name])
+            delayed_restoration
+            .checkpointed_variables_to_restore[checkpoint_name])
       if found_value:
         break
     # value_to_restore may be False because this variable is not in any
@@ -633,13 +682,18 @@ def _make_custom_getter_for_deferred_restorations():
     if found_value and value_to_restore is not None:
       initializer = value_to_restore
       shape = None
-    variable = getter(name, shape=shape, dtype=dtype, initializer=initializer,
-                      *args, **kwargs)
+    variable = getter(
+        name,
+        shape=shape,
+        dtype=dtype,
+        initializer=initializer,
+        *args,
+        **kwargs)
     if found_value and value_to_restore is not None:
       # Mark as already restored from this checkpoint.
       delayed_restoration.checkpointed_variables_to_restore[
           checkpoint_name] = None
-      if context.in_graph_mode():
+      if not context.executing_eagerly():
         delayed_restoration.session.run(variable.initializer)
     if found_value:
       # Error checking should run even if we've already restored a value.
@@ -651,8 +705,8 @@ def _make_custom_getter_for_deferred_restorations():
           raise ValueError(
               _restore_custom_map_func_error_message(
                   mapped_name=checkpoint_name,
-                  first_variable=delayed_restoration.restored_variables[
-                      checkpoint_name],
+                  first_variable=delayed_restoration
+                  .restored_variables[checkpoint_name],
                   second_variable=variable,
                   network_name=delayed_restoration.network_name,
                   network_scope_name=delayed_restoration.network_scope_name))
@@ -660,12 +714,13 @@ def _make_custom_getter_for_deferred_restorations():
           raise ValueError(
               _default_naming_conflict_error_message(
                   mapped_name=checkpoint_name,
-                  first_variable=delayed_restoration.restored_variables[
-                      checkpoint_name],
+                  first_variable=delayed_restoration
+                  .restored_variables[checkpoint_name],
                   second_variable=variable,
                   network_name=delayed_restoration.network_name,
                   network_scope_name=delayed_restoration.network_scope_name))
     return variable
+
   return _custom_getter, deferred_restorations
 
 
@@ -678,6 +733,7 @@ def _make_prefix_stripping_map_fn(scope_name):
 
   Args:
     scope_name: The Network.scope_name to strip from variables.
+
   Returns:
     A scope_name-stripping default `map_fn` for the Network.
   """
@@ -689,8 +745,9 @@ def _make_prefix_stripping_map_fn(scope_name):
     and leaves other variable names fully qualified in the checkpoint.
 
     Args:
-      original_variable_name: The _shared_name of the variable (no :0
-        suffix) to map.
+      original_variable_name: The _shared_name of the variable (no :0 suffix) to
+        map.
+
     Returns:
       The checkpoint name of the variable.
     """
@@ -703,25 +760,30 @@ def _make_prefix_stripping_map_fn(scope_name):
   return _strip_variable_prefix
 
 
-def save_network_checkpoint(
-    network, save_path, global_step=None, map_func=None):
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        "Please inherit from tf.keras.Model instead of tfe.Network, and use "
+        "tf.keras.Model.save_weights."))
+def save_network_checkpoint(network, save_path, global_step=None,
+                            map_func=None):
   """Save variables from the Network to a checkpoint.
 
   Args:
     network: A Network object to save.
-    save_path: Either a checkpoint prefix or the name of a directory to save
-      the checkpoint in (in which case the checkpoint will be named based on
-      the Network name).
+    save_path: Either a checkpoint prefix or the name of a directory to save the
+      checkpoint in (in which case the checkpoint will be named based on the
+      Network name).
     global_step: The global step to use when naming the checkpoint. If None
-      (default), we will first try to get the default global step. If that
-      fails because no default global step exists, then the checkpoint is
-      created without a global step suffix.
-    map_func: A function mapping fully qualified variable names
-      (e.g. 'my_network_1/dense_1/kernel') to names in the checkpoint. By
-      default (if `map_func=None`), the variable prefix for the network being
-      restored (`Network.scope_name + '/'`, e.g. 'my_network_1/') is stripped
-      and all other variable names (shared with other Networks) are left
-      unchanged.
+      (default), we will first try to get the default global step. If that fails
+      because no default global step exists, then the checkpoint is created
+      without a global step suffix.
+    map_func: A function mapping fully qualified variable names (e.g.
+      'my_network_1/dense_1/kernel') to names in the checkpoint. By default (if
+      `map_func=None`), the variable prefix for the network being restored
+      (`Network.scope_name + '/'`, e.g. 'my_network_1/') is stripped and all
+      other variable names (shared with other Networks) are left unchanged.
+
   Returns:
     The checkpoint prefix for the saved checkpoint, which may be passed to
     `Network.restore`.
@@ -752,12 +814,13 @@ def save_network_checkpoint(
         # full variable names in the checkpoint. This could be odd for deeply
         # nested sub-Networks (since the full prefix from the nesting would
         # get added), so for now we'll let the user deal with this case.
-        raise ValueError(_default_naming_conflict_error_message(
-            mapped_name=mapped_name,
-            first_variable=variable_map[mapped_name],
-            second_variable=variable,
-            network_name=network.name,
-            network_scope_name=network.scope_name))
+        raise ValueError(
+            _default_naming_conflict_error_message(
+                mapped_name=mapped_name,
+                first_variable=variable_map[mapped_name],
+                second_variable=variable,
+                network_name=network.name,
+                network_scope_name=network.scope_name))
       else:
         # The user passed their own problematic map_func.
         raise ValueError(
@@ -767,17 +830,17 @@ def save_network_checkpoint(
              "the Network. For reference, variables created by sub-Layers of "
              "this Network are prefixed with '%s', but if they are re-used "
              "after being added to another Network, they will have that "
-             "Network's full variable prefix instead.") % (
-                 network.name, mapped_name,
-                 variable_map[mapped_name]._shared_name,
-                 variable._shared_name,
-                 network.scope_name))
-  if context.in_eager_mode():
+             "Network's full variable prefix instead.") %
+            (network.name, mapped_name, variable_map[mapped_name]._shared_name,
+             variable._shared_name, network.scope_name))
+  if context.executing_eagerly():
     sess = None
   else:
     sess = ops.get_default_session()
   return saver_lib.Saver(variable_map).save(
-      sess=sess, save_path=save_path, write_meta_graph=False,
+      sess=sess,
+      save_path=save_path,
+      write_meta_graph=False,
       global_step=global_step)
 
 
@@ -820,10 +883,10 @@ def _restore_existing_variables(network, save_path, map_func, user_map_func):
   Args:
     network: A Network object to restore.
     save_path: The checkpoint prefix or directory to read from.
-    map_func: The function to use when mapping from variable names to
-      checkpoint names.
-    user_map_func: The original map_func passed by the user, for error
-      checking.
+    map_func: The function to use when mapping from variable names to checkpoint
+      names.
+    user_map_func: The original map_func passed by the user, for error checking.
+
   Returns:
     A dictionary mapping from checkpoint names to variable objects which have
     been restored (for bookkeeping to avoid deferred restorations on these
@@ -837,23 +900,25 @@ def _restore_existing_variables(network, save_path, map_func, user_map_func):
     if existing_variables_by_checkpoint_name.setdefault(
         checkpoint_name, variable) is not variable:
       if user_map_func is None:
-        raise ValueError(_default_naming_conflict_error_message(
-            mapped_name=checkpoint_name,
-            first_variable=existing_variables_by_checkpoint_name[
-                checkpoint_name],
-            second_variable=variable,
-            network_name=network.name,
-            network_scope_name=network.scope_name))
+        raise ValueError(
+            _default_naming_conflict_error_message(
+                mapped_name=checkpoint_name,
+                first_variable=existing_variables_by_checkpoint_name[
+                    checkpoint_name],
+                second_variable=variable,
+                network_name=network.name,
+                network_scope_name=network.scope_name))
       else:
-        raise ValueError(_restore_custom_map_func_error_message(
-            mapped_name=checkpoint_name,
-            first_variable=existing_variables_by_checkpoint_name[
-                checkpoint_name],
-            second_variable=variable,
-            network_name=network.name,
-            network_scope_name=network.scope_name))
+        raise ValueError(
+            _restore_custom_map_func_error_message(
+                mapped_name=checkpoint_name,
+                first_variable=existing_variables_by_checkpoint_name[
+                    checkpoint_name],
+                second_variable=variable,
+                network_name=network.name,
+                network_scope_name=network.scope_name))
   if existing_variables_by_checkpoint_name:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       sess = None
     else:
       sess = ops.get_default_session()
@@ -880,7 +945,7 @@ def _set_restore_on_create(network, save_path, map_func, user_map_func,
   # _DeferredRestoration objects once a Network has been built (so that
   # restoring in a loop does not take increasing amounts of memory).
   if checkpointed_variables_to_restore:
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       sess = None
     else:
       sess = ops.get_default_session()
@@ -902,6 +967,11 @@ def _set_restore_on_create(network, save_path, map_func, user_map_func,
     _add_deferred_restoration(network, deferred_restoration)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        "Please inherit from tf.keras.Model instead of tfe.Network, and use "
+        "tf.keras.Model.load_weights."))
 def restore_network_checkpoint(network, save_path, map_func=None):
   """Restore the Network from a checkpoint.
 
@@ -924,13 +994,13 @@ def restore_network_checkpoint(network, save_path, map_func=None):
     network: A Network object to restore.
     save_path: The return value of `tfe.save_network_checkpoint`, or a directory
       to search for a checkpoint.
-    map_func: A function mapping fully qualified variable names
-      (e.g. 'my_network_1/dense_1/kernel') to names in the checkpoint. By
-      default (if `map_func=None`), the variable prefix for the network being
-      restored (`Network.scope_name + '/'`, e.g. 'my_network_1/') is stripped
-      and all other variable names (shared with other Networks) are left
-      unchanged. Note that this is the _same_ map_func as
-      `tfe.save_network_checkpoint`, not an inverse mapping.
+    map_func: A function mapping fully qualified variable names (e.g.
+      'my_network_1/dense_1/kernel') to names in the checkpoint. By default (if
+      `map_func=None`), the variable prefix for the network being restored
+      (`Network.scope_name + '/'`, e.g. 'my_network_1/') is stripped and all
+      other variable names (shared with other Networks) are left unchanged. Note
+      that this is the _same_ map_func as `tfe.save_network_checkpoint`, not an
+      inverse mapping.
   """
   network._finalize_name(parent_network=False)
   network._set_scope()  # scope_name should be available to map_funcs

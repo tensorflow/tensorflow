@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "AccumulatorSetGlobalStep"
+  endpoint {
+    name: "train.AccumulatorSetGlobalStep"
+  }
+}

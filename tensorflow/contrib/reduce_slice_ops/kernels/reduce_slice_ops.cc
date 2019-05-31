@@ -15,8 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include <algorithm>
 #include "tensorflow/contrib/reduce_slice_ops/kernels/reduce_slice_ops.h"
+#include <algorithm>
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -29,6 +29,11 @@ using CPUDevice = Eigen::ThreadPoolDevice;
 using thread::ThreadPool;
 
 namespace functor {
+
+#define Sum(a, b) ((a) + (b))
+#define Prod(a, b) ((a) * (b))
+#define Max(a, b) ((a) > (b) ? (a) : (b))
+#define Min(a, b) ((a) < (b) ? (a) : (b))
 
 #define CPUReduceSliceFunctorReduceop(reduceop, beginning)                    \
   template <typename T, typename Index>                                       \
@@ -233,6 +238,11 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL);
 
 #undef REGISTER_GPU_REDUCE_SLICE_KERNELS
 #undef REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL
+
+#undef Sum
+#undef Prod
+#undef Min
+#undef Max
 
 #endif  // GOOGLE_CUDA
 

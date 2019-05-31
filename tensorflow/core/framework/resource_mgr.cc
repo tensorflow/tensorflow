@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include <atomic>
+
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -26,6 +28,10 @@ limitations under the License.
 #include "tensorflow/core/platform/demangle.h"
 
 namespace tensorflow {
+
+// Used to generate unique names for anonymous variables
+static std::atomic<int64> current_id_;
+
 ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
                                   const string& name,
                                   const TypeIndex& type_index) {
@@ -38,7 +44,11 @@ ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
     actual_container = ctx->resource_manager()->default_container();
   }
   result.set_container(actual_container);
-  result.set_name(name);
+  if (name == ResourceHandle::ANONYMOUS_NAME) {
+    result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
+  } else {
+    result.set_name(name);
+  }
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   return result;
@@ -60,8 +70,8 @@ namespace internal {
 Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
   if (ctx->device()->attributes().name() != p.device()) {
     return errors::InvalidArgument(
-        "Trying to access resource located in device ", p.device(),
-        " from device ", ctx->device()->attributes().name());
+        "Trying to access resource ", p.name(), " located in device ",
+        p.device(), " from device ", ctx->device()->attributes().name());
   }
   return Status::OK();
 }
@@ -133,21 +143,18 @@ string ResourceMgr::DebugString() const {
         line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
   }
   std::sort(text.begin(), text.end());
-  return str_util::Join(text, "\n");
+  return absl::StrJoin(text, "\n");
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
                              const string& name, ResourceBase* resource) {
-  {
-    mutex_lock l(mu_);
-    Container** b = &containers_[container];
-    if (*b == nullptr) {
-      *b = new Container;
-    }
-    if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
-      TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
-      return Status::OK();
-    }
+  Container** b = &containers_[container];
+  if (*b == nullptr) {
+    *b = new Container;
+  }
+  if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
+    TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
+    return Status::OK();
   }
   resource->Unref();
   return errors::AlreadyExists("Resource ", container, "/", name, "/",
@@ -157,7 +164,6 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
 Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                              const string& name,
                              ResourceBase** resource) const {
-  tf_shared_lock l(mu_);
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
     return errors::NotFound("Container ", container,
@@ -208,12 +214,19 @@ Status ResourceMgr::Delete(const ResourceHandle& handle) {
 }
 
 Status ResourceMgr::Cleanup(const string& container) {
+  {
+    tf_shared_lock l(mu_);
+    if (!gtl::FindOrNull(containers_, container)) {
+      // Nothing to cleanup.
+      return Status::OK();
+    }
+  }
   Container* b = nullptr;
   {
     mutex_lock l(mu_);
     auto iter = containers_.find(container);
     if (iter == containers_.end()) {
-      // Nothing to cleanup, it's OK.
+      // Nothing to cleanup, it's OK (concurrent cleanup).
       return Status::OK();
     }
     b = iter->second;
@@ -275,7 +288,7 @@ string ContainerInfo::DebugString() const {
                          "]");
 }
 
-ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
+const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input) {
   return ctx->input(input).flat<ResourceHandle>()(0);
 }
 
@@ -290,6 +303,15 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   return ctx->resource_manager()->Delete(p);
+}
+
+Status ResourceHandlesShape(shape_inference::InferenceContext* c) {
+  int n;
+  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+  for (int i = 0; i < n; ++i) {
+    c->set_output(i, c->Scalar());
+  }
+  return Status::OK();
 }
 
 }  //  end namespace tensorflow

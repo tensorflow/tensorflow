@@ -17,12 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
+from tensorflow.python.data.experimental.ops import enumerate_ops
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.enumerate_dataset(...)`.")
 def enumerate_dataset(start=0):
   """A transformation that enumerate the elements of a dataset.
 
@@ -47,12 +48,6 @@ def enumerate_dataset(start=0):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
-
-  def _apply_fn(dataset):
-    max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
-    return dataset_ops.Dataset.zip((dataset_ops.Dataset.range(start, max_value),
-                                    dataset))
-
-  return _apply_fn
+  return enumerate_ops.enumerate_dataset(start)

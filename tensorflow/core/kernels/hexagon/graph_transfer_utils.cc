@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -46,7 +48,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
       GetTopNFloatResults(data, labels, element_count);
   LOG(INFO) << "=== Dump ranking ===";
   for (int i = 0; i < top_n; ++i) {
-    const std::tuple<float, int, string> &entry = queue.top();
+    const std::tuple<float, int, string>& entry = queue.top();
     LOG(INFO) << i << ": " << std::get<1>(entry) << ", " << std::get<2>(entry)
               << ", " << std::get<0>(entry);
     queue.pop();

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "QueueDequeueUpToV2"
+  endpoint {
+    name: "io.QueueDequeueUpTo"
+  }
+}

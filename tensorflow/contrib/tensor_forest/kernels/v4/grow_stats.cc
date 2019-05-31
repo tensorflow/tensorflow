@@ -15,11 +15,12 @@
 #include "tensorflow/contrib/tensor_forest/kernels/v4/grow_stats.h"
 
 #include <cfloat>
+#include <cmath>
 #include <queue>
 #include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/stat_utils.h"
 #include "tensorflow/core/lib/random/distribution_sampler.h"
-
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace tensorforest {
@@ -123,9 +124,8 @@ ClassificationStats::ClassificationStats(const TensorForestParams& params,
     right_gini_.reset(new RunningGiniScores());
   }
 
-  uint64 time_seed = static_cast<uint64>(std::clock());
   single_rand_ = std::unique_ptr<random::PhiloxRandom>(
-      new random::PhiloxRandom(time_seed));
+      new random::PhiloxRandom(random::New64()));
   rng_ = std::unique_ptr<random::SimplePhilox>(
       new random::SimplePhilox(single_rand_.get()));
 }
@@ -273,7 +273,8 @@ void ClassificationStats::CheckPruneHoeffding() {
   // Raw Gini ranges from 0 to 1 - (1/n), but our gini score is weighted.
   const float num_classes = params_.num_outputs();
   const float gini_diff_range = weight_sum_ * (1.0 - 1.0 / num_classes);
-  float epsilon = gini_diff_range * sqrt(half_ln_dominate_frac_ / weight_sum_);
+  float epsilon =
+      gini_diff_range * std::sqrt(half_ln_dominate_frac_ / weight_sum_);
   for (int i = num_splits() - 1; i >= 0; i--) {
     if (split_scores[i] - best_split_score > epsilon) {
       RemoveSplit(i);
@@ -454,14 +455,14 @@ void DenseClassificationGrowStats::PackToProto(FertileSlot* slot) const {
     class_stats->add_value()->set_float_value(total_counts_[i]);
   }
 
-  for (int split_num = 0;  split_num < num_splits(); ++split_num) {
+  for (int split_num = 0; split_num < num_splits(); ++split_num) {
     auto* cand = slot->add_candidates();
     *cand->mutable_split() = splits_[split_num];
     auto* left_stats = cand->mutable_left_stats()
                            ->mutable_classification()
                            ->mutable_dense_counts();
     for (int i = 0; i < num_outputs_; ++i) {
-       left_stats->add_value()->set_float_value(left_count(split_num, i));
+      left_stats->add_value()->set_float_value(left_count(split_num, i));
     }
   }
 }
@@ -546,7 +547,7 @@ void SparseClassificationGrowStats::PackToProto(FertileSlot* slot) const {
     (*class_stats)[entry.first] = val;
   }
 
-  for (int split_num = 0;  split_num < num_splits(); ++split_num) {
+  for (int split_num = 0; split_num < num_splits(); ++split_num) {
     auto* cand = slot->add_candidates();
     *cand->mutable_split() = splits_[split_num];
     auto* left_stats = cand->mutable_left_stats()
@@ -561,8 +562,8 @@ void SparseClassificationGrowStats::PackToProto(FertileSlot* slot) const {
   }
 }
 
-float SparseClassificationGrowStats::GiniScore(
-    int split, float* left_sum, float* right_sum) const {
+float SparseClassificationGrowStats::GiniScore(int split, float* left_sum,
+                                               float* right_sum) const {
   float left_square = 0, right_square = 0;
   *left_sum = 0;
   *right_sum = 0;
@@ -844,12 +845,11 @@ void LeastSquaresRegressionGrowStats::PackToProto(FertileSlot* slot) const {
     total_squares->add_value()->set_float_value(total_sum_squares_[i]);
   }
 
-  for (int split_num = 0;  split_num < num_splits(); ++split_num) {
+  for (int split_num = 0; split_num < num_splits(); ++split_num) {
     auto* cand = slot->add_candidates();
     *cand->mutable_split() = splits_[split_num];
-    auto* sums = cand->mutable_left_stats()
-                           ->mutable_regression()
-                           ->mutable_mean_output();
+    auto* sums =
+        cand->mutable_left_stats()->mutable_regression()->mutable_mean_output();
     auto* squares = cand->mutable_left_stats()
                         ->mutable_regression()
                         ->mutable_mean_output_squares();
@@ -891,20 +891,17 @@ float LeastSquaresRegressionGrowStats::SplitVariance(int split) const {
   float total_variance = 0;
   for (int i = 0; i < params_.num_outputs(); ++i) {
     // Left side
-    const float le_x =
-        left_sum(split, i) / left_counts_[split];
+    const float le_x = left_sum(split, i) / left_counts_[split];
 
-    const float le_x2 =
-        left_square(split, i) / left_counts_[split];
+    const float le_x2 = left_square(split, i) / left_counts_[split];
     total_variance += le_x2 - le_x * le_x;
 
     // Right side
     const float re_x = (total_sum_[i] - left_sum(split, i)) /
                        (weight_sum_ - left_counts_[split]);
 
-    const float re_x2 =
-        (total_sum_squares_[i] - left_square(split, i)) /
-        (weight_sum_ - left_counts_[split]);
+    const float re_x2 = (total_sum_squares_[i] - left_square(split, i)) /
+                        (weight_sum_ - left_counts_[split]);
     total_variance += re_x2 - re_x * re_x;
   }
   return total_variance;
@@ -937,8 +934,7 @@ bool LeastSquaresRegressionGrowStats::BestSplit(SplitCandidate* best) const {
   left->set_weight_sum(left_counts_[best_index]);
   auto* left_output_sum = left_reg_stats->mutable_mean_output();
   for (int i = 0; i < num_outputs; ++i) {
-    left_output_sum->add_value()->set_float_value(
-        left_sum(best_index, i));
+    left_output_sum->add_value()->set_float_value(left_sum(best_index, i));
   }
 
   // Right
@@ -947,8 +943,8 @@ bool LeastSquaresRegressionGrowStats::BestSplit(SplitCandidate* best) const {
   right->set_weight_sum(weight_sum_ - left_counts_[best_index]);
   auto* right_output_sum = right_reg_stats->mutable_mean_output();
   for (int i = 0; i < num_outputs; ++i) {
-    right_output_sum->add_value()->set_float_value(
-        total_sum_[i] - left_sum(best_index, i));
+    right_output_sum->add_value()->set_float_value(total_sum_[i] -
+                                                   left_sum(best_index, i));
   }
   return true;
 }

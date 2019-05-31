@@ -15,6 +15,7 @@
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
 
 #include <math.h>
+#include <cmath>
 #include <vector>
 
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -25,9 +26,7 @@ namespace tensorforest {
 
 using tensorflow::Tensor;
 
-float LeftProbability(const Tensor& point,
-                      const Tensor& weight,
-                      float bias,
+float LeftProbability(const Tensor& point, const Tensor& weight, float bias,
                       int num_features) {
   const auto p = point.unaligned_flat<float>();
   const auto w = weight.unaligned_flat<float>();
@@ -38,14 +37,11 @@ float LeftProbability(const Tensor& point,
 
   // TODO(thomaswc): At some point we should consider
   // //learning/logistic/logodds-to-prob.h
-  return 1.0 / (1.0 + exp(-dot_product + bias));
+  return 1.0 / (1.0 + std::exp(-dot_product + bias));
 }
 
-float LeftProbabilityK(const Tensor& point,
-                       std::vector<int32> feature_set,
-                       const Tensor& weight,
-                       float bias,
-                       int num_features,
+float LeftProbabilityK(const Tensor& point, std::vector<int32> feature_set,
+                       const Tensor& weight, float bias, int num_features,
                        int k) {
   const auto p = point.unaligned_flat<float>();
   const auto w = weight.unaligned_flat<float>();
@@ -59,7 +55,7 @@ float LeftProbabilityK(const Tensor& point,
 
   // TODO(thomaswc): At some point we should consider
   // //learning/logistic/logodds-to-prob.h
-  return 1.0 / (1.0 + exp(-dot_product + bias));
+  return 1.0 / (1.0 + std::exp(-dot_product + bias));
 }
 
 void GetFeatureSet(int32 tree_num, int32 node_num, int32 random_seed,

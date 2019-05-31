@@ -32,6 +32,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -83,18 +84,28 @@ class InverseGamma(distribution.Distribution):
   examples for details.
 
   WARNING: This distribution may draw 0-valued samples for small concentration
-  values. See note in `tf.random_gamma` docstring.
+  values. See note in `tf.random.gamma` docstring.
 
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   dist = tfd.InverseGamma(concentration=3.0, rate=2.0)
   dist2 = tfd.InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
   ```
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
@@ -125,8 +136,8 @@ class InverseGamma(distribution.Distribution):
     Raises:
       TypeError: if `concentration` and `rate` are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -179,7 +190,7 @@ class InverseGamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   @distribution_util.AppendDocstring(
-      """Note: See `tf.random_gamma` docstring for sampling details and
+      """Note: See `tf.random.gamma` docstring for sampling details and
       caveats.""")
   def _sample_n(self, n, seed=None):
     return 1. / random_ops.random_gamma(
@@ -191,12 +202,6 @@ class InverseGamma(distribution.Distribution):
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
-  def _log_cdf(self, x):
-    return math_ops.log(self._cdf(x))
 
   def _cdf(self, x):
     x = self._maybe_assert_valid_sample(x)
@@ -244,9 +249,9 @@ class InverseGamma(distribution.Distribution):
       `self.allow_nan_stats` is `False`, an exception will be raised rather
       than returning `NaN`.""")
   def _variance(self):
-    var = (math_ops.square(self.rate)
-           / math_ops.square(self.concentration - 1.)
-           / (self.concentration - 2.))
+    var = (
+        math_ops.square(self.rate) / math_ops.squared_difference(
+            self.concentration, 1.) / (self.concentration - 2.))
     if self.allow_nan_stats:
       nan = array_ops.fill(
           self.batch_shape_tensor(),
@@ -280,14 +285,22 @@ class InverseGamma(distribution.Distribution):
 class InverseGammaWithSoftplusConcentrationRate(InverseGamma):
   """`InverseGamma` with softplus of `concentration` and `rate`."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
                validate_args=False,
                allow_nan_stats=True,
                name="InverseGammaWithSoftplusConcentrationRate"):
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       super(InverseGammaWithSoftplusConcentrationRate, self).__init__(
           concentration=nn.softplus(concentration,
                                     name="softplus_concentration"),

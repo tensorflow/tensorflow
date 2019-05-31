@@ -1,0 +1,32 @@
+op {
+  visibility: HIDDEN
+  graph_op_name: "WindowDataset"
+  in_arg {
+    name: "size"
+    description: <<END
+A scalar representing the number of elements to accumulate in a window.
+END
+  }
+  in_arg {
+    name: "shift"
+    description: <<END
+A scalar representing the steps moving the sliding window forward in one
+iteration. It must be positive.
+END
+  }
+  in_arg {
+    name: "stride"
+    description: <<END
+A scalar representing the stride of the input elements of the sliding window.
+It must be positive.
+END
+  }
+  in_arg {
+    name: "drop_remainder"
+    description: <<END
+A scalar representing whether a window should be dropped in case its size is
+smaller than desired.
+END
+  }
+  summary: "A dataset that creates window datasets from the input dataset."
+}

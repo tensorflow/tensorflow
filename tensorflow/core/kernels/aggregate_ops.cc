@@ -179,20 +179,7 @@ class AddNOp<Device, Variant> : public OpKernel {
               i, " has shape: ", ctx->input(i).shape().DebugString(), "."));
     }
 
-    TensorShape common_shape;
-    OP_REQUIRES_OK(ctx, GetUnaryVariantShape(ctx->input(0), &common_shape));
-    // Step 2: access all variants and ensure shapes match.
-    for (int i = 1; i < num; ++i) {
-      TensorShape check_shape;
-      OP_REQUIRES_OK(ctx, GetUnaryVariantShape(ctx->input(i), &check_shape));
-      OP_REQUIRES(ctx, common_shape == check_shape,
-                  errors::InvalidArgument(
-                      "AddN of Variants of differing shapes; inputs[0] shape: ",
-                      common_shape.DebugString(), ", inputs[", i,
-                      "] shape: ", check_shape.DebugString()));
-    }
-
-    // Step 3: attempt to add using
+    // Step 2: attempt to add using
     //   BinaryOpVariants(ADD_VARIANT_BINARY_OP, ...)
     //   For the output create a default-constructed variant object.
     // TODO(ebrevdo): Perform summation in a tree-structure.
@@ -224,9 +211,11 @@ REGISTER_ADDN_CPU(Variant);
 
 #undef REGISTER_ADDN_CPU
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define REGISTER_ADDN_GPU(type) REGISTER_ADDN(type, GPU)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
+TF_CALL_int64(REGISTER_ADDN_GPU);
 TF_CALL_complex64(REGISTER_ADDN_GPU);
 TF_CALL_complex128(REGISTER_ADDN_GPU);
 TF_CALL_variant(REGISTER_ADDN_GPU);
@@ -242,7 +231,7 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
                             .HostMemory("sum"),
                         AddNOp<CPUDevice, int32>);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_ADDN(float, SYCL);

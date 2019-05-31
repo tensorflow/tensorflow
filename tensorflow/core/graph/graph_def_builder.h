@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_DEF_BUILDER_H_
-#define TENSORFLOW_GRAPH_GRAPH_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 
 #include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
@@ -128,7 +128,7 @@ class GraphDefBuilder {
     Options WithControlInputsImpl(gtl::ArraySlice<Node*> control_inputs);
     template <class T>
     Options WithAttrImpl(StringPiece name, T&& value) {
-      attrs_.emplace_back(name.ToString(), AttrValue());
+      attrs_.emplace_back(string(name), AttrValue());
       SetAttrValue(std::forward<T>(value), &attrs_.back().second);
       return *this;
     }
@@ -160,14 +160,6 @@ class GraphDefBuilder {
   // Once all the nodes have been added, call this to get whether it was
   // successful, and if so fill *graph_def.
   Status ToGraphDef(GraphDef* graph_def) const;
-
-  // Like ToGraphDef(), but converts to a Graph (using the default
-  // GraphConstructorOptions).
-  // TODO(josh11b): Make this faster; right now it converts
-  // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
-  // edges from the source and to the sink node, resolves back edges
-  // by name), and makes sure the resulting graph is valid.
-  Status ToGraph(Graph* graph) const;
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
@@ -211,4 +203,4 @@ Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
 }  // namespace ops
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_

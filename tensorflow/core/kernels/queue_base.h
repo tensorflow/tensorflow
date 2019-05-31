@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,10 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-namespace barrier {
-class Barrier;
-}  // namespace barrier
 
 // Functionality common to asynchronous QueueInterface implementations.
 class QueueBase : public QueueInterface {
@@ -82,6 +79,9 @@ class QueueBase : public QueueInterface {
   // NOTE(mrry): This method is deprecated. Use
   // `tensorflow::batch_util::CopySliceToElement()` defined in
   // "./batch_util.h" instead.
+  ABSL_DEPRECATED(
+      "Use `tensorflow::batch_util::CopySliceToElement()` defined in "
+      "\"./batch_util.h\" instead.")
   static Status CopyElementToSlice(const Tensor& element, Tensor* parent,
                                    int64 index);
 

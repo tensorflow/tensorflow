@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -59,6 +60,21 @@ void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
 
 Status OpRegistry::LookUp(const string& op_type_name,
                           const OpRegistrationData** op_reg_data) const {
+  {
+    tf_shared_lock l(mu_);
+    if (initialized_) {
+      if (const OpRegistrationData* res =
+              gtl::FindWithDefault(registry_, op_type_name, nullptr)) {
+        *op_reg_data = res;
+        return Status::OK();
+      }
+    }
+  }
+  return LookUpSlow(op_type_name, op_reg_data);
+}
+
+Status OpRegistry::LookUpSlow(const string& op_type_name,
+                              const OpRegistrationData** op_reg_data) const {
   *op_reg_data = nullptr;
   const OpRegistrationData* res = nullptr;
 
@@ -90,11 +106,15 @@ Status OpRegistry::LookUp(const string& op_type_name,
         }
       }
     }
-    Status status =
-        errors::NotFound("Op type not registered '", op_type_name,
-                         "' in binary running on ", port::Hostname(), ". ",
-                         "Make sure the Op and Kernel are registered in the "
-                         "binary running in this process.");
+    Status status = errors::NotFound(
+        "Op type not registered '", op_type_name, "' in binary running on ",
+        port::Hostname(), ". ",
+        "Make sure the Op and Kernel are registered in the "
+        "binary running in this process. Note that if you "
+        "are loading a saved graph which used ops from "
+        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
+        "before importing the graph, as contrib ops are lazily registered "
+        "when the module is first accessed.");
     VLOG(1) << status.ToString();
     return status;
   }
@@ -107,6 +127,15 @@ void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
   MustCallDeferred();
   for (const auto& p : registry_) {
     op_defs->push_back(p.second->op_def);
+  }
+}
+
+void OpRegistry::GetOpRegistrationData(
+    std::vector<OpRegistrationData>* op_data) {
+  mutex_lock lock(mu_);
+  MustCallDeferred();
+  for (const auto& p : registry_) {
+    op_data->push_back(*p.second);
   }
 }
 
@@ -133,7 +162,7 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
   out->Reserve(sorted.size());
 
   for (const auto& item : sorted) {
-    if (include_internal || !StringPiece(item.first).starts_with("_")) {
+    if (include_internal || !absl::StartsWith(item.first, "_")) {
       *out->Add() = item.second->op_def;
     }
   }
@@ -236,10 +265,15 @@ Status OpListOpRegistry::LookUp(const string& op_type_name,
   auto iter = index_.find(op_type_name);
   if (iter == index_.end()) {
     *op_reg_data = nullptr;
-    return errors::NotFound("Op type not registered '", op_type_name,
-                            "' in binary running on ", port::Hostname(), ". ",
-                            "Make sure the Op and Kernel are registered in the "
-                            "binary running in this process.");
+    return errors::NotFound(
+        "Op type not registered '", op_type_name, "' in binary running on ",
+        port::Hostname(), ". ",
+        "Make sure the Op and Kernel are registered in the "
+        "binary running in this process. Note that if you "
+        "are loading a saved graph which used ops from "
+        "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
+        "before importing the graph, as contrib ops are lazily registered "
+        "when the module is first accessed.");
   }
   *op_reg_data = iter->second;
   return Status::OK();

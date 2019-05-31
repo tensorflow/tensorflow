@@ -24,17 +24,16 @@ import numpy as np
 from tensorflow.contrib import framework
 from tensorflow.contrib.factorization.python.ops import gmm_ops
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
-from tensorflow.python.training import training_util
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import logging_ops as logging
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 
 
 def _streaming_sum(scalar_tensor):
@@ -70,8 +69,8 @@ class _InitializeClustersHook(session_run_hook.SessionRunHook):
 class GMM(estimator.Estimator):
   """An estimator for GMM clustering."""
   SCORES = 'scores'
+  LOG_LIKELIHOOD = 'loss'
   ASSIGNMENTS = 'assignments'
-  ALL_SCORES = 'all_scores'
 
   def __init__(self,
                num_clusters,
@@ -113,10 +112,7 @@ class GMM(estimator.Estimator):
       yield result[GMM.ASSIGNMENTS]
 
   def score(self, input_fn=None, batch_size=None, steps=None):
-    """Predict total sum of distances to nearest clusters.
-
-    Note that this function is different from the corresponding one in sklearn
-    which returns the negative of the sum of distances.
+    """Predict total log-likelihood.
 
     Args:
       input_fn: see predict.
@@ -124,11 +120,11 @@ class GMM(estimator.Estimator):
       steps: see predict.
 
     Returns:
-      Total sum of distances to nearest clusters.
+      Total log-likelihood.
     """
     results = self.evaluate(input_fn=input_fn, batch_size=batch_size,
                             steps=steps)
-    return np.sum(results[GMM.SCORES])
+    return np.log(np.sum(np.exp(results[GMM.SCORES])))
 
   def weights(self):
     """Returns the cluster weights."""
@@ -158,9 +154,10 @@ class GMM(estimator.Estimator):
     def _model_fn(features, labels, mode, config):
       """Model function."""
       assert labels is None, labels
-      (all_scores,
+      (loss,
+       scores,
        model_predictions,
-       losses, training_op,
+       training_op,
        init_op,
        is_initialized) = gmm_ops.gmm(self._parse_tensor_or_dict(features),
                                      self._training_initial_clusters,
@@ -168,16 +165,15 @@ class GMM(estimator.Estimator):
                                      self._covariance_type,
                                      self._params)
       incr_step = state_ops.assign_add(training_util.get_global_step(), 1)
-      loss = math_ops.reduce_sum(losses)
       training_op = with_dependencies([training_op, incr_step], loss)
       training_hooks = [_InitializeClustersHook(
           init_op, is_initialized, config.is_chief)]
       predictions = {
-          GMM.ALL_SCORES: all_scores[0],
           GMM.ASSIGNMENTS: model_predictions[0][0],
       }
       eval_metric_ops = {
-          GMM.SCORES: _streaming_sum(loss),
+          GMM.SCORES: scores,
+          GMM.LOG_LIKELIHOOD: _streaming_sum(loss),
       }
       return model_fn_lib.ModelFnOps(mode=mode, predictions=predictions,
                                      eval_metric_ops=eval_metric_ops,

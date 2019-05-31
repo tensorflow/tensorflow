@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "SegmentMean"
+  endpoint {
+    name: "math.segment_mean"
+  }
+  endpoint {
+    name: "segment_mean"
+    deprecation_version: 2
+  }
+}

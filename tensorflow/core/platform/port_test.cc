@@ -33,6 +33,16 @@ TEST(Port, AlignedMalloc) {
   }
 }
 
+TEST(Port, GetCurrentCPU) {
+  GTEST_SKIP() << "Currently not stable.";  // b/132640908
+  const int cpu = GetCurrentCPU();
+#if !defined(__APPLE__)
+  // GetCurrentCPU does not currently work on MacOS.
+  EXPECT_GE(cpu, 0);
+  EXPECT_LT(cpu, NumTotalCPUs());
+#endif
+}
+
 TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
   mutex m;
   mutex_lock l(m);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DYNAMIC_ANNOTATIONS_H_
-#define TENSORFLOW_PLATFORM_DYNAMIC_ANNOTATIONS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DYNAMIC_ANNOTATIONS_H_
+#define TENSORFLOW_CORE_PLATFORM_DYNAMIC_ANNOTATIONS_H_
 
 #include "tensorflow/core/platform/platform.h"
 
@@ -28,4 +28,4 @@ limitations under the License.
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#endif  // TENSORFLOW_PLATFORM_DYNAMIC_ANNOTATIONS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DYNAMIC_ANNOTATIONS_H_

@@ -21,12 +21,13 @@ from __future__ import print_function
 
 import functools
 import os
+
 import sqlite3
 
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.platform import gfile
 
 
@@ -58,7 +59,7 @@ def events_from_file(filepath):
     filepath: Path to the event file.
 
   Returns:
-    A list of all tf.Event protos in the event file.
+    A list of all tf.compat.v1.Event protos in the event file.
   """
   records = list(tf_record.tf_record_iterator(filepath))
   result = []
@@ -76,7 +77,7 @@ def events_from_logdir(logdir):
     logdir: The directory in which the single event file is sought.
 
   Returns:
-    A list of all tf.Event protos from the single event file.
+    A list of all tf.compat.v1.Event protos from the single event file.
 
   Raises:
     AssertionError: If logdir does not contain exactly one file.

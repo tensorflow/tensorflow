@@ -1,4 +1,6 @@
 op {
   graph_op_name: "TruncateMod"
-  visibility: HIDDEN
+  endpoint {
+    name: "truncatemod"
+  }
 }

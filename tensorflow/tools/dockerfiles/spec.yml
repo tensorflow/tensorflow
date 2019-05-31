@@ -1,0 +1,214 @@
+header: |
+    # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+    #
+    # Licensed under the Apache License, Version 2.0 (the "License");
+    # you may not use this file except in compliance with the License.
+    # You may obtain a copy of the License at
+    #
+    #     http://www.apache.org/licenses/LICENSE-2.0
+    #
+    # Unless required by applicable law or agreed to in writing, software
+    # distributed under the License is distributed on an "AS IS" BASIS,
+    # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    # See the License for the specific language governing permissions and
+    # limitations under the License.
+    # ============================================================================
+    #
+    # THIS IS A GENERATED DOCKERFILE.
+    #
+    # This file was assembled from multiple pieces, whose use is documented
+    # throughout. Please refer to the TensorFlow dockerfiles documentation
+    # for more information.
+
+# A combinatorial explosion of Docker images and Dockerfiles.
+# Each "release" defines all of the ways to combine related but separate chunks
+# of functionality ("slices") by listing all of the "slice sets" to use when
+# building.
+#
+# For example, a release that uses {nightly}{py} would create 4 Dockerfiles
+# (which could become images or concrete Dockerfiles), because the "nightly"
+# and "py" slice sets both have two entries:
+#
+#   - nightly (no -py2 because the Python 2 slice set has add_to_name: ""
+#   - nightly-py3
+#   - nightly-gpu (similar)
+#   - nightly-gpu-py3
+#
+# Releases are all treated differently by TensorFlow's CI systems.
+releases:
+    # Built Nightly and pushed to tensorflow/tensorflow
+    nightly:
+        tag_specs:
+            - "{nightly}{py}{jupyter}"
+            - "{ubuntu-devel}{py}"
+
+    # Built per-release and pushed to tensorflow/tensorflow
+    # --arg _TAG_PREFIX=<val> should be set to "1.11" (for example) or "latest".
+    versioned:
+        tag_specs:
+            - "{_TAG_PREFIX}{ubuntu}{py}{jupyter}"
+
+    # Dockerfiles stored in the TF repo; not pushed anywhere
+    dockerfiles:
+        is_dockerfiles: true
+        upload_images: false
+        tag_specs:
+            - "{ubuntu}{jupyter}"
+            - "{ubuntu-devel}{jupyter}"
+            - "{ubuntu-ppc64le}{jupyter}"
+            - "{ubuntu-devel-ppc64le}{jupyter}"
+
+slice_sets:
+
+    py:
+        - add_to_name: ""
+          args:
+              - USE_PYTHON_3_NOT_2=
+        - add_to_name: "-py3"
+          args:
+              - USE_PYTHON_3_NOT_2=1
+
+    jupyter:
+        - add_to_name: ""
+        - add_to_name: "-jupyter"
+          partials:
+              - jupyter
+
+    ubuntu:
+        - add_to_name: ""
+          dockerfile_exclusive_name: "cpu"
+          partials:
+              - ubuntu/version
+              - ubuntu/cpu
+              - ubuntu/python
+              - tensorflow
+              - shell
+        - add_to_name: "-gpu"
+          dockerfile_exclusive_name: "gpu"
+          args:
+              - TF_PACKAGE=tensorflow-gpu
+          partials:
+              - ubuntu/version
+              - ubuntu/nvidia
+              - ubuntu/python
+              - tensorflow
+              - shell
+          tests:
+              - import-gpu.sh
+          test_runtime: nvidia
+
+    ubuntu-devel:
+        - add_to_name: "devel"
+          dockerfile_exclusive_name: "devel-cpu"
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-cpu
+              - ubuntu/python
+              - ubuntu/bazel
+              - shell
+          tests:
+              - build-cpu.sh
+          args:
+              - CHECKOUT_TF_SRC=1
+        - add_to_name: "devel-gpu"
+          dockerfile_exclusive_name: "devel-gpu"
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-nvidia
+              - ubuntu/python
+              - ubuntu/bazel
+              - shell
+          tests:
+              - build-gpu.sh
+          test_runtime: nvidia
+          args:
+              - CHECKOUT_TF_SRC=1
+
+    ubuntu-ppc64le:
+        - add_to_name: "-ppc64le"
+          dockerfile_exclusive_name: "cpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          args:
+              - UBUNTU_VERSION=18.04
+          partials:
+              - ubuntu/version
+              - ubuntu/cpu
+              - ubuntu/python
+              - tensorflow-ppc64le
+              - shell
+        - add_to_name: "-gpu-ppc64le"
+          dockerfile_exclusive_name: "gpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          args:
+              - UBUNTU_VERSION=18.04
+              - ARCH=ppc64le
+              - CUDA=10.0
+              - TF_PACKAGE=tensorflow-gpu
+          partials:
+              - ubuntu/version
+              - ubuntu/nvidia
+              - ubuntu/python
+              - tensorflow-ppc64le
+              - shell
+          tests:
+              - import-gpu.sh
+          test_runtime: nvidia
+
+    ubuntu-devel-ppc64le:
+        - add_to_name: "devel-ppc64le"
+          dockerfile_exclusive_name: "devel-cpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-cpu
+              - ubuntu/python
+              - ubuntu/bazelbuild
+              - shell
+          tests:
+              - build-cpu.sh
+          args:
+              - UBUNTU_VERSION=18.04
+              - CHECKOUT_TF_SRC=1
+        - add_to_name: "devel-gpu-ppc64le"
+          dockerfile_exclusive_name: "devel-gpu-ppc64le"
+          dockerfile_subdirectory: "ppc64le"
+          args:
+              - UBUNTU_VERSION=18.04
+              - ARCH=ppc64le
+              - CUDA=10.0
+              - LIB_DIR_PREFIX=powerpc64le
+              - CHECKOUT_TF_SRC=1
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-nvidia
+              - ubuntu/python
+              - ubuntu/bazelbuild
+              - shell
+          tests:
+              - build-gpu.sh
+          test_runtime: nvidia
+
+    nightly:
+        - add_to_name: "nightly"
+          partials:
+              - ubuntu/version
+              - ubuntu/cpu
+              - ubuntu/python
+              - tensorflow
+              - shell
+          args:
+              - TF_PACKAGE=tf-nightly
+          tests:
+              - import.sh
+        - add_to_name: "nightly-gpu"
+          partials:
+              - ubuntu/version
+              - ubuntu/nvidia
+              - ubuntu/python
+              - tensorflow
+              - shell
+          test_runtime: nvidia
+          tests:
+              - import-gpu.sh
+          args:
+              - TF_PACKAGE=tf-nightly-gpu

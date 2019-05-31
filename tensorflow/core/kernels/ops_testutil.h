@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
-#define TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_
+#define TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_
 
 #include <memory>
 #include <vector>
@@ -140,14 +140,13 @@ class OpsTestBase : public ::testing::Test {
     CHECK_GT(input_types_.size(), inputs_.size())
         << "Adding more inputs than types; perhaps you need to call MakeOp";
     ResourceMgr* rm = device_->resource_manager();
-    EXPECT_TRUE(
-        rm->Create(container == "" ? rm->default_container() : container, name,
-                   resource)
-            .ok());
+    std::string container_name =
+        container == "" ? rm->default_container() : container;
+    EXPECT_TRUE(rm->Create(container_name, name, resource).ok());
     TypeIndex type_index = MakeTypeIndex<T>();
     ResourceHandle handle;
     handle.set_device(device_->name());
-    handle.set_container(container);
+    handle.set_container(container_name);
     handle.set_name(name);
     handle.set_hash_code(type_index.hash_code());
     handle.set_maybe_type_name(type_index.name());
@@ -252,4 +251,4 @@ class OpsTestBase : public ::testing::Test {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_

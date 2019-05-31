@@ -1,0 +1,33 @@
+path: "tensorflow.TensorSpec"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.tensor_spec.TensorSpec\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "from_spec"
+    argspec: "args=[\'cls\', \'spec\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_tensor"
+    argspec: "args=[\'cls\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'spec_or_tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+}

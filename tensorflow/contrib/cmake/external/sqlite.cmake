@@ -15,8 +15,8 @@
 include (ExternalProject)
 
 set(sqlite_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/sqlite)
-set(sqlite_URL https://mirror.bazel.build/www.sqlite.org/2017/sqlite-amalgamation-3200000.zip)
-set(sqlite_HASH SHA256=208780b3616f9de0aeb50822b7a8f5482f6515193859e91ed61637be6ad74fd4)
+set(sqlite_URL https://mirror.bazel.build/www.sqlite.org/2019/sqlite-amalgamation-3280000.zip)
+set(sqlite_HASH SHA256=d02fc4e95cfef672b45052e221617a050b7f2e20103661cda88387349a9b1327)
 set(sqlite_BUILD ${CMAKE_CURRENT_BINARY_DIR}/sqlite/src/sqlite)
 set(sqlite_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/sqlite/install)
 
@@ -36,6 +36,7 @@ if (WIN32)
         PREFIX sqlite
         URL ${sqlite_URL}
         URL_HASH ${sqlite_HASH}
+        BUILD_BYPRODUCTS ${sqlite_STATIC_LIBRARIES}
         PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/sqlite/CMakeLists.txt ${sqlite_BUILD}
         INSTALL_DIR ${sqlite_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"

@@ -25,19 +25,19 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const GraphNodeProto& TFShow::Show(const Options& opts) {
+const GraphNodeProto& TFShow::Show(const string& prefix, const Options& opts) {
   if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else {
     const ShowNode* ret = ShowInternal(opts, nullptr);
     if (opts.output_type == kOutput[1]) {
-      printf("%s", ret->formatted_str.c_str());
+      printf("%s", (prefix + ret->formatted_str).c_str());
       fflush(stdout);
     } else if (opts.output_type == kOutput[2]) {
       Status s = WriteStringToFile(Env::Default(),
                                    opts.output_options.at(kFileOpts[0]),
-                                   ret->formatted_str);
+                                   prefix + ret->formatted_str);
       if (!s.ok()) {
         fprintf(stderr, "%s\n", s.ToString().c_str());
       }
@@ -201,12 +201,12 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     if (node->proto().devices_size() > 0) {
-      info.push_back(str_util::Join(node->proto().devices(), "|"));
+      info.push_back(absl::StrJoin(node->proto().devices(), "|"));
     }
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     const std::set<string>& op_types = node->node->op_types();
-    info.push_back(str_util::Join(op_types, "|"));
+    info.push_back(absl::StrJoin(op_types, "|"));
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
     string run = FormatNumber(node->proto().total_run_count());
@@ -230,14 +230,14 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
         shape_vec.push_back(strings::Printf("%d:unknown", s.first));
       } else {
         shape_vec.push_back(strings::Printf(
-            "%d:%s", s.first, str_util::Join(s.second, "x").c_str()));
+            "%d:%s", s.first, absl::StrJoin(s.second, "x").c_str()));
       }
     }
-    info.push_back(str_util::Join(shape_vec, "|"));
+    info.push_back(absl::StrJoin(shape_vec, "|"));
   }
 
   return strings::Printf("%s (%s)", node->name().c_str(),
-                         str_util::Join(info, ", ").c_str());
+                         absl::StrJoin(info, ", ").c_str());
 }
 
 string TFShow::FormatLegend(const Options& opts) const {
@@ -286,7 +286,7 @@ string TFShow::FormatLegend(const Options& opts) const {
     legends.push_back("input shapes");
   }
   return strings::Printf("node name | %s\n",
-                         str_util::Join(legends, " | ").c_str());
+                         absl::StrJoin(legends, " | ").c_str());
 }
 
 }  // namespace tfprof

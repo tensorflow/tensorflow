@@ -22,12 +22,13 @@ import six
 
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.contrib.eager.python import metrics
-from tensorflow.contrib.summary import summary_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 
 
 class Evaluator(object):
@@ -57,7 +58,7 @@ class Evaluator(object):
     self._model = model
     self._metrics = {}
     self._evaluators = {}
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       self.call = function.defun(self.call)
 
   # ---- API for users ----
@@ -90,7 +91,7 @@ class Evaluator(object):
     Only for graph execution.
     @end_compatibility
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Evaluator.init_variables() not needed when "
                          "eager execution is enabled.")
     return control_flow_ops.group([m.init_variables() for _, m in self.metrics])
@@ -113,7 +114,8 @@ class Evaluator(object):
         with summary_ops.create_file_writer(
             summary_logdir).as_default(), summary_ops.always_record_summaries():
           return self._all_metric_results()
-      if context.in_eager_mode():
+
+      if context.executing_eagerly():
         return f()
       else:
         return function.defun(f)()
@@ -158,16 +160,23 @@ class Evaluator(object):
       @end_compatibility
     """
     summary_logdir = kwargs.pop("summary_logdir", None)
-    if context.in_graph_mode():
-      call_op = self.__call__(dataset.make_one_shot_iterator().get_next(),
-                              *args, **kwargs)
-      init_op = self.init_variables()
-      results_op = self.all_metric_results(summary_logdir)
-      return (init_op, call_op, results_op)
-    # Eager case
-    for example in datasets.Iterator(dataset):
-      self.__call__(example, *args, **kwargs)
-    return self.all_metric_results(summary_logdir)
+    if context.executing_eagerly():
+      for example in datasets.Iterator(dataset):
+        self.__call__(example, *args, **kwargs)
+      return self.all_metric_results(summary_logdir)
+    # Graph construction
+    next_value = dataset_ops.make_one_shot_iterator(dataset).get_next()
+    # Function inlining destroys strict inputs semantics (function body might
+    # start execution before all inputs are ready). When iterator is exhausted
+    # and throws out of range error, function body might be partially executed.
+    # To prevent this we add an explicit control dependency from the 'get_next'.
+    with ops.control_dependencies([next_value]):
+      has_next_value = control_flow_ops.no_op(name="iterator_has_next")
+    with ops.control_dependencies([has_next_value]):
+      call_op = self.__call__(next_value, *args, **kwargs)
+    init_op = self.init_variables()
+    results_op = self.all_metric_results(summary_logdir)
+    return (init_op, call_op, results_op)
 
   @staticmethod
   def run_evaluation(init_op, call_op, results_op, sess=None):
@@ -178,7 +187,7 @@ class Evaluator(object):
       call_op: An op that updates evaluation state on a mini-batch of examples.
         Must generate an tf.errors.OutOfRangeError when done.
       results_op: A dictionary of tensors that compute the final evaluation
-        results from the evaulation state.
+        results from the evaluation state.
       sess: The Session to run the evaluation in. Defaults to the default
         Session.
 
@@ -192,7 +201,7 @@ class Evaluator(object):
     Only for graph execution.
     @end_compatibility
     """
-    if context.in_eager_mode():
+    if context.executing_eagerly():
       raise RuntimeError("Evaluator.run_evaluation() not supported when "
                          "eager execution is enabled.")
     sess = sess or ops.get_default_session()

@@ -18,8 +18,8 @@ limitations under the License.
 // reduce code duplication and ensure consistency across the different
 // resizers, it performs the input validation.
 
-#ifndef TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
-#define TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_
 
 #define EIGEN_USE_THREADS
 
@@ -28,12 +28,12 @@ limitations under the License.
 #include <array>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -45,9 +45,29 @@ inline float CalculateResizeScale(int64 in_size, int64 out_size,
              : in_size / static_cast<float>(out_size);
 }
 
+// Half pixel scaler scales assuming that the pixel centers are at 0.5, i.e. the
+// floating point coordinates of the top,left pixel is 0.5,0.5.
+struct HalfPixelScaler {
+  inline float operator()(const int x, const float scale) const {
+    // Note that we subtract 0.5 from the return value, as the existing bilinear
+    // sampling code etc assumes pixels are in the old coordinate system.
+    return (static_cast<float>(x) + 0.5f) * scale - 0.5f;
+  }
+};
+
+// Older incorrect scaling method that causes all resizes to have a slight
+// translation leading to inconsistent results. For example, a flip then a
+// resize gives different results then a resize then a flip.
+struct LegacyScaler {
+  inline float operator()(const int x, const float scale) const {
+    return static_cast<float>(x) * scale;
+  }
+};
+
 struct ImageResizerState {
-  explicit ImageResizerState(bool align_corners)
-      : align_corners_(align_corners) {}
+  explicit ImageResizerState(bool align_corners, bool half_pixel_centers)
+      : align_corners_(align_corners),
+        half_pixel_centers_(half_pixel_centers) {}
 
   // ValidateAndCalculateOutputSize checks the bounds on the input tensors
   // and requested size, sets up some of the resizing state such as the
@@ -56,6 +76,11 @@ struct ImageResizerState {
   // the context, which the caller must check.
   void ValidateAndCalculateOutputSize(OpKernelContext* context,
                                       const Tensor& input) {
+    OP_REQUIRES(
+        context,
+        !half_pixel_centers_ || (half_pixel_centers_ && !align_corners_),
+        errors::InvalidArgument("If half_pixel_centers is True, "
+                                "align_corners must be False."));
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input must be 4-dimensional",
                                         input.shape().DebugString()));
@@ -109,8 +134,9 @@ struct ImageResizerState {
     ValidateAndCalculateOutputSize(context, input);
     if (!context->status().ok()) return;
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({input.dim_size(0), out_height,
-                                                out_width, input.dim_size(3)}),
+                                0,
+                                TensorShape({input.dim_size(0), out_height,
+                                             out_width, input.dim_size(3)}),
                                 &output));
   }
 
@@ -126,14 +152,23 @@ struct ImageResizerState {
 
  private:
   bool align_corners_;
+  bool half_pixel_centers_;
 };
 
 struct ImageResizerGradientState {
-  explicit ImageResizerGradientState(bool align_corners)
-      : align_corners_(align_corners) {}
+  explicit ImageResizerGradientState(bool align_corners,
+                                     bool half_pixel_centers)
+      : align_corners_(align_corners),
+        half_pixel_centers_(half_pixel_centers) {}
 
   void ValidateAndCreateOutput(OpKernelContext* context, const Tensor& input,
                                const Tensor& original_image) {
+    OP_REQUIRES(
+        context,
+        !half_pixel_centers_ || (half_pixel_centers_ && !align_corners_),
+        errors::InvalidArgument("If half_pixel_centers is True, "
+                                "align_corners must be False."));
+
     OP_REQUIRES(context, input.dims() == 4,
                 errors::InvalidArgument("input_grad must be 4-dimensional",
                                         input.shape().DebugString()));
@@ -141,7 +176,7 @@ struct ImageResizerGradientState {
     // always be a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
                 errors::InvalidArgument("input_grad must be of type float",
-                                        input.dtype()));
+                                        DataTypeString(input.dtype())));
 
     OP_REQUIRES(context, original_image.dims() == 4,
                 errors::InvalidArgument("original_image must be 4-dimensional",
@@ -168,8 +203,9 @@ struct ImageResizerGradientState {
         CalculateResizeScale(original_width, resized_width, align_corners_);
     output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, TensorShape({batch_size, original_height,
-                                                original_width, channels}),
+                                0,
+                                TensorShape({batch_size, original_height,
+                                             original_width, channels}),
                                 &output));
   }
 
@@ -185,8 +221,9 @@ struct ImageResizerGradientState {
 
  private:
   bool align_corners_;
+  bool half_pixel_centers_;
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_IMAGE_RESIZER_STATE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_RESIZER_STATE_H_

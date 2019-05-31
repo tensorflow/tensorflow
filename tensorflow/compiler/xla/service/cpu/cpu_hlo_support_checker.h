@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_HLO_SUPPORT_CHECKER_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_HLO_SUPPORT_CHECKER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_HLO_SUPPORT_CHECKER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_HLO_SUPPORT_CHECKER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -23,14 +23,12 @@ namespace xla {
 // This pass should run early in the HLO pipeline and checks for HLO constructs
 // which are not supported by the CPU backend and cannot be removed via HLO
 // transformations (eg, sparse layouts).
-class CpuHloSupportChecker : public HloPassInterface {
+class CpuHloSupportChecker : public HloModulePass {
  public:
   CpuHloSupportChecker() = default;
   ~CpuHloSupportChecker() override = default;
 
-  tensorflow::StringPiece name() const override {
-    return "cpu_hlo_support_checker";
-  }
+  absl::string_view name() const override { return "cpu_hlo_support_checker"; }
 
   // Note: always returns false (no instructions are ever modified by this
   // pass).
@@ -39,4 +37,4 @@ class CpuHloSupportChecker : public HloPassInterface {
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_HLO_SUPPORT_CHECKER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_HLO_SUPPORT_CHECKER_H_

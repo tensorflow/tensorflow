@@ -1,0 +1,44 @@
+path: "tensorflow.SessionLog"
+tf_proto {
+  descriptor {
+    name: "SessionLog"
+    field {
+      name: "status"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.SessionLog.SessionStatus"
+    }
+    field {
+      name: "checkpoint_path"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "msg"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    enum_type {
+      name: "SessionStatus"
+      value {
+        name: "STATUS_UNSPECIFIED"
+        number: 0
+      }
+      value {
+        name: "START"
+        number: 1
+      }
+      value {
+        name: "STOP"
+        number: 2
+      }
+      value {
+        name: "CHECKPOINT"
+        number: 3
+      }
+    }
+  }
+}

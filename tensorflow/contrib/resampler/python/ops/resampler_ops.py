@@ -39,7 +39,9 @@ def resampler(data, warp, name="resampler"):
       data_num_channels]` containing 2D data that will be resampled.
     warp: Tensor of minimum rank 2 containing the coordinates at which
       resampling will be performed. Since only bilinear interpolation is
-      currently supported, the last dimension of the `warp` tensor must be 2.
+      currently supported, the last dimension of the `warp` tensor must be 2,
+      representing the (x, y) coordinate where x is the index for width and y is
+      the index for height.
     name: Optional name of the op.
 
   Returns:

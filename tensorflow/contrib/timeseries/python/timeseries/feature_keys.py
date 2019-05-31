@@ -72,3 +72,4 @@ class SavedModelLabels(object):
   """Names of signatures exported with export_savedmodel."""
   PREDICT = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
   FILTER = "filter"
+  COLD_START_FILTER = "cold_start_filter"

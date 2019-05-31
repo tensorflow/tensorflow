@@ -16,6 +16,7 @@
 #include "tensorflow/contrib/boosted_trees/lib/utils/batch_features.h"
 #include "tensorflow/contrib/boosted_trees/lib/utils/macros.h"
 #include "tensorflow/contrib/boosted_trees/lib/utils/tensor_utils.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 namespace boosted_trees {
@@ -54,7 +55,7 @@ Status BatchFeatures::Initialize(
     TF_CHECK_AND_RETURN_IF_ERROR(
         dense_float_feature.dim_size(1) == 1,
         errors::InvalidArgument(
-            "Dense float features may not be multi-valent: dim_size(1) = ",
+            "Dense float features may not be multivalent: dim_size(1) = ",
             dense_float_feature.dim_size(1)));
     dense_float_feature_columns_.emplace_back(dense_float_feature);
   }
@@ -96,9 +97,11 @@ Status BatchFeatures::Initialize(
             "Sparse float feature shape incompatible with batch size."));
     auto tensor_shape = TensorShape({shape_flat(0), shape_flat(1)});
     auto order_dims = sparse::SparseTensor::VarDimArray({0, 1});
-    sparse_float_feature_columns_.emplace_back(sparse_float_feature_indices,
-                                               sparse_float_feature_values,
-                                               tensor_shape, order_dims);
+    sparse::SparseTensor sparse_tensor;
+    TF_RETURN_IF_ERROR(sparse::SparseTensor::Create(
+        sparse_float_feature_indices, sparse_float_feature_values, tensor_shape,
+        order_dims, &sparse_tensor));
+    sparse_float_feature_columns_.push_back(std::move(sparse_tensor));
   }
 
   // Read sparse int features.
@@ -136,9 +139,11 @@ Status BatchFeatures::Initialize(
             "Sparse int feature shape incompatible with batch size."));
     auto tensor_shape = TensorShape({shape_flat(0), shape_flat(1)});
     auto order_dims = sparse::SparseTensor::VarDimArray({0, 1});
-    sparse_int_feature_columns_.emplace_back(sparse_int_feature_indices,
-                                             sparse_int_feature_values,
-                                             tensor_shape, order_dims);
+    sparse::SparseTensor sparse_tensor;
+    TF_RETURN_IF_ERROR(sparse::SparseTensor::Create(
+        sparse_int_feature_indices, sparse_int_feature_values, tensor_shape,
+        order_dims, &sparse_tensor));
+    sparse_int_feature_columns_.push_back(std::move(sparse_tensor));
   }
   return Status::OK();
 }

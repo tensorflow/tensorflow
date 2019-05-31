@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_ACTIVATIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_ACTIVATIONS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_ACTIVATIONS_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_ACTIVATIONS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace Eigen {
 
 /** scalar_sigmoid_fast_derivative_op
-  * \ingroup CXX11_NeuralNetworks_Module
-  * \brief Template functor to compute the fast derivative of a sigmoid
-  *
-  * Input should be the backpropagated gradient.
-  *
-  * \sa class CwiseUnaryOp, Cwise::sigmoid_fast_derivative()
-  */
+ * \ingroup CXX11_NeuralNetworks_Module
+ * \brief Template functor to compute the fast derivative of a sigmoid
+ *
+ * Input should be the backpropagated gradient.
+ *
+ * \sa class CwiseUnaryOp, Cwise::sigmoid_fast_derivative()
+ */
 template <typename T>
 struct scalar_sigmoid_fast_derivative_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_sigmoid_fast_derivative_op)
@@ -55,13 +55,13 @@ struct functor_traits<scalar_sigmoid_fast_derivative_op<T> > {
 }  // namespace internal
 
 /** scalar_tanh_fast_derivative_op
-  * \ingroup CXX11_NeuralNetworks_Module
-  * \brief Template functor to compute the fast derivative of a tanh
-  *
-  * Input should be the backpropagated gradient.
-  *
-  * \sa class CwiseUnaryOp, Cwise::tanh_fast_derivative()
-  */
+ * \ingroup CXX11_NeuralNetworks_Module
+ * \brief Template functor to compute the fast derivative of a tanh
+ *
+ * Input should be the backpropagated gradient.
+ *
+ * \sa class CwiseUnaryOp, Cwise::tanh_fast_derivative()
+ */
 template <typename T>
 struct scalar_tanh_fast_derivative_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_tanh_fast_derivative_op)
@@ -89,11 +89,11 @@ struct functor_traits<scalar_tanh_fast_derivative_op<T> > {
 }  // namespace internal
 
 /**
-  * \ingroup CXX11_NeuralNetworks_Module
-  * \brief Template functor to clip the magnitude of the first scalar.
-  *
-  * \sa class CwiseBinaryOp, MatrixBase::Clip
-  */
+ * \ingroup CXX11_NeuralNetworks_Module
+ * \brief Template functor to clip the magnitude of the first scalar.
+ *
+ * \sa class CwiseBinaryOp, MatrixBase::Clip
+ */
 template <typename Scalar>
 struct scalar_clip_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_clip_op)
@@ -122,4 +122,4 @@ struct functor_traits<scalar_clip_op<Scalar> > {
 
 }  // end namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_ACTIVATIONS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_ACTIVATIONS_H_

@@ -14,141 +14,79 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
-GraphView::GraphView(GraphDef* graph) : graph_(graph) {
-  for (int i = 0; i < graph_->node_size(); i++) {
-    auto node = graph_->mutable_node(i);
-    auto rslt = nodes_.insert(std::make_pair(node->name(), node));
-    // Check that the graph doesn't contain multiple nodes with the same name.
-    CHECK(rslt.second) << "Non unique node name detected: " << node->name();
-  }
-  for (NodeDef& node : *graph_->mutable_node()) {
-    for (int i = 0; i < node.input_size(); ++i) {
-      OutputPort fanin;
-      string fanin_name = ParseNodeName(node.input(i), &fanin.port_id);
-      fanin.node = nodes_[fanin_name];
-
-      InputPort input;
-      input.node = &node;
-      if (fanin.port_id < 0) {
-        input.port_id = -1;
-      } else {
-        input.port_id = i;
-      }
-
-      fanouts_[fanin].insert(input);
+namespace {
+int OpPortIdToArgId(const NodeDef& node,
+                    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+                    int port_id) {
+  for (int arg_id = 0; arg_id < args.size(); ++arg_id) {
+    if (port_id < 0) {
+      return -1;
+    } else if (port_id == 0) {
+      return arg_id;
     }
-  }
-}
 
-NodeDef* GraphView::GetNode(const string& node_name) const {
-  auto it = nodes_.find(node_name);
-  if (it == nodes_.end()) {
-    return nullptr;
-  }
-  return it->second;
-}
+    // Default is 1 port per arg.
+    int n = 1;
 
-GraphView::InputPort GraphView::GetInputPort(const string& node_name,
-                                             int port_id) const {
-  InputPort result;
-  result.node = GetNode(node_name);
-  // TODO(bsteiner): verify that the node has at least port_id input ports
-  result.port_id = port_id;
-  return result;
-}
-
-GraphView::OutputPort GraphView::GetOutputPort(const string& node_name,
-                                               int port_id) const {
-  OutputPort result;
-  result.node = GetNode(node_name);
-  // TODO(bsteiner): verify that the node has at least port_id output ports
-  result.port_id = port_id;
-  return result;
-}
-
-const std::unordered_set<GraphView::InputPort, GraphView::HashPort>&
-GraphView::GetFanout(const GraphView::OutputPort& port) const {
-  auto it = fanouts_.find(port);
-  if (it == fanouts_.end()) {
-    return empty_set_;
-  }
-  return it->second;
-}
-
-const std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
-GraphView::GetFanin(const GraphView::InputPort& port) const {
-  std::unordered_set<GraphView::OutputPort, GraphView::HashPort> result;
-  if (port.port_id >= 0) {
-    result.insert(GetRegularFanin(port));
-  } else {
-    for (int i = port.node->input_size() - 1; i >= 0; --i) {
-      OutputPort fanin;
-      string fanin_name = ParseNodeName(port.node->input(i), &fanin.port_id);
-      if (fanin.port_id < 0) {
-        auto it = nodes_.find(fanin_name);
-        if (it != nodes_.end()) {
-          fanin.node = it->second;
-          result.insert(fanin);
-        }
-      } else {
-        break;
-      }
+    const auto& arg = args.Get(arg_id);
+    if (!arg.number_attr().empty()) {
+      n = node.attr().at(arg.number_attr()).i();
+    } else if (!arg.type_list_attr().empty()) {
+      n = node.attr().at(arg.type_list_attr()).list().type_size();
     }
+
+    if (n < 0) {
+      // This should never happen.
+      DCHECK_GE(n, 0);
+      return -1;
+    } else if (port_id < n) {
+      return arg_id;
+    }
+    port_id -= n;
   }
-  return result;
+
+  return -1;
+}
+}  // end namespace
+
+int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
+  return OpPortIdToArgId(node, op.output_arg(), port_id);
 }
 
-const GraphView::OutputPort GraphView::GetRegularFanin(
-    const GraphView::InputPort& port) const {
-  CHECK_LE(0, port.port_id);
-  OutputPort fanin;
-  string fanin_name =
-      ParseNodeName(port.node->input(port.port_id), &fanin.port_id);
-  auto it = nodes_.find(fanin_name);
-  if (it == nodes_.end()) {
-    fanin.node = nullptr;
-  } else {
-    fanin.node = it->second;
-  }
-  return fanin;
+int OpInputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
+  return OpPortIdToArgId(node, op.input_arg(), port_id);
 }
 
-const std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
-GraphView::GetFanins(const NodeDef& node,
-                     bool include_controlling_nodes) const {
-  std::unordered_set<OutputPort, HashPort> result;
-  for (int i = 0; i < node.input_size(); ++i) {
-    OutputPort fanin;
-    string fanin_name = ParseNodeName(node.input(i), &fanin.port_id);
-    if (fanin.port_id < 0) {
-      if (!include_controlling_nodes) {
-        break;
-      }
-    }
-    auto it = nodes_.find(fanin_name);
-    if (it != nodes_.end()) {
-      fanin.node = it->second;
-      result.insert(fanin);
-    }
-  }
-  return result;
+bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
+                         int port) {
+  const auto output = GraphView::OutputPort(node, port);
+  return graph_view.GetFanout(output).size() <= 1;
 }
 
-int GraphView::NumFanins(const NodeDef& node,
-                         bool include_controlling_nodes) const {
-  int count = 0;
-  for (const string& input : node.input()) {
-    if (!include_controlling_nodes && IsControlInput(input)) {
-      break;
-    }
-    count += 1;
-  }
-  return count;
+bool HasFanouts(const GraphView& graph_view, const NodeDef* node, int port) {
+  const auto output = GraphView::OutputPort(node, port);
+  return !graph_view.GetFanout(output).empty();
+}
+
+bool HasControlFanin(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::InputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanin(control_port).empty();
+}
+
+bool HasControlFanout(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::OutputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanout(control_port).empty();
+}
+
+bool HasControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node) {
+  return HasControlFanin(graph_view, node) ||
+         HasControlFanout(graph_view, node);
 }
 
 }  // end namespace grappler

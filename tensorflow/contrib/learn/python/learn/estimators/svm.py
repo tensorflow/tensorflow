@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Support Vector Machine (SVM) Estimator."""
+"""Support Vector Machine (SVM) Estimator (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -35,6 +40,10 @@ def _as_iterable(preds, output):
 
 class SVM(estimator.Estimator):
   """Support Vector Machine (SVM) model for binary classification.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Currently, only linear SVMs are supported. For the underlying optimization
   problem, the `SDCAOptimizer` is used. For performance and convergence tuning,

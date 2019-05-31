@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_LIB_CORE_PY_SEQ_TENSOR_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_LIB_CORE_PY_SEQ_TENSOR_H_
+#ifndef TENSORFLOW_PYTHON_LIB_CORE_PY_SEQ_TENSOR_H_
+#define TENSORFLOW_PYTHON_LIB_CORE_PY_SEQ_TENSOR_H_
 
 #include <Python.h>
 
@@ -30,8 +30,8 @@ namespace tensorflow {
 // representing the desired dtype of the resulting Tensor.
 // This is used only as a hint, *ret may not have that dtype on
 // success and may require a cast.
-Status PySeqToTensor(PyObject* obj, PyObject* dtype, Tensor* ret);
+Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_LIB_CORE_PY_SEQ_TENSOR_H_
+#endif  // TENSORFLOW_PYTHON_LIB_CORE_PY_SEQ_TENSOR_H_

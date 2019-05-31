@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -36,20 +37,6 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   m2.AppendToString(&serialized2);
   return (serialized1 == serialized2);
 }
-
-namespace {
-
-string SanitizeFilename(const string& file_name) {
-  string safe_file_name = file_name;
-  for (char& c : safe_file_name) {
-    if (c == '/' || c == '\\') {
-      c = '_';
-    }
-  }
-  return safe_file_name;
-}
-
-}  // namespace
 
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
                             const string& directory, const string& file_name) {

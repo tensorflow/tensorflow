@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,45 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""util python module.
 
-"""Utility to retrieve function args."""
+Importing from tensorflow.python.estimator is unsupported
+and will soon break!
+"""
+# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
+from tensorflow_estimator.python.estimator import util
 
-from tensorflow.python.util import tf_inspect
+# Include attrs that start with single underscore.
+_HAS_DYNAMIC_ATTRIBUTES = True
+util.__all__ = [s for s in dir(util) if not s.startswith('__')]
 
-
-def _is_bounded_method(fn):
-  return tf_inspect.ismethod(fn) and (fn.__self__ is not None)
-
-
-def _is_callable_object(obj):
-  return hasattr(obj, '__call__') and tf_inspect.ismethod(obj.__call__)
-
-
-def fn_args(fn):
-  """Get argument names for function-like object.
-
-  Args:
-    fn: Function, or function-like object (e.g., result of `functools.partial`).
-
-  Returns:
-    `tuple` of string argument names.
-
-  Raises:
-    ValueError: if partial function has positionally bound arguments
-  """
-  if isinstance(fn, functools.partial):
-    args = fn_args(fn.func)
-    args = [a for a in args[len(fn.args):] if a not in (fn.keywords or [])]
-  else:
-    if _is_callable_object(fn):
-      fn = fn.__call__
-    args = tf_inspect.getfullargspec(fn).args
-    if _is_bounded_method(fn):
-      args.remove('self')
-  return tuple(args)
+from tensorflow_estimator.python.estimator.util import *

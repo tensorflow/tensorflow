@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_RENDEZVOUS_MGR_H_
-#define TENSORFLOW_COMMON_RUNTIME_RENDEZVOUS_MGR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_MGR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_MGR_H_
 
 #include <string>
 #include <unordered_map>
@@ -87,4 +87,4 @@ class IntraProcessRendezvous : public Rendezvous {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_RENDEZVOUS_MGR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_RENDEZVOUS_MGR_H_

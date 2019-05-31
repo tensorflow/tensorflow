@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -117,6 +116,31 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
   return Status::OK();
 }
 
+Status RewriteInputsAsPlaceholders(const TransformFuncContext& context,
+                                   GraphDef* graph_def) {
+  std::unordered_set<string> input_names;
+  for (const string& input_name : context.input_names) {
+    input_names.emplace(ParseTensorName(input_name).first);
+  }
+
+  for (NodeDef& node : *graph_def->mutable_node()) {
+    if (input_names.find(node.name()) == input_names.end()) {
+      continue;
+    }
+    if (node.op() == "PlaceholderWithDefault") {
+      node.set_op("Placeholder");
+      node.clear_input();
+    } else if (node.op() != "Placeholder") {
+      return errors::InvalidArgument(
+          "Input '", node.name(),
+          "' was expected to be a Placeholder or PlaceholderWithDefault op, "
+          "but was ",
+          node.op());
+    }
+  }
+  return Status::OK();
+}
+
 Status RemoveUnusedNodes(const GraphDef& input_graph_def,
                          const TransformFuncContext& context,
                          GraphDef* output_graph_def) {
@@ -165,6 +189,7 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
       input_graph_def,
       [&](const NodeDef& node) { return used_nodes.count(node.name()) > 0; },
       output_graph_def);
+  TF_RETURN_IF_ERROR(RewriteInputsAsPlaceholders(context, output_graph_def));
 
   return Status::OK();
 }
@@ -273,15 +298,25 @@ Status FoldConstants(const GraphDef& input_graph_def,
   cf_opts.shape_map = &shape_map;
 
   // Exclude specified nodes from constant folding.
+  std::set<string> excluded_ops, excluded_nodes;
   if (context.params.count("exclude_op") > 0) {
-    const auto& excluded_nodes = context.params.at("exclude_op");
-    const std::set<string> excluded_nodes_set(excluded_nodes.begin(),
-                                              excluded_nodes.end());
-    cf_opts.consider = [excluded_nodes_set](const Node* n) {
-      return excluded_nodes_set.find(n->op_def().name()) ==
-             excluded_nodes_set.end();
+    const auto& ops = context.params.at("exclude_op");
+    excluded_ops = std::set<string>(ops.begin(), ops.end());
+  }
+  if (context.params.count("exclude_node") > 0) {
+    const auto& nodes = context.params.at("exclude_node");
+    excluded_nodes = std::set<string>(nodes.begin(), nodes.end());
+  }
+  if (!excluded_ops.empty() || !excluded_nodes.empty()) {
+    cf_opts.consider = [excluded_ops, excluded_nodes](const Node* n) {
+      return excluded_ops.find(n->op_def().name()) == excluded_ops.end() &&
+             excluded_nodes.find(n->name()) == excluded_nodes.end();
     };
   }
+
+  TF_RETURN_IF_ERROR(context.GetOneInt64Parameter(
+      "max_constant_size_in_bytes", cf_opts.max_constant_size_in_bytes,
+      &cf_opts.max_constant_size_in_bytes));
 
   // Constant folding.
   bool was_mutated;

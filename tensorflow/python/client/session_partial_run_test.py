@@ -39,7 +39,7 @@ from tensorflow.python.training import server_lib
 ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
-class PartialRunTestMethods(object):
+class PartialRunTest(test_util.TensorFlowTestCase):
 
   def RunTestPartialRun(self, sess):
     a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -117,7 +117,7 @@ class PartialRunTestMethods(object):
     a = constant_op.constant(2.0, dtypes.float32)
     b = a * 2
     c = b * 3
-    r1 = sess.run([b, c])
+    r1 = self.evaluate([b, c])
     h = sess.partial_run_setup([b, c], [])
     r2 = sess.partial_run(h, [b, c])
     self.assertEqual(r1, r2)
@@ -188,6 +188,7 @@ class PartialRunTestMethods(object):
     r = sess.partial_run(h, [b], {})
     self.assertEqual([6.0], r)
 
+  @test_util.run_deprecated_v1
   def testInvalidPartialRunSetup(self):
     sess = session.Session()
     x = array_ops.placeholder(dtypes.float32, shape=[])
@@ -196,6 +197,7 @@ class PartialRunTestMethods(object):
         'specify at least one target to fetch or execute.'):
       sess.partial_run_setup(fetches=[], feeds=[x])
 
+  @test_util.run_deprecated_v1
   def testPartialRunSetupNoFeedsPassed(self):
     sess = session.Session()
     r1 = constant_op.constant([6.0])
@@ -204,110 +206,105 @@ class PartialRunTestMethods(object):
     result1 = sess.partial_run(h, r1)
     self.assertEqual([6.0], result1)
 
+  @test_util.run_deprecated_v1
   def testPartialRunDirect(self):
     self.RunTestPartialRun(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunIncompleteDirect(self):
     self.RunTestPartialRunIncomplete(session.Session())
 
+  @test_util.run_deprecated_v1
   def testConcurrentPartialRunDirect(self):
     self.RunTestConcurrentPartialRun(session.Session())
 
+  @test_util.run_deprecated_v1
   def testManyPartialRunDirect(self):
     self.RunTestManyPartialRun(session.Session())
 
+  @test_util.run_deprecated_v1
   def testRunAndPartialRunDirect(self):
     self.RunTestRunAndPartialRun(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunMissingPlaceholderFeedExceptionDirect(self):
     self.RunTestPartialRunMissingPlaceholderFeedException(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunUnspecifiedFeedDirect(self):
     self.RunTestPartialRunUnspecifiedFeed(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunUnspecifiedFetchDirect(self):
     self.RunTestPartialRunUnspecifiedFetch(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunAlreadyFedDirect(self):
     self.RunTestPartialRunAlreadyFed(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunAlreadyFetchedDirect(self):
     self.RunTestPartialRunAlreadyFetched(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunEmptyFetchesDirect(self):
     self.RunTestPartialRunEmptyFetches(session.Session())
 
+  @test_util.run_deprecated_v1
   def testPartialRunDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRun(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testPartialRunIncompleteDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunIncomplete(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testConcurrentPartialRunDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestConcurrentPartialRun(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testManyPartialRunDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestManyPartialRun(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testRunAndPartialRunDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestRunAndPartialRun(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testPartialRunMissingPlaceholderFeedExceptionDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunMissingPlaceholderFeedException(
         session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testPartialRunUnspecifiedFeedDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunUnspecifiedFeed(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testPartialRunUnspecifiedFetchDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunUnspecifiedFetch(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testPartialRunAlreadyFedDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunAlreadyFed(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testPartialRunAlreadyFetchedDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunAlreadyFetched(session.Session(server.target))
 
+  @test_util.run_deprecated_v1
   def testPartialRunEmptyFetchesDist(self):
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunEmptyFetches(session.Session(server.target))
-
-
-class PartialRunTest(PartialRunTestMethods, test_util.TensorFlowTestCase):
-  """Test case that invokes test methods with _USE_C_API=False."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = False
-    super(PartialRunTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(PartialRunTest, self).tearDown()
-
-
-class PartialRunWithCApiTest(PartialRunTestMethods,
-                             test_util.TensorFlowTestCase):
-  """Test case that invokes test methods with _USE_C_API=True."""
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API
-    ops._USE_C_API = True
-    super(PartialRunWithCApiTest, self).setUp()
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api
-    super(PartialRunWithCApiTest, self).tearDown()
 
 
 if __name__ == '__main__':

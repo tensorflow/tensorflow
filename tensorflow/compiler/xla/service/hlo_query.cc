@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -24,7 +24,7 @@ namespace hlo_query {
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::IsScalarF32(instruction->shape())) {
+      ShapeUtil::IsScalarWithElementType(instruction->shape(), F32)) {
     *out = instruction->literal().Get<float>({});
     return true;
   }
@@ -61,7 +61,7 @@ bool AllOperandsAreConstants(const HloInstruction& instruction) {
 }
 
 HloInstruction* GetMatchingOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction) {
   for (HloInstruction* op : instruction->operands()) {
     if (matcher(op)) {
@@ -72,7 +72,7 @@ HloInstruction* GetMatchingOperand(
 }
 
 bool MatchBinaryInstructionOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction, HloInstruction** matching_operand,
     HloInstruction** other_operand) {
   CHECK_EQ(instruction->operand_count(), 2);
@@ -102,6 +102,21 @@ bool MatchBinaryInstructionOperandOpcode(HloOpcode opcode,
 
 bool IsScalarConstant(const HloInstruction* instruction) {
   return instruction->IsConstant() && ShapeUtil::IsScalar(instruction->shape());
+}
+
+bool ContainsInstrWithOpcode(const HloComputation* comp,
+                             const absl::flat_hash_set<HloOpcode>& opcodes) {
+  for (const auto* instr : comp->instructions()) {
+    if (opcodes.count(instr->opcode())) {
+      return true;
+    }
+    for (const HloComputation* subcomp : instr->called_computations()) {
+      if (ContainsInstrWithOpcode(subcomp, opcodes)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace hlo_query

@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_IO_ZLIB_INPUTSTREAM_H_
 #define TENSORFLOW_LIB_IO_ZLIB_INPUTSTREAM_H_
 
-#include <zlib.h>
-
 #include <string>
 
 #include "tensorflow/core/lib/core/status.h"
@@ -30,6 +28,10 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 
+// Forward declare some members of zlib.h, which is only included in the
+// .cc file.
+struct ZStreamDef;
+
 // An ZlibInputStream provides support for reading from a stream compressed
 // using zlib (http://www.zlib.net/). Buffers the contents of the file.
 //
@@ -40,7 +42,15 @@ class ZlibInputStream : public InputStreamInterface {
   // Create a ZlibInputStream for `input_stream` with a buffer of size
   // `input_buffer_bytes` bytes for reading contents from `input_stream` and
   // another buffer with size `output_buffer_bytes` for caching decompressed
-  // contents. Does *not* take ownership of "input_stream".
+  // contents.
+  //
+  // Takes ownership of `input_stream` iff `owns_input_stream` is true.
+  ZlibInputStream(InputStreamInterface* input_stream, size_t input_buffer_bytes,
+                  size_t output_buffer_bytes,
+                  const ZlibCompressionOptions& zlib_options,
+                  bool owns_input_stream);
+
+  // Equivalent to the previous constructor with owns_input_stream=false.
   ZlibInputStream(InputStreamInterface* input_stream, size_t input_buffer_bytes,
                   size_t output_buffer_bytes,
                   const ZlibCompressionOptions& zlib_options);
@@ -65,33 +75,15 @@ class ZlibInputStream : public InputStreamInterface {
  private:
   void InitZlibBuffer();
 
-  InputStreamInterface* input_stream_;  // Not owned
-  size_t input_buffer_capacity_;        // Size of z_stream_input_
-  size_t output_buffer_capacity_;       // Size of z_stream_output_
-  char* next_unread_byte_;              // Next unread byte in z_stream_output_
-
-  // Buffer for storing contents read from compressed stream.
-  // TODO(srbs): Consider using circular buffers. That would greatly simplify
-  // the implementation.
-  std::unique_ptr<Bytef[]> z_stream_input_;
-
-  // Buffer for storing inflated contents of `input_stream_`.
-  std::unique_ptr<Bytef[]> z_stream_output_;
+  const bool owns_input_stream_;
+  InputStreamInterface* input_stream_;
+  size_t input_buffer_capacity_;   // Size of z_stream_input_
+  size_t output_buffer_capacity_;  // Size of z_stream_output_
+  char* next_unread_byte_;         // Next unread byte in z_stream_output_
 
   ZlibCompressionOptions const zlib_options_;
 
-  // Configuration passed to `inflate`.
-  //
-  // z_stream_->next_in:
-  //   Next byte to de-compress. Points to some byte in z_stream_input_ buffer.
-  // z_stream_->avail_in:
-  //   Number of bytes available to be decompressed at this time.
-  // z_stream_->next_out:
-  //   Next byte to write de-compressed data to. Points to some byte in
-  //   z_stream_output_ buffer.
-  // z_stream_->avail_out:
-  //   Number of free bytes available at write location.
-  std::unique_ptr<z_stream> z_stream_;
+  std::unique_ptr<ZStreamDef> z_stream_def_;
 
   // Reads data from `input_stream_` and tries to fill up `z_stream_input_` if
   // enough unread data is left in `input_stream_`.

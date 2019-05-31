@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_INTERNAL_CHECKER_RUNNER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_INTERNAL_CHECKER_RUNNER_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_INTERNAL_CHECKER_RUNNER_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_INTERNAL_CHECKER_RUNNER_H_
 
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_options.pb.h"
@@ -31,4 +31,4 @@ AdviceProto RunInternalCheckers(const AdvisorOptionsProto& options,
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_INTERNAL_CHECKER_RUNNER_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_INTERNAL_CHECKER_RUNNER_H_

@@ -27,11 +27,12 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -96,12 +97,11 @@ class Array {
   using value_type = T;
 
   // Creates a new array with the specified dimensions.
-  explicit Array(tensorflow::gtl::ArraySlice<int64> sizes)
-      : Array(sizes, T()) {}
+  explicit Array(absl::Span<const int64> sizes) : Array(sizes, T()) {}
 
   // Creates a new array with the specified dimensions and specified value for
   // every cell.
-  Array(tensorflow::gtl::ArraySlice<int64> sizes, T value)
+  Array(absl::Span<const int64> sizes, T value)
       : sizes_(sizes.begin(), sizes.end()), values_(new T[num_elements()]) {
     Fill(value);
   }
@@ -115,6 +115,44 @@ class Array {
     for (const auto& it1 : values) {
       for (const auto& it2 : it1) {
         values_[idx] = it2;
+        ++idx;
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 1D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<T2> values)
+      : Array(ToInt64Vector({values.size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      values_[idx] = static_cast<T>(it1);
+      ++idx;
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 2D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<std::initializer_list<T2>> values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        values_[idx] = static_cast<T>(it2);
         ++idx;
       }
     }
@@ -138,6 +176,30 @@ class Array {
     CHECK(idx == num_elements());
   }
 
+  // Creates a 3D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<std::initializer_list<std::initializer_list<T2>>>
+            values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size(),
+                             values.begin()->begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        for (const auto& it3 : it2) {
+          values_[idx] = static_cast<T>(it3);
+          ++idx;
+        }
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
   // Creates a 4D array from the given nested initializer list. The outer
   // initializer list is the first dimension, and so on.
   Array(InitializerList4D values)
@@ -150,6 +212,34 @@ class Array {
         for (const auto& it3 : it2) {
           for (const auto& it4 : it3) {
             values_[idx] = it4;
+            ++idx;
+          }
+        }
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 4D array of a floating-point type (half, bfloat16, float,
+  // or double) from an initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<
+        std::initializer_list<std::initializer_list<std::initializer_list<T2>>>>
+            values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size(),
+                             values.begin()->begin()->size(),
+                             values.begin()->begin()->begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        for (const auto& it3 : it2) {
+          for (const auto& it4 : it3) {
+            values_[idx] = static_cast<T>(it4);
             ++idx;
           }
         }
@@ -182,19 +272,28 @@ class Array {
     std::iota(&values_[0], &values_[0] + num_elements(), value);
   }
 
+  // Fills the array with a repeating sequence:
+  //   [value, value + 1, ..., value + length - 1, value, ... ]
+  void FillRepeatedIota(const T& value, int64 length) {
+    for (int64 i = 0; i < num_elements(); i += length) {
+      std::iota(&values_[i], &values_[std::min(i + length, num_elements())],
+                value);
+    }
+  }
+
   // Fills the array with the sequence i*multiplier for i=0,1,...
   void FillWithMultiples(const T& multiplier) {
     for (int64 i = 0; i < num_elements(); ++i) {
-      values_[i] = i * multiplier;
+      values_[i] = static_cast<T>(i) * multiplier;
     }
   }
 
   // Fills the array with random normal variables with the specified mean.
-  void FillRandom(const T& value, const double mean = 0.0,
+  void FillRandom(const T& stddev, const double mean = 0.0,
                   const int seed = 12345) {
     std::mt19937 g(seed);
     std::normal_distribution<double> distribution(mean,
-                                                  static_cast<double>(value));
+                                                  static_cast<double>(stddev));
     for (int64 i = 0; i < num_elements(); ++i) {
       values_[i] = static_cast<T>(distribution(g));
     }
@@ -210,7 +309,7 @@ class Array {
 
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array.
-  void Each(std::function<void(tensorflow::gtl::ArraySlice<int64>, T*)> f) {
+  void Each(std::function<void(absl::Span<const int64>, T*)> f) {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, &values_[i]);
@@ -218,8 +317,7 @@ class Array {
   }
 
   // Invokes a callback with the (indices, value) for each cell in the array.
-  void Each(
-      std::function<void(tensorflow::gtl::ArraySlice<int64>, T)> f) const {
+  void Each(std::function<void(absl::Span<const int64>, T)> f) const {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       f(index, values_[i]);
@@ -229,8 +327,7 @@ class Array {
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // Status::OK().
-  Status EachStatus(
-      std::function<Status(tensorflow::gtl::ArraySlice<int64>, T*)> f) {
+  Status EachStatus(std::function<Status(absl::Span<const int64>, T*)> f) {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, &values_[i]);
@@ -244,8 +341,7 @@ class Array {
   // Invokes a callback with the (indices, value) for each cell in the array.
   // If a callback returns a non-OK status, returns that else returns
   // Status::OK().
-  Status EachStatus(
-      std::function<Status(tensorflow::gtl::ArraySlice<int64>, T)> f) const {
+  Status EachStatus(std::function<Status(absl::Span<const int64>, T)> f) const {
     std::vector<int64> index(sizes_.size());
     for (int64 i = 0; i < num_elements(); ++i, next_index(&index)) {
       Status s = f(index, values_[i]);
@@ -286,13 +382,13 @@ class Array {
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
-  const T& operator()(tensorflow::gtl::ArraySlice<int64> indexes) const {
+  const T& operator()(absl::Span<const int64> indexes) const {
     return values_[calculate_index(indexes)];
   }
 
   // Returns the value at the cell specified by the indexes. The number of
   // arguments have to match with the number of dimensions for the array.
-  T& operator()(tensorflow::gtl::ArraySlice<int64> indexes) {
+  T& operator()(absl::Span<const int64> indexes) {
     return values_[calculate_index(indexes)];
   }
 
@@ -318,7 +414,7 @@ class Array {
 
   // Returns the total number of elements in the array.
   int64 num_elements() const {
-    return std::accumulate(sizes_.begin(), sizes_.end(), 1,
+    return std::accumulate(sizes_.begin(), sizes_.end(), 1LL,
                            std::multiplies<int64>());
   }
 
@@ -347,8 +443,8 @@ class Array {
   bool operator!=(const Array<T>& other) const { return !(*this == other); }
 
   // Performs the equivalent of a slice operation on this array.
-  Array<T> Slice(tensorflow::gtl::ArraySlice<int64> starts,
-                 tensorflow::gtl::ArraySlice<int64> limits) const {
+  Array<T> Slice(absl::Span<const int64> starts,
+                 absl::Span<const int64> limits) const {
     CHECK_EQ(starts.size(), num_dimensions());
     CHECK_EQ(limits.size(), num_dimensions());
 
@@ -373,7 +469,7 @@ class Array {
 
   // Performs the equivalent of a DynamicUpdateSlice in-place on this array.
   void UpdateSlice(const Array<T>& from,
-                   tensorflow::gtl::ArraySlice<int64> start_indices) {
+                   absl::Span<const int64> start_indices) {
     CHECK_EQ(from.num_dimensions(), num_dimensions());
     std::vector<int64> limit_indices;
     std::transform(start_indices.begin(), start_indices.end(),
@@ -393,7 +489,7 @@ class Array {
 
   // Performs an in-place reshape, modifying the dimensions but not the
   // underlying data.
-  void Reshape(tensorflow::gtl::ArraySlice<int64> new_dimensions) {
+  void Reshape(absl::Span<const int64> new_dimensions) {
     int64 old_num_elements = num_elements();
     sizes_ = std::vector<int64>(new_dimensions.begin(), new_dimensions.end());
     CHECK_EQ(num_elements(), old_num_elements);
@@ -416,9 +512,7 @@ class Array {
         }
       }
 
-      pieces.push_back(
-          tensorflow::strings::AlphaNum(values_[calculate_index(index)])
-              .data());
+      pieces.push_back(absl::StrCat(values_[calculate_index(index)]));
 
       // Emit comma if it isn't the last element
       if (index.back() != sizes_.back() - 1) {
@@ -436,7 +530,7 @@ class Array {
         }
       }
     } while (next_index(&index));
-    return tensorflow::str_util::Join(pieces, "");
+    return absl::StrJoin(pieces, "");
   }
 
  private:

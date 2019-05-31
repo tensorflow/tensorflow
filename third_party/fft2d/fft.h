@@ -15,8 +15,8 @@ limitations under the License.
 
 // Declarations for 1D FFT routines in third_party/fft2d/fft.
 
-#ifndef THIRD_PARTY_FFT2D_FFT_H__
-#define THIRD_PARTY_FFT2D_FFT_H__
+#ifndef FFT2D_FFT_H__
+#define FFT2D_FFT_H__
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,4 +33,4 @@ extern void dfst(int, double *, double *, int *, double *);
 }
 #endif
 
-#endif  // THIRD_PARTY_FFT2D_FFT_H__
+#endif  // FFT2D_FFT_H__

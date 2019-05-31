@@ -89,6 +89,8 @@ HOST_INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -107,7 +109,7 @@ $(HOST_NSYNC_LIB) \
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
-	HOST_LIBS += -ldl -lpthread
+	HOST_LIBS += -ldl -lpthread -lrt
 endif
 
 # If we're on a Pi, link in pthreads and dl
@@ -115,6 +117,26 @@ ifeq ($(HOST_OS),PI)
 	HOST_LIBS += -ldl -lpthread
 endif
 
+# Abseil sources.
+ABSL_CC_ALL_SRCS := \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*.cc)
+
+ABSL_CC_EXCLUDE_SRCS := \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*benchmark*.cc) \
+tensorflow/contrib/makefile/downloads/absl/absl/synchronization/internal/mutex_nonprod.cc \
+tensorflow/contrib/makefile/downloads/absl/absl/hash/internal/print_hash_of.cc
+
+ABSL_CC_SRCS := $(filter-out $(ABSL_CC_EXCLUDE_SRCS), $(ABSL_CC_ALL_SRCS))
 
 # proto_text is a tool that converts protobufs into a form we can use more
 # compactly within TensorFlow. It's a bit like protoc, but is designed to
@@ -124,8 +146,12 @@ endif
 PROTO_TEXT := $(HOST_BINDIR)proto_text
 # The list of dependencies is derived from the Bazel build file by running
 # the gen_file_lists.sh script on a system with a working Bazel setup.
-PROTO_TEXT_CC_FILES := $(shell cat $(MAKEFILE_DIR)/proto_text_cc_files.txt)
-PROTO_TEXT_PB_CC_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt)
+PROTO_TEXT_CC_FILES := \
+  $(ABSL_CC_SRCS) \
+  $(shell cat $(MAKEFILE_DIR)/proto_text_cc_files.txt)
+PROTO_TEXT_PB_CC_LIST := \
+	$(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt) \
+	$(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc)
 PROTO_TEXT_PB_H_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_h_files.txt)
 
 # Locations of the intermediate files proto_text generates.
@@ -171,6 +197,8 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -179,6 +207,16 @@ endif
 # This is at the end so any globally-installed frameworks like protobuf don't
 # override local versions in the source tree.
 INCLUDES += -I/usr/local/include
+
+# If `$(WITH_TFLITE_FLEX)` is `true`, this Makefile will build a library
+# for TensorFlow Lite Flex runtime.
+# Farmhash and Flatbuffer is required for TensorFlow Lite Flex runtime.
+ifeq ($(WITH_TFLITE_FLEX), true)
+	HOST_INCLUDES += -I$(MAKEFILE_DIR)/downloads/farmhash/src
+	HOST_INCLUDES += -I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+	INCLUDES += -I$(MAKEFILE_DIR)/downloads/farmhash/src
+	INCLUDES += -I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+endif
 
 LIBS := \
 $(TARGET_NSYNC_LIB) \
@@ -221,7 +259,7 @@ endif
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
-	LIBS += -ldl -lpthread
+	LIBS += -ldl -lpthread -lrt
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
@@ -232,7 +270,6 @@ ifeq ($(TARGET),PI)
 endif
 
 # Set up Android building
-# LINT.IfChange
 ifeq ($(TARGET),ANDROID)
 # Override NDK_ROOT on the command line with your own NDK location, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
@@ -256,7 +293,7 @@ ifeq ($(TARGET),ANDROID)
 	else
 		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-$(HOST_ARCH)
 	endif
-    
+
 	ifndef ANDROID_ARCH
 		ANDROID_ARCH := armeabi-v7a
 	endif
@@ -303,7 +340,7 @@ ifeq ($(TARGET),ANDROID)
 		BIN_PREFIX := x86_64-linux-android
 		MARCH_OPTION :=
 	endif
-    
+
 	ifndef NDK_ROOT
     $(error "NDK_ROOT is not defined.")
 	endif
@@ -326,6 +363,8 @@ $(MARCH_OPTION) \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(MAKEFILE_DIR)/gen/protobuf_android/$(ANDROID_ARCH)/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
@@ -377,10 +416,10 @@ $(MARCH_OPTION) \
 
 	ifeq ($(BUILD_FOR_TEGRA),1)
 		NVCC := $(JETPACK)/cuda/bin/nvcc
-		NVCCFLAGS := -x=cu -D__CUDACC__ -DNVCC -DNVIDIA_TEGRA -ccbin $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++ --std c++11 --expt-relaxed-constexpr -m64 -gencode arch=compute_53,\"code=sm_53\" -gencode arch=compute_62,\"code=sm_62\" -DEIGEN_AVOID_STL_ARRAY -DTENSORFLOW_USE_EIGEN_THREADPOOL -DLANG_CXX11 -DEIGEN_HAS_C99_MATH -DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=5.3
+		NVCCFLAGS := -x=cu -D__CUDACC__ -DNVCC -DANDROID_TEGRA -ccbin $(NDK_ROOT)/toolchains/$(TOOLCHAIN)/prebuilt/$(ANDROID_HOST_OS_ARCH)/bin/$(BIN_PREFIX)-g++ --std c++11 --expt-relaxed-constexpr -m64 -gencode arch=compute_53,\"code=sm_53\" -gencode arch=compute_62,\"code=sm_62\" -DEIGEN_AVOID_STL_ARRAY -DTENSORFLOW_USE_EIGEN_THREADPOOL -DLANG_CXX11 -DEIGEN_HAS_C99_MATH -DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=5.3
 		CXXFLAGS4NVCC =\
 -DIS_SLIM_BUILD \
--DNVIDIA_TEGRA \
+-DANDROID_TEGRA \
 -fno-exceptions \
 -DNDEBUG $(OPTFLAGS) \
 -march=armv8-a \
@@ -391,7 +430,7 @@ $(MARCH_OPTION) \
 		CXXFLAGS +=\
 -DGOOGLE_CUDA=1 \
 -D__ANDROID_TYPES_FULL__ \
--DNVIDIA_TEGRA \
+-DANDROID_TEGRA \
 -DEIGEN_AVOID_STL_ARRAY \
 -DEIGEN_HAS_C99_MATH \
 -DLANG_CXX11 -DTENSORFLOW_USE_EIGEN_THREADPOOL -DTF_EXTRA_CUDA_CAPABILITIES=5.3
@@ -400,14 +439,13 @@ $(MARCH_OPTION) \
 -Itensorflow/core/kernels \
 -I$(MAKEFILE_DIR)/downloads/cub \
 -I$(MAKEFILE_DIR)/downloads/cub/cub_archive/cub/device \
--Ithird_party/toolchains/gpus/cuda \
 -I$(JETPACK)/cuda/include \
 -I$(JETPACK) \
 -I$(JETPACK)/cuDNN/aarch64 \
 -I$(JETPACK)/cuda/extras/CUPTI/include
 
 
-		LIBS += \
+		CUDA_LIBS := \
 -ltfcuda \
 -lcudart_static \
 -lcudnn \
@@ -420,10 +458,10 @@ $(MARCH_OPTION) \
 -lculibos \
 -lcurand_static
 
-		OBJDIR := $(OBJDIR)Tegra/
-		LIBDIR := $(LIBDIR)Tegra/
-		BINDIR := $(BINDIR)Tegra/
-		DEPDIR := $(DEPDIR)Tegra/
+		OBJDIR := $(OBJDIR)android_arm64-v8a/
+		LIBDIR := $(LIBDIR)android_arm64-v8a/
+		BINDIR := $(BINDIR)android_arm64-v8a/
+		DEPDIR := $(DEPDIR)android_arm64-v8a/
 
 		TEGRA_LIBS := \
 -L$(JETPACK)/cuda/targets/aarch64-linux-androideabi/lib \
@@ -441,7 +479,6 @@ $(MARCH_OPTION) \
 		DEPDIR := $(DEPDIR)android_$(ANDROID_ARCH)/
 	endif # ifeq ($(BUILD_FOR_TEGRA),1)
 endif  # ANDROID
-# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Settings for iOS.
 ifeq ($(TARGET),IOS)
@@ -472,6 +509,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -496,6 +534,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -518,7 +557,8 @@ ifeq ($(TARGET),IOS)
 		LDFLAGS := -arch arm64 \
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
-		-framework Accelerate \
+	  -framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -542,7 +582,8 @@ ifeq ($(TARGET),IOS)
 		LDFLAGS := -arch i386 \
 		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
-		-framework Accelerate \
+    -framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -566,6 +607,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -591,6 +633,12 @@ BENCHMARK_NAME := $(BINDIR)benchmark
 # gen_file_lists.sh script.
 
 CORE_CC_ALL_SRCS := \
+$(ABSL_CC_SRCS) \
+tensorflow/c/c_api.cc \
+tensorflow/c/kernels.cc \
+tensorflow/c/tf_datatype.cc \
+tensorflow/c/tf_status.cc \
+tensorflow/c/tf_status_helper.cc \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
@@ -603,10 +651,16 @@ $(wildcard tensorflow/core/platform/*/*.cc) \
 $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
+tensorflow/core/profiler/internal/profiler_interface.cc \
+tensorflow/core/profiler/internal/traceme_recorder.cc \
+tensorflow/core/profiler/lib/profiler_session.cc \
+tensorflow/core/profiler/lib/traceme.cc \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
-CORE_CC_EXCLUDE_SRCS := \
+
+CORE_CC_EXCLUDE_SRCS_NON_GPU := \
 $(wildcard tensorflow/core/*/*test.cc) \
 $(wildcard tensorflow/core/*/*testutil*) \
 $(wildcard tensorflow/core/*/*testlib*) \
@@ -626,49 +680,31 @@ $(wildcard tensorflow/core/lib/jpeg/*) \
 $(wildcard tensorflow/core/lib/png/*) \
 $(wildcard tensorflow/core/util/events_writer.*) \
 $(wildcard tensorflow/core/util/reporter.*) \
-$(wildcard tensorflow/core/platform/default/cuda_libdevice_path.*) \
-$(wildcard tensorflow/core/platform/default/stream_executor.*) \
 $(wildcard tensorflow/core/platform/default/test_benchmark.*) \
-$(wildcard tensorflow/core/platform/cuda.h) \
-$(wildcard tensorflow/core/platform/cuda_libdevice_path.*) \
 $(wildcard tensorflow/core/platform/cloud/*) \
 $(wildcard tensorflow/core/platform/google/*) \
 $(wildcard tensorflow/core/platform/google/*/*) \
 $(wildcard tensorflow/core/platform/jpeg.*) \
 $(wildcard tensorflow/core/platform/png.*) \
 $(wildcard tensorflow/core/platform/s3/*) \
-$(wildcard tensorflow/core/platform/stream_executor.*) \
 $(wildcard tensorflow/core/platform/windows/*) \
-$(wildcard tensorflow/core/user_ops/*.cu.cc) \
-$(wildcard tensorflow/core/common_runtime/gpu/*) \
-$(wildcard tensorflow/core/common_runtime/gpu_device_factory.*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
-$(wildcard tensorflow/core/grappler/clusters/single_machine.*)
+$(wildcard tensorflow/core/grappler/clusters/single_machine.*) \
+tensorflow/core/util/gpu_kernel_helper_test.cu.cc
+
+CORE_CC_EXCLUDE_SRCS := \
+$(CORE_CC_EXCLUDE_SRCS_NON_GPU) \
+$(wildcard tensorflow/core/platform/stream_executor.*) \
+$(wildcard tensorflow/core/platform/default/cuda_libdevice_path.*) \
+$(wildcard tensorflow/core/platform/cuda.h) \
+$(wildcard tensorflow/core/platform/cuda_libdevice_path.*) \
+$(wildcard tensorflow/core/user_ops/*.cu.cc) \
+$(wildcard tensorflow/core/common_runtime/gpu/*) \
+$(wildcard tensorflow/core/common_runtime/gpu_device_factory.*)
 
 ifeq ($(BUILD_FOR_TEGRA),1)
-CORE_CC_ALL_SRCS := \
-$(wildcard tensorflow/core/*.cc) \
-$(wildcard tensorflow/core/common_runtime/*.cc) \
-$(wildcard tensorflow/core/common_runtime/gpu/*.cc) \
-$(wildcard tensorflow/core/framework/*.cc) \
-$(wildcard tensorflow/core/graph/*.cc) \
-$(wildcard tensorflow/core/platform/*.cc) \
-$(wildcard tensorflow/core/platform/*/*.cc) \
-$(wildcard tensorflow/core/platform/*/*/*.cc) \
-$(wildcard tensorflow/core/util/*.cc) \
-$(wildcard tensorflow/core/util/*/*.cc) \
-$(wildcard tensorflow/cc/training/*.cc) \
-$(wildcard tensorflow/stream_executor/*.cc) \
-$(wildcard tensorflow/stream_executor/*/*.cc) \
-$(wildcard tensorflow/core/grappler/optimizers/*.cc) \
-$(wildcard tensorflow/core/grappler/*.cc) \
-$(wildcard tensorflow/core/grappler/costs/*.cc) \
-$(wildcard tensorflow/core/grappler/clusters/*.cc) \
-$(wildcard tensorflow/core/grappler/utils/*.cc) \
-$(wildcard tensorflow/core/lib/core/*.cc) \
-$(wildcard tensorflow/core/lib/*/*.cc) \
-tensorflow/core/grappler/inputs/utils.cc \
+CORE_CC_ALL_SRCS := $(CORE_CC_ALL_SRCS) \
 tensorflow/core/kernels/concat_lib_gpu.cc \
 tensorflow/core/kernels/cuda_solvers.cc \
 tensorflow/core/kernels/cudnn_pooling_gpu.cc \
@@ -677,28 +713,14 @@ tensorflow/core/kernels/fractional_avg_pool_op.cc \
 tensorflow/core/kernels/fractional_max_pool_op.cc \
 tensorflow/core/kernels/fractional_pool_common.cc \
 tensorflow/core/kernels/pooling_ops_3d.cc \
-tensorflow/core/kernels/sparse_fill_empty_rows_op.cc
+tensorflow/core/kernels/sparse_fill_empty_rows_op.cc \
+tensorflow/core/kernels/list_kernels.cc \
+$(wildcard tensorflow/core/common_runtime/gpu/*.cc) \
+$(wildcard tensorflow/stream_executor/*.cc) \
+$(wildcard tensorflow/stream_executor/*/*.cc)
 
 CORE_CC_EXCLUDE_SRCS := \
-$(wildcard tensorflow/core/*/*test.cc) \
-$(wildcard tensorflow/core/*/*testutil*) \
-$(wildcard tensorflow/core/*/*testlib*) \
-$(wildcard tensorflow/core/*/*/*test.cc) \
-$(wildcard tensorflow/core/*/*/*testutil*) \
-$(wildcard tensorflow/core/framework/op_gen_lib.cc) \
-$(wildcard tensorflow/core/lib/gif/*) \
-$(wildcard tensorflow/core/lib/jpeg/*) \
-$(wildcard tensorflow/core/lib/png/*) \
-$(wildcard tensorflow/core/lib/db/*) \
-$(wildcard tensorflow/core/platform/jpeg.*) \
-$(wildcard tensorflow/core/platform/png.*) \
-$(wildcard tensorflow/core/platform/cloud/*) \
-$(wildcard tensorflow/core/platform/s3/*) \
-$(wildcard tensorflow/core/platform/windows/*) \
-$(wildcard tensorflow/core/*/*/*testlib*) \
-$(wildcard tensorflow/cc/training/*test.cc) \
-tensorflow/core/lib/io/record_reader.cc \
-tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+$(CORE_CC_EXCLUDE_SRCS_NON_GPU)
 
 CUDA_CC_SRCS := $(wildcard tensorflow/core/kernels/*.cu.cc)
 CUDA_CC_OBJS := $(addprefix $(OBJDIR), $(CUDA_CC_SRCS:.cc=.o))
@@ -708,6 +730,7 @@ endif  # TEGRA
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
 TF_CC_SRCS += tensorflow/contrib/makefile/downloads/fft2d/fftsg.c
+TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_id_manager.cc
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)
@@ -716,6 +739,57 @@ BENCHMARK_SRCS := \
 tensorflow/core/util/reporter.cc \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
+
+# If `$(WITH_TFLITE_FLEX)` is `true`, this Makefile will build a library
+# for TensorFlow Lite Flex runtime.
+# Adding the following dependencies>
+# * TensorFlow Eager Runtime.
+# * TensorFlow Lite Runtime.
+# * TensorFlow Lite Flex Delegate.
+ifeq ($(WITH_TFLITE_FLEX), true)
+	EAGER_CC_ALL_SRCS += $(wildcard tensorflow/core/common_runtime/eager/*.cc)
+	EAGER_CC_EXCLUDE_SRCS := $(wildcard tensorflow/core/common_runtime/eager/*test.cc)
+	EAGER_CC_SRCS := $(filter-out $(EAGER_CC_EXCLUDE_SRCS), $(EAGER_CC_ALL_SRCS))
+	TF_CC_SRCS += $(EAGER_CC_SRCS)
+
+	TF_LITE_CORE_CC_ALL_SRCS := \
+	$(wildcard tensorflow/lite/*.cc) \
+	$(wildcard tensorflow/lite/*.c) \
+	$(wildcard tensorflow/lite/c/*.c) \
+	$(wildcard tensorflow/lite/core/api/*.cc)
+
+	TF_LITE_CORE_CC_ALL_SRCS += \
+	$(wildcard tensorflow/lite/kernels/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/optimized/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/reference/*.cc) \
+	$(PROFILER_SRCS) \
+	$(wildcard tensorflow/lite/kernels/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/optimized/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/reference/*.c) \
+	$(wildcard tensorflow/lite/delegates/flex/*.cc)
+
+	# Hack. This shouldn't be here?
+	TF_LITE_CORE_CC_ALL_SRCS += \
+	$(wildcard tensorflow/contrib/makefile/downloads/farmhash/src/farmhash.cc) \
+
+	# Remove any duplicates.
+	TF_LITE_CORE_CC_ALL_SRCS := $(sort $(TF_LITE_CORE_CC_ALL_SRCS))
+	TF_LITE_CORE_CC_EXCLUDE_SRCS := \
+	$(wildcard tensorflow/lite/*test.cc) \
+	$(wildcard tensorflow/lite/*/*test.cc) \
+	$(wildcard tensorflow/lite/*/*/*test.cc) \
+	$(wildcard tensorflow/lite/*/*/*/*test.cc) \
+	$(wildcard tensorflow/lite/kernels/test_util.cc) \
+	$(wildcard tensorflow/lite/delegates/flex/test_util.cc) \
+	$(wildcard tensorflow/lite/nnapi_delegate.cc) \
+	$(wildcard tensorflow/lite/mmap_allocation_disabled.cc)
+
+	# Filter out all the excluded files.
+	TF_LITE_CC_SRCS := $(filter-out $(TF_LITE_CORE_CC_EXCLUDE_SRCS), $(TF_LITE_CORE_CC_ALL_SRCS))
+	TF_CC_SRCS += $(TF_LITE_CC_SRCS)
+endif
 
 ifdef HEXAGON_LIBS
 	TF_CC_SRCS += \
@@ -760,7 +834,7 @@ $(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH) $(CUDA_LIB_DEPS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_NAME) $(BENCHMARK_OBJS) \
-	$(LIBFLAGS) $(TEGRA_LIBS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(TEGRA_LIBS) $(LIB_PATH) $(LDFLAGS) $(LIBS) $(CUDA_LIBS)
 
 # NVCC compilation rules for Tegra
 ifeq ($(BUILD_FOR_TEGRA),1)
@@ -832,6 +906,14 @@ $(HOST_OBJDIR)%.pb.o: $(HOST_GENDIR)%.pb.cc
 # Ensures we wait until proto_text has generated the .h files from protos before
 # we compile the C++.
 $(PROTO_TEXT_OBJS) : $(PROTO_TEXT_PB_H_FILES)
+
+# Ensures we link CoreFoundation as it is used for time library when building
+# for Mac.
+ifeq ($(TARGET),IOS)
+  ifeq ($(IOS_ARCH),X86_64)
+    HOST_LDOPTS += -framework CoreFoundation
+  endif
+endif
 
 # Runs proto_text to generate C++ source files from protos.
 $(PROTO_TEXT): $(PROTO_TEXT_OBJS) $(PROTO_TEXT_PB_H_FILES)

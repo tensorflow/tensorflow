@@ -1,9 +1,10 @@
 # Description:
 #   Libraries for storing tensors in SQL databases.
 
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts")
 
@@ -29,6 +30,7 @@ cc_library(
         "@org_sqlite",
         "@snappy",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -41,10 +43,4 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["*"]),
-    visibility = ["//tensorflow:__pkg__"],
 )

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
-#define TENSORFLOW_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
 
 // Specialization of GatherNdSlice to CPU
 
@@ -22,10 +22,10 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -113,10 +113,25 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
 #endif
     generator::GatherNdSliceGenerator<T, Index, IXDIM> gather_nd_generator(
         slice_size, Tindices, Tparams, Tout, &error_loc);
+
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+// Eigen implementation below is not highly performant. gather_nd_generator
+// does not seem to be called in parallel, leading to very poor performance.
+// Additionally, since it uses scalar (Tscratch) to invoke 'generate', it
+// needs to go through redundant operations like 'reshape', 'broadcast' and
+// 'sum'. OpenMP loop below essentially does same thing as Eigen code, but
+// is considerably more efficient.
+#pragma omp parallel for
+    for (Eigen::DenseIndex i = 0; i < batch_size; i++) {
+      const Eigen::array<Eigen::DenseIndex, 1> loc{i};
+      gather_nd_generator(loc);
+    }
+#else   // INTEL_MKL && ENABLE_MKL
     Tscratch.device(d) = Tscratch.reshape(reshape_dims)
                              .broadcast(broadcast_dims)
                              .generate(gather_nd_generator)
                              .sum();
+#endif  // INTEL_MKL && ENABLE_MKL
 
     // error_loc() returns -1 if there's no out-of-bounds index,
     // otherwise it returns the location of an OOB index in Tindices.
@@ -137,9 +152,10 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
   REGISTER_GATHER_ND_FULL(type, int64)
 
 TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_ND_CPU);
 
 }  // namespace functor
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_GATHER_ND_OP_CPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_CPU_IMPL_H_

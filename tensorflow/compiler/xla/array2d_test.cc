@@ -63,6 +63,20 @@ TEST(Array2dTest, InitializerListCtor) {
   EXPECT_EQ(arr(1, 2), 6);
 }
 
+TEST(Array2dTest, InitializerListCtorHalf) {
+  Array2D<Eigen::half> arr = {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}};
+
+  EXPECT_EQ(arr.n1(), 2);
+  EXPECT_EQ(arr.n2(), 3);
+
+  EXPECT_EQ(arr(0, 0), static_cast<Eigen::half>(1));
+  EXPECT_EQ(arr(0, 1), static_cast<Eigen::half>(2));
+  EXPECT_EQ(arr(0, 2), static_cast<Eigen::half>(3));
+  EXPECT_EQ(arr(1, 0), static_cast<Eigen::half>(4));
+  EXPECT_EQ(arr(1, 1), static_cast<Eigen::half>(5));
+  EXPECT_EQ(arr(1, 2), static_cast<Eigen::half>(6));
+}
+
 TEST(Array2dTest, Accessors) {
   Array2D<int> arr = {{1, 2, 3}, {4, 5, 6}};
 

@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "For"
+  in_arg { name: "start" description: "The lower bound. An int32" }
+  in_arg { name: "limit" description: "The upper bound. An int32" }
+  in_arg { name: "delta" description: "The increment. An int32" }
+  in_arg {
+    name: "input"
+    description: "A list of input tensors whose types are T."
+  }
+  out_arg {
+    name: "output"
+    description: "A list of output tensors whose types are T."
+  }
+  attr { name: "T"  description: "A list of dtypes." }
+  attr {
+    name: "body"
+    description: <<END
+    A function that takes a list of tensors (int32, T) and returns another
+    list of tensors (T).
+END
+  }
+  summary: <<END
+  ```python
+   output = input;
+   for i in range(start, limit, delta)
+     output = body(i, output);
+  ```
+END
+}

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_CANCELLATION_H_
-#define TENSORFLOW_FRAMEWORK_CANCELLATION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_
 
 #include <atomic>
 #include <functional>
@@ -55,6 +55,9 @@ class CancellationManager {
 
   // Returns true iff StartCancel() has been called.
   bool IsCancelled() { return is_cancelled_.load(std::memory_order_acquire); }
+
+  // Resets the cancellation manager to its original pre-cancelled state.
+  void Reset();
 
   // Returns a token that must be used in calls to RegisterCallback
   // and DeregisterCallback.
@@ -122,6 +125,15 @@ class CancellationManager {
   // cancellation manager.
   bool DeregisterCallback(CancellationToken token);
 
+  // Deregister the callback that, when registered, was associated
+  // with the given cancellation token. Returns true iff the callback
+  // was deregistered and will not be invoked; otherwise returns false
+  // immediately, with no guarantee that the callback has completed.
+  //
+  // This method is guaranteed to return true if StartCancel has not been
+  // called.
+  bool TryDeregisterCallback(CancellationToken token);
+
  private:
   bool is_cancelling_;
   std::atomic_bool is_cancelled_;
@@ -134,4 +146,4 @@ class CancellationManager {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_CANCELLATION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_

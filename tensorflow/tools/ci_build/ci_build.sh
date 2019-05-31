@@ -18,7 +18,7 @@
 #                    <COMMAND>
 #
 # CONTAINER_TYPE: Type of the docker container used the run the build:
-#                 e.g., (cpu | gpu | android | tensorboard)
+#                 e.g., (cpu | gpu | rocm | android | tensorboard)
 #
 # DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.
 #                  If this optional value is not supplied (via the
@@ -79,7 +79,7 @@ if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
 fi
 
 # Use nvidia-docker if the container is GPU.
-if [[ "${CONTAINER_TYPE}" == "gpu" ]]; then
+if [[ "${CONTAINER_TYPE}" == gpu* ]]; then
   DOCKER_BINARY="nvidia-docker"
 else
   DOCKER_BINARY="docker"
@@ -99,9 +99,17 @@ BUILD_TAG="${BUILD_TAG:-tf_ci}"
 
 # Add extra params for cuda devices and libraries for GPU container.
 # And clear them if we are not building for GPU.
-if [[ "${CONTAINER_TYPE}" != "gpu" ]]; then
+if [[ "${CONTAINER_TYPE}" != gpu* ]]; then
   GPU_EXTRA_PARAMS=""
 fi
+
+# Add extra params for rocm devices and libraries for ROCm container.
+if [[ "${CONTAINER_TYPE}" == "rocm" ]]; then
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+else
+  ROCM_EXTRA_PARAMS=""
+fi
+
 
 # Determine the docker image name
 DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}"
@@ -115,6 +123,7 @@ DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
 echo "WORKSPACE: ${WORKSPACE}"
+echo "CI_DOCKER_BUILD_EXTRA_PARAMS: ${CI_DOCKER_BUILD_EXTRA_PARAMS[*]}"
 echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[*]}"
 echo "COMMAND: ${COMMAND[*]}"
 echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[*]}"
@@ -126,12 +135,18 @@ echo ""
 
 # Build the docker container.
 echo "Building container (${DOCKER_IMG_NAME})..."
-docker build -t ${DOCKER_IMG_NAME} \
+docker build -t ${DOCKER_IMG_NAME} ${CI_DOCKER_BUILD_EXTRA_PARAMS[@]} \
     -f "${DOCKERFILE_PATH}" "${DOCKER_CONTEXT_PATH}"
 
 # Check docker build status
 if [[ $? != "0" ]]; then
   die "ERROR: docker build failed. Dockerfile is at ${DOCKERFILE_PATH}"
+fi
+
+# If caller wants the with_the_same_user script to allow bad usernames, 
+# pass the var to the docker environment
+if [ -n "${CI_BUILD_USER_FORCE_BADNAME}" ]; then
+        CI_BUILD_USER_FORCE_BADNAME_ENV="-e CI_BUILD_USER_FORCE_BADNAME=yes"
 fi
 
 # Run the command inside the container.
@@ -148,9 +163,11 @@ ${DOCKER_BINARY} run --rm --pid=host \
     -e "CI_BUILD_GROUP=$(id -g -n)" \
     -e "CI_BUILD_GID=$(id -g)" \
     -e "CI_TENSORFLOW_SUBMODULE_PATH=${CI_TENSORFLOW_SUBMODULE_PATH}" \
+    ${CI_BUILD_USER_FORCE_BADNAME_ENV} \
     -v ${WORKSPACE}:/workspace \
     -w /workspace \
     ${GPU_EXTRA_PARAMS} \
+    ${ROCM_EXTRA_PARAMS} \
     ${CI_DOCKER_EXTRA_PARAMS[@]} \
     "${DOCKER_IMG_NAME}" \
     ${CI_COMMAND_PREFIX[@]} \

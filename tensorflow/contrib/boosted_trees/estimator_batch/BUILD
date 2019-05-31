@@ -1,32 +1,27 @@
 # This directory contains estimators to train and run inference on
 # gradient boosted trees on top of TensorFlow.
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
 
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "init_py",
-    srcs = [
-        "__init__.py",
-    ],
+    srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        ":custom_export_strategy",
+        ":custom_loss_head",
+        ":distillation_loss",
+        ":estimator",
+        ":model",
+        ":trainer_hooks",
+    ],
 )
 
 py_library(
@@ -34,12 +29,13 @@ py_library(
     srcs = ["model.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":estimator_utils",
         ":trainer_hooks",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
         "//tensorflow/contrib/boosted_trees:model_ops_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
+        "//tensorflow/python:training_util",
     ],
 )
 
@@ -57,10 +53,23 @@ py_library(
     ],
 )
 
+py_library(
+    name = "estimator_utils",
+    srcs = ["estimator_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/learn",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
 py_test(
     name = "trainer_hooks_test",
     size = "small",
     srcs = ["trainer_hooks_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":trainer_hooks",
@@ -110,6 +119,7 @@ py_test(
     name = "custom_export_strategy_test",
     size = "small",
     srcs = ["custom_export_strategy_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":custom_export_strategy",
@@ -124,6 +134,8 @@ py_library(
     srcs = ["estimator.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":custom_loss_head",
+        ":estimator_utils",
         ":model",
         "//tensorflow/contrib/boosted_trees:losses",
         "//tensorflow/contrib/learn",
@@ -136,6 +148,9 @@ py_library(
     srcs = ["dnn_tree_combined_estimator.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":distillation_loss",
+        ":estimator_utils",
+        ":model",
         ":trainer_hooks",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
         "//tensorflow/contrib/boosted_trees:model_ops_py",
@@ -147,10 +162,23 @@ py_library(
     ],
 )
 
+py_library(
+    name = "distillation_loss",
+    srcs = ["distillation_loss.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+    ],
+)
+
 py_test(
     name = "dnn_tree_combined_estimator_test",
-    size = "small",
+    size = "medium",
+    timeout = "long",
     srcs = ["dnn_tree_combined_estimator_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
@@ -159,6 +187,27 @@ py_test(
     ],
     deps = [
         ":dnn_tree_combined_estimator",
+        "//tensorflow/contrib/boosted_trees:gbdt_batch",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+py_test(
+    name = "estimator_test",
+    size = "medium",
+    srcs = ["estimator_test.py"],
+    python_version = "PY2",
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",
+        "no_pip_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":estimator",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",

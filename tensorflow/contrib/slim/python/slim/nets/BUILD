@@ -1,18 +1,17 @@
 # Description:
 #   Contains typical networks definitions.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-
 package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow_models:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
@@ -45,6 +44,7 @@ py_test(
     name = "alexnet_test",
     size = "medium",
     srcs = ["alexnet_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":alexnet",
@@ -115,9 +115,10 @@ py_library(
 
 py_test(
     name = "inception_v1_test",
-    size = "large",
+    size = "medium",
     srcs = ["inception_v1_test.py"],
-    shard_count = 3,
+    python_version = "PY2",
+    shard_count = 8,
     srcs_version = "PY2AND3",
     deps = [
         ":inception_v1",
@@ -135,9 +136,10 @@ py_test(
 
 py_test(
     name = "inception_v2_test",
-    size = "large",
+    size = "medium",
     srcs = ["inception_v2_test.py"],
-    shard_count = 3,
+    python_version = "PY2",
+    shard_count = 8,
     srcs_version = "PY2AND3",
     deps = [
         ":inception_v2",
@@ -155,9 +157,10 @@ py_test(
 
 py_test(
     name = "inception_v3_test",
-    size = "large",
+    size = "medium",
     srcs = ["inception_v3_test.py"],
-    shard_count = 3,
+    python_version = "PY2",
+    shard_count = 8,
     srcs_version = "PY2AND3",
     deps = [
         ":inception_v3",
@@ -191,6 +194,7 @@ py_test(
     name = "overfeat_test",
     size = "medium",
     srcs = ["overfeat_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":overfeat",
@@ -233,8 +237,10 @@ py_library(
 
 py_test(
     name = "resnet_v1_test",
-    size = "large",
+    size = "medium",
     srcs = ["resnet_v1_test.py"],
+    python_version = "PY2",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":resnet_utils",
@@ -268,8 +274,10 @@ py_library(
 
 py_test(
     name = "resnet_v2_test",
-    size = "large",
+    size = "medium",
     srcs = ["resnet_v2_test.py"],
+    python_version = "PY2",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":resnet_utils",
@@ -305,6 +313,7 @@ py_test(
     name = "vgg_test",
     size = "medium",
     srcs = ["vgg_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":vgg",
@@ -316,16 +325,4 @@ py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

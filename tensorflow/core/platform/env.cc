@@ -26,14 +26,16 @@ limitations under the License.
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
-#include "tensorflow/core/platform/windows/windows_file_system.h"
+#include "tensorflow/core/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
+#include <fcntl.h>
+#include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -43,6 +45,9 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
+
+// 128KB copy buffer
+constexpr size_t kCopyFileBufferSize = 128 * 1024;
 
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
@@ -90,10 +95,14 @@ Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
+  FileSystem* file_system = file_system_registry_->Lookup(string(scheme));
   if (!file_system) {
-    return errors::Unimplemented("File system scheme ", scheme,
-                                 " not implemented");
+    if (scheme.empty()) {
+      scheme = "[local]";
+    }
+
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not implemented (file: '", fname, "')");
   }
   *result = file_system;
   return Status::OK();
@@ -160,7 +169,7 @@ bool Env::FilesExist(const std::vector<string>& files,
   for (const auto& file : files) {
     StringPiece scheme, host, path;
     io::ParseURI(file, &scheme, &host, &path);
-    files_per_fs[scheme.ToString()].push_back(file);
+    files_per_fs[string(scheme)].push_back(file);
   }
 
   std::unordered_map<string, Status> per_file_status;
@@ -173,8 +182,8 @@ bool Env::FilesExist(const std::vector<string>& files,
     if (!file_system) {
       fs_result = false;
       if (fs_status) {
-        Status s = errors::Unimplemented("File system scheme ", itr.first,
-                                         " not implemented");
+        Status s = errors::Unimplemented("File system scheme '", itr.first,
+                                         "' not implemented");
         local_status.resize(itr.second.size(), s);
       }
     } else {
@@ -274,6 +283,17 @@ Status Env::RenameFile(const string& src, const string& target) {
   return src_fs->RenameFile(src, target);
 }
 
+Status Env::CopyFile(const string& src, const string& target) {
+  FileSystem* src_fs;
+  FileSystem* target_fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
+  if (src_fs == target_fs) {
+    return src_fs->CopyFile(src, target);
+  }
+  return FileSystemCopyFile(src_fs, src, target_fs, target);
+}
+
 string Env::GetExecutablePath() {
   char exe_path[PATH_MAX] = {0};
 #ifdef __APPLE__
@@ -294,10 +314,34 @@ string Env::GetExecutablePath() {
   HMODULE hModule = GetModuleHandleW(NULL);
   WCHAR wc_file_path[MAX_PATH] = {0};
   GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
-  string file_path = WindowsFileSystem::WideCharToUtf8(wc_file_path);
+  string file_path = WideCharToUtf8(wc_file_path);
   std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
-  CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+  char buf[PATH_MAX] = {0};
+  int path_length = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  CHECK_NE(-1, path_length);
+
+  if (strstr(buf, "python") != nullptr) {
+    // Discard the path of the python binary, and any flags.
+    int fd = open("/proc/self/cmdline", O_RDONLY);
+    int cmd_length = read(fd, buf, PATH_MAX - 1);
+    CHECK_NE(-1, cmd_length);
+    int token_pos = 0;
+    for (bool token_is_first_or_flag = true; token_is_first_or_flag;) {
+      // Get token length, including null
+      int token_len = strlen(&buf[token_pos]) + 1;
+      token_is_first_or_flag = false;
+      // Check if we can skip without overshooting
+      if (token_pos + token_len < cmd_length) {
+        token_pos += token_len;
+        token_is_first_or_flag = (buf[token_pos] == '-');  // token is a flag
+      }
+    }
+    snprintf(exe_path, sizeof(exe_path), "%s", &buf[token_pos]);
+  } else {
+    snprintf(exe_path, sizeof(exe_path), "%s", buf);
+  }
+
 #endif
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
@@ -321,22 +365,10 @@ bool Env::LocalTempFilename(string* filename) {
 }
 
 bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
-#ifdef __APPLE__
-  uint64_t tid64;
-  pthread_threadid_np(nullptr, &tid64);
-  int32 tid = static_cast<int32>(tid64);
-  int32 pid = static_cast<int32>(getpid());
-#elif defined(__FreeBSD__)
-  // Has to be casted to long first, else this error appears:
-  // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
-  // is not allowed
-  int32 tid = static_cast<int32>(static_cast<int64>(pthread_self()));
-  int32 pid = static_cast<int32>(getpid());
-#elif defined(PLATFORM_WINDOWS)
-  int32 tid = static_cast<int32>(GetCurrentThreadId());
+  int32 tid = GetCurrentThreadId();
+#ifdef PLATFORM_WINDOWS
   int32 pid = static_cast<int32>(GetCurrentProcessId());
 #else
-  int32 tid = static_cast<int32>(pthread_self());
   int32 pid = static_cast<int32>(getpid());
 #endif
   uint64 now_microsec = NowMicros();
@@ -402,6 +434,29 @@ Status WriteStringToFile(Env* env, const string& fname,
   return s;
 }
 
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target) {
+  std::unique_ptr<RandomAccessFile> src_file;
+  TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
+
+  std::unique_ptr<WritableFile> target_file;
+  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
+
+  uint64 offset = 0;
+  std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
+  Status s = Status::OK();
+  while (s.ok()) {
+    StringPiece result;
+    s = src_file->Read(offset, kCopyFileBufferSize, &result, scratch.get());
+    if (!(s.ok() || s.code() == error::OUT_OF_RANGE)) {
+      return s;
+    }
+    TF_RETURN_IF_ERROR(target_file->Append(result));
+    offset += result.size();
+  }
+  return target_file->Close();
+}
+
 // A ZeroCopyInputStream on a RandomAccessFile.
 namespace {
 class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
@@ -462,7 +517,8 @@ Status ReadBinaryProto(Env* env, const string& fname,
   // respectively.
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
-  if (!proto->ParseFromCodedStream(&coded_stream)) {
+  if (!proto->ParseFromCodedStream(&coded_stream) ||
+      !coded_stream.ConsumedEntireMessage()) {
     TF_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }

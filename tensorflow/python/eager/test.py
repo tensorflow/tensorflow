@@ -23,6 +23,7 @@ from tensorflow.python.platform import test as _test
 from tensorflow.python.platform.test import *  # pylint: disable=wildcard-import
 
 
-def main(argv=None):
+# TODO(akshayka): Do away with this file.
+def main(argv=None):  # pylint: disable=function-redefined
   _ops.enable_eager_execution()
   _test.main(argv)

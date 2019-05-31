@@ -57,7 +57,8 @@ def no_rewrite_session_config():
       disable_model_pruning=True,
       constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
       arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
-      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      pin_to_host_optimization=rewriter_config_pb2.RewriterConfig.OFF)
 
   graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
   return config_pb2.ConfigProto(graph_options=graph_options)
@@ -572,6 +573,7 @@ def create_analyzer_cli(dump):
   return analyzer, registry
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -598,11 +600,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       v_name = "simple_mul_add/v"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2], name="u_init")
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       cls._u_line_number = line_number_above()
 
       v_init = constant_op.constant(v_init_val, shape=[2, 1], name="v_init")
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
       cls._v_line_number = line_number_above()
 
       w = math_ops.matmul(u, v, name="simple_mul_add/matmul")
@@ -611,7 +613,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       x = math_ops.add(w, w, name="simple_mul_add/add")
       cls._x_line_number = line_number_above()
 
-      a = variables.Variable([1, 3, 3, 7], name="a")
+      a = variables.VariableV1([1, 3, 3, 7], name="a")
 
       u.initializer.run()
       v.initializer.run()
@@ -818,6 +820,32 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         out, ["simple_mul_add/add:0"], ["Add"],
         node_name_regex=".*add$",
         op_type_regex="(Add|MatMul)")
+    check_main_menu(self, out, list_tensors_enabled=False)
+
+  def testListTensorWithFilterAndNodeNameExclusionWorks(self):
+    # First, create and register the filter.
+    def is_2x1_vector(datum, tensor):
+      del datum  # Unused.
+      return list(tensor.shape) == [2, 1]
+    self._analyzer.add_tensor_filter("is_2x1_vector", is_2x1_vector)
+
+    # Use shorthand alias for the command prefix.
+    out = self._registry.dispatch_command(
+        "lt", ["-f", "is_2x1_vector", "--filter_exclude_node_names", ".*v.*"])
+
+    # If the --filter_exclude_node_names were not used, then the matching
+    # tensors would be:
+    #   - simple_mul_add/v:0
+    #   - simple_mul_add/v/read:0
+    #   - simple_mul_add/matmul:0
+    #   - simple_mul_add/add:0
+    #
+    # With the --filter_exclude_node_names option, only the last two should
+    # show up in the result.
+    assert_listed_tensors(
+        self,
+        out, ["simple_mul_add/matmul:0", "simple_mul_add/add:0"],
+        ["MatMul", "Add"], tensor_filter_name="is_2x1_vector")
     check_main_menu(self, out, list_tensors_enabled=False)
 
   def testListTensorsFilterNanOrInf(self):
@@ -1344,7 +1372,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates u.
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    simple_mul_add/u/Assign",
@@ -1361,7 +1389,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates v.
     index = self._findSourceLine(out, self._v_line_number)
     self.assertEqual(
-        ["L%d         v = variables.Variable(v_init, name=v_name)" %
+        ["L%d         v = variables.VariableV1(v_init, name=v_name)" %
          self._v_line_number,
          "    simple_mul_add/v"],
         out.lines[index : index + 2])
@@ -1398,7 +1426,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates u.
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u/read:0",
          "    simple_mul_add/u:0"],
@@ -1420,7 +1448,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    simple_mul_add/u/Assign",
@@ -1443,7 +1471,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    (... Omitted 2 of 3 op(s) ...) +5"],
@@ -1553,10 +1581,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     """List an input tree containing tensors from non-:0 output slot."""
 
     with session.Session(config=no_rewrite_session_config()) as sess:
-      x = variables.Variable([1, 3, 3, 7], name="x")
+      x = variables.VariableV1([1, 3, 3, 7], name="x")
       _, idx = array_ops.unique(x, name="x_unique")
       idx_times_two = math_ops.multiply(idx, 2, name="idx_times_two")
-      sess.run(x.initializer)
+      self.evaluate(x.initializer)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(
@@ -1641,6 +1669,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
     self.assertNotIn("...,", out.lines[4])
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -1657,7 +1686,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     with session.Session(config=no_rewrite_session_config()) as sess:
       x_init_val = np.array([5.0, 3.0])
       x_init = constant_op.constant(x_init_val, shape=[2])
-      x = variables.Variable(x_init, name="control_deps/x")
+      x = variables.VariableV1(x_init, name="control_deps/x")
 
       y = math_ops.add(x, x, name="control_deps/y")
       y = control_flow_ops.with_dependencies(
@@ -1968,6 +1997,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
                      out.font_attr_segs[0])
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
 
   @classmethod

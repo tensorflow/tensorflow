@@ -41,6 +41,8 @@ struct RewriteGraphMetadata;
 struct GraphExecutionStateOptions {
   const DeviceSet* device_set = nullptr;
   const SessionOptions* session_options = nullptr;
+  // Unique session identifier. Can be empty.
+  string session_handle;
   // A map from node name to device name, representing the unchangeable
   // placement of stateful nodes.
   std::unordered_map<string, string> stateful_placements;
@@ -50,17 +52,20 @@ struct GraphExecutionStateOptions {
 // BuildGraphOptions.
 struct ClientGraph {
   explicit ClientGraph(std::unique_ptr<FunctionLibraryDefinition> flib,
-                       DataTypeVector feed_types, DataTypeVector fetch_types)
+                       DataTypeVector feed_types, DataTypeVector fetch_types,
+                       int64 collective_graph_key)
       : flib_def(std::move(flib)),
         graph(flib_def.get()),
         feed_types(std::move(feed_types)),
-        fetch_types(std::move(fetch_types)) {}
+        fetch_types(std::move(fetch_types)),
+        collective_graph_key(collective_graph_key) {}
   // Each client-graph gets its own function library since optimization passes
   // post rewrite for execution might want to introduce new functions.
   std::unique_ptr<FunctionLibraryDefinition> flib_def;
   Graph graph;
   DataTypeVector feed_types;
   DataTypeVector fetch_types;
+  int64 collective_graph_key;
 };
 
 // GraphExecutionState is responsible for generating an
@@ -139,9 +144,7 @@ class GraphExecutionState {
 
   // The graph returned by BuildGraph may contain only the pruned
   // graph, whereas some clients may want access to the full graph.
-  const Graph* full_graph() {
-    return graph_;
-  }
+  const Graph* full_graph() { return graph_; }
 
   // Returns the node with the given name, or null if it does not exist.
   const Node* get_node_by_name(const string& name) const {
@@ -179,12 +182,20 @@ class GraphExecutionState {
   void SaveStatefulNodes(Graph* graph);
   void RestoreStatefulNodes(Graph* graph);
 
-  Status OptimizeGraph(const BuildGraphOptions& options,
-                       std::unique_ptr<Graph>* optimized_graph);
+  // Extract the subset of the graph that needs to be run, adding feed/fetch
+  // ops as needed.
+  Status PruneGraph(const BuildGraphOptions& options, Graph* graph,
+                    subgraph::RewriteGraphMetadata* out_rewrite_metadata);
+
+  Status OptimizeGraph(
+      const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+      std::unique_ptr<FunctionLibraryDefinition>* optimized_flib);
 
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
+  // Unique session identifier. Can be empty.
+  string session_handle_;
 
   // Map from name to Node for the full graph in placed_.
   NodeNameToCostIdMap node_name_to_cost_id_map_;

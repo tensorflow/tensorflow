@@ -36,11 +36,10 @@ TEST(MfccTest, AgreesWithPythonGoldenValues) {
   std::vector<double> output;
   mfcc.Compute(input, &output);
 
-  std::vector<double> expected = {29.13970072, -6.41568601, -0.61903012,
-                             -0.96778652, -0.26819878, -0.40907028,
-                             -0.15614748, -0.23203119, -0.10481487,
-                             -0.1543029,  -0.0769791,  -0.10806114,
-                             -0.06047613};
+  std::vector<double> expected = {
+      29.13970072, -6.41568601, -0.61903012, -0.96778652, -0.26819878,
+      -0.40907028, -0.15614748, -0.23203119, -0.10481487, -0.1543029,
+      -0.0769791,  -0.10806114, -0.06047613};
 
   ASSERT_EQ(expected.size(), output.size());
   for (int i = 0; i < output.size(); ++i) {

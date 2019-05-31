@@ -21,7 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import six
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
@@ -140,7 +139,7 @@ def masked_convolution(inputs,
       with "NC".
     num_outputs: Integer, the number of output filters.
     kernel_size: A sequence of N positive integers specifying the spatial
-      dimensions of of the filters.  Can be a single integer to specify the same
+      dimensions of the filters.  Can be a single integer to specify the same
       value for all spatial dimensions.
     stride: A sequence of N positive integers specifying the stride at which to
       compute output.  Can be a single integer to specify the same value for all
@@ -215,7 +214,7 @@ def masked_convolution(inputs,
     elif data_format == 'NCHW':
       df = 'channels_first'
     else:
-      raise ValueError('Unsupported data fromat', data_format)
+      raise ValueError('Unsupported data format', data_format)
 
     layer = layer_class(
         filters=num_outputs,

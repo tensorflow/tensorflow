@@ -40,9 +40,10 @@ const char* const DEVICE_GPU = "GPU";
 const char* const DEVICE_SYCL = "SYCL";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 const std::string DeviceName<Eigen::SyclDevice>::value = DEVICE_SYCL;
 #endif  // TENSORFLOW_USE_SYCL
@@ -114,7 +115,7 @@ string DataTypeString(DataType dtype) {
 }
 
 bool DataTypeFromString(StringPiece sp, DataType* dt) {
-  if (sp.ends_with("_ref")) {
+  if (str_util::EndsWith(sp, "_ref")) {
     sp.remove_suffix(4);
     DataType non_ref;
     if (DataTypeFromString(sp, &non_ref) && !IsRefType(non_ref)) {

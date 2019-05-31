@@ -15,8 +15,8 @@ limitations under the License.
 
 // Shim for systems that need to load both SessionBundle and
 // SavedModelBundle interchangeably during migration to SavedModel.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
+#ifndef TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
+#define TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
 
 #include <memory>
 
@@ -59,12 +59,14 @@ Status ConvertSessionBundleToSavedModelBundle(
 }  // namespace internal
 
 // Loads a SavedModel from either a session-bundle path or a SavedModel bundle
-// path.
+// path. If `is_session_bundle` is not a nullptr, sets it to `true` iff
+// SavedModel was up-converted and loaded from a SessionBundle.
+// `is_session_bundle` value should not be used if error is returned.
 Status LoadSessionBundleOrSavedModelBundle(
     const SessionOptions& session_options, const RunOptions& run_options,
     const string& export_dir, const std::unordered_set<string>& tags,
-    SavedModelBundle* bundle);
+    SavedModelBundle* bundle, bool* is_session_bundle = nullptr);
 
 }  // namespace serving
 }  // namespace tensorflow
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_
+#endif  // TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_

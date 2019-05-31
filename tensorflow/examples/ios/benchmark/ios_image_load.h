@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_EXAMPLES_IOS_IOS_IMAGE_LOAD_H_
-#define TENSORFLOW_EXAMPLES_IOS_IOS_IMAGE_LOAD_H_
+#ifndef TENSORFLOW_EXAMPLES_IOS_BENCHMARK_IOS_IMAGE_LOAD_H_
+#define TENSORFLOW_EXAMPLES_IOS_BENCHMARK_IOS_IMAGE_LOAD_H_
 
 #include <vector>
 
-#include "tensorflow/core/framework/types.h"
+#include "third_party/tensorflow/core/framework/types.h"
 
 std::vector<tensorflow::uint8> LoadImageFromFile(const char* file_name,
                                                  int* out_width,
                                                  int* out_height,
                                                  int* out_channels);
 
-#endif  // TENSORFLOW_EXAMPLES_IOS_IOS_IMAGE_LOAD_H_
+#endif  // TENSORFLOW_EXAMPLES_IOS_BENCHMARK_IOS_IMAGE_LOAD_H_

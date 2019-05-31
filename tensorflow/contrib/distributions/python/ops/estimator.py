@@ -23,6 +23,7 @@ from tensorflow.contrib.learn.python.learn.estimators.head import _RegressionHea
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -30,6 +31,14 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def estimator_head_distribution_regression(make_distribution_fn,
                                            label_dimension=1,
                                            logits_dimension=None,
@@ -75,8 +84,16 @@ def estimator_head_distribution_regression(make_distribution_fn,
 
 
 class _DistributionRegressionHead(_RegressionHead):
-  """Creates a _RegressionHead instance from an arbitray `Distribution`."""
+  """Creates a _RegressionHead instance from an arbitrary `Distribution`."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                make_distribution_fn,
                label_dimension,

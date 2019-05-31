@@ -58,7 +58,7 @@ class MaskedProductOpsTest(test.TestCase):
     self._mask_ind, self._mask_shape = MakeMask()
 
   def _runTestMaskedProduct(self, transpose_a, transpose_b):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       a = self._a if not transpose_a else array_ops.transpose(self._a)
       b = self._b if not transpose_b else array_ops.transpose(self._b)
 
@@ -78,7 +78,7 @@ class MaskedProductOpsTest(test.TestCase):
       AssertClose(result, true_result)
 
   def _runTestEmptyMaskedProduct(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       empty_mask = constant_op.constant(0, shape=[0, 2], dtype=dtypes.int64)
       values = gen_factorization_ops.masked_matmul(
           self._a, self._b, empty_mask, False, False)

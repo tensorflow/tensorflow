@@ -41,7 +41,7 @@ REGISTER_OP("LSTMBlockCell")
     .Attr("forget_bias: float = 1.0")
     .Attr("cell_clip: float = 3.0")
     .Attr("use_peephole: bool = false")
-    .Attr("T: {float}")
+    .Attr("T: {half, float}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x, cs_prev;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &x));
@@ -128,7 +128,7 @@ REGISTER_OP("LSTMBlockCellGrad")
     .Output("wcf_grad: T")
     .Output("wco_grad: T")
     .Attr("use_peephole: bool")
-    .Attr("T: {float}")
+    .Attr("T: {half, float}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x, cs_prev;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &x));
@@ -196,7 +196,7 @@ REGISTER_OP("BlockLSTM")
     .Attr("forget_bias: float = 1.0")
     .Attr("cell_clip: float = 3.0")
     .Attr("use_peephole: bool = false")
-    .Attr("T: {float}")
+    .Attr("T: {half, float}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x, b;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &x));
@@ -288,7 +288,7 @@ REGISTER_OP("BlockLSTMGrad")
     .Output("wco_grad: T")
     .Output("b_grad: T")
     .Attr("use_peephole: bool")
-    .Attr("T: {float}")
+    .Attr("T: {half, float}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x, cs_prev, h_prev, w, wci, wco, wcf, b;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &x));

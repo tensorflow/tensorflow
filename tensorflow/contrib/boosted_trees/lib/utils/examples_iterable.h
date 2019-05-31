@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_EXAMPLES_ITERABLE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_EXAMPLES_ITERABLE_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_EXAMPLES_ITERABLE_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_EXAMPLES_ITERABLE_H_
 
 #include <vector>
 
@@ -148,7 +148,7 @@ class ExamplesIterable {
                                                       row_range.start);
           for (int64 row_idx = row_range.start; row_idx < row_range.end;
                ++row_idx) {
-            sparse_int_features[sparse_int_idx].insert(
+            sparse_int_features[sparse_int_idx].push_back(
                 iter_->sparse_int_column_values_[sparse_int_idx](row_idx));
           }
         }
@@ -205,4 +205,4 @@ class ExamplesIterable {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_EXAMPLES_ITERABLE_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_EXAMPLES_ITERABLE_H_

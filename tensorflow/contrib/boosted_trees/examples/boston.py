@@ -45,6 +45,7 @@ from tensorflow.contrib.boosted_trees.estimator_batch.estimator import GradientB
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn import learn_runner
+from tensorflow.python.util import compat
 
 _BOSTON_NUM_FEATURES = 13
 
@@ -79,7 +80,8 @@ def _convert_fn(dtec, sorted_feature_names, num_dense, num_sparse_float,
                 num_sparse_int, export_dir, unused_eval_result):
   universal_format = custom_export_strategy.convert_to_universal_format(
       dtec, sorted_feature_names, num_dense, num_sparse_float, num_sparse_int)
-  with tf.gfile.GFile(os.path.join(export_dir, "tree_proto"), "w") as f:
+  with tf.gfile.GFile(os.path.join(
+      compat.as_bytes(export_dir), compat.as_bytes("tree_proto")), "w") as f:
     f.write(str(universal_format))
 
 
@@ -88,13 +90,13 @@ def _make_experiment_fn(output_dir):
   (x_train, y_train), (x_test,
                        y_test) = tf.keras.datasets.boston_housing.load_data()
 
-  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+  train_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={"x": x_train},
       y=y_train,
       batch_size=FLAGS.batch_size,
       num_epochs=None,
       shuffle=True)
-  eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+  eval_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={"x": x_test}, y=y_test, num_epochs=1, shuffle=False)
 
   feature_columns = [

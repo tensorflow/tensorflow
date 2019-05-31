@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -37,6 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
 
+@test_util.run_deprecated_v1
 class AbsoluteDifferenceLossTest(test.TestCase):
 
   def setUp(self):
@@ -45,63 +47,71 @@ class AbsoluteDifferenceLossTest(test.TestCase):
     self._labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
   def testValueErrorThrownWhenWeightIsNone(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.absolute_difference(
             self._predictions, self._predictions, weights=None)
 
   def testAllCorrectNoLossWeight(self):
     loss = losses.absolute_difference(self._predictions, self._predictions)
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
   def testNonZeroLoss(self):
     loss = losses.absolute_difference(self._labels, self._predictions)
-    with self.test_session():
-      self.assertAlmostEqual(5.5, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(5.5, self.evaluate(loss), 3)
 
   def testNonZeroLossWithPythonScalarWeight(self):
     weights = 2.3
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(5.5 * weights, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(5.5 * weights, self.evaluate(loss), 3)
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
     loss = losses.absolute_difference(self._labels, self._predictions,
                                       constant_op.constant(weights))
-    with self.test_session():
-      self.assertAlmostEqual(5.5 * weights, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(5.5 * weights, self.evaluate(loss), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     weights = constant_op.constant((1.2, 0.0), shape=(2, 1))
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(5.6, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(5.6, self.evaluate(loss), 3)
 
   def testNonZeroLossWithTwoDimBatchSpecificWeights(self):
     weights = constant_op.constant([1.2, 0.0], shape=[2, 1])
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(5.6, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(5.6, self.evaluate(loss), 3)
 
   def testNonZeroLossWithSampleSpecificWeights(self):
     weights = constant_op.constant([3, 6, 5, 0, 4, 2], shape=[2, 3])
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(16.6, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(16.6, self.evaluate(loss), 3)
 
   def testNonZeroLossWithSampleSpecificWeightsMostZero(self):
     weights = constant_op.constant([0, 0, 0, 0, 0, 2], shape=[2, 3])
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(6.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(6.0, self.evaluate(loss), 3)
 
   def testLossWithSampleSpecificWeightsAllZero(self):
     weights = array_ops.zeros((2, 3))
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerNoMemoryLeaked(self):
+    # This is a somewhat convoluted way of testing that nothing gets added to
+    # a global collection.
+    predictions = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
+    labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    losses.absolute_difference(labels, predictions)
 
 
 class SoftmaxCrossEntropyLossTest(test.TestCase):
@@ -110,12 +120,13 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.softmax_cross_entropy(labels, logits, weights=None)
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                      [0.0, 0.0, 10.0]])
       labels = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
@@ -123,64 +134,68 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals('softmax_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrong(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
 
-    with self.test_session():
+    with self.cached_session():
       loss = losses.softmax_cross_entropy(labels, logits)
       self.assertEquals(loss.op.name, 'softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
     weights = 2.3
-    with self.test_session():
+    with self.cached_session():
       loss = losses.softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
+      self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
     weights = 2.3
-    with self.test_session():
+    with self.cached_session():
       loss = losses.softmax_cross_entropy(labels, logits,
                                           constant_op.constant(weights))
-      self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
+      self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
     weights = constant_op.constant((1.2, 3.4, 5.6))
-    with self.test_session():
+    with self.cached_session():
       loss = losses.softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss.eval(), 3)
+      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0,
+                             self.evaluate(loss), 3)
 
   def testAllWrongAllWeightsMissing(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
     weights = constant_op.constant([0, 0, 0], shape=[3])
-    with self.test_session():
+    with self.cached_session():
       loss = losses.softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
   def testSomeWeightsMissing(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
     weights = constant_op.constant([1.2, 0, 0], shape=[3])
-    with self.test_session():
+    with self.cached_session():
       loss = losses.softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual(12.0, loss.eval(), 3)
+      self.assertAlmostEqual(12.0, self.evaluate(loss), 3)
 
   def testSoftmaxWithMeasurementSpecificWeightsRaisesException(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0],
                                      [-100.0, -100.0, 100.0]])
@@ -190,8 +205,9 @@ class SoftmaxCrossEntropyLossTest(test.TestCase):
       with self.assertRaises(ValueError):
         losses.softmax_cross_entropy(labels, logits, weights=weights).eval()
 
+  @test_util.run_deprecated_v1
   def testSoftmaxLabelSmoothing(self):
-    with self.test_session():
+    with self.cached_session():
       # Softmax Cross Entropy Loss is:
       #   -\sum_i p_i \log q_i
       # where for a softmax activation
@@ -218,12 +234,13 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[0], [1], [2]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.sparse_softmax_cross_entropy(labels, logits, weights=None)
 
+  @test_util.run_deprecated_v1
   def testAllCorrectInt32Labels(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                      [0.0, 0.0, 10.0]])
       labels = constant_op.constant([[0], [1], [2]], dtype=dtypes.int32)
@@ -231,8 +248,16 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testEagerNoMemoryLeaked(self):
+    logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
+                                   [0.0, 0.0, 10.0]])
+    labels = constant_op.constant([[0], [1], [2]], dtype=dtypes.int32)
+    losses.sparse_softmax_cross_entropy(labels, logits)
+
+  @test_util.run_deprecated_v1
   def testAllCorrectInt64Labels(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                      [0.0, 0.0, 10.0]])
       labels = constant_op.constant([[0], [1], [2]], dtype=dtypes.int64)
@@ -240,8 +265,9 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllCorrectNonColumnLabels(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                      [0.0, 0.0, 10.0]])
       labels = constant_op.constant([0, 1, 2])
@@ -249,82 +275,89 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongInt32Labels(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]], dtype=dtypes.int32)
 
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits)
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongInt64Labels(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]], dtype=dtypes.int64)
 
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits)
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongNonColumnLabels(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([2, 0, 1])
 
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits)
       self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 10.0, 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = 2.3
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
+      self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = 2.3
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits,
                                                  constant_op.constant(weights))
-      self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
+      self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
   def testNonZeroLossWith1DTensorWeight(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = 2.3
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(
           labels, logits, constant_op.constant((weights,)))
-      self.assertAlmostEqual(weights * 10.0, loss.eval(), 3)
+      self.assertAlmostEqual(weights * 10.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPlaceholderForWeights(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0],
                                    [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = array_ops.placeholder(dtypes.float32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       loss_val = sess.run(loss,
                           feed_dict={weights: ((1.2,), (3.4,), (5.6,))})
       self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss_val, 3)
 
+  @test_util.run_deprecated_v1
   def testUnknownShapePlaceholderForLogitsLabelsButScalarWeights(self):
     logits = array_ops.placeholder(dtypes.float32)
     labels = array_ops.placeholder(dtypes.int32)
     weights = 1.0
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       loss_val = sess.run(loss,
                           feed_dict={
@@ -335,11 +368,12 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                           })
       self.assertAlmostEqual((1.0 + 1.0 + 1.0) * 10.0 / 3.0, loss_val, 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPlaceholderForLogitsLabelsAndWeights(self):
     logits = array_ops.placeholder(dtypes.float32, shape=(None, 3))
     labels = array_ops.placeholder(dtypes.int32, shape=(None, 1))
     weights = array_ops.placeholder(dtypes.float32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
       loss_val = sess.run(loss,
                           feed_dict={
@@ -356,39 +390,42 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = constant_op.constant([1.2, 3.4, 5.6], shape=(3, 1))
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss.eval(), 3)
+      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0,
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithColumnWeights(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = constant_op.constant([[1.2], [3.4], [5.6]])
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss.eval(), 3)
+      self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0,
+                             self.evaluate(loss), 3)
 
   def testAllWrongAllWeightsMissing(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = constant_op.constant([0, 0, 0], shape=(3, 1))
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
   def testSomeWeightsMissing(self):
     logits = constant_op.constant([[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                    [0.0, 0.0, 10.0]])
     labels = constant_op.constant([[2], [0], [1]])
     weights = constant_op.constant([1.2, 0, 0], shape=(3, 1))
-    with self.test_session():
+    with self.cached_session():
       loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
-      self.assertAlmostEqual(12.0, loss.eval(), 3)
+      self.assertAlmostEqual(12.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testMeasurementSpecificWeightsRaisesException(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0],
                                      [-100.0, -100.0, 100.0]])
@@ -401,7 +438,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
 
   def testInconsistentWeightSizeRaisesException(self):
     """The weight tensor has incorrect number of elements."""
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0],
                                      [-100.0, -100.0, 100.0]])
@@ -414,7 +451,7 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
 
   def testInconsistentLabelSizeRaisesException(self):
     """The label tensor has incorrect number of elements."""
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0],
                                      [-100.0, -100.0, 100.0]])
@@ -425,9 +462,10 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 
+  @test_util.run_deprecated_v1
   def testInconsistentWeightShapeRaisesException(self):
     """The weight tensor has incorrect shape."""
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0, -100.0],
                                      [-100.0, -100.0, 100.0, -100.0],
@@ -439,9 +477,10 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
         losses.sparse_softmax_cross_entropy(
             labels, logits, weights=weights).eval()
 
+  @test_util.run_deprecated_v1
   def testInconsistentLabelShapeRaisesException(self):
     """The label tensor has incorrect shape."""
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0, -100.0],
                                      [-100.0, -100.0, 100.0, -100.0],
@@ -456,8 +495,9 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
 
 class SigmoidCrossEntropyLossTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAllCorrectSigmoid(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0],
                                      [-100.0, -100.0, 100.0]])
@@ -465,8 +505,9 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       loss = losses.sigmoid_cross_entropy(labels, logits)
       self.assertEquals(logits.dtype, loss.dtype)
       self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testLossWithSingleDimPlaceholderForLogitsAndWeights1(self):
     logits = array_ops.placeholder(dtypes.float32, shape=(None, 1))
     labels = array_ops.placeholder(dtypes.float32, shape=(None, 1))
@@ -475,7 +516,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
     loss = losses.sigmoid_cross_entropy(labels, logits, weights)
     self.assertEquals(logits.dtype, loss.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = sess.run(loss,
                       feed_dict={
                           logits: np.ones((32, 1)),
@@ -483,6 +524,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                       })
       self.assertAlmostEqual(0.313, loss, 3)
 
+  @test_util.run_deprecated_v1
   def testLossWithSingleDimPlaceholderForLogitsAndWeights2(self):
     logits = array_ops.placeholder(dtypes.float32, shape=(None, 2))
     labels = array_ops.placeholder(dtypes.float32, shape=(None, 2))
@@ -491,7 +533,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
     loss = losses.sigmoid_cross_entropy(labels, logits, weights)
     self.assertEquals(logits.dtype, loss.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = sess.run(loss,
                       feed_dict={
                           logits: np.ones((32, 2)),
@@ -499,8 +541,9 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                       })
       self.assertAlmostEqual(0.313, loss, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongSigmoid(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0],
                                      [-100.0, -100.0, 100.0]])
@@ -510,8 +553,9 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
       self.assertAlmostEqual(loss.eval(), 600.0 / 9.0, 3)
 
+  @test_util.run_deprecated_v1
   def testAllWrongSigmoidWithMeasurementSpecificWeights(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0],
                                      [-100.0, 100.0, -100.0],
                                      [-100.0, -100.0, 100.0]])
@@ -520,8 +564,9 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       loss = losses.sigmoid_cross_entropy(labels, logits, weights)
       self.assertEquals(logits.dtype, loss.dtype)
       self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
-      self.assertAlmostEqual(1700.0 / 7.0, loss.eval(), 3)
+      self.assertAlmostEqual(1700.0 / 7.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testMultiCorrectSigmoid(self):
     logits = constant_op.constant([[100.0, -100.0, 100.0],
                                    [100.0, 100.0, -100.0],
@@ -531,8 +576,8 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
     self.assertEquals(logits.dtype, loss.dtype)
     self.assertEquals('sigmoid_cross_entropy_loss/value', loss.op.name)
 
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
   def testSigmoidFloat64(self):
     logits = constant_op.constant((
@@ -546,8 +591,8 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
     loss = losses.sigmoid_cross_entropy(labels, logits)
     self.assertEquals(logits.dtype, loss.dtype)
 
-    with self.test_session():
-      self.assertAlmostEqual(44.444, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(44.444, self.evaluate(loss), 3)
 
   def testSigmoidNoReduction(self):
     logits = constant_op.constant((
@@ -559,15 +604,13 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
         labels, logits, reduction=losses.Reduction.NONE)
     self.assertEquals(logits.dtype, loss.dtype)
 
-    with self.test_session():
-      self.assertAllClose((
-          (0., 0., 0.),
-          (0., 100., 100.),
-          (100., 0., 100.)
-      ), loss.eval(), 3)
+    with self.cached_session():
+      self.assertAllClose(((0., 0., 0.), (0., 100., 100.), (100., 0., 100.)),
+                          self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testSigmoidLabelSmoothingCorrect(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[100.0, -100.0, -100.0]])
       labels = constant_op.constant([[1, 0, 1]])
       # Sigmoid cross entropy loss is:
@@ -589,8 +632,9 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       expected_value = (100.0 + 50.0 * label_smoothing) / 3.0
       self.assertAlmostEqual(loss.eval(), expected_value, 3)
 
+  @test_util.run_deprecated_v1
   def testSigmoidLabelSmoothingEqualsSoftmaxTwoLabel(self):
-    with self.test_session():
+    with self.cached_session():
       label_smoothing = 0.1
       sigmoid_logits = constant_op.constant([[100.0, -100.0, -100.0]])
       sigmoid_labels = constant_op.constant([[1, 0, 1]])
@@ -603,9 +647,11 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
       softmax_labels = constant_op.constant([[0, 1], [1, 0], [0, 1]])
       softmax_loss = losses.softmax_cross_entropy(
           softmax_labels, softmax_logits, label_smoothing=label_smoothing)
-      self.assertAlmostEqual(sigmoid_loss.eval(), softmax_loss.eval(), 3)
+      self.assertAlmostEqual(sigmoid_loss.eval(), self.evaluate(softmax_loss),
+                             3)
 
 
+@test_util.run_deprecated_v1
 class LogLossTest(test.TestCase):
 
   def setUp(self):
@@ -625,43 +671,43 @@ class LogLossTest(test.TestCase):
     self._labels = constant_op.constant(labels)
 
   def testValueErrorThrownWhenWeightIsNone(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.log_loss(self._labels, self._labels, weights=None)
 
   def testAllCorrectNoLossWeight(self):
     loss = losses.log_loss(self._labels, self._labels)
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
   def testAllCorrectNoLossWeightWithPlaceholder(self):
     tf_predictions = array_ops.placeholder(
         dtypes.float32, shape=self._np_labels.shape)
     loss = losses.log_loss(self._labels, tf_predictions)
-    with self.test_session():
+    with self.cached_session():
       self.assertAlmostEqual(
           0.0, loss.eval(feed_dict={tf_predictions: self._np_labels}), 3)
 
   def testNonZeroLoss(self):
     loss = losses.log_loss(self._labels, self._predictions)
-    with self.test_session():
+    with self.cached_session():
       self.assertAlmostEqual(-np.sum(self._expected_losses) / 6.0,
-                             loss.eval(), 3)
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithPythonScalarWeight(self):
     weights = 2.3
     loss = losses.log_loss(self._labels, self._predictions, weights)
-    with self.test_session():
+    with self.cached_session():
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
-                             loss.eval(), 3)
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
     loss = losses.log_loss(self._labels, self._predictions,
                            constant_op.constant(weights))
-    with self.test_session():
+    with self.cached_session():
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
-                             loss.eval(), 3)
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithScalarTensorWeightAndPlaceholder(self):
     tf_predictions = array_ops.placeholder(
@@ -669,7 +715,7 @@ class LogLossTest(test.TestCase):
     weights = 2.3
     loss = losses.log_loss(self._labels, tf_predictions,
                            constant_op.constant(weights))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
                              loss, 3)
@@ -679,7 +725,7 @@ class LogLossTest(test.TestCase):
     weights = 2.3
     loss = losses.log_loss(self._labels, tf_predictions,
                            constant_op.constant(weights))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
                              loss, 3)
@@ -690,8 +736,9 @@ class LogLossTest(test.TestCase):
         self._expected_losses,
         np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
     loss = losses.log_loss(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(-np.sum(expected_losses) / 6.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(-np.sum(expected_losses) / 6.0,
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeightsSomeZero(self):
     weights = constant_op.constant((1.2, 0), shape=(2, 1))
@@ -699,8 +746,9 @@ class LogLossTest(test.TestCase):
                                   np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape(
                                       (2, 3)))
     loss = losses.log_loss(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(-np.sum(expected_losses) / 3.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(-np.sum(expected_losses) / 3.0,
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithTwoDimBatchSpecificWeightsSomeZero(self):
     weights = constant_op.constant([1.2, 0], shape=[2, 1])
@@ -708,12 +756,13 @@ class LogLossTest(test.TestCase):
                                   np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape(
                                       (2, 3)))
     loss = losses.log_loss(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(-np.sum(expected_losses) / 3.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(-np.sum(expected_losses) / 3.0,
+                             self.evaluate(loss), 3)
 
   def testWeightsWithSameNumDimsButWrongShapeThrowsException(self):
     weights = constant_op.constant(np.random.normal(size=(2, 4)), shape=[2, 4])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.log_loss(self._labels, self._predictions, weights)
 
@@ -726,8 +775,9 @@ class LogLossTest(test.TestCase):
         self._predictions,
         constant_op.constant(
             weights, shape=(2, 3)))
-    with self.test_session():
-      self.assertAlmostEqual(-np.sum(expected_losses) / 5.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(-np.sum(expected_losses) / 5.0,
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithMeasurementSpecificWeightsWithPlaceholder(self):
     weights = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3))
@@ -740,7 +790,7 @@ class LogLossTest(test.TestCase):
         constant_op.constant(
             weights, shape=(2, 3)))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
       self.assertAlmostEqual(-np.sum(expected_losses) / 5.0, loss, 3)
 
@@ -753,8 +803,8 @@ class LogLossTest(test.TestCase):
         self._predictions,
         constant_op.constant(
             weights, shape=(2, 3)))
-    with self.test_session():
-      self.assertAlmostEqual(-np.sum(expected_losses), loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(-np.sum(expected_losses), self.evaluate(loss), 3)
 
   def testNonZeroLossWithSampleSpecificWeightsMostZeroWithPlaceholder(self):
     weights = np.array([0, 0, 0, 0, 0, 2]).reshape((2, 3))
@@ -764,35 +814,37 @@ class LogLossTest(test.TestCase):
     tf_weights = constant_op.constant(weights, shape=(2, 3))
     loss = losses.log_loss(self._labels, tf_predictions, tf_weights)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._np_predictions})
       self.assertAlmostEqual(-np.sum(expected_losses), loss, 3)
 
   def testLossWithSampleSpecificWeightsAllZero(self):
     tf_weights = array_ops.zeros(shape=(2, 3))
     loss = losses.log_loss(self._labels, self._predictions, tf_weights)
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
 
 class HingeLossTest(test.TestCase):
 
   def testIncompatibleShapes(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[-1.0], [2.1]])
       labels = constant_op.constant([0.0, 1.0])
       with self.assertRaises(ValueError):
         _ = losses.hinge_loss(labels, logits).eval()
 
+  @test_util.run_deprecated_v1
   def testAllOutsideMargin(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([1.2, -1.4, -1.0, 2.1])
       labels = constant_op.constant([1.0, 0.0, 0.0, 1.0])
       loss = losses.hinge_loss(labels, logits)
       self.assertAllClose(loss.eval(), 0.0, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testSomeInsideMargin(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[-0.7], [-1.4], [1.4], [0.6]])
       labels = constant_op.constant([[0.0], [0.0], [1.0], [1.0]])
       loss = losses.hinge_loss(labels, logits)
@@ -800,8 +852,9 @@ class HingeLossTest(test.TestCase):
       # the margin so they incur some (small) loss.
       self.assertAllClose(loss.eval(), 0.175, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testSomeMisclassified(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([[[1.2], [0.4], [-1.0], [-1.1]]])
       labels = constant_op.constant([[[1.0], [0.0], [0.0], [1.0]]])
       loss = losses.hinge_loss(labels, logits)
@@ -813,30 +866,33 @@ class HingeLossTest(test.TestCase):
 class HuberLossTest(test.TestCase):
 
   def testIncompatibleShapes(self):
-    with self.test_session():
+    with self.cached_session():
       predictions = constant_op.constant([[-1.0], [2.1]])
       labels = constant_op.constant([0.0, 1.0])
       with self.assertRaises(ValueError):
         _ = losses.huber_loss(labels, predictions).eval()
 
+  @test_util.run_deprecated_v1
   def testAllQuadratic(self):
-    with self.test_session():
+    with self.cached_session():
       predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
       labels = constant_op.constant([1.0, -1.0, 0.0, 0.5])
       loss = losses.huber_loss(labels, predictions)
       self.assertAllClose(loss.eval(),
                           0.5 * (0.25 + 0.16 + 1.0 + 0.25) / 4., atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testAllLinear(self):
-    with self.test_session():
+    with self.cached_session():
       predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
       labels = constant_op.constant([0.0, 1.0, 0.0, 1.5])
       loss = losses.huber_loss(labels, predictions)
       self.assertAllClose(loss.eval(),
                           (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testMixedQuadraticLinear(self):
-    with self.test_session():
+    with self.cached_session():
       predictions = constant_op.constant([[1.5, -1.4, -1.0, 0.0],
                                           [1.5, -1.4, -1.0, 0.0]])
       labels = constant_op.constant([[1.0, -1.0, 0.0, 0.5],
@@ -848,13 +904,13 @@ class HuberLossTest(test.TestCase):
       self.assertAllClose(loss.eval(), expected_loss, atol=1e-5)
 
   def testAllQuadraticDelta(self):
-    with self.test_session():
+    with self.cached_session():
       delta = 0.5
       predictions = constant_op.constant([1.5, -1.4, -0.5, 0.0])
       labels = constant_op.constant([1.0, -1.0, 0.0, 0.5])
       expected = 0.5 * np.array([0.5**2, 0.4**2, 0.5**2, 0.5**2]).mean()
       loss = losses.huber_loss(labels, predictions, delta=delta)
-      self.assertAllClose(expected, loss.eval(), atol=1e-5)
+      self.assertAllClose(expected, self.evaluate(loss), atol=1e-5)
 
   def testAllLinearDelta(self):
     delta = 0.5
@@ -863,10 +919,11 @@ class HuberLossTest(test.TestCase):
     expected = delta * np.array([1.5, 2.4, 1.0, 1.5]).mean()
     expected -= 0.5 * delta**2
     loss = losses.huber_loss(labels, predictions, delta=delta)
-    with self.test_session():
-      self.assertAllClose(expected, loss.eval(), atol=1e-5)
+    with self.cached_session():
+      self.assertAllClose(expected, self.evaluate(loss), atol=1e-5)
 
 
+@test_util.run_deprecated_v1
 class MeanSquaredErrorTest(test.TestCase):
 
   def setUp(self):
@@ -875,72 +932,78 @@ class MeanSquaredErrorTest(test.TestCase):
     self._labels = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
   def testValueErrorThrownWhenWeightIsNone(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.mean_squared_error(
             self._predictions, self._predictions, weights=None)
 
+  @test_util.run_deprecated_v1
   def testScalar(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(
           0.0,
           losses.mean_squared_error(predictions=constant_op.constant(0),
                                     labels=constant_op.constant(0)).eval())
 
+  @test_util.run_deprecated_v1
   def testAllCorrectNoLossWeight(self):
     loss = losses.mean_squared_error(self._predictions, self._predictions)
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLoss(self):
     loss = losses.mean_squared_error(self._labels, self._predictions)
-    with self.test_session():
-      self.assertAlmostEqual(49.5, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(49.5, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     weights = 2.3
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(49.5 * weights, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(49.5 * weights, self.evaluate(loss), 3)
 
+  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
     loss = losses.mean_squared_error(self._labels, self._predictions,
                                      constant_op.constant(weights))
-    with self.test_session():
-      self.assertAlmostEqual(49.5 * weights, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(49.5 * weights, self.evaluate(loss), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     weights = constant_op.constant([1.2, 3.4], shape=(2, 1))
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(767.8 / 6.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(767.8 / 6.0, self.evaluate(loss), 3)
 
   def testNonZeroLossWithTwoDimBatchSpecificWeights(self):
     weights = constant_op.constant([1.2, 3.4], shape=[2, 1])
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(767.8 / 6.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(767.8 / 6.0, self.evaluate(loss), 3)
 
   def testNonZeroLossWithSampleSpecificWeights(self):
     weights = constant_op.constant([3, 6, 5, 0, 4, 2], shape=[2, 3])
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(587 / 5.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(587 / 5.0, self.evaluate(loss), 3)
 
   def testNonZeroLossWithSampleSpecificWeightsMostZero(self):
     weights = constant_op.constant([0, 0, 0, 0, 0, 2], shape=[2, 3])
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(18.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(18.0, self.evaluate(loss), 3)
 
   def testLossWithSampleSpecificWeightsAllZero(self):
     weights = array_ops.zeros((2, 3))
     loss = losses.mean_squared_error(self._labels, self._predictions, weights)
-    with self.test_session():
-      self.assertAlmostEqual(0.0, loss.eval(), 3)
+    with self.cached_session():
+      self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
 
+@test_util.run_deprecated_v1
 class MeanPairwiseSquaredErrorTest(test.TestCase):
 
   def setUp(self):
@@ -953,17 +1016,17 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     # Compute the expected loss 'manually'.
     total = np.zeros((batch_size,))
     for b in range(batch_size):
-      for i in range(dims):
-        for j in range(dims):
+      for i in range(dims - 1):
+        for j in range(i + 1, dims):
           x = self._predictions[b, i].item() - self._predictions[b, j].item()
           y = self._labels[b, i].item() - self._labels[b, j].item()
           diff = (x - y)
           total[b] += (diff * diff)
 
-    self._expected_losses = np.divide(total, 9.0)
+    self._expected_losses = np.divide(total, 3.0)
 
   def testValueErrorThrownWhenWeightIsNone(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.mean_pairwise_squared_error(
             predictions=constant_op.constant(self._labels),
@@ -972,10 +1035,11 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
 
   def _test_valid_weights(
       self, labels, predictions, expected_loss, weights=1.0):
-    with self.test_session():
+    with self.cached_session():
       static_inputs_op = losses.mean_pairwise_squared_error(
           predictions=predictions, labels=labels, weights=weights)
-      self.assertAlmostEqual(expected_loss, static_inputs_op.eval(), places=3)
+      self.assertAlmostEqual(
+          expected_loss, self.evaluate(static_inputs_op), places=3)
 
       predictions_placeholder = array_ops.placeholder(
           dtypes.float32, shape=np.asarray(predictions.shape))
@@ -1023,10 +1087,10 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
 
       init_op = variables.global_variables_initializer()
 
-      with self.test_session() as sess:
-        sess.run(init_op)
+      with self.cached_session() as sess:
+        self.evaluate(init_op)
         for grad, _ in gradients_to_variables:
-          np_grad = sess.run(grad)
+          np_grad = self.evaluate(grad)
           self.assertFalse(np.isnan(np_grad).any())
 
   def testNonZeroLossWithPythonScalarWeight(self):
@@ -1042,9 +1106,9 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         predictions=constant_op.constant(self._predictions),
         labels=constant_op.constant(self._labels),
         weights=constant_op.constant(weights))
-    with self.test_session():
+    with self.cached_session():
       self.assertAlmostEqual(weights * np.sum(self._expected_losses),
-                             loss.eval(), 3)
+                             self.evaluate(loss), 3)
 
   def testNonZeroLossWithScalarZeroWeight(self):
     self._test_valid_weights(
@@ -1059,8 +1123,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
         [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
     ])
-    self._test_valid_weights(
-        labels, predictions, expected_loss=122.22222)
+    self._test_valid_weights(labels, predictions, expected_loss=137.5)
 
   def test3dWeightedScalar(self):
     labels = np.array([
@@ -1073,8 +1136,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     weight = 3.0
     self._test_valid_weights(
-        labels, predictions, expected_loss=weight * 122.22222,
-        weights=weight)
+        labels, predictions, expected_loss=weight * 137.5, weights=weight)
 
   def _test_invalid_weights(
       self, labels, predictions, weights=1.0):
@@ -1093,7 +1155,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         predictions=predictions_placeholder,
         labels=labels_placeholder,
         weights=weights_placeholder)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
         dynamic_inputs_op.eval(feed_dict={
             predictions_placeholder: predictions,
@@ -1124,7 +1186,9 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     self._test_valid_weights(
         # TODO(ptucker): This doesn't look right.
-        labels, predictions, expected_loss=9 * 122.22222,
+        labels,
+        predictions,
+        expected_loss=9 * 137.5,
         weights=np.ones((2, 3, 3)))
 
   def testLossWithAllZeroBatchSpecificWeights(self):
@@ -1160,7 +1224,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
           labels=array_ops.concat([labels0, labels1], 0),
           predictions=array_ops.concat([predictions0, predictions1], 0))
 
-      with self.test_session() as session:
+      with self.cached_session() as session:
         loss0, loss1, loss0_1 = session.run([loss0, loss1, loss0_1])
 
         self.assertTrue(loss0 > 0)
@@ -1168,6 +1232,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         self.assertAlmostEqual(loss0 + loss1, loss0_1, 5)
 
 
+@test_util.run_deprecated_v1
 class CosineDistanceLossTest(test.TestCase):
 
   def setUp(self):
@@ -1185,7 +1250,7 @@ class CosineDistanceLossTest(test.TestCase):
                                [0, 0, 1], [0, 1, 0]]).reshape((3, 2, 3))
 
   def testValueErrorThrownWhenWeightIsNone(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         losses.cosine_distance(
             predictions=constant_op.constant(self._labels),
@@ -1198,16 +1263,16 @@ class CosineDistanceLossTest(test.TestCase):
         predictions=constant_op.constant(self._labels),
         labels=constant_op.constant(self._labels),
         dim=2)
-    with self.test_session():
-      self.assertAlmostEqual(0, loss.eval(), 5)
+    with self.cached_session():
+      self.assertAlmostEqual(0, self.evaluate(loss), 5)
 
   def testPartiallyCorrectWithIntegerValues(self):
     loss = losses.cosine_distance(
         predictions=constant_op.constant(self._predictions),
         labels=constant_op.constant(self._labels),
         dim=2)
-    with self.test_session():
-      self.assertAlmostEqual(1, loss.eval(), 5)
+    with self.cached_session():
+      self.assertAlmostEqual(1, self.evaluate(loss), 5)
 
   def testPartiallyCorrectFloatingPointValues(self):
     predictions = np.matrix(
@@ -1224,8 +1289,8 @@ class CosineDistanceLossTest(test.TestCase):
         labels, shape=(3, 1, 3), dtype=dtypes.float32)
     loss = losses.cosine_distance(tf_labels, tf_preds, dim=2)
 
-    with self.test_session():
-      self.assertAlmostEqual(1.0, loss.eval(), 5)
+    with self.cached_session():
+      self.assertAlmostEqual(1.0, self.evaluate(loss), 5)
 
   def testSampleSpecificWeights(self):
     loss = losses.cosine_distance(
@@ -1233,8 +1298,8 @@ class CosineDistanceLossTest(test.TestCase):
         labels=constant_op.constant(self._labels),
         dim=2,
         weights=np.asarray((1, 0, 0)).reshape((3, 1, 1)))
-    with self.test_session():
-      self.assertEqual(1.0, loss.eval())
+    with self.cached_session():
+      self.assertEqual(1.0, self.evaluate(loss))
 
   def testMeasurementSpecificWeights(self):
     loss = losses.cosine_distance(
@@ -1243,8 +1308,8 @@ class CosineDistanceLossTest(test.TestCase):
         dim=2,
         weights=constant_op.constant(
             [1, 0, 0, 1, 1, 1], shape=(3, 2, 1)))
-    with self.test_session():
-      self.assertEqual(3.0 / 4.0, loss.eval())
+    with self.cached_session():
+      self.assertEqual(3.0 / 4.0, self.evaluate(loss))
 
   def testMeasurementSpecificWeightsWithPlaceholderWithShape(self):
     tf_predictions = array_ops.placeholder(
@@ -1255,7 +1320,7 @@ class CosineDistanceLossTest(test.TestCase):
         dim=2,
         weights=constant_op.constant(
             [1, 0, 0, 1, 1, 1], shape=(3, 2, 1)))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       loss = sess.run(loss, feed_dict={tf_predictions: self._predictions})
       self.assertEqual(3.0 / 4.0, loss)
 
@@ -1265,8 +1330,8 @@ class CosineDistanceLossTest(test.TestCase):
         labels=constant_op.constant(self._labels),
         dim=2,
         weights=array_ops.zeros((3, 1, 1)))
-    with self.test_session():
-      self.assertEqual(0, loss.eval())
+    with self.cached_session():
+      self.assertEqual(0, self.evaluate(loss))
 
   def testZeroLossWhenAllMeasurementSpecificWeightsAreZero(self):
     loss = losses.cosine_distance(
@@ -1274,8 +1339,8 @@ class CosineDistanceLossTest(test.TestCase):
         labels=constant_op.constant(self._labels),
         dim=2,
         weights=array_ops.zeros((3, 2, 1)))
-    with self.test_session():
-      self.assertEqual(0, loss.eval())
+    with self.cached_session():
+      self.assertEqual(0, self.evaluate(loss))
 
 
 class AddLossTest(test.TestCase):
@@ -1332,18 +1397,47 @@ class ComputeWeightedLossTest(test.TestCase):
                 raw_losses, weights=np.ones(self._shape), reduction=reduction)
         )
         self.assertEqual(9, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           for unweighted_loss in unweighted_losses:
             if reduction == losses.Reduction.NONE:
-              self.assertAllClose(self._raw_losses, unweighted_loss.eval())
+              self.assertAllClose(self._raw_losses,
+                                  self.evaluate(unweighted_loss))
             elif reduction == losses.Reduction.SUM:
               self.assertAllClose(
-                  np.sum(self._raw_losses), unweighted_loss.eval())
+                  np.sum(self._raw_losses), self.evaluate(unweighted_loss))
             else:
-              # reduction one of losses.Reduction.MEAN and
-              # losses.Reduction.SUM_BY_NONZERO_WEIGHTS.
+              # reduction one of MEAN, SUM_OVER_NONZERO_WEIGHTS,
+              # SUM_BY_NONZERO_WEIGHTS or SUM_OVER_BATCH_SIZE.
               self.assertAllClose(
-                  np.mean(self._raw_losses), unweighted_loss.eval())
+                  np.mean(self._raw_losses), self.evaluate(unweighted_loss))
+
+  def testUnweightedFromPlaceholder(self):
+    for reduction in losses.Reduction.all():
+      with ops.Graph().as_default() as g:
+        self.assertEqual(0, len(util.get_losses()))
+        raw_losses = array_ops.placeholder(dtype=dtypes.float32)
+        feed_dict = {raw_losses: self._raw_losses}
+        unweighted_losses = (
+            losses.compute_weighted_loss(raw_losses, reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 1, 1)), reduction=reduction),
+            losses.compute_weighted_loss(
+                raw_losses, weights=np.ones((1, 1, 4)), reduction=reduction),
+        )
+        self.assertEqual(3, len(util.get_losses()))
+        with self.session(g):
+          for unweighted_loss in unweighted_losses:
+            if reduction == losses.Reduction.NONE:
+              self.assertAllClose(
+                  self._raw_losses, unweighted_loss.eval(feed_dict))
+            elif reduction == losses.Reduction.SUM:
+              self.assertAllClose(
+                  np.sum(self._raw_losses), unweighted_loss.eval(feed_dict))
+            else:
+              # reduction one of MEAN, SUM_OVER_NONZERO_WEIGHTS,
+              # SUM_BY_NONZERO_WEIGHTS or SUM_OVER_BATCH_SIZE.
+              self.assertAllClose(
+                  np.mean(self._raw_losses), unweighted_loss.eval(feed_dict))
 
   def testScalarWeight(self):
     with ops.Graph().as_default():
@@ -1352,9 +1446,9 @@ class ComputeWeightedLossTest(test.TestCase):
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weight)
       self.assertEqual(1, len(util.get_losses()))
-      with self.test_session():
+      with self.cached_session():
         self.assertAllClose(
-            np.mean(weight * self._raw_losses), weighted_loss.eval())
+            np.mean(weight * self._raw_losses), self.evaluate(weighted_loss))
 
   def _test_invalid_weights(self, weights):
     with ops.Graph().as_default():
@@ -1370,7 +1464,7 @@ class ComputeWeightedLossTest(test.TestCase):
       weighted_loss = losses.compute_weighted_loss(
           self._raw_losses, weights=weights_placeholder)
       self.assertEqual(1, len(util.get_losses()))
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
           weighted_loss.eval(feed_dict={weights_placeholder: weights})
 
@@ -1393,7 +1487,7 @@ class ComputeWeightedLossTest(test.TestCase):
       weighted_loss = losses.compute_weighted_loss(
           raw_losses, weights=weights_placeholder)
       self.assertEqual(1, len(util.get_losses()))
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
           weighted_loss.eval(feed_dict={weights_placeholder: weights})
 
@@ -1422,23 +1516,26 @@ class ComputeWeightedLossTest(test.TestCase):
         weighted_loss = losses.compute_weighted_loss(
             self._raw_losses, weights=weights, reduction=reduction)
         self.assertEqual(1, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           weighted_losses = weights * self._raw_losses
           weighted_sum = np.sum(weighted_losses)
           if reduction == losses.Reduction.NONE:
-            self.assertAllClose(weighted_losses, weighted_loss.eval())
+            self.assertAllClose(weighted_losses, self.evaluate(weighted_loss))
           elif reduction == losses.Reduction.SUM:
-            self.assertAllClose(weighted_sum, weighted_loss.eval())
+            self.assertAllClose(weighted_sum, self.evaluate(weighted_loss))
           else:
             broadcast_weights = weights * np.ones_like(self._raw_losses)
             if reduction == losses.Reduction.MEAN:
-              self.assertAllClose(
-                  weighted_sum / np.sum(broadcast_weights),
-                  weighted_loss.eval())
-            elif reduction == losses.Reduction.SUM_BY_NONZERO_WEIGHTS:
+              self.assertAllClose(weighted_sum / np.sum(broadcast_weights),
+                                  self.evaluate(weighted_loss))
+            elif (reduction == losses.Reduction.SUM_OVER_NONZERO_WEIGHTS or
+                  reduction == losses.Reduction.SUM_BY_NONZERO_WEIGHTS):
               self.assertAllClose(
                   weighted_sum / np.count_nonzero(broadcast_weights),
-                  weighted_loss.eval())
+                  self.evaluate(weighted_loss))
+            elif reduction == losses.Reduction.SUM_OVER_BATCH_SIZE:
+              self.assertAllClose(weighted_sum / self._raw_losses.size,
+                                  self.evaluate(weighted_loss))
 
   def test1x1x1Weight(self):
     self._test_valid_weights((((17.0,),),))

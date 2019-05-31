@@ -44,7 +44,8 @@ class PyGuideParser(object):
 
   def process(self, full_path):
     """Read and process the file at `full_path`."""
-    md_string = open(full_path).read()
+    with open(full_path, 'rb') as f:
+      md_string = f.read().decode('utf-8')
     self._lines = md_string.split('\n')
     seen = set()
 

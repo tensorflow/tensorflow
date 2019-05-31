@@ -25,6 +25,14 @@ namespace tensorflow {
 // Converts a Tensorflow DataType to an XLA PrimitiveType.
 Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type);
 
+// N.B.: there is intentionally no function to convert an XLA PrimitiveType to
+// a TensorFlow DataType. The mapping from TF types to XLA types is not
+// one-to-one: for example, both DT_INT8 and DT_QINT8 map to xla::S8. So the
+// inverse would not be a well-defined function. If you find that you want the
+// inverse mapping, then most likely you should be preserving the original
+// TensorFlow type, rather than trying to convert an XLA type into a TensorFlow
+// type.
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TYPE_UTIL_H_

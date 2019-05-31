@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import linecache
-import os
 import re
 import sys
 import threading
@@ -38,30 +36,44 @@ from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import function_utils
+from tensorflow.python.util import lock_util
+from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_stack
+from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util.tf_export import tf_export
 
+# This is to avoid a circular dependency: ops -> tensor_spec -> ops
+tensor_spec = LazyLoader(
+    "tensor_spec", globals(),
+    "tensorflow.python.framework.tensor_spec")
 
-# Temporary global switch determining if we should enable the work-in-progress
-# calls to the C API. Currently disabled by default but can be manually enabled
-# in code or via the environment variable. This will be removed once all
-# functionality is supported and there's no performance penalty with it enabled.
-_USE_C_API = os.getenv("TF_C_API_GRAPH_CONSTRUCTION", "0") is not "0"
+# Temporary global switches determining if we should enable the work-in-progress
+# calls to the C API. These will be removed once all functionality is supported.
+_USE_C_API = True
+_USE_C_SHAPES = True
 
 
 def tensor_id(tensor):
@@ -69,7 +81,57 @@ def tensor_id(tensor):
   return tensor._id  # pylint: disable=protected-access
 
 
-class _NullContextmanager(object):
+class _UserDeviceSpec(object):
+  """Store user-specified device and provide computation of merged device."""
+
+  def __init__(self, device_name_or_function):
+    self._device_name_or_function = device_name_or_function
+    self.display_name = str(self._device_name_or_function)
+    self.function = device_name_or_function
+    self.raw_string = None
+
+    if isinstance(device_name_or_function, pydev.MergeDevice):
+      self.is_null_merge = device_name_or_function.is_null_merge
+
+    elif callable(device_name_or_function):
+      self.is_null_merge = False
+      dev_func = self._device_name_or_function
+      func_name = function_utils.get_func_name(dev_func)
+      func_code = function_utils.get_func_code(dev_func)
+      if func_code:
+        fname = func_code.co_filename
+        lineno = func_code.co_firstlineno
+      else:
+        fname = "unknown"
+        lineno = -1
+      self.display_name = "%s<%s, %d>" % (func_name, fname, lineno)
+
+    elif device_name_or_function is None:
+      # NOTE(taylorrobie): This MUST be False. None signals a break in the
+      #   device stack, so `is_null_merge` must be False for such a case to
+      #   allow callers to safely skip over null merges without missing a None.
+      self.is_null_merge = False
+
+    else:
+      self.raw_string = device_name_or_function
+      self.function = pydev.merge_device(device_name_or_function)
+      self.is_null_merge = self.function.is_null_merge
+
+    # We perform this check in __init__ because it is of non-trivial cost,
+    # and self.string_merge is typically called many times.
+    self.fast_string_merge = isinstance(self.function, pydev.MergeDevice)
+
+  def string_merge(self, node_def):
+    if self.fast_string_merge:
+      return self.function.shortcut_string_merge(node_def)
+
+    return compat.as_str(_device_string(self.function(node_def)))
+
+
+class NullContextmanager(object):
+
+  def __init__(self, *args, **kwargs):
+    pass
 
   def __enter__(self):
     pass
@@ -191,13 +253,14 @@ class _TensorLike(object):
   pass
 
 
+@tf_export("Tensor")
 class Tensor(_TensorLike):
   """Represents one of the outputs of an `Operation`.
 
   A `Tensor` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
   but instead provides a means of computing those values in a
-  TensorFlow @{tf.Session}.
+  TensorFlow `tf.compat.v1.Session`.
 
   This class has two primary purposes:
 
@@ -208,9 +271,9 @@ class Tensor(_TensorLike):
 
   2. After the graph has been launched in a session, the value of the
      `Tensor` can be computed by passing it to
-     @{tf.Session.run}.
+     `tf.Session.run`.
      `t.eval()` is a shortcut for calling
-     `tf.get_default_session().run(t)`.
+     `tf.compat.v1.get_default_session().run(t)`.
 
   In the following example, `c`, `d`, and `e` are symbolic `Tensor`
   objects, whereas `result` is a numpy array that stores a concrete
@@ -223,7 +286,7 @@ class Tensor(_TensorLike):
   e = tf.matmul(c, d)
 
   # Construct a `Session` to execute the graph.
-  sess = tf.Session()
+  sess = tf.compat.v1.Session()
 
   # Execute the graph and store the value that `e` represents in `result`.
   result = sess.run(e)
@@ -285,15 +348,15 @@ class Tensor(_TensorLike):
     self._op = op
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
-    self._shape = tensor_shape.unknown_shape()
+    # This will be set by self._as_tf_output().
+    self._tf_output = None
+    # This will be set by self.shape().
+    self._shape_val = None
     # List of operations that use this Tensor as input.  We maintain this list
     # to easily navigate a computation graph.
     self._consumers = []
-
-    # Attributes used for C++ shape inference. Not inspected, only forwarded.
-    # If set, will be a HandleData object from cpp_shape_inference.proto.
-    self._handle_data = None
     self._id = uid()
+    self._name = None
 
   @property
   def op(self):
@@ -313,9 +376,11 @@ class Tensor(_TensorLike):
   @property
   def name(self):
     """The string name of this tensor."""
-    if not self._op.name:
-      raise ValueError("Operation was not named: %s" % self._op)
-    return "%s:%d" % (self._op.name, self._value_index)
+    if self._name is None:
+      if not self._op.name:
+        raise ValueError("Operation was not named: %s" % self._op)
+      self._name = "%s:%d" % (self._op.name, self._value_index)
+    return self._name
 
   @property
   def device(self):
@@ -328,7 +393,7 @@ class Tensor(_TensorLike):
 
     The shape is computed using shape inference functions that are
     registered in the Op for each `Operation`.  See
-    @{tf.TensorShape}
+    `tf.TensorShape`
     for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
@@ -366,26 +431,51 @@ class Tensor(_TensorLike):
       A `TensorShape` representing the shape of this tensor.
 
     """
-    if _USE_C_API:
-      graph = self._op._graph._c_graph  # pylint: disable=protected-access
-      with errors.raise_exception_on_not_ok_status() as status:
-        num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output(),
-                                                  status)
-      if num_dims == -1:
-        dim_list = None
-      else:
-        with errors.raise_exception_on_not_ok_status() as status:
-          dim_list = c_api.TF_GraphGetTensorShape_wrapper(
-              graph, self._as_tf_output(), num_dims, status)
-        dim_list = [None if i == -1 else i for i in dim_list]
-      return tensor_shape.TensorShape(dim_list)
-    return self._shape
+    if self._shape_val is None:
+      self._shape_val = self._c_api_shape()
+    return self._shape_val
+
+  def _get_input_ops_without_shapes(self, target_op):
+    """Returns ops needing shape inference to compute target_op's shape."""
+    result = []
+    stack = [self._op]
+    visited = set()
+    while stack:
+      op = stack.pop()
+      if op in visited:
+        continue
+      result.append(op)
+      stack.extend(t.op for t in op.inputs if t._shape_val is None)
+      visited.add(op)
+    return result
+
+  def _c_api_shape(self):
+    """Returns the TensorShape of this tensor according to the C API."""
+    c_graph = self._op._graph._c_graph  # pylint: disable=protected-access
+    shape_vector, unknown_shape = c_api.TF_GraphGetTensorShapeHelper(
+        c_graph, self._as_tf_output())
+    if unknown_shape:
+      return tensor_shape.unknown_shape()
+    else:
+      shape_vector = [None if d == -1 else d for d in shape_vector]
+      return tensor_shape.TensorShape(shape_vector)
+
+  @property
+  def _shape(self):
+    logging.warning("Tensor._shape is private, use Tensor.shape "
+                    "instead. Tensor._shape will eventually be removed.")
+    return self.shape
+
+  @_shape.setter
+  def _shape(self, value):
+    raise ValueError(
+        "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
 
   def __iter__(self):
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       raise TypeError(
-          "`Tensor` objects are not iterable when eager execution is not "
-          "enabled. To iterate over this tensor use `tf.map_fn`.")
+          "Tensor objects are only iterable when eager execution is "
+          "enabled. To iterate over this tensor use tf.map_fn.")
     shape = self._shape_tuple()
     if shape is None:
       raise TypeError("Cannot iterate over a tensor with unknown shape.")
@@ -431,7 +521,7 @@ class Tensor(_TensorLike):
     to provide additional information about the shapes of images:
 
     ```python
-    _, image_data = tf.TFRecordReader(...).read(...)
+    _, image_data = tf.compat.v1.TFRecordReader(...).read(...)
     image = tf.image.decode_png(image_data, channels=3)
 
     # The height and width dimensions of `image` are data dependent, and
@@ -445,17 +535,23 @@ class Tensor(_TensorLike):
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
 
+    NOTE: This shape is not enforced at runtime. Setting incorrect shapes can
+    result in inconsistencies between the statically-known graph and the runtime
+    value of tensors. For runtime validation of the shape, use `tf.ensure_shape`
+    instead.
+
     Args:
       shape: A `TensorShape` representing the shape of this tensor, a
-      `TensorShapeProto`, a list, a tuple, or None.
+        `TensorShapeProto`, a list, a tuple, or None.
 
     Raises:
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
-    if not _USE_C_API:
-      self._shape = self._shape.merge_with(shape)  # pylint: disable=protected-access
-      return
+    # Reset cached shape.
+    self._shape_val = None
+
+    # We want set_shape to be reflected in the C API graph for when we run it.
     if not isinstance(shape, tensor_shape.TensorShape):
       shape = tensor_shape.TensorShape(shape)
     dim_list = []
@@ -468,13 +564,15 @@ class Tensor(_TensorLike):
           dim_list.append(-1)
         else:
           dim_list.append(dim.value)
-    with errors.raise_exception_on_not_ok_status() as status:
+    try:
       c_api.TF_GraphSetTensorShape_wrapper(
           self._op._graph._c_graph,  # pylint: disable=protected-access
           self._as_tf_output(),
           dim_list,
-          unknown_shape,
-          status)
+          unknown_shape)
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
 
   @property
   def value_index(self):
@@ -487,33 +585,14 @@ class Tensor(_TensorLike):
     Returns:
       A list of `Operation`s.
     """
-    if self._op._c_op:  # pylint: disable=protected-access
-      consumer_names = c_api.TF_OperationOutputConsumers_wrapper(
-          self._as_tf_output())
-      # pylint: disable=protected-access
-      return [
-          self.graph._get_operation_by_name_unsafe(name)
-          for name in consumer_names
-      ]
-      # pylint: enable=protected-access
-    else:
-      return self._consumers
-
-  def _add_consumer(self, consumer):
-    """Add a consumer to this tensor.
-
-    Args:
-      consumer: an Operation.
-
-    Raises:
-      TypeError: if the consumer is not an Operation.
-    """
+    consumer_names = c_api.TF_OperationOutputConsumers_wrapper(
+        self._as_tf_output())
     # pylint: disable=protected-access
-    assert not self._op._c_op, "Tensor._add_consumer doesn't work with C API"
+    return [
+        self.graph._get_operation_by_name_unsafe(name)
+        for name in consumer_names
+    ]
     # pylint: enable=protected-access
-    if not isinstance(consumer, Operation):
-      raise TypeError("Consumer must be an Operation: %s" % consumer)
-    self._consumers.append(consumer)
 
   def _as_node_def_input(self):
     """Return a value to use for the NodeDef "input" attribute.
@@ -536,17 +615,22 @@ class Tensor(_TensorLike):
 
   def _as_tf_output(self):
     # pylint: disable=protected-access
-    assert self.op._c_op
-    return c_api_util.tf_output(self.op._c_op, self.value_index)
+    # NOTE: Beyond preventing unnecessary (re-)allocation, the cached object
+    # also guarantees that a dictionary of tf_output objects will retain a
+    # deterministic (yet unsorted) order which prevents memory blowup in the
+    # cache of executor(s) stored for every session.
+    if self._tf_output is None:
+      self._tf_output = c_api_util.tf_output(self.op._c_op, self.value_index)
+    return self._tf_output
     # pylint: enable=protected-access
 
   def __str__(self):
     return "Tensor(\"%s\"%s%s%s)" % (
-        self.name, (", shape=%s" % self.get_shape())
-        if self.get_shape().ndims is not None else "",
-        (", dtype=%s" % self._dtype.name)
-        if self._dtype else "", (", device=%s" % self.device)
-        if self.device else "")
+        self.name,
+        (", shape=%s" %
+         self.get_shape()) if self.get_shape().ndims is not None else "",
+        (", dtype=%s" % self._dtype.name) if self._dtype else "",
+        (", device=%s" % self.device) if self.device else "")
 
   def __repr__(self):
     return "<tf.Tensor '%s' shape=%s dtype=%s>" % (self.name, self.get_shape(),
@@ -558,7 +642,16 @@ class Tensor(_TensorLike):
 
   def __eq__(self, other):
     # Necessary to support Python's collection membership operators
-    return id(self) == id(other)
+
+    # NOTE(taylorrobie): equivalent to: id(self) == id(other)
+    return self is other
+
+  def __copy__(self):
+    # TODO(b/77597810): get rid of Tensor copies.
+    cls = self.__class__
+    result = cls.__new__(cls)
+    result.__dict__.update(self.__dict__)
+    return result
 
   # NOTE(mrry): This enables the Tensor's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it
@@ -626,9 +719,8 @@ class Tensor(_TensorLike):
     available, or `session` must be specified explicitly.
 
     Args:
-      feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See @{tf.Session.run} for a
-        description of the valid feed values.
+      feed_dict: A dictionary that maps `Tensor` objects to feed values. See
+        `tf.Session.run` for a description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this tensor. If
         none, the default session will be used.
 
@@ -666,23 +758,52 @@ class _EagerTensorBase(Tensor):
     """
     if self.dtype == dtypes.resource:
       raise ValueError("Resource handles are not convertible to numpy.")
-    return self.cpu()._numpy()  # pylint: disable=protected-access
+    maybe_arr = self._cpu_nograd()._numpy()  # pylint: disable=protected-access
+    return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
-  # __int__ and  __float__ may copy the tensor to CPU and
+  # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  # TODO(slebedev): avoid redundant copy in all of the following methods.
   def __int__(self):
     return int(self.numpy())
+
+  def __long__(self):
+    return long(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
 
+  def __index__(self):
+    maybe_arr = self.numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
+
   def __array__(self, dtype=None):
-    return np.array(self.numpy(), dtype=dtype)
+    # This is only called if the buffer interface conversion failed.
+    # Remove once numpy/numpy#13507 is merged and released or py_function
+    # creates EagerTensors with a non-nullptr context.
+    return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
 
+  def __reduce__(self):
+    return (convert_to_tensor, (self.numpy(),))
+
   def _numpy(self):
+    raise NotImplementedError()
+
+  @property
+  def backing_device(self):
+    """Returns the name of the device holding this tensor's memory.
+
+    `.backing_device` is usually the same as `.device`, which returns
+    the device on which the kernel of the operation that produced this tensor
+    ran. However, some operations can produce tensors on a different device
+    (e.g., an operation that executes on the GPU but produces output tensors
+    in host memory).
+    """
     raise NotImplementedError()
 
   def __copy__(self):
@@ -724,12 +845,24 @@ class _EagerTensorBase(Tensor):
     """
     raise NotImplementedError()
 
+  def _num_elements(self):
+    """Number of elements of this Tensor.
+
+    Unlike regular Tensors, the number of elements is always known for
+    EagerTensors.
+
+    This is more performant than tensor.shape.num_elements
+
+    Returns:
+      Long - num elements in the tensor
+    """
+    raise NotImplementedError()
+
   def _copy_to_device(self, context, device):  # pylint: disable=redefined-outer-name
     raise NotImplementedError()
 
   def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self),
-                                                  self.shape,
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
                                                   self.dtype.name)
 
   def __repr__(self):
@@ -740,8 +873,8 @@ class _EagerTensorBase(Tensor):
   def _override_operator(name, func):
     setattr(_EagerTensorBase, name, func)
 
-  def _copy(self, ctx=None, device_name=None):
-    """Copies tensor to dest device."""
+  def _copy_nograd(self, ctx=None, device_name=None):
+    """Copies tensor to dest device, but doesn't record the operation."""
     # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
     if ctx is None:
@@ -750,22 +883,36 @@ class _EagerTensorBase(Tensor):
       device_name = ctx.device_name
     # pylint: disable=protected-access
     try:
+      ctx.ensure_initialized()
       new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
+    return new_tensor
 
+  def _copy(self, ctx=None, device_name=None):
+    """Copies tensor to dest device."""
+    new_tensor = self._copy_nograd(ctx, device_name)
     # Record the copy on tape and define backprop copy as well.
-    if not context.in_graph_mode():
+    if context.executing_eagerly():
       self_device = self.device
+
       def grad_fun(dresult):
-        return [dresult._copy(device_name=self_device)]
+        return [
+            dresult._copy(device_name=self_device)
+            if hasattr(dresult, "_copy") else dresult
+        ]
+
       tape.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
     # pylint: enable=protected-access
 
   @property
   def shape(self):
-    return tensor_shape.TensorShape(self._shape_tuple())
+    if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
+      # `_tensor_shape` is declared and defined in the definition of
+      # `EagerTensor`, in C.
+      self._tensor_shape = tensor_shape.TensorShape(self._shape_tuple())
+    return self._tensor_shape
 
   def get_shape(self):
     """Alias of Tensor.shape."""
@@ -774,6 +921,27 @@ class _EagerTensorBase(Tensor):
   def _shape_as_list(self):
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
+
+  @property
+  def ndim(self):
+    """Returns the number of Tensor dimensions."""
+    return self.shape.ndims
+
+  def __len__(self):
+    """Returns the length of the first dimension in the Tensor."""
+    if not self.shape.ndims:
+      raise TypeError("Scalar tensor has no `len()`")
+    return self._shape_tuple()[0]
+
+  def _cpu_nograd(self):
+    """A copy of this Tensor with contents backed by host memory.
+
+    The copy cannot be differentiated through.
+
+    Returns:
+      A CPU-memory backed Tensor object with the same contents as this Tensor.
+    """
+    return self._copy_nograd(context.context(), "CPU:0")
 
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
@@ -793,13 +961,7 @@ class _EagerTensorBase(Tensor):
     return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def __bool__(self):
-    if self._shape_tuple() != ():  # pylint: disable=g-explicit-bool-comparison
-      raise ValueError(
-          "Non-scalar tensor %s cannot be converted to boolean." % repr(self))
-    if self.dtype != dtypes.bool:
-      raise ValueError(
-          "Non-boolean tensor %s cannot be converted to boolean." % repr(self))
-    return bool(self.cpu().numpy())
+    return bool(self.numpy())
 
   def __nonzero__(self):
     return self.__bool__()
@@ -807,41 +969,50 @@ class _EagerTensorBase(Tensor):
   def set_shape(self, shape):
     if not self.shape.is_compatible_with(shape):
       raise ValueError(
-          "EagerTensor's shape %s is not compatible with supplied shape %s" %
+          "Tensor's shape %s is not compatible with supplied shape %s" %
           (self.shape, shape))
 
   # Methods not supported / implemented for Eager Tensors.
   @property
   def op(self):
-    raise AttributeError("op not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.op is meaningless when eager execution is enabled.")
 
   @property
   def graph(self):
-    raise AttributeError("graph not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.graph is meaningless when eager execution is enabled.")
 
   @property
   def name(self):
-    raise AttributeError("name not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.name is meaningless when eager execution is enabled.")
 
   @property
   def value_index(self):
-    raise AttributeError("value_index not supported for Eager Tensors.")
+    raise AttributeError(
+        "Tensor.value_index is meaningless when eager execution is enabled.")
 
   def consumers(self):
-    raise NotImplementedError("consumers not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "Tensor.consumers is meaningless when eager execution is enabled.")
 
   def _add_consumer(self, consumer):
-    raise NotImplementedError("_add_consumer not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "_add_consumer not supported when eager execution is enabled.")
 
   def _as_node_def_input(self):
     raise NotImplementedError(
-        "_as_node_def_input not supported for Eager Tensors.")
+        "_as_node_def_input not supported when eager execution is enabled.")
 
   def _as_tf_output(self):
-    raise NotImplementedError("_as_tf_output not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "_as_tf_output not supported when eager execution is enabled.")
 
   def eval(self, feed_dict=None, session=None):
-    raise NotImplementedError("eval not supported for Eager Tensors.")
+    raise NotImplementedError(
+        "eval is not supported when eager execution is enabled, "
+        "is .numpy() what you're looking for?")
 
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
@@ -866,7 +1037,12 @@ _tensor_conversion_func_lock = threading.Lock()
 register_dense_tensor_like_type(Tensor)
 
 
-def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
+@tf_export(v1=["convert_to_tensor"])
+def convert_to_tensor(value,
+                      dtype=None,
+                      name=None,
+                      preferred_dtype=None,
+                      dtype_hint=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -898,28 +1074,84 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
 
   Args:
     value: An object whose type has a registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the
-      type is inferred from the type of `value`.
+    dtype: Optional element type for the returned tensor. If missing, the type
+      is inferred from the type of `value`.
     name: Optional name to use if a new `Tensor` is created.
-    preferred_dtype: Optional element type for the returned tensor,
-      used when dtype is None. In some cases, a caller may not have a
-      dtype in mind when converting to a tensor, so preferred_dtype
-      can be used as a soft preference.  If the conversion to
-      `preferred_dtype` is not possible, this argument has no effect.
+    preferred_dtype: Optional element type for the returned tensor, used when
+      dtype is None. In some cases, a caller may not have a dtype in mind when
+      converting to a tensor, so preferred_dtype can be used as a soft
+      preference.  If the conversion to `preferred_dtype` is not possible, this
+      argument has no effect.
+    dtype_hint: same meaning as preferred_dtype, and overrides it.
 
   Returns:
-    An `Output` based on `value`.
+    A `Tensor` based on `value`.
 
   Raises:
-    TypeError: If no conversion function is registered for `value`.
+    TypeError: If no conversion function is registered for `value` to `dtype`.
     RuntimeError: If a registered conversion function returns an invalid value.
+    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
+  """
+  preferred_dtype = deprecation.deprecated_argument_lookup(
+      "dtype_hint", dtype_hint, "preferred_dtype", preferred_dtype)
+  return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
 
+
+@tf_export("convert_to_tensor", v1=[])
+def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
+  """Converts the given `value` to a `Tensor`.
+
+  This function converts Python objects of various types to `Tensor`
+  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
+  and Python scalars. For example:
+
+  ```python
+  import numpy as np
+
+  def my_func(arg):
+    arg = tf.convert_to_tensor(arg, dtype=tf.float32)
+    return tf.matmul(arg, arg) + arg
+
+  # The following calls are equivalent.
+  value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
+  value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
+  value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+  ```
+
+  This function can be useful when composing a new operation in Python
+  (such as `my_func` in the example above). All standard Python op
+  constructors apply this function to each of their Tensor-valued
+  inputs, which allows those ops to accept numpy arrays, Python lists,
+  and scalars in addition to `Tensor` objects.
+
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
+
+  Args:
+    value: An object whose type has a registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the type
+      is inferred from the type of `value`.
+    dtype_hint: Optional element type for the returned tensor, used when dtype
+      is None. In some cases, a caller may not have a dtype in mind when
+      converting to a tensor, so dtype_hint can be used as a soft preference.
+      If the conversion to `dtype_hint` is not possible, this argument has no
+      effect.
+    name: Optional name to use if a new `Tensor` is created.
+
+  Returns:
+    A `Tensor` based on `value`.
+
+  Raises:
+    TypeError: If no conversion function is registered for `value` to `dtype`.
+    RuntimeError: If a registered conversion function returns an invalid value.
+    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
   return internal_convert_to_tensor(
       value=value,
       dtype=dtype,
       name=name,
-      preferred_dtype=preferred_dtype,
+      preferred_dtype=dtype_hint,
       as_ref=False)
 
 
@@ -932,47 +1164,36 @@ def internal_convert_to_tensor(value,
                                name=None,
                                as_ref=False,
                                preferred_dtype=None,
-                               ctx=None):
-  """Converts the given `value` to an `Tensor`.
-
-  This function converts Python objects of various types to `Tensor`
-  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
-  and Python scalars. For example:
-
-  This function can be useful when composing a new operation in Python
-  All standard Python op constructors apply this function to each of their
-  Tensor-valued inputs, which allows those ops to accept numpy arrays, Python
-  lists, and scalars in addition to `Tensor` objects.
-
-  Args:
-    value: An object whose type has a registered `Tensor` conversion function.
-    dtype: Optional element type for the returned tensor. If missing, the
-      type is inferred from the type of `value`.
-    name: Optional name to use if a new `Tensor` is created.
-    as_ref: True if we want the mutable view of Variables, if applicable.
-    preferred_dtype: Optional element type for the returned tensor,
-      used when dtype is None. In some cases, a caller may not have a
-      dtype in mind when converting to a tensor, so preferred_dtype
-      can be used as a soft preference.  If the conversion to
-      `preferred_dtype` is not possible, this argument has no effect.
-    ctx: Optional: The value of context.context().
-
-  Returns:
-    A `Tensor` based on `value`.
-
-  Raises:
-    TypeError: If no conversion function is registered for `value`.
-    RuntimeError: If a registered conversion function returns an invalid value.
-
-  """
-  if ctx is None: ctx = context.context()
-  if ctx.in_eager_mode():
-    # Fast path for EagerTensors that don't need any conversion.
-    if isinstance(value, EagerTensor):
-      # Note that we don't check that value's dtype matches the dtype
-      # argument.  We expect that the C runtime will do that checking
-      # when we execute the kernel.
+                               ctx=None,
+                               accept_symbolic_tensors=True,
+                               accept_composite_tensors=False):
+  """Implementation of the public convert_to_tensor."""
+  if ctx is None:
+    ctx = context.context()
+  if isinstance(value, EagerTensor):
+    if ctx.executing_eagerly():
+      if dtype is not None:
+        dtype = dtypes.as_dtype(dtype)
+        value = _TensorTensorConversionFunction(value, dtype=dtype)
       return value
+    else:
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError("Attempting to capture an EagerTensor without "
+                           "building a function.")
+      return graph.capture(value, name=name)
+  elif ((not accept_symbolic_tensors) and isinstance(value, Tensor) and
+        ctx.executing_eagerly()):
+    # Found a symbolic tensor in an eager context.
+    # This happens when we use the Keras functional API (i.e. calling layers
+    # on the output of `keras.Input()`, which is symbolic) while eager
+    # execution is enabled.
+    if _is_keras_symbolic_tensor(value):
+      # If the graph of the tensor isn't the Keras graph, we should still
+      # fail, for the time being. TODO(fchollet): consider allowing
+      # all symbolic tensors to raise this exception in this case.
+      raise core._SymbolicException(  # pylint: disable=protected-access
+          "Using the symbolic output of a Keras layer during eager execution.")
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1015,7 +1236,11 @@ def internal_convert_to_tensor(value,
     if ret is NotImplemented:
       continue
 
-    if not isinstance(ret, Tensor):
+    is_acceptable_type = (
+        isinstance(ret, Tensor) or
+        (accept_composite_tensors and
+         isinstance(ret, composite_tensor.CompositeTensor)))
+    if not is_acceptable_type:
       raise RuntimeError(
           "%sConversion function %r for type %s returned non-Tensor: %r" %
           (_error_prefix(name), conversion_func, base_type, ret))
@@ -1042,15 +1267,14 @@ def internal_convert_n_to_tensor(values,
   Args:
     values: A list of objects that can be consumed by `tf.convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor` objects.
-    name: (Optional.) A name prefix to used when a new `Tensor` is
-      created, in which case element `i` will be given the name `name
-      + '_' + i`.
+    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
+      which case element `i` will be given the name `name + '_' + i`.
     as_ref: True if the caller wants the results as ref tensors.
-    preferred_dtype: Optional element type for the returned tensors,
-      used when dtype is None. In some cases, a caller may not have a
-      dtype in mind when converting to a tensor, so preferred_dtype
-      can be used as a soft preference.  If the conversion to
-      `preferred_dtype` is not possible, this argument has no effect.
+    preferred_dtype: Optional element type for the returned tensors, used when
+      dtype is None. In some cases, a caller may not have a dtype in mind when
+      converting to a tensor, so preferred_dtype can be used as a soft
+      preference.  If the conversion to `preferred_dtype` is not possible, this
+      argument has no effect.
     ctx: The value of context.context().
 
   Returns:
@@ -1063,9 +1287,10 @@ def internal_convert_n_to_tensor(values,
       value.
   """
   if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a list.")
+    raise TypeError("values must be a sequence.")
   ret = []
-  if ctx is None: ctx = context.context()
+  if ctx is None:
+    ctx = context.context()
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
     ret.append(
@@ -1085,14 +1310,13 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
   Args:
     values: A list of objects that can be consumed by `tf.convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor` objects.
-    name: (Optional.) A name prefix to used when a new `Tensor` is
-      created, in which case element `i` will be given the name `name
-      + '_' + i`.
-    preferred_dtype: Optional element type for the returned tensors,
-      used when dtype is None. In some cases, a caller may not have a
-      dtype in mind when converting to a tensor, so preferred_dtype
-      can be used as a soft preference.  If the conversion to
-      `preferred_dtype` is not possible, this argument has no effect.
+    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
+      which case element `i` will be given the name `name + '_' + i`.
+    preferred_dtype: Optional element type for the returned tensors, used when
+      dtype is None. In some cases, a caller may not have a dtype in mind when
+      converting to a tensor, so preferred_dtype can be used as a soft
+      preference.  If the conversion to `preferred_dtype` is not possible, this
+      argument has no effect.
 
   Returns:
     A list of `Tensor` and/or `IndexedSlices` objects.
@@ -1111,6 +1335,7 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
       as_ref=False)
 
 
+@tf_export(v1=["convert_to_tensor_or_indexed_slices"])
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -1126,7 +1351,7 @@ def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
     name: (Optional.) A name to use if a new `Tensor` is created.
 
   Returns:
-    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
@@ -1139,7 +1364,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
                                                  dtype=None,
                                                  name=None,
                                                  as_ref=False):
-  """Converts the given object to an `Tensor` or an `IndexedSlices`.
+  """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
   If `value` is an `IndexedSlices` or `SparseTensor` it is returned
   unmodified. Otherwise, it is converted to a `Tensor` using
@@ -1154,12 +1379,15 @@ def internal_convert_to_tensor_or_indexed_slices(value,
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    An `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
+    A `Tensor`, `IndexedSlices`, or `SparseTensor` based on `value`.
 
   Raises:
     ValueError: If `dtype` does not match the element type of `value`.
   """
-  if isinstance(value, _TensorLike):
+  if isinstance(value, EagerTensor) and not context.executing_eagerly():
+    return internal_convert_to_tensor(
+        value, dtype=dtype, name=name, as_ref=as_ref)
+  elif isinstance(value, _TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
@@ -1182,15 +1410,14 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
   Args:
     values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
       can be consumed by `convert_to_tensor()`.
-    dtype: (Optional.) The required `DType` of the returned `Tensor`
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
-    name: (Optional.) A name prefix to used when a new `Tensor` is
-      created, in which case element `i` will be given the name `name
-      + '_' + i`.
+    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
+      which case element `i` will be given the name `name + '_' + i`.
     as_ref: True if the caller wants the results as ref tensors.
 
   Returns:
-    A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
+    A list of `Tensor`, `IndexedSlices`, `SparseTensor` and/or `None` objects.
 
   Raises:
     TypeError: If no conversion function is registered for an element in
@@ -1199,7 +1426,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
       value.
   """
   if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a list.")
+    raise TypeError("values must be a sequence.")
   ret = []
   for i, value in enumerate(values):
     if value is None:
@@ -1223,9 +1450,8 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
       can be consumed by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor`
       `IndexedSlices`.
-    name: (Optional.) A name prefix to used when a new `Tensor` is
-      created, in which case element `i` will be given the name `name
-      + '_' + i`.
+    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
+      which case element `i` will be given the name `name + '_' + i`.
 
   Returns:
     A list of `Tensor`, `IndexedSlices`, and/or `SparseTensor` objects.
@@ -1240,7 +1466,136 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
       values=values, dtype=dtype, name=name, as_ref=False)
 
 
+def convert_to_tensor_or_composite(value, dtype=None, name=None):
+  """Converts the given object to a `Tensor` or `CompositeTensor`.
+
+  If `value` is a `CompositeTensor` it is returned unmodified. Otherwise, it
+  is converted to a `Tensor` using `convert_to_tensor()`.
+
+  Args:
+    value: A `CompositeTensor` or an object that can be consumed by
+      `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `CompositeTensor`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+
+  Returns:
+    A `Tensor` or `CompositeTensor`, based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  return internal_convert_to_tensor_or_composite(
+      value=value, dtype=dtype, name=name, as_ref=False)
+
+
+def internal_convert_to_tensor_or_composite(value,
+                                            dtype=None,
+                                            name=None,
+                                            as_ref=False):
+  """Converts the given object to a `Tensor` or `CompositeTensor`.
+
+  If `value` is a `CompositeTensor` it is returned unmodified.  Otherwise, it
+  is converted to a `Tensor` using `convert_to_tensor()`.
+
+  Args:
+    value: A `CompositeTensor`, or an object that can be consumed by
+      `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor` or
+      `CompositeTensor`.
+    name: (Optional.) A name to use if a new `Tensor` is created.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A `Tensor` or `CompositeTensor`, based on `value`.
+
+  Raises:
+    ValueError: If `dtype` does not match the element type of `value`.
+  """
+  if isinstance(value, composite_tensor.CompositeTensor):
+    value_dtype = getattr(value, "dtype", None)
+    if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value_dtype):
+      raise ValueError(
+          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
+          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
+    return value
+  else:
+    return internal_convert_to_tensor(
+        value,
+        dtype=dtype,
+        name=name,
+        as_ref=as_ref,
+        accept_composite_tensors=True)
+
+
+def internal_convert_n_to_tensor_or_composite(values,
+                                              dtype=None,
+                                              name=None,
+                                              as_ref=False):
+  """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
+
+  Any `CompositeTensor` objects in `values` are returned unmodified.
+
+  Args:
+    values: A list of `None`, `CompositeTensor`, or objects that can be consumed
+      by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`s or
+      `CompositeTensor`s.
+    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
+      which case element `i` will be given the name `name + '_' + i`.
+    as_ref: True if the caller wants the results as ref tensors.
+
+  Returns:
+    A list of `Tensor`, `CompositeTensor`, and/or `None` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  if not isinstance(values, collections.Sequence):
+    raise TypeError("values must be a sequence.")
+  ret = []
+  for i, value in enumerate(values):
+    if value is None:
+      ret.append(value)
+    else:
+      n = None if name is None else "%s_%d" % (name, i)
+      ret.append(
+          internal_convert_to_tensor_or_composite(
+              value, dtype=dtype, name=n, as_ref=as_ref))
+  return ret
+
+
+def convert_n_to_tensor_or_composite(values, dtype=None, name=None):
+  """Converts `values` to a list of `Output` or `CompositeTensor` objects.
+
+  Any `CompositeTensor` objects in `values` are returned unmodified.
+
+  Args:
+    values: A list of `None`, `CompositeTensor``, or objects that can be
+      consumed by `convert_to_tensor()`.
+    dtype: (Optional.) The required `DType` of the returned `Tensor`s or
+      `CompositeTensor`s.
+    name: (Optional.) A name prefix to used when a new `Tensor` is created, in
+      which case element `i` will be given the name `name + '_' + i`.
+
+  Returns:
+    A list of `Tensor` and/or `CompositeTensor` objects.
+
+  Raises:
+    TypeError: If no conversion function is registered for an element in
+      `values`.
+    RuntimeError: If a registered conversion function returns an invalid
+      value.
+  """
+  return internal_convert_n_to_tensor_or_composite(
+      values=values, dtype=dtype, name=name, as_ref=False)
+
+
 # TODO(josh11b): Add ctx argument to conversion_func() signature.
+@tf_export("register_tensor_conversion_function")
 def register_tensor_conversion_function(base_type,
                                         conversion_func,
                                         priority=100):
@@ -1275,9 +1630,9 @@ def register_tensor_conversion_function(base_type,
     conversion_func: A function that converts instances of `base_type` to
       `Tensor`.
     priority: Optional integer that indicates the priority for applying this
-      conversion function. Conversion functions with smaller priority values
-      run earlier than conversion functions with larger priority values.
-      Defaults to 100.
+      conversion function. Conversion functions with smaller priority values run
+      earlier than conversion functions with larger priority values. Defaults to
+      100.
 
   Raises:
     TypeError: If the arguments do not have the appropriate type.
@@ -1292,6 +1647,22 @@ def register_tensor_conversion_function(base_type,
     if not callable(conversion_func):
       raise TypeError("conversion_func must be callable.")
 
+    # context._context is checked so that we don't inadvertently create it.
+    # This is because enable_eager_execution will fail when called from the main
+    # function if the context._context is already created, and the
+    # register_tensor_conversion_function calls happen when the module is
+    # imported.
+    if context._context is not None and context.executing_eagerly(
+    ) and isinstance(base_type, six.integer_types + (
+        float,
+        np.ndarray,
+    )):
+      # TODO(nareshmodi): consider setting a context variable which disables the
+      # fastpath instead.
+      raise TypeError(
+          "Cannot register conversions for numpy arrays, python number types "
+          "when executing eagerly.")
+
     try:
       funcs_at_priority = _tensor_conversion_func_registry[priority]
     except KeyError:
@@ -1301,7 +1672,8 @@ def register_tensor_conversion_function(base_type,
     _tensor_conversion_func_cache = {}
 
 
-class IndexedSlices(_TensorLike):
+@tf_export("IndexedSlices")
+class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -1322,16 +1694,17 @@ class IndexedSlices(_TensorLike):
 
   The `IndexedSlices` class is used principally in the definition of
   gradients for operations that have sparse gradients
-  (e.g. @{tf.gather}).
+  (e.g. `tf.gather`).
 
   Contrast this representation with
-  @{tf.SparseTensor},
+  `tf.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
   """
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
-    _get_graph_from_inputs([values, indices, dense_shape])
+    if not isinstance(values, tensor_spec.TensorSpec):
+      _get_graph_from_inputs([values, indices, dense_shape])
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape
@@ -1378,11 +1751,38 @@ class IndexedSlices(_TensorLike):
 
   def __str__(self):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
-        self._indices, self._values, (", dense_shape=%s" % self._dense_shape)
-        if self._dense_shape is not None else "")
+        self._indices, self._values,
+        (", dense_shape=%s" %
+         self._dense_shape) if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
+  def _to_components(self):
+    if self._dense_shape is None:
+      return (self._values, self._indices)
+    else:
+      return (self._values, self._indices, self._dense_shape)
+
+  @classmethod
+  def _from_components(cls, components, metadata):
+    return cls(*components)
+
+  def _shape_invariant_to_components(self, shape=None):
+    if shape is None:
+      shape = self._values.shape
+    if self._dense_shape is None:
+      return (shape, shape[:1])  # values, indices
+    else:
+      # values, indices, dense_shape
+      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._values, "graph")
+
+  def consumers(self):
+    return self._consumers()
 
 
 IndexedSlicesValue = collections.namedtuple(
@@ -1390,7 +1790,7 @@ IndexedSlicesValue = collections.namedtuple(
 
 
 def _device_string(dev_spec):
-  if isinstance(dev_spec, pydev.DeviceSpec):
+  if pydev.is_device_spec(dev_spec):
     return dev_spec.to_string()
   else:
     return dev_spec
@@ -1402,8 +1802,8 @@ def _NodeDef(op_type, name, device=None, attrs=None):  # pylint: disable=redefin
   Args:
     op_type: Value for the "op" attribute of the NodeDef proto.
     name: Value for the "name" attribute of the NodeDef proto.
-    device: string, device, or function from NodeDef to string.
-      Value for the "device" attribute of the NodeDef proto.
+    device: string, device, or function from NodeDef to string. Value for the
+      "device" attribute of the NodeDef proto.
     attrs: Optional dictionary where the key is the attribute name (a string)
       and the value is the respective "attr" attribute of the NodeDef proto (an
       AttrValue).
@@ -1447,9 +1847,10 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
     A wrapped TF_Operation*.
   """
   # pylint: disable=protected-access
-  op_desc = c_api.TF_NewOperation(graph._c_graph,
-                                  compat.as_str(node_def.op),
+  op_desc = c_api.TF_NewOperation(graph._c_graph, compat.as_str(node_def.op),
                                   compat.as_str(node_def.name))
+  if node_def.device:
+    c_api.TF_SetDevice(op_desc, compat.as_str(node_def.device))
   # Add inputs
   for op_input in inputs:
     if isinstance(op_input, (list, tuple)):
@@ -1467,13 +1868,10 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
     serialized = attr_value.SerializeToString()
     # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
     # It might be worth creating a convenient way to re-use the same status.
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_api.TF_SetAttrValueProto(op_desc,
-                                 compat.as_str(name), serialized, status)
+    c_api.TF_SetAttrValueProto(op_desc, compat.as_str(name), serialized)
 
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_op = c_api.TF_FinishOperation(op_desc, status)
+    c_op = c_api.TF_FinishOperation(op_desc)
   except errors.InvalidArgumentError as e:
     # Convert to ValueError for backwards compatibility.
     raise ValueError(str(e))
@@ -1481,6 +1879,7 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
   return c_op
 
 
+@tf_export("Operation")
 class Operation(object):
   """Represents a graph node that performs computation on tensors.
 
@@ -1488,8 +1887,8 @@ class Operation(object):
   more `Tensor` objects as input, and produces zero or more `Tensor`
   objects as output. Objects of type `Operation` are created by
   calling a Python op constructor (such as
-  @{tf.matmul})
-  or @{tf.Graph.create_op}.
+  `tf.matmul`)
+  or `tf.Graph.create_op`.
 
   For example `c = tf.matmul(a, b)` creates an `Operation` of type
   "MatMul" that takes tensors `a` and `b` as input, and produces `c`
@@ -1497,8 +1896,9 @@ class Operation(object):
 
   After the graph has been launched in a session, an `Operation` can
   be executed by passing it to
-  @{tf.Session.run}.
-  `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
+  `tf.Session.run`.
+  `op.run()` is a shortcut for calling
+  `tf.compat.v1.get_default_session().run(op)`.
   """
 
   def __init__(self,
@@ -1519,26 +1919,26 @@ class Operation(object):
         [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
     Args:
-      node_def: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-        Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
-        `op`, and `device`.  The `input` attribute is irrelevant here
-        as it will be computed when generating the model.
+      node_def: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`. Used for
+        attributes of `node_def_pb2.NodeDef`, typically `name`, `op`, and
+        `device`.  The `input` attribute is irrelevant here as it will be
+        computed when generating the model.
       g: `Graph`. The parent graph.
       inputs: list of `Tensor` objects. The inputs to this `Operation`.
-      output_types: list of `DType` objects.  List of the types of the
-        `Tensors` computed by this operation.  The length of this list indicates
-        the number of output endpoints of the `Operation`.
-      control_inputs: list of operations or tensors from which to have a
-        control dependency.
-      input_types: List of `DType` objects representing the
-        types of the tensors accepted by the `Operation`.  By default
-        uses `[x.dtype.base_dtype for x in inputs]`.  Operations that expect
-        reference-typed inputs must specify these explicitly.
+      output_types: list of `DType` objects.  List of the types of the `Tensors`
+        computed by this operation.  The length of this list indicates the
+        number of output endpoints of the `Operation`.
+      control_inputs: list of operations or tensors from which to have a control
+        dependency.
+      input_types: List of `DType` objects representing the types of the tensors
+        accepted by the `Operation`.  By default uses `[x.dtype.base_dtype for x
+        in inputs]`.  Operations that expect reference-typed inputs must specify
+        these explicitly.
       original_op: Optional. Used to associate the new `Operation` with an
         existing `Operation` (for example, a replica with the op that was
         replicated).
-      op_def: Optional. The `op_def_pb2.OpDef` proto that describes the
-        op type that this `Operation` represents.
+      op_def: Optional. The `op_def_pb2.OpDef` proto that describes the op type
+        that this `Operation` represents.
 
     Raises:
       TypeError: if control inputs are not Operations or Tensors,
@@ -1560,7 +1960,6 @@ class Operation(object):
             "Cannot create a tensor proto whose content is larger than 2GB.")
       if not _VALID_OP_NAME_REGEX.match(node_def.name):
         raise ValueError("'%s' is not a valid node name" % node_def.name)
-      self._node_def = copy.deepcopy(node_def)
       c_op = None
     elif type(node_def).__name__ == "SwigPyObject":
       assert inputs is None
@@ -1569,7 +1968,6 @@ class Operation(object):
       assert input_types is None
       assert original_op is None
       assert op_def is None
-      self._node_def = None
       c_op = node_def
     else:
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
@@ -1577,28 +1975,25 @@ class Operation(object):
     if not isinstance(g, Graph):
       raise TypeError("g needs to be a Graph: %s" % g)
     self._graph = g
+
     if inputs is None:
       inputs = []
     elif not isinstance(inputs, list):
       raise TypeError("inputs needs to be a list of Tensors: %s" % inputs)
-    self._inputs = list(inputs)  # Defensive copy.
-    for a in self._inputs:
+    for a in inputs:
       if not isinstance(a, Tensor):
         raise TypeError("input needs to be a Tensor: %s" % a)
     if input_types is None:
-      input_types = [i.dtype.base_dtype for i in self._inputs]
+      input_types = [i.dtype.base_dtype for i in inputs]
     else:
       if not all(
-          x.is_compatible_with(i.dtype)
-          for i, x in zip(self._inputs, input_types)):
+          x.is_compatible_with(i.dtype) for i, x in zip(inputs, input_types)):
         raise TypeError("In op '%s', input types (%s) are not compatible "
                         "with expected types (%s)" %
-                        (self.node_def.name, [i.dtype for i in self._inputs],
-                         input_types))
-    self._input_types_val = input_types
+                        (node_def.name, [i.dtype for i in inputs], input_types))
 
     # Build the list of control inputs.
-    self._control_inputs = []
+    control_input_ops = []
     if control_inputs:
       for c in control_inputs:
         control_op = None
@@ -1609,51 +2004,50 @@ class Operation(object):
         else:
           raise TypeError("Control input must be an Operation, "
                           "a Tensor, or IndexedSlices: %s" % c)
-        self._control_inputs.append(control_op)
+        control_input_ops.append(control_op)
 
-    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
+    # This will be set by self.inputs.
+    self._inputs_val = None
+
+    # pylint: disable=protected-access
+    self._id_value = self._graph._next_id()
     self._original_op = original_op
-    self._op_def = op_def
-    self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
-    self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
+    self._traceback = tf_stack.extract_stack()
+
+    # List of _UserDevSpecs holding code location of device context manager
+    # invocations and the users original argument to them.
+    self._device_code_locations = None
+    # Dict mapping op name to file and line information for op colocation
+    # context managers.
+    self._colocation_code_locations = None
+    self._control_flow_context = self.graph._get_control_flow_context()
+    # pylint: enable=protected-access
 
     # Initialize self._c_op.
     if c_op:
-      # TODO(skyewm): remove this assert when we remove USE_C_API
-      assert self._graph._c_graph  # pylint: disable=protected-access
       self._c_op = c_op
-    elif self._graph._c_graph:  # pylint: disable=protected-access
+    else:
       if op_def is None:
-        op_def = self._graph._registered_ops[node_def.op]
+        op_def = self._graph._get_op_def(node_def.op)
       # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
       # Refactor so we don't have to do this here.
       grouped_inputs = self._reconstruct_sequence_inputs(
           op_def, inputs, node_def.attr)
-      self._c_op = _create_c_op(self._graph, self._node_def, grouped_inputs,
-                                self._control_inputs)
-    else:
-      self._c_op = None
-
-    # Mark that we consume the inputs. This is unnecessary and unsupported with
-    # the C API enabled, since the C API tracks the tensor consumers instead.
-    if not self._c_op:
-      for input_tensor in self._inputs:
-        input_tensor._add_consumer(self)  # pylint: disable=protected-access
+      self._c_op = _create_c_op(self._graph, node_def, grouped_inputs,
+                                control_input_ops)
 
     # Initialize self._outputs.
-    if self._c_op:
-      num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
-      output_types = [
-          c_api.TF_OperationOutputType(c_api_util.tf_output(self._c_op, i))
-          for i in range(num_outputs)]
-      assert output_types is not None
-    elif output_types is None:
-      output_types = []
-    self._output_types_val = output_types
+    num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
+    output_types = [
+        c_api.TF_OperationOutputType(c_api_util.tf_output(self._c_op, i))
+        for i in range(num_outputs)
+    ]
     self._outputs = [
         Tensor(self, i, output_type)
         for i, output_type in enumerate(output_types)
     ]
+
+    self._graph._add_op(self)  # pylint: disable=protected-access
 
     if not c_op:
       self._control_flow_post_processing()
@@ -1668,7 +2062,6 @@ class Operation(object):
       control_flow_util.CheckInputFromValidContext(self, input_tensor.op)
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
-    self._recompute_node_def()
 
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
     """Regroups a flat list of input tensors into scalar and sequence inputs.
@@ -1707,9 +2100,7 @@ class Operation(object):
 
   def colocation_groups(self):
     """Returns the list of colocation groups of the op."""
-    default_colocation_group = [
-        compat.as_bytes("loc:@%s" % self.name)
-    ]
+    default_colocation_group = [compat.as_bytes("loc:@%s" % self.name)]
     try:
       class_attr = self.get_attr("_class")
     except ValueError:
@@ -1749,10 +2140,7 @@ class Operation(object):
   @property
   def name(self):
     """The full name of this operation."""
-    if self._c_op:
-      return c_api.TF_OperationName(self._c_op)
-    else:
-      return self._node_def.name
+    return c_api.TF_OperationName(self._c_op)
 
   @property
   def _id(self):
@@ -1768,10 +2156,73 @@ class Operation(object):
       assigned, or an empty string if it has not been assigned to a
       device.
     """
-    if self._c_op:
-      return c_api.TF_OperationDevice(self._c_op)
-    else:
-      return self._node_def.device
+    return c_api.TF_OperationDevice(self._c_op)
+
+  @property
+  def _device_assignments(self):
+    """Code locations for device context managers active at op creation.
+
+    This property will return a list of traceable_stack.TraceableObject
+    instances where .obj is a string representing the assigned device
+    (or information about the function that would be applied to this op
+    to compute the desired device) and the filename and lineno members
+    record the location of the relevant device context manager.
+
+    For example, suppose file_a contained these lines:
+
+      file_a.py:
+        15: with tf.device('/gpu:0'):
+        16:   node_b = tf.constant(4, name='NODE_B')
+
+    Then a TraceableObject t_obj representing the device context manager
+    would have these member values:
+
+      t_obj.obj -> '/gpu:0'
+      t_obj.filename = 'file_a.py'
+      t_obj.lineno = 15
+
+    and node_b.op._device_assignments would return the list [t_obj].
+
+    Returns:
+      [str: traceable_stack.TraceableObject, ...] as per this method's
+      description, above.
+    """
+    return self._device_code_locations or []
+
+  @property
+  def _colocation_dict(self):
+    """Code locations for colocation context managers active at op creation.
+
+    This property will return a dictionary for which the keys are nodes with
+    which this Operation is colocated, and for which the values are
+    traceable_stack.TraceableObject instances.  The TraceableObject instances
+    record the location of the relevant colocation context manager but have the
+    "obj" field set to None to prevent leaking private data.
+
+    For example, suppose file_a contained these lines:
+
+      file_a.py:
+        14: node_a = tf.constant(3, name='NODE_A')
+        15: with tf.compat.v1.colocate_with(node_a):
+        16:   node_b = tf.constant(4, name='NODE_B')
+
+    Then a TraceableObject t_obj representing the colocation context manager
+    would have these member values:
+
+      t_obj.obj -> None
+      t_obj.filename = 'file_a.py'
+      t_obj.lineno = 15
+
+    and node_b.op._colocation_dict would return the dictionary
+
+      { 'NODE_A': t_obj }
+
+    Returns:
+      {str: traceable_stack.TraceableObject} as per this method's description,
+      above.
+    """
+    locations_dict = self._colocation_code_locations or {}
+    return locations_dict.copy()
 
   @property
   def _output_types(self):
@@ -1784,28 +2235,21 @@ class Operation(object):
       The length of this list indicates the number of output endpoints
       of the operation.
     """
-    if self._c_op:
-      num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
-      output_types = [
-          c_api.TF_OperationOutputType(self._tf_output(i))
-          for i in xrange(num_outputs)
-      ]
-      # TODO(iga): Remove this assert after converting to C API by default.
-      # Just being a bit paranoid here.
-      assert self._output_types_val == output_types
-      # In all the tests we have output_types that are passed into
-      # Operation.__init__ are a list of ints (which is illegal according
-      # to the docstring), but input_types are instances of DType.
-      # This extra assert is to catch if we ever use DType for output_types.
-      if output_types:
-        assert isinstance(output_types[0], int)
-      return output_types
-    else:
-      return self._output_types_val
+    num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
+    output_types = [
+        c_api.TF_OperationOutputType(self._tf_output(i))
+        for i in xrange(num_outputs)
+    ]
+    # In all the tests we have output_types that are passed into
+    # Operation.__init__ are a list of ints (which is illegal according
+    # to the docstring), but input_types are instances of DType.
+    # This extra assert is to catch if we ever use DType for output_types.
+    if output_types:
+      assert isinstance(output_types[0], int)
+    return output_types
 
   def _tf_output(self, output_idx):
     """Create and return a new TF_Output for output_idx'th output of this op."""
-    assert self._c_op
     tf_output = c_api.TF_Output()
     tf_output.oper = self._c_op
     tf_output.index = output_idx
@@ -1813,7 +2257,6 @@ class Operation(object):
 
   def _tf_input(self, input_idx):
     """Create and return a new TF_Input for input_idx'th input of this op."""
-    assert self._c_op
     tf_input = c_api.TF_Input()
     tf_input.oper = self._c_op
     tf_input.index = input_idx
@@ -1825,44 +2268,22 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
-    if self._c_op:
-      c_api.SetRequestedDevice(
-          self._graph._c_graph,  # pylint: disable=protected-access
-          self._c_op,  # pylint: disable=protected-access
-          compat.as_str(_device_string(device)))
-    else:
-      self._node_def.device = _device_string(device)
+    self._set_device_from_string(compat.as_str(_device_string(device)))
 
-  def _add_input(self, tensor, dtype=None):
-    """Add a new input to this operation.
+  def _set_device_from_string(self, device_str):
+    """Fast path to set device if the type is known to be a string.
+
+    This function is called frequently enough during graph construction that
+    there are non-trivial performance gains if the caller can guarantee that
+    the specified device is already a string.
 
     Args:
-      tensor: the Tensor to add as an input.
-      dtype: tf.DType: type of the input; defaults to
-        the tensor's dtype.
-
-    Raises:
-      TypeError: if tensor is not a Tensor,
-        or if input tensor type is not convertible to dtype.
-      ValueError: if the Tensor is from a different graph.
+      device_str: A string specifying where to place this op.
     """
-    assert not self._c_op, (
-        "Operation._add_input doesn't work with C API")
-    if not isinstance(tensor, Tensor):
-      raise TypeError("tensor must be a Tensor: %s" % tensor)
-    _assert_same_graph(self, tensor)
-    if dtype is None:
-      dtype = tensor.dtype
-    else:
-      dtype = dtypes.as_dtype(dtype)
-      if not dtype.is_compatible_with(tensor.dtype):
-        raise TypeError(
-            "Cannot convert a tensor of type %s to an input of type %s" %
-            (tensor.dtype.name, dtype.name))
-    self._inputs.append(tensor)
-    self._input_types_val.append(dtype)
-    tensor._add_consumer(self)  # pylint: disable=protected-access
-    self._recompute_node_def()
+    c_api.SetRequestedDevice(
+        self._graph._c_graph,  # pylint: disable=protected-access
+        self._c_op,  # pylint: disable=protected-access
+        device_str)
 
   def _update_input(self, index, tensor):
     """Update the input to this operation at the given index.
@@ -1881,19 +2302,38 @@ class Operation(object):
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
-    if self._c_op:
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.UpdateEdge(
-            self._graph._c_graph,  # pylint: disable=protected-access
-            tensor._as_tf_output(),  # pylint: disable=protected-access
-            self._tf_input(index),
-            status)
-    else:
-      self._inputs[index].consumers().remove(self)
-      self._inputs[index] = tensor
-      self._input_types_val[index] = tensor.dtype
-      tensor._add_consumer(self)  # pylint: disable=protected-access
-      self._recompute_node_def()
+
+    # Reset cached inputs.
+    self._inputs_val = None
+    c_api.UpdateEdge(
+        self._graph._c_graph,  # pylint: disable=protected-access
+        tensor._as_tf_output(),  # pylint: disable=protected-access
+        self._tf_input(index))
+
+  def _add_while_inputs(self, tensors):
+    """See AddWhileInputHack in python_api.h.
+
+    NOTE: This is for TF internal use only. Please don't use it.
+
+    Args:
+      tensors: list of Tensors
+
+    Raises:
+      TypeError: if tensor is not a Tensor,
+        or if input tensor type is not convertible to dtype.
+      ValueError: if the Tensor is from a different graph.
+    """
+    for tensor in tensors:
+      if not isinstance(tensor, Tensor):
+        raise TypeError("tensor must be a Tensor: %s" % tensor)
+      _assert_same_graph(self, tensor)
+
+      # Reset cached inputs.
+      self._inputs_val = None
+      c_api.AddWhileInputHack(
+          self._graph._c_graph,  # pylint: disable=protected-access
+          tensor._as_tf_output(),  # pylint: disable=protected-access
+          self._c_op)
 
   def _add_control_inputs(self, ops):
     """Add a list of new control inputs to this operation.
@@ -1905,19 +2345,10 @@ class Operation(object):
       TypeError: if ops is not a list of Operations.
       ValueError: if any op in ops is from a different graph.
     """
-    if self._c_op:
-      for op in ops:
-        if not isinstance(op, Operation):
-          raise TypeError("op must be an Operation: %s" % op)
-        c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
-    else:
-      if ops:
-        for op in ops:
-          if not isinstance(op, Operation):
-            raise TypeError("op must be an Operation: %s" % op)
-          _assert_same_graph(self, op)
-          self._control_inputs.append(op)
-        self._recompute_node_def()
+    for op in ops:
+      if not isinstance(op, Operation):
+        raise TypeError("op must be an Operation: %s" % op)
+      c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
 
   def _add_control_input(self, op):
     """Add a new control input to this operation.
@@ -1929,32 +2360,30 @@ class Operation(object):
       TypeError: if op is not an Operation.
       ValueError: if op is from a different graph.
     """
-    if self._c_op:
-      if not isinstance(op, Operation):
-        raise TypeError("op must be an Operation: %s" % op)
-      c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
-    else:
-      self._add_control_inputs([op])
+    if not isinstance(op, Operation):
+      raise TypeError("op must be an Operation: %s" % op)
+    c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
 
   def _remove_all_control_inputs(self):
     """Removes any control inputs to this operation."""
-    if self._c_op:
-      c_api.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
-    else:
-      del self.control_inputs[:]
+    c_api.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
 
-  # Methods below are used when building the NodeDef and Graph proto.
-  def _recompute_node_def(self):
-    # TODO(skyewm): remove this function when we switch to C API
-    if self._c_op: return
+  def _add_outputs(self, types, shapes):
+    """Adds new Tensors to self.outputs.
 
-    del self._node_def.input[:]
-    # pylint: disable=protected-access
-    self._node_def.input.extend([t._as_node_def_input() for t in self._inputs])
-    # pylint: enable=protected-access
-    if self._control_inputs:
-      self._node_def.input.extend(
-          ["^%s" % op.name for op in self._control_inputs])
+    Note: this is generally unsafe to use. This is used in certain situations in
+    conjunction with _set_type_list_attr.
+
+    Arguments:
+      types: list of DTypes
+      shapes: list of TensorShapes
+    """
+    assert len(types) == len(shapes)
+    orig_num_outputs = len(self.outputs)
+    for i in range(len(types)):
+      t = Tensor(self, orig_num_outputs + i, types[i])
+      self._outputs.append(t)
+      t.set_shape(shapes[i])
 
   def __str__(self):
     return str(self.node_def)
@@ -1990,12 +2419,13 @@ class Operation(object):
     def __getitem__(self, i):
       return self._inputs[i]
 
+
 # pylint: enable=protected-access
 
   @property
   def inputs(self):
     """The list of `Tensor` objects representing the data inputs of this op."""
-    if self._c_op:
+    if self._inputs_val is None:
       tf_outputs = c_api.GetOperationInputs(self._c_op)
       # pylint: disable=protected-access
       retval = [
@@ -2003,20 +2433,31 @@ class Operation(object):
           for tf_output in tf_outputs
       ]
       # pylint: enable=protected-access
-      return Operation._InputList(retval)
-    return Operation._InputList(self._inputs)
+      self._inputs_val = Operation._InputList(retval)
+    return self._inputs_val
+
+  @property
+  def _inputs(self):
+    logging.warning("Operation._inputs is private, use Operation.inputs "
+                    "instead. Operation._inputs will eventually be removed.")
+    return self.inputs
+
+  @_inputs.setter
+  def _inputs(self, value):
+    raise ValueError("Cannot assign _inputs")
 
   @property
   def _input_types(self):
-    if self._c_op:
-      num_inputs = c_api.TF_OperationNumInputs(self._c_op)
-      input_types = [
-          dtypes.as_dtype(c_api.TF_OperationInputType(self._tf_input(i)))
-          for i in xrange(num_inputs)
-      ]
-      return input_types
-    else:
-      return self._input_types_val
+    num_inputs = c_api.TF_OperationNumInputs(self._c_op)
+    input_types = [
+        dtypes.as_dtype(c_api.TF_OperationInputType(self._tf_input(i)))
+        for i in xrange(num_inputs)
+    ]
+    return input_types
+
+  @_input_types.setter
+  def _input_types(self, value):
+    raise ValueError("Cannot assign _input_types")
 
   @property
   def control_inputs(self):
@@ -2032,25 +2473,56 @@ class Operation(object):
       A list of `Operation` objects.
 
     """
-    if self._c_op:
-      control_c_ops = c_api.TF_OperationGetControlInputs_wrapper(self._c_op)
-      # pylint: disable=protected-access
-      return [
-          self.graph._get_operation_by_name_unsafe(
-              c_api.TF_OperationName(c_op)) for c_op in control_c_ops
-      ]
-      # pylint: enable=protected-access
-    else:
-      return self._control_inputs
+    control_c_ops = c_api.TF_OperationGetControlInputs_wrapper(self._c_op)
+    # pylint: disable=protected-access
+    return [
+        self.graph._get_operation_by_name_unsafe(c_api.TF_OperationName(c_op))
+        for c_op in control_c_ops
+    ]
+    # pylint: enable=protected-access
+
+  @property
+  def _control_outputs(self):
+    """The `Operation` objects which have a control dependency on this op.
+
+    Before any of the ops in self._control_outputs can execute tensorflow will
+    ensure self has finished executing.
+
+    Returns:
+      A list of `Operation` objects.
+
+    """
+    control_c_ops = c_api.TF_OperationGetControlOutputs_wrapper(self._c_op)
+    # pylint: disable=protected-access
+    return [
+        self.graph._get_operation_by_name_unsafe(c_api.TF_OperationName(c_op))
+        for c_op in control_c_ops
+    ]
+    # pylint: enable=protected-access
+
+  @property
+  def _control_inputs(self):
+    logging.warning("Operation._control_inputs is private, use "
+                    "Operation.control_inputs instead. "
+                    "Operation._control_inputs will eventually be removed.")
+    return self.control_inputs
+
+  @_control_inputs.setter
+  def _control_inputs(self, value):
+    logging.warning("Operation._control_inputs is private, use "
+                    "Operation.control_inputs instead. "
+                    "Operation._control_inputs will eventually be removed.")
+    # Copy value because it may be self._control_inputs_val (in particular if
+    # this is called from self._control_inputs += ...), and we don't want to
+    # clear value below.
+    value = copy.copy(value)
+    self._remove_all_control_inputs()
+    self._add_control_inputs(value)
 
   @property
   def type(self):
     """The type of the op (e.g. `"MatMul"`)."""
-    if self._c_op:
-      op_type = c_api.TF_OperationOpType(self._c_op)
-      return op_type
-    else:
-      return self._node_def.op
+    return c_api.TF_OperationOpType(self._c_op)
 
   @property
   def graph(self):
@@ -2068,16 +2540,18 @@ class Operation(object):
       protocol buffer.
     """
     # pylint: enable=line-too-long
-    if self._c_op:
-      with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          c_api.TF_OperationToNodeDef(self._c_op, buf, status)
-        data = c_api.TF_GetBuffer(buf)
-      node_def = node_def_pb2.NodeDef()
-      node_def.ParseFromString(compat.as_bytes(data))
-      return node_def
-    else:
-      return self._node_def
+    with c_api_util.tf_buffer() as buf:
+      c_api.TF_OperationToNodeDef(self._c_op, buf)
+      data = c_api.TF_GetBuffer(buf)
+    node_def = node_def_pb2.NodeDef()
+    node_def.ParseFromString(compat.as_bytes(data))
+    return node_def
+
+  @property
+  def _node_def(self):
+    logging.warning("Operation._node_def is private, use Operation.node_def "
+                    "instead. Operation._node_def will eventually be removed.")
+    return self.node_def
 
   @property
   def op_def(self):
@@ -2090,24 +2564,18 @@ class Operation(object):
       protocol buffer.
     """
     # pylint: enable=line-too-long
-    if self._c_op:
-      with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          # pylint: disable=protected-access
-          c_api.TF_GraphGetOpDef(self._graph._c_graph,
-                                 compat.as_bytes(self.type), buf, status)
-          # pylint: enable=protected-access
-        data = c_api.TF_GetBuffer(buf)
-      op_def = op_def_pb2.OpDef()
-      op_def.ParseFromString(compat.as_bytes(data))
-      return op_def
-    else:
-      return self._op_def
+    return self._graph._get_op_def(self.type)
+
+  @property
+  def _op_def(self):
+    logging.warning("Operation._op_def is private, use Operation.op_def "
+                    "instead. Operation._op_def will eventually be removed.")
+    return self.op_def
 
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return self._graph._convert_stack(self._traceback)  # pylint: disable=protected-access
+    return tf_stack.convert_stack(self._traceback)
 
   @property
   def traceback_with_start_lines(self):
@@ -2116,25 +2584,52 @@ class Operation(object):
     Returns:
       A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
     """
-    return self._graph._convert_stack(  # pylint: disable=protected-access
-        self._traceback,
-        include_func_start_lineno=True)
+    return tf_stack.convert_stack(
+        self._traceback, include_func_start_lineno=True)
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
-    if self._c_op:
-      buf = c_api.TF_NewBufferFromString(
-          compat.as_bytes(attr_value.SerializeToString()))
-      try:
-        with errors.raise_exception_on_not_ok_status() as status:
-          # pylint: disable=protected-access
-          c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf,
-                        status)
-          # pylint: enable=protected-access
-      finally:
-        c_api.TF_DeleteBuffer(buf)
-    else:
-      self._node_def.attr[attr_name].CopyFrom(attr_value)
+    buf = c_api.TF_NewBufferFromString(
+        compat.as_bytes(attr_value.SerializeToString()))
+    try:
+      # pylint: disable=protected-access
+      c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, buf)
+      # pylint: enable=protected-access
+    finally:
+      c_api.TF_DeleteBuffer(buf)
+
+  def _set_func_attr(self, attr_name, func_name):
+    """Private method used to set a function attribute in the node_def."""
+    func = attr_value_pb2.NameAttrList(name=func_name)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
+
+  def _set_func_list_attr(self, attr_name, func_names):
+    """Private method used to set a list(function) attribute in the node_def."""
+    funcs = [attr_value_pb2.NameAttrList(name=func_name)
+             for func_name in func_names]
+    funcs_list = attr_value_pb2.AttrValue.ListValue(func=funcs)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=funcs_list))
+
+  def _set_type_list_attr(self, attr_name, types):
+    """Private method used to set a list(type) attribute in the node_def."""
+    if not types:
+      return
+    if isinstance(types[0], dtypes.DType):
+      types = [dt.as_datatype_enum for dt in types]
+    types_list = attr_value_pb2.AttrValue.ListValue(type=types)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
+
+  def _set_shape_list_attr(self, attr_name, shapes):
+    """Private method used to set a list(shape) attribute in the node_def."""
+    shapes = [s.as_proto() for s in shapes]
+    shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
+
+  def _clear_attr(self, attr_name):
+    """Private method used to clear an attribute in the node_def."""
+    # pylint: disable=protected-access
+    c_api.ClearAttr(self._graph._c_graph, self._c_op, attr_name)
+    # pylint: enable=protected-access
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
@@ -2148,43 +2643,32 @@ class Operation(object):
     Raises:
       ValueError: If this op does not have an attr with the given `name`.
     """
-    fields = ["s", "i", "f", "b", "type", "shape", "tensor", "func"]
-    if self._c_op:
-      try:
-        with c_api_util.tf_buffer() as buf:
-          with errors.raise_exception_on_not_ok_status() as status:
-            c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf, status)
-          data = c_api.TF_GetBuffer(buf)
-      except errors.InvalidArgumentError as e:
-        # Convert to ValueError for backwards compatibility.
-        raise ValueError(str(e))
-      x = attr_value_pb2.AttrValue()
-      x.ParseFromString(data)
-    else:
-      if name not in self._node_def.attr:
-        raise ValueError(
-            "No attr named '" + name + "' in " + str(self._node_def))
-      x = self._node_def.attr[name]
+    fields = ("s", "i", "f", "b", "type", "shape", "tensor", "func")
+    try:
+      with c_api_util.tf_buffer() as buf:
+        c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf)
+        data = c_api.TF_GetBuffer(buf)
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
+    x = attr_value_pb2.AttrValue()
+    x.ParseFromString(data)
 
-    # Treat an empty oneof value as an empty list.
-    if not x.WhichOneof("value"):
+    oneof_value = x.WhichOneof("value")
+    if oneof_value is None:
       return []
-    if x.HasField("list"):
+    if oneof_value == "list":
       for f in fields:
         if getattr(x.list, f):
           if f == "type":
-            return [dtypes.as_dtype(x) for x in list(getattr(x.list, f))]
+            return [dtypes.as_dtype(t) for t in x.list.type]
           else:
             return list(getattr(x.list, f))
       return []
-    else:
-      for f in fields:
-        if x.HasField(f):
-          if f == "type":
-            return dtypes.as_dtype(getattr(x, f))
-          else:
-            return getattr(x, f)
-      assert False, "Unsupported field type in " + str(x)
+    if oneof_value == "type":
+      return dtypes.as_dtype(x.type)
+    assert oneof_value in fields, "Unsupported field type in " + str(x)
+    return getattr(x, oneof_value)
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
@@ -2197,9 +2681,8 @@ class Operation(object):
     available, or `session` must be specified explicitly.
 
     Args:
-      feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See @{tf.Session.run}
-        for a description of the valid feed values.
+      feed_dict: A dictionary that maps `Tensor` objects to feed values. See
+        `tf.Session.run` for a description of the valid feed values.
       session: (Optional.) The `Session` to be used to run to this operation. If
         none, the default session will be used.
     """
@@ -2208,6 +2691,7 @@ class Operation(object):
 _gradient_registry = registry.Registry("gradient")
 
 
+@tf_export("RegisterGradient")
 class RegisterGradient(object):
   """A decorator for registering the gradient function for an op type.
 
@@ -2250,7 +2734,9 @@ class RegisterGradient(object):
     return f
 
 
-def NotDifferentiable(op_type):
+@deprecation.deprecated_endpoints("NotDifferentiable", "NoGradient")
+@tf_export("no_gradient", v1=["no_gradient", "NotDifferentiable", "NoGradient"])
+def no_gradient(op_type):
   """Specifies that ops of type `op_type` is not differentiable.
 
   This function should *not* be used for operations that have a
@@ -2261,7 +2747,7 @@ def NotDifferentiable(op_type):
   example:
 
   ```python
-  tf.NotDifferentiable("Size")
+  tf.no_gradient("Size")
   ```
 
   The gradient computed for 'op_type' will then propagate zeros.
@@ -2283,8 +2769,9 @@ def NotDifferentiable(op_type):
   _gradient_registry.register(None, op_type)
 
 
-# Alias for the old name, will be eventually removed.
-NoGradient = NotDifferentiable
+# Aliases for the old names, will be eventually removed.
+NoGradient = no_gradient
+NotDifferentiable = no_gradient
 
 
 def get_gradient_function(op):
@@ -2326,7 +2813,9 @@ def _set_call_cpp_shape_fn(call_cpp_shape_fn):
 
 
 class RegisterShape(object):
-  """No longer used.  Was: A decorator for registering a shape function.
+  """No longer used.
+
+  Was: A decorator for registering a shape function.
 
   Shape functions must now be registered via the SetShapeFn on the
   original Op specification in C++.
@@ -2360,64 +2849,9 @@ class RegisterShape(object):
     return f
 
 
-def _set_shapes_for_outputs_c_api(op):
-  """set_shapes_for_outputs implementation when C API is enabled."""
-  # The C API computes the shapes when the TF_Operation is created. Fetch the
-  # output shapes from the C object.
-  for output in op.outputs:
-    with errors.raise_exception_on_not_ok_status() as status:
-      # pylint: disable=protected-access
-      shape_vector, unknown_shape = c_api.TF_GraphGetTensorShapeHelper(
-          op._graph._c_graph, output._as_tf_output(), status)
-      # pylint: enable=protected-access
-    if unknown_shape:
-      output.set_shape(tensor_shape.unknown_shape())
-    elif not shape_vector:
-      output.set_shape(tensor_shape.scalar())
-    else:
-      shape_vector = [None if d == -1 else d for d in shape_vector]
-      output.set_shape(tensor_shape.TensorShape(shape_vector))
-
-
-# TODO(skyewm): remove this when _USE_C_API flag is removed.
-def _set_shapes_for_outputs(op):
-  """set_shapes_for_outputs implementation when C API is disabled."""
-  try:
-    shape_func = _shape_registry.lookup(op.type)
-  except LookupError:
-    try:
-      shape_func = _default_shape_function_registry.lookup(op.type)
-    except LookupError:
-      shape_func = _call_cpp_shape_fn_and_require_op
-
-  shapes = shape_func(op)
-  if shapes is None:
-    raise RuntimeError(
-        "Shape function for op %s did not return any shapes" % op)
-  elif isinstance(shapes, dict):
-    # Returned by call_cpp_shape_fn
-    shapes_dict = shapes
-    shapes = shapes_dict["shapes"]
-    handle_datas = shapes_dict["handle_data"]
-    for output, handle_data in zip(op.outputs, handle_datas):
-      # pylint: disable=protected-access
-      output._handle_data = handle_data
-      # pylint: enable=protected-access
-
-  if len(op.outputs) != len(shapes):
-    raise RuntimeError(
-        "Shape function for op %s returned %d shapes but expected %d %s %s" %
-        (op, len(shapes), len(op.outputs), shape_func.__name__, str(shapes)))
-  for output, s in zip(op.outputs, shapes):
-    output.set_shape(s)
-
-
-def set_shapes_for_outputs(op):
-  """Set the shapes for op's outputs."""
-  if op._c_op:  # pylint: disable=protected-access
-    return _set_shapes_for_outputs_c_api(op)
-  else:
-    return _set_shapes_for_outputs(op)
+def set_shape_and_handle_data_for_outputs(_):
+  """No op. TODO(b/74620627): Remove this."""
+  pass
 
 
 class OpStats(object):
@@ -2545,6 +2979,7 @@ def get_stats_for_node_def(graph, node, statistic_type):
     graph: A Graph object that's been set up with the node's graph.
     node: A NodeDef describing the operator.
     statistic_type: A string identifying the statistic we're interested in.
+
   Returns:
     An OpStats object containing information about resource usage.
   """
@@ -2557,7 +2992,7 @@ def get_stats_for_node_def(graph, node, statistic_type):
   return result
 
 
-def _name_from_scope_name(name):
+def name_from_scope_name(name):
   """Returns the name of an op given the name of its scope.
 
   Args:
@@ -2569,27 +3004,32 @@ def _name_from_scope_name(name):
   return name[:-1] if (name and name[-1] == "/") else name
 
 
+_MUTATION_LOCK_GROUP = 0
+_SESSION_RUN_LOCK_GROUP = 1
+
+
+@tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
   A `Graph` contains a set of
-  @{tf.Operation} objects,
+  `tf.Operation` objects,
   which represent units of computation; and
-  @{tf.Tensor} objects, which represent
+  `tf.Tensor` objects, which represent
   the units of data that flow between operations.
 
   A default `Graph` is always registered, and accessible by calling
-  @{tf.get_default_graph}.
+  `tf.compat.v1.get_default_graph`.
   To add an operation to the default graph, simply call one of the functions
   that defines a new `Operation`:
 
   ```python
   c = tf.constant(4.0)
-  assert c.graph is tf.get_default_graph()
+  assert c.graph is tf.compat.v1.get_default_graph()
   ```
 
   Another typical usage involves the
-  @{tf.Graph.as_default}
+  `tf.Graph.as_default`
   context manager, which overrides the current default graph for the
   lifetime of the context:
 
@@ -2610,39 +3050,49 @@ class Graph(object):
   that are identified by name. For convenience when building a large
   graph, collections can store groups of related objects: for
   example, the `tf.Variable` uses a collection (named
-  @{tf.GraphKeys.GLOBAL_VARIABLES}) for
+  `tf.GraphKeys.GLOBAL_VARIABLES`) for
   all variables that are created during the construction of a graph. The caller
   may define additional collections by specifying a new name.
   """
 
   def __init__(self):
     """Creates a new, empty Graph."""
-    # Protects the core state that may be accessed by multiple readers.
-    # Only state that can be returned via public accessors (`as_graph_def()`,
-    # `get_operations()`, `as_graph_element()`, `get_collection()`, and
-    # `get_collection_ref()`) is by the lock. Thread-safety is provided on a
-    # best-effort basis to support buggy programs, and is not guaranteed by the
-    # public `tf.Graph` API.
+    # Protects core state that can be returned via public accessors.
+    # Thread-safety is provided on a best-effort basis to support buggy
+    # programs, and is not guaranteed by the public `tf.Graph` API.
+    #
     # NOTE(mrry): This does not protect the various stacks. A warning will
     # be reported if these are used from multiple threads
-    self._lock = threading.Lock()
-    self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
+    self._lock = threading.RLock()
+    # The group lock synchronizes Session.run calls with methods that create
+    # and mutate ops (e.g. Graph.create_op()). This synchronization is
+    # necessary because it's illegal to modify an operation after it's been run.
+    # The group lock allows any number of threads to mutate ops at the same time
+    # but if any modification is going on, all Session.run calls have to wait.
+    # Similarly, if one or more Session.run calls are going on, all mutate ops
+    # have to wait until all Session.run calls have finished.
+    self._group_lock = lock_util.GroupLock(num_groups=2)
+    self._nodes_by_id = {}  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
-    self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
+    self._nodes_by_name = {}  # GUARDED_BY(self._lock)
     self._version = 0  # GUARDED_BY(self._lock)
-    # Current name stack: uniquified names
-    self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
+    self._stack_state_is_thread_local = False
+    self._thread_local = threading.local()
     # Functions that will be applied to choose a device if none is specified.
-    self._device_function_stack = []
+    # In TF2.x or after switch_to_thread_local(),
+    # self._thread_local._device_function_stack is used instead.
+    self._graph_device_function_stack = traceable_stack.TraceableStack()
     # Default original_op applied to new ops.
     self._default_original_op = None
     # Current control flow context. It could be either CondContext or
     # WhileContext defined in ops/control_flow_ops.py
     self._control_flow_context = None
     # A new node will depend of the union of all of the nodes in the stack.
-    self._control_dependencies_stack = []
+    # In TF2.x or after switch_to_thread_local(),
+    # self._thread_local._control_dependencies_stack is used instead.
+    self._graph_control_dependencies_stack = []
     # Arbitrary collections of objects.
     self._collections = {}
     # The graph-level random seed
@@ -2664,8 +3114,9 @@ class Graph(object):
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     self._building_function = False
-    # Stack of colocate_with ops
-    self._colocation_stack = []
+    # Stack of colocate_with ops. In TF2.x or after switch_to_thread_local(),
+    # self._thread_local._colocation_stack is used instead.
+    self._graph_colocation_stack = traceable_stack.TraceableStack()
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
     # Set of operations that are dangerous to fetch!
@@ -2678,98 +3129,101 @@ class Graph(object):
     self._handle_movers = {}
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
-    # Resource container.
-    if context.in_graph_mode():
-      self._container_prefix = ""
-    else:
-      # In Eager mode, isolate resources (particularly ResourceVariables) in
-      # Graphs by default. This prevents unintended variable sharing. Graph mode
-      # gets this kind of isolation from Sessions.
-      self._container_prefix = "eager-execution-%d/" % (uid(),)
-    self._container = self._container_prefix
+    # Allow optimizers and other objects to pseudo-uniquely key graphs (this key
+    # will be shared when defining function graphs, for example, so optimizers
+    # being called inside function definitions behave as if they were seeing the
+    # actual outside graph).
+    self._graph_key = "grap-key-%d/" % (uid(),)
+    # A string with the last reduction method passed to
+    # losses.compute_weighted_loss(), or None. This is required only for
+    # backward compatibility with Estimator and optimizer V1 use cases.
+    self._last_loss_reduction = None
+    # Flag that is used to indicate whether loss has been scaled by optimizer.
+    # If this flag has been set, then estimator uses it to scale losss back
+    # before reporting. This is required only for backward compatibility with
+    # Estimator and optimizer V1 use cases.
+    self._is_loss_scaled_by_optimizer = False
+    self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
+    # Set to True if this graph is being built in an
+    # AutomaticControlDependencies context.
+    self._add_control_dependencies = False
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if _USE_C_API or self._use_c_api_hack():
-      self._scoped_c_graph = c_api_util.ScopedTFGraph()
-    else:
-      self._scoped_c_graph = None
+    self._scoped_c_graph = c_api_util.ScopedTFGraph()
+    # The C API requires all ops to have shape functions. Disable this
+    # requirement (many custom ops do not have shape functions, and we don't
+    # want to break these existing cases).
+    c_api.SetRequireShapeInferenceFns(self._c_graph, False)
+    if tf2.enabled():
+      self.switch_to_thread_local()
 
-  # TODO(apassos) remove once the C API is used by default.
-  def _use_c_api_hack(self):
-    """Temporary hack; can be overridden to force C API usage."""
-    return False
-
-  def _convert_stack(self, stack, include_func_start_lineno=False):
-    """Converts a stack extracted using _extract_stack() to a traceback stack.
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  @tf_contextlib.contextmanager
+  def _variable_creator_scope(self, creator, priority=100):
+    """Scope which defines a variable creation function.
 
     Args:
-      stack: A list of n 5-tuples,
-        (filename, lineno, name, frame_globals, func_start_lineno).
-      include_func_start_lineno: True if function start line number should be
-        included as the 5th entry in return tuples.
+      creator: A callable taking `next_creator` and `kwargs`. See the
+        `tf.variable_creator_scope` docstring.
+      priority: Creators with a higher `priority` are called first. Within the
+        same priority, creators are called inner-to-outer.
 
-    Returns:
-      A list of n 4-tuples or 5-tuples
-      (filename, lineno, name, code, [optional: func_start_lineno]), where the
-      code tuple element is calculated from the corresponding elements of the
-      input tuple.
+    Yields:
+      `_variable_creator_scope` is a context manager with a side effect, but
+      doesn't return a value.
+
+    Raises:
+      RuntimeError: If variable creator scopes are not properly nested.
     """
-    ret = []
-    for (filename, lineno, name, frame_globals, func_start_lineno,
-         unused_frame_info) in stack:
-      linecache.checkcache(filename)
-      line = linecache.getline(filename, lineno, frame_globals)
-      if line:
-        line = line.strip()
-      else:
-        line = None
-      if include_func_start_lineno:
-        ret.append((filename, lineno, name, line, func_start_lineno))
-      else:
-        ret.append((filename, lineno, name, line))
-    return ret
-
-  def _extract_stack(self):
-    """A lightweight, extensible re-implementation of traceback.extract_stack.
-
-    NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
-      each stack frame using linecache, which results in an abundance of stat()
-      calls. This implementation does not retrieve the code, and any consumer
-      should apply _convert_stack to the result to obtain a traceback that can
-      be formatted etc. using traceback methods.
-
-    Derived classes can implement _extract_frame_info() to add extra information
-    to the traceback.
-
-    Returns:
-      A list of 6-tuples
-      (filename, lineno, name, frame_globals, func_start_lineno, custom_info)
-      corresponding to the call stack of the current thread.
-    """
+    # This step keeps a reference to the existing stack, and it also initializes
+    # self._thread_local._variable_creator_stack if it doesn't exist yet.
+    old = self._variable_creator_stack
+    new = list(old)
+    new.append((priority, creator))
+    # Sorting is stable, so we'll put higher-priority creators later in the list
+    # but otherwise maintain registration order.
+    new.sort(key=lambda item: item[0])
+    self._thread_local._variable_creator_stack = new  # pylint: disable=protected-access
     try:
-      raise ZeroDivisionError
-    except ZeroDivisionError:
-      f = sys.exc_info()[2].tb_frame.f_back
-    ret = []
-    while f is not None:
-      lineno = f.f_lineno
-      co = f.f_code
-      filename = co.co_filename
-      name = co.co_name
-      frame_globals = f.f_globals
-      func_start_lineno = co.co_firstlineno
-      frame_info = self._extract_frame_info(f)
-      ret.append((filename, lineno, name, frame_globals, func_start_lineno,
-                  frame_info))
-      f = f.f_back
-    ret.reverse()
-    return ret
+      yield
+    finally:
+      if self._thread_local._variable_creator_stack is not new:  # pylint: disable=protected-access
+        raise RuntimeError(
+            "Exiting variable_creator_scope without proper nesting.")
+      self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
 
-  def _extract_frame_info(self, frame):  # pylint: disable=unused-argument
-    """Extracts custom information from a frame in an op traceback."""
-    return None
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  @property
+  def _variable_creator_stack(self):
+    if not hasattr(self._thread_local, "_variable_creator_stack"):
+      self._thread_local._variable_creator_stack = []  # pylint: disable=protected-access
+
+    # This previously returned a copy of the stack instead of the stack itself,
+    # to guard against accidental mutation. Consider, however, code that wants
+    # to save and restore the variable creator stack:
+    #     def f():
+    #       original_stack = graph._variable_creator_stack
+    #       graph._variable_creator_stack = new_stack
+    #       ...  # Some code
+    #       graph._variable_creator_stack = original_stack
+    #
+    # And lets say you have some code that calls this function with some
+    # variable_creator:
+    #     def g():
+    #       with variable_scope.variable_creator_scope(creator):
+    #         f()
+    # When exiting the variable creator scope, it would see a different stack
+    # object than it expected leading to a "Exiting variable_creator_scope
+    # without proper nesting" error.
+    return self._thread_local._variable_creator_stack  # pylint: disable=protected-access
+
+  @_variable_creator_stack.setter
+  def _variable_creator_stack(self, variable_creator_stack):
+    self._thread_local._variable_creator_stack = variable_creator_stack  # pylint: disable=protected-access
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2817,7 +3271,7 @@ class Graph(object):
     """Returns a version number that increases as ops are added to the graph.
 
     Note that this is unrelated to the
-    @{tf.Graph.graph_def_versions}.
+    `tf.Graph.graph_def_versions`.
 
     Returns:
        An integer version that increases as ops are added to the graph.
@@ -2840,16 +3294,12 @@ class Graph(object):
       A `VersionDef`.
     """
     # pylint: enable=line-too-long
-    if self._c_graph:
-      with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          c_api.TF_GraphVersions(self._c_graph, buf, status)
-        data = c_api.TF_GetBuffer(buf)
-      version_def = versions_pb2.VersionDef()
-      version_def.ParseFromString(compat.as_bytes(data))
-      return version_def
-    else:
-      return self._graph_def_versions
+    with c_api_util.tf_buffer() as buf:
+      c_api.TF_GraphVersions(self._c_graph, buf)
+      data = c_api.TF_GetBuffer(buf)
+    version_def = versions_pb2.VersionDef()
+    version_def.ParseFromString(compat.as_bytes(data))
+    return version_def
 
   @property
   def seed(self):
@@ -2871,12 +3321,14 @@ class Graph(object):
     After calling `g.finalize()`, no new operations can be added to
     `g`.  This method is used to ensure that no operations are added
     to a graph when it is shared between multiple threads, for example
-    when using a @{tf.train.QueueRunner}.
+    when using a `tf.compat.v1.train.QueueRunner`.
     """
     self._finalized = True
 
   def _unsafe_unfinalize(self):
-    """Opposite of `finalize`. Internal interface.
+    """Opposite of `finalize`.
+
+    Internal interface.
 
     NOTE: Unfinalizing a graph could have negative impact on performance,
     especially in a multi-threaded environment.  Unfinalizing a graph
@@ -2920,17 +3372,17 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using @{tf.import_graph_def}) or used with the
+    (using `tf.import_graph_def`) or used with the
     [C++ Session API](../../../../api_docs/cc/index.md).
 
     This method is thread-safe.
 
     Args:
-      from_version: Optional.  If this is set, returns a `GraphDef`
-        containing only the nodes that were added to this graph since
-        its `version` property had the given value.
-      add_shapes: If true, adds an "_output_shapes" list attr to each
-        node with the inferred shapes of each of its outputs.
+      from_version: Optional.  If this is set, returns a `GraphDef` containing
+        only the nodes that were added to this graph since its `version`
+        property had the given value.
+      add_shapes: If true, adds an "_output_shapes" list attr to each node with
+        the inferred shapes of each of its outputs.
 
     Returns:
       A tuple containing a
@@ -2943,41 +3395,55 @@ class Graph(object):
 
     """
     # pylint: enable=line-too-long
-    if _USE_C_API:
-      with self._lock:
-        with c_api_util.tf_buffer() as buf:
-          with errors.raise_exception_on_not_ok_status() as status:
-            c_api.TF_GraphToGraphDef(self._c_graph, buf, status)
-          data = c_api.TF_GetBuffer(buf)
-        graph = graph_pb2.GraphDef()
-        graph.ParseFromString(compat.as_bytes(data))
-        # Strip the experimental library field iff it's empty.
-        if not graph.library.function:
-          graph.ClearField("library")
+    with self._lock:
+      with c_api_util.tf_buffer() as buf:
+        c_api.TF_GraphToGraphDef(self._c_graph, buf)
+        data = c_api.TF_GetBuffer(buf)
+      graph = graph_pb2.GraphDef()
+      graph.ParseFromString(compat.as_bytes(data))
+      # Strip the experimental library field iff it's empty.
+      if not graph.library.function:
+        graph.ClearField("library")
 
-        if add_shapes:
-          for node in graph.node:
-            op = self._nodes_by_name[node.name]
-            if op.outputs:
-              node.attr["_output_shapes"].list.shape.extend(
-                  [output.get_shape().as_proto() for output in op.outputs])
-    else:
-      with self._lock:
-        graph = graph_pb2.GraphDef()
-        graph.versions.CopyFrom(self._graph_def_versions)
-        bytesize = 0
-        for op_id in sorted(self._nodes_by_id):
-          op = self._nodes_by_id[op_id]
-          if from_version is None or op_id > from_version:
-            graph.node.extend([op.node_def])
-            if op.outputs and add_shapes:
-              assert "_output_shapes" not in graph.node[-1].attr
-              graph.node[-1].attr["_output_shapes"].list.shape.extend(
-                  [output.get_shape().as_proto() for output in op.outputs])
-            bytesize += op.node_def.ByteSize()
-            if bytesize >= (1 << 31) or bytesize < 0:
-              raise ValueError("GraphDef cannot be larger than 2GB.")
-        self._copy_functions_to_graph_def(graph, bytesize)
+      if add_shapes:
+        for node in graph.node:
+          op = self._nodes_by_name[node.name]
+          if op.outputs:
+            node.attr["_output_shapes"].list.shape.extend(
+                [output.get_shape().as_proto() for output in op.outputs])
+        for function_def in graph.library.function:
+          defined_function = self._functions[function_def.signature.name]
+          try:
+            func_graph = defined_function.graph
+          except AttributeError:
+            # _DefinedFunction doesn't have a graph, _EagerDefinedFunction
+            # does. Both rely on ops.py, so we can't really isinstance check
+            # them.
+            continue
+          input_shapes = function_def.attr["_input_shapes"]
+          try:
+            func_graph_inputs = func_graph.inputs
+          except AttributeError:
+            continue
+          for input_tensor in func_graph_inputs:
+            if input_tensor.dtype == dtypes.resource:
+              # TODO(allenl): Save and restore handle data, then save the
+              # resource placeholder's shape. Right now some shape functions get
+              # confused if we set the shape of the resource placeholder (to a
+              # scalar of course) and there isn't any handle data.
+              input_shapes.list.shape.add().CopyFrom(
+                  tensor_shape.TensorShape(None).as_proto())
+            else:
+              input_shapes.list.shape.add().CopyFrom(
+                  input_tensor.get_shape().as_proto())
+          for node in function_def.node_def:
+            try:
+              op = func_graph.get_operation_by_name(node.name)
+            except KeyError:
+              continue
+            node.attr["_output_shapes"].list.shape.extend(
+                [output.get_shape().as_proto() for output in op.outputs])
+
     return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
@@ -2985,17 +3451,17 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using @{tf.import_graph_def}) or used with the
+    (using `tf.import_graph_def`) or used with the
     [C++ Session API](../../api_docs/cc/index.md).
 
     This method is thread-safe.
 
     Args:
-      from_version: Optional.  If this is set, returns a `GraphDef`
-        containing only the nodes that were added to this graph since
-        its `version` property had the given value.
-      add_shapes: If true, adds an "_output_shapes" list attr to each
-        node with the inferred shapes of each of its outputs.
+      from_version: Optional.  If this is set, returns a `GraphDef` containing
+        only the nodes that were added to this graph since its `version`
+        property had the given value.
+      add_shapes: If true, adds an "_output_shapes" list attr to each node with
+        the inferred shapes of each of its outputs.
 
     Returns:
       A
@@ -3014,20 +3480,22 @@ class Graph(object):
 
     Args:
       name: string op name.
+
     Returns:
       bool indicating whether or not 'name' is registered in function library.
     """
-    return name in self._functions
+    return compat.as_str(name) in self._functions
 
   def _get_function(self, name):
     """Returns the function definition for 'name'.
 
     Args:
       name: string function name.
+
     Returns:
       The function def proto.
     """
-    return self._functions.get(name, None)
+    return self._functions.get(compat.as_str(name), None)
 
   def _add_function(self, function):
     """Adds a function to the graph.
@@ -3038,7 +3506,6 @@ class Graph(object):
 
     Args:
       function: A `_DefinedFunction` object.
-
 
     Raises:
       ValueError: if another function is defined with the same name.
@@ -3051,39 +3518,12 @@ class Graph(object):
 
     # Add function to graph
     # pylint: disable=protected-access
-    if self._c_graph:
-      # Handle functions created without using the C API. TODO(apassos,skyewm)
-      # remove this when all functions are generated using the C API by default
-      # as this will be unnecessary.
-      if not function._c_func:
-        with errors.raise_exception_on_not_ok_status() as status:
-          serialized = function.definition.SerializeToString()
-          function._c_func = c_api.TF_FunctionImportFunctionDef(
-              serialized, status)
-      with errors.raise_exception_on_not_ok_status() as status:
-        gradient = function._grad_func._c_func if function._grad_func else None
-        c_api.TF_GraphCopyFunction(self._c_graph, function._c_func, gradient,
-                                   status)
-    else:
-      # If there is already a function with the same name, raise an error
-      # if bodies are different. Else, do nothing. The C API version above
-      # has the same behavior.
-      previous = self._functions.get(name, None)
-      if previous:
-        # This check is not ideal as we can have a hash collision with only
-        # 32 bits in the hash, but the non C API mode is being deprecated.
-        # Don't bother changing it now.
-        if previous._hash_str == function._hash_str:
-          return
-        else:
-          raise ValueError("Cannot add function (%s, hash %s) to graph (%s). "
-                           "Another function (%s, hash %s) is already defined "
-                           "with that name (%s)" % (
-                               function, function._hash_str, self,
-                               previous, previous._hash_str, name))
+    gradient = (
+        function._grad_func._c_func.func if function._grad_func else None)
+    c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
     # pylint: enable=protected-access
 
-    self._functions[name] = function
+    self._functions[compat.as_str(name)] = function
 
     # Need a new-enough consumer to support the functions we add to the graph.
     if self._graph_def_versions.min_consumer < 12:
@@ -3095,11 +3535,14 @@ class Graph(object):
     return self._building_function
 
   # Helper functions to create operations.
+  @deprecated_args(None,
+                   "Shapes are always computed; don't use the compute_shapes "
+                   "as it has no effect.", "compute_shapes")
   def create_op(
       self,
       op_type,
       inputs,
-      dtypes,  # pylint: disable=redefined-outer-name
+      dtypes=None,  # pylint: disable=redefined-outer-name
       input_types=None,
       name=None,
       attrs=None,
@@ -3117,12 +3560,12 @@ class Graph(object):
       op_type: The `Operation` type to create. This corresponds to the
         `OpDef.name` field for the proto that defines the operation.
       inputs: A list of `Tensor` objects that will be inputs to the `Operation`.
-      dtypes: A list of `DType` objects that will be the types of the tensors
-        that the operation produces.
-      input_types: (Optional.) A list of `DType`s that will be the types of
-        the tensors that the operation consumes. By default, uses the base
-        `DType` of each input in `inputs`. Operations that expect
-        reference-typed inputs must specify `input_types` explicitly.
+      dtypes: (Optional) A list of `DType` objects that will be the types of the
+        tensors that the operation produces.
+      input_types: (Optional.) A list of `DType`s that will be the types of the
+        tensors that the operation consumes. By default, uses the base `DType`
+        of each input in `inputs`. Operations that expect reference-typed inputs
+        must specify `input_types` explicitly.
       name: (Optional.) A string name for the operation. If not specified, a
         name is generated based on `op_type`.
       attrs: (Optional.) A dictionary where the key is the attribute name (a
@@ -3131,10 +3574,10 @@ class Graph(object):
         proto).
       op_def: (Optional.) The `OpDef` proto that describes the `op_type` that
         the operation will have.
-      compute_shapes: (Optional.) If True, shape inference will be performed
-        to compute the shapes of the outputs.
-      compute_device: (Optional.) If True, device functions will be executed
-        to compute the device property of the Operation.
+      compute_shapes: (Optional.) Deprecated. Has no effect (shapes are always
+        computed).
+      compute_device: (Optional.) If True, device functions will be executed to
+        compute the device property of the Operation.
 
     Raises:
       TypeError: if any of the inputs is not a `Tensor`.
@@ -3142,8 +3585,9 @@ class Graph(object):
 
     Returns:
       An `Operation` object.
-
     """
+    del compute_shapes
+
     self._check_not_finalized()
     for idx, a in enumerate(inputs):
       if not isinstance(a, Tensor):
@@ -3153,7 +3597,7 @@ class Graph(object):
     # If a names ends with a '/' it is a "name scope" and we use it as-is,
     # after removing the trailing '/'.
     if name and name[-1] == "/":
-      name = _name_from_scope_name(name)
+      name = name_from_scope_name(name)
     else:
       name = self.unique_name(name)
 
@@ -3161,17 +3605,19 @@ class Graph(object):
 
     input_ops = set([t.op for t in inputs])
     control_inputs = self._control_dependencies_for_inputs(input_ops)
-    ret = Operation(
-        node_def,
-        self,
-        inputs=inputs,
-        output_types=dtypes,
-        control_inputs=control_inputs,
-        input_types=input_types,
-        original_op=self._default_original_op,
-        op_def=op_def)
-    self._create_op_helper(ret, compute_shapes=compute_shapes,
-                           compute_device=compute_device)
+    # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
+    # Session.run call cannot occur between creating and mutating the op.
+    with self._mutation_lock():
+      ret = Operation(
+          node_def,
+          self,
+          inputs=inputs,
+          output_types=dtypes,
+          control_inputs=control_inputs,
+          input_types=input_types,
+          original_op=self._default_original_op,
+          op_def=op_def)
+      self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
   def _create_op_from_tf_operation(self, c_op, compute_device=True):
@@ -3188,33 +3634,26 @@ class Graph(object):
 
     Args:
       c_op: a wrapped TF_Operation
-      compute_device: (Optional.) If True, device functions will be executed
-        to compute the device property of the Operation.
+      compute_device: (Optional.) If True, device functions will be executed to
+        compute the device property of the Operation.
 
     Returns:
       An `Operation` object.
     """
     self._check_not_finalized()
     ret = Operation(c_op, self)
-    assert ret.name not in self._names_in_use
-    self._names_in_use[ret.name] = 1
+    # If a name_scope was created with ret.name but no nodes were created in it,
+    # the name will still appear in _names_in_use even though the name hasn't
+    # been used. This is ok, just leave _names_in_use as-is in this case.
+    # TODO(skyewm): make the C API guarantee no name conflicts.
+    name_key = ret.name.lower()
+    if name_key not in self._names_in_use:
+      self._names_in_use[name_key] = 1
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
-  def _create_op_helper(self, op, compute_shapes=True, compute_device=True):
+  def _create_op_helper(self, op, compute_device=True):
     """Common logic for creating an op in this graph."""
-    # TODO(vrv): Instead of eagerly filling in shape property for every op, only
-    # populate the shape when requested.
-    #
-    # TODO(skyewm): unlike in the original Python implementation, the C API
-    # always computes shape information (even for function calls, which the
-    # original Python shape inference code doesn't handle). Deprecate the
-    # compute_shapes argument.
-    if op._c_op or compute_shapes:  # pylint: disable=protected-access
-      set_shapes_for_outputs(op)
-    # TODO(b/XXXX): move to Operation.__init__ once _USE_C_API flag is removed.
-    self._add_op(op)
-
     # Apply any additional attributes requested. Do not overwrite any existing
     # attributes.
     for key, value in self._attr_scope_map.items():
@@ -3226,8 +3665,8 @@ class Graph(object):
           if not isinstance(value, (type(None), attr_value_pb2.AttrValue)):
             raise TypeError(
                 "Callable for scope map key '%s' must return either None or "
-                "an AttrValue protocol buffer; but it returned: %s" % (key,
-                                                                       value))
+                "an AttrValue protocol buffer; but it returned: %s" %
+                (key, value))
         if value:
           op._set_attr(key, value)  # pylint: disable=protected-access
 
@@ -3253,27 +3692,28 @@ class Graph(object):
     if compute_device:
       self._apply_device_functions(op)
 
+    # Snapshot the colocation stack metadata before we might generate error
+    # messages using it.  Note that this snapshot depends on the actual stack
+    # and is independent of the op's _class attribute.
+    # pylint: disable=protected-access
+    op._colocation_code_locations = self._snapshot_colocation_stack_metadata()
+    # pylint: enable=protected-access
+
     if self._colocation_stack:
       all_colocation_groups = []
-      for colocation_op in self._colocation_stack:
+      for colocation_op in self._colocation_stack.peek_objs():
         all_colocation_groups.extend(colocation_op.colocation_groups())
         if colocation_op.device:
-          # Make this device match the device of the colocated op, to provide
-          # consistency between the device and the colocation property.
-          if (op.device and pydev.canonical_name(op.device) !=
-              pydev.canonical_name(colocation_op.device)):
-            logging.warning("Tried to colocate %s with an op %s that had "
-                            "a different device: %s vs %s. "
-                            "Ignoring colocation property.", op.name,
-                            colocation_op.name, op.device,
-                            colocation_op.device)
-          else:
-            op._set_device(colocation_op.device)  # pylint: disable=protected-access
+          # pylint: disable=protected-access
+          op._set_device(colocation_op.device)
+          # pylint: enable=protected-access
 
       all_colocation_groups = sorted(set(all_colocation_groups))
       # pylint: disable=protected-access
-      op._set_attr("_class", attr_value_pb2.AttrValue(
-          list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+      op._set_attr(
+          "_class",
+          attr_value_pb2.AttrValue(
+              list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
       # pylint: enable=protected-access
 
     # Sets "container" attribute if
@@ -3281,8 +3721,7 @@ class Graph(object):
     # (2) "is_stateful" is set in OpDef
     # (3) "container" attribute is in OpDef
     # (4) "container" attribute is None
-    if (self._container and op.type in self._registered_ops and
-        self._registered_ops[op.type].is_stateful):
+    if self._container and op.op_def.is_stateful:
       try:
         container_attr = op.get_attr("container")
       except ValueError:
@@ -3302,8 +3741,8 @@ class Graph(object):
     TF_Operations in the underlying TF_Graph.
 
     Args:
-      compute_devices: (Optional.) If True, device functions will be executed
-        to compute the device properties of each new Operation.
+      compute_devices: (Optional.) If True, device functions will be executed to
+        compute the device properties of each new Operation.
 
     Returns:
       A list of the new `Operation` objects.
@@ -3315,12 +3754,12 @@ class Graph(object):
         for c_op in c_api_util.new_tf_operations(self)
     ]
 
+    # pylint: disable=protected-access
     for op in new_ops:
       new_control_inputs = self._control_dependencies_for_inputs(op.inputs)
-      # pylint: disable=protected-access
       op._add_control_inputs(new_control_inputs)
       op._control_flow_post_processing()
-      # pylint: enable=protected-access
+    # pylint: enable=protected-access
 
     return new_ops
 
@@ -3337,9 +3776,9 @@ class Graph(object):
     This method may be called concurrently from multiple threads.
 
     Args:
-      obj: A `Tensor`, an `Operation`, or the name of a tensor or operation.
-        Can also be any object with an `_as_graph_element()` method that returns
-        a value of one of these types.
+      obj: A `Tensor`, an `Operation`, or the name of a tensor or operation. Can
+        also be any object with an `_as_graph_element()` method that returns a
+        value of one of these types.
       allow_tensor: If true, `obj` may refer to a `Tensor`.
       allow_operation: If true, `obj` may refer to an `Operation`.
 
@@ -3405,8 +3844,8 @@ class Graph(object):
         except:
           raise KeyError("The name %s refers to a Tensor which does not "
                          "exist. The operation, %s, exists but only has "
-                         "%s outputs." % (repr(name), repr(op_name),
-                                          len(op.outputs)))
+                         "%s outputs." %
+                         (repr(name), repr(op_name), len(op.outputs)))
 
       elif ":" in name and not allow_tensor:
         # Looks like a Tensor name but can't be a Tensor.
@@ -3445,8 +3884,8 @@ class Graph(object):
       return obj
     else:
       # We give up!
-      raise TypeError("Can not convert a %s into a %s." % (type(obj).__name__,
-                                                           types_str))
+      raise TypeError("Can not convert a %s into a %s." %
+                      (type(obj).__name__, types_str))
 
   def get_operations(self):
     """Return the list of operations in the graph.
@@ -3562,15 +4001,30 @@ class Graph(object):
   def _last_id(self):
     return self._next_id_counter
 
+  def _get_op_def(self, type):  # pylint: disable=redefined-builtin
+    """Returns the `OpDef` proto for `type`. `type` is a string."""
+    with c_api_util.tf_buffer() as buf:
+      # pylint: disable=protected-access
+      c_api.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type), buf)
+      # pylint: enable=protected-access
+      data = c_api.TF_GetBuffer(buf)
+    op_def = op_def_pb2.OpDef()
+    op_def.ParseFromString(compat.as_bytes(data))
+    return op_def
+
   def as_default(self):
     """Returns a context manager that makes this `Graph` the default graph.
 
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method with the `with` keyword
-    to specify that ops created within the scope of a block should be
-    added to this graph.
+    create a new graph explicitly.
+
+    Use this method with the `with` keyword to specify that ops created within
+    the scope of a block should be added to this graph. In this case, once
+    the scope of the `with` is exited, the previous default graph is set again
+    as default. There is a stack, so it's ok to have multiple nested levels
+    of `as_default` calls.
 
     The default graph is a property of the current thread. If you
     create a new thread, and wish to use the default graph in that
@@ -3592,6 +4046,9 @@ class Graph(object):
       assert c.graph is g
     ```
 
+    If eager execution is enabled ops created under this context manager will be
+    added to the graph instead of executed eagerly.
+
     Returns:
       A context manager for using this graph as the default graph.
     """
@@ -3609,11 +4066,10 @@ class Graph(object):
     a collection several times.
 
     Args:
-      name: The key for the collection. The `GraphKeys` class
-        contains many standard names for collections.
+      name: The key for the collection. The `GraphKeys` class contains many
+        standard names for collections.
       value: The value to add to the collection.
     """  # pylint: disable=g-doc-exception
-    _assert_collection_is_ok(name)
     self._check_not_finalized()
     with self._lock:
       if name not in self._collections:
@@ -3660,7 +4116,6 @@ class Graph(object):
       The list of values in the collection with the given `name`, or an empty
       list if no value has been added to that collection.
     """  # pylint: disable=g-doc-exception
-    _assert_collection_is_ok(name)
     with self._lock:
       coll_list = self._collections.get(name, None)
       if coll_list is None:
@@ -3690,7 +4145,6 @@ class Graph(object):
       list contains the values in the order under which they were
       collected.
     """  # pylint: disable=g-doc-exception
-    _assert_collection_is_ok(name)
     with self._lock:
       collection = self._collections.get(name, None)
       if collection is None:
@@ -3741,16 +4195,27 @@ class Graph(object):
       Nothing.
     """
     old_original_op = self._default_original_op
+    self._default_original_op = op
     try:
-      self._default_original_op = op
       yield
     finally:
       self._default_original_op = old_original_op
 
+  @property
+  def _name_stack(self):
+    # This may be called from a thread where name_stack doesn't yet exist.
+    if not hasattr(self._thread_local, "_name_stack"):
+      self._thread_local._name_stack = ""
+    return self._thread_local._name_stack
+
+  @_name_stack.setter
+  def _name_stack(self, name_stack):
+    self._thread_local._name_stack = name_stack
+
   # pylint: disable=g-doc-return-or-yield,line-too-long
   @tf_contextlib.contextmanager
   def name_scope(self, name):
-    r"""Returns a context manager that creates hierarchical names for operations.
+    """Returns a context manager that creates hierarchical names for operations.
 
     A graph maintains a stack of name scopes. A `with name_scope(...):`
     statement pushes a new name onto the stack for the lifetime of the context.
@@ -3848,15 +4313,15 @@ class Graph(object):
         # op name regex, which constrains the initial character.
         if not _VALID_OP_NAME_REGEX.match(name):
           raise ValueError("'%s' is not a valid scope name" % name)
+    old_stack = self._name_stack
+    if not name:  # Both for name=None and name="" we re-set to empty scope.
+      new_stack = None
+    elif name[-1] == "/":
+      new_stack = name_from_scope_name(name)
+    else:
+      new_stack = self.unique_name(name)
+    self._name_stack = new_stack
     try:
-      old_stack = self._name_stack
-      if not name:  # Both for name=None and name="" we re-set to empty scope.
-        new_stack = None
-      elif name[-1] == "/":
-        new_stack = _name_from_scope_name(name)
-      else:
-        new_stack = self.unique_name(name)
-      self._name_stack = new_stack
       yield "" if new_stack is None else new_stack + "/"
     finally:
       self._name_stack = old_stack
@@ -3892,20 +4357,27 @@ class Graph(object):
     """
     if self._name_stack:
       name = self._name_stack + "/" + name
-    i = self._names_in_use.get(name, 0)
-    # Increment the number for "name".
+
+    # For the sake of checking for names in use, we treat names as case
+    # insensitive (e.g. foo = Foo).
+    name_key = name.lower()
+    i = self._names_in_use.get(name_key, 0)
+    # Increment the number for "name_key".
     if mark_as_used:
-      self._names_in_use[name] = i + 1
+      self._names_in_use[name_key] = i + 1
     if i > 0:
-      base_name = name
-      # Make sure the composed name is not already used.
-      while name in self._names_in_use:
-        name = "%s_%d" % (base_name, i)
+      base_name_key = name_key
+      # Make sure the composed name key is not already used.
+      while name_key in self._names_in_use:
+        name_key = "%s_%d" % (base_name_key, i)
         i += 1
-      # Mark the composed name as used in case someone wants
+      # Mark the composed name_key as used in case someone wants
       # to call unique_name("name_1").
       if mark_as_used:
-        self._names_in_use[name] = 1
+        self._names_in_use[name_key] = 1
+
+      # Return the new name with the original capitalization of the given name.
+      name = "%s_%d" % (name, i - 1)
     return name
 
   def get_name_scope(self):
@@ -3916,7 +4388,7 @@ class Graph(object):
     ```python
     with tf.name_scope('scope1'):
       with tf.name_scope('scope2'):
-        print(tf.get_default_graph().get_name_scope())
+        print(tf.compat.v1.get_default_graph().get_name_scope())
     ```
     would print the string `scope1/scope2`.
 
@@ -3924,6 +4396,19 @@ class Graph(object):
       A string representing the current name scope.
     """
     return self._name_stack
+
+  @tf_contextlib.contextmanager
+  def _colocate_with_for_gradient(self, op, gradient_uid,
+                                  ignore_existing=False):
+    with self.colocate_with(op, ignore_existing):
+      if gradient_uid is not None and self._control_flow_context is not None:
+        self._control_flow_context.EnterGradientColocation(op, gradient_uid)
+        try:
+          yield
+        finally:
+          self._control_flow_context.ExitGradientColocation(op, gradient_uid)
+      else:
+        yield
 
   @tf_contextlib.contextmanager
   def colocate_with(self, op, ignore_existing=False):
@@ -3950,9 +4435,9 @@ class Graph(object):
 
     Args:
       op: The op to colocate all created ops with, or `None`.
-      ignore_existing: If true, only applies colocation of this op within
-        the context, rather than applying all colocation properties
-        on the stack.  If `op` is `None`, this value must be `True`.
+      ignore_existing: If true, only applies colocation of this op within the
+        context, rather than applying all colocation properties on the stack.
+        If `op` is `None`, this value must be `True`.
 
     Raises:
       ValueError: if op is None but ignore_existing is False.
@@ -3960,15 +4445,11 @@ class Graph(object):
     Yields:
       A context manager that specifies the op with which to colocate
       newly created ops.
-
     """
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-
-    if op is not None and not isinstance(op, Operation):
-      # We always want to colocate with the reference op.
-      op = internal_convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+    op = _op_to_colocate_with(op)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -3978,14 +4459,17 @@ class Graph(object):
     # In the future, a caller may specify that device_functions win
     # over colocation, in which case we can add support.
     device_fn_tmp = self._device_function_stack
-    self._device_function_stack = []
+    self._device_function_stack = traceable_stack.TraceableStack()
 
     if ignore_existing:
       current_stack = self._colocation_stack
-      self._colocation_stack = []
+      self._colocation_stack = traceable_stack.TraceableStack()
 
     if op is not None:
-      self._colocation_stack.append(op)
+      # offset refers to the stack frame used for storing code location.
+      # We use 4, the sum of 1 to use our caller's stack frame and 3
+      # to jump over layers of context managers above us.
+      self._colocation_stack.push_obj(op, offset=4)
 
     try:
       yield
@@ -3993,11 +4477,18 @@ class Graph(object):
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
       if op is not None:
-        self._colocation_stack.pop()
+        self._colocation_stack.pop_obj()
 
       # Reset the colocation stack if requested.
       if ignore_existing:
         self._colocation_stack = current_stack
+
+  def _add_device_to_stack(self, device_name_or_function, offset=0):
+    """Add device to stack manually, separate from a context manager."""
+    total_offset = 1 + offset
+    spec = _UserDeviceSpec(device_name_or_function)
+    self._device_function_stack.push_obj(spec, offset=total_offset)
+    return spec
 
   @tf_contextlib.contextmanager
   def device(self, device_name_or_function):
@@ -4050,37 +4541,50 @@ class Graph(object):
     incompatible device scopes will be ignored.
 
     Args:
-      device_name_or_function: The device name or function to use in
-        the context.
+      device_name_or_function: The device name or function to use in the
+        context.
 
     Yields:
       A context manager that specifies the default device to use for newly
       created ops.
 
+    Raises:
+      RuntimeError: If device scopes are not properly nested.
     """
-    # pylint: enable=line-too-long
-    if (device_name_or_function is not None and
-        not callable(device_name_or_function)):
-      device_function = pydev.merge_device(device_name_or_function)
-    else:
-      device_function = device_name_or_function
-
+    self._add_device_to_stack(device_name_or_function, offset=2)
+    old_top_of_stack = self._device_function_stack.peek_top_obj()
     try:
-      self._device_function_stack.append(device_function)
       yield
     finally:
-      self._device_function_stack.pop()
+      new_top_of_stack = self._device_function_stack.peek_top_obj()
+      if old_top_of_stack is not new_top_of_stack:
+        raise RuntimeError("Exiting device scope without proper scope nesting.")
+      self._device_function_stack.pop_obj()
 
   def _apply_device_functions(self, op):
     """Applies the current device function stack to the given operation."""
-    # Apply any device functions in reverse order, so that the most recently
+    # Apply any device functions in LIFO order, so that the most recently
     # pushed function has the first chance to apply a device to the op.
     # We apply here because the result can depend on the Operation's
     # signature, which is computed in the Operation constructor.
-    for device_function in reversed(self._device_function_stack):
-      if device_function is None:
+    # pylint: disable=protected-access
+    prior_device_string = None
+    for device_spec in self._device_function_stack.peek_objs():
+      if device_spec.is_null_merge:
+        continue
+
+      if device_spec.function is None:
         break
-      op._set_device(device_function(op))  # pylint: disable=protected-access
+
+      device_string = device_spec.string_merge(op)
+
+      # Take advantage of the fact that None is a singleton and Python interns
+      # strings, since identity checks are faster than equality checks.
+      if device_string is not prior_device_string:
+        op._set_device_from_string(device_string)
+        prior_device_string = device_string
+    op._device_code_locations = self._snapshot_device_function_stack_metadata()
+    # pylint: enable=protected-access
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
@@ -4105,16 +4609,16 @@ class Graph(object):
         # All stateful Operations constructed in this context will be
         # placed in resource container "experiment1".
         v3 = tf.Variable([3.0])
-        q1 = tf.FIFOQueue(10, tf.float32)
+        q1 = tf.queue.FIFOQueue(10, tf.float32)
       # All stateful Operations constructed in this context will be
       # be created in the "experiment0".
       v4 = tf.Variable([4.0])
-      q1 = tf.FIFOQueue(20, tf.float32)
+      q1 = tf.queue.FIFOQueue(20, tf.float32)
       with g.container(""):
         # All stateful Operations constructed in this context will be
         # be placed in the default resource container.
         v5 = tf.Variable([5.0])
-        q3 = tf.FIFOQueue(30, tf.float32)
+        q3 = tf.queue.FIFOQueue(30, tf.float32)
 
     # Resets container "experiment0", after which the state of v1, v2, v4, q1
     # will become undefined (such as uninitialized).
@@ -4129,8 +4633,8 @@ class Graph(object):
         yields the container name.
     """
     original_container = self._container
+    self._container = container_name
     try:
-      self._container = self._container_prefix + container_name
       yield self._container
     finally:
       self._container = original_container
@@ -4158,16 +4662,16 @@ class Graph(object):
 
       Args:
         graph: The graph that this controller is managing.
-        control_inputs: List of ops to use as control inputs in addition
-          to the current control dependencies.  None to indicate that
-          the dependencies should be cleared.
+        control_inputs: List of ops to use as control inputs in addition to the
+          current control dependencies.  None to indicate that the dependencies
+          should be cleared.
       """
       self._graph = graph
       if control_inputs is None:
-        self._control_inputs = []
+        self._control_inputs_val = []
         self._new_stack = True
       else:
-        self._control_inputs = control_inputs
+        self._control_inputs_val = control_inputs
         self._new_stack = False
       self._seen_nodes = set()
       self._old_stack = None
@@ -4195,7 +4699,7 @@ class Graph(object):
 
     @property
     def control_inputs(self):
-      return self._control_inputs
+      return self._control_inputs_val
 
     def add_op(self, op):
       self._seen_nodes.add(op)
@@ -4319,11 +4823,26 @@ class Graph(object):
         return tf.matmul(tensor, tensor)
     ```
 
+    Also note that though execution of ops created under this scope will trigger
+    execution of the dependencies, the ops created under this scope might still
+    be pruned from a normal tensorflow graph. For example, in the following
+    snippet of code the dependencies are never executed:
+
+    ```python
+      loss = model.loss()
+      with tf.control_dependencies(dependencies):
+        loss = loss + tf.constant(1)  # note: dependencies ignored in the
+                                      # backward pass
+      return tf.gradients(loss, model.variables)
+    ```
+
+    This is because evaluating the gradient graph does not require evaluating
+    the constant(1) op created in the forward pass.
+
     Args:
-      control_inputs: A list of `Operation` or `Tensor` objects which
-        must be executed or computed before running the operations
-        defined in the context.  Can also be `None` to clear the control
-        dependencies.
+      control_inputs: A list of `Operation` or `Tensor` objects which must be
+        executed or computed before running the operations defined in the
+        context.  Can also be `None` to clear the control dependencies.
 
     Returns:
      A context manager that specifies control dependencies for all
@@ -4342,7 +4861,11 @@ class Graph(object):
     control_ops = []
     current = self._current_control_dependencies()
     for c in control_inputs:
-      if isinstance(c, IndexedSlices):
+      # The hasattr(handle) is designed to match ResourceVariables. This is so
+      # control dependencies on a variable or on an unread variable don't
+      # trigger reads.
+      if (isinstance(c, IndexedSlices) or
+          (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       c = self.as_graph_element(c)
       if isinstance(c, Tensor):
@@ -4374,8 +4897,8 @@ class Graph(object):
                f_4 = Foo()  # No additional attributes.
 
     Args:
-      attr_map: A dictionary mapping attr name strings to
-        AttrValue protocol buffers or None.
+      attr_map: A dictionary mapping attr name strings to AttrValue protocol
+        buffers or None.
 
     Returns:
       A context manager that sets the kernel label to be used for one or more
@@ -4443,8 +4966,8 @@ class Graph(object):
                              # for the Foo op.
 
     Args:
-      op_to_kernel_label_map: A dictionary mapping op type strings to
-        kernel label strings.
+      op_to_kernel_label_map: A dictionary mapping op type strings to kernel
+        label strings.
 
     Returns:
       A context manager that sets the kernel label to be used for one or more
@@ -4507,8 +5030,8 @@ class Graph(object):
     ```
 
     Args:
-      op_type_map: A dictionary mapping op type strings to alternative op
-        type strings.
+      op_type_map: A dictionary mapping op type strings to alternative op type
+        strings.
 
     Returns:
       A context manager that sets the alternative op type to be used for one
@@ -4566,19 +5089,211 @@ class Graph(object):
     else:
       return tensor_or_op not in self._unfetchable_ops
 
+  def switch_to_thread_local(self):
+    """Make device, colocation and dependencies stacks thread-local.
+
+    Device, colocation and dependencies stacks are not thread-local be default.
+    If multiple threads access them, then the state is shared.  This means that
+    one thread may affect the behavior of another thread.
+
+    After this method is called, the stacks become thread-local.  If multiple
+    threads access them, then the state is not shared.  Each thread uses its own
+    value; a thread doesn't affect other threads by mutating such a stack.
+
+    The initial value for every thread's stack is set to the current value
+    of the stack when `switch_to_thread_local()` was first called.
+    """
+    if not self._stack_state_is_thread_local:
+      self._stack_state_is_thread_local = True
+
+  @property
+  def _device_function_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where device_function_stack doesn't yet
+      # exist.
+      # pylint: disable=protected-access
+      if not hasattr(self._thread_local, "_device_function_stack"):
+        stack_copy_for_this_thread = self._graph_device_function_stack.copy()
+        self._thread_local._device_function_stack = stack_copy_for_this_thread
+      return self._thread_local._device_function_stack
+      # pylint: enable=protected-access
+    else:
+      return self._graph_device_function_stack
+
+  @property
+  def _device_functions_outer_to_inner(self):
+    user_device_specs = self._device_function_stack.peek_objs()
+    device_functions = [spec.function for spec in user_device_specs]
+    device_functions_outer_to_inner = list(reversed(device_functions))
+    return device_functions_outer_to_inner
+
+  def _snapshot_device_function_stack_metadata(self):
+    """Return device function stack as a list of TraceableObjects.
+
+    Returns:
+      [traceable_stack.TraceableObject, ...] where each TraceableObject's .obj
+      member is a displayable name for the user's argument to Graph.device, and
+      the filename and lineno members point to the code location where
+      Graph.device was called directly or indirectly by the user.
+    """
+    snapshot = []
+    for obj in self._device_function_stack.peek_traceable_objs():
+      obj_copy = obj.copy_metadata()
+      obj_copy.obj = obj.obj.display_name
+      snapshot.append(obj_copy)
+    return snapshot
+
+  @_device_function_stack.setter
+  def _device_function_stack(self, device_function_stack):
+    if self._stack_state_is_thread_local:
+      # pylint: disable=protected-access
+      self._thread_local._device_function_stack = device_function_stack
+      # pylint: enable=protected-access
+    else:
+      self._graph_device_function_stack = device_function_stack
+
+  @property
+  def _colocation_stack(self):
+    """Return thread-local copy of colocation stack."""
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where colocation_stack doesn't yet
+      # exist.
+      # pylint: disable=protected-access
+      if not hasattr(self._thread_local, "_colocation_stack"):
+        stack_copy_for_this_thread = self._graph_colocation_stack.copy()
+        self._thread_local._colocation_stack = stack_copy_for_this_thread
+      return self._thread_local._colocation_stack
+      # pylint: enable=protected-access
+    else:
+      return self._graph_colocation_stack
+
+  def _snapshot_colocation_stack_metadata(self):
+    """Return colocation stack metadata as a dictionary."""
+    return {
+        traceable_obj.obj.name: traceable_obj.copy_metadata()
+        for traceable_obj in self._colocation_stack.peek_traceable_objs()
+    }
+
+  @_colocation_stack.setter
+  def _colocation_stack(self, colocation_stack):
+    if self._stack_state_is_thread_local:
+      # pylint: disable=protected-access
+      self._thread_local._colocation_stack = colocation_stack
+      # pylint: enable=protected-access
+    else:
+      self._graph_colocation_stack = colocation_stack
+
+  @property
+  def _control_dependencies_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where control_dependencies_stack
+      # doesn't yet exist.
+      if not hasattr(self._thread_local, "_control_dependencies_stack"):
+        self._thread_local._control_dependencies_stack = (
+            self._graph_control_dependencies_stack[:])
+      return self._thread_local._control_dependencies_stack
+    else:
+      return self._graph_control_dependencies_stack
+
+  @_control_dependencies_stack.setter
+  def _control_dependencies_stack(self, control_dependencies):
+    if self._stack_state_is_thread_local:
+      self._thread_local._control_dependencies_stack = control_dependencies
+    else:
+      self._graph_control_dependencies_stack = control_dependencies
+
+  @property
+  def _distribution_strategy_stack(self):
+    """A stack to maintain distribution strategy context for each thread."""
+    if not hasattr(self._thread_local, "_distribution_strategy_stack"):
+      self._thread_local._distribution_strategy_stack = []  # pylint: disable=protected-access
+    return self._thread_local._distribution_strategy_stack  # pylint: disable=protected-access
+
+  @_distribution_strategy_stack.setter
+  def _distribution_strategy_stack(self, _distribution_strategy_stack):
+    self._thread_local._distribution_strategy_stack = (  # pylint: disable=protected-access
+        _distribution_strategy_stack)
+
+  @property
+  def _global_distribute_strategy_scope(self):
+    """For implementing `tf.distribute.set_strategy()`."""
+    if not hasattr(self._thread_local, "distribute_strategy_scope"):
+      self._thread_local.distribute_strategy_scope = None
+    return self._thread_local.distribute_strategy_scope
+
+  @_global_distribute_strategy_scope.setter
+  def _global_distribute_strategy_scope(self, distribute_strategy_scope):
+    self._thread_local.distribute_strategy_scope = (distribute_strategy_scope)
+
+  @property
+  def _auto_cast_variable_read_dtype(self):
+    """The dtype that instances of `AutoCastVariable` will be casted to.
+
+    This is None if `AutoCastVariables` should not be casted.
+
+    See `AutoCastVariable` for more information.
+
+    Returns:
+      The dtype that instances of `AutoCastVariable` will be casted to.
+    """
+    if not hasattr(self._thread_local, "_auto_cast_variable_read_dtype"):
+      self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
+    return self._thread_local._auto_cast_variable_read_dtype  # pylint: disable=protected-access
+
+  @_auto_cast_variable_read_dtype.setter
+  def _auto_cast_variable_read_dtype(self, _auto_cast_variable_read_dtype):
+    self._thread_local._auto_cast_variable_read_dtype = (  # pylint: disable=protected-access
+        _auto_cast_variable_read_dtype)
+
+  @tf_contextlib.contextmanager
+  def _enable_auto_casting_variables(self, dtype):
+    """Context manager to automatically cast AutoCastVariables.
+
+    If an AutoCastVariable `var` is used under this context manager, it will be
+    casted to `dtype` before being used.
+
+    See `AutoCastVariable` for more information.
+
+    Args:
+      dtype: The dtype that AutoCastVariables should be casted to.
+
+    Yields:
+      Nothing.
+    """
+    prev_read_dtype = self._auto_cast_variable_read_dtype
+    try:
+      self._auto_cast_variable_read_dtype = dtype
+      yield
+    finally:
+      self._auto_cast_variable_read_dtype = prev_read_dtype
+
+  def _mutation_lock(self):
+    """Returns a lock to guard code that creates & mutates ops.
+
+    See the comment for self._group_lock for more info.
+    """
+    return self._group_lock.group(_MUTATION_LOCK_GROUP)
+
+  def _session_run_lock(self):
+    """Returns a lock to guard code for Session.run.
+
+    See the comment for self._group_lock for more info.
+    """
+    return self._group_lock.group(_SESSION_RUN_LOCK_GROUP)
+
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
 # apply to inner graph mode code. Fix that.
+
+
+@tf_export(v1=["device"])
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
-  See
-  @{tf.Graph.device}
-  for more details.
+  See `tf.Graph.device` for more details.
 
   Args:
-    device_name_or_function: The device name or function to use in
-      the context.
+    device_name_or_function: The device name or function to use in the context.
 
   Returns:
     A context manager that specifies the default device to use for newly
@@ -4587,17 +5302,54 @@ def device(device_name_or_function):
   Raises:
     RuntimeError: If eager execution is enabled and a function is passed in.
   """
-  if context.in_graph_mode():
-    return get_default_graph().device(device_name_or_function)
-  else:
+  if context.executing_eagerly():
     # TODO(agarwal): support device functions in EAGER mode.
     if callable(device_name_or_function):
       raise RuntimeError(
           "tf.device does not support functions when eager execution "
           "is enabled.")
     return context.device(device_name_or_function)
+  else:
+    return get_default_graph().device(device_name_or_function)
 
 
+@tf_export("device", v1=[])
+def device_v2(device_name):
+  """Specifies the device for ops created/executed in this context.
+
+  `device_name` can be fully specified, as in "/job:worker/task:1/device:cpu:0",
+  or partially specified, containing only a subset of the "/"-separated
+  fields. Any fields which are specified override device annotations from outer
+  scopes. For example:
+
+  ```python
+  with tf.device('/job:foo'):
+    # ops created here have devices with /job:foo
+    with tf.device('/job:bar/task:0/device:gpu:2'):
+      # ops created here have the fully specified device above
+    with tf.device('/device:gpu:1'):
+      # ops created here have the device '/job:foo/device:gpu:1'
+  ```
+
+  Args:
+    device_name: The device name to use in the context.
+
+  Returns:
+    A context manager that specifies the default device to use for newly
+    created ops.
+
+  Raises:
+    RuntimeError: If a function is passed in.
+  """
+  if callable(device_name):
+    raise RuntimeError("tf.device does not support functions.")
+  if context.executing_eagerly():
+    return context.device(device_name)
+  else:
+    return get_default_graph().device(device_name)
+
+
+@tf_export(v1=["container"])
 def container(container_name):
   """Wrapper for `Graph.container()` using the default graph.
 
@@ -4611,36 +5363,70 @@ def container(container_name):
   return get_default_graph().container(container_name)
 
 
-def colocate_with(op, ignore_existing=False):
-  if context.in_graph_mode():
-    return get_default_graph().colocate_with(op, ignore_existing)
-  else:
+def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
+  if context.executing_eagerly():
     if op is not None:
+      if not hasattr(op, "device"):
+        op = internal_convert_to_tensor_or_indexed_slices(op)
       return device(op.device)
     else:
-      return _NullContextmanager()
+      return NullContextmanager()
+  else:
+    default_graph = get_default_graph()
+    if isinstance(op, EagerTensor):
+      if default_graph.building_function:
+        return default_graph.device(op.device)
+      else:
+        raise ValueError("Encountered an Eager-defined Tensor during graph "
+                         "construction, but a function was not being built.")
+    return default_graph._colocate_with_for_gradient(
+        op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
+# Internal interface to colocate_with. colocate_with has been deprecated from
+# public API. There are still a few internal uses of colocate_with. Add internal
+# only API for those uses to avoid deprecation warning.
+def colocate_with(op, ignore_existing=False):
+  return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
+
+
+@deprecation.deprecated(
+    date=None, instructions="Colocations handled automatically by placer.")
+@tf_export(v1=["colocate_with"])
+def _colocate_with(op, ignore_existing=False):
+  return colocate_with(op, ignore_existing)
+
+
+@tf_export("control_dependencies")
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
-  See @{tf.Graph.control_dependencies}
+  See `tf.Graph.control_dependencies`
   for more details.
 
+  When eager execution is enabled, any callable object in the `control_inputs`
+  list will be called.
+
   Args:
-    control_inputs: A list of `Operation` or `Tensor` objects which
-      must be executed or computed before running the operations
-      defined in the context.  Can also be `None` to clear the control
-      dependencies.
+    control_inputs: A list of `Operation` or `Tensor` objects which must be
+      executed or computed before running the operations defined in the context.
+      Can also be `None` to clear the control dependencies. If eager execution
+      is enabled, any callable object in the `control_inputs` list will be
+      called.
 
   Returns:
    A context manager that specifies control dependencies for all
    operations constructed within the context.
   """
-  if context.in_graph_mode():
-    return get_default_graph().control_dependencies(control_inputs)
+  if context.executing_eagerly():
+    if control_inputs:
+      # Excute any pending callables.
+      for control in control_inputs:
+        if callable(control):
+          control()
+    return NullContextmanager()
   else:
-    return _NullContextmanager()
+    return get_default_graph().control_dependencies(control_inputs)
 
 
 class _DefaultStack(threading.local):
@@ -4671,8 +5457,8 @@ class _DefaultStack(threading.local):
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     """A context manager for manipulating a default stack."""
+    self.stack.append(default)
     try:
-      self.stack.append(default)
       yield default
     finally:
       # stack may be empty if reset() was called
@@ -4738,6 +5524,7 @@ def default_session(session):
   return _default_session_stack.get_controller(session)
 
 
+@tf_export(v1=["get_default_session"])
 def get_default_session():
   """Returns the default session for the current thread.
 
@@ -4859,18 +5646,24 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 
   @tf_contextlib.contextmanager
   def get_controller(self, default):
+    context.context().context_switches.push(default.building_function,
+                                            default.as_default,
+                                            default._device_function_stack)
     try:
-      context.context_stack.push(default.building_function, default.as_default)
-      with super(_DefaultGraphStack, self).get_controller(default) as g:
+      with super(_DefaultGraphStack,
+                 self).get_controller(default) as g, context.graph_mode():
         yield g
     finally:
-      context.context_stack.pop()
+      # If an exception is raised here it may be hiding a related exception in
+      # the try-block (just above).
+      context.context().context_switches.pop()
 
 
 _default_graph_stack = _DefaultGraphStack()
 
 
 # pylint: disable=g-doc-return-or-yield,line-too-long
+@tf_export("init_scope")
 @tf_contextlib.contextmanager
 def init_scope():
   """A context manager that lifts ops out of control-flow scopes and function-building graphs.
@@ -4890,113 +5683,288 @@ def init_scope():
         graph function. Here, a context is defined as either a graph or an eager
         context. Every context switch, i.e., every installation of a graph as
         the default graph and every switch into eager mode, is logged in a
-        thread-local stack called the `context_stack`; the log entry for a
+        thread-local stack called `context_switches`; the log entry for a
         context switch is popped from the stack when the context is exited.
-        Entering an `init_scope` is equivalent to crawling up the
-        `context_stack`, finding the first context that is not building a graph
-        function, and entering it. A caveat is that if graph mode is enabled
-        but the default graph stack is empty, then entering an `init_scope`
-        will simply install a fresh graph as the default one.
+        Entering an `init_scope` is equivalent to crawling up
+        `context_switches`, finding the first context that is not building a
+        graph function, and entering it. A caveat is that if graph mode is
+        enabled but the default graph stack is empty, then entering an
+        `init_scope` will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
+
+  When eager execution is enabled, code inside an init_scope block runs with
+  eager execution enabled even when defining graph functions via
+  tf.contrib.eager.defun. For example:
+
+  ```python
+  tf.compat.v1.enable_eager_execution()
+
+  @tf.contrib.eager.defun
+  def func():
+    # A defun-decorated function constructs TensorFlow graphs,
+    # it does not execute eagerly.
+    assert not tf.executing_eagerly()
+    with tf.init_scope():
+      # Initialization runs with eager execution enabled
+      assert tf.executing_eagerly()
+  ```
+
+  Raises:
+    RuntimeError: if graph state is incompatible with this initialization.
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
-  outer_context = None
-  if context.in_graph_mode() and not _default_graph_stack.stack:
-    outer_context = get_default_graph().as_default
+  if context.executing_eagerly():
+    # Fastpath.
+    with tape.stop_recording():
+      yield
   else:
-    for stack_entry in reversed(context.context_stack.stack):
-      if not stack_entry.is_building_function:
-        outer_context = stack_entry.enter_context_fn
-        break
+    # Retrieve the active name scope: entering an `init_scope` preserves
+    # the name scope of the current context.
+    default_graph = get_default_graph()
+    scope = default_graph.get_name_scope()
+    if scope and scope[-1] != "/":
+      # Names that end with trailing slashes are treated by `name_scope` as
+      # absolute.
+      scope = scope + "/"
+    innermost_nonempty_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
-  if outer_context is None:
-    raise AssertionError("All graphs are building functions, and no "
+    outer_context = None
+    if not _default_graph_stack.stack:
+      # If the default graph stack is empty, then we cannot be building a
+      # function. Install the global graph (which, in this case, is also the
+      # default graph) as the outer context.
+      if default_graph.building_function:
+        raise RuntimeError("The global graph is building a function.")
+      outer_context = default_graph.as_default
+    else:
+      # Find a context that is not building a function.
+      for stack_entry in reversed(context.context().context_switches.stack):
+        if not innermost_nonempty_device_stack:
+          innermost_nonempty_device_stack = stack_entry.device_stack
+        if not stack_entry.is_building_function:
+          outer_context = stack_entry.enter_context_fn
+          break
+
+      if outer_context is None:
+        # As a last resort, obtain the global default graph; this graph doesn't
+        # necessarily live on the graph stack (and hence it doesn't necessarily
+        # live on the context stack), but it is stored in the graph stack's
+        # encapsulating object.
+        outer_context = _default_graph_stack._GetGlobalDefaultGraph().as_default  # pylint: disable=protected-access
+
+    if outer_context is None:
+      # Sanity check; this shouldn't be triggered.
+      raise RuntimeError("All graphs are building functions, and no "
                          "eager context was previously active.")
 
-  try:
-    with outer_context(), control_dependencies(None), tape.stop_recording():
-      yield
-  finally:
-    pass
+    outer_graph = None
+    outer_device_stack = None
+    try:
+      with outer_context(), name_scope(scope), control_dependencies(
+          None), tape.stop_recording():
+        context_manager = NullContextmanager
+        context_manager_input = None
+        if not context.executing_eagerly():
+          # The device stack is preserved when lifting into a graph. Eager
+          # execution doesn't implement device stacks and in particular it
+          # doesn't support device functions, so in general it's not possible
+          # to do the same when lifting into the eager context.
+          outer_graph = get_default_graph()
+          outer_device_stack = outer_graph._device_function_stack  # pylint: disable=protected-access
+          outer_graph._device_function_stack = innermost_nonempty_device_stack  # pylint: disable=protected-access
+        elif innermost_nonempty_device_stack is not None:
+          for device_spec in innermost_nonempty_device_stack.peek_objs():
+            if device_spec.function is None:
+              break
+            if device_spec.raw_string:
+              context_manager = context.device
+              context_manager_input = device_spec.raw_string
+              break
+            # It is currently not possible to have a device function in V2,
+            # but in V1 we are unable to apply device functions in eager mode.
+            # This means that we will silently skip some of the entries on the
+            # device stack in V1 + eager mode.
+
+        with context_manager(context_manager_input):
+          yield
+    finally:
+      # If an exception is raised here it may be hiding a related exception in
+      # try-block (just above).
+      if outer_graph is not None:
+        outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
-def enable_eager_execution(config=None, device_policy=None):
-  """Enables, for the rest of the lifetime of this program, eager execution.
+def executing_eagerly_outside_functions():
+  """Returns True if executing eagerly, even if inside a graph function."""
+  # Fastpath for when this is called eagerly (its not necessary to init_scope).
+  if context.executing_eagerly():
+    return True
 
-  If not called immediately on startup risks creating breakage and bugs.
+  with init_scope():
+    return context.executing_eagerly()
 
-  Example:
+
+def inside_function():
+  return get_default_graph().building_function
+
+
+@tf_export(v1=["enable_eager_execution"])
+def enable_eager_execution(config=None, device_policy=None,
+                           execution_mode=None):
+  """Enables eager execution for the lifetime of this program.
+
+  Eager execution provides an imperative interface to TensorFlow. With eager
+  execution enabled, TensorFlow functions execute operations immediately (as
+  opposed to adding to a graph to be executed later in a `tf.compat.v1.Session`)
+  and
+  return concrete values (as opposed to symbolic references to a node in a
+  computational graph).
+
+  For example:
+
   ```python
-  tfe.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
 
   # After eager execution is enabled, operations are executed as they are
-  # defined and `Tensor`s hold concrete values, which can be accessed as
-  # `numpy.ndarray`s through the `numpy()` method.
+  # defined and Tensor objects hold concrete values, which can be accessed as
+  # numpy.ndarray`s through the numpy() method.
   assert tf.multiply(6, 7).numpy() == 42
   ```
 
+  Eager execution cannot be enabled after TensorFlow APIs have been used to
+  create or execute graphs. It is typically recommended to invoke this function
+  at program startup and not in a library (as most libraries should be usable
+  both with and without eager execution).
+
   Args:
-    config: (Optional.) A `ConfigProto` protocol buffer with configuration
-     options for the Context. Note that a lot of these options may be
-     currently unimplemented or irrelevant when eager execution is enabled.
-    device_policy: (Optional.) What policy to use when trying to run an
-     operation on a device with inputs which are not on that device.
-     Valid values:
-       tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is not
-         correct.
-       tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
-         right device but raises a warning.
-       tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
-         hide performance problems.
+    config: (Optional.) A `tf.compat.v1.ConfigProto` to use to configure the
+      environment in which operations are executed. Note that
+      `tf.compat.v1.ConfigProto` is also used to configure graph execution (via
+      `tf.compat.v1.Session`) and many options within `tf.compat.v1.ConfigProto`
+      are not implemented (or are irrelevant) when eager execution is enabled.
+    device_policy: (Optional.) Policy controlling how operations requiring
+      inputs on a specific device (e.g., a GPU 0) handle inputs on a different
+      device  (e.g. GPU 1 or CPU). When set to None, an appropriate value will
+      be picked automatically. The value picked may change between TensorFlow
+      releases.
+      Valid values:
+      - tf.contrib.eager.DEVICE_PLACEMENT_EXPLICIT: raises an error if the
+        placement is not correct.
+      - tf.contrib.eager.DEVICE_PLACEMENT_WARN: copies the tensors which are not
+        on the right device but logs a warning.
+      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT: silently copies the tensors.
+        Note that this may hide performance problems as there is no notification
+        provided when operations are blocked on the tensor being copied between
+        devices.
+      - tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies
+        int32 tensors, raising errors on the other ones.
+    execution_mode: (Optional.) Policy controlling how operations dispatched are
+      actually executed. When set to None, an appropriate value will be picked
+      automatically. The value picked may change between TensorFlow releases.
+      Valid values:
+      - tf.contrib.eager.SYNC: executes each operation synchronously.
+      - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+        operations may return "non-ready" handles.
 
   Raises:
-    ValueError: If trying to create a context after using graph operations
-     or if trying to create a context with nontrivial options which differ
-     from those of the existing context.
+    ValueError: If eager execution is enabled after creating/executing a
+     TensorFlow graph, or if options provided conflict with a previous call
+     to this function.
+  """
+  if context.default_execution_mode != context.EAGER_MODE:
+    return enable_eager_execution_internal(
+        config=config,
+        device_policy=device_policy,
+        execution_mode=execution_mode,
+        server_def=None)
+
+
+@tf_export(v1=["disable_eager_execution"])
+def disable_eager_execution():
+  """Disables eager execution.
+
+  This function can only be called before any Graphs, Ops, or Tensors have been
+  created. It can be used at the beginning of the program for complex migration
+  projects from TensorFlow 1.x to 2.x.
+  """
+  context.default_execution_mode = context.GRAPH_MODE
+  c = context.context_safe()
+  if c is not None:
+    c._thread_local_data.is_eager = False  # pylint: disable=protected-access
+
+
+def enable_eager_execution_internal(config=None,
+                                    device_policy=None,
+                                    execution_mode=None,
+                                    server_def=None):
+  """Enables eager execution for the lifetime of this program.
+
+  Most of the doc string for enable_eager_execution is relevant here as well.
+
+  Args:
+    config: See enable_eager_execution doc string
+    device_policy: See enable_eager_execution doc string
+    execution_mode: See enable_eager_execution doc string
+    server_def: (Optional.) A tensorflow::ServerDef proto. Enables execution on
+      remote devices. GrpcServers need to be started by creating an identical
+      server_def to this, and setting the appropriate task_indexes, so that the
+      servers can communicate. It will then be possible to execute operations on
+      remote devices.
+
+  Raises:
+    ValueError
+
   """
   if config is not None and not isinstance(config, config_pb2.ConfigProto):
-    raise TypeError(
-        "config must be a tf.ConfigProto, but got %s" % type(config))
+    raise TypeError("config must be a tf.ConfigProto, but got %s" %
+                    type(config))
   if device_policy not in (None, context.DEVICE_PLACEMENT_EXPLICIT,
                            context.DEVICE_PLACEMENT_WARN,
-                           context.DEVICE_PLACEMENT_SILENT):
+                           context.DEVICE_PLACEMENT_SILENT,
+                           context.DEVICE_PLACEMENT_SILENT_FOR_INT32):
     raise ValueError(
-        "device_policy must be one of None, tfe.DEVICE_PLACEMENT_EXPLICIT, "
-        "tfe.DEVICE_PLACEMENT_WARN, tfe.DEVICE_PLACEMENT_SILENT"
+        "device_policy must be one of None, tf.contrib.eager.DEVICE_PLACEMENT_*"
     )
-  # pylint: disable=protected-access
-  if context._default_mode == context.GRAPH_MODE:
+  if execution_mode not in (None, context.SYNC, context.ASYNC):
+    raise ValueError(
+        "execution_mode must be one of None, tf.contrib.eager.SYNC, "
+        "tf.contrib.eager.ASYNC")
+  if context.default_execution_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
-        _default_session_stack.stack or
-        _default_graph_stack._global_default_graph is not None)
+        _default_graph_stack._global_default_graph is not None)  # pylint: disable=protected-access
     if graph_mode_has_been_used:
       raise ValueError(
-          "tfe.enable_eager_execution has to be called at program startup.")
-  context._default_mode = context.EAGER_MODE
+          "tf.enable_eager_execution must be called at program startup.")
+  context.default_execution_mode = context.EAGER_MODE
+  # pylint: disable=protected-access
   if context._context is None:
-    context._context = context.Context(config=config,
-                                       device_policy=device_policy)
-    if context.context_stack.stack:
-      raise AssertionError("Invariant violated: The context stack must "
-                           "be empty when eager execution is enabled.")
-    # Log that eager execution has been enabled by pushing an entry onto the
-    # context stack; this entry won't ever be popped, as it's impossible to
-    # disable eager execution
-    context.context_stack.push(False, context.eager_mode)
-  elif ((config is not None and config is not context._context._config)
-        or (device_policy is not None
-            and device_policy is not context._context._device_policy)):
-    raise ValueError("Trying to change the options of an active eager"
-                     " execution. Context config: %s, specified config:"
-                     " %s. Context device policy: %s; specified device"
-                     " policy: %s." % (config, context._context._config,
-                                       device_policy,
-                                       context._context._device_policy))
-  else:
+    context._context = context.Context(
+        config=config,
+        device_policy=device_policy,
+        execution_mode=execution_mode,
+        server_def=server_def)
+  elif ((config is not None and config is not context._context._config) or
+        (device_policy is not None and
+         device_policy is not context._context._device_policy) or
+        (execution_mode is not None and
+         execution_mode is not context._context._execution_mode)):
     raise ValueError(
-        "tfe.enable_eager_execution has to be called at program startup.")
+        "Trying to change the options of an active eager"
+        " execution. Context config: %s, specified config:"
+        " %s. Context device policy: %s, specified device"
+        " policy: %s. Context execution mode: %s, "
+        " specified execution mode %s." %
+        (context._context._config, config, context._context._device_policy,
+         device_policy, context._context._execution_mode, execution_mode))
+  else:
+    # We already created everything, so update the thread local data.
+    context._context._thread_local_data.is_eager = True
+
+  # Monkey patch to get rid of an unnecessary conditional since the context is
+  # now initialized.
+  context.context = context.context_safe
 
 
 def eager_run(main=None, argv=None):
@@ -5027,12 +5995,14 @@ def eager_run(main=None, argv=None):
   app.run(main, argv)
 
 
+@tf_export(v1=["reset_default_graph"])
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 
   NOTE: The default graph is a property of the current thread. This
   function applies only to the current thread.  Calling this function while
-  a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
+  a `tf.compat.v1.Session` or `tf.compat.v1.InteractiveSession` is active will
+  result in undefined
   behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
   after calling this function will result in undefined behavior.
   Raises:
@@ -5045,6 +6015,7 @@ def reset_default_graph():
   _default_graph_stack.reset()
 
 
+@tf_export(v1=["get_default_graph"])
 def get_default_graph():
   """Returns the default graph for the current thread.
 
@@ -5063,6 +6034,11 @@ def get_default_graph():
   return _default_graph_stack.get_default()
 
 
+def has_default_graph():
+  """Returns True if there is a default graph."""
+  return len(_default_graph_stack.stack) >= 1
+
+
 def get_name_scope():
   """Returns the current name scope in the default_graph.
 
@@ -5078,6 +6054,8 @@ def get_name_scope():
   Returns:
     A string representing the current name scope.
   """
+  if context.executing_eagerly():
+    return context.context().scope_name.rstrip("/")
   return get_default_graph().get_name_scope()
 
 
@@ -5092,8 +6070,8 @@ def _assert_same_graph(original_item, item):
     ValueError: if graphs do not match.
   """
   if original_item.graph is not item.graph:
-    raise ValueError("%s must be from the same graph as %s." % (item,
-                                                                original_item))
+    raise ValueError("%s must be from the same graph as %s." %
+                     (item, original_item))
 
 
 def _get_graph_from_inputs(op_input_list, graph=None):
@@ -5165,6 +6143,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   return graph or get_default_graph()
 
 
+@tf_export(v1=["GraphKeys"])
 class GraphKeys(object):
   """Standard names to use for graph collections.
 
@@ -5179,7 +6158,7 @@ class GraphKeys(object):
 
   * `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
     across distributed environment (model variables are subset of these). See
-    @{tf.global_variables}
+    `tf.compat.v1.global_variables`
     for more details.
     Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
     and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
@@ -5191,19 +6170,19 @@ class GraphKeys(object):
     `tf.contrib.framework.model_variable` to add to this collection.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
-    @{tf.trainable_variables}
+    `tf.compat.v1.trainable_variables`
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    @{tf.summary.merge_all}
+    `tf.compat.v1.summary.merge_all`
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See
-    @{tf.train.start_queue_runners}
+    `tf.compat.v1.train.start_queue_runners`
     for more details.
   * `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
     keep moving averages.  See
-    @{tf.moving_average_variables}
+    `tf.compat.v1.moving_average_variables`
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
@@ -5305,59 +6284,77 @@ class GraphKeys(object):
   _STREAMING_MODEL_PORTS = "streaming_model_ports"
 
   @decorator_utils.classproperty
+  @deprecation.deprecated(None, "Use `tf.GraphKeys.GLOBAL_VARIABLES` instead.")
   def VARIABLES(cls):  # pylint: disable=no-self-argument
-    logging.log_first_n(logging.WARN,
-                        "VARIABLES collection name is deprecated, please use "
-                        "GLOBAL_VARIABLES instead; VARIABLES will be removed "
-                        "after 2017-03-02.", 1)
     return cls.GLOBAL_VARIABLES
 
 
+def dismantle_graph(graph):
+  """Cleans up reference cycles from a `Graph`.
+
+  Helpful for making sure the garbage collector doesn't need to run after a
+  temporary `Graph` is no longer needed.
+
+  Args:
+    graph: A `Graph` object to destroy. Neither it nor any of its ops are usable
+      after this function runs.
+  """
+  memory.dismantle_ordered_dict(graph._functions)  # pylint: disable=protected-access
+
+  # Now clean up Operation<->Graph reference cycles by clearing all of the
+  # attributes for the Graph and its ops.
+  graph_operations = graph.get_operations()
+  for op in graph_operations:
+    op.__dict__ = {}
+  graph.__dict__ = {}
+
+
+@tf_export(v1=["add_to_collection"])
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
-  See @{tf.Graph.add_to_collection}
+  See `tf.Graph.add_to_collection`
   for more details.
 
   Args:
     name: The key for the collection. For example, the `GraphKeys` class
       contains many standard names for collections.
-    value: The value to add to the collection.
-
-  @compatibility(eager)
-  Collections are not supported when eager execution is enabled.
-  @end_compatibility
+    value: The value to add to the collection.  @compatibility(eager)
+      Collections are only supported in eager when variables are created inside
+      an EagerVariableStore (e.g. as part of a layer or template).
+      @end_compatibility
   """
   get_default_graph().add_to_collection(name, value)
 
 
+@tf_export(v1=["add_to_collections"])
 def add_to_collections(names, value):
   """Wrapper for `Graph.add_to_collections()` using the default graph.
 
-  See @{tf.Graph.add_to_collections}
+  See `tf.Graph.add_to_collections`
   for more details.
 
   Args:
-    names: The key for the collections. The `GraphKeys` class
-      contains many standard names for collections.
-    value: The value to add to the collections.
-
-  @compatibility(eager)
-  Collections are not supported when eager execution is enabled.
-  @end_compatibility
+    names: The key for the collections. The `GraphKeys` class contains many
+      standard names for collections.
+    value: The value to add to the collections.  @compatibility(eager)
+      Collections are only supported in eager when variables are created inside
+      an EagerVariableStore (e.g. as part of a layer or template).
+      @end_compatibility
   """
   get_default_graph().add_to_collections(names, value)
 
 
+@tf_export(v1=["get_collection_ref"])
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
-  See @{tf.Graph.get_collection_ref}
+  See `tf.Graph.get_collection_ref`
   for more details.
 
   Args:
-    key: The key for the collection. For example, the `GraphKeys` class
-      contains many standard names for collections.
+    key: The key for the collection. For example, the `GraphKeys` class contains
+      many standard names for collections.
 
   Returns:
     The list of values in the collection with the given `name`, or an empty
@@ -5372,20 +6369,21 @@ def get_collection_ref(key):
   return get_default_graph().get_collection_ref(key)
 
 
+@tf_export(v1=["get_collection"])
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
-  See @{tf.Graph.get_collection}
+  See `tf.Graph.get_collection`
   for more details.
 
   Args:
-    key: The key for the collection. For example, the `GraphKeys` class
-      contains many standard names for collections.
+    key: The key for the collection. For example, the `GraphKeys` class contains
+      many standard names for collections.
     scope: (Optional.) If supplied, the resulting list is filtered to include
-      only items whose `name` attribute matches using `re.match`. Items
-      without a `name` attribute are never returned if a scope is supplied and
-      the choice or `re.match` means that a `scope` without special tokens
-      filters by prefix.
+      only items whose `name` attribute matches using `re.match`. Items without
+      a `name` attribute are never returned if a scope is supplied and the
+      choice or `re.match` means that a `scope` without special tokens filters
+      by prefix.
 
   Returns:
     The list of values in the collection with the given `name`, or
@@ -5405,16 +6403,20 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
+name_scope_cache = {}
+
+
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
+@tf_export(v1=["name_scope"])
 class name_scope(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 
   This context manager validates that the given `values` are from the
   same graph, makes that graph the default graph, and pushes a
   name scope in that graph (see
-  @{tf.Graph.name_scope}
+  `tf.Graph.name_scope`
   for more details on that).
 
   For example, to define a new Python op called `my_op`:
@@ -5441,12 +6443,26 @@ class name_scope(object):  # pylint: disable=invalid-name
       name: The name argument that is passed to the op function.
       default_name: The default name to use if the `name` argument is `None`.
       values: The list of `Tensor` arguments that are passed to the op function.
+
+    Raises:
+      TypeError: if `default_name` is passed in but not a string.
     """
+    if not (default_name is None or isinstance(default_name, six.string_types)):
+      raise TypeError(
+          "`default_name` type (%s) is not a string type. You likely meant to "
+          "pass this into the `values` kwarg." % type(default_name))
     self._name = default_name if name is None else name
     self._default_name = default_name
     self._values = values
     self._ctx = context.context()
-    self._in_eager_mode = self._ctx.in_eager_mode()
+    self._in_eager_mode = self._ctx.executing_eagerly()
+    self._has_symbolic_input_in_eager = False
+    if self._values and self._in_eager_mode:
+      # The presence of a graph tensor in `self._values` overrides the context.
+      for value in self._values:
+        if hasattr(value, "graph"):
+          self._has_symbolic_input_in_eager = True
+          self._name_scope = value.graph.name_scope(self._name)
 
   def __enter__(self):
     """Start the scope block.
@@ -5458,12 +6474,19 @@ class name_scope(object):  # pylint: disable=invalid-name
       ValueError: if neither `name` nor `default_name` is provided
         but `values` are.
     """
+    if self._has_symbolic_input_in_eager:
+      return self._name_scope.__enter__()
+
     if self._in_eager_mode:
       self._old_name = self._ctx.scope_name
       if not self._name:
         scope_name = ""
       else:
-        if self._name[-1] == "/":
+        cache_key = self._name, self._old_name, self._default_name
+        if cache_key in name_scope_cache:
+          self._ctx.scope_name = name_scope_cache[cache_key]
+          return self._ctx.scope_name
+        elif self._name[-1] == "/":
           # A trailing slash breaks out of nested name scopes, indicating a
           # fully specified scope name, for compatibility with Graph.name_scope.
           scope_name = self._name
@@ -5472,6 +6495,7 @@ class name_scope(object):  # pylint: disable=invalid-name
           scope_name = (
               self._old_name + name_with_trailing_slash
               if self._old_name else name_with_trailing_slash)
+        name_scope_cache[cache_key] = scope_name
       self._ctx.scope_name = scope_name
       return scope_name
     else:
@@ -5495,12 +6519,55 @@ class name_scope(object):  # pylint: disable=invalid-name
         raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
-    if self._in_eager_mode:
+    if self._has_symbolic_input_in_eager:
+      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
+    elif self._in_eager_mode:
       self._ctx.scope_name = self._old_name
     else:
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
       self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
+
+
+@tf_export("name_scope", v1=[])
+class name_scope_v2(name_scope):
+  """A context manager for use when defining a Python op.
+
+  This context manager pushes a name scope, which will make the name of all
+  operations added within it have a prefix.
+
+  For example, to define a new Python op called `my_op`:
+
+  ```python
+  def my_op(a, b, c, name=None):
+    with tf.name_scope("MyOp") as scope:
+      a = tf.convert_to_tensor(a, name="a")
+      b = tf.convert_to_tensor(b, name="b")
+      c = tf.convert_to_tensor(c, name="c")
+      # Define some computation that uses `a`, `b`, and `c`.
+      return foo_op(..., name=scope)
+  ```
+
+  When executed, the Tensors `a`, `b`, `c`, will have names `MyOp/a`, `MyOp/b`,
+  and `MyOp/c`.
+
+  If the scope name already exists, the name will be made unique by appending
+  `_n`. For example, calling `my_op` the second time will generate `MyOp_1/a`,
+  etc.
+  """
+
+  def __init__(self, name):
+    """Initialize the context manager.
+
+    Args:
+      name: The prefix to use on all names created within the name scope.
+
+    Raises:
+      ValueError: If name is None, or not a string.
+    """
+    if name is None or not isinstance(name, six.string_types):
+      raise ValueError("name for name_scope must be a string.")
+    super(name_scope_v2, self).__init__(name=None, default_name=name)
 
 
 def strip_name_scope(name, export_scope):
@@ -5515,6 +6582,9 @@ def strip_name_scope(name, export_scope):
     is None.
   """
   if export_scope:
+    if export_scope[-1] == "/":
+      export_scope = export_scope[:-1]
+
     try:
       # Strips export_scope/, export_scope///,
       # ^export_scope/, loc:@export_scope/.
@@ -5540,6 +6610,9 @@ def prepend_name_scope(name, import_scope):
     is None.
   """
   if import_scope:
+    if import_scope[-1] == "/":
+      import_scope = import_scope[:-1]
+
     try:
       str_to_replace = r"([\^]|loc:@|^)(.*)"
       return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",
@@ -5554,6 +6627,7 @@ def prepend_name_scope(name, import_scope):
 
 # pylint: disable=g-doc-return-or-yield
 # pylint: disable=not-context-manager
+@tf_export(v1=["op_scope"])
 @tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""
@@ -5618,18 +6692,38 @@ def get_from_proto_function(collection_name):
     return None
 
 
-def _assert_collection_is_ok(collection_name):
-  if context.in_eager_mode():
-    if collection_name in GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
-      raise ValueError("When Eager Execution is enabled, variable "
-                       "collections are not supported.")
-
-
 def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
   """Produce a nice error if someone converts an Operation to a Tensor."""
   raise TypeError(("Can't convert Operation '%s' to Tensor "
-                   "(target dtype=%r, name=%r, as_ref=%r)") % (op.name, dtype,
-                                                               name, as_ref))
+                   "(target dtype=%r, name=%r, as_ref=%r)") %
+                  (op.name, dtype, name, as_ref))
+
+
+def _op_to_colocate_with(v):
+  """Operation object corresponding to v to use for colocation constraints."""
+  if v is None:
+    return None
+  if isinstance(v, Operation):
+    return v
+  # We always want to colocate with the reference op.
+  # When 'v' is a ResourceVariable, the reference op is the handle creating op.
+  #
+  # What this should be is:
+  # if isinstance(v, ResourceVariable):
+  #   return v.handle.op
+  # However, that would require a circular import dependency.
+  # As of October 2018, there were attempts underway to remove
+  # colocation constraints altogether. Assuming that will
+  # happen soon, perhaps this hack to work around the circular
+  # import dependency is acceptable.
+  if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
+      v.handle.op, Operation):
+    return v.handle.op
+  return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
+
+
+def _is_keras_symbolic_tensor(x):
+  return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"
 
 
 register_tensor_conversion_function(Operation, _operation_conversion_error)

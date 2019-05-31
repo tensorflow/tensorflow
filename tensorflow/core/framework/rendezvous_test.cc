@@ -69,9 +69,7 @@ class LocalRendezvousTest : public ::testing::Test {
     rendez_ = NewLocalRendezvous();
   }
 
-  ~LocalRendezvousTest() override {
-    rendez_->Unref();
-  }
+  ~LocalRendezvousTest() override { rendez_->Unref(); }
 
   void SchedClosure(std::function<void()> fn) {
     threads_.Schedule(std::move(fn));
@@ -99,8 +97,8 @@ string V(const Tensor& tensor) {
 
 Rendezvous::ParsedKey MakeKey(const string& name) {
   string s = Rendezvous::CreateKey("/job:mnist/replica:1/task:2/CPU:0", 7890,
-                                   "/job:mnist/replica:1/task:2/device:GPU:0", name,
-                                   FrameAndIter(0, 0));
+                                   "/job:mnist/replica:1/task:2/device:GPU:0",
+                                   name, FrameAndIter(0, 0));
   Rendezvous::ParsedKey k;
   TF_EXPECT_OK(Rendezvous::ParseKey(s, &k));
   return k;
@@ -280,6 +278,12 @@ class DummyDeviceContext : public DeviceContext {
   ~DummyDeviceContext() override {}
   int stream_id() const { return stream_id_; }
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override {
+    done(Status::OK());
+  }
+
  private:
   const int stream_id_;
 };
@@ -314,7 +318,6 @@ void BM_SendRecv(int iters) {
   Tensor val(DT_STRING, TensorShape({}));
   bool is_dead = false;
   Rendezvous::Args args;
-  Status s;
   if (iters > 0) {
     while (iters--) {
       TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
@@ -339,7 +342,6 @@ void BM_PingPong(int iters) {
     Tensor foo(DT_STRING, TensorShape({}));
     bool is_dead = false;
     Rendezvous::Args args;
-    Status s;
     for (int i = 0; i < iters; ++i) {
       TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &foo, &is_dead));
       TF_CHECK_OK(rendez->Send(KeyBar(), args, bar, is_dead));
@@ -350,7 +352,6 @@ void BM_PingPong(int iters) {
   Tensor bar(DT_STRING, TensorShape({}));
   bool is_dead = false;
   Rendezvous::Args args;
-  Status s;
   for (int i = 0; i < iters; ++i) {
     TF_CHECK_OK(rendez->Send(KeyFoo(), args, foo, is_dead));
     TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -52,6 +52,27 @@ template <typename T>
 struct LeftUpdate<T, scatter_nd_op::UpdateOp::SUB> {
   EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
     CudaAtomicSub(out, val);
+  }
+};
+
+// Specializations for std::complex, updating real and imaginary part
+// individually. Even though this is not an atomic op anymore, it is safe
+// because there is only one type of op per kernel.
+template <typename T>
+struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::ADD> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
+      std::complex<T>* out, const std::complex<T>& val) {
+    T* ptr = reinterpret_cast<T*>(out);
+    CudaAtomicAdd(ptr, val.real());
+    CudaAtomicAdd(ptr, val.imag());
+  }
+};
+
+template <typename T>
+struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::SUB> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
+      std::complex<T>* out, const std::complex<T>& val) {
+    LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::ADD>()(out, -val);
   }
 };
 
@@ -114,13 +135,13 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
       }
     }
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(Toutput.size(), d);
-    // clang-format off
-    ScatterNdOpKernel<T, Index, op, IXDIM>
-    <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      Tindices.data(), Tupdates.data(), Toutput.data(), output_shape_prefix,
-      batch_strides, batch_size, slice_size);
-    // clang-format on
+    GpuLaunchConfig config = GetCudaLaunchConfig(Toutput.size(), d);
+
+    TF_CHECK_OK(CudaLaunchKernel(ScatterNdOpKernel<T, Index, op, IXDIM>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), Tindices.data(), Tupdates.data(),
+                                 Toutput.data(), output_shape_prefix,
+                                 batch_strides, batch_size, slice_size));
 
     return -1;
   }
@@ -149,6 +170,7 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64)
 
+TF_CALL_int32(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_complex64(DECLARE_GPU_SPECS);
 TF_CALL_complex128(DECLARE_GPU_SPECS);

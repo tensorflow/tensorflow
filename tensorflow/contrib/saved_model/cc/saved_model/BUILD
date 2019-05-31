@@ -16,9 +16,10 @@
 # Description:
 # SavedModel contrib libraries for C++.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -30,6 +31,7 @@ cc_library(
     hdrs = ["signature_def_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -42,16 +44,11 @@ tf_cc_test(
     srcs = ["signature_def_utils_test.cc"],
     deps = [
         ":signature_def_utils",
+        "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["*"]),
-    visibility = ["//tensorflow:__subpackages__"],
 )

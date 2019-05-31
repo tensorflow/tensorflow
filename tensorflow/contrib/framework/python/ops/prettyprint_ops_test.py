@@ -34,7 +34,7 @@ class PrettyPrintOpsTest(test.TestCase):
   def testPrintTensorPassthrough(self):
     a = constant_op.constant([1])
     a = prettyprint_ops.print_op(a)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(a.eval(), constant_op.constant([1]).eval())
 
   def testPrintSparseTensorPassthrough(self):
@@ -43,7 +43,7 @@ class PrettyPrintOpsTest(test.TestCase):
     b = sparse_tensor.SparseTensor(
         indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
     a = prettyprint_ops.print_op(a)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           sparse_ops.sparse_tensor_to_dense(a).eval(),
           sparse_ops.sparse_tensor_to_dense(b).eval())
@@ -54,13 +54,13 @@ class PrettyPrintOpsTest(test.TestCase):
     a = a.write(1, 1)
     a = a.write(0, 0)
     a = prettyprint_ops.print_op(a)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(a.stack().eval(), constant_op.constant([0, 1]).eval())
 
   def testPrintVariable(self):
     a = variables.Variable(1.0)
     a = prettyprint_ops.print_op(a)
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       a.eval()
 

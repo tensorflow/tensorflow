@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -53,7 +54,7 @@ Status LogicalBufferAnalysis::Analyze() {
   // so reserve 10% more than the number of instructions to avoid frequent
   // resizes.
   logical_buffers_.clear();
-  logical_buffers_.reserve((module_->NumUniqueInstructionIds() * 11) / 10);
+  logical_buffers_.reserve((module_->instruction_count() * 11) / 10);
 
   // We filter out fusion computations, and get to them through fusion
   // instructions. This is because it's possible to have orphaned (unreachable)
@@ -89,7 +90,7 @@ void LogicalBufferAnalysis::NewLogicalBuffer(HloInstruction* instruction,
                                              const ShapeIndex& index) {
   CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
   logical_buffers_.emplace_back(
-      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_));
+      absl::make_unique<LogicalBuffer>(instruction, index, next_buffer_id_));
   output_buffers_[std::make_pair(instruction, index)] =
       logical_buffers_.back().get();
 
@@ -112,6 +113,13 @@ Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   return Status::OK();
 }
 
+Status LogicalBufferAnalysis::HandleAddDependency(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand and does not
+  // create buffers.
+  return Status::OK();
+}
+
 Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   // The top-level buffer (index={}) for kCopy is newly created, but all other
   // buffers (in the case of a tuple shape) come from the operand
@@ -125,18 +133,29 @@ Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction*) {
-  // RecvDone doesn't create a new buffer but rather aliases its input (Recv)
-  // tuple element at {0} to its output.
+Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
+  // A kDomain instruction aliases its operand. That is, the buffer of its
+  // result *is* the buffer of its operand.
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
+  // RecvDone produces a two-element tuple containing the data value (which
+  // aliases part of its operand) and a token. Only the tuple index table and
+  // the token are defined by the RecvDone.
+  NewLogicalBuffer(recv_done, /*index=*/{});
+  NewLogicalBuffer(recv_done, /*index=*/{1});
   return Status::OK();
 }
 
 Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
-  // Send creates new buffers for the top-level tuple and the context (tuple
-  // element at {1}). Tuple element at {0} is an alias of the Send operand, so
-  // we don't need to create a new Logical Buffer for that.
+  // Send creates new buffers for the top-level tuple, the context (tuple
+  // element at {1}), and the token (tuple element at {2}). Tuple element at {0}
+  // is an alias of the Send operand, so we don't need to create a new Logical
+  // Buffer for that.
   NewLogicalBuffer(send, /*index=*/{});
   NewLogicalBuffer(send, /*index=*/{1});
+  NewLogicalBuffer(send, /*index=*/{2});
   return Status::OK();
 }
 
@@ -146,10 +165,10 @@ Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select) {
+Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
-  NewLogicalBuffer(select, /*index=*/{});
+  NewLogicalBuffer(tuple_select, /*index=*/{});
   return Status::OK();
 }
 

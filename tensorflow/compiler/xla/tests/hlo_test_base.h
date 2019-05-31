@@ -20,6 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/macros.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -31,12 +34,37 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
+
+// An HLO module derived class which verifies itself on destruction. This class
+// is intended to be used in unit tests. Any verification errors are raised via
+// ADD_FAILURE.
+class VerifiedHloModule : public HloModule {
+ public:
+  VerifiedHloModule(const string& name, const HloModuleConfig& config,
+                    bool verifier_layout_sensitive,
+                    bool allow_mixed_precision_in_hlo_verifier,
+                    std::function<int64(const Shape&)> shape_size_function)
+      : HloModule(name, config),
+        verifier_(
+            verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
+            /*instruction_can_change_layout_func=*/{}, shape_size_function) {}
+
+  ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
+
+  // Verifies the module using HloVerifier and returns the status.
+  Status Verify();
+
+  // Verifies the module and flags any error with ADD_FAILURE. 'message' is
+  // included in the failure message.
+  void VerifyOrAddFailure(const string& message);
+
+ private:
+  HloVerifier verifier_;
+};
 
 // A base class for tests which build and/or run HLO code. The class includes
 // support for running an HLO module on two platforms and compare the results.
@@ -44,7 +72,7 @@ namespace xla {
 // enables, for one, explicitly building a graph of HLO instructions to run.
 //
 // This can also be used to write text/file-based test cases. Note that the test
-// target is responsible for linking the needed backends. A covenient way to do
+// target is responsible for linking the needed backends. A convenient way to do
 // this is to make it an xla_test: it will generate test targets linking with
 // the respective backends, which will be used as the test backend; the
 // interpreter backend is already linked with hlo_test_base so it will be the
@@ -66,46 +94,104 @@ namespace xla {
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
 class HloTestBase : public ::testing::Test {
- protected:
-  // This uses the interpreter backend as the reference backend and
-  // automatically finds another supported backend as the test backend. If the
-  // interpreter is the only supported backend, it will be both the test backend
-  // and the reference backend.
-  HloTestBase();
-
-  // If your test doesn't use interpreter as the reference backend, you can use
-  // this constructor. Note that your test target is responsible for linking in
-  // both needed backends.
-  HloTestBase(::perftools::gputools::Platform* test_platform,
-              ::perftools::gputools::Platform* reference_platform);
-
-  ~HloTestBase() override {}
-
+ public:
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  static std::unique_ptr<HloModule> CreateNewModule();
+  //
+  // This returns a vanilla HloModule that doesn't run the HLO verifier on
+  // destruction.
+  ABSL_DEPRECATED("Use CreateNewVerifiedModule instead.")
+  std::unique_ptr<HloModule> CreateNewUnverifiedModule(
+      const string& name = TestName());
+
+  // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
+  // HLO verifier on destruction.
+  std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
+      const string& name = TestName());
+
+  // Parses the given string and returns module as a VerifiedHloModule.
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text);
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config);
+
+  // Runs the hlo_pass with the provided module and returns the result. This
+  // function also verifies that the module remains unchanged when hlo_pass
+  // returns false as the StatusOr value.
+  static StatusOr<bool> RunHloPass(HloPassInterface* hlo_pass,
+                                   HloModule* module);
+
+  static PrecisionConfig DefaultPrecisionConfig(int operands);
+
+ protected:
+  // This uses the interpreter backend as the reference backend and
+  // automatically finds another supported backend as the test backend. If the
+  // interpreter is the only supported backend, it will be both the test backend
+  // and the reference backend.
+  HloTestBase(bool verifier_layout_sensitive = false,
+              bool allow_mixed_precision_in_hlo_verifier = true,
+              std::function<bool(const HloInstruction*)>
+                  instruction_can_change_layout_func = {});
+
+  // If your test doesn't use interpreter as the reference backend, you can use
+  // this constructor. Note that your test target is responsible for linking in
+  // both needed backends.
+  HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
+              bool verifier_layout_sensitive = false,
+              bool allow_mixed_precision_in_hlo_verifier = true,
+              std::function<bool(const HloInstruction*)>
+                  instruction_can_change_layout_func = {});
+
+  ~HloTestBase() override {}
 
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
   // DebugOptions, e.g. when creating a module from a string or a file.
-  static DebugOptions GetDebugOptionsForTest();
+  //
+  // This function is virtual so tests can specify an alternative set of debug
+  // options (e.g. disabling additional passes).
+  virtual DebugOptions GetDebugOptionsForTest();
+
+  // Gets an HloModuleConfig with options appropriate for tests.
+  HloModuleConfig GetModuleConfigForTest() {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    return config;
+  }
 
   // Executes the given module and return the result as a Literal.
-  StatusOr<std::unique_ptr<Literal>> Execute(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<Literal*> arguments);
+  StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
+                            absl::Span<Literal* const> arguments);
 
-  std::unique_ptr<Literal> ExecuteAndTransfer(
-      std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<Literal*> arguments);
+  // Same as above, except the module will be executed without running any HLO
+  // passes on it.
+  Literal ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
+                             absl::Span<Literal* const> arguments);
+
+  Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
+                             absl::Span<Literal* const> arguments);
+
+  // Executes the given module on multiple replicas.
+  //
+  // use_threads indicates whether this replicated computation will be executed
+  // with a thread-per-replica, vs using an implicitly async call such as
+  // Executable::ExecuteOnStreams.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      int64 num_replicas, bool use_threads);
+
+  // Same as above, but uses specified device assignment.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      int64 num_replicas, DeviceAssignment* device_assignment,
+      bool run_hlo_passes, bool use_threads);
 
   // Executes the given hlo module on two backends and compares results.
   //
-  // 'arguments': the input of the hlo module. The LiteralPtr type accepts
-  // Literal* or std::unique_ptr<Literal>.
+  // 'arguments': the input of the hlo module.
   //
   // 'error': if has value, expects the results to be near (within the error
   // bound). Otherwise, expects the results to be equal.
@@ -114,36 +200,32 @@ class HloTestBase : public ::testing::Test {
   // backend, but it might need to be tailored so that it is able to run on the
   // reference backend. Note that the program shape of the module must not be
   // modified.
-  template <typename LiteralPtr>
   ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::Span<Literal* const> arguments,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
-  template <typename LiteralPtr>
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::Span<Literal* const> arguments,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Executes an hlo module with fake inputs and compares the results.
   ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      std::unique_ptr<HloModule> module, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
   ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      std::unique_ptr<HloModule> module, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -151,21 +233,29 @@ class HloTestBase : public ::testing::Test {
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
   ::testing::AssertionResult RunAndCompare(
-      const tensorflow::StringPiece hlo_string,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::string_view hlo_string,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
+  ::testing::AssertionResult Run(const absl::string_view hlo_string,
+                                 bool run_hlo_passes = true,
+                                 ExecutionProfile* profile = nullptr,
+                                 string backend_config = "") TF_MUST_USE_RESULT;
+  ::testing::AssertionResult RunMultipleTimes(
+      const absl::string_view hlo_string, bool run_hlo_passes,
+      std::vector<ExecutionProfile>* profiles,
+      string backend_config = "") TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
-      const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+      const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPasses(
-      const tensorflow::StringPiece hlo_string,
-      const tensorflow::gtl::optional<ErrorSpec>& error,
+      const absl::string_view hlo_string,
+      const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
-      const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
+      const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
@@ -189,6 +279,13 @@ class HloTestBase : public ::testing::Test {
         ->ResetLayout(layout);
   }
 
+  void ForceResultLayout(HloModule* module, const Layout& layout,
+                         ShapeIndexView shape_index) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout, shape_index);
+  }
+
   // Convenience method to clear the layout of the computation result in
   // 'module'.
   void ForceClearResultLayout(HloModule* module) {
@@ -196,6 +293,13 @@ class HloTestBase : public ::testing::Test {
         ->mutable_result_layout()
         ->Clear();
   }
+
+  // Gets the computation/instruction from the given module with the given name.
+  //
+  // This is useful for tests which create HLOs from a string and then want to
+  // inspect a particular computation or instruction.
+  HloComputation* FindComputation(HloModule* module, absl::string_view name);
+  HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
 
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }
@@ -208,6 +312,8 @@ class HloTestBase : public ::testing::Test {
   HloRunner test_runner_;
   HloRunner reference_runner_;
 
+  bool verifier_layout_sensitive_;
+  bool allow_mixed_precision_in_hlo_verifier_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};
@@ -223,11 +329,10 @@ class HloTestBase : public ::testing::Test {
   // Runs the module on two platforms with or without running hlo passes and
   // compares the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
-  template <typename LiteralPtr>
   StatusOr<::testing::AssertionResult> RunAndCompareInternal(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<LiteralPtr> arguments,
-      const tensorflow::gtl::optional<ErrorSpec>& error, bool run_hlo_passes,
+      const absl::Span<Literal* const> arguments,
+      const absl::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor);
 };
 

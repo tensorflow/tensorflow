@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_QUANTIZE_TRAINING_H_
-#define TENSORFLOW_GRAPH_QUANTIZE_TRAINING_H_
+#ifndef TENSORFLOW_CORE_GRAPH_QUANTIZE_TRAINING_H_
+#define TENSORFLOW_CORE_GRAPH_QUANTIZE_TRAINING_H_
 
 #include "tensorflow/core/graph/graph.h"
 
@@ -53,4 +53,4 @@ Status DoQuantizeTrainingOnGraphDef(const GraphDef& input_graphdef,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_QUANTIZE_TRAINING_H_
+#endif  // TENSORFLOW_CORE_GRAPH_QUANTIZE_TRAINING_H_

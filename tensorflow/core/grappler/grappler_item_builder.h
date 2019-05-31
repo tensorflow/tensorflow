@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
-#define TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#define TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
 
 #include <memory>
 #include <set>
 #include <string>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
@@ -38,10 +39,6 @@ struct ItemConfig {
   // Dimension to use if a placeholder node has an _output_shapes attribute with
   // a dimension of -1.
   int placeholder_unknown_output_shape_dim = -1;
-  // If true, does L1 optimizations.
-  bool apply_optimizations = false;
-  // If true, does inlining.
-  bool inline_functions = false;
   // If true, erases all "_noinline" attributes from user-defined functions.
   // Has no effect if "inline_functions" is disabled.
   bool erase_noinline_attributes = false;
@@ -51,20 +48,37 @@ struct ItemConfig {
   bool prune_graph = false;
   // Override feed nodes list.
   std::set<string> feed_nodes;
+  // Override fetch nodes list.
+  std::set<string> fetch_nodes;
+
+  // Configs for graph optimizations from common_runtime. This is NOT Grappler
+  // function optimizer. When Grappler is invoked at runtime, it is typically
+  // running after common_runtime pass.
+  //
+  // If true, does L1 optimizations.
+  bool apply_optimizations = false;
+  // If true, does function inlining.
+  bool inline_functions = false;
 };
+
+// Method for optimizing the graph def (including function inlining and other
+// optimizations). This is optimizations from common_runtime, NOT Grappler
+// function optimizer.
+Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
+                             GraphDef* output_graph_def, const ItemConfig& cfg);
 
 // Factory method for creating a GrapplerItem from a MetaGraphDef.
 // Returns nullptr if the given meta_graph cannot be converted.
 std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg);
 
-// Factory method for creating a GrapplerItem from a FunctionDef.
-// Returns nullptr if the given function def cannot be converted.
-std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
-    const string& id, const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr);
+// Factory method for creating a GrapplerItem from a file
+// containing a MetaGraphDef in either binary or text format.
+// Returns nullptr if the given meta_graph cannot be converted.
+std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDefFile(
+    const string& id, const string& meta_graph_file, const ItemConfig& cfg);
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_BUILDER_H_

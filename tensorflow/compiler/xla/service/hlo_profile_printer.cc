@@ -15,24 +15,30 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
 
 namespace xla {
-string HloProfilePrinter::ToString(const int64* counters,
-                                   double clock_rate_ghz) const {
+string PrintHloProfile(const HloProfilePrinterData& hlo_profile_printer_data,
+                       const int64* counters, double clock_rate_ghz) {
+  using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
+  using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
+
   string result;
 
-  for (int computation_idx = 0; computation_idx < computation_infos_size_;
-       computation_idx++) {
-    const HloComputationInfo& computation = computation_infos_[computation_idx];
-    const HloInstructionInfo* instructions_begin = computation.instructions;
-    const HloInstructionInfo* instructions_end =
-        computation.instructions + computation.instructions_size;
-    bool any_instruction_profiled =
-        std::any_of(instructions_begin, instructions_end,
-                    [&](const HloInstructionInfo& instruction_info) {
-                      return counters[instruction_info.profile_index] != 0;
-                    });
+  for (const auto& item : hlo_profile_printer_data.extra_metrics()) {
+    absl::StrAppend(&result, "Extra metric ", item.first, ": ",
+                    counters[item.second], "\n");
+  }
+
+  for (const HloComputationInfo& computation_info :
+       hlo_profile_printer_data.computation_infos()) {
+    const auto& instruction_infos = computation_info.instruction_infos();
+    bool any_instruction_profiled = absl::c_any_of(
+        instruction_infos, [&](const HloInstructionInfo& instruction_info) {
+          return counters[instruction_info.profile_index()] != 0;
+        });
 
     if (!any_instruction_profiled) {
       continue;
@@ -41,27 +47,25 @@ string HloProfilePrinter::ToString(const int64* counters,
     // Once we start using this in AOT for real, we will probably need a more
     // minimal version of HumanReadableProfileBuilder.
     HumanReadableProfileBuilder builder(
-        computation.name, counters[computation.profile_index], clock_rate_ghz);
+        computation_info.name(),
+        hlo_profile_printer_data.entry_computation() == computation_info.name(),
+        counters[computation_info.profile_index()], clock_rate_ghz);
 
-    for (const auto* instruction = instructions_begin;
-         instruction != instructions_end; instruction++) {
+    for (const auto& instruction_info : instruction_infos) {
       builder.AddOp(
-          /*op_name=*/instruction->long_name,
-          /*short_name=*/instruction->short_name, instruction->category,
-          counters[instruction->profile_index], instruction->flop_count,
-          instruction->transcendental_count, instruction->bytes_accessed,
-          instruction->optimal_seconds);
+          /*op_name=*/instruction_info.long_name(),
+          /*short_name=*/instruction_info.short_name(),
+          instruction_info.category(),
+          counters[instruction_info.profile_index()],
+          instruction_info.flop_count(),
+          instruction_info.transcendental_count(),
+          instruction_info.bytes_accessed(),
+          instruction_info.optimal_seconds());
     }
 
     result += builder.ToString();
   }
 
   return result;
-}
-
-HloProfilePrinter::~HloProfilePrinter() {
-  if (deleter_) {
-    deleter_(computation_infos_, computation_infos_size_);
-  }
 }
 }  // namespace xla

@@ -39,12 +39,30 @@ void SwitchOp::Compute(OpKernelContext* context) {
   }
 }
 
+void SwitchNOp::Compute(OpKernelContext* context) {
+  const Tensor& output_index_t = context->input(1);
+  OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_index_t.shape()),
+              errors::InvalidArgument("The second input must be a scalar, "
+                                      "but it has shape ",
+                                      output_index_t.shape().DebugString()));
+  int output_index = output_index_t.scalar<int>()();
+  if (output_index < 0 || output_index >= num_outputs()) {
+    output_index = num_outputs() - 1;
+  }
+  context->set_output(output_index, context->input(0));
+}
+
 #define REGISTER_CPU_SWITCH(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Switch")                  \
                               .Device(DEVICE_CPU)         \
                               .HostMemory("pred")         \
                               .TypeConstraint<type>("T"), \
-                          SwitchOp)
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_CPU)         \
+                              .HostMemory("output_index") \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
 
 #define REGISTER_CPU_REF_SWITCH(type)                     \
   REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
@@ -58,7 +76,12 @@ void SwitchOp::Compute(OpKernelContext* context) {
                               .Device(DEVICE_GPU)         \
                               .HostMemory("pred")         \
                               .TypeConstraint<type>("T"), \
-                          SwitchOp)
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("output_index") \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
 
 #define REGISTER_GPU_REF_SWITCH(type)                     \
   REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
@@ -70,9 +93,15 @@ void SwitchOp::Compute(OpKernelContext* context) {
 TF_CALL_ALL_TYPES(REGISTER_CPU_SWITCH);
 TF_CALL_ALL_TYPES(REGISTER_CPU_REF_SWITCH);
 TF_CALL_QUANTIZED_TYPES(REGISTER_CPU_SWITCH);
+TF_CALL_QUANTIZED_TYPES(REGISTER_CPU_REF_SWITCH);
+REGISTER_CPU_SWITCH(uint64);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_SWITCH);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GPU_SWITCH);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_SWITCH);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GPU_REF_SWITCH);
+REGISTER_GPU_SWITCH(uint64);
+TF_CALL_variant(REGISTER_GPU_SWITCH);
 
 #undef REGISTER_CPU_SWITCH
 #undef REGISTER_CPU_REF_SWITCH
@@ -90,7 +119,14 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_SWITCH);
                               .HostMemory("output_false") \
                               .HostMemory("output_true")  \
                               .TypeConstraint<type>("T"), \
-                          SwitchOp)
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output_index") \
+                              .HostMemory("outputs")      \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
 
 #define REGISTER_GPU_HOST_REF_KERNEL(type)                \
   REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
@@ -108,52 +144,53 @@ REGISTER_GPU_HOST_KERNEL(bool);
 REGISTER_GPU_HOST_REF_KERNEL(bool);
 REGISTER_GPU_HOST_KERNEL(string);
 REGISTER_GPU_HOST_REF_KERNEL(string);
+REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 #undef REGISTER_GPU_HOST_REF_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_SWITCH(type)                       \
-  REGISTER_KERNEL_BUILDER(Name("Switch")                 \
-                              .Device(DEVICE_SYCL)       \
-                              .HostMemory("pred")        \
-                              .TypeConstraint<type>("T"),\
+#define REGISTER_SYCL_SWITCH(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("Switch")                  \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("pred")         \
+                              .TypeConstraint<type>("T"), \
                           SwitchOp)
 TF_CALL_REAL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_SWITCH);
 
-#define REGISTER_SYCL_REF_SWITCH(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("RefSwitch")                \
-                              .Device(DEVICE_SYCL)         \
-                              .HostMemory("pred")          \
-                              .TypeConstraint<type>("T"),  \
+#define REGISTER_SYCL_REF_SWITCH(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("pred")         \
+                              .TypeConstraint<type>("T"), \
                           SwitchOp)
 TF_CALL_REAL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_REF_SWITCH);
 
 #undef REGISTER_SYCL_SWITCH
 #undef REGISTER_SYCL_REF_SWITCH
 
-#define REGISTER_SYCL_HOST_KERNEL(type)                  \
-  REGISTER_KERNEL_BUILDER(Name("Switch")                 \
-                              .Device(DEVICE_SYCL)       \
-                              .HostMemory("data")        \
-                              .HostMemory("pred")        \
-                              .HostMemory("output_false")\
-                              .HostMemory("output_true") \
-                              .TypeConstraint<type>("T"),\
+#define REGISTER_SYCL_HOST_KERNEL(type)                   \
+  REGISTER_KERNEL_BUILDER(Name("Switch")                  \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("data")         \
+                              .HostMemory("pred")         \
+                              .HostMemory("output_false") \
+                              .HostMemory("output_true")  \
+                              .TypeConstraint<type>("T"), \
                           SwitchOp)
 
 REGISTER_SYCL_HOST_KERNEL(bool);
 REGISTER_SYCL_HOST_KERNEL(string);
 REGISTER_SYCL_HOST_KERNEL(int32);
 
-#define REGISTER_SYCL_HOST_REF_KERNEL(type)                \
-  REGISTER_KERNEL_BUILDER(Name("RefSwitch")                \
-                              .Device(DEVICE_SYCL)         \
-                              .HostMemory("data")          \
-                              .HostMemory("pred")          \
-                              .HostMemory("output_false")  \
-                              .HostMemory("output_true")   \
-                              .TypeConstraint<type>("T"),  \
+#define REGISTER_SYCL_HOST_REF_KERNEL(type)               \
+  REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("data")         \
+                              .HostMemory("pred")         \
+                              .HostMemory("output_false") \
+                              .HostMemory("output_true")  \
+                              .TypeConstraint<type>("T"), \
                           SwitchOp)
 
 REGISTER_SYCL_HOST_REF_KERNEL(int32);
@@ -162,7 +199,7 @@ REGISTER_SYCL_HOST_REF_KERNEL(string);
 
 #undef REGISTER_SYCL_HOST_KERNEL
 #undef REGISTER_SYCL_HOST_REF_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class RefSelectOp : public OpKernel {
  public:
@@ -255,8 +292,12 @@ REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GPU_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GPU_REF_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 REGISTER_GPU_REF_KERNEL(bool);
+REGISTER_GPU_KERNEL(uint64);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
@@ -282,7 +323,7 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_REF_KERNEL);
 
 #undef REGISTER_SYCL_KERNEL
 #undef REGISTER_SYCL_REF_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -331,7 +372,7 @@ REGISTER_SYCL_HOST_KERNEL(string);
 REGISTER_SYCL_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_SYCL_HOST_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 void EnterOp::Compute(OpKernelContext* context) {
   if (IsRefType(context->input_dtype(0))) {
@@ -355,19 +396,20 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 REGISTER_GPU_REF_KERNEL(bool);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)  \
-  REGISTER_KERNEL_BUILDER(          \
+#define REGISTER_SYCL_KERNEL(type) \
+  REGISTER_KERNEL_BUILDER(         \
       Name("Enter").Device(DEVICE_SYCL).TypeConstraint<type>("T"), EnterOp)
 REGISTER_SYCL_KERNEL(bool);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
 
-#define REGISTER_SYCL_REF_KERNEL(type)  \
-  REGISTER_KERNEL_BUILDER(              \
+#define REGISTER_SYCL_REF_KERNEL(type) \
+  REGISTER_KERNEL_BUILDER(             \
       Name("RefEnter").Device(DEVICE_SYCL).TypeConstraint<type>("T"), EnterOp)
 REGISTER_SYCL_REF_KERNEL(bool);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_REF_KERNEL);
@@ -398,7 +440,7 @@ REGISTER_SYCL_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_SYCL_HOST_KERNEL
 #undef REGISTER_SYCL_HOST_REF_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -450,15 +492,16 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 REGISTER_GPU_REF_KERNEL(bool);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)                                           \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("Exit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp);   \
-  REGISTER_KERNEL_BUILDER(                                                   \
+#define REGISTER_SYCL_KERNEL(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("Exit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp); \
+  REGISTER_KERNEL_BUILDER(                                                 \
       Name("RefExit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp);
 REGISTER_SYCL_KERNEL(bool);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
@@ -483,7 +526,7 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
 REGISTER_SYCL_HOST_KERNEL(int32);
 REGISTER_SYCL_HOST_KERNEL(string);
 #undef REGISTER_SYCL_HOST_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Special GPU kernels for int32 and string.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -504,6 +547,7 @@ REGISTER_SYCL_HOST_KERNEL(string);
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
@@ -530,6 +574,7 @@ REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_CPU),
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bool);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 
@@ -552,16 +597,17 @@ REGISTER_GPU_KERNEL(bool);
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)                                           \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("NextIteration").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
-      NextIterationOp);                                                      \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("RefNextIteration").Device(DEVICE_SYCL).TypeConstraint<type>("T"),\
+#define REGISTER_SYCL_KERNEL(type)                                            \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("NextIteration").Device(DEVICE_SYCL).TypeConstraint<type>("T"),    \
+      NextIterationOp);                                                       \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("RefNextIteration").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       NextIterationOp)
 REGISTER_SYCL_KERNEL(bool);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
@@ -585,26 +631,23 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
 REGISTER_SYCL_HOST_KERNEL(int32);
 REGISTER_SYCL_HOST_KERNEL(string);
 #undef REGISTER_SYCL_HOST_KERNEL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
-// A LoopCond op has one input and one output. The input is a boolean
-// scalar representing the taken branches of the "pivot" Switch that
-// determines loop termination. As a contract, any high-level front-end
-// should always use port '0' of the "pivot" switches for loop exit.
-class LoopCondOp : public OpKernel {
- public:
-  explicit LoopCondOp(OpKernelConstruction* context) : OpKernel(context) {}
+LoopCondOp::LoopCondOp(OpKernelConstruction* context) : OpKernel(context) {}
+LoopCondOp::~LoopCondOp() = default;
 
-  void Compute(OpKernelContext* context) override {
-    context->set_output(0, context->input(0));
+void LoopCondOp::Compute(OpKernelContext* context) {
+  CancellationManager* cm = context->cancellation_manager();
+  if (cm != nullptr) {
+    bool already_cancelled = cm->IsCancelled();
+    OP_REQUIRES(context, !already_cancelled,
+                errors::Cancelled("Loop execution was cancelled."));
   }
 
-  bool IsExpensive() override { return false; }
+  context->set_output(0, context->input(0));
+}
 
-  ~LoopCondOp() override {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(LoopCondOp);
-};
+bool LoopCondOp::IsExpensive() { return false; }
 
 REGISTER_KERNEL_BUILDER(Name("LoopCond").Device(DEVICE_CPU), LoopCondOp);
 REGISTER_KERNEL_BUILDER(Name("LoopCond")
@@ -619,7 +662,7 @@ REGISTER_KERNEL_BUILDER(Name("LoopCond")
                             .HostMemory("input")
                             .HostMemory("output"),
                         LoopCondOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // ControlTrigger kernels
 REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_CPU),
@@ -631,7 +674,7 @@ REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_GPU),
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_SYCL),
                         ControlTriggerOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // When called, abort op will abort the current process. This can be used to
 // abort remote PSs when needed.

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -166,11 +167,24 @@ class Env {
   Status DeleteFile(const string& fname);
 
   /// \brief Deletes the specified directory and all subdirectories and files
-  /// underneath it. undeleted_files and undeleted_dirs stores the number of
-  /// files and directories that weren't deleted (unspecified if the return
-  /// status is not OK).
+  /// underneath it. This is accomplished by traversing the directory tree
+  /// rooted at dirname and deleting entries as they are encountered.
+  ///
+  /// If dirname itself is not readable or does not exist, *undeleted_dir_count
+  /// is set to 1, *undeleted_file_count is set to 0 and an appropriate status
+  /// (e.g. NOT_FOUND) is returned.
+  ///
+  /// If dirname and all its descendants were successfully deleted, TF_OK is
+  /// returned and both error counters are set to zero.
+  ///
+  /// Otherwise, while traversing the tree, undeleted_file_count and
+  /// undeleted_dir_count are updated if an entry of the corresponding type
+  /// could not be deleted. The returned error status represents the reason that
+  /// any one of these entries could not be deleted.
+  ///
   /// REQUIRES: undeleted_files, undeleted_dirs to be not null.
-  /// Typical return codes
+  ///
+  /// Typical return codes:
   ///  * OK - dirname exists and we were able to delete everything underneath.
   ///  * NOT_FOUND - dirname doesn't exist
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
@@ -214,6 +228,9 @@ class Env {
   /// replaced.
   Status RenameFile(const string& src, const string& target);
 
+  /// \brief Copy the src to target.
+  Status CopyFile(const string& src, const string& target);
+
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
   string GetExecutablePath();
@@ -225,15 +242,22 @@ class Env {
   /// |suffix|. Returns true if success.
   bool CreateUniqueFileName(string* prefix, const string& suffix);
 
+  /// \brief Return the runfiles directory if running under bazel. Returns
+  /// the directory the executable is located in if not running under bazel.
+  virtual string GetRunfilesDir() = 0;
+
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
   // provide a routine to get the absolute time.
 
+  /// \brief Returns the number of nano-seconds since the Unix epoch.
+  virtual uint64 NowNanos() const { return env_time_->NowNanos(); }
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() { return envTime->NowMicros(); };
+  virtual uint64 NowMicros() const { return env_time_->NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64 NowSeconds() { return envTime->NowSeconds(); }
+  virtual uint64 NowSeconds() const { return env_time_->NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64 micros) = 0;
@@ -246,6 +270,15 @@ class Env {
   virtual Thread* StartThread(const ThreadOptions& thread_options,
                               const string& name,
                               std::function<void()> fn) TF_MUST_USE_RESULT = 0;
+
+  // Returns the thread id of calling thread.
+  // Posix: Returns pthread id which is only guaranteed to be unique within a
+  //        process.
+  // Windows: Returns thread id which is unique.
+  virtual int32 GetCurrentThreadId() = 0;
+
+  // Copies current thread name to "name". Returns true if success.
+  virtual bool GetCurrentThreadName(string* name) = 0;
 
   // \brief Schedules the given closure on a thread-pool.
   //
@@ -286,15 +319,15 @@ class Env {
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
   virtual string FormatLibraryFileName(const string& name,
-      const string& version) = 0;
+                                       const string& version) = 0;
+
+  // Returns a possible list of local temporary directories.
+  virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
 
  private:
-  // Returns a possible list of local temporary directories.
-  void GetLocalTempDirectories(std::vector<string>* list);
-
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
   TF_DISALLOW_COPY_AND_ASSIGN(Env);
-  EnvTime* envTime = EnvTime::Default();
+  EnvTime* env_time_ = EnvTime::Default();
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -305,7 +338,7 @@ class EnvWrapper : public Env {
  public:
   /// Initializes an EnvWrapper that delegates all calls to *t
   explicit EnvWrapper(Env* t) : target_(t) {}
-  virtual ~EnvWrapper();
+  ~EnvWrapper() override;
 
   /// Returns the target to which this Env forwards all calls
   Env* target() const { return target_; }
@@ -328,13 +361,17 @@ class EnvWrapper : public Env {
     return target_->MatchPath(path, pattern);
   }
 
-  uint64 NowMicros() override { return target_->NowMicros(); }
+  uint64 NowMicros() const override { return target_->NowMicros(); }
   void SleepForMicroseconds(int64 micros) override {
     target_->SleepForMicroseconds(micros);
   }
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
     return target_->StartThread(thread_options, name, fn);
+  }
+  int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
+  bool GetCurrentThreadName(string* name) override {
+    return target_->GetCurrentThreadName(name);
   }
   void SchedClosure(std::function<void()> closure) override {
     target_->SchedClosure(closure);
@@ -353,7 +390,14 @@ class EnvWrapper : public Env {
                                const string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
+
+  string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
+
  private:
+  void GetLocalTempDirectories(std::vector<string>* list) override {
+    target_->GetLocalTempDirectories(list);
+  }
+
   Env* target_;
 };
 
@@ -378,7 +422,13 @@ struct ThreadOptions {
   size_t stack_size = 0;  // 0: use system default value
   /// Guard area size to use near thread stacks to use (in bytes)
   size_t guard_size = 0;  // 0: use system default value
+  int numa_node = port::kNUMANoAffinity;
 };
+
+/// A utility routine: copy contents of `src` in file system `src_fs`
+/// to `target` in file system `target_fs`.
+Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
+                          FileSystem* target_fs, const string& target);
 
 /// A utility routine: reads contents of named file into `*data`
 Status ReadFileToString(Env* env, const string& fname, string* data);
@@ -437,6 +487,6 @@ struct Register {
           ::tensorflow::register_file_system::Register<factory>(env, scheme)
 
 #define REGISTER_FILE_SYSTEM(scheme, factory) \
-  REGISTER_FILE_SYSTEM_ENV(Env::Default(), scheme, factory);
+  REGISTER_FILE_SYSTEM_ENV(::tensorflow::Env::Default(), scheme, factory);
 
 #endif  // TENSORFLOW_CORE_PLATFORM_ENV_H_

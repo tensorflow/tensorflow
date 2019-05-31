@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
@@ -191,7 +192,7 @@ TEST(BackportTensorArrayV3Test, TestBackportTensorArrayV3Subtypes) {
     std::map<string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     ASSERT_EQ(1, node_lookup.count("v3_node"));
-    EXPECT_TRUE(StringPiece(node_lookup.at("v3_node")->op()).ends_with("V2"));
+    EXPECT_TRUE(str_util::EndsWith(node_lookup.at("v3_node")->op(), "V2"));
   }
 }
 

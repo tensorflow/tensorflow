@@ -33,49 +33,15 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.util import tf_inspect
 
 
-def assert_close(
-    x, y, data=None, summarize=None, message=None, name="assert_close"):
-  """Assert that x and y are within machine epsilon of each other.
-
-  Args:
-    x: Floating-point `Tensor`
-    y: Floating-point `Tensor`
-    data: The tensors to print out if the condition is `False`. Defaults to
-      error message and first few entries of `x` and `y`.
-    summarize: Print this many entries of each tensor.
-    message: A string to prefix to the default message.
-    name: A name for this operation (optional).
-
-  Returns:
-    Op raising `InvalidArgumentError` if |x - y| > machine epsilon.
-  """
-  message = message or ""
-  x = ops.convert_to_tensor(x, name="x")
-  y = ops.convert_to_tensor(y, name="y")
-
-  if data is None:
-    data = [
-        message,
-        "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
-        y.name, y
-    ]
-
-  if x.dtype.is_integer:
-    return check_ops.assert_equal(
-        x, y, data=data, summarize=summarize, message=message, name=name)
-
-  with ops.name_scope(name, "assert_close", [x, y, data]):
-    tol = np.finfo(x.dtype.as_numpy_dtype).eps
-    condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
-    return control_flow_ops.Assert(
-        condition, data, summarize=summarize)
-
-
-def assert_integer_form(
-    x, data=None, summarize=None, message=None,
-    int_dtype=None, name="assert_integer_form"):
+def assert_integer_form(x,
+                        data=None,
+                        summarize=None,
+                        message=None,
+                        int_dtype=None,
+                        name="assert_integer_form"):
   """Assert that x has integer components (or floats equal to integers).
 
   Args:
@@ -95,7 +61,7 @@ def assert_integer_form(
     x = ops.convert_to_tensor(x, name="x")
     if x.dtype.is_integer:
       return control_flow_ops.no_op()
-    message = message or "{} has non-integer components".format(x.op.name)
+    message = message or "{} has non-integer components".format(x)
     if int_dtype is None:
       try:
         int_dtype = {
@@ -106,8 +72,12 @@ def assert_integer_form(
       except KeyError:
         raise TypeError("Unrecognized type {}".format(x.dtype.name))
     return check_ops.assert_equal(
-        x, math_ops.cast(math_ops.cast(x, int_dtype), x.dtype),
-        data=data, summarize=summarize, message=message, name=name)
+        x,
+        math_ops.cast(math_ops.cast(x, int_dtype), x.dtype),
+        data=data,
+        summarize=summarize,
+        message=message,
+        name=name)
 
 
 def assert_symmetric(matrix):
@@ -123,13 +93,13 @@ def embed_check_nonnegative_integer_form(
     x = ops.convert_to_tensor(x, name="x")
     assertions = [
         check_ops.assert_non_negative(
-            x, message="'{}' must be non-negative.".format(x.op.name)),
+            x, message="'{}' must be non-negative.".format(x)),
     ]
     if not x.dtype.is_integer:
       assertions += [
           assert_integer_form(
-              x, message="'{}' cannot contain fractional components.".format(
-                  x.op.name)),
+              x,
+              message="'{}' cannot contain fractional components.".format(x)),
       ]
     return control_flow_ops.with_dependencies(assertions, x)
 
@@ -151,36 +121,65 @@ def same_dynamic_shape(a, b):
   # static shape inference may break the equality comparison between
   # shape(a) and shape(b) in math_ops.equal.
   def all_shapes_equal():
-    return math_ops.reduce_all(math_ops.equal(
-        array_ops.concat([array_ops.shape(a), array_ops.shape(b)], 0),
-        array_ops.concat([array_ops.shape(b), array_ops.shape(a)], 0)))
+    return math_ops.reduce_all(
+        math_ops.equal(
+            array_ops.concat(
+                [array_ops.shape(a), array_ops.shape(b)], 0),
+            array_ops.concat(
+                [array_ops.shape(b), array_ops.shape(a)], 0)))
 
   # One of the shapes isn't fully defined, so we need to use the dynamic
   # shape.
   return control_flow_ops.cond(
       math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
-      all_shapes_equal,
-      lambda: constant_op.constant(False))
+      all_shapes_equal, lambda: constant_op.constant(False))
+
+
+def maybe_get_static_value(x, dtype=None):
+  """Helper which tries to return a static value.
+
+  Given `x`, extract it's value statically, optionally casting to a specific
+  dtype. If this is not possible, None is returned.
+
+  Args:
+    x: `Tensor` for which to extract a value statically.
+    dtype: Optional dtype to cast to.
+
+  Returns:
+    Statically inferred value if possible, otherwise None.
+  """
+  if x is None:
+    return x
+  try:
+    # This returns an np.ndarray.
+    x_ = tensor_util.constant_value(x)
+  except TypeError:
+    x_ = x
+  if x_ is None or dtype is None:
+    return x_
+  return np.array(x_, dtype)
 
 
 def get_logits_and_probs(logits=None,
                          probs=None,
                          multidimensional=False,
                          validate_args=False,
-                         name="get_logits_and_probs"):
+                         name="get_logits_and_probs",
+                         dtype=None):
   """Converts logit to probabilities (or vice-versa), and returns both.
 
   Args:
     logits: Floating-point `Tensor` representing log-odds.
     probs: Floating-point `Tensor` representing probabilities.
-    multidimensional: Python `bool`, default `False`.
-      If `True`, represents whether the last dimension of `logits` or `probs`,
-      a `[N1, N2, ...  k]` dimensional tensor, representing the
-      logit or probability of `shape[-1]` classes.
-    validate_args: Python `bool`, default `False`. When `True`, either assert
-      `0 <= probs <= 1` (if not `multidimensional`) or that the last dimension
-      of `probs` sums to one.
+    multidimensional: Python `bool`, default `False`. If `True`, represents
+      whether the last dimension of `logits` or `probs`, a `[N1, N2, ...  k]`
+      dimensional tensor, representing the logit or probability of `shape[-1]`
+      classes.
+    validate_args: Python `bool`, default `False`. When `True`, either assert `0
+      <= probs <= 1` (if not `multidimensional`) or that the last dimension of
+      `probs` sums to one.
     name: A name for this operation (optional).
+    dtype: `tf.DType` to prefer when converting args to `Tensor`s.
 
   Returns:
     logits, probs: Tuple of `Tensor`s. If `probs` has an entry that is `0` or
@@ -195,7 +194,7 @@ def get_logits_and_probs(logits=None,
       raise ValueError("Must pass probs or logits, but not both.")
 
     if probs is None:
-      logits = ops.convert_to_tensor(logits, name="logits")
+      logits = ops.convert_to_tensor(logits, name="logits", dtype=dtype)
       if not logits.dtype.is_floating:
         raise TypeError("logits must having floating type.")
       # We can early return since we constructed probs and therefore know
@@ -206,7 +205,7 @@ def get_logits_and_probs(logits=None,
         return logits, nn.softmax(logits, name="probs")
       return logits, math_ops.sigmoid(logits, name="probs")
 
-    probs = ops.convert_to_tensor(probs, name="probs")
+    probs = ops.convert_to_tensor(probs, name="probs", dtype=dtype)
     if not probs.dtype.is_floating:
       raise TypeError("probs must having floating type.")
 
@@ -216,11 +215,17 @@ def get_logits_and_probs(logits=None,
         dependencies = [check_ops.assert_non_negative(probs)]
         if multidimensional:
           probs = embed_check_categorical_event_shape(probs)
-          dependencies += [assert_close(math_ops.reduce_sum(probs, -1), one,
-                                        message="probs does not sum to 1.")]
+          dependencies += [
+              check_ops.assert_near(
+                  math_ops.reduce_sum(probs, -1),
+                  one,
+                  message="probs does not sum to 1.")
+          ]
         else:
-          dependencies += [check_ops.assert_less_equal(
-              probs, one, message="probs has components greater than 1.")]
+          dependencies += [
+              check_ops.assert_less_equal(
+                  probs, one, message="probs has components greater than 1.")
+          ]
         probs = control_flow_ops.with_dependencies(dependencies, probs)
 
     with ops.name_scope("logits"):
@@ -294,8 +299,7 @@ def _is_integer_like_by_dtype(dt):
 
 
 def embed_check_categorical_event_shape(
-    categorical_param,
-    name="embed_check_categorical_event_shape"):
+    categorical_param, name="embed_check_categorical_event_shape"):
   """Embeds checks that categorical distributions don't have too many classes.
 
   A categorical-type distribution is one which, e.g., returns the class label
@@ -347,9 +351,9 @@ def embed_check_categorical_event_shape(
     # For more details, see:
     # https://en.wikipedia.org/wiki/Floating-point_arithmetic#Internal_representation
     x_dtype = x.dtype.base_dtype
-    max_event_size = (_largest_integer_by_dtype(x_dtype)
-                      if x_dtype.is_floating else 0)
-    if max_event_size is 0:
+    max_event_size = (
+        _largest_integer_by_dtype(x_dtype) if x_dtype.is_floating else 0)
+    if max_event_size == 0:
       raise TypeError("Unable to validate size of unrecognized dtype "
                       "({}).".format(x_dtype.name))
     try:
@@ -357,40 +361,42 @@ def embed_check_categorical_event_shape(
     except ValueError:
       raise ValueError("A categorical-distribution parameter must have "
                        "at least 1 dimension.")
-    if x_shape_static[-1].value is not None:
-      event_size = x_shape_static[-1].value
+    if tensor_shape.dimension_value(x_shape_static[-1]) is not None:
+      event_size = x_shape_static.dims[-1].value
       if event_size < 2:
         raise ValueError("A categorical-distribution parameter must have at "
                          "least 2 events.")
       if event_size > max_event_size:
-        raise ValueError(
-            "Number of classes exceeds `dtype` precision, i.e., "
-            "{} implies shape ({}) cannot exceed {}.".format(
-                x_dtype.name, event_size, max_event_size))
+        raise ValueError("Number of classes exceeds `dtype` precision, i.e., "
+                         "{} implies shape ({}) cannot exceed {}.".format(
+                             x_dtype.name, event_size, max_event_size))
       return x
     else:
       event_size = array_ops.shape(x, name="x_shape")[-1]
       return control_flow_ops.with_dependencies([
           check_ops.assert_rank_at_least(
-              x, 1, message=("A categorical-distribution parameter must have "
-                             "at least 1 dimension.")),
+              x,
+              1,
+              message=("A categorical-distribution parameter must have "
+                       "at least 1 dimension.")),
           check_ops.assert_greater_equal(
-              array_ops.shape(x)[-1], 2,
+              array_ops.shape(x)[-1],
+              2,
               message=("A categorical-distribution parameter must have at "
                        "least 2 events.")),
           check_ops.assert_less_equal(
-              event_size, max_event_size,
+              event_size,
+              max_event_size,
               message="Number of classes exceeds `dtype` precision, "
-                      "i.e., {} dtype cannot exceed {} shape.".format(
-                          x_dtype.name, max_event_size)),
+              "i.e., {} dtype cannot exceed {} shape.".format(
+                  x_dtype.name, max_event_size)),
       ], x)
 
 
-def embed_check_integer_casting_closed(
-    x,
-    target_dtype,
-    assert_nonnegative=True,
-    name="embed_check_casting_closed"):
+def embed_check_integer_casting_closed(x,
+                                       target_dtype,
+                                       assert_nonnegative=True,
+                                       name="embed_check_casting_closed"):
   """Ensures integers remain unaffected despite casting to/from int/float types.
 
   Example integer-types: `uint8`, `int32`, `bool`.
@@ -422,19 +428,18 @@ def embed_check_integer_casting_closed(
 
   with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")
-    if (not _is_integer_like_by_dtype(x.dtype)
-        and not x.dtype.is_floating):
+    if (not _is_integer_like_by_dtype(x.dtype) and not x.dtype.is_floating):
       raise TypeError("{}.dtype must be floating- or "
                       "integer-type.".format(x.dtype.name))
-    if (not _is_integer_like_by_dtype(target_dtype)
-        and not target_dtype.is_floating):
+    if (not _is_integer_like_by_dtype(target_dtype) and
+        not target_dtype.is_floating):
       raise TypeError("target_dtype ({}) must be floating- or "
                       "integer-type.".format(target_dtype.name))
-    if (not _is_integer_like_by_dtype(x.dtype)
-        and not _is_integer_like_by_dtype(target_dtype)):
+    if (not _is_integer_like_by_dtype(x.dtype) and
+        not _is_integer_like_by_dtype(target_dtype)):
       raise TypeError("At least one of {}.dtype ({}) and target_dtype ({}) "
-                      "must be integer-type.".format(
-                          x.op.name, x.dtype.name, target_dtype.name))
+                      "must be integer-type.".format(x, x.dtype.name,
+                                                     target_dtype.name))
 
     assertions = []
     if assert_nonnegative:
@@ -448,26 +453,28 @@ def embed_check_integer_casting_closed(
       # Since this check implies the magnitude check below, we need only it.
       assertions += [
           assert_integer_form(
-              x, int_dtype=target_dtype,
+              x,
+              int_dtype=target_dtype,
               message="Elements must be {}-equivalent.".format(
                   target_dtype.name)),
       ]
     else:
-      if (_largest_integer_by_dtype(x.dtype)
-          > _largest_integer_by_dtype(target_dtype)):
+      if (_largest_integer_by_dtype(x.dtype) >
+          _largest_integer_by_dtype(target_dtype)):
         # Cast may lose integer precision.
         assertions += [
             check_ops.assert_less_equal(
-                x, _largest_integer_by_dtype(target_dtype),
+                x,
+                _largest_integer_by_dtype(target_dtype),
                 message=("Elements cannot exceed {}.".format(
                     _largest_integer_by_dtype(target_dtype)))),
         ]
-      if (not assert_nonnegative and
-          (_smallest_integer_by_dtype(x.dtype)
-           < _smallest_integer_by_dtype(target_dtype))):
+      if (not assert_nonnegative and (_smallest_integer_by_dtype(
+          x.dtype) < _smallest_integer_by_dtype(target_dtype))):
         assertions += [
             check_ops.assert_greater_equal(
-                x, _smallest_integer_by_dtype(target_dtype),
+                x,
+                _smallest_integer_by_dtype(target_dtype),
                 message=("Elements cannot be smaller than {}.".format(
                     _smallest_integer_by_dtype(target_dtype)))),
         ]
@@ -532,6 +539,8 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   Example of heteroskedastic 2-D linear regression.
 
   ```python
+  tfd = tfp.distributions
+
   # Get a trainable Cholesky factor.
   matrix_values = tf.contrib.layers.fully_connected(activations, 4)
   matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
@@ -541,7 +550,7 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   mu = tf.contrib.layers.fully_connected(activations, 2)
 
   # This is a fully trainable multivariate normal!
-  dist = tf.contrib.distributions.MVNCholesky(mu, chol)
+  dist = tfd.MultivariateNormalTriL(mu, chol)
 
   # Standard log loss. Minimizing this will "train" mu and chol, and then dist
   # will be a distribution predicting labels as multivariate Gaussians.
@@ -551,11 +560,10 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   Args:
     matrix:  Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
       equal.
-    transform:  Element-wise function mapping `Tensors` to `Tensors`. To
-      be applied to the diagonal of `matrix`. If `None`, `matrix` is returned
+    transform:  Element-wise function mapping `Tensors` to `Tensors`. To be
+      applied to the diagonal of `matrix`. If `None`, `matrix` is returned
       unchanged. Defaults to `None`.
-    name:  A name to give created ops.
-      Defaults to "matrix_diag_transform".
+    name:  A name to give created ops. Defaults to "matrix_diag_transform".
 
   Returns:
     A `Tensor` with same shape and `dtype` as `matrix`.
@@ -587,7 +595,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
   Example:
 
   ```python
-  x = tf.random_normal([1, 2, 3, 4])  # Tensor of shape [1, 2, 3, 4].
+  x = tf.random.normal([1, 2, 3, 4])  # Tensor of shape [1, 2, 3, 4].
   rotate_transpose(x, -1).shape == [2, 3, 4, 1]
   rotate_transpose(x, -2).shape == [3, 4, 1, 2]
   rotate_transpose(x,  1).shape == [4, 1, 2, 3]
@@ -616,10 +624,12 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
     shift_value_static = tensor_util.constant_value(shift)
     ndims = x.get_shape().ndims
     if ndims is not None and shift_value_static is not None:
-      if ndims < 2: return x
+      if ndims < 2:
+        return x
       shift_value_static = np.sign(shift_value_static) * (
           abs(shift_value_static) % ndims)
-      if shift_value_static == 0: return x
+      if shift_value_static == 0:
+        return x
       perm = np.roll(np.arange(ndims), shift_value_static)
       return array_ops.transpose(x, perm=perm)
     else:
@@ -637,19 +647,16 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # Finally, we transform shift by modulo length so it can be specified
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
-      shift = array_ops.where(math_ops.less(shift, 0),
-                              math_ops.mod(-shift, ndims),
-                              ndims - math_ops.mod(shift, ndims))
+      shift = array_ops.where(
+          math_ops.less(shift, 0), math_ops.mod(-shift, ndims),
+          ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
       perm = array_ops.concat([last, first], 0)
       return array_ops.transpose(x, perm=perm)
 
 
-def pick_vector(cond,
-                true_vector,
-                false_vector,
-                name="pick_vector"):
+def pick_vector(cond, true_vector, false_vector, name="pick_vector"):
   """Picks possibly different length row `Tensor`s based on condition.
 
   Value `Tensor`s should have exactly one dimension.
@@ -663,13 +670,9 @@ def pick_vector(cond,
     true_vector: `Tensor` of one dimension. Returned when cond is `True`.
     false_vector: `Tensor` of one dimension. Returned when cond is `False`.
     name: Python `str`. The name to give this op.
-
-  Example:
-
-  ```python
-  pick_vector(tf.less(0, 5), tf.range(10, 12), tf.range(15, 18))  # [10, 11]
-  pick_vector(tf.less(5, 0), tf.range(10, 12), tf.range(15, 18))  # [15, 16, 17]
-  ```
+  Example:  ```python pick_vector(tf.less(0, 5), tf.range(10, 12), tf.range(15,
+    18))  # [10, 11] pick_vector(tf.less(5, 0), tf.range(10, 12), tf.range(15,
+    18))  # [15, 16, 17] ```
 
   Returns:
     true_or_false_vector: `Tensor`.
@@ -683,7 +686,7 @@ def pick_vector(cond,
     cond = ops.convert_to_tensor(cond, name="cond")
     if cond.dtype != dtypes.bool:
       raise TypeError("%s.dtype=%s which is not %s" %
-                      (cond.name, cond.dtype, dtypes.bool))
+                      (cond, cond.dtype, dtypes.bool))
     cond_value_static = tensor_util.constant_value(cond)
     if cond_value_static is not None:
       return true_vector if cond_value_static else false_vector
@@ -691,17 +694,17 @@ def pick_vector(cond,
     false_vector = ops.convert_to_tensor(false_vector, name="false_vector")
     if true_vector.dtype != false_vector.dtype:
       raise TypeError(
-          "%s.dtype=%s does not match %s.dtype=%s"
-          % (true_vector.name, true_vector.dtype,
-             false_vector.name, false_vector.dtype))
+          "%s.dtype=%s does not match %s.dtype=%s" %
+          (true_vector, true_vector.dtype, false_vector, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
         array_ops.concat([true_vector, false_vector], 0),
         [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
-def prefer_static_broadcast_shape(
-    shape1, shape2, name="prefer_static_broadcast_shape"):
+def prefer_static_broadcast_shape(shape1,
+                                  shape2,
+                                  name="prefer_static_broadcast_shape"):
   """Convenience function which statically broadcasts shape when possible.
 
   Args:
@@ -714,6 +717,7 @@ def prefer_static_broadcast_shape(
       statically), or as a `Tensor`.
   """
   with ops.name_scope(name, values=[shape1, shape2]):
+
     def make_shape_tensor(x):
       return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
 
@@ -799,8 +803,8 @@ def fill_triangular(x, upper=False, name=None):
   Triangular matrix elements are filled in a clockwise spiral. See example,
   below.
 
-  If `x.get_shape()` is `[b1, b2, ..., bK, d]` then the output shape is `[b1,
-  b2, ..., bK, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
+  If `x.get_shape()` is `[b1, b2, ..., bB, d]` then the output shape is
+  `[b1, b2, ..., bB, n, n]` where `n` is such that `d = n(n+1)/2`, i.e.,
   `n = int(np.sqrt(0.25 + 2. * m) - 0.5)`.
 
   Example:
@@ -835,9 +839,10 @@ def fill_triangular(x, upper=False, name=None):
 
   with ops.name_scope(name, "fill_triangular", values=[x]):
     x = ops.convert_to_tensor(x, name="x")
-    if x.shape.with_rank_at_least(1)[-1].value is not None:
+    if tensor_shape.dimension_value(
+        x.shape.with_rank_at_least(1)[-1]) is not None:
       # Formula derived by solving for n: m = n(n+1)/2.
-      m = np.int32(x.shape[-1].value)
+      m = np.int32(x.shape.dims[-1].value)
       n = np.sqrt(0.25 + 2. * m) - 0.5
       if n != np.floor(n):
         raise ValueError("Input right-most shape ({}) does not "
@@ -889,21 +894,88 @@ def fill_triangular(x, upper=False, name=None):
     #   = 2 (n**2 / 2 + n / 2) - n**2
     #   = n**2 + n - n**2
     #   = n
+    ndims = prefer_static_rank(x)
     if upper:
-      x_list = [x, array_ops.reverse(x[..., n:], axis=[-1])]
+      x_list = [x, array_ops.reverse(x[..., n:], axis=[ndims - 1])]
     else:
-      x_list = [x[..., n:], array_ops.reverse(x, axis=[-1])]
+      x_list = [x[..., n:], array_ops.reverse(x, axis=[ndims - 1])]
     new_shape = (
-        static_final_shape.as_list()
-        if static_final_shape.is_fully_defined()
+        static_final_shape.as_list() if static_final_shape.is_fully_defined()
         else array_ops.concat([array_ops.shape(x)[:-1], [n, n]], axis=0))
     x = array_ops.reshape(array_ops.concat(x_list, axis=-1), new_shape)
     x = array_ops.matrix_band_part(
-        x,
-        num_lower=(0 if upper else -1),
-        num_upper=(-1 if upper else 0))
+        x, num_lower=(0 if upper else -1), num_upper=(-1 if upper else 0))
     x.set_shape(static_final_shape)
     return x
+
+
+def fill_triangular_inverse(x, upper=False, name=None):
+  """Creates a vector from a (batch of) triangular matrix.
+
+  The vector is created from the lower-triangular or upper-triangular portion
+  depending on the value of the parameter `upper`.
+
+  If `x.shape` is `[b1, b2, ..., bB, n, n]` then the output shape is
+  `[b1, b2, ..., bB, d]` where `d = n (n + 1) / 2`.
+
+  Example:
+
+  ```python
+  fill_triangular_inverse(
+    [[4, 0, 0],
+     [6, 5, 0],
+     [3, 2, 1]])
+
+  # ==> [1, 2, 3, 4, 5, 6]
+
+  fill_triangular_inverse(
+    [[1, 2, 3],
+     [0, 5, 6],
+     [0, 0, 4]], upper=True)
+
+  # ==> [1, 2, 3, 4, 5, 6]
+  ```
+
+  Args:
+    x: `Tensor` representing lower (or upper) triangular elements.
+    upper: Python `bool` representing whether output matrix should be upper
+      triangular (`True`) or lower triangular (`False`, default).
+    name: Python `str`. The name to give this op.
+
+  Returns:
+    flat_tril: (Batch of) vector-shaped `Tensor` representing vectorized lower
+      (or upper) triangular elements from `x`.
+  """
+
+  with ops.name_scope(name, "fill_triangular_inverse", values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    if tensor_shape.dimension_value(
+        x.shape.with_rank_at_least(2)[-1]) is not None:
+      n = np.int32(x.shape.dims[-1].value)
+      m = np.int32((n * (n + 1)) // 2)
+      static_final_shape = x.shape[:-2].concatenate([m])
+    else:
+      n = array_ops.shape(x)[-1]
+      m = (n * (n + 1)) // 2
+      static_final_shape = x.shape.with_rank_at_least(2)[:-2].concatenate(
+          [None])
+    ndims = prefer_static_rank(x)
+    if upper:
+      initial_elements = x[..., 0, :]
+      triangular_portion = x[..., 1:, :]
+    else:
+      initial_elements = array_ops.reverse(x[..., -1, :], axis=[ndims - 2])
+      triangular_portion = x[..., :-1, :]
+    rotated_triangular_portion = array_ops.reverse(
+        array_ops.reverse(triangular_portion, axis=[ndims - 1]),
+        axis=[ndims - 2])
+    consolidated_matrix = triangular_portion + rotated_triangular_portion
+    end_sequence = array_ops.reshape(
+        consolidated_matrix,
+        array_ops.concat([array_ops.shape(x)[:-2], [n * (n - 1)]], axis=0))
+    y = array_ops.concat([initial_elements, end_sequence[..., :m - n]], axis=-1)
+    y.set_shape(static_final_shape)
+    return y
 
 
 def tridiag(below=None, diag=None, above=None, name=None):
@@ -974,17 +1046,17 @@ def tridiag(below=None, diag=None, above=None, name=None):
     return _add(below, diag, above)
 
 
-def reduce_weighted_logsumexp(
-    logx,
-    w=None,
-    axis=None,
-    keep_dims=False,
-    return_sign=False,
-    name=None):
+def reduce_weighted_logsumexp(logx,
+                              w=None,
+                              axis=None,
+                              keep_dims=False,
+                              return_sign=False,
+                              name=None):
   """Computes `log(abs(sum(weight * exp(elements across tensor dimensions))))`.
 
   If all weights `w` are known to be positive, it is more efficient to directly
-  use `reduce_logsumexp`, i.e., `tf.reduce_logsumexp(logx + tf.log(w))` is more
+  use `reduce_logsumexp`, i.e., `tf.reduce_logsumexp(logx + tf.math.log(w))` is
+  more
   efficient than `du.reduce_weighted_logsumexp(logx, w)`.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1027,9 +1099,9 @@ def reduce_weighted_logsumexp(
   Args:
     logx: The tensor to reduce. Should have numeric type.
     w: The weight tensor. Should have numeric type identical to `logx`.
-    axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     return_sign: If `True`, returns the sign of the result.
     name: A name for the operation (optional).
@@ -1041,28 +1113,25 @@ def reduce_weighted_logsumexp(
   with ops.name_scope(name, "reduce_weighted_logsumexp", [logx, w]):
     logx = ops.convert_to_tensor(logx, name="logx")
     if w is None:
-      lswe = math_ops.reduce_logsumexp(logx, axis=axis, keep_dims=keep_dims)
+      lswe = math_ops.reduce_logsumexp(logx, axis=axis, keepdims=keep_dims)
       if return_sign:
         sgn = array_ops.ones_like(lswe)
         return lswe, sgn
       return lswe
     w = ops.convert_to_tensor(w, dtype=logx.dtype, name="w")
     log_absw_x = logx + math_ops.log(math_ops.abs(w))
-    max_log_absw_x = math_ops.reduce_max(log_absw_x, axis=axis, keep_dims=True)
+    max_log_absw_x = math_ops.reduce_max(log_absw_x, axis=axis, keepdims=True)
     # If the largest element is `-inf` or `inf` then we don't bother subtracting
     # off the max. We do this because otherwise we'd get `inf - inf = NaN`. That
     # this is ok follows from the fact that we're actually free to subtract any
     # value we like, so long as we add it back after taking the `log(sum(...))`.
     max_log_absw_x = array_ops.where(
-        math_ops.is_inf(max_log_absw_x),
-        array_ops.zeros_like(max_log_absw_x),
+        math_ops.is_inf(max_log_absw_x), array_ops.zeros_like(max_log_absw_x),
         max_log_absw_x)
     wx_over_max_absw_x = (
         math_ops.sign(w) * math_ops.exp(log_absw_x - max_log_absw_x))
     sum_wx_over_max_absw_x = math_ops.reduce_sum(
-        wx_over_max_absw_x,
-        axis=axis,
-        keep_dims=keep_dims)
+        wx_over_max_absw_x, axis=axis, keepdims=keep_dims)
     if not keep_dims:
       max_log_absw_x = array_ops.squeeze(max_log_absw_x, axis)
     sgn = math_ops.sign(sum_wx_over_max_absw_x)
@@ -1122,8 +1191,9 @@ def softplus_inverse(x, name=None):
     too_large_value = x
     # This `where` will ultimately be a NOP because we won't select this
     # codepath whenever we used the surrogate `ones_like`.
-    x = array_ops.where(math_ops.logical_or(is_too_small, is_too_large),
-                        array_ops.ones_like(x), x)
+    x = array_ops.where(
+        math_ops.logical_or(is_too_small, is_too_large), array_ops.ones_like(x),
+        x)
     y = x + math_ops.log(-math_ops.expm1(-x))  # == log(expm1(x))
     return array_ops.where(is_too_small, too_small_value,
                            array_ops.where(is_too_large, too_large_value, y))
@@ -1134,21 +1204,24 @@ def dimension_size(x, axis):
   """Returns the size of a specific dimension."""
   # Since tf.gather isn't "constant-in, constant-out", we must first check the
   # static shape or fallback to dynamic shape.
-  s = x.shape.with_rank_at_least(np.abs(axis))[axis].value
+  s = tensor_shape.dimension_value(
+      x.shape.with_rank_at_least(np.abs(axis))[axis])
   if s is not None:
     return s
   return array_ops.shape(x)[axis]
 
 
-def process_quadrature_grid_and_probs(
-    quadrature_grid_and_probs, dtype, validate_args, name=None):
+def process_quadrature_grid_and_probs(quadrature_grid_and_probs,
+                                      dtype,
+                                      validate_args,
+                                      name=None):
   """Validates quadrature grid, probs or computes them as necessary.
 
   Args:
     quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
       representing the sample points and the corresponding (possibly
       normalized) weight.  When `None`, defaults to:
-      `np.polynomial.hermite.hermgauss(deg=8)`.
+        `np.polynomial.hermite.hermgauss(deg=8)`.
     dtype: The expected `dtype` of `grid` and `probs`.
     validate_args: Python `bool`, default `False`. When `True` distribution
       parameters are checked for validity despite possibly degrading runtime
@@ -1178,14 +1251,12 @@ def process_quadrature_grid_and_probs(
 
     grid, probs = tuple(quadrature_grid_and_probs)
     grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
-    probs = ops.convert_to_tensor(probs, name="unnormalized_probs",
-                                  dtype=dtype)
-    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keep_dims=True,
-                             name="probs")
+    probs = ops.convert_to_tensor(probs, name="unnormalized_probs", dtype=dtype)
+    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keepdims=True, name="probs")
 
     def _static_event_size(x):
       """Returns the static size of a specific dimension or `None`."""
-      return x.shape.with_rank_at_least(1)[-1].value
+      return tensor_shape.dimension_value(x.shape.with_rank_at_least(1)[-1])
 
     m, n = _static_event_size(probs), _static_event_size(grid)
     if m is not None and n is not None:
@@ -1216,13 +1287,13 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
       (Negative indexing is supported.)
     front: Python `bool`; if `True` the beginning of the `axis` dimension is
       padded with `value`, `count` times. If `False` no front padding is made.
-    back: Python `bool`; if `True` the end of the `axis` dimension is
-      padded with `value`, `count` times. If `False` no end padding is made.
+    back: Python `bool`; if `True` the end of the `axis` dimension is padded
+      with `value`, `count` times. If `False` no end padding is made.
     value: Scalar `int`-like `Tensor` representing the actual value added to the
       front and/or back of the `axis` dimension of `x`.
     count: Scalar `int`-like `Tensor` representing number of elements added to
-      the front and/or back of the `axis` dimension of `x`. E.g., if
-      `front = back = True` then `2 * count` elements are added.
+      the front and/or back of the `axis` dimension of `x`. E.g., if `front =
+      back = True` then `2 * count` elements are added.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
@@ -1241,8 +1312,9 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
           count.dtype.name))
     if not front and not back:
       raise ValueError("At least one of `front`, `back` must be `True`.")
-    ndims = (x.shape.ndims if x.shape.ndims is not None
-             else array_ops.rank(x, name="ndims"))
+    ndims = (
+        x.shape.ndims if x.shape.ndims is not None else array_ops.rank(
+            x, name="ndims"))
     axis = ops.convert_to_tensor(axis, name="axis")
     axis_ = tensor_util.constant_value(axis)
     if axis_ is not None:
@@ -1252,10 +1324,10 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
       count_ = tensor_util.constant_value(count)
       if axis_ >= 0 or x.shape.ndims is not None:
         head = x.shape[:axis]
-        middle = tensor_shape.TensorShape(
-            None if count_ is None
-            else (x.shape[axis] + count_ * (front + back)))
-        tail = x.shape[axis+1:]
+        middle = tensor_shape.TensorShape(None if count_ is None else (
+            tensor_shape.dimension_at_index(x.shape, axis) + count_ *
+            (front + back)))
+        tail = x.shape[axis + 1:]
         final_shape = head.concatenate(middle.concatenate(tail))
       else:
         final_shape = None
@@ -1265,8 +1337,8 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
     x = array_ops.pad(
         x,
         paddings=array_ops.one_hot(
-            indices=array_ops.stack([axis if front else -1,
-                                     axis if back else -1]),
+            indices=array_ops.stack(
+                [axis if front else -1, axis if back else -1]),
             depth=ndims,
             axis=0,
             on_value=count,
@@ -1275,6 +1347,43 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
     if final_shape is not None:
       x.set_shape(final_shape)
     return x
+
+
+def parent_frame_arguments():
+  """Returns parent frame arguments.
+
+  When called inside a function, returns a dictionary with the caller's function
+  arguments. These are positional arguments and keyword arguments (**kwargs),
+  while variable arguments (*varargs) are excluded.
+
+  When called at global scope, this will return an empty dictionary, since there
+  are no arguments.
+
+  WARNING: If caller function argument names are overloaded before invoking
+  this method, then values will reflect the overloaded value. For this reason,
+  we recommend calling `parent_frame_arguments` at the beginning of the
+  function.
+  """
+  # All arguments and the names used for *varargs, and **kwargs
+  arg_names, variable_arg_name, keyword_arg_name, local_vars = (
+      tf_inspect._inspect.getargvalues(  # pylint: disable=protected-access
+          # Get the first frame of the caller of this method.
+          tf_inspect._inspect.stack()[1][0]))  # pylint: disable=protected-access
+
+  # Remove the *varargs, and flatten the **kwargs. Both are
+  # nested lists.
+  local_vars.pop(variable_arg_name, {})
+  keyword_args = local_vars.pop(keyword_arg_name, {})
+
+  final_args = {}
+  # Copy over arguments and their values. In general, local_vars
+  # may contain more than just the arguments, since this method
+  # can be called anywhere in a function.
+  for arg_name in arg_names:
+    final_args[arg_name] = local_vars.pop(arg_name)
+  final_args.update(keyword_args)
+
+  return final_args
 
 
 class AppendDocstring(object):
@@ -1304,8 +1413,8 @@ class AppendDocstring(object):
     Args:
       additional_note: Python string added as additional docstring to public
         version of function.
-      kwargs_dict: Python string/string dictionary representing
-        specific kwargs expanded from the **kwargs input.
+      kwargs_dict: Python string/string dictionary representing specific kwargs
+        expanded from the **kwargs input.
 
     Raises:
       ValueError: if kwargs_dict.key contains whitespace.
@@ -1317,20 +1426,20 @@ class AppendDocstring(object):
       for key in sorted(kwargs_dict.keys()):
         value = kwargs_dict[key]
         if any(x.isspace() for x in key):
-          raise ValueError(
-              "Parameter name \"%s\" contains whitespace." % key)
+          raise ValueError("Parameter name \"%s\" contains whitespace." % key)
         value = value.lstrip()
         if "\n" in value:
           raise ValueError(
               "Parameter description for \"%s\" contains newlines." % key)
         bullets.append("*  `%s`: %s" % (key, value))
-      self._additional_note += ("\n\n##### `kwargs`:\n\n" +
-                                "\n".join(bullets))
+      self._additional_note += ("\n\n##### `kwargs`:\n\n" + "\n".join(bullets))
 
   def __call__(self, fn):
+
     @functools.wraps(fn)
     def _fn(*args, **kwargs):
       return fn(*args, **kwargs)
+
     if _fn.__doc__ is None:
       _fn.__doc__ = self._additional_note
     else:

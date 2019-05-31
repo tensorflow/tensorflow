@@ -27,6 +27,21 @@ limitations under the License.
 
 namespace tensorflow {
 
+TEST(ArrayOpsTest, UnravelIndex_ShapeFn) {
+  ShapeInferenceTestOp op("UnravelIndex");
+
+  INFER_OK(op, "?;?", "?");
+
+  INFER_OK(op, "[];[?]", "[d1_0]");
+
+  INFER_OK(op, "[4,5];[?]", "[d1_0,20]");
+  INFER_OK(op, "[2,3,4];[?]", "[d1_0,24]");
+  INFER_OK(op, "?;[?]", "?");
+  INFER_OK(op, "[?];[?]", "[d1_0,?]");
+
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,1]");
+}
+
 TEST(ArrayOpsTest, Pack_ShapeFn) {
   ShapeInferenceTestOp op("Pack");
   auto set_axis = [&op](int axis) {
@@ -142,8 +157,13 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
-           "CheckNumerics", "Identity", "RefIdentity", "QuantizeAndDequantize",
-           "StopGradient", "ZerosLike", "OnesLike",
+           "CheckNumerics",
+           "Identity",
+           "RefIdentity",
+           "QuantizeAndDequantize",
+           "StopGradient",
+           "ZerosLike",
+           "OnesLike",
        }) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");
@@ -273,6 +293,7 @@ TEST(ArrayOpsTest, Gather_ShapeFn) {
 
 TEST(ArrayOpsTest, GatherV2_ShapeFn) {
   ShapeInferenceTestOp op("GatherV2");
+  AddNodeAttr("batch_dims", 0, &op.node_def);
 
   // Tests when axis is unknown.
   INFER_OK(op, "?;?;?", "?");
@@ -363,7 +384,11 @@ TEST(ArrayOpsTest, ShapeN_ShapeFn) {
 TEST(ArrayOpsTest, Unique_ShapeFn) {
   ShapeInferenceTestOp op("Unique");
   INFER_OK(op, "?", "[?];in0");
-  INFER_OK(op, "[1,2,3,?,5]", "[?];in0");
+  INFER_OK(op, "[5]", "[?];in0");
+  INFER_ERROR(
+      "Shape must be rank 1 but is rank 5 for '' (op: '') with input shapes: "
+      "[1,2,3,?,5].",
+      op, "[1,2,3,?,5]");
 }
 
 TEST(ArrayOpsTest, UniqueWithCounts_ShapeFn) {
@@ -483,6 +508,33 @@ TEST(ArrayOpsTest, BroadcastArgs_ShapeFn) {
   // Rank checks
   INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[];?");
   INFER_ERROR("Shape must be rank 1 but is rank 0", op, "?;[]");
+}
+
+TEST(ArrayOpsTest, BroadcastTo_ShapeFn) {
+  ShapeInferenceTestOp op("BroadcastTo");
+  op.input_tensors.resize(2);
+
+  INFER_OK(op, "?;[?]", "?");
+  INFER_OK(op, "[];[1]", "[?]");
+  INFER_OK(op, "[1];[1]", "[?]");
+  INFER_OK(op, "[1];[2]", "[?,?]");
+  INFER_OK(op, "[2,2];[3]", "[?,d0_0,d0_1]");
+
+  // Rank checks
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[?,?]");
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[2];[]");
+  INFER_ERROR("Shape must be at most rank 1 but is rank 2", op, "[2,2];[1]");
+
+  Tensor shape_t(DT_INT64, TensorShape{3});
+  test::FillValues<int64>(&shape_t, {2, 10, 3});
+  op.input_tensors[1] = &shape_t;
+  INFER_OK(op, "[1,?,1];[3]", "[2,10,3]");
+  INFER_OK(op, "[1,1,1];[3]", "[2,10,3]");
+  INFER_OK(op, "[10,1];[3]", "[2,d0_0,3]");
+  INFER_ERROR("Dimensions must be equal, but are 3 and 2 for", op,
+              "[3,1,1];[3]");
+  INFER_ERROR("Dimensions must be equal, but are 2 and 10 for", op,
+              "[2,2,1];[3]");
 }
 
 TEST(ArrayOpsTest, BroadcastGradientArgs_ShapeFn) {
@@ -829,7 +881,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Unknown dimensions.
   // Flatten:
   new_shape = test::AsTensor<int32>({-1});
-  INFER_OK(op, "[?];[1]", "[?]");
+  INFER_OK(op, "[?];[1]", "[d0_0]");
   INFER_OK(op, "[2,2];[1]", "[4]");
   // The first dimension is inferred:
   new_shape = test::AsTensor<int32>({2, -1});
@@ -841,6 +893,10 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
   INFER_OK(op, "[8];[3]", "[?,?,2]");
+
+  // Symbolic shape propagation
+  new_shape = test::AsTensor<int32>({-1, 2, 3});
+  INFER_OK(op, "[?,2,3];[3]", "[d0_0,2,3]");
 
   // Reshaping to a scalar.
   new_shape = test::AsTensor<int32>({});
@@ -947,6 +1003,7 @@ TEST(ArrayOpsTest, Transpose_ShapeFn) {
   INFER_OK(op, "?;[2]", "[?,?]");
   INFER_OK(op, "[?,?];[2]", "[d0_1,d0_0]");
   INFER_OK(op, "[1,?];[2]", "[d0_1,d0_0]");
+  INFER_OK(op, "?;[0]", "in0");
 
   // Invalid arguments.
   perm = test::AsTensor<int32>({1, 2});
@@ -1590,6 +1647,24 @@ TEST(ArrayOpsTest, Slice_ShapeFn) {
   begin = test::AsTensor<int32>({0, 1, 2, 5});
   sizes = test::AsTensor<int32>({-1, -1, -1, -2});
   INFER_ERROR("cannot be < -1", op, "[2,3,4,5];[4];[4]");
+}
+
+TEST(ArrayOpsTest, StridedSlice_ShapeFn) {
+  ShapeInferenceTestOp op("StridedSlice");
+  TF_ASSERT_OK(NodeDefBuilder("test", "StridedSlice")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("begin", 1, DT_INT32)
+                   .Input("end", 2, DT_INT32)
+                   .Input("strides", 3, DT_INT32)
+                   .Attr("shrink_axis_mask", 1)
+                   .Finalize(&op.node_def));
+  op.input_tensors.resize(4);
+  Tensor strides = test::AsTensor<int32>({1});
+  op.input_tensors[3] = &strides;
+  // Slicing on the 0-th dimension.
+  INFER_OK(op, "[2,3,4,5];[1];[1];[1]", "[3,4,5]");
+  // Slicing on the 0-th dimension. This time some of the result dimension is 0.
+  INFER_OK(op, "[2,0,3,4];[1];[1];[1]", "[0,3,4]");
 }
 
 TEST(ArrayOpsTest, StridedSliceGrad_ShapeFn) {

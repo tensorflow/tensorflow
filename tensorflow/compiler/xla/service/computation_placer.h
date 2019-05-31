@@ -55,6 +55,8 @@ class DeviceAssignment : public Array2D<int> {
   // due to a StatusOr of an incomplete type (DeviceAssignment).
   static StatusOr<std::unique_ptr<DeviceAssignment>> Deserialize(
       const DeviceAssignmentProto& proto);
+
+  string ToString() const;
 };
 
 // A generic implementation of the XLA computation placer, which assigns device
@@ -80,13 +82,13 @@ class ComputationPlacer {
 
   // Registers a computation placer creation function for a particular platform.
   static void RegisterComputationPlacer(
-      perftools::gputools::Platform::Id platform_id,
+      se::Platform::Id platform_id,
       ComputationPlacerCreationFunction creation_function);
 
   // Returns the computation placer singleton pointer if it is available for the
   // given platform, or an error status if it is not.
   static StatusOr<ComputationPlacer*> GetForPlatform(
-      const perftools::gputools::Platform* platform);
+      const se::Platform* platform);
 
  private:
   // The mutex that guards the platform-to-computation placer map.
@@ -101,10 +103,7 @@ class ComputationPlacer {
   };
 
   // Map from platform kind to computation placer singleton.
-  static std::map<perftools::gputools::Platform::Id, State>*
-  GetPlatformComputationPlacers();
-
-  perftools::gputools::Platform::Id platform_id_;
+  static std::map<se::Platform::Id, State>* GetPlatformComputationPlacers();
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationPlacer);
 };

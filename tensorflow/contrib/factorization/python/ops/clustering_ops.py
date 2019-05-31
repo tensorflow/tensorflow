@@ -18,34 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.factorization.python.ops import gen_clustering_ops
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.factorization.python.ops.gen_clustering_ops import *
-# pylint: enable=wildcard-import
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_clustering_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.embedding_ops import embedding_lookup
-from tensorflow.python.platform import resource_loader
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
+from tensorflow.python.ops.gen_clustering_ops import *
+# pylint: enable=wildcard-import
 
-_clustering_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile('_clustering_ops.so'))
-
-# Euclidean distance between vectors U and V is defined as ||U - V||_F which is
-# the square root of the sum of the absolute squares of the elements difference.
+# Euclidean distance between vectors U and V is defined as \\(||U - V||_F\\)
+# which is the square root of the sum of the absolute squares of the elements
+# difference.
 SQUARED_EUCLIDEAN_DISTANCE = 'squared_euclidean'
 # Cosine distance between vectors U and V is defined as
-# 1 - (U \dot V) / (||U||_F ||V||_F)
+# \\(1 - (U \dot V) / (||U||_F ||V||_F)\\)
 COSINE_DISTANCE = 'cosine'
 
 RANDOM_INIT = 'random'
@@ -192,11 +188,11 @@ class KMeans(object):
         # Computes Euclidean distance. Note the first and third terms are
         # broadcast additions.
         squared_distance = (
-            math_ops.reduce_sum(math_ops.square(inp), 1, keep_dims=True) -
+            math_ops.reduce_sum(math_ops.square(inp), 1, keepdims=True) -
             2 * math_ops.matmul(inp, clusters, transpose_b=True) +
             array_ops.transpose(
                 math_ops.reduce_sum(
-                    math_ops.square(clusters), 1, keep_dims=True)))
+                    math_ops.square(clusters), 1, keepdims=True)))
         output.append(squared_distance)
 
     return output
@@ -472,8 +468,8 @@ class KMeans(object):
         # Locally compute the sum of inputs mapped to each id.
         # For a cluster with old cluster value x, old count n, and with data
         # d_1,...d_k newly assigned to it, we recompute the new value as
-        # x += (sum_i(d_i) - k * x) / (n + k).
-        # Compute sum_i(d_i), see comment above.
+        # \\(x += (sum_i(d_i) - k * x) / (n + k)\\).
+        # Compute \\(sum_i(d_i)\\), see comment above.
         cluster_center_updates = math_ops.unsorted_segment_sum(
             inp, unique_idx, num_unique_cluster_idx)
         # Shape to enable broadcasting count_updates and learning_rate to inp.
@@ -617,7 +613,8 @@ class _InitializeClustersOpFactory(object):
       inp = nn_impl.l2_normalize(inp, dim=1)
     return gen_clustering_ops.kmeans_plus_plus_initialization(
         inp,
-        math_ops.to_int64(self._num_remaining), self._random_seed,
+        math_ops.cast(self._num_remaining, dtypes.int64),
+        self._random_seed,
         self._kmeans_plus_plus_num_retries)
 
   def _kmc2_multiple_centers(self):

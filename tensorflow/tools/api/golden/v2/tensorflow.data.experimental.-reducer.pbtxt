@@ -1,0 +1,21 @@
+path: "tensorflow.data.experimental.Reducer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.experimental.ops.grouping.Reducer\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "finalize_func"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "init_func"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "reduce_func"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'init_func\', \'reduce_func\', \'finalize_func\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_NTH_ELEMENT_OP_H_
-#define TENSORFLOW_NTH_ELEMENT_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_NTH_ELEMENT_OP_H_
+#define TENSORFLOW_CORE_KERNELS_NTH_ELEMENT_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -26,14 +26,12 @@ namespace functor {
 
 template <typename Device, typename T>
 struct NthElementFunctor {
-  void operator() (OpKernelContext* context,
-                   const Tensor& input_tensor,
-                   Tensor& output_tensor,
-                   int n);
+  void operator()(OpKernelContext* context, const Tensor& input_tensor,
+                  Tensor& output_tensor, int n);
 };
 
 }  // namespace functor
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_NTH_ELEMENT_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_NTH_ELEMENT_OP_H_

@@ -69,7 +69,7 @@ class GradientsDebugger(object):
   """Gradients Debugger.
 
   Allows retrieval of gradient tensors created by TensorFlow's automatic
-  differentiation algorithm, i.e., @{tf.gradients} and optimizer classes that
+  differentiation algorithm, i.e., `tf.gradients` and optimizer classes that
   use it.
   """
   # TODO(cais): Add examples code in the doc string?
@@ -132,7 +132,7 @@ class GradientsDebugger(object):
 
     # Create a train op under the grad_debugger context.
     with grad_debugger:
-      train_op = tf.train.GradientDescentOptimizer(z)
+      train_op = tf.compat.v1.train.GradientDescentOptimizer(z)
 
     # Now we can reflect through grad_debugger to get the gradient tensor
     # with respect to y.
@@ -142,8 +142,8 @@ class GradientsDebugger(object):
     Args:
       input_tensor: the input `tf.Tensor` object whose related gradient tensors
         are to be reigstered with this `GradientsDebugger` instance when they
-        are created, e.g., during @{tf.gradients} calls or the construction
-        of optimization (training) op that uses @{tf.gradients}.
+        are created, e.g., during `tf.gradients` calls or the construction
+        of optimization (training) op that uses `tf.gradients`.
 
     Returns:
       A forwarded identity of `input_tensor`, as a `tf.Tensor`.
@@ -156,11 +156,12 @@ class GradientsDebugger(object):
     # TODO(cais): Implement value_stack.
     grad_debug_op_name = _tensor_to_grad_debug_op_name(input_tensor, self._uuid)
     # pylint: disable=protected-access
-    identity_op = (gen_array_ops._debug_gradient_ref_identity
-                   if input_tensor.dtype._is_ref_dtype
-                   else gen_array_ops._debug_gradient_identity)
-    debug_grad_identity = identity_op(input_tensor, name=grad_debug_op_name)
+    identity_op = (
+        gen_array_ops.debug_gradient_ref_identity
+        if input_tensor.dtype._is_ref_dtype else
+        gen_array_ops.debug_gradient_identity)
     # pylint: enable=protected-access
+    debug_grad_identity = identity_op(input_tensor, name=grad_debug_op_name)
     assert debug_grad_identity.dtype == input_tensor.dtype
     if debug_grad_identity.op.name != grad_debug_op_name:
       raise ValueError(
@@ -194,7 +195,7 @@ class GradientsDebugger(object):
     # Create a train op under the grad_debugger context.
     grad_debugger = tf_debug.GradientsDebugger()
     with grad_debugger.watch_gradients_by_tensors(y):
-      train_op = tf.train.GradientDescentOptimizer(z)
+      train_op = tf.compat.v1.train.GradientDescentOptimizer(z)
 
     # Now we can reflect through grad_debugger to get the gradient tensor
     # with respect to y.
@@ -246,7 +247,7 @@ class GradientsDebugger(object):
     # Create a train op under the grad_debugger context.
     grad_debugger = tf_debug.GradientsDebugger()
     with grad_debugger.watch_gradients_by_tensor_names(r"(x|y):0$"):
-      train_op = tf.train.GradientDescentOptimizer(z)
+      train_op = tf.compat.v1.train.GradientDescentOptimizer(z)
 
     # Now we can reflect through grad_debugger to get the gradient tensor
     # with respect to x and y.

@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 
@@ -46,8 +46,8 @@ class BCastArgsOp : public OpKernel {
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 errors::InvalidArgument(
-                    "Incompatible shapes: [", str_util::Join(shapes[0], ","),
-                    "] vs. [", str_util::Join(shapes[1], ","), "]"));
+                    "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
     Output(ctx, 0, bcast.output_shape());
   }
 
@@ -95,8 +95,8 @@ class BCastGradArgsOp : public OpKernel {
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
                 errors::InvalidArgument(
-                    "Incompatible shapes: [", str_util::Join(shapes[0], ","),
-                    "] vs. [", str_util::Join(shapes[1], ","), "]"));
+                    "Incompatible shapes: [", absl::StrJoin(shapes[0], ","),
+                    "] vs. [", absl::StrJoin(shapes[1], ","), "]"));
     Output(ctx, 0, bcast.grad_x_reduce_idx());
     Output(ctx, 1, bcast.grad_y_reduce_idx());
   }

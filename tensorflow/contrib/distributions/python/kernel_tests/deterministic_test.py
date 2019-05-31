@@ -29,7 +29,7 @@ rng = np.random.RandomState(0)
 class DeterministicTest(test.TestCase):
 
   def testShape(self):
-    with self.test_session():
+    with self.cached_session():
       loc = rng.rand(2, 3, 4)
       deterministic = deterministic_lib.Deterministic(loc)
 
@@ -42,20 +42,20 @@ class DeterministicTest(test.TestCase):
     loc = rng.rand(2, 3, 4).astype(np.float32)
     deterministic = deterministic_lib.Deterministic(
         loc, atol=-1, validate_args=True)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Condition x >= 0"):
         deterministic.prob(0.).eval()
 
   def testProbWithNoBatchDimsIntegerType(self):
     deterministic = deterministic_lib.Deterministic(0)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(1, deterministic.prob(0).eval())
       self.assertAllClose(0, deterministic.prob(2).eval())
       self.assertAllClose([1, 0], deterministic.prob([0, 2]).eval())
 
   def testProbWithNoBatchDims(self):
     deterministic = deterministic_lib.Deterministic(0.)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(1., deterministic.prob(0.).eval())
       self.assertAllClose(0., deterministic.prob(2.).eval())
       self.assertAllClose([1., 0.], deterministic.prob([0., 2.]).eval())
@@ -65,7 +65,7 @@ class DeterministicTest(test.TestCase):
     x = [[0., 1.1], [1.99, 3.]]
     deterministic = deterministic_lib.Deterministic(loc)
     expected_prob = [[1., 0.], [0., 1.]]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((2, 2), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -75,7 +75,7 @@ class DeterministicTest(test.TestCase):
     x = [[0., 1.1], [1.99, 3.]]
     deterministic = deterministic_lib.Deterministic(loc, atol=0.05)
     expected_prob = [[1., 0.], [1., 1.]]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((2, 2), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -85,7 +85,7 @@ class DeterministicTest(test.TestCase):
     x = [[0, 2], [4, 2]]
     deterministic = deterministic_lib.Deterministic(loc, atol=1)
     expected_prob = [[1, 1], [0, 1]]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((2, 2), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -95,7 +95,7 @@ class DeterministicTest(test.TestCase):
     x = [[0., 1.1], [100.1, 103.]]
     deterministic = deterministic_lib.Deterministic(loc, rtol=0.01)
     expected_prob = [[1., 0.], [1., 0.]]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((2, 2), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -107,7 +107,7 @@ class DeterministicTest(test.TestCase):
     # Batch 1 will have rtol = 1 (100% slack allowed)
     deterministic = deterministic_lib.Deterministic(loc, rtol=[[0], [1]])
     expected_prob = [[1, 0, 0], [1, 1, 0]]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((2, 3), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -117,7 +117,7 @@ class DeterministicTest(test.TestCase):
     x = [[-1., -0.1], [-0.01, 1.000001]]
     deterministic = deterministic_lib.Deterministic(loc)
     expected_cdf = [[0., 0.], [0., 1.]]
-    with self.test_session():
+    with self.cached_session():
       cdf = deterministic.cdf(x)
       self.assertAllEqual((2, 2), cdf.get_shape())
       self.assertAllEqual(expected_cdf, cdf.eval())
@@ -127,7 +127,7 @@ class DeterministicTest(test.TestCase):
     x = [[-1., -0.1], [-0.01, 1.000001]]
     deterministic = deterministic_lib.Deterministic(loc, atol=0.05)
     expected_cdf = [[0., 0.], [1., 1.]]
-    with self.test_session():
+    with self.cached_session():
       cdf = deterministic.cdf(x)
       self.assertAllEqual((2, 2), cdf.get_shape())
       self.assertAllEqual(expected_cdf, cdf.eval())
@@ -137,7 +137,7 @@ class DeterministicTest(test.TestCase):
     x = [[0.9, 1.], [99.9, 97]]
     deterministic = deterministic_lib.Deterministic(loc, rtol=0.01)
     expected_cdf = [[0., 1.], [1., 0.]]
-    with self.test_session():
+    with self.cached_session():
       cdf = deterministic.cdf(x)
       self.assertAllEqual((2, 2), cdf.get_shape())
       self.assertAllEqual(expected_cdf, cdf.eval())
@@ -145,7 +145,7 @@ class DeterministicTest(test.TestCase):
   def testSampleNoBatchDims(self):
     deterministic = deterministic_lib.Deterministic(0.)
     for sample_shape in [(), (4,)]:
-      with self.test_session():
+      with self.cached_session():
         sample = deterministic.sample(sample_shape)
         self.assertAllEqual(sample_shape, sample.get_shape())
         self.assertAllClose(
@@ -154,7 +154,7 @@ class DeterministicTest(test.TestCase):
   def testSampleWithBatchDims(self):
     deterministic = deterministic_lib.Deterministic([0., 0.])
     for sample_shape in [(), (4,)]:
-      with self.test_session():
+      with self.cached_session():
         sample = deterministic.sample(sample_shape)
         self.assertAllEqual(sample_shape + (2,), sample.get_shape())
         self.assertAllClose(
@@ -166,18 +166,25 @@ class DeterministicTest(test.TestCase):
 
     deterministic = deterministic_lib.Deterministic(loc)
     for sample_shape_ in [(), (4,)]:
-      with self.test_session():
+      with self.cached_session():
         sample_ = deterministic.sample(sample_shape).eval(
             feed_dict={loc: [0., 0.],
                        sample_shape: sample_shape_})
         self.assertAllClose(
             np.zeros(sample_shape_ + (2,)).astype(np.float32), sample_)
 
+  def testEntropy(self):
+    loc = np.array([-0.1, -3.2, 7.])
+    deterministic = deterministic_lib.Deterministic(loc=loc)
+    with self.cached_session() as sess:
+      entropy_ = sess.run(deterministic.entropy())
+      self.assertAllEqual(np.zeros(3), entropy_)
+
 
 class VectorDeterministicTest(test.TestCase):
 
   def testShape(self):
-    with self.test_session():
+    with self.cached_session():
       loc = rng.rand(2, 3, 4)
       deterministic = deterministic_lib.VectorDeterministic(loc)
 
@@ -190,7 +197,7 @@ class VectorDeterministicTest(test.TestCase):
     loc = rng.rand(2, 3, 4).astype(np.float32)
     deterministic = deterministic_lib.VectorDeterministic(
         loc, atol=-1, validate_args=True)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Condition x >= 0"):
         deterministic.prob(loc).eval()
 
@@ -198,14 +205,14 @@ class VectorDeterministicTest(test.TestCase):
     loc = rng.rand(2, 3, 4).astype(np.float32)
     deterministic = deterministic_lib.VectorDeterministic(
         loc, atol=-1, validate_args=True)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError, "must have rank at least 1"):
         deterministic.prob(0.).eval()
 
   def testProbVectorDeterministicWithNoBatchDims(self):
     # 0 batch of deterministics on R^1.
     deterministic = deterministic_lib.VectorDeterministic([0.])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(1., deterministic.prob([0.]).eval())
       self.assertAllClose(0., deterministic.prob([2.]).eval())
       self.assertAllClose([1., 0.], deterministic.prob([[0.], [2.]]).eval())
@@ -216,7 +223,7 @@ class VectorDeterministicTest(test.TestCase):
     x = [[0., 1.], [1.9, 3.], [3.99, 5.]]
     deterministic = deterministic_lib.VectorDeterministic(loc)
     expected_prob = [1., 0., 0.]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((3,), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -227,7 +234,7 @@ class VectorDeterministicTest(test.TestCase):
     x = [[0., 1.], [1.9, 3.], [3.99, 5.]]
     deterministic = deterministic_lib.VectorDeterministic(loc, atol=0.05)
     expected_prob = [1., 0., 1.]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((3,), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -238,7 +245,7 @@ class VectorDeterministicTest(test.TestCase):
     x = [[0., 1.], [0.9, 1.], [99.9, 100.1]]
     deterministic = deterministic_lib.VectorDeterministic(loc, rtol=0.01)
     expected_prob = [1., 0., 1.]
-    with self.test_session():
+    with self.cached_session():
       prob = deterministic.prob(x)
       self.assertAllEqual((3,), prob.get_shape())
       self.assertAllEqual(expected_prob, prob.eval())
@@ -247,7 +254,7 @@ class VectorDeterministicTest(test.TestCase):
     # 0 batch of deterministics on R^0.
     deterministic = deterministic_lib.VectorDeterministic(
         [], validate_args=True)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(1., deterministic.prob([]).eval())
 
   def testProbVectorDeterministicWithNoBatchDimsOnRZeroRaisesIfXNotInSameRk(
@@ -255,14 +262,14 @@ class VectorDeterministicTest(test.TestCase):
     # 0 batch of deterministics on R^0.
     deterministic = deterministic_lib.VectorDeterministic(
         [], validate_args=True)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("not defined in the same space"):
         deterministic.prob([1.]).eval()
 
   def testSampleNoBatchDims(self):
     deterministic = deterministic_lib.VectorDeterministic([0.])
     for sample_shape in [(), (4,)]:
-      with self.test_session():
+      with self.cached_session():
         sample = deterministic.sample(sample_shape)
         self.assertAllEqual(sample_shape + (1,), sample.get_shape())
         self.assertAllClose(
@@ -271,7 +278,7 @@ class VectorDeterministicTest(test.TestCase):
   def testSampleWithBatchDims(self):
     deterministic = deterministic_lib.VectorDeterministic([[0.], [0.]])
     for sample_shape in [(), (4,)]:
-      with self.test_session():
+      with self.cached_session():
         sample = deterministic.sample(sample_shape)
         self.assertAllEqual(sample_shape + (2, 1), sample.get_shape())
         self.assertAllClose(
@@ -283,12 +290,19 @@ class VectorDeterministicTest(test.TestCase):
 
     deterministic = deterministic_lib.VectorDeterministic(loc)
     for sample_shape_ in [(), (4,)]:
-      with self.test_session():
+      with self.cached_session():
         sample_ = deterministic.sample(sample_shape).eval(
             feed_dict={loc: [[0.], [0.]],
                        sample_shape: sample_shape_})
         self.assertAllClose(
             np.zeros(sample_shape_ + (2, 1)).astype(np.float32), sample_)
+
+  def testEntropy(self):
+    loc = np.array([[8.3, 1.2, 3.3], [-0.1, -3.2, 7.]])
+    deterministic = deterministic_lib.VectorDeterministic(loc=loc)
+    with self.cached_session() as sess:
+      entropy_ = sess.run(deterministic.entropy())
+      self.assertAllEqual(np.zeros(2), entropy_)
 
 
 if __name__ == "__main__":

@@ -72,10 +72,11 @@ struct TensorReleaser {
 
 extern PyTypeObject TensorReleaserType;
 
-static void TensorReleaser_dealloc(TensorReleaser* self) {
+static void TensorReleaser_dealloc(PyObject* pself) {
+  TensorReleaser* self = reinterpret_cast<TensorReleaser*>(pself);
   (*self->destructor)();
   delete self->destructor;
-  TensorReleaserType.tp_free(self);
+  TensorReleaserType.tp_free(pself);
 }
 
 PyTypeObject TensorReleaserType = {
@@ -84,26 +85,26 @@ PyTypeObject TensorReleaserType = {
     sizeof(TensorReleaser),           /* tp_basicsize */
     0,                                /* tp_itemsize */
     /* methods */
-    (destructor)TensorReleaser_dealloc, /* tp_dealloc */
-    nullptr,                            /* tp_print */
-    nullptr,                            /* tp_getattr */
-    nullptr,                            /* tp_setattr */
-    nullptr,                            /* tp_compare */
-    nullptr,                            /* tp_repr */
-    nullptr,                            /* tp_as_number */
-    nullptr,                            /* tp_as_sequence */
-    nullptr,                            /* tp_as_mapping */
-    nullptr,                            /* tp_hash */
-    nullptr,                            /* tp_call */
-    nullptr,                            /* tp_str */
-    nullptr,                            /* tp_getattro */
-    nullptr,                            /* tp_setattro */
-    nullptr,                            /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                 /* tp_flags */
-    "Wrapped TensorFlow Tensor",        /* tp_doc */
-    nullptr,                            /* tp_traverse */
-    nullptr,                            /* tp_clear */
-    nullptr,                            /* tp_richcompare */
+    TensorReleaser_dealloc,      /* tp_dealloc */
+    nullptr,                     /* tp_print */
+    nullptr,                     /* tp_getattr */
+    nullptr,                     /* tp_setattr */
+    nullptr,                     /* tp_compare */
+    nullptr,                     /* tp_repr */
+    nullptr,                     /* tp_as_number */
+    nullptr,                     /* tp_as_sequence */
+    nullptr,                     /* tp_as_mapping */
+    nullptr,                     /* tp_hash */
+    nullptr,                     /* tp_call */
+    nullptr,                     /* tp_str */
+    nullptr,                     /* tp_getattro */
+    nullptr,                     /* tp_setattro */
+    nullptr,                     /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,          /* tp_flags */
+    "Wrapped TensorFlow Tensor", /* tp_doc */
+    nullptr,                     /* tp_traverse */
+    nullptr,                     /* tp_clear */
+    nullptr,                     /* tp_richcompare */
 };
 
 Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
@@ -187,13 +188,9 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
 
 Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
                        std::function<void()> destructor, PyObject** result) {
-  int size = 1;
-  for (int i = 0; i < dim_size; ++i) {
-    size *= dims[i];
-  }
-  if (dtype == DT_STRING || dtype == DT_RESOURCE || size == 0) {
+  if (dtype == DT_STRING || dtype == DT_RESOURCE) {
     return errors::FailedPrecondition(
-        "Cannot convert strings, resources, or empty Tensors.");
+        "Cannot convert string or resource Tensors.");
   }
 
   int type_num = -1;
@@ -203,20 +200,21 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
     return s;
   }
 
-  PyObject* np_array =
-      PyArray_SimpleNewFromData(dim_size, dims, type_num, data);
+  auto* np_array = reinterpret_cast<PyArrayObject*>(
+      PyArray_SimpleNewFromData(dim_size, dims, type_num, data));
+  PyArray_CLEARFLAGS(np_array, NPY_ARRAY_OWNDATA);
   if (PyType_Ready(&TensorReleaserType) == -1) {
     return errors::Unknown("Python type initialization failed.");
   }
-  TensorReleaser* releaser = reinterpret_cast<TensorReleaser*>(
+  auto* releaser = reinterpret_cast<TensorReleaser*>(
       TensorReleaserType.tp_alloc(&TensorReleaserType, 0));
   releaser->destructor = new std::function<void()>(std::move(destructor));
-  if (PyArray_SetBaseObject(reinterpret_cast<PyArrayObject*>(np_array),
-                            reinterpret_cast<PyObject*>(releaser)) == -1) {
+  if (PyArray_SetBaseObject(np_array, reinterpret_cast<PyObject*>(releaser)) ==
+      -1) {
     Py_DECREF(releaser);
     return errors::Unknown("Python array refused to use memory.");
   }
-  *result = PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
+  *result = reinterpret_cast<PyObject*>(np_array);
   return Status::OK();
 }
 

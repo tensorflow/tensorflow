@@ -18,18 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.batching.ops import gen_batch_ops
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.batching.ops.gen_batch_ops import *
-# pylint: enable=wildcard-import
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
-
-
-_batch_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_batch_ops.so"))
+from tensorflow.python.ops import gen_batch_ops
+# pylint: disable=unused-import
+from tensorflow.python.ops.batch_ops import batch
+from tensorflow.python.ops.batch_ops import batch_function
+from tensorflow.python.ops.batch_ops import unbatch
+# pylint: enable=unused-import
 
 
 @ops.RegisterGradient("Batch")
@@ -59,32 +54,17 @@ def _UnbatchGrad(op, grad):   # pylint: disable=invalid-name
   ]
 
 
-def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
-                   allowed_batch_sizes=None,
-                   grad_timeout_micros=60 * 1000 * 1000,
-                   unbatch_timeout_micros=60 * 1000 * 1000):
+def batch_function_v1(num_batch_threads,
+                      max_batch_size,
+                      batch_timeout_micros,
+                      allowed_batch_sizes=None,
+                      grad_timeout_micros=60 * 1000 * 1000,
+                      unbatch_timeout_micros=60 * 1000 * 1000,
+                      max_enqueued_batches=10):
   """Batches the computation done by the decorated function.
 
-  So, for example, in the following code
-
-  ```python
-  @batch_function(1, 2, 3)
-  def layer(a):
-    return tf.matmul(a, a)
-
-  b = layer(w)
-  ```
-
-  if more than one session.run call is simultaneously trying to compute `b`
-  the values of `w` will be gathered, non-deterministically concatenated
-  along the first axis, and only one thread will run the computation. See the
-  documentation of the `Batch` op for more details.
-
-  Assumes that all arguments of the decorated function are Tensors which will
-  be batched along their first dimension.
-
-  SparseTensor is not supported. The return value of the decorated function
-  must be a Tensor or a list/tuple of Tensors.
+  This is the older version of batch_function(). Please use the former instead
+  of this.
 
   Args:
     num_batch_threads: Number of scheduling threads for processing batches
@@ -100,6 +80,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
      documentation of the unbatch op for more details. Defaults to 60s.
     unbatch_timeout_micros: The timeout to use for unbatching. See the
      documentation of the unbatch op for more details. Defaults to 60s.
+    max_enqueued_batches: The maximum depth of the batch queue. Defaults to 10.
 
   Returns:
     The decorated function will return the unbatched computation output Tensors.
@@ -117,6 +98,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
             num_batch_threads=num_batch_threads,
             max_batch_size=max_batch_size,
             batch_timeout_micros=batch_timeout_micros,
+            max_enqueued_batches=max_enqueued_batches,
             allowed_batch_sizes=allowed_batch_sizes,
             grad_timeout_micros=grad_timeout_micros,
             shared_name=name)

@@ -17,12 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.contrib.image.ops import gen_image_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
@@ -33,14 +35,19 @@ _image_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_image_ops.so"))
 
 _IMAGE_DTYPES = set(
-    [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64])
+    [dtypes.uint8, dtypes.int32, dtypes.int64,
+     dtypes.float16, dtypes.float32, dtypes.float64])
 
 ops.RegisterShape("ImageConnectedComponents")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ImageProjectiveTransformV2")(common_shapes.call_cpp_shape_fn)
 
 
+# TODO(ringwalt): Support a "reshape" (name used by SciPy) or "expand" (name
+# used by PIL, maybe more readable) mode, which determines the correct
+# output_shape and translation for the transform.
 def rotate(images, angles, interpolation="NEAREST", name=None):
-  """Rotate image(s) by the passed angle(s) in radians.
+  """Rotate image(s) counterclockwise by the passed angle(s) in radians.
 
   Args:
     images: A tensor of shape (num_images, num_rows, num_columns, num_channels)
@@ -212,7 +219,11 @@ def translations_to_projective_transforms(translations, name=None):
         axis=1)
 
 
-def transform(images, transforms, interpolation="NEAREST", name=None):
+def transform(images,
+              transforms,
+              interpolation="NEAREST",
+              output_shape=None,
+              name=None):
   """Applies the given transform(s) to the image(s).
 
   Args:
@@ -229,6 +240,10 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
        the transform mapping input points to output points. Note that gradients
        are not backpropagated into transformation parameters.
     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+    output_shape: Output dimesion after the transform, [height, width].
+       If None, output is the same size as input image.
+
+    name: The name of the op.
 
   Returns:
     Image(s) with the same type and shape as `images`, with the given
@@ -237,6 +252,7 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
 
   Raises:
     TypeError: If `image` is an invalid type.
+    ValueError: If output shape is not 1-D int32 Tensor.
   """
   with ops.name_scope(name, "transform"):
     image_or_images = ops.convert_to_tensor(images, name="images")
@@ -255,6 +271,20 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
     else:
       raise TypeError("Images should have rank between 2 and 4.")
 
+    if output_shape is None:
+      output_shape = array_ops.shape(images)[1:3]
+      if not context.executing_eagerly():
+        output_shape_value = tensor_util.constant_value(output_shape)
+        if output_shape_value is not None:
+          output_shape = output_shape_value
+
+    output_shape = ops.convert_to_tensor(
+        output_shape, dtypes.int32, name="output_shape")
+
+    if not output_shape.get_shape().is_compatible_with([2]):
+      raise ValueError("output_shape must be a 1-D Tensor of 2 elements: "
+                       "new_height, new_width")
+
     if len(transform_or_transforms.get_shape()) == 1:
       transforms = transform_or_transforms[None]
     elif transform_or_transforms.get_shape().ndims is None:
@@ -264,8 +294,12 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
       transforms = transform_or_transforms
     else:
       raise TypeError("Transforms should have rank 1 or 2.")
-    output = gen_image_ops.image_projective_transform(
-        images, transforms, interpolation=interpolation.upper())
+
+    output = gen_image_ops.image_projective_transform_v2(
+        images,
+        output_shape=output_shape,
+        transforms=transforms,
+        interpolation=interpolation.upper())
     if len(image_or_images.get_shape()) == 2:
       return output[0, :, :, 0]
     elif len(image_or_images.get_shape()) == 3:
@@ -290,34 +324,79 @@ def compose_transforms(*transforms):
   """
   assert transforms, "transforms cannot be empty"
   with ops.name_scope("compose_transforms"):
-    composed = _flat_transforms_to_matrices(transforms[0])
+    composed = flat_transforms_to_matrices(transforms[0])
     for tr in transforms[1:]:
       # Multiply batches of matrices.
-      composed = math_ops.matmul(composed, _flat_transforms_to_matrices(tr))
-    return _transform_matrices_to_flat(composed)
+      composed = math_ops.matmul(composed, flat_transforms_to_matrices(tr))
+    return matrices_to_flat_transforms(composed)
 
 
-def _flat_transforms_to_matrices(transforms):
-  # Make the transform(s) 2D in case the input is a single transform.
-  transforms = array_ops.reshape(transforms, constant_op.constant([-1, 8]))
-  num_transforms = array_ops.shape(transforms)[0]
-  # Add a column of ones for the implicit last entry in the matrix.
-  return array_ops.reshape(
-      array_ops.concat(
-          [transforms, array_ops.ones([num_transforms, 1])], axis=1),
-      constant_op.constant([-1, 3, 3]))
+def flat_transforms_to_matrices(transforms):
+  """Converts `tf.contrib.image` projective transforms to affine matrices.
+
+  Note that the output matrices map output coordinates to input coordinates. For
+  the forward transformation matrix, call `tf.linalg.inv` on the result.
+
+  Args:
+    transforms: Vector of length 8, or batches of transforms with shape
+      `(N, 8)`.
+
+  Returns:
+    3D tensor of matrices with shape `(N, 3, 3)`. The output matrices map the
+      *output coordinates* (in homogeneous coordinates) of each transform to the
+      corresponding *input coordinates*.
+
+  Raises:
+    ValueError: If `transforms` have an invalid shape.
+  """
+  with ops.name_scope("flat_transforms_to_matrices"):
+    transforms = ops.convert_to_tensor(transforms, name="transforms")
+    if transforms.shape.ndims not in (1, 2):
+      raise ValueError("Transforms should be 1D or 2D, got: %s" % transforms)
+    # Make the transform(s) 2D in case the input is a single transform.
+    transforms = array_ops.reshape(transforms, constant_op.constant([-1, 8]))
+    num_transforms = array_ops.shape(transforms)[0]
+    # Add a column of ones for the implicit last entry in the matrix.
+    return array_ops.reshape(
+        array_ops.concat(
+            [transforms, array_ops.ones([num_transforms, 1])], axis=1),
+        constant_op.constant([-1, 3, 3]))
 
 
-def _transform_matrices_to_flat(transform_matrices):
-  # Flatten each matrix.
-  transforms = array_ops.reshape(transform_matrices,
-                                 constant_op.constant([-1, 9]))
-  # Divide each matrix by the last entry (normally 1).
-  transforms /= transforms[:, 8:9]
-  return transforms[:, :8]
+def matrices_to_flat_transforms(transform_matrices):
+  """Converts affine matrices to `tf.contrib.image` projective transforms.
+
+  Note that we expect matrices that map output coordinates to input coordinates.
+  To convert forward transformation matrices, call `tf.linalg.inv` on the
+  matrices and use the result here.
+
+  Args:
+    transform_matrices: One or more affine transformation matrices, for the
+      reverse transformation in homogeneous coordinates. Shape `(3, 3)` or
+      `(N, 3, 3)`.
+
+  Returns:
+    2D tensor of flat transforms with shape `(N, 8)`, which may be passed into
+      `tf.contrib.image.transform`.
+
+  Raises:
+    ValueError: If `transform_matrices` have an invalid shape.
+  """
+  with ops.name_scope("matrices_to_flat_transforms"):
+    transform_matrices = ops.convert_to_tensor(
+        transform_matrices, name="transform_matrices")
+    if transform_matrices.shape.ndims not in (2, 3):
+      raise ValueError(
+          "Matrices should be 2D or 3D, got: %s" % transform_matrices)
+    # Flatten each matrix.
+    transforms = array_ops.reshape(transform_matrices,
+                                   constant_op.constant([-1, 9]))
+    # Divide each matrix by the last entry (normally 1).
+    transforms /= transforms[:, 8:9]
+    return transforms[:, :8]
 
 
-@ops.RegisterGradient("ImageProjectiveTransform")
+@ops.RegisterGradient("ImageProjectiveTransformV2")
 def _image_projective_transform_grad(op, grad):
   """Computes the gradient for ImageProjectiveTransform."""
   images = op.inputs[0]
@@ -330,14 +409,6 @@ def _image_projective_transform_grad(op, grad):
 
   if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
     raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-  if len(image_or_images.get_shape()) == 2:
-    images = image_or_images[None, :, :, None]
-  elif len(image_or_images.get_shape()) == 3:
-    images = image_or_images[None, :, :, :]
-  elif len(image_or_images.get_shape()) == 4:
-    images = image_or_images
-  else:
-    raise TypeError("Images should have rank between 2 and 4")
   if len(transform_or_transforms.get_shape()) == 1:
     transforms = transform_or_transforms[None]
   elif len(transform_or_transforms.get_shape()) == 2:
@@ -346,17 +417,15 @@ def _image_projective_transform_grad(op, grad):
     raise TypeError("Transforms should have rank 1 or 2.")
 
   # Invert transformations
-  transforms = _flat_transforms_to_matrices(transforms=transforms)
+  transforms = flat_transforms_to_matrices(transforms=transforms)
   inverse = linalg_ops.matrix_inverse(transforms)
-  transforms = _transform_matrices_to_flat(inverse)
-  output = gen_image_ops.image_projective_transform(
-      grad, transforms, interpolation=interpolation)
-  if len(image_or_images.get_shape()) == 2:
-    return [output[0, :, :, 0], None]
-  elif len(image_or_images.get_shape()) == 3:
-    return [output[0, :, :, :], None]
-  else:
-    return [output, None]
+  transforms = matrices_to_flat_transforms(inverse)
+  output = gen_image_ops.image_projective_transform_v2(
+      images=grad,
+      transforms=transforms,
+      output_shape=array_ops.shape(image_or_images)[1:3],
+      interpolation=interpolation)
+  return [output, None, None]
 
 
 def bipartite_match(distance_mat,
@@ -388,7 +457,7 @@ def bipartite_match(distance_mat,
       of rows of the input `distance_matrix`. If `row_to_col_match_indices[i]`
       is not -1, row i is matched to column `row_to_col_match_indices[i]`.
     col_to_row_match_indices: A vector of length num_columns, which is the
-      number of columns of the input ditance matrix.
+      number of columns of the input distance matrix.
       If `col_to_row_match_indices[j]` is not -1, column j is matched to row
       `col_to_row_match_indices[j]`.
   """
@@ -449,7 +518,7 @@ def connected_components(images):
     def has_zero():
       # Insert a zero in the consecutive ids where zero appears in unique_ids.
       # id_is_zero has length 1.
-      zero_id_ind = math_ops.to_int32(id_is_zero[0])
+      zero_id_ind = math_ops.cast(id_is_zero[0], dtypes.int32)
       ids_before = nonzero_consecutive_ids[:zero_id_ind]
       ids_after = nonzero_consecutive_ids[zero_id_ind:]
       return array_ops.concat([ids_before, [0], ids_after], axis=0)

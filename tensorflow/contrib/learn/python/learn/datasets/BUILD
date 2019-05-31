@@ -1,8 +1,9 @@
 # Prepare training and testing data.
 
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -37,6 +38,7 @@ py_library(
 py_binary(
     name = "produce_small_datasets",
     srcs = ["produce_small_datasets.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
@@ -44,22 +46,11 @@ py_binary(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_test(
     name = "base_test",
     size = "small",
     srcs = ["base_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
@@ -71,6 +62,7 @@ py_test(
     name = "load_csv_test",
     size = "small",
     srcs = ["load_csv_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",
@@ -82,6 +74,7 @@ py_test(
     name = "synthetic_test",
     size = "small",
     srcs = ["synthetic_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":datasets",

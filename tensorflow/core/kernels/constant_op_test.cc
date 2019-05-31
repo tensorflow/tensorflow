@@ -60,6 +60,7 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
   std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, device.get(),
                                               cpu_allocator(), const_node,
                                               TF_GRAPH_DEF_VERSION, &status));
+  TF_ASSERT_OK(status);
 
   OpKernelContext::Params params;
   params.device = device.get();
@@ -72,22 +73,23 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
   TF_EXPECT_OK(ctx.status());
 
   if (on_gpu) {
-    EXPECT_EQ(ctx.device_persistent_memory_allocated(), 512);
+    EXPECT_EQ(ctx.persistent_memory_allocated(), 512);
   } else {
-    EXPECT_EQ(ctx.host_persistent_memory_allocated(), 480);
+    EXPECT_EQ(ctx.persistent_memory_allocated(), 480);
   }
 
-  // Remove memry leak errors.
-  for (auto allocator_pair : ctx.wrapped_allocators()) {
+  // Remove memory leak errors.
+  for (auto allocator_pair : ctx.ConsumeWrappedAllocators()) {
     allocator_pair.second->GetRecordsAndUnRef();
   }
 }
 
 TEST_F(ConstantOpTest, PersistentMemoryTracking) {
   PersistentMemoryTrackingTest(false);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   PersistentMemoryTrackingTest(true);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 // Returns graph containing "num" const nodes.  If 'sequential' is

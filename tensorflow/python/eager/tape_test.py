@@ -21,11 +21,11 @@ from __future__ import print_function
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import custom_gradient
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Importing nn_grad for the registration functions.
@@ -72,7 +72,7 @@ class TapeTest(test.TestCase):
     a = constant_op.constant([[1., 0.], [0., 1.]])
     b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
       tf_b = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
       tf_c = tf_a + tf_b
@@ -80,8 +80,8 @@ class TapeTest(test.TestCase):
       tf_e = tf_d + tf_f
       tf_da, tf_db = gradients_impl.gradients(tf_e, [tf_a, tf_b])
 
-      self.assertAllEqual(da, tf_da.eval())
-      self.assertAllEqual(db, tf_db.eval())
+      self.assertAllEqual(da, self.evaluate(tf_da))
+      self.assertAllEqual(db, self.evaluate(tf_db))
 
   def testBasicFunctional(self):
 
@@ -135,15 +135,15 @@ class TapeTest(test.TestCase):
     a = constant_op.constant([[1., 0.], [0., 1.]])
     b = constant_op.constant([[1., 2.], [3., 4.]])
     da, db = backprop.gradients_function(fn, [0, 1])(a, b)
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       tf_a = constant_op.constant([[1, 0], [0, 1]], dtype=dtypes.float32)
       tf_b = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float32)
       tf_mm = math_ops.matmul(tf_a, tf_b)
       tf_rr = 2 * math_ops.reduce_sum(tf_mm)
       tf_da, tf_db = gradients_impl.gradients(tf_rr, [tf_a, tf_b])
 
-      self.assertAllEqual(da, tf_da.eval())
-      self.assertAllEqual(db, tf_db.eval())
+      self.assertAllEqual(da, self.evaluate(tf_da))
+      self.assertAllEqual(db, self.evaluate(tf_db))
 
   def testGcTwoOutputs(self):
 
@@ -164,21 +164,6 @@ class TapeTest(test.TestCase):
     t = constant_op.constant(1.0)
     g, = backprop.gradients_function(fn, [0])(t)
     self.assertAllEqual(g, 1.0)
-
-  def testCustomGradientGraphMode(self):
-    with context.graph_mode(), self.test_session():
-
-      @custom_gradient.custom_gradient
-      def f(x):
-
-        def grad(dresult):
-          return dresult * 10.0
-
-        return x, grad
-
-      inp = constant_op.constant(1.0)
-      grad = gradients_impl.gradients(f(inp), inp)
-      self.assertAllEqual(grad[0].eval(), 10.0)
 
 
 if __name__ == '__main__':

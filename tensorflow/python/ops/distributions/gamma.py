@@ -33,6 +33,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -41,6 +43,7 @@ __all__ = [
 ]
 
 
+@tf_export(v1=["distributions.Gamma"])
 class Gamma(distribution.Distribution):
   """Gamma distribution.
 
@@ -53,7 +56,7 @@ class Gamma(distribution.Distribution):
 
   ```none
   pdf(x; alpha, beta, x > 0) = x**(alpha - 1) exp(-x beta) / Z
-  Z = Gamma(alpha) beta**alpha
+  Z = Gamma(alpha) beta**(-alpha)
   ```
 
   where:
@@ -83,18 +86,50 @@ class Gamma(distribution.Distribution):
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
 
-  WARNING: This distribution may draw 0-valued samples for small `concentration`
-  values. See note in `tf.random_gamma` docstring.
+  Warning: The samples of this distribution are always non-negative. However,
+  the samples that are smaller than `np.finfo(dtype).tiny` are rounded
+  to this value, so it appears more often than it should.
+  This should only be noticeable when the `concentration` is very small, or the
+  `rate` is very large. See note in `tf.random.gamma` docstring.
+
+  Samples of this distribution are reparameterized (pathwise differentiable).
+  The derivatives are computed using the approach described in the paper
+
+  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
+  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
 
   #### Examples
 
   ```python
-  dist = Gamma(concentration=3.0, rate=2.0)
-  dist2 = Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
+  dist = tfd.Gamma(concentration=3.0, rate=2.0)
+  dist2 = tfd.Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
+  ```
+
+  Compute the gradients of samples w.r.t. the parameters:
+
+  ```python
+  concentration = tf.constant(3.0)
+  rate = tf.constant(2.0)
+  dist = tfd.Gamma(concentration, rate)
+  samples = dist.sample(5)  # Shape [5]
+  loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
+  # Unbiased stochastic gradients of the loss function
+  grads = tf.gradients(loss, [concentration, rate])
   ```
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
@@ -124,8 +159,8 @@ class Gamma(distribution.Distribution):
     Raises:
       TypeError: if `concentration` and `rate` are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -139,7 +174,7 @@ class Gamma(distribution.Distribution):
         dtype=self._concentration.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        reparameterization_type=distribution.NOT_REPARAMETERIZED,
+        reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=[self._concentration,
                        self._rate],
@@ -178,7 +213,7 @@ class Gamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   @distribution_util.AppendDocstring(
-      """Note: See `tf.random_gamma` docstring for sampling details and
+      """Note: See `tf.random.gamma` docstring for sampling details and
       caveats.""")
   def _sample_n(self, n, seed=None):
     return random_ops.random_gamma(
@@ -191,12 +226,6 @@ class Gamma(distribution.Distribution):
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
-  def _log_cdf(self, x):
-    return math_ops.log(self._cdf(x))
-
   def _cdf(self, x):
     x = self._maybe_assert_valid_sample(x)
     # Note that igamma returns the regularized incomplete gamma function,
@@ -205,7 +234,7 @@ class Gamma(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return (self.concentration - 1.) * math_ops.log(x) - self.rate * x
+    return math_ops.xlogy(self.concentration - 1., x) - self.rate * x
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration)
@@ -259,14 +288,19 @@ class Gamma(distribution.Distribution):
 class GammaWithSoftplusConcentrationRate(Gamma):
   """`Gamma` with softplus of `concentration` and `rate`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Gamma(tf.nn.softplus(concentration), "
+      "tf.nn.softplus(rate))` instead.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
                validate_args=False,
                allow_nan_stats=True,
                name="GammaWithSoftplusConcentrationRate"):
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       super(GammaWithSoftplusConcentrationRate, self).__init__(
           concentration=nn.softplus(concentration,
                                     name="softplus_concentration"),

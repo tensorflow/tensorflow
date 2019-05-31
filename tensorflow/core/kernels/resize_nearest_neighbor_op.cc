@@ -40,11 +40,13 @@ class ResizeNearestNeighborOp : public OpKernel {
   explicit ResizeNearestNeighborOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("half_pixel_centers", &half_pixel_centers_));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    ImageResizerState st(align_corners_);
+    ImageResizerState st(align_corners_, half_pixel_centers_);
     st.ValidateAndCreateOutput(context, input);
 
     if (!context->status().ok()) return;
@@ -56,20 +58,38 @@ class ResizeNearestNeighborOp : public OpKernel {
     // Return if the output is empty.
     if (st.output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<T, 4>::Tensor output_data = st.output->tensor<T, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor output_data(st.output->tensor<T, 4>());
 
     bool status;
-    if (align_corners_) {
-      status =
-          functor::ResizeNearestNeighbor<Device, T, /*align_corners=*/true>()(
-              context->eigen_device<Device>(), input_data, st.height_scale,
-              st.width_scale, output_data);
+    if (half_pixel_centers_) {
+      if (align_corners_) {
+        status = functor::ResizeNearestNeighbor<Device, T,
+                                                /*half_pixe_centers=*/true,
+                                                /*align_corners=*/true>()(
+            context->eigen_device<Device>(), input_data, st.height_scale,
+            st.width_scale, output_data);
+      } else {
+        status = functor::ResizeNearestNeighbor<Device, T,
+                                                /*half_pixe_centers=*/true,
+                                                /*align_corners=*/false>()(
+            context->eigen_device<Device>(), input_data, st.height_scale,
+            st.width_scale, output_data);
+      }
     } else {
-      status =
-          functor::ResizeNearestNeighbor<Device, T, /*align_corners=*/false>()(
-              context->eigen_device<Device>(), input_data, st.height_scale,
-              st.width_scale, output_data);
+      if (align_corners_) {
+        status = functor::ResizeNearestNeighbor<Device, T,
+                                                /*half_pixe_centers=*/false,
+                                                /*align_corners=*/true>()(
+            context->eigen_device<Device>(), input_data, st.height_scale,
+            st.width_scale, output_data);
+      } else {
+        status = functor::ResizeNearestNeighbor<Device, T,
+                                                /*half_pixe_centers=*/false,
+                                                /*align_corners=*/false>()(
+            context->eigen_device<Device>(), input_data, st.height_scale,
+            st.width_scale, output_data);
+      }
     }
     if (!status) {
       context->SetStatus(
@@ -79,34 +99,68 @@ class ResizeNearestNeighborOp : public OpKernel {
 
  private:
   bool align_corners_;
+  bool half_pixel_centers_;
+};
+
+// Helper struct to convert a bool to the correct scaler type.
+template <bool half_pixel_centers>
+struct BoolToScaler {};
+
+struct HalfPixelScalerForNN {
+  inline float operator()(const int x, const float scale) const {
+    // All of the nearest neigbor code below immediately follows a call to this
+    // function with a std::floor(), so instead of subtracting the 0.5 as we
+    // do in HalfPixelScale, we leave it as is, as the std::floor does the
+    // correct thing.
+    return (static_cast<float>(x) + 0.5f) * scale;
+  }
+};
+
+template <>
+struct BoolToScaler<true> {
+  typedef HalfPixelScalerForNN Scaler;
+};
+
+template <>
+struct BoolToScaler<false> {
+  typedef LegacyScaler Scaler;
 };
 
 // Partial specialization of ResizeNearestNeighbor functor for a CPUDevice.
 namespace functor {
-template <typename T, bool align_corners>
-struct ResizeNearestNeighbor<CPUDevice, T, align_corners> {
+template <typename T, bool half_pixel_centers, bool align_corners>
+struct ResizeNearestNeighbor<CPUDevice, T, half_pixel_centers, align_corners> {
   bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = input.dimension(0);
-    const int64 in_height = input.dimension(1);
-    const int64 in_width = input.dimension(2);
-    const int channels = input.dimension(3);
+    typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+    const Eigen::Index batch_size = input.dimension(0);
+    const Eigen::Index in_height = input.dimension(1);
+    const Eigen::Index in_width = input.dimension(2);
+    const Eigen::Index channels = input.dimension(3);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const Eigen::Index out_height = output.dimension(1);
+    const Eigen::Index out_width = output.dimension(2);
 
-    for (int b = 0; b < batch_size; ++b) {
-      for (int y = 0; y < out_height; ++y) {
-        const int64 in_y = std::min(
-            (align_corners) ? static_cast<int64>(roundf(y * height_scale))
-                            : static_cast<int64>(floorf(y * height_scale)),
+    for (Eigen::Index b = 0; b < batch_size; ++b) {
+      for (Eigen::Index y = 0; y < out_height; ++y) {
+        Eigen::Index in_y = std::min(
+            (align_corners)
+                ? static_cast<Eigen::Index>(roundf(scaler(y, height_scale)))
+                : static_cast<Eigen::Index>(floorf(scaler(y, height_scale))),
             in_height - 1);
-        for (int x = 0; x < out_width; ++x) {
-          const int64 in_x = std::min(
-              (align_corners) ? static_cast<int64>(roundf(x * width_scale))
-                              : static_cast<int64>(floorf(x * width_scale)),
+        if (half_pixel_centers) {
+          in_y = std::max(static_cast<Eigen::Index>(0), in_y);
+        }
+        for (Eigen::Index x = 0; x < out_width; ++x) {
+          Eigen::Index in_x = std::min(
+              (align_corners)
+                  ? static_cast<Eigen::Index>(roundf(scaler(x, width_scale)))
+                  : static_cast<Eigen::Index>(floorf(scaler(x, width_scale))),
               in_width - 1);
+          if (half_pixel_centers) {
+            in_x = std::max(static_cast<Eigen::Index>(0), in_x);
+          }
           std::copy_n(&input(b, in_y, in_x, 0), channels, &output(b, y, x, 0));
         }
       }
@@ -122,6 +176,8 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
   explicit ResizeNearestNeighborOpGrad(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
+    OP_REQUIRES_OK(
+        context, context->GetAttr("half_pixel_centers", &half_pixel_centers_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -162,8 +218,8 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     // Return if the output is empty.
     if (output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
-    typename TTypes<T, 4>::Tensor output_data = output->tensor<T, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::Tensor output_data(output->tensor<T, 4>());
 
     const float height_scale =
         CalculateResizeScale(out_height, in_height, align_corners_);
@@ -171,16 +227,36 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
         CalculateResizeScale(out_width, in_width, align_corners_);
 
     bool status;
-    if (align_corners_) {
-      status = functor::ResizeNearestNeighborGrad<Device, T,
-                                                  /*align_corners=*/true>()(
-          context->eigen_device<Device>(), input_data, height_scale,
-          width_scale, output_data);
+    if (half_pixel_centers_) {
+      if (align_corners_) {
+        status = functor::ResizeNearestNeighborGrad<Device, T,
+                                                    /*half_pixel_centers=*/true,
+                                                    /*align_corners=*/true>()(
+            context->eigen_device<Device>(), input_data, height_scale,
+            width_scale, output_data);
+      } else {
+        status = functor::ResizeNearestNeighborGrad<Device, T,
+                                                    /*half_pixel_centers=*/true,
+                                                    /*align_corners=*/false>()(
+            context->eigen_device<Device>(), input_data, height_scale,
+            width_scale, output_data);
+      }
     } else {
-      status = functor::ResizeNearestNeighborGrad<Device, T,
-                                                  /*align_corners=*/false>()(
-          context->eigen_device<Device>(), input_data, height_scale,
-          width_scale, output_data);
+      if (align_corners_) {
+        status =
+            functor::ResizeNearestNeighborGrad<Device, T,
+                                               /*half_pixel_centers=*/false,
+                                               /*align_corners=*/true>()(
+                context->eigen_device<Device>(), input_data, height_scale,
+                width_scale, output_data);
+      } else {
+        status =
+            functor::ResizeNearestNeighborGrad<Device, T,
+                                               /*half_pixel_centers=*/false,
+                                               /*align_corners=*/false>()(
+                context->eigen_device<Device>(), input_data, height_scale,
+                width_scale, output_data);
+      }
     }
     if (!status) {
       context->SetStatus(
@@ -190,37 +266,42 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
 
  private:
   bool align_corners_;
+  bool half_pixel_centers_;
 };
 
 // Partial specialization of ResizeNearestNeighborGrad functor for a CPUDevice.
 namespace functor {
-template <typename T, bool align_corners>
-struct ResizeNearestNeighborGrad<CPUDevice, T, align_corners> {
+template <typename T, bool half_pixel_centers, bool align_corners>
+struct ResizeNearestNeighborGrad<CPUDevice, T, half_pixel_centers,
+                                 align_corners> {
   bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = input.dimension(0);
-    const int64 in_height = input.dimension(1);
-    const int64 in_width = input.dimension(2);
-    const int channels = input.dimension(3);
+    typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+    const Eigen::Index batch_size = input.dimension(0);
+    const Eigen::Index in_height = input.dimension(1);
+    const Eigen::Index in_width = input.dimension(2);
+    const Eigen::Index channels = input.dimension(3);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const Eigen::Index out_height = output.dimension(1);
+    const Eigen::Index out_width = output.dimension(2);
 
     output.setZero();
 
-    for (int y = 0; y < in_height; ++y) {
-      const int64 out_y = std::min(
-          (align_corners) ? static_cast<int64>(roundf(y * height_scale))
-                          : static_cast<int64>(floorf(y * height_scale)),
+    for (Eigen::Index y = 0; y < in_height; ++y) {
+      const Eigen::Index out_y = std::min(
+          (align_corners)
+              ? static_cast<Eigen::Index>(roundf(scaler(y, height_scale)))
+              : static_cast<Eigen::Index>(floorf(scaler(y, height_scale))),
           out_height - 1);
-      for (int x = 0; x < in_width; ++x) {
-        const int64 out_x = std::min(
-            (align_corners) ? static_cast<int64>(roundf(x * width_scale))
-                            : static_cast<int64>(floorf(x * width_scale)),
+      for (Eigen::Index x = 0; x < in_width; ++x) {
+        const Eigen::Index out_x = std::min(
+            (align_corners)
+                ? static_cast<Eigen::Index>(roundf(scaler(x, width_scale)))
+                : static_cast<Eigen::Index>(floorf(scaler(x, width_scale))),
             out_width - 1);
-        for (int b = 0; b < batch_size; ++b) {
-          for (int c = 0; c < channels; ++c) {
+        for (Eigen::Index b = 0; b < batch_size; ++b) {
+          for (Eigen::Index c = 0; c < channels; ++c) {
             output(b, out_y, out_x, c) += input(b, y, x, c);
           }
         }

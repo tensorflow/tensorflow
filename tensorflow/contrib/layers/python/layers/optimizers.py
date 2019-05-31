@@ -21,7 +21,6 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib import framework as contrib_framework
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,7 +40,7 @@ OPTIMIZER_CLS_NAMES = {
     "Adagrad": train.AdagradOptimizer,
     "Adam": train.AdamOptimizer,
     "Ftrl": train.FtrlOptimizer,
-    "Momentum": lambda lr: train.MomentumOptimizer(lr, momentum=0.9),
+    "Momentum": lambda learning_rate: train.MomentumOptimizer(learning_rate, momentum=0.9),  # pylint: disable=line-too-long
     "RMSProp": train.RMSPropOptimizer,
     "SGD": train.GradientDescentOptimizer,
 }
@@ -77,63 +76,62 @@ def optimize_loss(loss,
       for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
   - by function taking learning rate `Tensor` as argument and returning an
       `Optimizer` instance. E.g. `optimize_loss(...,
-      optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+      optimizer=lambda lr: tf.compat.v1.train.MomentumOptimizer(lr,
+      momentum=0.5))`.
     Alternatively, if `learning_rate` is `None`, the function takes no
     arguments. E.g. `optimize_loss(..., learning_rate=None,
-      optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+      optimizer=lambda: tf.compat.v1.train.MomentumOptimizer(0.5,
+      momentum=0.5))`.
   - by a subclass of `Optimizer` having a single-argument constructor
       (the argument is the learning rate), such as AdamOptimizer or
       AdagradOptimizer. E.g. `optimize_loss(...,
-      optimizer=tf.train.AdagradOptimizer)`.
+      optimizer=tf.compat.v1.train.AdagradOptimizer)`.
   - by an instance of a subclass of `Optimizer`.
-      E.g., `optimize_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
+      E.g., `optimize_loss(...,
+      optimizer=tf.compat.v1.train.AdagradOptimizer(0.5))`.
 
   Args:
     loss: Scalar `Tensor`.
-    global_step: Scalar int `Tensor`, step counter to update on each step
-                 unless `increment_global_step` is `False`. If not supplied,
-                 it will be fetched from the default graph (see
-                 `tf.train.get_global_step` for details). If it has
-                 not been created, no step will be incremented with each weight
-                 update. `learning_rate_decay_fn` requires `global_step`.
+    global_step: Scalar int `Tensor`, step counter to update on each step unless
+      `increment_global_step` is `False`. If not supplied, it will be fetched
+      from the default graph (see `tf.compat.v1.train.get_global_step` for
+      details). If it has not been created, no step will be incremented with
+      each weight update. `learning_rate_decay_fn` requires `global_step`.
     learning_rate: float or `Tensor`, magnitude of update per each training
-                   step. Can be `None`.
-    optimizer: string, class or optimizer instance, used as trainer.
-               string should be name of optimizer, like 'SGD',
-                 'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
-               class should be sub-class of `tf.Optimizer` that implements
-                 `compute_gradients` and `apply_gradients` functions.
-               optimizer instance should be instantiation of `tf.Optimizer`
-                 sub-class and have `compute_gradients` and `apply_gradients`
-                 functions.
+      step. Can be `None`.
+    optimizer: string, class or optimizer instance, used as trainer. string
+      should be name of optimizer, like 'SGD', 'Adam', 'Adagrad'. Full list in
+      OPTIMIZER_CLS_NAMES constant. class should be sub-class of `tf.Optimizer`
+      that implements `compute_gradients` and `apply_gradients` functions.
+      optimizer instance should be instantiation of `tf.Optimizer` sub-class and
+      have `compute_gradients` and `apply_gradients` functions.
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
-                          value.
-    gradient_multipliers: dict of variables or variable names to floats.
-                          If present, gradients for specified
-                          variables will be multiplied by given constant.
-    clip_gradients: float, callable or `None`. If float, is provided, a global
-      clipping is applied to prevent the norm of the gradient to exceed this
-      value. Alternatively, a callable can be provided e.g.: adaptive_clipping.
-      This callable takes a `list` of `(gradients, variables)` `tuple`s and
-      returns the same thing with the gradients modified.
+      value.
+    gradient_multipliers: dict of variables or variable names to floats. If
+      present, gradients for specified variables will be multiplied by given
+      constant.
+    clip_gradients: float, callable or `None`. If a float is provided, a global
+      clipping is applied to prevent the norm of the gradient from exceeding
+      this value. Alternatively, a callable can be provided, e.g.,
+      `adaptive_clipping_fn()`.  This callable takes a list of `(gradients,
+      variables)` tuples and returns the same thing with the gradients modified.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
-                            `Tensor`s, returns `Tensor`.
-                            Can be used to implement any learning rate decay
-                            functions.
-                            For example: `tf.train.exponential_decay`.
-                            Ignored if `learning_rate` is not supplied.
+      `Tensor`s, returns `Tensor`. Can be used to implement any learning rate
+      decay functions.
+                            For example: `tf.compat.v1.train.exponential_decay`.
+                              Ignored if `learning_rate` is not supplied.
     update_ops: list of update `Operation`s to execute at each step. If `None`,
-                uses elements of UPDATE_OPS collection. The order of execution
-                between `update_ops` and `loss` is non-deterministic.
-    variables: list of variables to optimize or
-               `None` to use all trainable variables.
+      uses elements of UPDATE_OPS collection. The order of execution between
+      `update_ops` and `loss` is non-deterministic.
+    variables: list of variables to optimize or `None` to use all trainable
+      variables.
     name: The name for this operation is used to scope operations and summaries.
     summaries: List of internal quantities to visualize on tensorboard. If not
-               set, the loss, the learning rate, and the global norm of the
-               gradients will be reported. The complete list of possible values
-               is in OPTIMIZER_SUMMARIES.
+      set, the loss, the learning rate, and the global norm of the gradients
+      will be reported. The complete list of possible values is in
+      OPTIMIZER_SUMMARIES.
     colocate_gradients_with_ops: If True, try colocating gradients with the
-                                 corresponding op.
+      corresponding op.
     increment_global_step: Whether to increment `global_step`. If your model
       calls `optimize_loss` multiple times per training step (e.g. to optimize
       different parts of the model), use this arg to avoid incrementing
@@ -182,8 +180,8 @@ def optimize_loss(loss,
             initializer=init_ops.constant_initializer(learning_rate))
       else:
         raise ValueError("Learning rate should be 0d Tensor or float. "
-                         "Got %s of type %s" % (str(learning_rate),
-                                                str(type(learning_rate))))
+                         "Got %s of type %s" %
+                         (str(learning_rate), str(type(learning_rate))))
     if summaries is None:
       summaries = ["loss", "learning_rate", "global_gradient_norm"]
     else:
@@ -263,8 +261,8 @@ def optimize_loss(loss,
     elif callable(clip_gradients):
       gradients = clip_gradients(gradients)
     elif clip_gradients is not None:
-      raise ValueError(
-          "Unknown type %s for clip_gradients" % type(clip_gradients))
+      raise ValueError("Unknown type %s for clip_gradients" %
+                       type(clip_gradients))
 
     # Add scalar summary for loss.
     if "loss" in summaries:
@@ -326,7 +324,7 @@ def _adaptive_max_norm(norm, std_factor, decay, global_step, epsilon, name):
 
     # quicker adaptation at the beginning
     if global_step is not None:
-      n = math_ops.to_float(global_step)
+      n = math_ops.cast(global_step, dtypes.float32)
       decay = math_ops.minimum(decay, n / (n + 1.))
 
     # update averages
@@ -356,8 +354,8 @@ def adaptive_clipping_fn(std_factor=2.,
   rescaled such that the global norm becomes `exp(mean)`.
 
   Args:
-    std_factor: Python scaler (or tensor).
-      `max_norm = exp(mean + std_factor*std)`
+    std_factor: Python scaler (or tensor). `max_norm = exp(mean +
+      std_factor*std)`
     decay: The smoothing factor of the moving averages.
     static_max_norm: If provided, will threshold the norm to this value as an
       extra safety.
@@ -385,8 +383,7 @@ def adaptive_clipping_fn(std_factor=2.,
       summary.scalar("global_norm/adaptive_max_gradient_norm", max_norm)
 
     # factor will be 1. if norm is smaller than max_norm
-    factor = array_ops.where(norm < max_norm,
-                             array_ops.ones_like(norm),
+    factor = array_ops.where(norm < max_norm, array_ops.ones_like(norm),
                              math_ops.exp(log_mean) / norm)
 
     if static_max_norm is not None:
@@ -433,12 +430,11 @@ def _multiply_gradients(grads_and_vars, gradient_multipliers):
     if (grad is not None and
         (var in gradient_multipliers or var.name in gradient_multipliers)):
       key = var if var in gradient_multipliers else var.name
-      multiplier = constant_op.constant(
-          gradient_multipliers[key], dtype=dtypes.float32)
+      multiplier = gradient_multipliers[key]
       if isinstance(grad, ops.IndexedSlices):
         grad_values = grad.values * multiplier
         grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
       else:
-        grad *= multiplier
+        grad *= math_ops.cast(multiplier, grad.dtype)
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars

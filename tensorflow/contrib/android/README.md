@@ -52,6 +52,7 @@ Then, to build the native TF library:
 bazel build -c opt //tensorflow/contrib/android:libtensorflow_inference.so \
    --crosstool_top=//external:android/crosstool \
    --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+   --cxxopt=-std=c++11 \
    --cpu=armeabi-v7a
 ```
 
@@ -79,6 +80,11 @@ bazel-bin/tensorflow/contrib/android/libandroid_tensorflow_inference_java.jar
 
 For documentation on building a self-contained AAR file with cmake, see
 [tensorflow/contrib/android/cmake](cmake).
+
+
+### Makefile
+
+For documentation on building native TF libraries with make, including a CUDA-enabled variant for devices like the Nvidia Shield TV, see [tensorflow/contrib/makefile/README.md](../makefile/README.md)
 
 
 ## AssetManagerFileSystem

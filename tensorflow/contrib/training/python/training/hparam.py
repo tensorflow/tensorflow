@@ -34,13 +34,13 @@ from tensorflow.python.util import deprecation
 # where <rhs> is either a single token or [] enclosed list of tokens.
 # For example:  "var[1] = a" or "x = [1,2,3]"
 PARAM_RE = re.compile(r"""
-  (?P<name>[a-zA-Z][\w]*)      # variable name: "var" or "x"
+  (?P<name>[a-zA-Z][\w\.]*)      # variable name: "var" or "x"
   (\[\s*(?P<index>\d+)\s*\])?  # (optional) index: "1" or None
   \s*=\s*
   ((?P<val>[^,\[]*)            # single value: "a" or None
    |
    \[(?P<vals>[^\]]*)\])       # list of values: None or "1,2,3"
-  ($|,)""", re.VERBOSE)
+  ($|,\s*)""", re.VERBOSE)
 
 
 def _parse_fail(name, var_type, value, values):
@@ -161,6 +161,11 @@ def _cast_to_type_if_compatible(name, param_type, value):
       "Could not cast hparam '%s' of type '%s' from value %r" %
       (name, param_type, value))
 
+  # If `value` is already of type `param_type`, return it directly.
+  # `isinstance` is too weak (e.g. isinstance(True, int) == True).
+  if type(value) == param_type:  # pylint: disable=unidiomatic-typecheck
+    return value
+
   # Some callers use None, for which we can't do any casting/checking. :(
   if issubclass(param_type, type(None)):
     return value
@@ -187,7 +192,7 @@ def _cast_to_type_if_compatible(name, param_type, value):
   return param_type(value)
 
 
-def parse_values(values, type_map):
+def parse_values(values, type_map, ignore_unknown=False):
   """Parses hyperparameter values from a string into a python map.
 
   `values` is a string containing comma-separated `name=value` pairs.
@@ -199,6 +204,13 @@ def parse_values(values, type_map):
 
   If a hyperparameter name in both an index assignment and scalar assignment,
   a ValueError is raised.  (e.g. 'a=[1,2,3],a[0] = 1').
+
+  The hyperparameter name may contain '.' symbols, which will result in an
+  attribute name that is only accessible through the getattr and setattr
+  functions.  (And must be first explicit added through add_hparam.)
+
+  WARNING: Use of '.' in your variable names is allowed, but is not well
+  supported and not recommended.
 
   The `value` in `name=value` must follows the syntax according to the
   type of the parameter:
@@ -226,6 +238,9 @@ def parse_values(values, type_map):
       type T if either V has type T, or V is a list of elements of type T.
       Hence, for a multidimensional parameter 'x' taking float values,
       'x=[0.1,0.2]' will parse successfully if type_map['x'] = float.
+    ignore_unknown: Bool. Whether values that are missing a type in type_map
+      should be ignored. If set to True, a ValueError will not be raised for
+      unknown hyperparameter type.
 
   Returns:
     A python map mapping each name to either:
@@ -253,6 +268,8 @@ def parse_values(values, type_map):
     m_dict = m.groupdict()
     name = m_dict['name']
     if name not in type_map:
+      if ignore_unknown:
+        continue
       raise ValueError('Unknown hyperparameter type for %s' % name)
     type_ = type_map[name]
 
@@ -315,7 +332,7 @@ class HParams(object):
 
   Hyperparameters have type, which is inferred from the type of their value
   passed at construction type.   The currently supported types are: integer,
-  float, string, and list of integer, float, or string.
+  float, boolean, string, and list of integer, float, boolean, or string.
 
   You can override hyperparameter values by calling the
   [`parse()`](#HParams.parse) method, passing a string of comma separated
@@ -341,8 +358,10 @@ class HParams(object):
   def my_program():
     # Create a HParams object specifying the names and values of the
     # model hyperparameters:
-    hparams = tf.HParams(learning_rate=0.1, num_hidden_units=100,
-                         activations=['relu', 'tanh'])
+    hparams = tf.contrib.training.HParams(
+        learning_rate=0.1,
+        num_hidden_units=100,
+        activations=['relu', 'tanh'])
 
     # Override hyperparameters values by parsing the command line
     hparams.parse(args.hparams)
@@ -357,6 +376,8 @@ class HParams(object):
     hparams.parse_json('{"learning_rate": 0.3, "activations": "relu"}')
   ```
   """
+
+  _HAS_DYNAMIC_ATTRIBUTES = True  # Required for pytype checks.
 
   def __init__(self, hparam_def=None, model_structure=None, **kwargs):
     """Create an instance of `HParams` from keyword arguments.
@@ -373,7 +394,7 @@ class HParams(object):
     # Define 3 hyperparameters: 'learning_rate' is a float parameter,
     # 'num_hidden_units' an integer parameter, and 'activation' a string
     # parameter.
-    hparams = tf.HParams(
+    hparams = tf.contrib.training.HParams(
         learning_rate=0.1, num_hidden_units=100, activation='relu')
 
     hparams.activation ==> 'relu'
@@ -485,6 +506,7 @@ class HParams(object):
       value: New value of the hyperparameter.
 
     Raises:
+      KeyError: If the hyperparameter doesn't exist.
       ValueError: If there is a type mismatch.
     """
     param_type, is_list = self._hparam_types[name]
@@ -500,22 +522,35 @@ class HParams(object):
             'Must pass a list for multi-valued parameter: %s.' % name)
       setattr(self, name, _cast_to_type_if_compatible(name, param_type, value))
 
+  def del_hparam(self, name):
+    """Removes the hyperparameter with key 'name'.
+
+    Does nothing if it isn't present.
+
+    Args:
+      name: Name of the hyperparameter.
+    """
+    if hasattr(self, name):
+      delattr(self, name)
+      del self._hparam_types[name]
+
   def parse(self, values):
-    """Override hyperparameter values, parsing new values from a string.
+    """Override existing hyperparameter values, parsing new values from a string.
 
     See parse_values for more detail on the allowed format for values.
 
     Args:
-      values: String.  Comma separated list of `name=value` pairs where
-        'value' must follow the syntax described above.
+      values: String.  Comma separated list of `name=value` pairs where 'value'
+        must follow the syntax described above.
 
     Returns:
       The `HParams` instance.
 
     Raises:
-      ValueError: If `values` cannot be parsed.
+      ValueError: If `values` cannot be parsed or a hyperparameter in `values`
+      doesn't exist.
     """
-    type_map = dict()
+    type_map = {}
     for name, t in self._hparam_types.items():
       param_type, _ = t
       type_map[name] = param_type
@@ -524,7 +559,7 @@ class HParams(object):
     return self.override_from_dict(values_map)
 
   def override_from_dict(self, values_dict):
-    """Override hyperparameter values, parsing new values from a dictionary.
+    """Override existing hyperparameter values, parsing new values from a dictionary.
 
     Args:
       values_dict: Dictionary of name:value pairs.
@@ -533,6 +568,7 @@ class HParams(object):
       The `HParams` instance.
 
     Raises:
+      KeyError: If a hyperparameter in `values_dict` doesn't exist.
       ValueError: If `values_dict` cannot be parsed.
     """
     for name, value in values_dict.items():
@@ -572,7 +608,7 @@ class HParams(object):
         sort_keys=sort_keys)
 
   def parse_json(self, values_json):
-    """Override hyperparameter values, parsing new values from a json object.
+    """Override existing hyperparameter values, parsing new values from a json object.
 
     Args:
       values_json: String containing a json object of name:value pairs.
@@ -581,6 +617,7 @@ class HParams(object):
       The `HParams` instance.
 
     Raises:
+      KeyError: If a hyperparameter in `values_json` doesn't exist.
       ValueError: If `values_json` cannot be parsed.
     """
     values_map = json.loads(values_json)
@@ -626,7 +663,13 @@ class HParams(object):
     return key in self._hparam_types
 
   def __str__(self):
-    return str(sorted(self.values().items()))
+    hpdict = self.values()
+    output_list = ['{}={}'.format(key, hpdict[key]) for key in hpdict]
+    return ','.join(output_list)
+
+  def __repr__(self):
+    strval = str(sorted(self.values().items()))
+    return '%s(%s)' % (type(self).__name__, strval)
 
   @staticmethod
   def _get_kind_name(param_type, is_list):

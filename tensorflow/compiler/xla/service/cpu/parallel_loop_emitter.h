@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -54,14 +54,14 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   ParallelLoopEmitter(const llvm_ir::ElementGenerator& target_element_generator,
                       const llvm_ir::IrArray& target_array,
                       const DynamicLoopBounds* dynamic_loop_bounds,
-                      llvm::IRBuilder<>* ir_builder);
+                      llvm::IRBuilder<>* b);
 
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
   ~ParallelLoopEmitter() override = default;
 
-  llvm_ir::IrArray::Index EmitIndexAndSetExitBasicBlock(
-      tensorflow::StringPiece loop_name) override;
+  std::vector<llvm_ir::IrArray::Index> EmitIndexAndSetExitBasicBlock(
+      absl::string_view loop_name, llvm::Type* index_type) override;
 
  private:
   const DynamicLoopBounds* dynamic_loop_bounds_;
@@ -70,4 +70,4 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_PARALLEL_LOOP_EMITTER_H_

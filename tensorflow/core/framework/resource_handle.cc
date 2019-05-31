@@ -66,4 +66,29 @@ string ProtoDebugString(const ResourceHandle& handle) {
   return handle.DebugString();
 }
 
+void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+                              std::unique_ptr<port::StringListEncoder> e) {
+  ResourceHandleProto proto;
+  for (int i = 0; i < n; ++i) {
+    p[i].AsProto(&proto);
+    e->Append(proto);
+  }
+  e->Finalize();
+}
+
+bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
+                              ResourceHandle* ps, int64 n) {
+  std::vector<uint32> sizes(n);
+  if (!d->ReadSizes(&sizes)) return false;
+
+  ResourceHandleProto proto;
+  for (int i = 0; i < n; ++i) {
+    if (!proto.ParseFromArray(d->Data(sizes[i]), sizes[i])) {
+      return false;
+    }
+    ps[i].FromProto(proto);
+  }
+  return true;
+}
+
 }  // namespace tensorflow

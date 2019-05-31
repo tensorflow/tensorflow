@@ -18,8 +18,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import multinomial
@@ -31,8 +34,9 @@ class MultinomialTest(test.TestCase):
   def setUp(self):
     self._rng = np.random.RandomState(42)
 
+  @test_util.run_v1_only("b/120545219")
   def testSimpleShapes(self):
-    with self.test_session():
+    with self.cached_session():
       p = [.1, .3, .6]
       dist = multinomial.Multinomial(total_count=1., probs=p)
       self.assertEqual(3, dist.event_shape_tensor().eval())
@@ -40,8 +44,9 @@ class MultinomialTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
+  @test_util.run_v1_only("b/120545219")
   def testComplexShapes(self):
-    with self.test_session():
+    with self.cached_session():
       p = 0.5 * np.ones([3, 2, 2], dtype=np.float32)
       n = [[3., 2], [4, 5], [6, 7]]
       dist = multinomial.Multinomial(total_count=n, probs=p)
@@ -50,43 +55,48 @@ class MultinomialTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
+  @test_util.run_v1_only("b/120545219")
   def testN(self):
     p = [[0.1, 0.2, 0.7], [0.2, 0.3, 0.5]]
     n = [[3.], [4]]
-    with self.test_session():
+    with self.cached_session():
       dist = multinomial.Multinomial(total_count=n, probs=p)
       self.assertEqual((2, 1), dist.total_count.get_shape())
       self.assertAllClose(n, dist.total_count.eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testP(self):
     p = [[0.1, 0.2, 0.7]]
-    with self.test_session():
+    with self.cached_session():
       dist = multinomial.Multinomial(total_count=3., probs=p)
       self.assertEqual((1, 3), dist.probs.get_shape())
       self.assertEqual((1, 3), dist.logits.get_shape())
       self.assertAllClose(p, dist.probs.eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testLogits(self):
     p = np.array([[0.1, 0.2, 0.7]], dtype=np.float32)
     logits = np.log(p) - 50.
-    with self.test_session():
+    with self.cached_session():
       multinom = multinomial.Multinomial(total_count=3., logits=logits)
       self.assertEqual((1, 3), multinom.probs.get_shape())
       self.assertEqual((1, 3), multinom.logits.get_shape())
       self.assertAllClose(p, multinom.probs.eval())
       self.assertAllClose(logits, multinom.logits.eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testPmfUnderflow(self):
     logits = np.array([[-200, 0]], dtype=np.float32)
-    with self.test_session():
+    with self.cached_session():
       dist = multinomial.Multinomial(total_count=1., logits=logits)
       lp = dist.log_prob([1., 0.]).eval()[0]
       self.assertAllClose(-200, lp, atol=0, rtol=1e-6)
 
+  @test_util.run_v1_only("b/120545219")
   def testPmfandCountsAgree(self):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]
-    with self.test_session():
+    with self.cached_session():
       dist = multinomial.Multinomial(total_count=n, probs=p, validate_args=True)
       dist.prob([2., 3, 0]).eval()
       dist.prob([3., 0, 2]).eval()
@@ -95,10 +105,11 @@ class MultinomialTest(test.TestCase):
       with self.assertRaisesOpError("counts must sum to `self.total_count`"):
         dist.prob([3., 3, 0]).eval()
 
+  @test_util.run_v1_only("b/120545219")
   def testPmfNonIntegerCounts(self):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]
-    with self.test_session():
+    with self.cached_session():
       # No errors with integer n.
       multinom = multinomial.Multinomial(
           total_count=n, probs=p, validate_args=True)
@@ -120,51 +131,53 @@ class MultinomialTest(test.TestCase):
       multinom.prob([1.0, 2.5, 1.5]).eval()
 
   def testPmfBothZeroBatches(self):
-    with self.test_session():
+    with self.cached_session():
       # Both zero-batches.  No broadcast
       p = [0.5, 0.5]
       counts = [1., 0]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose(0.5, pmf.eval())
+      self.assertAllClose(0.5, self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
   def testPmfBothZeroBatchesNontrivialN(self):
-    with self.test_session():
+    with self.cached_session():
       # Both zero-batches.  No broadcast
       p = [0.1, 0.9]
       counts = [3., 2]
       dist = multinomial.Multinomial(total_count=5., probs=p)
       pmf = dist.prob(counts)
       # 5 choose 3 = 5 choose 2 = 10. 10 * (.9)^2 * (.1)^3 = 81/10000.
-      self.assertAllClose(81. / 10000, pmf.eval())
+      self.assertAllClose(81. / 10000, self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
   def testPmfPStretchedInBroadcastWhenSameRank(self):
-    with self.test_session():
+    with self.cached_session():
       p = [[0.1, 0.9]]
       counts = [[1., 0], [0, 1]]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose([0.1, 0.9], pmf.eval())
+      self.assertAllClose([0.1, 0.9], self.evaluate(pmf))
       self.assertEqual((2), pmf.get_shape())
 
   def testPmfPStretchedInBroadcastWhenLowerRank(self):
-    with self.test_session():
+    with self.cached_session():
       p = [0.1, 0.9]
       counts = [[1., 0], [0, 1]]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose([0.1, 0.9], pmf.eval())
+      self.assertAllClose([0.1, 0.9], self.evaluate(pmf))
       self.assertEqual((2), pmf.get_shape())
 
+  @test_util.run_v1_only("b/120545219")
   def testPmfCountsStretchedInBroadcastWhenSameRank(self):
-    with self.test_session():
+    with self.cached_session():
       p = [[0.1, 0.9], [0.7, 0.3]]
       counts = [[1., 0]]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
       self.assertAllClose(pmf.eval(), [0.1, 0.7])
       self.assertEqual((2), pmf.get_shape())
 
+  @test_util.run_v1_only("b/120545219")
   def testPmfCountsStretchedInBroadcastWhenLowerRank(self):
-    with self.test_session():
+    with self.cached_session():
       p = [[0.1, 0.9], [0.7, 0.3]]
       counts = [1., 0]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
@@ -172,7 +185,7 @@ class MultinomialTest(test.TestCase):
       self.assertEqual(pmf.get_shape(), (2))
 
   def testPmfShapeCountsStretchedN(self):
-    with self.test_session():
+    with self.cached_session():
       # [2, 2, 2]
       p = [[[0.1, 0.9], [0.1, 0.9]], [[0.7, 0.3], [0.7, 0.3]]]
       # [2, 2]
@@ -180,20 +193,21 @@ class MultinomialTest(test.TestCase):
       # [2]
       counts = [2., 1]
       pmf = multinomial.Multinomial(total_count=n, probs=p).prob(counts)
-      pmf.eval()
+      self.evaluate(pmf)
       self.assertEqual(pmf.get_shape(), (2, 2))
 
   def testPmfShapeCountsPStretchedN(self):
-    with self.test_session():
+    with self.cached_session():
       p = [0.1, 0.9]
       counts = [3., 2]
       n = np.full([4, 3], 5., dtype=np.float32)
       pmf = multinomial.Multinomial(total_count=n, probs=p).prob(counts)
-      pmf.eval()
+      self.evaluate(pmf)
       self.assertEqual((4, 3), pmf.get_shape())
 
+  @test_util.run_v1_only("b/120545219")
   def testMultinomialMean(self):
-    with self.test_session():
+    with self.cached_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
       dist = multinomial.Multinomial(total_count=n, probs=p)
@@ -201,8 +215,9 @@ class MultinomialTest(test.TestCase):
       self.assertEqual((3,), dist.mean().get_shape())
       self.assertAllClose(expected_means, dist.mean().eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testMultinomialCovariance(self):
-    with self.test_session():
+    with self.cached_session():
       n = 5.
       p = [0.1, 0.2, 0.7]
       dist = multinomial.Multinomial(total_count=n, probs=p)
@@ -212,8 +227,9 @@ class MultinomialTest(test.TestCase):
       self.assertEqual((3, 3), dist.covariance().get_shape())
       self.assertAllClose(expected_covariances, dist.covariance().eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testMultinomialCovarianceBatch(self):
-    with self.test_session():
+    with self.cached_session():
       # Shape [2]
       n = [5.] * 2
       # Shape [4, 1, 2]
@@ -235,7 +251,7 @@ class MultinomialTest(test.TestCase):
     ns = np.random.randint(low=1, high=11, size=[3, 5]).astype(np.float32)
     ns2 = np.random.randint(low=1, high=11, size=[6, 1]).astype(np.float32)
 
-    with self.test_session():
+    with self.cached_session():
       dist = multinomial.Multinomial(ns, p)
       dist2 = multinomial.Multinomial(ns2, p2)
 
@@ -244,6 +260,7 @@ class MultinomialTest(test.TestCase):
       self.assertEqual((3, 5, 4, 4), covariance.get_shape())
       self.assertEqual((6, 3, 3, 3), covariance2.get_shape())
 
+  @test_util.run_v1_only("b/120545219")
   def testCovarianceFromSampling(self):
     # We will test mean, cov, var, stddev on a DirichletMultinomial constructed
     # via broadcast between alpha, n.
@@ -251,7 +268,7 @@ class MultinomialTest(test.TestCase):
                       [2.5, 4, 0.01]], dtype=np.float32)
     theta /= np.sum(theta, 1)[..., array_ops.newaxis]
     n = np.array([[10., 9.], [8., 7.], [6., 5.]], dtype=np.float32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # batch_shape=[3, 2], event_shape=[3]
       dist = multinomial.Multinomial(n, theta)
       x = dist.sample(int(1000e3), seed=1)
@@ -286,8 +303,9 @@ class MultinomialTest(test.TestCase):
       self.assertAllClose(sample_var_, analytic_var, atol=0.01, rtol=0.01)
       self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.01, rtol=0.01)
 
+  @test_util.run_v1_only("b/120545219")
   def testSampleUnbiasedNonScalarBatch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = multinomial.Multinomial(
           total_count=[7., 6., 5.],
           logits=math_ops.log(2. * self._rng.rand(4, 3, 2).astype(np.float32)))
@@ -310,13 +328,14 @@ class MultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4, 3, 2], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.10)
       self.assertAllEqual([4, 3, 2, 2], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
 
+  @test_util.run_v1_only("b/120545219")
   def testSampleUnbiasedScalarBatch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = multinomial.Multinomial(
           total_count=5.,
           logits=math_ops.log(2. * self._rng.rand(4).astype(np.float32)))
@@ -338,10 +357,24 @@ class MultinomialTest(test.TestCase):
           dist.covariance(),
       ])
       self.assertAllEqual([4], sample_mean.get_shape())
-      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.07)
+      self.assertAllClose(actual_mean_, sample_mean_, atol=0., rtol=0.10)
       self.assertAllEqual([4, 4], sample_covariance.get_shape())
       self.assertAllClose(
-          actual_covariance_, sample_covariance_, atol=0., rtol=0.10)
+          actual_covariance_, sample_covariance_, atol=0., rtol=0.20)
+
+  def testNotReparameterized(self):
+    total_count = constant_op.constant(5.0)
+    p = constant_op.constant([0.2, 0.6])
+    with backprop.GradientTape() as tape:
+      tape.watch(total_count)
+      tape.watch(p)
+      dist = multinomial.Multinomial(
+          total_count=total_count,
+          probs=p)
+      samples = dist.sample(100)
+    grad_total_count, grad_p = tape.gradient(samples, [total_count, p])
+    self.assertIsNone(grad_total_count)
+    self.assertIsNone(grad_p)
 
 
 if __name__ == "__main__":

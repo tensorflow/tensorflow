@@ -27,7 +27,7 @@ class Base(test.TestCase):
   """A class with some useful methods for testing."""
 
   def eval(self, tensors):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
 

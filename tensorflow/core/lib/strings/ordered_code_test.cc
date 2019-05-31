@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -128,7 +129,7 @@ void TestWriteAppends(T first, U second) {
   string encoded_first_only = encoded;
   OCWriteToString<U>(&encoded, second);
   EXPECT_NE(encoded, encoded_first_only);
-  EXPECT_TRUE(StringPiece(encoded).starts_with(encoded_first_only));
+  EXPECT_TRUE(absl::StartsWith(encoded, encoded_first_only));
 }
 
 template <typename T>
@@ -395,7 +396,6 @@ void BM_WriteNum(int n, T multiplier) {
 
 template <typename T>
 void BM_ReadNum(int n, T multiplier) {
-  string x;
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   // Use enough distinct values to confuse the branch predictor

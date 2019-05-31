@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -101,8 +102,8 @@ class ProtoTextOutput {
 
  private:
   void AppendFieldAndValue(const char field_name[], StringPiece value_text) {
-    StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
-              field_name, kColonSeparator, value_text);
+    absl::StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
+                    field_name, kColonSeparator, value_text);
     level_empty_ = false;
   }
 
@@ -164,4 +165,4 @@ bool ProtoParseStringLiteralFromScanner(Scanner* scanner, string* value);
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_

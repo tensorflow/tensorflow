@@ -47,6 +47,7 @@ class LaunchDimensions {
 
   int64 block_count() const { return block_count_; }
   int64 threads_per_block() const { return threads_per_block_; }
+  int64 launch_bound() const { return block_count() * threads_per_block(); }
 
  private:
   int64 block_count_;
@@ -56,9 +57,12 @@ class LaunchDimensions {
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims);
 
+// Returns the maximum number of threads per block allowed by the device.
+int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc);
+
 LaunchDimensions CalculateLaunchDimensions(
-    const Shape& shape,
-    const perftools::gputools::DeviceDescription& device_desc);
+    const Shape& shape, const se::DeviceDescription& device_desc,
+    int unroll_factor = 1);
 
 }  // namespace gpu
 }  // namespace xla

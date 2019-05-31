@@ -25,12 +25,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import linalg_ops_impl
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -77,6 +79,9 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
   return gen_linalg_ops.cholesky(gramian)
 
 
+@tf_export(
+    'linalg.cholesky_solve', v1=['linalg.cholesky_solve', 'cholesky_solve'])
+@deprecation.deprecated_endpoints('cholesky_solve')
 def cholesky_solve(chol, rhs, name=None):
   """Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
 
@@ -84,8 +89,8 @@ def cholesky_solve(chol, rhs, name=None):
   # Solve 10 separate 2x2 linear systems:
   A = ... # shape 10 x 2 x 2
   RHS = ... # shape 10 x 2 x 1
-  chol = tf.cholesky(A)  # shape 10 x 2 x 2
-  X = tf.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
+  chol = tf.linalg.cholesky(A)  # shape 10 x 2 x 2
+  X = tf.linalg.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
   # tf.matmul(A, X) ~ RHS
   X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
 
@@ -98,7 +103,7 @@ def cholesky_solve(chol, rhs, name=None):
 
   Args:
     chol:  A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
-      Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
+      Cholesky factorization of `A`, e.g. `chol = tf.linalg.cholesky(A)`.
       For that reason, only the lower triangular parts (including the diagonal)
       of the last two dimensions of `chol` are used.  The strictly upper part is
       assumed to be zero and not accessed.
@@ -119,6 +124,7 @@ def cholesky_solve(chol, rhs, name=None):
     return x
 
 
+@tf_export('eye', 'linalg.eye')
 def eye(num_rows,
         num_columns=None,
         batch_shape=None,
@@ -156,38 +162,15 @@ def eye(num_rows,
   Returns:
     A `Tensor` of shape `batch_shape + [num_rows, num_columns]`
   """
-  with ops.name_scope(
-      name, default_name='eye', values=[num_rows, num_columns, batch_shape]):
-    is_square = num_columns is None
-    batch_shape = [] if batch_shape is None else batch_shape
-    num_columns = num_rows if num_columns is None else num_columns
-    if isinstance(num_rows, ops.Tensor) or isinstance(
-        num_columns, ops.Tensor) or isinstance(batch_shape, ops.Tensor):
-      batch_shape = ops.convert_to_tensor(
-          batch_shape, name='shape', dtype=dtypes.int32)
-      diag_size = math_ops.minimum(num_rows, num_columns)
-      diag_shape = array_ops.concat((batch_shape, [diag_size]), 0)
-      if not is_square:
-        shape = array_ops.concat((batch_shape, [num_rows, num_columns]), 0)
-    else:
-      if not isinstance(num_rows, compat.integral_types) or not isinstance(
-          num_columns, compat.integral_types):
-        raise TypeError(
-            'num_rows and num_columns must be positive integer values.')
-      batch_shape = [dim for dim in batch_shape]
-      is_square = num_rows == num_columns
-      diag_shape = batch_shape + [np.minimum(num_rows, num_columns)]
-      if not is_square:
-        shape = batch_shape + [num_rows, num_columns]
-
-    diag_ones = array_ops.ones(diag_shape, dtype=dtype)
-    if is_square:
-      return array_ops.matrix_diag(diag_ones)
-    else:
-      zero_matrix = array_ops.zeros(shape, dtype=dtype)
-      return array_ops.matrix_set_diag(zero_matrix, diag_ones)
+  return linalg_ops_impl.eye(num_rows,
+                             num_columns=num_columns,
+                             batch_shape=batch_shape,
+                             dtype=dtype,
+                             name=name)
 
 
+@tf_export('linalg.lstsq', v1=['linalg.lstsq', 'matrix_solve_ls'])
+@deprecation.deprecated_endpoints('matrix_solve_ls')
 def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   r"""Solves one or more linear least-squares problems.
 
@@ -240,11 +223,11 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
       squares sense.
 
   Raises:
-    NotImplementedError: matrix_solve_ls is currently disabled for complex128
+    NotImplementedError: linalg.lstsq is currently disabled for complex128
     and l2_regularizer != 0 due to poor accuracy.
   """
 
-  # pylint: disable=protected-access,long-lambda
+  # pylint: disable=long-lambda
   def _use_composite_impl(fast, tensor_shape):
     """Determines whether to use the composite or specialized CPU kernel.
 
@@ -319,11 +302,12 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   if _use_composite_impl(fast, tensor_shape):
     return _composite_impl(matrix, rhs, l2_regularizer)
   else:
-    return gen_linalg_ops._matrix_solve_ls(
+    return gen_linalg_ops.matrix_solve_ls(
         matrix, rhs, l2_regularizer, fast=fast, name=name)
-  # pylint: enable=protected-access
 
 
+@tf_export('linalg.eigh', v1=['linalg.eigh', 'self_adjoint_eig'])
+@deprecation.deprecated_endpoints('self_adjoint_eig')
 def self_adjoint_eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of self-adjoint matrices.
 
@@ -337,20 +321,21 @@ def self_adjoint_eig(tensor, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    e: Eigenvalues. Shape is `[..., N]`.
+    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
-  # pylint: disable=protected-access
-  e, v = gen_linalg_ops._self_adjoint_eig_v2(tensor, compute_v=True, name=name)
+  e, v = gen_linalg_ops.self_adjoint_eig_v2(tensor, compute_v=True, name=name)
   return e, v
 
 
+@tf_export('linalg.eigvalsh', v1=['linalg.eigvalsh', 'self_adjoint_eigvals'])
+@deprecation.deprecated_endpoints('self_adjoint_eigvals')
 def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
   Note: If your program backpropagates through this function, you should replace
-  it with a call to tf.self_adjoint_eig (possibly ignoring the second output) to
+  it with a call to tf.linalg.eigh (possibly ignoring the second output) to
   avoid computing the eigen decomposition twice. This is because the
   eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
   _SelfAdjointEigV2Grad in linalg_grad.py.
@@ -363,11 +348,12 @@ def self_adjoint_eigvals(tensor, name=None):
     e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
       eigenvalues of `tensor[..., :, :]`.
   """
-  # pylint: disable=protected-access
-  e, _ = gen_linalg_ops._self_adjoint_eig_v2(tensor, compute_v=False, name=name)
+  e, _ = gen_linalg_ops.self_adjoint_eig_v2(tensor, compute_v=False, name=name)
   return e
 
 
+@tf_export('linalg.svd', v1=['linalg.svd', 'svd'])
+@deprecation.deprecated_endpoints('svd')
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   r"""Computes the singular value decompositions of one or more matrices.
 
@@ -421,17 +407,15 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   import tensorflow as tf
   import numpy as np
   s, u, v = tf.linalg.svd(a)
-  tf_a_approx = tf.matmul(u, tf.matmul(tf.linalg.diag(s), v, adjoint_v=True))
+  tf_a_approx = tf.matmul(u, tf.matmul(tf.linalg.diag(s), v, adjoint_b=True))
   u, s, v_adj = np.linalg.svd(a, full_matrices=False)
   np_a_approx = np.dot(u, np.dot(np.diag(s), v_adj))
   # tf_a_approx and np_a_approx should be numerically close.
-  ````
+  ```
   @end_compatibility
   """
-  # pylint: disable=protected-access
-  s, u, v = gen_linalg_ops._svd(
+  s, u, v = gen_linalg_ops.svd(
       tensor, compute_uv=compute_uv, full_matrices=full_matrices, name=name)
-  # pylint: enable=protected-access
   if compute_uv:
     return math_ops.real(s), u, v
   else:
@@ -439,6 +423,78 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 
 # pylint: disable=redefined-builtin
+@tf_export('norm', 'linalg.norm', v1=[])
+def norm_v2(tensor,
+            ord='euclidean',
+            axis=None,
+            keepdims=None,
+            name=None):
+  r"""Computes the norm of vectors, matrices, and tensors.
+
+  This function can compute several different vector norms (the 1-norm, the
+  Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and
+  matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
+
+  Args:
+    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`,
+      `1`, `2`, `np.inf` and any positive real number yielding the corresponding
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
+      `tensor` is a matrix and equivalent to 2-norm for vectors.
+      Some restrictions apply:
+        a) The Frobenius norm `'fro'` is not defined for vectors,
+        b) If axis is a 2-tuple (matrix norm), only `'euclidean'`, '`fro'`, `1`,
+           `2`, `np.inf` are supported.
+      See the description of `axis` on how to compute norms for a batch of
+      vectors or matrices stored in a tensor.
+    axis: If `axis` is `None` (the default), the input is considered a vector
+      and a single vector norm is computed over the entire set of values in the
+      tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
+      `norm(reshape(tensor, [-1]), ord=ord)`.
+      If `axis` is a Python integer, the input is considered a batch of vectors,
+      and `axis` determines the axis in `tensor` over which to compute vector
+      norms.
+      If `axis` is a 2-tuple of Python integers it is considered a batch of
+      matrices and `axis` determines the axes in `tensor` over which to compute
+      a matrix norm.
+      Negative indices are supported. Example: If you are passing a tensor that
+      can be either a matrix or a batch of matrices at runtime, pass
+      `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
+      computed.
+    keepdims: If True, the axis indicated in `axis` are kept with size 1.
+      Otherwise, the dimensions in `axis` are removed from the output shape.
+    name: The name of the op.
+
+  Returns:
+    output: A `Tensor` of the same type as tensor, containing the vector or
+      matrix norms. If `keepdims` is True then the rank of output is equal to
+      the rank of `tensor`. Otherwise, if `axis` is none the output is a scalar,
+      if `axis` is an integer, the rank of `output` is one less than the rank
+      of `tensor`, if `axis` is a 2-tuple the rank of `output` is two less
+      than the rank of `tensor`.
+
+  Raises:
+    ValueError: If `ord` or `axis` is invalid.
+
+  @compatibility(numpy)
+  Mostly equivalent to numpy.linalg.norm.
+  Not supported: ord <= 0, 2-norm for matrices, nuclear norm.
+  Other differences:
+    a) If axis is `None`, treats the flattened `tensor` as a vector
+     regardless of rank.
+    b) Explicitly supports 'euclidean' norm as the default, including for
+     higher order tensors.
+  @end_compatibility
+  """
+  return norm(tensor=tensor,
+              ord=ord,
+              axis=axis,
+              keepdims=keepdims,
+              name=name)
+
+
+# pylint: disable=redefined-builtin
+@tf_export(v1=['norm', 'linalg.norm'])
 @deprecation.deprecated_args(
     None, 'keep_dims is deprecated, use keepdims instead', 'keep_dims')
 def norm(tensor,
@@ -451,7 +507,7 @@ def norm(tensor,
 
   This function can compute several different vector norms (the 1-norm, the
   Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and
-  matrix norms (Frobenius, 1-norm, and inf-norm).
+  matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
@@ -462,7 +518,7 @@ def norm(tensor,
       Some restrictions apply:
         a) The Frobenius norm `fro` is not defined for vectors,
         b) If axis is a 2-tuple (matrix norm), only 'euclidean', 'fro', `1`,
-           `np.inf` are supported.
+           `2`, `np.inf` are supported.
       See the description of `axis` on how to compute norms for a batch of
       vectors or matrices stored in a tensor.
     axis: If `axis` is `None` (the default), the input is considered a vector
@@ -518,8 +574,7 @@ def norm(tensor,
         axis[0] == axis[1]):
       raise ValueError(
           "'axis' must be None, an integer, or a tuple of 2 unique integers")
-    # TODO(rmlarsen): Implement matrix 2-norm using tf.svd().
-    supported_matrix_norms = ['euclidean', 'fro', 1, np.inf]
+    supported_matrix_norms = ['euclidean', 'fro', 1, 2, np.inf]
     if ord not in supported_matrix_norms:
       raise ValueError("'ord' must be a supported matrix norm in %s, got %s" %
                        (supported_matrix_norms, ord))
@@ -536,12 +591,36 @@ def norm(tensor,
 
   with ops.name_scope(name, 'norm', [tensor]):
     tensor = ops.convert_to_tensor(tensor)
+
     if ord in ['fro', 'euclidean', 2, 2.0]:
-      # TODO(rmlarsen): Move 2-norm to a separate clause once we support it for
-      # matrices.
-      result = math_ops.sqrt(
-          math_ops.reduce_sum(
-              tensor * math_ops.conj(tensor), axis, keepdims=True))
+      if is_matrix_norm and ord in [2, 2.0]:
+        rank = array_ops.rank(tensor)
+        positive_axis = map_fn.map_fn(
+            lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank),
+            ops.convert_to_tensor(axis))
+        axes = math_ops.range(rank)
+        perm_before = array_ops.concat(
+            [array_ops.setdiff1d(axes, positive_axis)[0], positive_axis],
+            axis=0)
+        perm_after = map_fn.map_fn(
+            lambda i: math_ops.cast(
+                array_ops.squeeze(
+                    array_ops.where(math_ops.equal(perm_before, i))),
+                dtype=dtypes.int32), axes)
+        permed = array_ops.transpose(tensor, perm=perm_before)
+        matrix_2_norm = array_ops.expand_dims(
+            math_ops.reduce_max(
+                math_ops.abs(gen_linalg_ops.svd(permed, compute_uv=False)[0]),
+                axis=-1,
+                keepdims=True),
+            axis=-1)
+        result = array_ops.transpose(matrix_2_norm, perm=perm_after)
+      else:
+        result = math_ops.sqrt(
+            math_ops.reduce_sum(
+                tensor * math_ops.conj(tensor), axis, keepdims=True))
+        # TODO(rmlarsen): Replace with the following, once gradients are defined
+        # result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

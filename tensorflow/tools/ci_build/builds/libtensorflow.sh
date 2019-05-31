@@ -51,10 +51,11 @@ function build_libtensorflow_tarball() {
   rm -rf ${DIR}
 
   TARBALL_SUFFIX="${1}"
-  BAZEL="bazel --bazelrc ./tensorflow/tools/ci_build/install/.bazelrc"
-  BAZEL_OPTS="-c opt"
+  BAZEL_OPTS="--config=opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
+  export CC_OPT_FLAGS="-mavx -msse4.2"
   if [ "${TF_NEED_CUDA}" == "1" ]; then
     BAZEL_OPTS="${BAZEL_OPTS} --config=cuda"
+    export TF_NEED_ROCM=0
   fi
   bazel clean --expunge
   yes "" | ./configure
@@ -66,7 +67,7 @@ function build_libtensorflow_tarball() {
   # in tensorflow/tools/lib_package/BUILD are removed.
   # Till then, must manually run the test since these tests are
   # not covered by the continuous integration.
-  bazel test ${BAZEL_OPTS} \
+  bazel test ${BAZEL_OPTS} --test_output=errors \
     //tensorflow/tools/lib_package:libtensorflow_test \
     //tensorflow/tools/lib_package:libtensorflow_java_test
 

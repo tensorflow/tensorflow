@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
-#define THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#ifndef TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#define TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
 
 #include <memory>
 #include <string>
@@ -137,4 +137,4 @@ class QueueRunner : public RunnerInterface {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#endif  // TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_

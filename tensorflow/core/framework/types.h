@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TYPES_H_
-#define TENSORFLOW_FRAMEWORK_TYPES_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
 
 #include <map>
 #include <set>
@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -38,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+class Variant;
 
 // MemoryType is used to describe whether input or output Tensors of
 // an OpKernel should reside in "Host memory" (e.g., CPU memory) or
@@ -82,12 +83,13 @@ struct DeviceName<Eigen::ThreadPoolDevice> {
   static const std::string value;
 };
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 template <>
 struct DeviceName<Eigen::GpuDevice> {
   static const std::string value;
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <>
@@ -103,6 +105,8 @@ typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
 typedef gtl::ArraySlice<DataType> DataTypeSlice;
 
 typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
+typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>
+    PrioritizedDeviceTypeVector;
 
 // Convert the enums to strings for errors:
 string DataTypeString(DataType dtype);
@@ -294,7 +298,7 @@ inline const DataTypeSet& QuantizedTypes() { return kQuantizedTypes; }
 // Types that support '<' and '>', including quantized types.
 const DataTypeSet kRealAndQuantizedTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_INT64) |
-    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_UINT16) | ToSet(DT_INT8) |
+    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
     ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) | ToSet(DT_QUINT16) |
     ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_BFLOAT16);
 inline const DataTypeSet& RealAndQuantizedTypes() {
@@ -453,6 +457,13 @@ inline bool DataTypeIsInteger(DataType dt) {
   return kDataTypeIsInteger.Contains(dt);
 }
 
+// Is the dtype a signed integral type?
+constexpr DataTypeSet kDataTypeIsSigned =
+    ToSet(DT_INT8) | ToSet(DT_INT16) | ToSet(DT_INT32) | ToSet(DT_INT64);
+inline bool DataTypeIsSigned(DataType dt) {
+  return kDataTypeIsSigned.Contains(dt);
+}
+
 // Is the dtype an unsigned integral type?
 constexpr DataTypeSet kDataTypeIsUnsigned =
     ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_UINT32) | ToSet(DT_UINT64);
@@ -463,6 +474,16 @@ inline bool DataTypeIsUnsigned(DataType dt) {
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);
 
+// Returns HOST_MEMORY if `dtype` is always on host or is a DT_INT32,
+// DEVICE_MEMORY otherwise.
+MemoryType MTypeFromDType(const DataType dtype);
+
+// Returns HOST_MEMORY if `dtype` is always on host, DEVICE_MEMORY otherwise.
+// The reason we have MTypeFromDType() and MTypeFromDTypeIntsOnDevice(): for
+// GPUs, we would like to keep int operations on host for performance concerns.
+// But for TPUs (and other devices), int operations are placed on device.
+MemoryType MTypeFromDTypeIntsOnDevice(const DataType dtype);
+
 // Types that always sit on host: DT_STRING, DT_STRING_REF, DT_RESOURCE.
 // For DT_RESOURCE, the handle always sits on host (even if the underlying
 // object has device-allocated resources).
@@ -470,4 +491,4 @@ bool DataTypeAlwaysOnHost(DataType dt);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TYPES_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TYPES_H_

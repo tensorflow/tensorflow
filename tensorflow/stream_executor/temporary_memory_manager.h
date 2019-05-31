@@ -24,15 +24,14 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 // Record used inside the TemporaryMemoryManager as metadata for a given device
@@ -109,7 +108,7 @@ class TemporaryMemoryManager {
       uint64 element_count, uint64 element_size);
 
   // Mutex to guard temporary record state.
-  mutable mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Mapping from device memory to the current (live) temporary memory record.
   //
@@ -147,7 +146,6 @@ TemporaryMemoryManager::AllocateArray(uint64 element_count) {
 }
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TEMPORARY_MEMORY_MANAGER_H_

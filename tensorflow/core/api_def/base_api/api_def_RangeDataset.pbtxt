@@ -1,5 +1,6 @@
 op {
   graph_op_name: "RangeDataset"
+  visibility: HIDDEN
   in_arg {
     name: "start"
     description: <<END

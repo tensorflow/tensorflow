@@ -12,212 +12,235 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/filter_dataset_op.h"
+
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
+namespace data {
 
-namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class FilterDatasetOp : public UnaryDatasetOpKernel {
+constexpr const char FilterDatasetOp::kDatasetType[];
+constexpr const char FilterDatasetOp::kInputDataset[];
+constexpr const char FilterDatasetOp::kOtherArguments[];
+constexpr const char FilterDatasetOp::kPredicate[];
+constexpr const char FilterDatasetOp::kTarguments[];
+constexpr const char FilterDatasetOp::kOutputTypes[];
+constexpr const char FilterDatasetOp::kOutputShapes[];
+
+constexpr char kInputImplsEmpty[] = "input_impls_empty";
+constexpr char kFilteredElements[] = "filtered_elements";
+constexpr char kDroppedElements[] = "dropped_elements";
+
+class FilterDatasetOp::Dataset : public DatasetBase {
  public:
-  explicit FilterDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
+  Dataset(OpKernelContext* ctx, const DatasetBase* input,
+          std::unique_ptr<CapturedFunction> captured_func)
+      : DatasetBase(DatasetContext(ctx)),
+        input_(input),
+        captured_func_(std::move(captured_func)) {
+    input_->Ref();
   }
 
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
+  ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const override {
+    return absl::make_unique<Iterator>(Iterator::Params{
+        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+  }
 
-    *output = new Dataset(ctx, input, func_, std::move(captured_func));
+  const DataTypeVector& output_dtypes() const override {
+    return input_->output_dtypes();
+  }
+
+  const std::vector<PartialTensorShape>& output_shapes() const override {
+    return input_->output_shapes();
+  }
+
+  string DebugString() const override {
+    return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    Node* input_graph_node;
+    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+    std::vector<Node*> other_arguments;
+    DataTypeVector other_arguments_types;
+    TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                  &other_arguments_types));
+    AttrValue f;
+    b->BuildAttrValue(captured_func_->func(), &f);
+    AttrValue other_arguments_types_attr;
+    b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+    TF_RETURN_IF_ERROR(b->AddDataset(
+        this, {{0, input_graph_node}}, {{1, other_arguments}},
+        {{kPredicate, f}, {kTarguments, other_arguments_types_attr}}, output));
+    return Status::OK();
   }
 
  private:
-  const int graph_def_version_;
-
-  class Dataset : public GraphDatasetBase {
+  class Iterator : public DatasetIterator<Dataset> {
    public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
-            std::unique_ptr<CapturedFunction> captured_func)
-        : GraphDatasetBase(ctx),
-          input_(input),
-          func_(func),
-          captured_func_(std::move(captured_func)) {
-      input_->Ref();
+    explicit Iterator(const Params& params)
+        : DatasetIterator<Dataset>(params),
+          filtered_elements_(0),
+          dropped_elements_(0) {}
+
+    Status Initialize(IteratorContext* ctx) override {
+      TF_RETURN_IF_ERROR(
+          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+      return dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_);
     }
 
-    ~Dataset() override { input_->Unref(); }
+    Status GetNextInternal(IteratorContext* ctx,
+                           std::vector<Tensor>* out_tensors,
+                           bool* end_of_sequence) override {
+      // NOTE(mrry): This method is thread-safe as long as
+      // `input_impl_` and `f` are thread-safe. However, if multiple
+      // threads enter this method, outputs may be observed in a
+      // non-deterministic order.
+      auto stats_aggregator = ctx->stats_aggregator();
+      bool matched;
+      do {
+        {
+          tf_shared_lock l(mu_);
+          if (!input_impl_) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          TF_RETURN_IF_ERROR(
+              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+        }
+        if (*end_of_sequence) {
+          mutex_lock l(mu_);
+          input_impl_.reset();
+          return Status::OK();
+        }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
-        const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Filter")}));
-    }
+        std::vector<Tensor> result;
+        TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
+            ctx, *out_tensors, &result));
 
-    const DataTypeVector& output_dtypes() const override {
-      return input_->output_dtypes();
-    }
-    const std::vector<PartialTensorShape>& output_shapes() const override {
-      return input_->output_shapes();
-    }
+        if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
+            result[0].NumElements() != 1) {
+          // Clear the output tensor list since there were errors with Filter
+          // prediction result.
+          out_tensors->clear();
+          return errors::InvalidArgument(
+              "Filter predicate `f` must return a scalar bool.");
+        }
+        matched = result[0].scalar<bool>()();
 
-    string DebugString() override { return "FilterDatasetOp::Dataset"; }
+        if (!matched) {
+          // Clear the output tensor list since it didn't match.
+          out_tensors->clear();
+          if (stats_aggregator) {
+            mutex_lock l(mu_);
+            dropped_elements_++;
+            stats_aggregator->AddScalar(
+                stats_utils::DroppedElementsScalarName(dataset()->node_name()),
+                static_cast<float>(dropped_elements_), num_elements());
+
+            stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                               stats_utils::kDroppedElements,
+                                               static_cast<float>(1));
+          }
+        }
+      } while (!matched);
+      // TODO(shivaniagrawal): add ratio of dropped_elements and
+      // filtered_elements as a histogram.
+      if (stats_aggregator) {
+        mutex_lock l(mu_);
+        filtered_elements_++;
+        stats_aggregator->AddScalar(
+            stats_utils::FilterdElementsScalarName(dataset()->node_name()),
+            static_cast<float>(filtered_elements_), num_elements());
+
+        stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                           stats_utils::kFilteredElements,
+                                           static_cast<float>(1));
+      }
+      *end_of_sequence = false;
+      return Status::OK();
+    }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
-                              Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
-      Node* input_graph_node;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeUnknownRatioNode(std::move(args));
+    }
 
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
-      std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
-      AttrValue f;
-      b->BuildAttrValue(func_, &f);
-      AttrValue other_arguments_types_attr;
-      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+    Status SaveInternal(IteratorStateWriter* writer) override {
+      mutex_lock l(mu_);
+      if (input_impl_)
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      else
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name(kInputImplsEmpty), ""));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kFilteredElements),
+                                             filtered_elements_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(full_name(kDroppedElements), dropped_elements_));
+      return Status::OK();
+    }
 
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this, {{0, input_graph_node}}, {{1, other_arguments}},
-          {{"predicate", f}, {"Targuments", other_arguments_types_attr}},
-          output));
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      mutex_lock l(mu_);
+      if (reader->Contains(full_name(kInputImplsEmpty)))
+        input_impl_.reset();
+      else
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kFilteredElements),
+                                            &filtered_elements_));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(full_name(kDroppedElements), &dropped_elements_));
       return Status::OK();
     }
 
    private:
-    class Iterator : public DatasetIterator<Dataset> {
-     public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
-
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
-        // NOTE(mrry): This method is thread-safe as long as
-        // `input_impl_` and `f` are thread-safe. However, if multiple
-        // threads enter this method, outputs may be observed in a
-        // non-deterministic order.
-        bool matched;
-        do {
-          {
-            tf_shared_lock l(mu_);
-            if (!input_impl_) {
-              *end_of_sequence = true;
-              return Status::OK();
-            }
-            TF_RETURN_IF_ERROR(
-                input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
-          }
-          if (*end_of_sequence) {
-            mutex_lock l(mu_);
-            input_impl_.reset();
-            return Status::OK();
-          }
-
-          FunctionLibraryRuntime::Options opts;
-          opts.step_id = CapturedFunction::generate_step_id();
-          ScopedStepContainer step_container(
-              opts.step_id, [this](const string& name) {
-                dataset()
-                    ->captured_func_->resource_manager()
-                    ->Cleanup(name)
-                    .IgnoreError();
-              });
-          opts.step_container = &step_container;
-          opts.runner = ctx->runner();
-          // TODO(mrry): Avoid blocking a threadpool thread. We will need to
-          // stack-rip the iterators and use async kernels.
-          Notification n;
-          Status ret;
-          std::vector<Tensor> result;
-          ret = dataset()->captured_func_->RunWithBorrowedArgs(
-              opts, *out_tensors, &result);
-
-          if (!ret.ok()) {
-            return ret;
-          } else if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
-                     result[0].NumElements() != 1) {
-            return errors::InvalidArgument(
-                "Filter predicate `f` must return a scalar bool.");
-          }
-          matched = result[0].scalar<bool>()();
-          if (!matched) {
-            // Clear the output tensor list since it didn't match.
-            out_tensors->clear();
-          }
-        } while (!matched);
-        *end_of_sequence = false;
-        return Status::OK();
-      }
-
-     protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
-        if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
-        else
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name("input_impls_empty"), ""));
-        return Status::OK();
-      }
-
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
-        if (reader->Contains(full_name("input_impls_empty")))
-          input_impl_.reset();
-        else
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
-        return Status::OK();
-      }
-
-     private:
-      mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    };
-
-    const DatasetBase* const input_;
-    const NameAttrList func_;
-    const std::unique_ptr<CapturedFunction> captured_func_;
+    mutex mu_;
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    int64 filtered_elements_ GUARDED_BY(mu_);
+    int64 dropped_elements_ GUARDED_BY(mu_);
+    std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 
- private:
-  NameAttrList func_;
+  const DatasetBase* const input_;
+  const std::unique_ptr<CapturedFunction> captured_func_;
 };
 
+void FilterDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                  DatasetBase** output) {
+  std::unique_ptr<CapturedFunction> captured_func;
+  OP_REQUIRES_OK(ctx,
+                 CapturedFunction::Create(ctx, func_metadata_, kOtherArguments,
+                                          &captured_func));
+
+  *output = new Dataset(ctx, input, std::move(captured_func));
+}
+
+namespace {
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),
                         FilterDatasetOp);
-
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

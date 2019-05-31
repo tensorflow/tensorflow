@@ -114,7 +114,7 @@ int Run(int argc, char** argv) {
       Flag("min_output_bytes", &FLAGS_min_output_bytes, "min_output_bytes"),
       Flag("min_micros", &FLAGS_min_micros, "min micros"),
       Flag("min_accelerator_micros", &FLAGS_min_accelerator_micros,
-           "min acclerator_micros"),
+           "min accelerator_micros"),
       Flag("min_cpu_micros", &FLAGS_min_cpu_micros, "min_cpu_micros"),
       Flag("min_params", &FLAGS_min_params, "min params"),
       Flag("min_float_ops", &FLAGS_min_float_ops, "min float ops"),
@@ -206,8 +206,12 @@ int Run(int argc, char** argv) {
         "graph_path,op_log_path,run_meta_path\n");
     std::unique_ptr<GraphDef> graph(new GraphDef());
     if (!FLAGS_graph_path.empty()) {
-      TF_CHECK_OK(
-          ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
+      s = ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false);
+      if (!s.ok()) {
+        fprintf(stderr, "Failed to read graph_path: %s\n",
+                s.ToString().c_str());
+        return 1;
+      }
     }
 
     std::unique_ptr<OpLogProto> op_log(new OpLogProto());

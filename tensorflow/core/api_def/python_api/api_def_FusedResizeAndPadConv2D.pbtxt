@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "FusedResizeAndPadConv2D"
+  visibility: HIDDEN
+}

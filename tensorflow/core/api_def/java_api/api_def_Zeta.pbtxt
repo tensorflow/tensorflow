@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Zeta"
+  endpoint {
+    name: "math.Zeta"
+  }
+}

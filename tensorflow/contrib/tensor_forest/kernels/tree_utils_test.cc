@@ -44,11 +44,13 @@ TEST(TestWeightedVariance, Basic) {
   Tensor squares = test::AsTensor<float>({29, 12}, {2});
 
   EXPECT_FLOAT_EQ(WeightedVariance(sums.unaligned_flat<float>(),
-                                   squares.unaligned_flat<float>(), 3), 2.0);
+                                   squares.unaligned_flat<float>(), 3),
+                  2.0);
 
   Tensor zero = test::AsTensor<float>({0}, {1});
   EXPECT_FLOAT_EQ(WeightedVariance(zero.unaligned_flat<float>(),
-                                   zero.unaligned_flat<float>(), 1), 0);
+                                   zero.unaligned_flat<float>(), 1),
+                  0);
 }
 
 TEST(TestInitialize, Basic) {
@@ -94,17 +96,16 @@ TEST(BestFeatureClassification, Basic) {
   const int32 num_accumulators = 4;
   const int32 num_splits = 3;
   const int32 num_classes = 4;
-  Tensor totals = test::AsTensor<float>({1, 5, 6, 7,
-                                         0, 0, 0, 0,
-                                         30, 10, 10, 10,      // this one
-                                         -1, -1, -1, -1},
-                                        {num_accumulators, num_classes});
-  Tensor splits = test::AsTensor<float>(
-      {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-       30, 10, 10, 10, 10, 0, 0, 10, 19, 5, 6, 8,  // this one
-       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-      {num_accumulators, num_splits, num_classes});
+  Tensor totals = test::AsTensor<float>(
+      {1, 5, 6, 7, 0, 0, 0, 0, 30, 10, 10, 10,  // this one
+       -1, -1, -1, -1},
+      {num_accumulators, num_classes});
+  Tensor splits =
+      test::AsTensor<float>({1,  2,  3,  4,  1,  2,  3,  4,  1,  2,  3,  4,  0,
+                             0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  30, 10,
+                             10, 10, 10, 0,  0,  10, 19, 5,  6,  8,  // this one
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+                            {num_accumulators, num_splits, num_classes});
 
   EXPECT_EQ(BestFeatureClassification(totals, splits, 2), 1);
 }
@@ -114,17 +115,16 @@ TEST(BestFeatureClassification, NoWinner) {
   const int32 num_splits = 3;
   const int32 num_classes = 4;
   // When counts are all the same, the most reasonable thing to do is pick 0.
-  Tensor totals = test::AsTensor<float>({1, 5, 6, 7,
-                                         0, 0, 0, 0,
-                                         18, 6, 6, 6,      // this one
-                                         -1, -1, -1, -1},
-                                        {num_accumulators, num_classes});
-  Tensor splits = test::AsTensor<float>(
-      {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-       9, 3, 3, 3, 9, 3, 3, 3, 9, 3, 3, 3,     // this one
-       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-      {num_accumulators, num_splits, num_classes});
+  Tensor totals =
+      test::AsTensor<float>({1, 5, 6, 7, 0, 0, 0, 0, 18, 6, 6, 6,  // this one
+                             -1, -1, -1, -1},
+                            {num_accumulators, num_classes});
+  Tensor splits =
+      test::AsTensor<float>({1,  2,  3,  4,  1,  2,  3,  4,  1,  2,  3,  4, 0,
+                             0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  9, 3,
+                             3,  3,  9,  3,  3,  3,  9,  3,  3,  3,  // this one
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+                            {num_accumulators, num_splits, num_classes});
 
   EXPECT_EQ(BestFeatureClassification(totals, splits, 2), 0);
 }
@@ -133,36 +133,34 @@ TEST(BestFeatureRegression, Basic) {
   const int32 num_accumulators = 4;
   const int32 num_splits = 3;
   const int32 num_classes = 4;
-  Tensor total_sums = test::AsTensor<float>(
-      {1, 5, 6, 7,
-       0, 0, 0, 0,
-       10, 8, 6, 9,      // this one
-       -1, -1, -1, -1},
-      {num_accumulators, num_classes});
+  Tensor total_sums =
+      test::AsTensor<float>({1, 5, 6, 7, 0, 0, 0, 0, 10, 8, 6, 9,  // this one
+                             -1, -1, -1, -1},
+                            {num_accumulators, num_classes});
   Tensor total_squares = test::AsTensor<float>(
-      {1, 5, 6, 7,
-       0, 0, 0, 0,
-       100, 50, 40, 45,      // this one
+      {1, 5, 6, 7, 0, 0, 0, 0, 100, 50, 40, 45,  // this one
        -1, -1, -1, -1},
       {num_accumulators, num_classes});
 
-  Tensor split_sums = test::AsTensor<float>(
-      {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-       10, 8, 6, 9, 9, 8, 5, 9, 0, 0, 0, 0,      // this one
-       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-      {num_accumulators, num_splits, num_classes});
+  Tensor split_sums =
+      test::AsTensor<float>({1,  2,  3,  4,  1,  2,  3,  4,  1,  2,  3,  4,  0,
+                             0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  10, 8,
+                             6,  9,  9,  8,  5,  9,  0,  0,  0,  0,  // this one
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+                            {num_accumulators, num_splits, num_classes});
 
   // lower the variance by lowering one of the squares just a little.
-  Tensor split_squares = test::AsTensor<float>(
-      {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-       100, 50, 40, 45, 100, 50, 40, 43, 0, 0, 0, 0,    // this one
-       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-      {num_accumulators, num_splits, num_classes});
+  Tensor split_squares =
+      test::AsTensor<float>(
+          {1,   2,  3,  4,  1,   2,  3,  4,  1,  2,  3,  4,
+           0,   0,  0,  0,  0,   0,  0,  0,  0,  0,  0,  0,
+           100, 50, 40, 45, 100, 50, 40, 43, 0,  0,  0,  0,  // this one
+           -1,  -1, -1, -1, -1,  -1, -1, -1, -1, -1, -1, -1},
+          {num_accumulators, num_splits, num_classes});
 
   EXPECT_EQ(BestFeatureRegression(total_sums, total_squares, split_sums,
-                                  split_squares, 2), 1);
+                                  split_squares, 2),
+            1);
 }
 
 TEST(BestFeatureRegression, NoWinner) {
@@ -170,37 +168,33 @@ TEST(BestFeatureRegression, NoWinner) {
   const int32 num_splits = 3;
   const int32 num_classes = 4;
   // when counts are all the same, the most reasonable thing to do is pick 0.
-  Tensor total_sums = test::AsTensor<float>(
-      {1, 5, 6, 7,
-       0, 0, 0, 0,
-       10, 8, 6, 9,      // this one
-       -1, -1, -1, -1},
-      {num_accumulators, num_classes});
+  Tensor total_sums =
+      test::AsTensor<float>({1, 5, 6, 7, 0, 0, 0, 0, 10, 8, 6, 9,  // this one
+                             -1, -1, -1, -1},
+                            {num_accumulators, num_classes});
   Tensor total_squares = test::AsTensor<float>(
-      {1, 5, 6, 7,
-       0, 0, 0, 0,
-       100, 50, 40, 45,      // this one
+      {1, 5, 6, 7, 0, 0, 0, 0, 100, 50, 40, 45,  // this one
        -1, -1, -1, -1},
       {num_accumulators, num_classes});
 
-  Tensor split_sums = test::AsTensor<float>(
-      {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-       10, 8, 6, 9, 10, 8, 6, 9, 10, 8, 6, 9,      // this one
-       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
-      {num_accumulators, num_splits, num_classes});
+  Tensor split_sums =
+      test::AsTensor<float>({1,  2,  3,  4,  1,  2,  3,  4,  1,  2,  3,  4,  0,
+                             0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  10, 8,
+                             6,  9,  10, 8,  6,  9,  10, 8,  6,  9,  // this one
+                             -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+                            {num_accumulators, num_splits, num_classes});
 
   Tensor split_squares = test::AsTensor<float>(
-      {1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4,
-       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-       100, 50, 40, 45, 100, 50, 40, 45, 100, 50, 40, 45,    // this one
-       -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+      {1,   2,  3,  4,  1,   2,  3,  4,  1,   2,  3,  4,
+       0,   0,  0,  0,  0,   0,  0,  0,  0,   0,  0,  0,
+       100, 50, 40, 45, 100, 50, 40, 45, 100, 50, 40, 45,  // this one
+       -1,  -1, -1, -1, -1,  -1, -1, -1, -1,  -1, -1, -1},
       {num_accumulators, num_splits, num_classes});
 
   EXPECT_EQ(BestFeatureRegression(total_sums, total_squares, split_sums,
-                                  split_squares, 2), 0);
+                                  split_squares, 2),
+            0);
 }
 
 }  // namespace tensorforest
 }  // namespace tensorflow
-

@@ -34,7 +34,7 @@ bazel run -c opt --config=cuda :resnet50_graph_test -- --benchmarks=.
 
 (Or remove the `--config=cuda` flag for running on CPU instead of GPU).
 
-On October 31, 2017, the benchmarks demostrated comparable performance
+On October 31, 2017, the benchmarks demonstrated comparable performance
 for eager and graph execution of this particular model when using
 a single NVIDIA Titan X (Pascal) GPU on a host with an
 Intel Xeon E5-1650 CPU @ 3.50GHz and a batch size of 32.

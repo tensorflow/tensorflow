@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "RemoteFusedGraphExecuteInfoProto";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
@@ -14,14 +14,6 @@ import "tensorflow/core/framework/types.proto";
 // not valid across executions, but can be serialized back and forth from within
 // a single run.
 message RemoteFusedGraphExecuteInfo {
-  enum NodeType {
-    UNUSED = 0;
-    GRAPH_INPUT = 1;
-    GRAPH_OUTPUT = 2;
-    FUSED_NODE = 3;
-    BORDER_INPUT = 4;
-    BORDER_OUTPUT = 5;
-  }
 
   message TensorShapeTypeProto {
     DataType dtype = 1;

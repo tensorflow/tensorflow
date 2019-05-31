@@ -1,0 +1,21 @@
+path: "tensorflow.train.SessionManager"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.session_manager.SessionManager\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'local_init_op\', \'ready_op\', \'ready_for_local_init_op\', \'graph\', \'recovery_wait_secs\', \'local_init_run_options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'30\', \'None\'], "
+  }
+  member_method {
+    name: "prepare_session"
+    argspec: "args=[\'self\', \'master\', \'init_op\', \'saver\', \'checkpoint_dir\', \'checkpoint_filename_with_path\', \'wait_for_checkpoint\', \'max_wait_secs\', \'config\', \'init_feed_dict\', \'init_fn\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'7200\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "recover_session"
+    argspec: "args=[\'self\', \'master\', \'saver\', \'checkpoint_dir\', \'checkpoint_filename_with_path\', \'wait_for_checkpoint\', \'max_wait_secs\', \'config\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'7200\', \'None\'], "
+  }
+  member_method {
+    name: "wait_for_session"
+    argspec: "args=[\'self\', \'master\', \'config\', \'max_wait_secs\'], varargs=None, keywords=None, defaults=[\'None\', \'inf\'], "
+  }
+}

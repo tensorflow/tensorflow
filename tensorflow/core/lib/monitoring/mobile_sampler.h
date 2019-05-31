@@ -15,12 +15,13 @@ limitations under the License.
 
 // Null implementation of the Sampler metric for mobile platforms.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
 
 #include <memory>
 
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -86,6 +87,8 @@ class Sampler {
     return &default_sampler_cell_;
   }
 
+  Status GetStatus() { return Status::OK(); }
+
  private:
   Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}
 
@@ -98,4 +101,4 @@ class Sampler {
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_MOBILE_SAMPLER_H_

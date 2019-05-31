@@ -19,10 +19,9 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/spacetobatch_functor.h"
-
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/spacetobatch_functor.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -139,13 +138,13 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
       return errors::InvalidArgument(
           "number of batch_tensor elements exceeds 2^32-1");
     }
-    CudaLaunchConfig config =
-        GetCudaLaunchConfig(static_cast<int32>(total_count), d);
-    S2B<T, NUM_BLOCK_DIMS,
-        B2S><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        config.virtual_thread_count, const_cast<T*>(space_tensor.data()), args,
-        const_cast<T*>(batch_tensor.data()));
-    return Status::OK();
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(static_cast<int32>(total_count), d);
+    return CudaLaunchKernel(S2B<T, NUM_BLOCK_DIMS, B2S>, config.block_count,
+                            config.thread_per_block, 0, d.stream(),
+                            config.virtual_thread_count,
+                            const_cast<T*>(space_tensor.data()), args,
+                            const_cast<T*>(batch_tensor.data()));
   }
 };
 
@@ -153,7 +152,7 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
 #define INSTANTIATE(NUM_BLOCK_DIMS, T)                                      \
   template struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, false>; \
   template struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, true>;  \
-/**/
+  /**/
 
 #define INSTANTIATE_FOR_T(T) \
   TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(INSTANTIATE, T)

@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "Minimum"
+  endpoint {
+    name: "math.minimum"
+  }
+  endpoint {
+    name: "minimum"
+  }
+}

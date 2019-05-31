@@ -34,6 +34,7 @@ ops.NotDifferentiable("TensorArrayCloseV2")
 
 ops.NotDifferentiable("TensorArrayV3")
 ops.NotDifferentiable("TensorArrayGradV3")
+ops.NotDifferentiable("TensorArrayGradWithShape")
 ops.NotDifferentiable("TensorArraySizeV3")
 ops.NotDifferentiable("TensorArrayCloseV3")
 
@@ -71,7 +72,11 @@ def _GetGradSource(op_or_tensor):
   if not grad_pos:
     raise ValueError(
         "Expected op/tensor name to start with gradients (excluding scope)"
-        ", got: %s" % op_or_tensor.name)
+        ", got: {}. This means that a tf.gradients op with this op in its "
+        "dependency path has a custom name that does not start with "
+        "'gradients'. Please make sure all calls to tf.gradients that have "
+        "non-empty 'name' arguments use names that start with "
+        "'gradients'.".format(op_or_tensor.name))
   return "/".join(name_tokens[:grad_pos[-1] + 1])
 
 

@@ -32,10 +32,12 @@ class IrEmitterContext {
  public:
   IrEmitterContext(const HloModule* hlo_module,
                    const BufferAssignment* buffer_assignment,
-                   const perftools::gputools::DeviceDescription* device_desc,
+                   const se::Platform* platform,
+                   const se::DeviceDescription* device_desc,
                    llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
+        platform_(platform),
         device_desc_(device_desc),
         llvm_module_(llvm_module) {}
   // Disallow copy and assign.
@@ -47,7 +49,8 @@ class IrEmitterContext {
   const BufferAssignment& buffer_assignment() const {
     return *buffer_assignment_;
   }
-  const perftools::gputools::DeviceDescription& device_description() const {
+  const se::Platform* platform() const { return platform_; }
+  const se::DeviceDescription& device_description() const {
     return *device_desc_;
   }
   llvm::Module* llvm_module() { return llvm_module_; }
@@ -56,7 +59,8 @@ class IrEmitterContext {
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-  const perftools::gputools::DeviceDescription* device_desc_;
+  const se::Platform* platform_;
+  const se::DeviceDescription* device_desc_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
 };

@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/logging.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace rng {
 
 bool RngSupport::CheckSeed(const uint8 *seed, uint64 seed_bytes) {
@@ -47,5 +46,4 @@ const int RngSupport::kMaxSeedBytes;
 #endif
 
 }  // namespace rng
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -48,6 +48,7 @@ void AWSLogSystem::LogStream(Aws::Utils::Logging::LogLevel log_level,
 
 void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
                               const std::string& message) {
+  if (message == "Initializing Curl library") return;
   switch (log_level) {
     case Aws::Utils::Logging::LogLevel::Info:
       LOG(INFO) << message;
@@ -68,12 +69,32 @@ void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
 }
 
 namespace {
+
+// Taken from tensorflow/core/platform/default/logging.cc
+int ParseInteger(const char* str, size_t size) {
+  string integer_str(str, size);
+  std::istringstream ss(integer_str);
+  int level = 0;
+  ss >> level;
+  return level;
+}
+
+// Taken from tensorflow/core/platform/default/logging.cc
+int64 LogLevelStrToInt(const char* tf_env_var_val) {
+  if (tf_env_var_val == nullptr) {
+    return 0;
+  }
+  return ParseInteger(tf_env_var_val, strlen(tf_env_var_val));
+}
+
 static const char* kAWSLoggingTag = "AWSLogging";
 
 Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
   Aws::Utils::Logging::LogLevel log_level = Aws::Utils::Logging::LogLevel::Info;
 
-  const int64_t level = tensorflow::internal::MinLogLevelFromEnv();
+  const int64_t level = getenv("AWS_LOG_LEVEL")
+                            ? LogLevelStrToInt(getenv("AWS_LOG_LEVEL"))
+                            : tensorflow::internal::MinLogLevelFromEnv();
 
   switch (level) {
     case INFO:
@@ -95,7 +116,7 @@ Aws::Utils::Logging::LogLevel ParseLogLevelFromEnv() {
 
   return log_level;
 }
-}
+}  // namespace
 
 static bool initialized = false;
 static mutex s3_logging_mutex(LINKER_INITIALIZED);

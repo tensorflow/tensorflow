@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // See docs in ../ops/array_ops.cc.
 #include "tensorflow/core/kernels/snapshot_op.h"
@@ -24,14 +24,11 @@ limitations under the License.
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
-#define REGISTER_KERNEL(TYPE)                                        \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("Snapshot").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      SnapshotOp<GPUDevice, TYPE>);
+// Definition of the GPU implementations declared in softsign_op.cc.
+#define DEFINE_GPU_KERNELS(T) template struct functor::Snapshot<GPUDevice, T>;
 
-TF_CALL_POD_TYPES(REGISTER_KERNEL);
-#undef REGISTER_KERNEL
+TF_CALL_POD_TYPES(DEFINE_GPU_KERNELS);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

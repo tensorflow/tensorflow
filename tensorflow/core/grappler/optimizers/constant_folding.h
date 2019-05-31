@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -33,11 +35,14 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
-  static NodeDef CreateNodeDef(const string& name, const TensorValue& tensor);
+  // The size limit will only be considered if the newly created node is greater
+  // than original_size (optional).
+  static Status CreateNodeDef(const string& name, const TensorValue& tensor,
+                              NodeDef* node, size_t original_size = 0);
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
-  ConstantFolding(DeviceBase* cpu_device);
+  explicit ConstantFolding(DeviceBase* cpu_device);
   ConstantFolding(RewriterConfig::Toggle opt_level, DeviceBase* cpu_device);
 
   ~ConstantFolding() override {}
@@ -52,10 +57,11 @@ class ConstantFolding : public GraphOptimizer {
 
  private:
   string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
-  string OptimizedNodeName(const NodeDef& node) const;
   bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;
+
+  bool GetTensorFromConstNode(const string& node_name_or_input, Tensor* tensor);
 
   Status MaterializeShapes(const GraphProperties& properties);
 
@@ -63,37 +69,184 @@ class ConstantFolding : public GraphOptimizer {
                                           const GraphProperties& properties);
   Status MaterializeReductionIndices(NodeDef* node,
                                      const GraphProperties& properties);
-
+  Status MaterializeConstantValuedNode(NodeDef* node,
+                                       const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
+
   bool IsFoldable(const NodeDef& node) const;
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
                       gtl::InlinedVector<TensorValue, 4>* output) const;
 
-  Status EvaluateOneFoldable(const NodeDef& node,
-                             std::vector<NodeDef>* outputs);
+  Status EvaluateOneFoldable(const NodeDef& node, std::vector<NodeDef>* outputs,
+                             bool* result_too_large);
 
-  Status FoldNode(NodeDef* node, GraphDef* output_graph);
+  Status FoldMergeNode(NodeDef* node, GraphDef* output_graph);
+  Status FoldNode(NodeDef* node, GraphDef* output_graph,
+                  bool* result_too_large);
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
-  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node,
-                                    GraphDef* graph);
+  void ReplaceOperationWithIdentity(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithSnapshot(int input_to_forward,
+                                    const GraphProperties& properties,
+                                    NodeDef* node, GraphDef* graph);
+  void ReplaceBinaryOperationWithBroadcastTo(int input_to_broadcast,
+                                             const GraphProperties& properties,
+                                             NodeDef* node, GraphDef* graph);
+  void ReplaceSubtractionFromZeroByNegation(NodeDef* node, GraphDef* graph);
   Status ReplaceOperationWithConstant(double value,
+                                      const GraphProperties& properties,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
-  Status FoldGraph(GraphDef* output);
+  Status FoldGraph(GraphDef* output,
+                   absl::flat_hash_set<string>* nodes_to_not_simplify);
 
-  bool IsSimplifiableReduction(const NodeDef& node) const;
   bool IsSimplifiableReshape(const NodeDef& node,
                              const GraphProperties& properties) const;
-  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties,
-                       bool use_shape_info);
+  Status SimplifyGraph(bool use_shape_info, GraphDef* optimized_graph,
+                       GraphProperties* properties,
+                       absl::flat_hash_set<string>* nodes_to_not_simplify);
+  Status SimplifyNode(bool use_shape_info, NodeDef* node,
+                      GraphDef* optimized_graph, GraphProperties* properties);
 
   Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* output);
+
+  // Applies partial constant folding for Concat which is not commutative.
+  // Returns true if the transformation applied successfully.
+  bool PartialConcatConstFolding(GraphDef* optimized_graph,
+                                 GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant folding for associative operators AddN and
+  // AccumulateNV2. Returns true if the transformation applied successfully.
+  bool PartialAssocOpConstFolding(GraphDef* optimized_graph,
+                                  GraphProperties* properties, NodeDef* node);
+
+  // Applies partial constant propagation through IdentityN operator.
+  // Returns true if the transformation applied successfully.
+  bool PartialConstPropThroughIdentityN(NodeDef* node);
+
+  // Pushes down constants on '+' and '*' operators if applicable. Returns true
+  // the transformation applied successfully.
+  bool ConstantPushDown(GraphDef* optimized_graph, NodeDef* node);
+
+  // Aggregate constants present around a conv operator. Returns true if the
+  // transformation was applied successfully.
+  bool MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
+                       const GraphProperties& properties);
+
+  // Strength reduces floating point division by a constant Div(x, const) to
+  // multiplication by the reciprocal Mul(x, Reciprocal(const)).
+  bool ReduceDivToReciprocalMul(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies arithmetic operations with ones or zeros. Returns the status,
+  // and updates the success input argument that denotes if any simplification
+  // was applied.
+  Status SimplifyArithmeticOperations(const GraphProperties& properties,
+                                      bool use_shape_info,
+                                      GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies a Reshape operation to an Identity operation if applicable.
+  bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
+                       NodeDef* node);
+
+  // Returns true iff the node is a reduction and its reduction indices are
+  // constant. Sets *indices_is_empty to true if the set of dimensions to reduce
+  // along is empty (this happens often in the gradient graphs).
+  bool IsReductionWithConstantIndices(const NodeDef& node,
+                                      bool* indices_is_empty) const;
+  // Returns true if theres a possibility that a Reduce node could be simplified
+  // to an Identity/Reshape.
+  bool IsReductionCandidateForSimplification(
+      const NodeDef& node, const GraphProperties& properties,
+      TensorShapeProto* input_tensor_shape,
+      TensorShapeProto* output_tensor_shape, bool* is_single_element_op) const;
+  // Returns true iff this reduction can be reduced to an identity (i.e if the
+  // input dimensions to reduce along are all of size 1 and keep_dims is true).
+  bool IsReductionSimplifiableToIdentity(
+      const NodeDef& node, const TensorShapeProto& input_shape, bool keep_dims,
+      const gtl::InlinedVector<TensorValue, 4>& reduction_indices_vector) const;
+  // Changes a reduction into an Identity op, returning true on success.
+  bool ReplaceReductionWithIdentity(NodeDef* node) const;
+  // Simplifies a Reduction operation to an Identity/Reshape operation if
+  // applicable.
+  bool SimplifyReduction(GraphDef* optimized_graph,
+                         const GraphProperties& properties, NodeDef* node);
+
+  // Switch(x, x) will always feed false to its false branch and true to
+  // its true branch. By rewriting the graph a bit, we can propagate these
+  // constants down the two output branches, and just use control dependencies
+  // to trigger the selected one at runtime. For example,
+  //
+  //     +------+
+  // x-->|Switch|-->a  (in practice there may be multiple consumers of each
+  // x-->|      |-->b   output branch.)
+  //     +------+
+  //
+  // Is rewritten as
+  //
+  //     +------+
+  // x-->|Switch|-->Identity--^>Const(false)-->a
+  // x-->|      |-->Identity--^>Const(true)-->b
+  //     +------+
+  bool SimplifySwitch(GraphDef* optimized_graph, NodeDef* node);
+
+  // Moves constants past Enter node if applicable.
+  bool MoveConstantsPastEnter(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies Pack operation if applicable.
+  bool SimplifyPack(GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies a Squeeze operation to an Identity operation if applicable.
+  void SimplifySqueeze(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies a Pad operation to an Identity operation if applicable.
+  Status SimplifyPad(const GraphProperties& properties, bool use_shape_info,
+                     GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies a Tile operation to an Identity operation if applicable.
+  Status SimplifyTile(const GraphProperties& properties, bool use_shape_info,
+                      GraphDef* optimized_graph, NodeDef* node);
+
+  // Simplifies a StridedSlice operation to an Identity operation if applicable.
+  Status SimplifyStridedSlice(const GraphProperties& properties,
+                              bool use_shape_info, GraphDef* optimized_graph,
+                              NodeDef* node);
+
+  // Simplifies a Slice operation to an Identity operation if applicable.
+  Status SimplifySlice(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node);
+
+  // Removes Reverse op over dimensions with size 1.
+  Status RemoveReverse(const GraphProperties& properties, bool use_shape_info,
+                       GraphDef* optimized_graph, NodeDef* node);
+
+  // Removes RandomShuffle op if it is scalar or first dimension is of size 1.
+  void RemoveRandomShuffle(const GraphProperties& properties,
+                           bool use_shape_info, GraphDef* optimized_graph,
+                           NodeDef* node);
+
+  // Removes Shuffle or Transpose op over dimensions of size 1.
+  Status RemoveShuffleOrTranspose(const GraphProperties& properties,
+                                  bool use_shape_info,
+                                  GraphDef* optimized_graph, NodeDef* node);
+
+  // Removes Split or SplitV node if possible.
+  void RemoveSplitOrSplitV(const GraphProperties& properties,
+                           GraphDef* optimized_graph, NodeDef* node);
+
+  bool GetConcatAxis(const NodeDef& node, int* axis);
+  bool MergeConcat(bool use_shape_info, GraphDef* optimized_graph,
+                   NodeDef* node);
+
+  Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
+                                               GraphDef* optimized_graph);
 
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
@@ -108,9 +261,10 @@ class ConstantFolding : public GraphOptimizer {
   std::unordered_set<string> feed_nodes_;
   bool has_fetch_;
   bool graph_modified_;
+  bool graph_contains_assign_or_inplace_op_;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_

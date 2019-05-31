@@ -14,20 +14,71 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
+
+#include <string>
+
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 HloProto MakeHloProto(const HloModule& module,
                       const BufferAssignment& assignment) {
-  HloModuleProto proto_module = module.ToProto();
-  HloOrderingProto proto_ordering =
-      assignment.liveness().hlo_ordering().ToProto();
   BufferAssignmentProto proto_assignment = assignment.ToProto();
-  HloProto proto;
-  proto.mutable_hlo_module()->Swap(&proto_module);
-  proto.mutable_hlo_ordering()->Swap(&proto_ordering);
+  HloProto proto = MakeHloProto(module);
   proto.mutable_buffer_assignment()->Swap(&proto_assignment);
   return proto;
+}
+
+HloProto MakeHloProto(const HloModule& module) {
+  HloModuleProto proto_module = module.ToProto();
+  HloProto proto;
+  proto.mutable_hlo_module()->Swap(&proto_module);
+  return proto;
+}
+
+StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config) {
+  VLOG(4) << proto.ShortDebugString();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(proto, module_config));
+  TF_RETURN_IF_ERROR(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status());
+  return std::move(module);
+}
+
+StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
+    const HloProto& hlo_proto) {
+  if (!hlo_proto.has_hlo_module()) {
+    return NotFound("HloProto missing HloModuleProto.");
+  }
+  if (!hlo_proto.hlo_module().has_host_program_shape()) {
+    return NotFound("HloProto missing program shape.");
+  }
+
+  std::vector<const ShapeProto*> parameter_shapes;
+  const auto& program_shape = hlo_proto.hlo_module().host_program_shape();
+  for (const ShapeProto& shape : program_shape.parameters()) {
+    parameter_shapes.push_back(&shape);
+  }
+  return parameter_shapes;
+}
+
+StatusOr<const ShapeProto*> EntryComputationOutputShape(
+    const HloProto& hlo_proto) {
+  if (!hlo_proto.has_hlo_module()) {
+    return NotFound("HloProto missing HloModuleProto.");
+  }
+  if (!hlo_proto.hlo_module().has_host_program_shape()) {
+    return NotFound("HloProto missing program shape.");
+  }
+  if (!hlo_proto.hlo_module().host_program_shape().has_result()) {
+    return NotFound("HloProto missing result in its program shape");
+  }
+
+  return &hlo_proto.hlo_module().host_program_shape().result();
 }
 
 }  // namespace xla

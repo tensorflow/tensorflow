@@ -19,7 +19,10 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -30,7 +33,7 @@ class Resource : public ResourceBase {
   explicit Resource(const string& label) : label_(label) {}
   ~Resource() override {}
 
-  string DebugString() override { return strings::StrCat("R/", label_); }
+  string DebugString() const override { return strings::StrCat("R/", label_); }
 
  private:
   string label_;
@@ -41,7 +44,7 @@ class Other : public ResourceBase {
   explicit Other(const string& label) : label_(label) {}
   ~Other() override {}
 
-  string DebugString() override { return strings::StrCat("O/", label_); }
+  string DebugString() const override { return strings::StrCat("O/", label_); }
 
  private:
   string label_;
@@ -71,7 +74,7 @@ string LookupOrCreate(ResourceMgr* rm, const string& container,
 }
 
 static void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -123,7 +126,7 @@ TEST(ResourceMgrTest, Basic) {
   TF_CHECK_OK(rm.Cleanup("bar"));
 }
 
-TEST(ResourceMgr, CreateOrLookup) {
+TEST(ResourceMgrTest, CreateOrLookup) {
   ResourceMgr rm;
   EXPECT_EQ("R/cat", LookupOrCreate<Resource>(&rm, "foo", "bar", "cat"));
   EXPECT_EQ("R/cat", LookupOrCreate<Resource>(&rm, "foo", "bar", "dog"));
@@ -133,6 +136,30 @@ TEST(ResourceMgr, CreateOrLookup) {
   EXPECT_EQ("O/tiger", LookupOrCreate<Other>(&rm, "foo", "bar", "lion"));
   TF_CHECK_OK(rm.Delete<Other>("foo", "bar"));
   HasError(FindErr<Other>(rm, "foo", "bar"), "Not found: Resource foo/bar");
+}
+
+TEST(ResourceMgrTest, CreateOrLookupRaceCondition) {
+  ResourceMgr rm;
+  std::atomic<int> atomic_int(0);
+  {
+    thread::ThreadPool threads(Env::Default(), "racing_creates", 2);
+    for (int i = 0; i < 2; i++) {
+      threads.Schedule([&rm, &atomic_int] {
+        Resource* r;
+        TF_CHECK_OK(rm.LookupOrCreate<Resource>(
+            "container", "resource-name", &r, [&atomic_int](Resource** ret) {
+              // Maximize chance of encountering race condition if one exists.
+              Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
+              atomic_int += 1;
+              *ret = new Resource("label");
+              return Status::OK();
+            }));
+        r->Unref();
+      });
+    }
+  }
+  // Resource creator function should always run exactly once.
+  EXPECT_EQ(1, atomic_int);
 }
 
 Status ComputePolicy(const string& attr_container,
@@ -219,7 +246,7 @@ class StubDevice : public DeviceBase {
 // Empty stub resource for testing resource handles.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
   int value_{0};
 };
 
@@ -240,15 +267,14 @@ TEST(ResourceHandleTest, CRUD) {
     TF_EXPECT_OK(CreateResource(&ctx, p, r));
   }
   {
-    StubResource* r = nullptr;
+    core::RefCountPtr<StubResource> r;
     TF_ASSERT_OK(LookupResource(&ctx, p, &r));
     ASSERT_TRUE(r != nullptr);
     EXPECT_EQ(r->value_, 42);
-    r->Unref();
   }
   {
     TF_EXPECT_OK(DeleteResource<StubResource>(&ctx, p));
-    StubResource* unused = nullptr;
+    core::RefCountPtr<StubResource> unused;
     EXPECT_FALSE(LookupResource(&ctx, p, &unused).ok());
   }
 }
@@ -279,7 +305,7 @@ TEST(ResourceHandleTest, DifferentDevice) {
 // Other stub resource to test type-checking of resource handles.
 class OtherStubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
 };
 
 TEST(ResourceHandleTest, DifferentType) {
@@ -312,13 +338,12 @@ TEST(ResourceHandleTest, DeleteUsingResourceHandle) {
   StubResource* r = new StubResource;
   TF_EXPECT_OK(CreateResource(&ctx, p, r));
 
-  StubResource* lookup_r = nullptr;
+  core::RefCountPtr<StubResource> lookup_r;
   TF_EXPECT_OK(LookupResource<StubResource>(&ctx, p, &lookup_r));
-  EXPECT_EQ(lookup_r, r);
+  EXPECT_EQ(lookup_r.get(), r);
 
   TF_EXPECT_OK(DeleteResource(&ctx, p));
   EXPECT_NE(LookupResource<StubResource>(&ctx, p, &lookup_r).ok(), true);
-  r->Unref();
 }
 
 }  // end namespace tensorflow

@@ -71,6 +71,14 @@ Status LookupInterface::CheckKeyAndValueTensorsForImport(const Tensor& keys,
   return CheckKeyAndValueTensorsHelper(keys, values);
 }
 
+Status LookupInterface::CheckKeyTensorForRemove(const Tensor& keys) {
+  if (keys.dtype() != key_dtype()) {
+    return errors::InvalidArgument("Key must be type ", key_dtype(),
+                                   " but got ", keys.dtype());
+  }
+  return CheckKeyShape(keys.shape());
+}
+
 Status LookupInterface::CheckFindArguments(const Tensor& key,
                                            const Tensor& default_value) {
   TF_RETURN_IF_ERROR(CheckKeyAndValueTypes(key, default_value));

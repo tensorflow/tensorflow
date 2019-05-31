@@ -1,0 +1,35 @@
+path: "tensorflow.keras.models"
+tf_module {
+  member {
+    name: "Model"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Sequential"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "clone_model"
+    argspec: "args=[\'model\', \'input_tensors\', \'clone_function\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "load_model"
+    argspec: "args=[\'filepath\', \'custom_objects\', \'compile\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+  }
+  member_method {
+    name: "model_from_config"
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "model_from_json"
+    argspec: "args=[\'json_string\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "model_from_yaml"
+    argspec: "args=[\'yaml_string\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "save_model"
+    argspec: "args=[\'model\', \'filepath\', \'overwrite\', \'include_optimizer\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'None\'], "
+  }
+}

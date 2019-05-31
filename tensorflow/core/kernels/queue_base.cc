@@ -18,10 +18,10 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -39,8 +39,8 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
     return errors::Internal(
         "HandleSliceToElement Cannot copy slice: number of elements does not "
         "match.  Shapes are: [element]: ",
-        element->shape().DebugString(), ", [parent slice]: ",
-        chip_shape.DebugString());
+        element->shape().DebugString(),
+        ", [parent slice]: ", chip_shape.DebugString());
   }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);

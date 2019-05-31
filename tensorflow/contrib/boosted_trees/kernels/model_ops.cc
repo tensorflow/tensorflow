@@ -21,6 +21,7 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -44,12 +45,13 @@ class CreateTreeEnsembleVariableOp : public OpKernel {
     const Tensor* tree_ensemble_config_t;
     OP_REQUIRES_OK(context, context->input("tree_ensemble_config",
                                            &tree_ensemble_config_t));
-    auto* result = new boosted_trees::models::DecisionTreeEnsembleResource();
+    auto* result = new DecisionTreeEnsembleResource();
     if (!result->InitFromSerialized(tree_ensemble_config_t->scalar<string>()(),
                                     stamp_token)) {
       result->Unref();
-      OP_REQUIRES(context, false, errors::InvalidArgument(
-                                      "Unable to parse tree ensemble config."));
+      OP_REQUIRES(
+          context, false,
+          errors::InvalidArgument("Unable to parse tree ensemble config."));
     }
 
     // Only create one, if one does not exist already. Report status for all
@@ -68,11 +70,10 @@ class TreeEnsembleStampTokenOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
     tf_shared_lock l(*ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(ensemble_resource);
     Tensor* output_stamp_token_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape(),
                                                      &output_stamp_token_t));
@@ -87,11 +88,10 @@ class TreeEnsembleSerializeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
     tf_shared_lock l(*ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(ensemble_resource);
     Tensor* output_stamp_token_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape(),
                                                      &output_stamp_token_t));
@@ -111,11 +111,10 @@ class TreeEnsembleDeserializeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
     mutex_lock l(*ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(ensemble_resource);
 
     // Get the stamp token.
     const Tensor* stamp_token_t;
@@ -136,11 +135,64 @@ class TreeEnsembleDeserializeOp : public OpKernel {
   }
 };
 
+class TreeEnsembleUsedHandlersOp : public OpKernel {
+ public:
+  explicit TreeEnsembleUsedHandlersOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("num_all_handlers", &num_handlers_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    core::RefCountPtr<DecisionTreeEnsembleResource> ensemble_resource;
+
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &ensemble_resource));
+    tf_shared_lock l(*ensemble_resource->get_mutex());
+
+    // Get the stamp token.
+    const Tensor* stamp_token_t;
+    OP_REQUIRES_OK(context, context->input("stamp_token", &stamp_token_t));
+    int64 stamp_token = stamp_token_t->scalar<int64>()();
+
+    // Only the Chief should run this Op and it is guaranteed to be in
+    // a consistent state so the stamps must always match.
+    CHECK(ensemble_resource->is_stamp_valid(stamp_token));
+
+    Tensor* output_used_handlers_t = nullptr;
+    OP_REQUIRES_OK(
+        context, context->allocate_output("used_handlers_mask", {num_handlers_},
+                                          &output_used_handlers_t));
+    auto output_used_handlers = output_used_handlers_t->vec<bool>();
+
+    Tensor* output_num_used_handlers_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output("num_used_handlers", {},
+                                            &output_num_used_handlers_t));
+    int handler_idx = 0;
+    std::vector<int64> used_handlers = ensemble_resource->GetUsedHandlers();
+    output_num_used_handlers_t->scalar<int64>()() = used_handlers.size();
+    for (int64 i = 0; i < num_handlers_; ++i) {
+      if (handler_idx >= used_handlers.size() ||
+          used_handlers[handler_idx] > i) {
+        output_used_handlers(i) = false;
+      } else {
+        OP_REQUIRES(context, used_handlers[handler_idx] == i,
+                    errors::InvalidArgument("Handler IDs should be sorted."));
+        ++handler_idx;
+        output_used_handlers(i) = true;
+      }
+    }
+  }
+
+ private:
+  int64 num_handlers_;
+};
+
 REGISTER_RESOURCE_HANDLE_KERNEL(DecisionTreeEnsembleResource);
 
-REGISTER_KERNEL_BUILDER(
-    Name("TreeEnsembleIsInitializedOp").Device(DEVICE_CPU),
-    IsResourceInitialized<boosted_trees::models::DecisionTreeEnsembleResource>);
+REGISTER_KERNEL_BUILDER(Name("TreeEnsembleIsInitializedOp").Device(DEVICE_CPU),
+                        IsResourceInitialized<DecisionTreeEnsembleResource>);
 
 REGISTER_KERNEL_BUILDER(Name("CreateTreeEnsembleVariable").Device(DEVICE_CPU),
                         CreateTreeEnsembleVariableOp);
@@ -154,5 +206,7 @@ REGISTER_KERNEL_BUILDER(Name("TreeEnsembleSerialize").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TreeEnsembleDeserialize").Device(DEVICE_CPU),
                         TreeEnsembleDeserializeOp);
 
+REGISTER_KERNEL_BUILDER(Name("TreeEnsembleUsedHandlers").Device(DEVICE_CPU),
+                        TreeEnsembleUsedHandlersOp);
 }  // namespace boosted_trees
 }  // namespace tensorflow

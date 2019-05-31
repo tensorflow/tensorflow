@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/public/session.h"
+
 #include <string>
 
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 
@@ -53,27 +55,41 @@ Status Session::PRun(const string& handle,
 
 Session* NewSession(const SessionOptions& options) {
   SessionFactory* factory;
-  const Status s = SessionFactory::GetFactory(options, &factory);
+  Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     LOG(ERROR) << s;
     return nullptr;
   }
-  return factory->NewSession(options);
+  // Starts exporting metrics through a platform-specific monitoring API (if
+  // provided). For builds using "tensorflow/core/platform/default", this is
+  // currently a no-op.
+  monitoring::StartExporter();
+  Session* out_session;
+  s = NewSession(options, &out_session);
+  if (!s.ok()) {
+    LOG(ERROR) << "Failed to create session: " << s;
+    return nullptr;
+  }
+  return out_session;
 }
 
 Status NewSession(const SessionOptions& options, Session** out_session) {
   SessionFactory* factory;
-  const Status s = SessionFactory::GetFactory(options, &factory);
+  Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     *out_session = nullptr;
     LOG(ERROR) << s;
     return s;
   }
-  *out_session = factory->NewSession(options);
-  if (!*out_session) {
-    return errors::Internal("Failed to create session.");
+  // Starts exporting metrics through a platform-specific monitoring API (if
+  // provided). For builds using "tensorflow/core/platform/default", this is
+  // currently a no-op.
+  monitoring::StartExporter();
+  s = factory->NewSession(options, out_session);
+  if (!s.ok()) {
+    *out_session = nullptr;
   }
-  return Status::OK();
+  return s;
 }
 
 Status Reset(const SessionOptions& options,

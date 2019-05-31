@@ -15,8 +15,8 @@ limitations under the License.
 
 // Utilities for saving/restoring tensor slice checkpoints.
 
-#ifndef TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
-#define TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
 
 #include <string>  // for string
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -123,6 +123,7 @@ TENSOR_PROTO_EXTRACT_TYPE(int8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int16, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(qint8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(quint8, int, int32);
+TENSOR_PROTO_EXTRACT_TYPE(quint16, int, int32);
 
 #undef TENSOR_PROTO_EXTRACT_TYPE_COMPLEX
 #undef TENSOR_PROTO_EXTRACT_TYPE_HELPER
@@ -209,4 +210,4 @@ inline void Fill(const string* data, size_t n, TensorProto* t) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_

@@ -1,0 +1,35 @@
+path: "tensorflow.config"
+tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "optimizer"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "threading"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "experimental_connect_to_host"
+    argspec: "args=[\'remote_host\', \'job_name\'], varargs=None, keywords=None, defaults=[\'None\', \'worker\'], "
+  }
+  member_method {
+    name: "experimental_list_devices"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_run_functions_eagerly"
+    argspec: "args=[\'run_eagerly\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_soft_device_placement"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_soft_device_placement"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
+  }
+}

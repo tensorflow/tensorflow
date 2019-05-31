@@ -494,6 +494,20 @@ TEST_F(GraphCyclesTest, ContractEdge) {
   EXPECT_TRUE(g_.HasEdge(1, 4));
 }
 
+TEST_F(GraphCyclesTest, CanContractEdge) {
+  ASSERT_TRUE(AddEdge(1, 2));
+  ASSERT_TRUE(AddEdge(1, 3));
+  ASSERT_TRUE(AddEdge(2, 3));
+  ASSERT_TRUE(AddEdge(2, 4));
+  ASSERT_TRUE(AddEdge(3, 4));
+
+  EXPECT_FALSE(g_.CanContractEdge(1, 3));
+  EXPECT_FALSE(g_.CanContractEdge(2, 4));
+  EXPECT_TRUE(g_.CanContractEdge(1, 2));
+  EXPECT_TRUE(g_.CanContractEdge(2, 3));
+  EXPECT_TRUE(g_.CanContractEdge(3, 4));
+}
+
 static void BM_StressTest(int iters, int num_nodes) {
   while (iters > 0) {
     tensorflow::GraphCycles g;

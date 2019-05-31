@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "MutableHashTableV2"
+  endpoint {
+    name: "MutableHashTable"
+  }
+}

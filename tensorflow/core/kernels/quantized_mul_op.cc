@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -298,9 +297,8 @@ class QuantizedMulOp : public OpKernel {
       return;
     }
     Tensor* z;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(0, BCast::ToShape(bcast.output_shape()), &z));
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                0, BCast::ToShape(bcast.output_shape()), &z));
 
     // Make sure that we have valid quantization ranges for the input buffers.
     // If the difference between the min and max is negative or zero, it makes

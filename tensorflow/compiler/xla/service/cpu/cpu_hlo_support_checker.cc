@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -34,9 +33,8 @@ StatusOr<bool> CpuHloSupportChecker::Run(HloModule* module) {
               return xla::Unimplemented(
                   "CPU backend does not support HLO instruction %s with shape "
                   "containing a sparse layout: %s",
-                  instruction->ToString().c_str(),
-                  ShapeUtil::HumanStringWithLayout(instruction->shape())
-                      .c_str());
+                  instruction->ToString(),
+                  ShapeUtil::HumanStringWithLayout(instruction->shape()));
             }
             return Status::OK();
           }));

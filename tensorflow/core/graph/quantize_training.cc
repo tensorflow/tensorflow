@@ -259,8 +259,14 @@ Status AddRestoreVariableSubgraphs(Graph* graph, Node* save_op,
   const string restore_op_name = strings::StrCat(name_prefix, "/RestoreV2");
   const string assign_op_name = strings::StrCat(name_prefix, "/Assign");
   for (Node* var : variables) {
-    string new_restore_op_name = graph->NewName(restore_op_name);
-    string new_assign_op_name = graph->NewName(assign_op_name);
+    // Add an extra prefix after calling graph->NewName because the "unique"
+    // name may conflict with names generated for Send nodes.
+    // TODO(b/77547936): fix this more generally and get rid of the extra prefix
+    // here.
+    string new_restore_op_name =
+        strings::StrCat(graph->NewName(restore_op_name), "_qt");
+    string new_assign_op_name =
+        strings::StrCat(graph->NewName(assign_op_name), "_qt");
     string tensor_names_op_name =
         strings::StrCat(new_restore_op_name, "/tensor_names");
     string shape_and_slices_op_name =
@@ -615,7 +621,7 @@ Status DoQuantizeTraining(int32 num_bits, const string& quant_op_type,
       // 5. Reshape OP: Also depends on the first input to this op.
       // 6. Not-Listed-Above OP: If there is only 1 such op, consider it as the
       // model input. However, if there are >1 unknown ops, then returns an
-      // error for now to avoid unexpected bahavior.
+      // error for now to avoid unexpected behavior.
       // Note: The list above might not be a complete list. Please let us
       // know if you see the error so we can handle your case.
       for (const Edge* edge : node->in_edges()) {

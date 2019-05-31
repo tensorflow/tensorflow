@@ -1,0 +1,15 @@
+path: "tensorflow.train.Int64List"
+tf_proto {
+  descriptor {
+    name: "Int64List"
+    field {
+      name: "value"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_INT64
+      options {
+        packed: true
+      }
+    }
+  }
+}

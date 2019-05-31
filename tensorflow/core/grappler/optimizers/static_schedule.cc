@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/static_schedule.h"
+
 #include <deque>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
@@ -38,6 +40,12 @@ static Costs::NanoSeconds PredictExecutionTime(
       properties.GetInputProperties(node.name());
   for (auto& input : inputs) {
     op_context.op_info.add_inputs()->Swap(&input);
+  }
+
+  std::vector<OpInfo::TensorProperties> outputs =
+      properties.GetOutputProperties(node.name());
+  for (auto& output : outputs) {
+    op_context.op_info.add_outputs()->Swap(&output);
   }
 
   DeviceProperties device = placer.get_device(node);
@@ -86,9 +94,12 @@ Status EstimateEarliestExecutionTimes(
   name_map.clear();
 
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically(true));
+  TF_RETURN_IF_ERROR(
+      properties.InferStatically(/*assume_valid_feeds=*/true,
+                                 /*aggressive_shape_inference=*/false,
+                                 /*include_tensor_values=*/false));
   OpLevelCostEstimator estimator;
-  VirtualPlacer placer(cluster);
+  VirtualPlacer placer(cluster->GetDevices());
 
   while (!ready_nodes.empty()) {
     const NodeDef* node = ready_nodes.front();
@@ -154,9 +165,12 @@ Status EstimateRequiredTimes(
     }
   }
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically(true));
+  TF_RETURN_IF_ERROR(
+      properties.InferStatically(/*assume_valid_feeds=*/true,
+                                 /*aggressive_shape_inference=*/false,
+                                 /*include_tensor_values=*/false));
   OpLevelCostEstimator estimator;
-  VirtualPlacer placer(cluster);
+  VirtualPlacer placer(cluster->GetDevices());
 
   while (!ready_nodes.empty()) {
     const NodeDef* node = ready_nodes.front();

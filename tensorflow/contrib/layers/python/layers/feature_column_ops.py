@@ -170,7 +170,7 @@ def input_from_feature_columns(columns_to_tensors,
 
   ```python
     # Building model for training
-    columns_to_tensor = tf.parse_example(...)
+    columns_to_tensor = tf.io.parse_example(...)
     first_layer = input_from_feature_columns(
         columns_to_tensors=columns_to_tensor,
         feature_columns=feature_columns)
@@ -449,7 +449,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
         real_valued_column("my_feature1"),
         ...
     )
-    columns_to_tensor = tf.parse_example(...)
+    columns_to_tensor = tf.io.parse_example(...)
     logits = weighted_sum_from_feature_columns(
         columns_to_tensors=columns_to_tensor,
         feature_columns=feature_columns,
@@ -488,7 +488,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       default_name='weighted_sum_from_feature_columns',
       values=columns_to_tensors.values()):
     output_tensors = []
-    column_to_variable = dict()
+    column_to_variable = {}
     transformer = _Transformer(columns_to_tensors)
     # pylint: disable=protected-access
     for column in sorted(set(feature_columns), key=lambda x: x.key):
@@ -548,7 +548,7 @@ def parse_feature_columns_from_examples(serialized,
                                         example_names=None):
   """Parses tf.Examples to extract tensors for given feature_columns.
 
-  This is a wrapper of 'tf.parse_example'.
+  This is a wrapper of 'tf.io.parse_example'.
 
   Example:
 
@@ -683,11 +683,12 @@ def parse_feature_columns_from_sequence_examples(
       the serialized proto.
 
   Returns:
-    A tuple consisting of:
-    context_features: a dict mapping `FeatureColumns` from
-      `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
-    sequence_features: a dict mapping `FeatureColumns` from
-      `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    A tuple consisting of (context_features, sequence_features)
+
+    *  context_features: a dict mapping `FeatureColumns` from
+        `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    *  sequence_features: a dict mapping `FeatureColumns` from
+        `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
   """
   # Sequence example parsing requires a single (scalar) example.
   try:
@@ -805,7 +806,7 @@ class _Transformer(object):
     sparse_x_real = crossed_column(
         columns=[sparse_feature, real_valued_buckets], hash_bucket_size=10000)
 
-    columns_to_tensor = tf.parse_example(...)
+    columns_to_tensor = tf.io.parse_example(...)
     transformer = Transformer(columns_to_tensor)
 
     sparse_x_real_tensor = transformer.transform(sparse_x_real)
@@ -815,7 +816,7 @@ class _Transformer(object):
   """
 
   def __init__(self, columns_to_tensors):
-    """Initializes transfomer.
+    """Initializes transformer.
 
     Args:
       columns_to_tensors: A mapping from feature columns to tensors. 'string'
@@ -908,7 +909,7 @@ def _gather_feature_columns(feature_columns):
 
 
 def _check_forbidden_sequence_columns(feature_columns):
-  """Recursively cecks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
+  """Recursively checks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
   all_feature_columns = _gather_feature_columns(feature_columns)
   for feature_column in all_feature_columns:
     if isinstance(feature_column, _FORBIDDEN_SEQUENCE_COLUMNS):

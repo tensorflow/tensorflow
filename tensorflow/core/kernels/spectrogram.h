@@ -28,8 +28,8 @@ limitations under the License.
 // window = hann(window_length_samples, 'periodic');
 // S = abs(spectrogram(audio, window, overlap_samples)).^2;
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SPECTROGRAM_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SPECTROGRAM_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPECTROGRAM_H_
+#define TENSORFLOW_CORE_KERNELS_SPECTROGRAM_H_
 
 #include <complex>
 #include <deque>
@@ -109,4 +109,4 @@ class Spectrogram {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SPECTROGRAM_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPECTROGRAM_H_

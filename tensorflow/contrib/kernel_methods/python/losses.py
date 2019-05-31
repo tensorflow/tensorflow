@@ -34,7 +34,7 @@ def sparse_multiclass_hinge_loss(
     scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Adds Ops for computing the multiclass hinge loss.
+  r"""Adds Ops for computing the multiclass hinge loss.
 
   The implementation is based on the following paper:
   On the Algorithmic Implementation of Multiclass Kernel-based Vector Machines
@@ -43,10 +43,10 @@ def sparse_multiclass_hinge_loss(
 
   This is a generalization of standard (binary) hinge loss. For a given instance
   with correct label c*, the loss is given by:
-    loss = max_{c != c*} logits_c - logits_{c*} + 1.
+    $$loss = max_{c != c*} logits_c - logits_{c*} + 1.$$
   or equivalently
-    loss = max_c { logits_c - logits_{c*} + I_{c != c*} }
-  where I_{c != c*} = 1 if c != c* and 0 otherwise.
+    $$loss = max_c { logits_c - logits_{c*} + I_{c != c*} }$$
+  where \\(I_{c != c*} = 1\ \text{if}\ c != c*\\) and 0 otherwise.
 
   Args:
     labels: `Tensor` of shape [batch_size] or [batch_size, 1]. Corresponds to
@@ -80,7 +80,7 @@ def sparse_multiclass_hinge_loss(
           ' {}'.format(logits_rank))
     logits_shape = array_ops.shape(logits)
     batch_size, num_classes = logits_shape[0], logits_shape[1]
-    logits = math_ops.to_float(logits)
+    logits = math_ops.cast(logits, dtypes.float32)
 
     # Check labels have valid type.
     if labels.dtype != dtypes.int32 and labels.dtype != dtypes.int64:

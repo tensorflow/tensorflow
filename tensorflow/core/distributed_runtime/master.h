@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
@@ -61,6 +62,13 @@ class Master {
   // See tensorflow::Reset() and the comment on ResetRequest.
   void Reset(const ResetRequest* req, ResetResponse* resp, MyClosure done);
 
+  void MakeCallable(const MakeCallableRequest* req, MakeCallableResponse* resp,
+                    MyClosure done);
+  void RunCallable(CallOptions* opts, const RunCallableRequest* req,
+                   RunCallableResponse* resp, MyClosure done);
+  void ReleaseCallable(const ReleaseCallableRequest* req,
+                       ReleaseCallableResponse* resp, MyClosure done);
+
  private:
   typedef Master ME;
 
@@ -87,6 +95,9 @@ class Master {
   // If a session is not active for this many seconds, it will be
   // closed automatically.
   const double session_gc_seconds_;
+
+  // Used to track ids for incoming requests so we can detect duplicates.
+  RecentRequestIds recent_request_ids_;
 
   // Call CleanupAll on all workers.
   void CleanupWorkers(const ResetRequest& reset);

@@ -21,6 +21,7 @@ from __future__ import print_function
 from collections import namedtuple
 import functools
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -110,7 +111,7 @@ class GridRNNCell(rnn.RNNCell):
       logging.warning('%s: Using a concatenated state is slower and will '
                       'soon be deprecated.  Use state_is_tuple=True.', self)
     if not output_is_tuple:
-      logging.warning('%s: Using a concatenated output is slower and will'
+      logging.warning('%s: Using a concatenated output is slower and will '
                       'soon be deprecated.  Use output_is_tuple=True.', self)
 
     if num_dims < 1:
@@ -281,7 +282,8 @@ class GridRNNCell(rnn.RNNCell):
     """
     conf = self._config
 
-    if (inputs is not None and inputs.get_shape().with_rank(2)[1].value > 0 and
+    if (inputs is not None and
+        tensor_shape.dimension_value(inputs.shape.with_rank(2)[1]) > 0 and
         conf.inputs):
       if isinstance(inputs, tuple):
         if len(conf.inputs) != len(inputs):
@@ -291,7 +293,8 @@ class GridRNNCell(rnn.RNNCell):
       else:
         input_splits = array_ops.split(
             value=inputs, num_or_size_splits=len(conf.inputs), axis=1)
-      input_sz = input_splits[0].get_shape().with_rank(2)[1].value
+      input_sz = tensor_shape.dimension_value(
+          input_splits[0].shape.with_rank(2)[1])
 
       for i, j in enumerate(conf.inputs):
         input_project_m = vs.get_variable(

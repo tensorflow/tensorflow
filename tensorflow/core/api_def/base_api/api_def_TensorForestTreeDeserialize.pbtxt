@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "TensorForestTreeDeserialize"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_handle"
+    description: <<END
+Handle to the tree resource to be restored.
+END
+  }
+  in_arg {
+    name: "tree_config"
+    description: <<END
+Serialied proto string of the boosted_trees.Tree proto.
+END
+  }
+  summary: "Deserializes a proto into the tree handle"
+}

@@ -83,6 +83,7 @@ class LinearRegressionTest(tf.test.TestCase):
 class EagerLinearRegressionBenchmark(tf.test.Benchmark):
 
   def benchmarkEagerLinearRegression(self):
+    num_epochs = 10
     num_batches = 200
     batch_size = 64
     dataset = linear_regression.synthetic_dataset(
@@ -102,18 +103,19 @@ class EagerLinearRegressionBenchmark(tf.test.Benchmark):
       linear_regression.fit(model, burn_in_dataset, optimizer)
 
       start_time = time.time()
-      linear_regression.fit(model, dataset, optimizer)
+      for _ in range(num_epochs):
+        linear_regression.fit(model, dataset, optimizer)
       wall_time = time.time() - start_time
 
-      examples_per_sec = num_batches * batch_size / wall_time
+      examples_per_sec = num_epochs * num_batches * batch_size / wall_time
       self.report_benchmark(
           name="eager_train_%s" %
           ("gpu" if tfe.num_gpus() > 0 else "cpu"),
-          iters=num_batches,
+          iters=num_epochs * num_batches,
           extras={"examples_per_sec": examples_per_sec},
           wall_time=wall_time)
 
 
 if __name__ == "__main__":
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
   tf.test.main()

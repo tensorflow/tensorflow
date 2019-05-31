@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
 # =============================================================================
 """Python front-end supports for functions.
 
-NOTE: functions are currently experimental and subject to change!
+NOTE: At this time, functions are experimental and subject to change!. Proceed
+with caution.
 """
 
 from __future__ import absolute_import
@@ -30,14 +31,14 @@ from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
-from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import function_utils
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
@@ -59,8 +60,8 @@ class Defun(object):
       def foo(x, y):
         ...
 
-  When you call the decorated function it will add `call` ops to the
-  default graph and adds the definition of the function into the
+  When you call the decorated function, it adds the `call` ops to the
+  default graph. In addition, it adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
 
@@ -69,9 +70,10 @@ class Defun(object):
   during the first call to the function. Subsequent function calls will refer to
   the same set of variables.
 
-  Definitions of functions are frozen in a graph as soon as the graph is used to
-  create a session. Therefore, nodes using the function must be created in the
-  graph before the corresponding session is created.
+  Definitions of functions in a graph are frozen as soon as the graph is used to
+  create a session. However, new functions and new calls to existing functions
+  may be added to the graph, with the new functions themselves becoming
+  immediately frozen.
 
   Example, but also see the [How To on functions](link_needed).
 
@@ -128,13 +130,15 @@ class Defun(object):
   def __call__(self, func):
     # Various sanity checks on the callable func.
     if not callable(func):
-      raise ValueError("func %s must be callable" % func)
+      raise ValueError("function %s must be callable" % func)
 
     # Func should not use kwargs and defaults.
     argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
-      raise ValueError("Functions with argument defaults or keyword "
-                       "arguments are not supported.")
+      raise ValueError(
+          "function with argument defaults or keywords arguments are not"
+          " supported. {} has defaults {} and keywords {}.".format(
+              func, argspec.defaults, argspec.keywords))
 
     # Computes how many arguments 'func' has.
     min_args = len(argspec.args)
@@ -187,6 +191,28 @@ class Defun(object):
         **self._extra_kwargs)
 
 
+class _DefinedFunctionDeleter(object):
+  """Unregister function from eager context."""
+
+  def __init__(self, name):
+    self.name = name
+
+  def __del__(self):
+    try:
+      context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.
+
+
 class _DefinedFunction(object):
   """_DefinedFunction encapsulates a function definition and its properties.
 
@@ -208,6 +234,8 @@ class _DefinedFunction(object):
                out_names=None,
                shape_func=None,
                capture_by_value=False,
+               whitelisted_stateful_ops=None,
+               capture_resource_var_by_value=True,
                **kwargs):
     """Creates _DefinedFunction.
 
@@ -228,6 +256,10 @@ class _DefinedFunction(object):
         output shapes.
       capture_by_value: Boolean (defaults to False). If True, captured values
         will be copied into the function body.
+      whitelisted_stateful_ops: A set of ops that if stateful we ignore and
+        copy into the function body, when `capture_by_value` is True.
+      capture_resource_var_by_value: Boolean (defaults to True). If False,
+        captured resource variable returns the handle instead of value.
       **kwargs: The keyword arguments. **kwargs is passed to every call
         site of this function.
 
@@ -243,12 +275,23 @@ class _DefinedFunction(object):
     self._out_names = out_names
     self._shape_func = shape_func
     self._capture_by_value = capture_by_value
+    self._whitelisted_stateful_ops = whitelisted_stateful_ops
+    if self._whitelisted_stateful_ops is None:
+      self._whitelisted_stateful_ops = set()
+    self._capture_resource_var_by_value = capture_resource_var_by_value
     self._extra_kwargs = kwargs
     # Constructed only when C API is disabled, lazily
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
-    self._sub_functions = dict()  # Constructed with _definition or _c_func
+    self._function_deleter = None
+    self._sub_functions = {}  # Constructed with _definition or _c_func
+    # pylint: disable=protected-access
+    device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
+    # pylint: enable=protected-access
+
+    # Get the innermost device if possbile.
+    self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is
     # the only part of FunctionDef that we cache in Python. When C API
@@ -256,12 +299,10 @@ class _DefinedFunction(object):
     # another reference to _definition.signature
     self._op_def = None
 
-    self._args = []
     assert isinstance(input_types, (list, tuple))
-    for i in range(len(input_types)):
-      argname = argnames[i] if i < len(argnames) else ("arg%d" % i)
-      argtype = input_types[i]
-      self._args.append((argname, argtype))
+    self._arg_types = input_types
+    self._arg_names = [argnames[i] if i < len(argnames) else ("arg%d" % i)
+                       for i in range(len(input_types))]
 
   @property
   def name(self):
@@ -275,11 +316,15 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     if self._c_func:
       with c_api_util.tf_buffer() as buf:
-        with errors.raise_exception_on_not_ok_status() as status:
-          c_api.TF_FunctionToFunctionDef(self._c_func, buf, status)
+        c_api.TF_FunctionToFunctionDef(self._c_func.func, buf)
         fdef = function_pb2.FunctionDef()
         proto_data = c_api.TF_GetBuffer(buf)
         fdef.ParseFromString(compat.as_bytes(proto_data))
+        with ops.init_scope():
+          if context.executing_eagerly():
+            context.add_function(self._c_func.func)
+            self._function_deleter = _DefinedFunctionDeleter(
+                fdef.signature.name)
       return fdef
     return self._definition
 
@@ -296,7 +341,7 @@ class _DefinedFunction(object):
 
   @property
   def grad_func_name(self):
-    """Its gradient function's name."""
+    """Returns the name of the gradient function."""
     return self._grad_func.name if self._grad_func else None
 
   @property
@@ -315,6 +360,16 @@ class _DefinedFunction(object):
     self._create_definition_if_needed()
     return self._extra_inputs
 
+  @property
+  def stateful_ops(self):
+    """Returns the list of stateful ops in function definition.
+
+    Returns:
+      A list of (op.name, op.type) pairs.
+    """
+    self._create_definition_if_needed()
+    return self._stateful_ops
+
   def _create_definition_if_needed(self):
     """Creates the function definition if it's not created yet."""
     with context.graph_mode():
@@ -325,54 +380,53 @@ class _DefinedFunction(object):
     if self._definition is not None or self._c_func is not None:
       return
 
-    # Create the func_def object.
-    temp_graph = _FuncGraph(capture_by_value=self._capture_by_value)
-    with temp_graph.as_default():
-      # List of placeholders for the function_def.
-      inputs = []
-      for (argname, argtype) in self._args:
-        argholder = array_ops.placeholder(argtype, name=argname)
-        inputs.append(argholder)
-      # Call func and gather the output tensors.
-      with vs.variable_scope("", custom_getter=temp_graph.getvar):
-        outputs = self._func(*inputs)
+    # Copy variable collections (by reference) from the parent graph such that
+    # name based variable sharing (e.g. via tf.make_template) works between the
+    # func graph and parent graph.
+    variable_keys = []
+    variable_keys.extend(ops.GraphKeys._VARIABLE_COLLECTIONS)  # pylint: disable=protected-access
+    variable_keys.append(vs._VARSTORE_KEY)  # pylint: disable=protected-access
 
-      # There is no way of distinguishing between a function not returning
-      # anything and a function returning None in Python.
-      # We need to allow the former and ideally want to forbid the latter as
-      # it is most likely user error.
-      # TODO(iga): Consider adding a @NoOutput decorator on top of @Defun to
-      # allow users to explicitly mark the function as not returning anything.
-      # For now, we allow a single None return and interpret it as a function
-      # with no output.
-      if outputs is None:
-        outputs = []
+    collections_ref = {}
+    parent_collections_ref = ops.get_default_graph()._collections  # pylint: disable=protected-access
+    for key in variable_keys:
+      if key not in parent_collections_ref:
+        parent_collections_ref[key] = collections_ref[key] = []
       else:
-        # If func only returned one value, make it a tuple.
-        if not isinstance(outputs, (list, tuple)):
-          outputs = (outputs,)
-        if any([_ is None for _ in outputs]):
-          raise ValueError("Function can not return None.")
-      # Ensures each output is a Tensor.
-      outputs = [ops.convert_to_tensor(_) for _ in outputs]
+        collections_ref[key] = parent_collections_ref[key]
+
+    temp_graph = func_graph_from_py_func(
+        self._func,
+        self._arg_names,
+        self._arg_types,
+        self._func_name,
+        self._capture_by_value,
+        self._caller_device,
+        collections_ref=collections_ref,
+        whitelisted_stateful_ops=self._whitelisted_stateful_ops,
+        capture_resource_var_by_value=self._capture_resource_var_by_value)
+
     self._extra_inputs = temp_graph.extra_inputs
-    inputs.extend(temp_graph.extra_args)
     # pylint: disable=protected-access
     self._sub_functions = temp_graph._functions
     # pylint: enable=protected-access
 
     # Extra kwargs are treated as attrs on the function def.
-    base_func_name = self._func_name or _get_func_name(self._func)
-    kwargs_attr = _parse_kwargs_as_attrs(base_func_name,
-                                         **self._extra_kwargs)
+    if self._func_name:
+      base_func_name = self._func_name
+    else:
+      base_func_name = function_utils.get_func_name(self._func)
+      if self._grad_func:
+        base_func_name += ("_%s" % self._grad_func.name)
+    kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
 
     if not temp_graph._c_graph:  # pylint: disable=protected-access
       # Build the FunctionDef
       self._definition = graph_to_function_def.graph_to_function_def(
           temp_graph,
           temp_graph.get_operations(),
-          inputs,
-          outputs,
+          temp_graph.inputs,
+          temp_graph.outputs,
           out_names=self._out_names)
 
       for k in kwargs_attr:
@@ -397,18 +451,19 @@ class _DefinedFunction(object):
                       if self._out_names else [])
       description = self._func.__doc__ or None
       # pylint: disable=protected-access
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._c_func = c_api.TF_GraphToFunction_wrapper(
-            temp_graph._c_graph,
-            base_func_name,
-            self._func_name is None,  # append_hash_to_fn_name
-            None,  # opers
-            [t._as_tf_output() for t in inputs],
-            [t._as_tf_output() for t in outputs],
-            output_names,
-            None,  # opts
-            description,
-            status)
+      c_func = c_api.TF_GraphToFunction_wrapper(
+          temp_graph._c_graph,
+          base_func_name,
+          self._func_name is None,  # append_hash_to_fn_name
+          None,  # opers
+          [t._as_tf_output() for t in temp_graph.inputs],
+          [t._as_tf_output() for t in temp_graph.outputs],
+          output_names,
+          [], # control_outputs
+          [], # control_output_names
+          None,  # opts
+          description)
+      self._c_func = c_api_util.ScopedTFFunction(c_func)
       # pylint: enable=protected-access
       self._set_c_attrs(kwargs_attr)
 
@@ -417,7 +472,11 @@ class _DefinedFunction(object):
       if self._func_name:
         assert self._func_name == self._op_def.name
       else:
-        self._func_name = self._op_def.name
+        self._func_name = compat.as_str(self._op_def.name)
+
+    self._stateful_ops = [(op.name, op.type)
+                          for op in temp_graph.get_operations()
+                          if op.op_def.is_stateful]
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
@@ -431,9 +490,8 @@ class _DefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use the same status.
-      with errors.raise_exception_on_not_ok_status() as status:
-        c_api.TF_FunctionSetAttrValueProto(self._c_func, compat.as_str(name),
-                                           serialized, status)
+      c_api.TF_FunctionSetAttrValueProto(self._c_func.func, compat.as_str(name),
+                                         serialized)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.
@@ -487,10 +545,10 @@ class _DefinedFunction(object):
 
     # Adds this function into 'g'.
     # pylint: disable=protected-access
-    if context.in_graph_mode():
-      g._add_function(self)
-    else:
+    if context.executing_eagerly():
       context.context().add_function_def(self.definition)
+    else:
+      g._add_function(self)
     # pylint: enable=protected-access
 
     # Ensures related sub-routines are defined in 'g', too.
@@ -505,6 +563,12 @@ class _DefinedFunction(object):
     self.add_to_graph(ops.get_default_graph())
     args = [ops.convert_to_tensor(_) for _ in args] + self._extra_inputs
     ret, op = _call(self._signature, *args, **kwargs)
+
+    # Set a hidden attr in 'op' so that gradients_impl can refer back
+    # to this _DefinedFunction instance to access python_grad_func.
+    assert isinstance(op, ops.Operation)
+    setattr(op, "__defun", self)
+
     if self._shape_func is not None:
       shapes = self._shape_func(op)
       if len(shapes) != len(op.outputs):
@@ -593,12 +657,11 @@ class _OverloadedFunction(object):
         # _OverloadedFunction. We need to instantiate it with the
         # right input types.
         output_types = [
-            dtypes.DType(_.type)
-            for _ in defined._signature.output_arg  # pylint: disable=protected-access
+            dtypes.DType(_.type) for _ in defined._signature.output_arg  # pylint: disable=protected-access
         ]
         # pylint: disable=protected-access
-        defined._grad_func = self._grad_func.instantiate(
-            input_types + output_types)
+        defined._grad_func = self._grad_func.instantiate(input_types +
+                                                         output_types)
         # pylint: enable=protected-access
       self._overload[key] = defined
     return defined
@@ -627,17 +690,72 @@ class _FuncGraph(ops.Graph):
   function argument and the caller passes in the captured tensor.
   """
 
-  def __init__(self, capture_by_value, *args, **kwargs):
+  def __init__(self, name, capture_by_value, whitelisted_stateful_ops,
+               capture_resource_var_by_value, *args, **kwargs):
     super(_FuncGraph, self).__init__(*args, **kwargs)
     self._capture_by_value = capture_by_value
+    self._whitelisted_stateful_ops = whitelisted_stateful_ops
+    self._capture_resource_var_by_value = capture_resource_var_by_value
     self._building_function = True
     self._outer_graph = ops.get_default_graph()
     self._vscope = vs.get_variable_scope()
     self._old_custom_getter = self._vscope.custom_getter
+
+    # The name of the function.
+    self.name = name
+    # Placeholder tensors representing the inputs to this function. The tensors
+    # are in this _FuncGraph.
+    self.inputs = []
+    # Tensors that will be returned this function. The tensors are in this
+    # _FuncGraph.
+    self.outputs = []
+    # Maps external tensor -> internal tensor (e.g. input placeholder).
     self._captured = {}
+    # The external tensors that have been captured as inputs and must be passed
+    # to this function (empty if capturing by value, otherwise these are the
+    # keys of _captured).
     self.extra_inputs = []
+    # Input placeholders that been added for captured values (empty if capturing
+    # by value).
     self.extra_args = []
+    # Captured variables.
+    # TODO(skyewm): is this needed?
     self.extra_vars = []
+
+  # pylint: disable=g-doc-return-or-yield
+
+  @tf_contextlib.contextmanager
+  def container(self, container_name):
+    """Returns a context manager that specifies the resource container to use.
+
+    Overridden from `tf.Graph` to update both the init_scope container
+    and the present inner container. This is necessary to make sure setting
+    containers applies correctly both to created variables and to stateful
+    ops.
+
+    Args:
+      container_name: container name string.
+
+    Returns:
+      A context manager for defining resource containers for stateful ops,
+        yields the container name.
+    """
+    original_container = self._container
+    # pylint: disable=protected-access
+    with ops.init_scope():
+      original_init_container = ops.get_default_graph()._container
+    try:
+      self._container = container_name
+      with ops.init_scope():
+        ops.get_default_graph()._container = container_name
+      yield self._container
+    finally:
+      self._container = original_container
+      with ops.init_scope():
+        ops.get_default_graph()._container = original_init_container
+    # pylint: enable=protected-access
+
+  # pylint: enable=g-doc-return-or-yield
 
   def getvar(
       self,
@@ -672,7 +790,8 @@ class _FuncGraph(ops.Graph):
           collections=collections,
           use_resource=use_resource)
       self.extra_vars.append(var)
-      if isinstance(var, resource_variable_ops.ResourceVariable):
+      if (isinstance(var, resource_variable_ops.ResourceVariable) and
+          self._capture_resource_var_by_value):
         # For resource-based variables read the variable outside the function
         # and pass in the value. This ensures that the function is pure and
         # differentiable. TODO(apassos) this may have performance problems if
@@ -680,30 +799,52 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def create_op(self, op_type, inputs, data_types, **kwargs):
+  def create_op(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
     for i, x in enumerate(inputs):
-      if x.graph is not self:
-        # Referring to a tensor from other graph.
-        if x in self._captured:
-          # Captured already.
-          inputs[i] = self._captured[x]
-        elif self._capture_by_value:
-          inputs[i] = self._add_tensor_and_parents(x)
-        else:
-          # Substitute with a placeholder.
-          self.extra_inputs.append(x)
-          # Hoist the new input placeholder out of any control flow context
-          # we're currently in.
-          with ops.control_dependencies(None):
-            ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
-          # pylint: disable=protected-access
-          ph._handle_data = x._handle_data
-          # pylint: enable=protected-access
-          inputs[i] = ph
-          self._captured[x] = ph
-          self.extra_args.append(ph)
-    return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
-                                             **kwargs)
+      if isinstance(x, ops.EagerTensor) or x.graph is not self:
+        inputs[i] = self.capture(x)
+    return super(_FuncGraph, self).create_op(op_type, inputs,
+                                             dtypes=dtypes, **kwargs)
+
+  def capture(self, tensor, name=None):
+    """Adds the given tensor to this graph and returns the captured tensor."""
+    if tensor in self._captured:
+      # Captured already.
+      return self._captured[tensor]
+    elif self._capture_by_value:
+      return self._add_tensor_and_parents(tensor)
+    else:
+      return self._capture_tensor_as_extra_input(tensor, name)
+
+  def _capture_tensor_as_extra_input(self, tensor, name=None):
+    # Substitute with a placeholder.
+    self.extra_inputs.append(tensor)
+    # Hoist the new input placeholder out of any control flow context
+    # we're currently in.
+    with ops.control_dependencies(None):
+      ph = array_ops.placeholder(
+          tensor.dtype, shape=tensor.get_shape(), name=name)
+    # pylint: disable=protected-access
+    if isinstance(tensor, ops.EagerTensor):
+      handle_data = tensor._handle_data
+      if handle_data:
+        handle_data = handle_data.SerializeToString()
+    else:
+      handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
+                                                tensor._as_tf_output())
+
+    if handle_data:
+      c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
+                                  compat.as_bytes(handle_data))
+    # pylint: enable=protected-access
+    self.inputs.append(ph)
+    self._captured[tensor] = ph
+    self.extra_args.append(ph)
+    if _is_guaranteed_const(tensor):
+      with ops.control_dependencies(None):
+        return array_ops.guarantee_const(ph)
+    else:
+      return ph
 
   def _add_tensor_and_parents(self, tensor):
     op = self._add_op_and_parents(tensor.op)
@@ -713,7 +854,7 @@ class _FuncGraph(ops.Graph):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
     # pylint: enable=protected-access
-    if op_def.is_stateful:
+    if op_def.is_stateful and op not in self._whitelisted_stateful_ops:
       raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
     elif op.type in ("Placeholder", "PlaceholderV2"):
@@ -733,6 +874,147 @@ class _FuncGraph(ops.Graph):
       self._captured[t] = captured_t
 
     return captured_op
+
+
+def func_graph_from_py_func(func,
+                            arg_names,
+                            arg_types,
+                            name=None,
+                            capture_by_value=False,
+                            device=None,
+                            colocation_stack=None,
+                            container=None,
+                            collections_ref=None,
+                            arg_shapes=None,
+                            whitelisted_stateful_ops=None,
+                            capture_resource_var_by_value=True):
+  """Returns a _FuncGraph generated from `func`.
+
+  Args:
+    func: A Python callable which constructs a TF function body. The arguments
+      must correspond to `arg_types`. Returns a value or list/tuple of values.
+      No returned value can be None.
+    arg_names: A sequence of strings for the function argument names.
+    arg_types: A sequence of the function's argument types.
+    name: The function name. If None, the name is derived from `func`.
+    capture_by_value: boolean. If True, captured values will be copied into the
+      function body.
+    device: device name or function.
+    colocation_stack: A colocation stack (list) the _FuncGraph should use.
+    container: A container name the _FuncGraph should start with.
+    collections_ref: A reference to a collections dict the _FuncGraph should
+      use internally.
+    arg_shapes: A sequence of the function's argument shapes.
+    whitelisted_stateful_ops: A set of ops that if stateful we ignore and
+      re-create.
+    capture_resource_var_by_value: Boolean (defaults to True). If False,
+      captured resource variable returns the handle instead of value.
+
+  Returns:
+    A _FuncGraph.
+
+  Raises:
+    ValueError: if func returns None.
+  """
+  if not name:
+    name = function_utils.get_func_name(func)
+  func_graph = _FuncGraph(name, capture_by_value, whitelisted_stateful_ops,
+                          capture_resource_var_by_value)
+
+  with func_graph.as_default(), ops.device(device):
+    # pylint: disable=protected-access
+    if collections_ref is not None:
+      func_graph._collections = collections_ref
+    if container is not None:
+      func_graph._container = container
+    if colocation_stack is not None:
+      func_graph._colocation_stack = colocation_stack
+    # pylint: enable=protected-access
+
+    if arg_shapes is None:
+      arg_shapes = [None] * len(arg_types)
+
+    # Create placeholders for the function arguments.
+    for (argname, argtype, argshape) in zip(arg_names, arg_types, arg_shapes):
+      argholder = array_ops.placeholder(argtype, shape=argshape, name=argname)
+      func_graph.inputs.append(argholder)
+    # Call func and gather the output tensors.
+    with vs.variable_scope("", custom_getter=func_graph.getvar):
+      outputs = func(*func_graph.inputs)
+
+    # There is no way of distinguishing between a function not returning
+    # anything and a function returning None in Python.
+    # We need to allow the former and ideally want to forbid the latter as
+    # it is most likely user error.
+    # TODO(iga): Consider adding a @NoOutput decorator on top of @Defun to
+    # allow users to explicitly mark the function as not returning anything.
+    # For now, we allow a single None return and interpret it as a function
+    # with no output.
+    if outputs is None:
+      outputs = []
+    else:
+      # If func only returned one value, make it a tuple.
+      if not isinstance(outputs, (list, tuple)):
+        outputs = (outputs,)
+      if any(_ is None for _ in outputs):
+        raise ValueError("Function %s can not return None." % name)
+    # Ensures each output is a Tensor in the function graph.
+    outputs = [ops.convert_to_tensor(t) for t in outputs]
+    outputs = [func_graph.capture(t) if t.graph is not func_graph else t
+               for t in outputs]
+    func_graph.outputs = outputs
+  return func_graph
+
+
+def _is_guaranteed_const(tensor):
+  """Determines whether `tensor` is guaranteed to be a constant.
+
+  A tensor is guaranteed to be a constant if either it was produced by
+  a `GuaranteeConst` op or if all of its children are guaranteed to be
+  constants.
+
+  Args:
+    tensor: The tensor for which to determine const-ness.
+
+  Returns:
+    True if `tensor` is guaranteed to be a constant, False otherwise.
+  """
+
+  if isinstance(tensor, ops.EagerTensor):
+    return False
+
+  class Work(object):
+
+    def __init__(self, op, leaving):
+      self.op = op
+      self.leaving = leaving
+
+  is_guaranteed_const = lambda op: op.node_def.op == "GuaranteeConst"
+  constants = set([])
+  def all_inputs_const(op):
+    # If all inputs of an op are guaranteed constants, then we can infer that
+    # the op produces a constant as well.
+    return op.inputs and all(inp.op in constants for inp in op.inputs)
+
+  visited = set([])
+  stack = [Work(tensor.op, leaving=False)]
+  while stack:
+    work = stack.pop()
+    if work.leaving:
+      if all_inputs_const(work.op):
+        constants.add(work.op)
+      continue
+    visited.add(work.op)
+    if is_guaranteed_const(work.op):
+      constants.add(work.op)
+      continue
+
+    # This op will be revisited after all its inputs are checked for const-ness.
+    stack.append(Work(work.op, leaving=True))
+    for inp in work.op.inputs:
+      if inp.op not in visited:
+        stack.append(Work(inp.op, leaving=False))
+  return tensor.op in constants
 
 
 def _call(sig, *inputs, **kwargs):
@@ -766,22 +1048,17 @@ def _call(sig, *inputs, **kwargs):
     ValueError: if the arguments are invalid.
   """
   if len(inputs) != len(sig.input_arg):
-    raise ValueError("Expected number of arguments: %d, received: %d" %
-                     (len(sig.input_arg), len(inputs)))
+    raise ValueError("Expected number of arguments: %d, received: %d" % (len(
+        sig.input_arg), len(inputs)))
   name = kwargs.pop("name", None)
   g = ops.get_default_graph()
   func_name = sig.name
+  if name is None:
+    name = func_name
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
-  with ops.name_scope(name, func_name, inputs) as name:
-    op = g.create_op(
-        func_name,
-        list(inputs),
-        output_types,
-        name=name,
-        attrs=attrs,
-        op_def=sig,
-        compute_shapes=False)
+  op = g.create_op(
+      func_name, list(inputs), output_types, name=name, attrs=attrs, op_def=sig)
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]
@@ -820,26 +1097,17 @@ def _from_definition(fdef, grad_func=None):
   result = _DefinedFunction(func, argnames, input_types, func_name, grad_func,
                             python_grad_func, out_names)
   # pylint: disable=protected-access
-  if ops._USE_C_API:
-    serialized = fdef.SerializeToString()
-    with errors.raise_exception_on_not_ok_status() as status:
-      result._c_func = c_api.TF_FunctionImportFunctionDef(serialized, status)
-    result._extra_inputs = []
-  else:
-    result._definition = fdef
-    # Captured inputs are added as regular inputs to a function when it's
-    # serialized, i.e. any extra inputs from the original function are now
-    # included in `result`._args
-    result._extra_inputs = []
-    result._hash_str = result._create_hash_str(
-        result._definition.signature.input_arg,
-        result._definition.signature.output_arg, result._definition.node_def)
+  serialized = fdef.SerializeToString()
+  c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+  result._c_func = c_api_util.ScopedTFFunction(c_func)
+  result._extra_inputs = []
+  result._op_def = fdef.signature
   # pylint: enable=protected-access
 
   return result
 
 
-def _from_library(lib):
+def from_library(lib):
   """Creates _DefinedFunctions initialized from a FunctionDefLibrary proto.
 
   This method handles assigning the correct gradient functions to each
@@ -883,8 +1151,8 @@ def _from_library(lib):
       fdef for fdef in lib.function if func_to_grad[fdef.signature.name] is None
   ]
   if not ready:
-    raise ValueError("FunctionDefLibrary contains cyclic gradient functions!\n"
-                     + str(lib))
+    raise ValueError(
+        "FunctionDefLibrary contains cyclic gradient functions!\n" + str(lib))
   # function name -> _DefinedFunction
   initialized = {}
 
@@ -903,6 +1171,21 @@ def _from_library(lib):
   return initialized.values()
 
 
+def _get_experimental_kwarg_as_attr(attr_name, value):
+  """Creates an AttrValue for a python object."""
+  if isinstance(value, bool):
+    return attr_value_pb2.AttrValue(b=value)
+  elif isinstance(value, int):
+    return attr_value_pb2.AttrValue(i=value)
+  elif isinstance(value, float):
+    return attr_value_pb2.AttrValue(f=value)
+  elif isinstance(value, str):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  else:
+    raise ValueError("Unsupported attribute type for %s with type %s" %
+                     (attr_name, type(value)))
+
+
 def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
@@ -910,6 +1193,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   noinline = kwargs.pop("noinline", None)
   if noinline is not None:
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+
+  # For compatibility with previous behavior, Defun does not perform shape
+  # inference through its function call operations.
+  attrs["_disable_call_shape_inference"] = attr_value_pb2.AttrValue(b=True)
 
   compiled = kwargs.pop("compiled", None)
   separate_compiled_gradients = kwargs.pop("separate_compiled_gradients", None)
@@ -926,22 +1213,15 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
           s=("function_%s" % func_name).encode())
     # pylint: enable=protected-access
 
+  kwargs_keys = list(kwargs.keys())
+  for key in kwargs_keys:
+    if key.startswith("experimental_"):
+      attrs[key] = _get_experimental_kwarg_as_attr(key, kwargs[key])
+      del kwargs[key]
+
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   return attrs
-
-
-def _get_func_name(func):
-  _, func = tf_decorator.unwrap(func)
-  if callable(func):
-    if tf_inspect.isfunction(func):
-      return func.__name__
-    elif tf_inspect.ismethod(func):
-      return "%s.%s" % (func.__self__.__name__, func.__name__)
-    else:  # Probably a class instance with __call__
-      return type(func)
-  else:
-    raise ValueError("Argument must be callable")
 
 
 def get_extra_vars():
@@ -992,7 +1272,7 @@ def get_extra_args():
 
 
 def _type_list_to_str(types):
-  if any([_ not in _DTYPE_TO_STR for _ in types]):
+  if any(_ not in _DTYPE_TO_STR for _ in types):
     raise ValueError("Unsupported dtypes: %s" % types)
   return "".join([_DTYPE_TO_STR[_] for _ in types])
 
@@ -1021,3 +1301,13 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16"
 }
+
+
+def function_def_from_tf_function(c_func):
+  """Converts a SWIG-wrapped TF_Function* to a FunctionDef proto."""
+  with c_api_util.tf_buffer() as buf:
+    c_api.TF_FunctionToFunctionDef(c_func, buf)
+    data = c_api.TF_GetBuffer(buf)
+  fdef = function_pb2.FunctionDef()
+  fdef.ParseFromString(compat.as_bytes(data))
+  return fdef

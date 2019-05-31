@@ -84,7 +84,7 @@ class FractionalAvgPoolOp : public OpKernel {
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       output_size[i] =
-          static_cast<int>(floor(input_size[i] / pooling_ratio_[i]));
+          static_cast<int>(std::floor(input_size[i] / pooling_ratio_[i]));
       DCHECK_GT(output_size[i], 0);
     }
 
@@ -223,7 +223,7 @@ class FractionalAvgPoolGradOp : public OpKernel {
     // Once we figure out the original contributors, we just need to evenly
     // divide the value of this element among these contributors.
     //
-    // Internally, we divide the out_backprop tensor and store it in a temparary
+    // Internally, we divide the out_backprop tensor and store it in a temporary
     // tensor of double type. And cast it to the corresponding type.
     typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
         ConstEigenMatrixMap;
@@ -232,8 +232,9 @@ class FractionalAvgPoolGradOp : public OpKernel {
 
     // Grab the inputs.
     const Tensor& orig_input_tensor_shape = context->input(0);
-    OP_REQUIRES(context, orig_input_tensor_shape.dims() == 1 &&
-                             orig_input_tensor_shape.NumElements() == 4,
+    OP_REQUIRES(context,
+                orig_input_tensor_shape.dims() == 1 &&
+                    orig_input_tensor_shape.NumElements() == 4,
                 errors::InvalidArgument("original input tensor shape must be"
                                         "1-dimensional and 4 elements"));
     const Tensor& out_backprop = context->input(1);

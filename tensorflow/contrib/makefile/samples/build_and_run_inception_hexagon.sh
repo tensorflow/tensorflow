@@ -36,7 +36,7 @@ while getopts "bc:Eps" opt_name; do
     b) BUILD_ONLY="true";;
     c) TEST_COUNT="${OPTARG}";;
     E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
-    p) USE_PREBUILT_HEXAOGON_BINARIES="true";;
+    p) USE_PREBUILT_HEXAGON_BINARIES="true";;
     s) SKIP_DOWNLOAD_IF_EXIST="true";;
     *) usage;;
   esac
@@ -49,7 +49,7 @@ if [[ -z "${NDK_ROOT}" ]]; then
     exit 1
 fi
 
-if [[ "${USE_PREBUILT_HEXAOGON_BINARIES}" != "true" &&
+if [[ "${USE_PREBUILT_HEXAGON_BINARIES}" != "true" &&
       -z "${QUALCOMM_SDK}" ]]; then
     echo "QUALCOMM_SDK is empty" 1>&2
     usage
@@ -76,13 +76,15 @@ GEN_LIBS_DIR="${GEN_DIR}/libs"
 GEN_DOWNLOAD_DIR="${GEN_DIR}/downloads"
 URL_BASE="https://storage.googleapis.com/download.tensorflow.org"
 
+ARCH="armeabi-v7a"
+
 source "${SCRIPT_DIR}/../build_helper.subr"
 
 rm -rf "${GEN_DIR}"
 mkdir -p "${GEN_LIBS_DIR}"
 mkdir -p "${GEN_DOWNLOAD_DIR}"
 
-if [[ "${USE_PREBUILT_HEXAOGON_BINARIES}" == "true" ]]; then
+if [[ "${USE_PREBUILT_HEXAGON_BINARIES}" == "true" ]]; then
     echo "Download prebuilt hexagon binaries"
     if [[ "${BUILD_ONLY}" != "true" ]]; then
         CONTROLLER_PUSH_DEST="/data/local/tmp"
@@ -219,7 +221,7 @@ if [[ "${BUILD_ONLY}" != "true" ]]; then
     adb push "${GEN_LIBS_DIR}/libhexagon_nn_skel.so" "/vendor/lib/rfsa/adsp"
 
     adb push -p \
-        "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/bin/hexagon_graph_execution" \
+        "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/bin/android_${ARCH}/hexagon_graph_execution" \
         "/data/local/tmp/"
     adb wait-for-device
     adb shell chmod "${ANDROID_EXEC_FILE_MODE}" \

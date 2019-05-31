@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 
 namespace xla {
 namespace cpu {
@@ -35,23 +36,31 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kConcatenate ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
-         hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kGather ||
+         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReshape ||
          hlo.opcode() == HloOpcode::kReverse ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
 }
 
-bool IsMatrixVectorDot(const HloInstruction* hlo) {
+bool IsNonComplexMatrixVectorDot(const HloInstruction* hlo) {
   const Shape& hlo_shape = hlo->shape();
-  return hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
+  return !ShapeUtil::ElementIsComplex(hlo_shape) &&
+         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
          (hlo_shape.dimensions(0) == 1 || hlo_shape.dimensions(1) == 1);
+}
+
+bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
+  return hlo_instr.user_count() == 1 &&
+         absl::c_count(hlo_instr.users().front()->operands(), &hlo_instr) == 1;
 }
 
 bool CanBeOutputFused(const HloInstruction* producer,
                       const HloInstruction* consumer) {
-  return consumer->opcode() == HloOpcode::kAdd && IsMatrixVectorDot(producer) &&
-         producer->user_count() == 1;
+  return consumer->opcode() == HloOpcode::kAdd &&
+         IsNonComplexMatrixVectorDot(producer) &&
+         HasExactlyOneUse(*producer) == 1;
 }
 
 bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
@@ -78,7 +87,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   if (!CanBeLoopFused(*producer)) {
-    VLOG(2) << "Producer is not fusile.";
+    VLOG(2) << "Producer is not fusible.";
     return false;
   }
 
@@ -91,18 +100,30 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // TODO(b/28644064): see if the "producer->operand_count() == 0" check is
-  // necessary.
-  if (producer->operand_count() == 0 ||
-      !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    VLOG(2)
-        << "Not fusing: producer has no operands, or !ShouldFuse(consumer).";
+  if (!InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    VLOG(2) << "Not fusing: !ShouldFuse(consumer).";
+    return false;
+  }
+
+  // Fuse constants in general but avoid creating 2-instruction fusions with
+  // just a constant and another node.
+  if (producer->opcode() == HloOpcode::kConstant &&
+      consumer->opcode() != HloOpcode::kFusion) {
+    VLOG(2) << "Not fusing: insufficient non-constant nodes.";
     return false;
   }
 
   // Output fusion is not currently supported on CPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
     VLOG(2) << "Not fusing: producer is itself a fusion node.";
+    return false;
+  }
+
+  // Don't fuse if fusing would cause too much code duplication because of
+  // inefficiencies in the fusion emitter.
+  // TODO(b/119692968): Remove this once the fusion emitter can handle
+  // arbitrary fusion nodes.
+  if (FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer)) {
     return false;
   }
 
@@ -133,14 +154,13 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     }
   }
 
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+  if (consumer->IsLoopFusion()) {
     VLOG(2) << "Fusing: consumer is a fusion node.";
     return true;
   }
 
   if (CanBeLoopFused(*consumer)) {
-    VLOG(2) << "Fusing: consumer is elementwise or fusile.";
+    VLOG(2) << "Fusing: consumer is elementwise or fusible.";
     return true;
   }
 

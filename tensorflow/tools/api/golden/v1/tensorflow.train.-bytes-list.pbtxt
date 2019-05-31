@@ -1,0 +1,12 @@
+path: "tensorflow.train.BytesList"
+tf_proto {
+  descriptor {
+    name: "BytesList"
+    field {
+      name: "value"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_BYTES
+    }
+  }
+}

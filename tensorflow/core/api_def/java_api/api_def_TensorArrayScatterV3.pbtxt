@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "TensorArrayScatterV3"
+  endpoint {
+    name: "TensorArrayScatter"
+  }
+}
