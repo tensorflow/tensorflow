@@ -911,9 +911,7 @@ void OpEmitter::genVerifier() {
   auto &body = method.body();
 
   // Populate substitutions for attributes and named operands and results.
-  for (const auto &namedAttr : op.getAttributes())
-    verifyCtx.addSubst(namedAttr.name,
-                       formatv("(&this->getAttr(\"{0}\"))", namedAttr.name));
+  // TODO(jpienaar): Add attributes back.
   for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
     auto &value = op.getOperand(i);
     // Skip from from first variadic operands for now. Else getOperand index

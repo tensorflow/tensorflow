@@ -83,7 +83,8 @@ def ArgAndResHaveFixedElementTypesOp :
          Or<[And<[ArgOrResultElementTypeIs<"x", I32>,
                   ArgOrResultElementTypeIs<"y", F32>,
                   ArgOrResultElementTypeIs<"res", I16>]>,
-             ArgOrResultElementTypeIs<"attr", I8>]>>]> {
+             // TODO(jpienaar): change back to attr.
+             ArgOrResultElementTypeIs<"x", I8>]>>]> {
   let arguments = (ins AnyVectorOrTensor:$x, AnyVectorOrTensor:$y, AnyAttr:$attr);
   let results = (outs AnyVectorOrTensor:$res);
 }
