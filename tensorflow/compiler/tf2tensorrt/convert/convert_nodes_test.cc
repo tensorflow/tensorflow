@@ -988,17 +988,19 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
         operand_2_shape, operand_2_is_tensor, operand_2_batch_size);
 
     // operand_1 broadcast operand_2
-    ExpectStatus(GetTrtBroadcastShape(operand_1, operand_2, &operand_1_new_dims,
-                                      &operand_2_new_dims),
-                 expected_code, expected_error_msg_substr);
+    ExpectStatus(
+        GetTrtBroadcastShape(operand_1, operand_2, /*check_feasibility=*/true,
+                             &operand_1_new_dims, &operand_2_new_dims),
+        expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
     }
     // operand_2 broadcast operand_1
-    ExpectStatus(GetTrtBroadcastShape(operand_2, operand_1, &operand_2_new_dims,
-                                      &operand_1_new_dims),
-                 expected_code, expected_error_msg_substr);
+    ExpectStatus(
+        GetTrtBroadcastShape(operand_2, operand_1, /*check_feasibility=*/true,
+                             &operand_2_new_dims, &operand_1_new_dims),
+        expected_code, expected_error_msg_substr);
     if (expected_code == error::OK) {
       ExpectTrtDimsEqualsArray(expected_operand_1_shape, operand_1_new_dims);
       ExpectTrtDimsEqualsArray(expected_operand_2_shape, operand_2_new_dims);
@@ -1714,16 +1716,9 @@ void TestMatMulHelper(
       test->AddTestTensor("input", {2}, /*batch_size=*/1);
       test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
       if (is_batch_matmul) {
-        if (transpose_a || transpose_b) {
-          test->RunValidationAndConversion(
-              node_def, error::INVALID_ARGUMENT,
-              "Input weight attempts to broadcast across batch dimension for "
-              "BatchMatMul, at my_matmul");
-        } else {
-          test->RunValidationAndConversion(
-              node_def, error::INVALID_ARGUMENT,
-              "Input weight attempts to broadcast across batch dimension");
-        }
+        test->RunValidationAndConversion(
+            node_def, error::UNIMPLEMENTED,
+            "TensorRT does not support batched constants.");
         continue;
       } else if (transpose_a) {
         test->RunValidationAndConversion(
@@ -1755,16 +1750,9 @@ void TestMatMulHelper(
     test->AddTestTensor("input", {2}, /*batch_size=*/1);
     test->AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
     if (is_batch_matmul) {
-      if (transpose_b) {
-        test->RunValidationAndConversion(
-            node_def, error::INVALID_ARGUMENT,
-            "Input weight attempts to broadcast across batch dimension for "
-            "BatchMatMul, at my_matmul");
-      } else {
-        test->RunValidationAndConversion(
-            node_def, error::INVALID_ARGUMENT,
-            "Input weight attempts to broadcast across batch dimension");
-      }
+      test->RunValidationAndConversion(
+          node_def, error::UNIMPLEMENTED,
+          "TensorRT does not support batched constants.");
       continue;
     }
     test->RunValidationAndConversion(node_def);

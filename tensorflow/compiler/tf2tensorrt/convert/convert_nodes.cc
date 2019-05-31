@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA
@@ -387,6 +388,7 @@ string DebugString(const nvinfer1::ITensor& tensor) {
 
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             const TRT_TensorOrWeights& operand_r,
+                            const bool check_feasibility,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims) {
   // TensorRT Elementwise op supports broadcast but requires both tensor to be
@@ -455,13 +457,15 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                                          output_r, operand_r_new_dims));
 
   // Compare broadcast feasibility
-  for (int i = 0; i < broadcast_num_dims; ++i) {
-    if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
-        (output_r[i] != 1)) {
-      return errors::InvalidArgument(
-          "Infeasible broadcast scheme (", "batch_dim: ", output_l[0], ", ",
-          DebugString(*operand_l_new_dims), " vs ", "batch_dim: ", output_r[0],
-          ", ", DebugString(*operand_r_new_dims), ")");
+  if (check_feasibility) {
+    for (int i = 0; i < broadcast_num_dims; ++i) {
+      if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
+          (output_r[i] != 1)) {
+        return errors::InvalidArgument(
+            "Infeasible broadcast scheme (", "batch_dim: ", output_l[0], ", ",
+            DebugString(*operand_l_new_dims), " vs ", "batch_dim: ",
+            output_r[0], ", ", DebugString(*operand_r_new_dims), ")");
+      }
     }
   }
   return Status::OK();
@@ -3117,9 +3121,9 @@ Status ConvertBinary(OpConverterParams* params) {
   }
 
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
-  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-      operand_l, operand_r, &broadcasted_dims_l, &broadcasted_dims_r));
-
+  TF_RETURN_IF_ERROR(
+      GetTrtBroadcastShape(operand_l, operand_r, /*check_feasibility=*/true,
+                           &broadcasted_dims_l, &broadcasted_dims_r));
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
   // This will also convert constants to tensors, and set quantization ranges.
@@ -3940,13 +3944,15 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   if (params->validation_only) return Status::OK();
 
   // If an FC layer can be used and would be faster, use that instead.
-  const bool should_use_fc =
-      !transpose_a && input_a.is_tensor() && input_b.is_weights() &&
-      input_a.GetTrtDims().nbDims >= 3 && input_b.GetTrtDims().nbDims == 2;
-  // If int8 is specified, FC must be used, as MM does not support int8 at this
-  // time.
+  const bool can_use_fc =
+      !transpose_a && input_a.is_tensor() && input_b.is_weights();
+  const bool should_use_fc = can_use_fc && input_a.GetTrtDims().nbDims >= 3 &&
+                             input_b.GetTrtDims().nbDims == 2;
+  // If int8 is specified, FC must be used unless it is not compatible, as MM
+  // does not support int8 at this time.
   if (should_use_fc ||
-      params->converter->precision_mode() == TrtPrecisionMode::INT8) {
+      (can_use_fc &&
+       params->converter->precision_mode() == TrtPrecisionMode::INT8)) {
     return ConvertFullyConnectedHelper(
         params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
@@ -4037,41 +4043,38 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   const bool transpose_a = attrs.get<bool>("adj_x");
   const bool transpose_b = attrs.get<bool>("adj_y");
 
-  // Removes the batch dimension from weights.
-  const auto remove_weights_batch_dim =
-      [&params](const TRT_TensorOrWeights& input, TRT_TensorOrWeights* tensor) {
-        auto dims = input.GetTrtDims();
-        if (input.is_weights()) {
-          // The other operand must be a tensor, this is ensured by earlier
-          // checks. Checks that the batch dimension is not changed by
-          // broadcasting.
-          if (dims.d[0] != 1) {
-            return errors::InvalidArgument(
-                "Input weight attempts to broadcast across batch dimension for "
-                "BatchMatMul, at ",
-                params->node_def.name());
-          }
-          // Remove the batch dimension from the weights.
-          TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
-        }
-        // Create tensor and reshape if necessary.
-        nvinfer1::ITensor* t{nullptr};
-        TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-            input, dims, params->validation_only, &t));
-        *tensor = TRT_TensorOrWeights{t};
-        return Status::OK();
-      };
-
-  TRT_TensorOrWeights tensor_l{nullptr};
-  TRT_TensorOrWeights tensor_r{nullptr};
-  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(0), &tensor_l));
-  TF_RETURN_IF_ERROR(remove_weights_batch_dim(inputs.at(1), &tensor_r));
-
-  if (params->validation_only) {
+  // There is no way to batch constants in TRT. Example:
+  // Tensor with TF Dims: 12 5 3 -> TRT Dims: 5 3
+  // Weight with TF Dims: 12 3 6 -> TRT Dims: 12 3 6
+  // It is not possible to treat the weight input as a batched [3, 6] tensor.
+  const auto check_weight_is_not_batched = [](
+      const TRT_TensorOrWeights& input_l, const TRT_TensorOrWeights& input_r) {
+    if (input_l.is_weights() &&
+        input_l.GetTrtDims().nbDims > input_r.GetTrtDims().nbDims &&
+        input_l.GetTrtDims().d[0] != 1) {
+      return errors::Unimplemented(
+          "TensorRT does not support batched constants.");
+    }
     return Status::OK();
-  }
+  };
+  TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(0), inputs.at(1)));
+  TF_RETURN_IF_ERROR(check_weight_is_not_batched(inputs.at(1), inputs.at(0)));
 
-  return ConvertMatMulHelper(params, tensor_l, tensor_r, transpose_a,
+  // Broadcast inputs.
+  nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
+  TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
+      inputs.at(0), inputs.at(1), /*check_feasibility=*/false,
+      &broadcasted_dims_l, &broadcasted_dims_r));
+  nvinfer1::ITensor* tensor_l = nullptr;
+  nvinfer1::ITensor* tensor_r = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(0), broadcasted_dims_l, params->validation_only, &tensor_l));
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      inputs.at(1), broadcasted_dims_r, params->validation_only, &tensor_r));
+  if (params->validation_only) return Status::OK();
+
+  return ConvertMatMulHelper(params, TRT_TensorOrWeights(tensor_l),
+                             TRT_TensorOrWeights(tensor_r), transpose_a,
                              transpose_b, node_def.name());
 }
 
@@ -4289,7 +4292,8 @@ Status ConvertSquaredDifference(OpConverterParams* params) {
   // Broadcast inputs.
   nvinfer1::Dims broadcasted_dims_l, broadcasted_dims_r;
   TF_RETURN_IF_ERROR(GetTrtBroadcastShape(
-      inputs.at(0), inputs.at(1), &broadcasted_dims_l, &broadcasted_dims_r));
+      inputs.at(0), inputs.at(1), /*check_feasibility=*/true,
+      &broadcasted_dims_l, &broadcasted_dims_r));
   nvinfer1::ITensor* tensor_l = nullptr;
   nvinfer1::ITensor* tensor_r = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
@@ -4561,7 +4565,6 @@ Status ConvertResize(OpConverterParams* params) {
 
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
-  (*registration)["BatchMatMul"] = ConvertBatchMatMul;
   (*registration)["BiasAdd"] = ConvertBiasAdd;
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   (*registration)["ClipByValue"] = ConvertClipByValue;
@@ -4633,6 +4636,9 @@ static void RegisterValidatableOpConverters(
   // layer.
   for (auto identity_op_type : {"Identity", "Snapshot", "StopGradient"}) {
     (*registration)[identity_op_type] = ConvertIdentity;
+  }
+  for (auto batch_matmul_type : {"BatchMatMul", "BatchMatMulV2"}) {
+    (*registration)[batch_matmul_type] = ConvertBatchMatMul;
   }
 }
 
