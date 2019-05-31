@@ -51,7 +51,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA
