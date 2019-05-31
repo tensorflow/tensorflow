@@ -121,7 +121,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       request->async(), device_mgr, false, r, nullptr,
-      worker_session->cluster_flr.get(), std::move(rendezvous_creator));
+      worker_session->cluster_flr.get(), std::move(rendezvous_creator),
+      worker_session->remote_device_mgr());
 
   std::vector<DeviceAttributes> device_attributes;
   device_mgr->ListDeviceAttributes(&device_attributes);

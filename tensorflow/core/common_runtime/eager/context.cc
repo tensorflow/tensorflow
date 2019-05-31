@@ -66,8 +66,10 @@ EagerContext::EagerContext(
     bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
     Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr,
-    std::function<Rendezvous*(const int64)> rendezvous_creator)
+    std::function<Rendezvous*(const int64)> rendezvous_creator,
+    const DeviceMgr* remote_device_mgr)
     : policy_(default_policy),
+      remote_unowned_device_manager_(remote_device_mgr),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
       rendezvous_creator_(std::move(rendezvous_creator)),
@@ -117,8 +119,8 @@ void EagerContext::InitDeviceMapAndAsync() {
     devices_map_[device->name()] = device;
   }
 
-  if (remote_device_manager_ != nullptr) {
-    for (auto* device : remote_device_manager_->ListDevices()) {
+  if (remote_device_mgr() != nullptr) {
+    for (auto* device : remote_device_mgr()->ListDevices()) {
       if (devices_map_.find(device->name()) == devices_map_.end()) {
         devices_map_[device->name()] = device;
         devices_.push_back(device);
@@ -332,6 +334,7 @@ ScopedStepContainer* EagerContext::StepContainer() {
 }
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
+  // Only client context can register function on remote worker context.
   if (remote_device_manager_ == nullptr) return Status::OK();
 #if !defined(IS_MOBILE_PLATFORM)
   BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
@@ -487,6 +490,10 @@ Status GetTaskName(Device* d, string* task_name) {
 Status EagerContext::GetClientAndContextID(Device* device,
                                            eager::EagerClient** client,
                                            uint64* context_id) {
+  if (remote_eager_workers_ == nullptr) {
+    return errors::Internal(
+        "Haven't set up remote eager worker in this eager context yet.");
+  }
   auto it = device_to_client_cache_.find(device);
   if (it != device_to_client_cache_.end()) {
     *client = it->second.first;
