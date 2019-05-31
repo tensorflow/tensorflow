@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,20 +42,19 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    const Tensor* cycle_length_t;
-    OP_REQUIRES_OK(ctx, ctx->input("cycle_length", &cycle_length_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(cycle_length_t->shape()),
-                errors::InvalidArgument("cycle_length must be a scalar."));
-    const int64 cycle_length = cycle_length_t->flat<int64>()(0);
+    int64 cycle_length = 0;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument(ctx, "cycle_length", &cycle_length));
+    if (cycle_length == model::kAutoTune) {
+      cycle_length = port::NumSchedulableCPUs();
+    }
     OP_REQUIRES(
         ctx, cycle_length > 0,
         errors::InvalidArgument("cycle_length must be greater than zero."));
 
-    const Tensor* block_length_t;
-    OP_REQUIRES_OK(ctx, ctx->input("block_length", &block_length_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(block_length_t->shape()),
-                errors::InvalidArgument("block_length must be a scalar."));
-    const int64 block_length = block_length_t->flat<int64>()(0);
+    int64 block_length = 0;
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument(ctx, "block_length", &block_length));
     OP_REQUIRES(
         ctx, block_length > 0,
         errors::InvalidArgument("block_length must be greater than zero."));
