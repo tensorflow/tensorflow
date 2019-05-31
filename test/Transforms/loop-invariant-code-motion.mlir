@@ -113,7 +113,7 @@ func @invariant_code_inside_affine_if() {
 }
 
 
-func @nested_loops_with_common_and_uncommon_invariant_code() {
+func @dependent_stores() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
   %cf8 = constant 8.0 : f32
@@ -122,7 +122,7 @@ func @nested_loops_with_common_and_uncommon_invariant_code() {
     %v0 = addf %cf7, %cf8 : f32
     affine.for %i1 = 0 to 10 {
       %v1 = addf %cf7, %cf7 : f32
-      store %v0, %m[%i1] : memref<10xf32>
+      store %v1, %m[%i1] : memref<10xf32>
       store %v0, %m[%i0] : memref<10xf32>
     }
   }
@@ -133,9 +133,97 @@ func @nested_loops_with_common_and_uncommon_invariant_code() {
   // CHECK-NEXT: %1 = addf %cst, %cst_0 : f32
   // CHECK-NEXT: %2 = addf %cst, %cst : f32
   // CHECK-NEXT: affine.for %i0 = 0 to 10 {
-  // CHECK-NEXT: store %1, %0[%i0] : memref<10xf32>
+  
+  // CHECK-NEXT: affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT:   store %2, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT:   store %1, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+func @independent_stores() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+  %cf8 = constant 8.0 : f32
+
+  affine.for %i0 = 0 to 10 {
+    %v0 = addf %cf7, %cf8 : f32
+    affine.for %i1 = 0 to 10 {
+      %v1 = addf %cf7, %cf7 : f32
+      store %v0, %m[%i0] : memref<10xf32>
+      store %v1, %m[%i1] : memref<10xf32>
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 7.000000e+00 : f32
+  // CHECK-NEXT: %cst_0 = constant 8.000000e+00 : f32
+  // CHECK-NEXT: %1 = addf %cst, %cst_0 : f32
+  // CHECK-NEXT: %2 = addf %cst, %cst : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:   affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT:     store %1, %0[%i0] : memref<10xf32> 
+  // CHECK-NEXT:     store %2, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+func @load_dependent_store() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+  %cf8 = constant 8.0 : f32
+
+  affine.for %i0 = 0 to 10 {
+    %v0 = addf %cf7, %cf8 : f32
+    affine.for %i1 = 0 to 10 {
+      %v1 = addf %cf7, %cf7 : f32
+      store %v0, %m[%i1] : memref<10xf32>
+      %v2 = load %m[%i0] : memref<10xf32>
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 7.000000e+00 : f32
+  // CHECK-NEXT: %cst_0 = constant 8.000000e+00 : f32
+  // CHECK-NEXT: %1 = addf %cst, %cst_0 : f32
+  // CHECK-NEXT: %2 = addf %cst, %cst : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
   // CHECK-NEXT: affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   store %1, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT:   %3 = load %0[%i0] : memref<10xf32> 
+  // CHECK-NEXT:  }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+func @load_after_load() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+  %cf8 = constant 8.0 : f32
+
+  affine.for %i0 = 0 to 10 {
+    %v0 = addf %cf7, %cf8 : f32
+    affine.for %i1 = 0 to 10 {
+      %v1 = addf %cf7, %cf7 : f32
+      %v3 = load %m[%i1] : memref<10xf32>
+      %v2 = load %m[%i0] : memref<10xf32>
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 7.000000e+00 : f32
+  // CHECK-NEXT: %cst_0 = constant 8.000000e+00 : f32
+  // CHECK-NEXT: %1 = addf %cst, %cst_0 : f32
+  // CHECK-NEXT: %2 = addf %cst, %cst : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT: %3 = load %0[%i0] : memref<10xf32> 
+  // CHECK-NEXT: affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT: %4 = load %0[%i1] : memref<10xf32> 
   // CHECK-NEXT:  }
   // CHECK-NEXT: }
   // CHECK-NEXT: return
@@ -168,22 +256,274 @@ func @invariant_affine_if() {
   return
 }
 
-func @invariant_constant_and_load() {
-  %m = alloc() : memref<100xf32>
-  affine.for %i0 = 0 to 5 {
-    %c0 = constant 0 : index
-    %v = load %m[%c0] : memref<100xf32>
-    store %v, %m[%i0] : memref<100xf32>
+func @invariant_affine_if2() {
+  %m = alloc() : memref<10xf32>
+  %cf8 = constant 8.0 : f32
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+          %cf9 = addf %cf8, %cf8 : f32
+          store %cf9, %m[%i1] : memref<10xf32>
+
+      }
+    }
   }
 
-  // CHECK: %0 = alloc() : memref<100xf32>
-  // CHECK-NEXT: %c0 = constant 0 : index
-  // CHECK-NEXT: %1 = load %0[%c0] : memref<100xf32>
-  // CHECK-NEXT: affine.for %i0 = 0 to 5 {
-  // CHECK-NEXT:  store %1, %0[%i0] : memref<100xf32>
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT: affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: %1 = addf %cst, %cst : f32
+  // CHECK-NEXT: store %1, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
   // CHECK-NEXT: }
   // CHECK-NEXT: return
 
   return
 }
 
+func @invariant_affine_nested_if() {
+  %m = alloc() : memref<10xf32>
+  %cf8 = constant 8.0 : f32
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+          %cf9 = addf %cf8, %cf8 : f32
+          store %cf9, %m[%i0] : memref<10xf32>
+          affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+            store %cf9, %m[%i1] : memref<10xf32>
+          }
+      }
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT: affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: %1 = addf %cst, %cst : f32
+  // CHECK-NEXT: store %1, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: store %1, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+func @invariant_affine_nested_if_else() {
+  %m = alloc() : memref<10xf32>
+  %cf8 = constant 8.0 : f32
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+          %cf9 = addf %cf8, %cf8 : f32
+          store %cf9, %m[%i0] : memref<10xf32>
+          affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+            store %cf9, %m[%i0] : memref<10xf32>
+          } else {
+            store %cf9, %m[%i1] : memref<10xf32>
+          }
+      }
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT: affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: %1 = addf %cst, %cst : f32
+  // CHECK-NEXT: store %1, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: store %1, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: } else {
+  // CHECK-NEXT: store %1, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+func @invariant_affine_nested_if_else2() {
+  %m = alloc() : memref<10xf32>
+  %m2 = alloc() : memref<10xf32>
+  %cf8 = constant 8.0 : f32
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+          %cf9 = addf %cf8, %cf8 : f32
+          %tload1 = load %m[%i0] : memref<10xf32>
+          affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+            store %cf9, %m2[%i0] : memref<10xf32>
+          } else {
+            %tload2 = load %m[%i0] : memref<10xf32>
+          }
+      }
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %1 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: %2 = addf %cst, %cst : f32
+  // CHECK-NEXT: %3 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: store %2, %1[%i0] : memref<10xf32>
+  // CHECK-NEXT: } else {
+  // CHECK-NEXT: %4 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+
+func @invariant_affine_nested_if2() {
+  %m = alloc() : memref<10xf32>
+  %cf8 = constant 8.0 : f32
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+          %cf9 = addf %cf8, %cf8 : f32
+          %v1 = load %m[%i0] : memref<10xf32>
+          affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+            %v2 = load %m[%i0] : memref<10xf32>
+          }
+      }
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: %1 = addf %cst, %cst : f32
+  // CHECK-NEXT: %2 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: %3 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+func @invariant_affine_for_inside_affine_if() {
+  %m = alloc() : memref<10xf32>
+  %cf8 = constant 8.0 : f32
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.if (d0, d1) : (d1 - d0 >= 0) (%i0, %i0) {
+          %cf9 = addf %cf8, %cf8 : f32
+          store %cf9, %m[%i0] : memref<10xf32>
+          affine.for %i2 = 0 to 10 {
+            store %cf9, %m[%i2] : memref<10xf32>
+          }
+      }
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT: affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT: affine.if #set0(%i0, %i0) {
+  // CHECK-NEXT: %1 = addf %cst, %cst : f32
+  // CHECK-NEXT: store %1, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: affine.for %i2 = 0 to 10 {
+  // CHECK-NEXT: store %1, %0[%i2] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+
+func @invariant_constant_and_load() {
+  %m = alloc() : memref<100xf32>
+  %m2 = alloc() : memref<100xf32>
+  affine.for %i0 = 0 to 5 {
+    %c0 = constant 0 : index
+    %v = load %m2[%c0] : memref<100xf32>
+    store %v, %m[%i0] : memref<100xf32>
+  }
+
+  // CHECK: %0 = alloc() : memref<100xf32>
+  // CHECK-NEXT: %1 = alloc() : memref<100xf32>
+  // CHECK-NEXT: %c0 = constant 0 : index
+  // CHECK-NEXT: %2 = load %1[%c0] : memref<100xf32>
+  // CHECK-NEXT: affine.for %i0 = 0 to 5 {
+  // CHECK-NEXT:  store %2, %0[%i0] : memref<100xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+
+func @nested_load_store_same_memref() {
+  %m = alloc() : memref<10xf32>
+  %cst = constant 8.0 : f32
+  %c0 = constant 0 : index
+   affine.for %i0 = 0 to 10 {
+    %v0 = load %m[%c0] : memref<10xf32>
+    affine.for %i1 = 0 to 10 {
+      store %cst, %m[%i1] : memref<10xf32>
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: %c0 = constant 0 : index
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:  %1 = load %0[%c0] : memref<10xf32>
+  // CHECK-NEXT:   affine.for %i1 = 0 to 10 {
+  // CHECK-NEXT:    store %cst, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+
+func @nested_load_store_same_memref2() {
+  %m = alloc() : memref<10xf32>
+  %cst = constant 8.0 : f32
+  %c0 = constant 0 : index
+   affine.for %i0 = 0 to 10 {
+     store %cst, %m[%c0] : memref<10xf32>
+      affine.for %i1 = 0 to 10 {
+        %v0 = load %m[%i0] : memref<10xf32>
+    }
+  }
+
+  // CHECK: %0 = alloc() : memref<10xf32>
+  // CHECK-NEXT: %cst = constant 8.000000e+00 : f32
+  // CHECK-NEXT: %c0 = constant 0 : index
+  // CHECK-NEXT: affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%c0] : memref<10xf32>
+  // CHECK-NEXT:   %1 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
