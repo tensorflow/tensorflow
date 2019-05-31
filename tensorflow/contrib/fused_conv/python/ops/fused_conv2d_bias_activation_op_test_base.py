@@ -318,28 +318,29 @@ class FusedConv2DBiasActivationTest(object):
       tensors = []
       ref_tensors = []
       for (data_format, use_gpu) in _GetTestConfigs():
-        for dtype in self._DtypesToTest(use_gpu):
-          for filter_format in self._FilterFormatsToTest(use_gpu):
-            result, expected = self._SetupValuesForDevice(
-                tensor_in_sizes, filter_in_sizes, bias, strides, padding,
-                "Relu", data_format, filter_format, dtype)
-          tensors.append(result)
-          ref_tensors.append(expected)
+        with ops.device("/gpu:0" if use_gpu else "/cpu:0"):
+          for dtype in self._DtypesToTest(use_gpu):
+            for filter_format in self._FilterFormatsToTest(use_gpu):
+              result, expected = self._SetupValuesForDevice(
+                  tensor_in_sizes, filter_in_sizes, bias, strides, padding,
+                  "Relu", data_format, filter_format, dtype)
+            tensors.append(result)
+            ref_tensors.append(expected)
 
-          values = sess.run(tensors)
-          ref_values = sess.run(ref_tensors)
-          for i in range(len(tensors)):
-            conv = tensors[i]
-            value = values[i]
-            ref_value = ref_values[i]
-            tf_logging.info("expected = %s", ref_value)
-            tf_logging.info("actual = %s", value)
-            tol = 1e-5
-            if value.dtype == np.float16:
-              tol = 1e-3
-            self.assertAllClose(
-                np.ravel(ref_value), np.ravel(value), atol=tol, rtol=tol)
-            self.assertShapeEqual(value, conv)
+            values = sess.run(tensors)
+            ref_values = sess.run(ref_tensors)
+            for i in range(len(tensors)):
+              conv = tensors[i]
+              value = values[i]
+              ref_value = ref_values[i]
+              tf_logging.info("expected = %s", ref_value)
+              tf_logging.info("actual = %s", value)
+              tol = 1e-5
+              if value.dtype == np.float16:
+                tol = 1e-3
+              self.assertAllClose(
+                  np.ravel(ref_value), np.ravel(value), atol=tol, rtol=tol)
+              self.assertShapeEqual(value, conv)
 
   def testConv2D1x1Filter(self, gpu_only=True):
     if gpu_only and not test.is_gpu_available():
