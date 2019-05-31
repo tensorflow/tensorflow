@@ -436,7 +436,7 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
-@tf_export("math.normalize", "linalg.normalize", "nn.normalize")
+@tf_export("linalg.normalize")
 def normalize(tensor,
               ord='euclidean',
               axis=None,
