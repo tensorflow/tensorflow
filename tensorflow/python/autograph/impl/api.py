@@ -476,7 +476,7 @@ def converted_call(f, owner, options, args, kwargs):
       raise
     logging.warn(
         'Entity %s could not be transformed and will be executed as-is.'
-        ' Please report this to the AutgoGraph team. When filing the bug, set'
+        ' Please report this to the AutoGraph team. When filing the bug, set'
         ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
         ' attach the full output. Cause: %s', target_entity, e)
     return _call_unconverted(f, args, kwargs)
