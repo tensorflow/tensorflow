@@ -475,6 +475,10 @@ def convert_to_generator_like(data,
     return data, steps_per_epoch
   if isinstance(data, dataset_ops.DatasetV2):
     return dataset_ops.make_one_shot_iterator(data), steps_per_epoch
+  
+  # support any iterable
+  if (not hasattr(nest.flatten(data)[0], 'shape')) and hasattr(data, '__iter__'):
+    return iter(data), steps_per_epoch
 
   # Create generator from NumPy or EagerTensor Input.
   num_samples = int(nest.flatten(data)[0].shape[0])
