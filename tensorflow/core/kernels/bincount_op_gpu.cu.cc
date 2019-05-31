@@ -103,8 +103,8 @@ struct BincountFunctor<GPUDevice, T> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != gpuSuccess) {
-      return errors::Internal("Could not launch HistogramEven: ",
-                              GpuGetErrorString(err), ".");
+      return errors::Internal(
+          "Could not launch HistogramEven: ", GpuGetErrorString(err), ".");
     }
     return Status::OK();
   }

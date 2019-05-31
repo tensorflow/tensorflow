@@ -635,6 +635,7 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
                                     [value](double a) { return a + value; });
 }
 #endif
+
 // GpuAtomicAdd
 // Specializations of GpuAtomicAdd for complex types, which GpuAtomicAdd does
 // not support. We treat a std::complex<T>* as a T* (the C++ standard section

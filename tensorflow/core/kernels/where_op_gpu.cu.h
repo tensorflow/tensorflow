@@ -187,8 +187,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
       return errors::Internal(
           "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to count "
           "number of true / nonzero indices.  temp_storage_bytes: ",
-          temp_storage_bytes, ", status: ",
-          GpuGetErrorString(second_success));
+          temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
     }
 
     return Status::OK();
