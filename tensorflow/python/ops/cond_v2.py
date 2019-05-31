@@ -510,7 +510,7 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
         raise TypeError(
             "Cannot reconcile {op_name} {output_idx}-th outputs:\n"
             "  outputs from all branches: {outputs}".format(
-                op_name="tf.cond" if op_type == _COND else "tf.case",
+                op_name="tf.cond" if op_type == _COND else "tf.switch_case",
                 output_idx=output_idx,
                 outputs=branch_outs))
 
@@ -534,9 +534,9 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
   for output_idx, branch_outs in enumerate(
       zip(*branch_outputs_flat_with_composites)):
     if len(set(isinstance(out, ops.IndexedSlices) for out in branch_outs)) != 1:
-      raise TypeError("Cannot reconcile {op_name} {output_idx}-th outputs:\n"
+      raise TypeError("Cannot reconcile tf.{op_name} {output_idx}-th outputs:\n"
                       "  branches returned: {outputs}".format(
-                          op_name="tf.cond" if op_type == _COND else "tf.case",
+                          op_name="cond" if op_type == _COND else "switch_case",
                           output_idx=output_idx,
                           outputs=branch_outs))
     if isinstance(branch_outs[0], ops.IndexedSlices):
@@ -632,7 +632,7 @@ def _check_same_outputs(op_type, graphs):
             b0_name="true_fn" if op_type == _COND else "branches[0]",
             bn_name=("false_fn" if op_type == _COND else
                      "branches[{}]".format(branch_idx)),
-            op_name="tf.cond" if op_type == _COND else "tf.case",
+            op_name="tf.cond" if op_type == _COND else "tf.switch_case",
             b0_out=graphs[0].structured_outputs,
             bn_out=graphs[branch_idx].structured_outputs,
             detail=error_detail))
@@ -817,8 +817,8 @@ def indexed_case(branch_index, branch_fns, name="indexed_case"):
 
 @ops.RegisterGradient("Case")
 def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
-  """The gradient of a Case op produced (w/ branch_index) by tf.case."""
-  # Get the if operator (this logic handles the case where op is a MockOp)
+  """The gradient of a Case op produced by tf.switch_case."""
+  # Get the Case operator (this logic handles the case where op is a MockOp)
   case_op = op.outputs[0].op
   branch_graphs = _get_func_graphs(case_op)
   assert branch_graphs
@@ -892,7 +892,7 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
   _make_output_composite_tensors_match(_CASE, branch_grad_graphs)
 
   outputs = _build_case(case_op.inputs[0], branch_grad_graphs,
-                        branches_grad_inputs)
+                        branches_grad_inputs, name="gradient")
 
   # The predicate has no gradient.
   return [None] + outputs
@@ -935,14 +935,13 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
         output_shapes=_get_output_shapes(*[g.outputs for g in branch_graphs]),
         name=name)
 
-  # TODO(b/110167197) this requires Case to have at least 1 output
+  # TODO(b/110167197): this requires Case to have at least 1 output
   case_op = tensors[0].op
-  # TODO(b/131304144): Enable lowering Case to SwitchN/Merge for graph mode.
-  # util.maybe_set_lowering_attr(case_op)
+  util.maybe_set_lowering_attr(case_op)
   util.maybe_propagate_compile_time_consts_in_xla(case_op)
 
   # Return identities for each output of the Case op, rather than the output of
-  # the Case op directly. This makes pruning work if the output of select_case()
+  # the Case op directly. This makes pruning work if the output of switch_case()
   # is fetched: the lowering pass converts the Case outputs into IdentityN
   # outputs, which if fetched will cause all ops in the taken branch to be run
   # (since it takes all merge ops as input). After lowering, each output

@@ -195,6 +195,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "StridedSlice",
                                           "StridedSliceGrad",
                                           "Switch",
+                                          "_SwitchN",
                                           "Tile",
                                           "TruncateDiv",
                                           "TruncateMod",
@@ -1943,7 +1944,15 @@ class SwitchProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
-  std::set<int> GetOutputPos() const override { return {0, 1}; }
+  std::set<int> GetOutputPos() const override {
+    std::set<int> output_pos;
+    const int num_outs =
+        node_->attr().count("num_outs") ? node_->attr().at("num_outs").i() : 2;
+    for (int i = 0; i < num_outs; i++) {
+      output_pos.insert(i);
+    }
+    return output_pos;
+  }
 };
 
 class TileProcessor : public AgnosticNodeProcessor {
