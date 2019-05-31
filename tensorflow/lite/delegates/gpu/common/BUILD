@@ -75,6 +75,7 @@ cc_library(
         ":tensor",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
@@ -88,6 +89,8 @@ cc_test(
     srcs = ["model_builder_test.cc"],
     deps = [
         ":model_builder",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
         "@com_google_googletest//:gtest_main",
     ],
