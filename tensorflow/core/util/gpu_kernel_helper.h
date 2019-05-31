@@ -53,7 +53,18 @@ using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
 
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
+// macro wrapper to declare dynamic shared memory
+#if GOOGLE_CUDA
+
+#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
+  extern __shared__ __align__(ALIGN) TYPE NAME[]
+
+#elif TENSORFLOW_USE_ROCM
+
+#define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
+  HIP_DYNAMIC_SHARED(TYPE, NAME)
+
+#endif
 
 namespace tensorflow {
 // Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
