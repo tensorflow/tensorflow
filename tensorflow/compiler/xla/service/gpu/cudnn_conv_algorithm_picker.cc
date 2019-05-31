@@ -243,6 +243,59 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   return result_or;
 }
 
+// Unimplemented for integers yet.
+template <typename T, typename Generator>
+typename std::enable_if<std::is_integral<T>::value, T>::type
+UniformDistribution(T lhs, T rhs, Generator* gen) = delete;
+
+template <typename T, typename Generator>
+typename std::enable_if<std::is_floating_point<T>::value, T>::type
+UniformDistribution(T lhs, T rhs, Generator* gen) {
+  return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
+}
+
+template <typename T>
+void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer) {
+  static_assert(
+      std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
+      "Unimplemented for integers yet.");
+
+  // Accesses to static variables are not locked, since the caller is already
+  // in a critical section.
+  static std::vector<T>* host_buffer = [] {
+    // Use a large prime number to fragment the accesses.
+    auto* ret = new std::vector<T>(10069);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    for (auto& element : *ret) {
+      using RandomType =
+          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
+                                    T>::type;
+      element = T(UniformDistribution(RandomType(0), RandomType(1), &gen));
+    }
+    return ret;
+  }();
+  static int64 host_index = 0;
+
+  char* current_addr = static_cast<char*>(buffer.opaque());
+  CHECK_EQ(0, buffer.size() % sizeof(T));
+  int64 elements_left = buffer.size() / sizeof(T);
+  while (elements_left > 0) {
+    CHECK_LE(host_index, host_buffer->size());
+    if (host_buffer->size() == host_index) {
+      host_index = 0;
+    }
+    int64 elements_copied =
+        std::min<int64>(host_buffer->size() - host_index, elements_left);
+    DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
+    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
+                       elements_copied * sizeof(T));
+    current_addr += elements_copied * sizeof(T);
+    elements_left -= elements_copied;
+    host_index += elements_copied;
+  }
+}
+
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction* instr) {
   XLA_SCOPED_LOGGING_TIMER(
@@ -275,38 +328,16 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   const auto initialize_buffer = [&stream,
                                   &result_shape](DeviceMemoryBase buffer) {
-    constexpr float kBroadcastedConstant = 0.1f;
     switch (result_shape.element_type()) {
-      case xla::F16: {
-        // Broadcast a constant to the buffer, instead of zeroing the buffer. A
-        // non-zero constant is useful for the cross checking, because
-        // zero-inputs may not always reveal the bugs.
-        CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
-        size_t left_over_bytes = buffer.size() % 4;
-        CHECK_EQ(0, left_over_bytes % 2);
-
-        static const Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
-                                             Eigen::half(kBroadcastedConstant)};
-        uint32 bits;
-        static_assert(sizeof(bits) == sizeof(halfs), "");
-        memcpy(&bits, halfs, sizeof(bits));
-
-        size_t aligned_size = buffer.size() / 4 * 4;
-        stream.ThenMemset32(&buffer, bits, aligned_size);
-
-        DeviceMemoryBase left_over(
-            static_cast<char*>(buffer.opaque()) + aligned_size,
-            left_over_bytes);
-        stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
+      case xla::F16:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer));
         break;
-      }
-      case xla::F32: {
-        uint32 bits;
-        memcpy(&bits, &kBroadcastedConstant, sizeof(bits));
-        stream.ThenMemset32(&buffer, bits, buffer.size());
+      case xla::F32:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer));
         break;
-      }
-      // TODO(timshen): populate non-zero data for f64.
+      case xla::F64:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer));
+        break;
       default:
         stream.ThenMemZero(&buffer, buffer.size());
     }
