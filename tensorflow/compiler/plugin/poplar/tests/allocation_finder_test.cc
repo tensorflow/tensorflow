@@ -1025,7 +1025,7 @@ _pop_op_conv_biasadd {
   arg_0 = f16[1,16,16,4] parameter(0)
   arg_1 = f16[4] parameter(1)
   bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
-  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+  ROOT add = f16[1,16,16,4] add(arg_0, bcast)
 }
 
 ENTRY c1 {
@@ -1036,7 +1036,7 @@ ENTRY c1 {
   conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
   call = f16[1,16,16,64] fusion(conv, p2), kind=kCustom, calls=_pop_op_conv_biasadd
 
-  ROOT t = (f16[1,16,16,4]) tuple(%call)
+  ROOT t = (f16[1,16,16,4]) tuple(call)
 }
 
 )";
@@ -1100,14 +1100,14 @@ _pop_op_conv_biasadd {
   arg_0 = f16[1,16,16,4] parameter(0)
   arg_1 = f16[4] parameter(1)
   bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
-  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+  ROOT add = f16[1,16,16,4] add(arg_0, bcast)
 }
 
 _pop_op_conv_biasadd.1 {
   arg_0 = f16[1,16,16,4] parameter(0)
   arg_1 = f16[4] parameter(1)
   bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
-  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+  ROOT add = f16[1,16,16,4] add(arg_0, bcast)
 }
 
 ENTRY c1 {
@@ -1195,10 +1195,10 @@ TEST_F(AllocationFinderTest, BiasAddWithPath) {
 HloModule top
 
 _pop_op_conv_biasadd {
-  %arg_0 = f16[1,16,16,4] parameter(0)
-  %arg_1 = f16[4] parameter(1)
+  arg_0 = f16[1,16,16,4] parameter(0)
+  arg_1 = f16[4] parameter(1)
   bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
-  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+  ROOT add = f16[1,16,16,4] add(arg_0, bcast)
 }
 
 ENTRY c1 {
@@ -1276,19 +1276,19 @@ TEST_F(AllocationFinderTest, MatMulBiasAdd) {
   std::string hlo = R"(
 HloModule top
 
- %_pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
-   %arg_1 = f32[2] parameter(1)
-   %broadcast.12.7.clone = f32[2,2] broadcast(%arg_1), dimensions={1}
-   %arg_0 = f32[2,2] parameter(0)
-   ROOT %add.12.8.clone = f32[2,2] add(f32[2,2] %arg_0, f32[2,2] %broadcast.12.7.clone)
+ _pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
+   arg_1 = f32[2] parameter(1)
+   broadcast.12.7.clone = f32[2,2] broadcast(arg_1), dimensions={1}
+   arg_0 = f32[2,2] parameter(0)
+   ROOT add.12.8.clone = f32[2,2] add(f32[2,2] arg_0, f32[2,2] broadcast.12.7.clone)
  }
 
- ENTRY %c (arg0.12.0: f32[2,2], arg1.12.1: f32[2,2], arg2.12.2: f32[2]) -> f32[2,2] {
-   %arg0.12.0 = f32[2,2] parameter(0)
-   %arg1.12.1 = f32[2,2] parameter(1)
-   %dot.12.6 = f32[2,2] dot(f32[2,2] %arg0.12.0, f32[2,2] %arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-   %arg2.12.2 = f32[2] parameter(2), control-predecessors={%dot.12.6}
-   ROOT %call = f32[2,2] fusion(f32[2,2] %dot.12.6, %arg2.12.2), kind=kCustom, calls=%_pop_op_matmul_biasadd
+ ENTRY c (arg0.12.0: f32[2,2], arg1.12.1: f32[2,2], arg2.12.2: f32[2]) -> f32[2,2] {
+   arg0.12.0 = f32[2,2] parameter(0)
+   arg1.12.1 = f32[2,2] parameter(1)
+   dot.12.6 = f32[2,2] dot(f32[2,2] arg0.12.0, f32[2,2] arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+   arg2.12.2 = f32[2] parameter(2), control-predecessors={dot.12.6}
+   ROOT call = f32[2,2] fusion(f32[2,2] dot.12.6, arg2.12.2), kind=kCustom, calls=_pop_op_matmul_biasadd
  }
 
 )";
@@ -1353,19 +1353,19 @@ TEST_F(AllocationFinderTest,
   std::string hlo = R"(
 HloModule top
 
- %_pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
-   %arg_1 = f32[2] parameter(1)
-   %broadcast.12.7.clone = f32[2,2] broadcast(%arg_1), dimensions={1}
-   %arg_0 = f32[2,2] parameter(0)
-   ROOT %add.12.8.clone = f32[2,2] add(f32[2,2] %arg_0, f32[2,2] %broadcast.12.7.clone)
+ _pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
+   arg_1 = f32[2] parameter(1)
+   broadcast.12.7.clone = f32[2,2] broadcast(arg_1), dimensions={1}
+   arg_0 = f32[2,2] parameter(0)
+   ROOT add.12.8.clone = f32[2,2] add(arg_0, broadcast.12.7.clone)
  }
 
- ENTRY %c (arg0.12.0: f32[2,2], arg1.12.1: f32[2,2], arg2.12.2: f32[2]) -> f32[2,2] {
-   %arg0.12.0 = f32[2,2] parameter(0)
-   %arg1.12.1 = f32[2,2] parameter(1)
-   %arg2.12.2 = f32[2] parameter(2)
-   %dot.12.6 = f32[2,2] dot(f32[2,2] %arg0.12.0, f32[2,2] %arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, control-predecessors={%arg2.12.2}
-   ROOT %call = f32[2,2] fusion(f32[2,2] %dot.12.6, %arg2.12.2), kind=kCustom, calls=%_pop_op_matmul_biasadd
+ ENTRY c {
+   arg0.12.0 = f32[2,2] parameter(0)
+   arg1.12.1 = f32[2,2] parameter(1)
+   arg2.12.2 = f32[2] parameter(2)
+   dot.12.6 = f32[2,2] dot(arg0.12.0, arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, control-predecessors={arg2.12.2}
+   ROOT call = f32[2,2] fusion(dot.12.6, arg2.12.2), kind=kCustom, calls=_pop_op_matmul_biasadd
  }
 )";
 
@@ -1415,20 +1415,20 @@ TEST_F(AllocationFinderTest, MatMulBiasAddWithPath) {
   std::string hlo = R"(
 HloModule top
 
- %_pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
-   %arg_1 = f32[2] parameter(1)
-   %broadcast.12.7.clone = f32[2,2] broadcast(%arg_1), dimensions={1}
-   %arg_0 = f32[2,2] parameter(0)
-   ROOT %add.12.8.clone = f32[2,2] add(%arg_0, %broadcast.12.7.clone)
+ _pop_op_matmul_biasadd  {
+   arg_1 = f32[2] parameter(1)
+   broadcast.12.7.clone = f32[2,2] broadcast(arg_1), dimensions={1}
+   arg_0 = f32[2,2] parameter(0)
+   ROOT add.12.8.clone = f32[2,2] add(arg_0, broadcast.12.7.clone)
  }
 
- ENTRY %c (arg0.12.0: f32[2,2], arg1.12.1: f32[2,2], arg2.12.2: f32[1,2]) -> f32[2,2] {
-   %arg0.12.0 = f32[2,2] parameter(0)
-   %arg1.12.1 = f32[2,2] parameter(1)
-   %dot.12.6 = f32[2,2] dot(%arg0.12.0, %arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-   %arg2.12.2 = f32[1,2] parameter(2), control-predecessors={%dot.12.6}
-   %p2_r = f32[2] reshape(%arg2.12.2)
-   ROOT %call = f32[2,2] fusion(%dot.12.6, %p2_r), kind=kCustom, calls=%_pop_op_matmul_biasadd
+ ENTRY c {
+   arg0.12.0 = f32[2,2] parameter(0)
+   arg1.12.1 = f32[2,2] parameter(1)
+   dot.12.6 = f32[2,2] dot(arg0.12.0, arg1.12.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+   arg2.12.2 = f32[1,2] parameter(2), control-predecessors={dot.12.6}
+   p2_r = f32[2] reshape(arg2.12.2)
+   ROOT call = f32[2,2] fusion(dot.12.6, p2_r), kind=kCustom, calls=_pop_op_matmul_biasadd
  }
 
 )";
@@ -1493,13 +1493,13 @@ TEST_F(AllocationFinderTest, BatchNormInfParams) {
   std::string hlo = R"(
 HloModule top
 
-ENTRY %top (arg0.36.22: f32[1,4,4,2], arg2.36.24: f32[2], arg3.36.25: f32[2], arg4.36.26: f32[2], arg5.36.27: f32[2]) -> f32[1,4,4,2] {
- %arg0.36.22 = f32[1,4,4,2] parameter(0)
- %arg1.36.24 = f32[2] parameter(1)
- %arg2.36.25 = f32[2] parameter(2)
- %arg3.36.26 = f32[2] parameter(3)
- %arg4.36.27 = f32[2] parameter(4)
- ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%arg0.36.22, %arg1.36.24, %arg2.36.25, %arg3.36.26, %arg4.36.27), epsilon=0.001, feature_index=3
+ENTRY top {
+ arg0.36.22 = f32[1,4,4,2] parameter(0)
+ arg1.36.24 = f32[2] parameter(1)
+ arg2.36.25 = f32[2] parameter(2)
+ arg3.36.26 = f32[2] parameter(3)
+ arg4.36.27 = f32[2] parameter(4)
+ ROOT batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(arg0.36.22, arg1.36.24, arg2.36.25, arg3.36.26, arg4.36.27), epsilon=0.001, feature_index=3
 }
 
 )";
@@ -1553,15 +1553,15 @@ TEST_F(AllocationFinderTest, ConstantInput) {
   std::string hlo = R"(
 HloModule top
 
-ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[2], arg3.36.25: f32[2], arg4.36.26: f32[2], arg5.36.27: f32[2]) -> f32[1,4,4,2] {
- %arg0.36.22 = f32[1,4,4,2] parameter(0)
- %arg1.36.23 = f32[1,1,2,2] parameter(1)
- %convolution.36.29 = f32[1,4,4,2] convolution(%arg0.36.22, %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f
- %arg2.36.24 = f32[2] constant({0.0, 1.1})
- %arg3.36.25 = f32[2] constant({0.0, 1.1})
- %arg4.36.26 = f32[2] parameter(2)
- %arg5.36.27 = f32[2] parameter(3)
- ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%convolution.36.29, %arg2.36.24, %arg3.36.25, %arg4.36.26, %arg5.36.27), epsilon=0.001, feature_index=3
+ENTRY top  {
+ arg0.36.22 = f32[1,4,4,2] parameter(0)
+ arg1.36.23 = f32[1,1,2,2] parameter(1)
+ convolution.36.29 = f32[1,4,4,2] convolution(arg0.36.22, arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f
+ arg2.36.24 = f32[2] constant({0.0, 1.1})
+ arg3.36.25 = f32[2] constant({0.0, 1.1})
+ arg4.36.26 = f32[2] parameter(2)
+ arg5.36.27 = f32[2] parameter(3)
+ ROOT batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(convolution.36.29, arg2.36.24, arg3.36.25, arg4.36.26, arg5.36.27), epsilon=0.001, feature_index=3
 }
 
 )";
@@ -1633,17 +1633,17 @@ TEST_F(AllocationFinderTest, BatchNormInfParamsWithPath) {
   std::string hlo = R"(
 HloModule top
 
-ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[1,2], arg3.36.25: f32[1,2], arg4.36.26: f32[2], arg5.36.27: f32[2]) -> f32[1,4,4,2] {
- %arg0.36.22 = f32[1,4,4,2] parameter(0)
- %arg1.36.23 = f32[1,1,2,2] parameter(1)
- %convolution.36.29 = f32[1,4,4,2] convolution(%arg0.36.22, %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f
- %arg2.36.24 = f32[1,2] parameter(2)
- %arg2.36.24_r = f32[2] reshape(%arg2.36.24)
- %arg3.36.25 = f32[1,2] parameter(3)
- %arg3.36.25_r = f32[2] reshape(%arg3.36.25)
- %arg4.36.26 = f32[2] parameter(4)
- %arg5.36.27 = f32[2] parameter(5)
- ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%convolution.36.29, %arg2.36.24_r, %arg3.36.25_r, %arg4.36.26, %arg5.36.27), epsilon=0.001, feature_index=3
+ENTRY top {
+ arg0.36.22 = f32[1,4,4,2] parameter(0)
+ arg1.36.23 = f32[1,1,2,2] parameter(1)
+ convolution.36.29 = f32[1,4,4,2] convolution(arg0.36.22, arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f
+ arg2.36.24 = f32[1,2] parameter(2)
+ arg2.36.24_r = f32[2] reshape(arg2.36.24)
+ arg3.36.25 = f32[1,2] parameter(3)
+ arg3.36.25_r = f32[2] reshape(arg3.36.25)
+ arg4.36.26 = f32[2] parameter(4)
+ arg5.36.27 = f32[2] parameter(5)
+ ROOT batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(convolution.36.29, arg2.36.24_r, arg3.36.25_r, arg4.36.26, arg5.36.27), epsilon=0.001, feature_index=3
 }
 
 )";
@@ -1720,57 +1720,57 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 TEST_F(AllocationFinderTest, BatchNormTrainingParams) {
   std::string hlo = R"(
 HloModule top
-%Sum-reduction48 (x.48.45: f32[], y.48.46: f32[]) -> f32[] {
-  %x.48.45 = f32[] parameter(0)
-  %y.48.46 = f32[] parameter(1)
-  ROOT %add.48.47 = f32[] add(f32[] %x.48.45, f32[] %y.48.46)
+Sum-reduction48 {
+  x.48.45 = f32[] parameter(0)
+  y.48.46 = f32[] parameter(1)
+  ROOT add.48.47 = f32[] add(x.48.45, y.48.46)
 }
 
-%_pop_op_conv_scaled_inplace (arg_0: f32[1,1,2,2], arg_1: f32[1,4,4,2], arg_2: f32[1,4,4,2]) -> f32[1,1,2,2] {
-  %arg_1 = f32[1,4,4,2] parameter(1)
-  %arg_2 = f32[1,4,4,2] parameter(2)
-  %convolution.78.67.clone = f32[1,1,2,2] convolution(%arg_1, %arg_2), window={size=4x4}, dim_labels=f01b_i01o->01bf
-  %constant.78.28.clone = f32[] constant(0.1)
-  %broadcast.78.68.clone = f32[1,1,2,2] broadcast(f32[] %constant.78.28.clone), dimensions={}
-  %multiply.78.69.clone = f32[1,1,2,2] multiply(%convolution.78.67.clone, %broadcast.78.68.clone)
-  %arg_0 = f32[1,1,2,2] parameter(0)
-  ROOT %subtract.78.70.clone = f32[1,1,2,2] subtract(%arg_0, %multiply.78.69.clone)
+_pop_op_conv_scaled_inplace {
+  arg_1 = f32[1,4,4,2] parameter(1)
+  arg_2 = f32[1,4,4,2] parameter(2)
+  convolution.78.67.clone = f32[1,1,2,2] convolution(arg_1, arg_2), window={size=4x4}, dim_labels=f01b_i01o->01bf
+  constant.78.28.clone = f32[] constant(0.1)
+  broadcast.78.68.clone = f32[1,1,2,2] broadcast(f32[] constant.78.28.clone), dimensions={}
+  multiply.78.69.clone = f32[1,1,2,2] multiply(convolution.78.67.clone, broadcast.78.68.clone)
+  arg_0 = f32[1,1,2,2] parameter(0)
+  ROOT subtract.78.70.clone = f32[1,1,2,2] subtract(arg_0, multiply.78.69.clone)
 }
 
-%_pop_op_wide_const () -> f32[1,4,4,2] {
-  %constant.78.29.clone = f32[] constant(1)
-  ROOT %broadcast.2.clone = f32[1,4,4,2] broadcast(f32[] %constant.78.29.clone), dimensions={}
+_pop_op_wide_const {
+  constant.78.29.clone = f32[] constant(1)
+  ROOT broadcast.2.clone = f32[1,4,4,2] broadcast(constant.78.29.clone), dimensions={}
 }
 
-%_pop_op_wide_const.1 () -> f32[2] {
-  %constant.78.28.clone.1 = f32[] constant(0.1)
-  ROOT %broadcast.78.64.clone = f32[2] broadcast(f32[] %constant.78.28.clone.1), dimensions={}
+_pop_op_wide_const.1 {
+  constant.78.28.clone.1 = f32[] constant(0.1)
+  ROOT broadcast.78.64.clone = f32[2] broadcast(constant.78.28.clone.1), dimensions={}
 }
 
-ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[2], arg3.78.25: f32[2]) -> (f32[], f32[1,1,2,2], f32[2], f32[2]) {
-  %constant.78.43 = f32[] constant(0)
-  %arg0.78.22 = f32[1,4,4,2] parameter(0)
-  %arg1.78.23 = f32[1,1,2,2] parameter(1)
-  %convolution.78.33 = f32[1,4,4,2] convolution(%arg0.78.22, %arg1.78.23), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %arg2.78.24 = f32[2] parameter(2)
-  %arg3.78.25 = f32[2] parameter(3)
-  %batch-norm-training.78.35 = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-training(%convolution.78.33, %arg2.78.24, %arg3.78.25), epsilon=0.001, feature_index=3
-  %get-tuple-element.78.36 = f32[1,4,4,2] get-tuple-element(%batch-norm-training.78.35), index=0
-  %reduce.78.49 = f32[] reduce(%get-tuple-element.78.36, %constant.78.43), dimensions={0,1,2,3}, to_apply=%Sum-reduction48
-  %call.1 = f32[1,4,4,2] fusion(), kind=kCustom, calls=%_pop_op_wide_const
-  %get-tuple-element.78.38 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[2]) %batch-norm-training.78.35), index=1
-  %get-tuple-element.78.39 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[2]) %batch-norm-training.78.35), index=2
-  %batch-norm-grad.78.54 = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-grad(%convolution.78.33, %arg2.78.24, %get-tuple-element.78.38, %get-tuple-element.78.39, %call.1), epsilon=0.001, feature_index=3
-  %get-tuple-element.78.55 = f32[1,4,4,2] get-tuple-element(%batch-norm-grad.78.54), index=0
-  %call = f32[1,1,2,2] fusion(%arg1.78.23, %arg0.78.22, %get-tuple-element.78.55), kind=kCustom, calls=%_pop_op_conv_scaled_inplace
-  %call.2 = f32[2] fusion(), kind=kCustom, calls=%_pop_op_wide_const.1
-  %get-tuple-element.78.56 = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[2]) %batch-norm-grad.78.54), index=1
-  %multiply.78.65 = f32[2] multiply(%call.2, %get-tuple-element.78.56)
-  %subtract.78.66 = f32[2] subtract(%arg2.78.24, %multiply.78.65)
-  %get-tuple-element.78.57 = f32[2] get-tuple-element(%batch-norm-grad.78.54), index=2
-  %multiply.78.62 = f32[2] multiply(%call.2, %get-tuple-element.78.57)
-  %subtract.78.63 = f32[2] subtract(%arg3.78.25, %multiply.78.62)
-  ROOT %tuple.78.77 = (f32[], f32[1,1,2,2], f32[2], f32[2]) tuple(%reduce.78.49, %call, %subtract.78.66, %subtract.78.63)
+ENTRY top {
+  constant.78.43 = f32[] constant(0)
+  arg0.78.22 = f32[1,4,4,2] parameter(0)
+  arg1.78.23 = f32[1,1,2,2] parameter(1)
+  convolution.78.33 = f32[1,4,4,2] convolution(arg0.78.22, arg1.78.23), window={size=1x1}, dim_labels=b01f_01io->b01f
+  arg2.78.24 = f32[2] parameter(2)
+  arg3.78.25 = f32[2] parameter(3)
+  batch-norm-training.78.35 = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-training(convolution.78.33, arg2.78.24, arg3.78.25), epsilon=0.001, feature_index=3
+  get-tuple-element.78.36 = f32[1,4,4,2] get-tuple-element(batch-norm-training.78.35), index=0
+  reduce.78.49 = f32[] reduce(get-tuple-element.78.36, constant.78.43), dimensions={0,1,2,3}, to_apply=Sum-reduction48
+  call.1 = f32[1,4,4,2] fusion(), kind=kCustom, calls=_pop_op_wide_const
+  get-tuple-element.78.38 = f32[2] get-tuple-element(batch-norm-training.78.35), index=1
+  get-tuple-element.78.39 = f32[2] get-tuple-element(batch-norm-training.78.35), index=2
+  batch-norm-grad.78.54 = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-grad(convolution.78.33, arg2.78.24, get-tuple-element.78.38, get-tuple-element.78.39, call.1), epsilon=0.001, feature_index=3
+  get-tuple-element.78.55 = f32[1,4,4,2] get-tuple-element(batch-norm-grad.78.54), index=0
+  call = f32[1,1,2,2] fusion(arg1.78.23, arg0.78.22, get-tuple-element.78.55), kind=kCustom, calls=_pop_op_conv_scaled_inplace
+  call.2 = f32[2] fusion(), kind=kCustom, calls=_pop_op_wide_const.1
+  get-tuple-element.78.56 = f32[2] get-tuple-element(batch-norm-grad.78.54), index=1
+  multiply.78.65 = f32[2] multiply(call.2, get-tuple-element.78.56)
+  subtract.78.66 = f32[2] subtract(arg2.78.24, multiply.78.65)
+  get-tuple-element.78.57 = f32[2] get-tuple-element(batch-norm-grad.78.54), index=2
+  multiply.78.62 = f32[2] multiply(call.2, get-tuple-element.78.57)
+  subtract.78.63 = f32[2] subtract(arg3.78.25, multiply.78.62)
+  ROOT tuple.78.77 = (f32[], f32[1,1,2,2], f32[2], f32[2]) tuple(reduce.78.49, call, subtract.78.66, subtract.78.63)
 }
 
 )";
@@ -1844,28 +1844,28 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
 }
 
 TEST_F(AllocationFinderTest, ForwardAllocationMultipleUsesOneTarget) {
-  // In this test we check that %arg2.36.24 still has a layout even though
+  // In this test we check that arg2.36.24 still has a layout even though
   // it has two targets but only one is a layout sensitive target.
   std::string hlo = R"(
 HloModule top
-%Sum-reduction48 (x.48.45: f32[2], y.48.46: f32[2]) -> f32[2] {
-  %x.48.45 = f32[2] parameter(0)
-  %y.48.46 = f32[2] parameter(1)
-  ROOT %add.48.47 = f32[2] add(f32[2] %x.48.45, f32[2] %y.48.46)
+Sum-reduction48 {
+  x.48.45 = f32[2] parameter(0)
+  y.48.46 = f32[2] parameter(1)
+  ROOT add.48.47 = f32[2] add(x.48.45, y.48.46)
 }
 
-ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[1,2], arg3.36.25: f32[1,2], arg4.36.26: f32[2], arg5.36.27: f32[2]) -> f32[2] {
- %arg0.36.22 = f32[1,4,4,2] parameter(0)
- %arg1.36.23 = f32[1,1,2,2] parameter(1)
- %convolution.36.29 = f32[1,4,4,2] convolution(f32[1,4,4,2] %arg0.36.22, f32[1,1,2,2] %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
- %arg2.36.24 = f32[1,2] parameter(2)
- %arg2.36.24_r = f32[2] reshape(%arg2.36.24)
- %arg3.36.25 = f32[1,2] parameter(3)
- %arg3.36.25_r = f32[2] reshape(%arg3.36.25)
- %arg4.36.26 = f32[2] parameter(4)
- %arg5.36.27 = f32[2] parameter(5)
- %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(f32[1,4,4,2] %convolution.36.29, f32[2] %arg2.36.24_r, f32[2] %arg3.36.25_r, f32[2] %arg4.36.26, f32[2] %arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
- ROOT %reduce.78.49 = f32[2] reduce(f32[1,4,4,2] %batch-norm-inference.36.31, f32[2] %arg2.36.24_r), dimensions={1,2,3}, to_apply=%Sum-reduction48, metadata={op_type="Sum" op_name="Sum"}
+ENTRY top {
+ arg0.36.22 = f32[1,4,4,2] parameter(0)
+ arg1.36.23 = f32[1,1,2,2] parameter(1)
+ convolution.36.29 = f32[1,4,4,2] convolution(arg0.36.22, arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
+ arg2.36.24 = f32[1,2] parameter(2)
+ arg2.36.24_r = f32[2] reshape(arg2.36.24)
+ arg3.36.25 = f32[1,2] parameter(3)
+ arg3.36.25_r = f32[2] reshape(arg3.36.25)
+ arg4.36.26 = f32[2] parameter(4)
+ arg5.36.27 = f32[2] parameter(5)
+ batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(convolution.36.29, arg2.36.24_r, arg3.36.25_r, arg4.36.26, arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
+ ROOT reduce.78.49 = f32[2] reduce(batch-norm-inference.36.31, arg2.36.24_r), dimensions={1,2,3}, to_apply=Sum-reduction48, metadata={op_type="Sum" op_name="Sum"}
 }
 
 )";
@@ -1949,30 +1949,30 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 
 TEST_F(AllocationFinderTest,
        ForwardAllocationMultipleUsesMultipleTargetsSamePriority) {
-  // In this test we check that %arg2.36.24 and %arg3.36.25 get a layout even
+  // In this test we check that arg2.36.24 and arg3.36.25 get a layout even
   // though they have multiple targets.
   std::string hlo = R"(
 HloModule top
-%Sum-reduction48 (x.48.45: f32[2], y.48.46: f32[2]) -> f32[2] {
-  %x.48.45 = f32[2] parameter(0)
-  %y.48.46 = f32[2] parameter(1)
-  ROOT %add.48.47 = f32[2] add(f32[2] %x.48.45, f32[2] %y.48.46)
+Sum-reduction48 {
+  x.48.45 = f32[2] parameter(0)
+  y.48.46 = f32[2] parameter(1)
+  ROOT add.48.47 = f32[2] add(x.48.45, y.48.46)
 }
 
-ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[1,2], arg3.36.25: f32[1,2], arg4.36.26: f32[2], arg5.36.27: f32[2], arg6.36.28: f32[1,4,4,2]) -> (f32[1,4,4,2], f32[1,4,4,2]) {
- %arg0.36.22 = f32[1,4,4,2] parameter(0)
- %arg1.36.23 = f32[1,1,2,2] parameter(1)
- %convolution.36.29 = f32[1,4,4,2] convolution(f32[1,4,4,2] %arg0.36.22, f32[1,1,2,2] %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
- %arg2.36.24 = f32[1,2] parameter(2)
- %arg2.36.24_r = f32[2] reshape(%arg2.36.24)
- %arg3.36.25 = f32[1,2] parameter(3)
- %arg3.36.25_r = f32[2] reshape(%arg3.36.25)
- %arg4.36.26 = f32[2] parameter(4)
- %arg5.36.27 = f32[2] parameter(5)
- %arg6.36.28 = f32[1,4,4,2] parameter(6)
- %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(f32[1,4,4,2] %convolution.36.29, f32[2] %arg2.36.24_r, f32[2] %arg3.36.25_r, f32[2] %arg4.36.26, f32[2] %arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
- %batch-norm-inference.36.32 = f32[1,4,4,2] batch-norm-inference(f32[1,4,4,2] %convolution.36.29, f32[2] %arg2.36.24_r, f32[2] %arg3.36.25_r, f32[2] %arg4.36.26, f32[2] %arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
- ROOT %tuple = (f32[1,4,4,2], f32[1,4,4,2]) tuple(f32[1,4,4,2] %batch-norm-inference.36.31, f32[1,4,4,2] %batch-norm-inference.36.32)
+ENTRY top {
+ arg0.36.22 = f32[1,4,4,2] parameter(0)
+ arg1.36.23 = f32[1,1,2,2] parameter(1)
+ convolution.36.29 = f32[1,4,4,2] convolution(arg0.36.22, arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
+ arg2.36.24 = f32[1,2] parameter(2)
+ arg2.36.24_r = f32[2] reshape(arg2.36.24)
+ arg3.36.25 = f32[1,2] parameter(3)
+ arg3.36.25_r = f32[2] reshape(arg3.36.25)
+ arg4.36.26 = f32[2] parameter(4)
+ arg5.36.27 = f32[2] parameter(5)
+ arg6.36.28 = f32[1,4,4,2] parameter(6)
+ batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(convolution.36.29, arg2.36.24_r, arg3.36.25_r, arg4.36.26, arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
+ batch-norm-inference.36.32 = f32[1,4,4,2] batch-norm-inference(convolution.36.29, arg2.36.24_r, arg3.36.25_r, arg4.36.26, arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
+ ROOT tuple = (f32[1,4,4,2], f32[1,4,4,2]) tuple(batch-norm-inference.36.31, batch-norm-inference.36.32)
 }
 
 )";
@@ -2059,30 +2059,30 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 
 TEST_F(AllocationFinderTest,
        ForwardAllocationMultipleUsesMultipleTargetsDifferentPriority) {
-  // In this test we check that %arg2.36.24 and %arg3.36.25 get a layout even
+  // In this test we check that arg2.36.24 and arg3.36.25 get a layout even
   // though they have multiple targets - layer norms have higher priority than
   // elementwise ops.
   std::string hlo = R"(
 HloModule top
-%Sum-reduction48 (x.48.45: f32[2], y.48.46: f32[2]) -> f32[2] {
-  %x.48.45 = f32[2] parameter(0)
-  %y.48.46 = f32[2] parameter(1)
-  ROOT %add.48.47 = f32[2] add(f32[2] %x.48.45, f32[2] %y.48.46)
+Sum-reduction48 {
+  x.48.45 = f32[2] parameter(0)
+  y.48.46 = f32[2] parameter(1)
+  ROOT add.48.47 = f32[2] add(x.48.45, y.48.46)
 }
 
-ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[1,2], arg3.36.25: f32[1,2], arg4.36.26: f32[2], arg5.36.27: f32[2]) -> (f32[1,4,4,2], f32[1,2]) {
- %arg0.36.22 = f32[1,4,4,2] parameter(0)
- %arg1.36.23 = f32[1,1,2,2] parameter(1)
- %convolution.36.29 = f32[1,4,4,2] convolution(f32[1,4,4,2] %arg0.36.22, f32[1,1,2,2] %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
- %arg2.36.24 = f32[1,2] parameter(2)
- %arg2.36.24_r = f32[2] reshape(%arg2.36.24)
- %arg3.36.25 = f32[1,2] parameter(3)
- %arg3.36.25_r = f32[2] reshape(%arg3.36.25)
- %arg4.36.26 = f32[2] parameter(4)
- %arg5.36.27 = f32[2] parameter(5)
- %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(f32[1,4,4,2] %convolution.36.29, f32[2] %arg2.36.24_r, f32[2] %arg3.36.25_r, f32[2] %arg4.36.26, f32[2] %arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
- %add = f32[1,2] add(f32[2] %arg2.36.24_r, f32[2] %arg3.36.25_r)
- ROOT %tuple = (f32[1,4,4,2], f32[1,2]) tuple(f32[1,4,4,2] %batch-norm-inference.36.31, f32[1,2] %add)
+ENTRY top {
+ arg0.36.22 = f32[1,4,4,2] parameter(0)
+ arg1.36.23 = f32[1,1,2,2] parameter(1)
+ convolution.36.29 = f32[1,4,4,2] convolution(arg0.36.22, arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
+ arg2.36.24 = f32[1,2] parameter(2)
+ arg2.36.24_r = f32[2] reshape(arg2.36.24)
+ arg3.36.25 = f32[1,2] parameter(3)
+ arg3.36.25_r = f32[2] reshape(arg3.36.25)
+ arg4.36.26 = f32[2] parameter(4)
+ arg5.36.27 = f32[2] parameter(5)
+ batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(convolution.36.29, arg2.36.24_r, arg3.36.25_r, arg4.36.26, arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
+ add = f32[1,2] add(arg2.36.24_r, arg3.36.25_r)
+ ROOT tuple = (f32[1,4,4,2], f32[1,2]) tuple(batch-norm-inference.36.31, add)
 }
 
 )";
@@ -2172,10 +2172,10 @@ TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayout) {
 HloModule top
 
 _pop_op_conv_biasadd {
-  %arg_0 = f16[1,16,16,4] parameter(0)
-  %arg_1 = f16[4] parameter(1)
+  arg_0 = f16[1,16,16,4] parameter(0)
+  arg_1 = f16[4] parameter(1)
   bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
-  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+  ROOT add = f16[1,16,16,4] add(arg_0, bcast)
 }
 
 ENTRY c1 {
@@ -2273,10 +2273,10 @@ TEST_F(AllocationFinderTest, ForwardAllocationDontLookThroughCasts) {
 HloModule top
 
 _pop_op_conv_biasadd {
-  %arg_0 = f16[1,16,16,4] parameter(0)
-  %arg_1 = f16[4] parameter(1)
+  arg_0 = f16[1,16,16,4] parameter(0)
+  arg_1 = f16[4] parameter(1)
   bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
-  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+  ROOT add = f16[1,16,16,4] add(arg_0, bcast)
 }
 
 ENTRY c1 {
@@ -2360,16 +2360,16 @@ TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayoutWithGTE) {
   // Check the layout is forwarded to the element wise op argument with a GTE.
   std::string hlo = R"(
 HloModule top
-ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f32[2], arg3: f32[2]) -> f32[2] {
-  %arg0 = f32[1,4,4,2] parameter(0)
-  %arg1 = f32[1,1,2,2] parameter(1)
-  %convolution = f32[1,4,4,2] convolution(f32[1,4,4,2] %arg0, f32[1,1,2,2] %arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %arg2 = f32[2] parameter(2)
-  %arg3 = f32[2] parameter(3)
-  %batch-norm-training = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-training(f32[1,4,4,2] %convolution, f32[2] %arg2, f32[2] %arg3), epsilon=0.001, feature_index=3
-  %get-tuple-element = f32[2] get-tuple-element((f32[1,4,4,2], f32[2], f32[2]) %batch-norm-training), index=2
-  %arg4 = f32[2] parameter(4)
-  ROOT %subtract = f32[2] subtract(%get-tuple-element, %arg4)
+ENTRY top {
+  arg0 = f32[1,4,4,2] parameter(0)
+  arg1 = f32[1,1,2,2] parameter(1)
+  convolution = f32[1,4,4,2] convolution(arg0, arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  arg2 = f32[2] parameter(2)
+  arg3 = f32[2] parameter(3)
+  batch-norm-training = (f32[1,4,4,2], f32[2], f32[2]) batch-norm-training(convolution, arg2, arg3), epsilon=0.001, feature_index=3
+  get-tuple-element = f32[2] get-tuple-element(batch-norm-training), index=2
+  arg4 = f32[2] parameter(4)
+  ROOT subtract = f32[2] subtract(get-tuple-element, arg4)
 }
 
 )";
@@ -2460,13 +2460,13 @@ TEST_F(AllocationFinderTest, ForwardAllocationCustomPoplibsOp) {
   // Check that the layout gets forwarded to a custom op.
   std::string hlo = R"(
 HloModule top
-ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f32[2], arg3: f32[2]) -> (f32[1,4,4,2], f32[2], f32[2]) {
-  %arg0 = f32[1,4,4,2] parameter(0)
-  %arg1 = f32[1,1,2,2] parameter(1)
-  %convolution = f32[1,4,4,2] convolution(f32[1,4,4,2] %arg0, f32[1,1,2,2] %arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %arg2 = f32[2] parameter(2)
-  %arg3 = f32[2] parameter(3)
-  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %convolution, f32[2] %arg2, f32[2] %arg3), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
+ENTRY top {
+  arg0 = f32[1,4,4,2] parameter(0)
+  arg1 = f32[1,1,2,2] parameter(1)
+  convolution = f32[1,4,4,2] convolution(arg0, arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  arg2 = f32[2] parameter(2)
+  arg3 = f32[2] parameter(3)
+  ROOT cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(convolution, arg2, arg3), custom_call_target="Popnn::GroupNormTraining", backend_config="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
 }
 
 )";
@@ -2543,33 +2543,33 @@ TEST_F(AllocationFinderTest, FindInfeedAllocation) {
   std::string hlo = R"(
 HloModule top
 
-%Sum-reduction.7 (x.8: f32[], y.9: f32[]) -> f32[] {
-  %x.8 = f32[] parameter(0)
-  %y.9 = f32[] parameter(1)
-  ROOT %add.10 = f32[] add(f32[] %x.8, f32[] %y.9)
+Sum-reduction.7 {
+  x.8 = f32[] parameter(0)
+  y.9 = f32[] parameter(1)
+  ROOT add.10 = f32[] add(x.8, y.9)
 }
 
-%_body (arg_tuple.0: (s32[], f32[], f32[1,1,2,2])) -> (s32[], f32[], f32[1,1,2,2]) {
-  %arg_tuple.0 = (s32[], f32[], f32[1,1,2,2]) parameter(0)
-  %get-tuple-element.3 = s32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]) %arg_tuple.0), index=0
-  %get-tuple-element.4 = f32[1,1,2,2] get-tuple-element((s32[], f32[], f32[1,1,2,2]) %arg_tuple.0), index=2
-  %constant.6 = f32[] constant(0)
-  %after-all = token[] after-all()
-  %infeed = ((f32[2,4,4,2]), token[]) infeed(token[] %after-all), infeed_config="140121807314576"
-  %get-tuple-element.5 = (f32[2,4,4,2]) get-tuple-element(((f32[2,4,4,2]), token[]) %infeed), index=0
-  %get-tuple-element.6 = f32[2,4,4,2] get-tuple-element((f32[2,4,4,2]) %get-tuple-element.5), index=0
-  %convolution = f32[2,4,4,2] convolution(f32[2,4,4,2] %get-tuple-element.6, f32[1,1,2,2] %get-tuple-element.4), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %reduce = f32[] reduce(f32[2,4,4,2] %convolution, f32[] %constant.6), dimensions={0,1,2,3}, to_apply=%Sum-reduction.7
-  ROOT %tuple.1 = (s32[], f32[], f32[1,1,2,2]) tuple(s32[] %get-tuple-element.3, f32[] %reduce, f32[1,1,2,2] %get-tuple-element.4)
+_body  {
+  arg_tuple.0 = (s32[], f32[], f32[1,1,2,2]) parameter(0)
+  get-tuple-element.3 = s32[] get-tuple-element(arg_tuple.0), index=0
+  get-tuple-element.4 = f32[1,1,2,2] get-tuple-element(arg_tuple.0), index=2
+  constant.6 = f32[] constant(0)
+  after-all = token[] after-all()
+  infeed = ((f32[2,4,4,2]), token[]) infeed(after-all), infeed_config="140121807314576"
+  get-tuple-element.5 = (f32[2,4,4,2]) get-tuple-element(infeed), index=0
+  get-tuple-element.6 = f32[2,4,4,2] get-tuple-element(get-tuple-element.5), index=0
+  convolution = f32[2,4,4,2] convolution(get-tuple-element.6, get-tuple-element.4), window={size=1x1}, dim_labels=b01f_01io->b01f
+  reduce = f32[] reduce(convolution, constant.6), dimensions={0,1,2,3}, to_apply=Sum-reduction.7
+  ROOT tuple.1 = (s32[], f32[], f32[1,1,2,2]) tuple(get-tuple-element.3, reduce, get-tuple-element.4)
 }
 
-ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
-  %constant.7 = s32[] constant(100)
-  %constant.5 = f32[] constant(0)
-  %arg0.1 = f32[1,1,2,2] parameter(0)
-  %tuple.6.clone = (s32[], f32[], f32[1,1,2,2]) tuple(s32[] %constant.7, f32[] %constant.5, f32[1,1,2,2] %arg0.1)
-  %call = (s32[], f32[], f32[1,1,2,2]) call((s32[], f32[], f32[1,1,2,2]) %tuple.6.clone), to_apply=%_body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
-  ROOT %get-tuple-element.45 = f32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]) %call), index=1
+ENTRY top {
+  constant.7 = s32[] constant(100)
+  constant.5 = f32[] constant(0)
+  arg0.1 = f32[1,1,2,2] parameter(0)
+  tuple.6.clone = (s32[], f32[], f32[1,1,2,2]) tuple(constant.7, constant.5, arg0.1)
+  call = (s32[], f32[], f32[1,1,2,2]) call(tuple.6.clone), to_apply=_body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
+  ROOT get-tuple-element.45 = f32[] get-tuple-element(call), index=1
 }
 
 )";
@@ -2630,32 +2630,32 @@ TEST_F(AllocationFinderTest, FindInfeedAllocationTuple) {
   std::string hlo = R"(
 HloModule top
 
-%Sum-reduction.6 (x.7: f32[], y.8: f32[]) -> f32[] {
-  %x.7 = f32[] parameter(0)
-  %y.8 = f32[] parameter(1)
-  ROOT %add.9 = f32[] add(f32[] %x.7, f32[] %y.8)
+Sum-reduction.6 {
+  x.7 = f32[] parameter(0)
+  y.8 = f32[] parameter(1)
+  ROOT add.9 = f32[] add(x.7, y.8)
 }
 
-%_body (arg_tuple.0: (s32[], f32[])) -> (s32[], f32[]) {
-  %arg_tuple.0 = (s32[], f32[]) parameter(0)
-  %get-tuple-element.2 = s32[] get-tuple-element((s32[], f32[]) %arg_tuple.0), index=0
-  %constant.5 = f32[] constant(0)
-  %after-all = token[] after-all()
-  %infeed = ((f32[2,4,4,2], f32[1,1,2,2]), token[]) infeed(token[] %after-all), infeed_config="140227418928528"
-  %get-tuple-element.3 = (f32[2,4,4,2], f32[1,1,2,2]) get-tuple-element(((f32[2,4,4,2], f32[1,1,2,2]), token[]) %infeed), index=0
-  %get-tuple-element.4 = f32[2,4,4,2] get-tuple-element((f32[2,4,4,2], f32[1,1,2,2]) %get-tuple-element.3), index=0
-  %get-tuple-element.5 = f32[1,1,2,2] get-tuple-element((f32[2,4,4,2], f32[1,1,2,2]) %get-tuple-element.3), index=1
-  %convolution = f32[2,4,4,2] convolution(f32[2,4,4,2] %get-tuple-element.4, f32[1,1,2,2] %get-tuple-element.5), window={size=1x1}, dim_labels=b01f_01io->b01f
-  %reduce = f32[] reduce(f32[2,4,4,2] %convolution, f32[] %constant.5), dimensions={0,1,2,3}, to_apply=%Sum-reduction.6
-  ROOT %tuple.1 = (s32[], f32[]) tuple(s32[] %get-tuple-element.2, f32[] %reduce)
+_body {
+  arg_tuple.0 = (s32[], f32[]) parameter(0)
+  get-tuple-element.2 = s32[] get-tuple-element(arg_tuple.0), index=0
+  constant.5 = f32[] constant(0)
+  after-all = token[] after-all()
+  infeed = ((f32[2,4,4,2], f32[1,1,2,2]), token[]) infeed(after-all), infeed_config="140227418928528"
+  get-tuple-element.3 = (f32[2,4,4,2], f32[1,1,2,2]) get-tuple-element(infeed), index=0
+  get-tuple-element.4 = f32[2,4,4,2] get-tuple-element(get-tuple-element.3), index=0
+  get-tuple-element.5 = f32[1,1,2,2] get-tuple-element(get-tuple-element.3), index=1
+  convolution = f32[2,4,4,2] convolution(get-tuple-element.4, get-tuple-element.5), window={size=1x1}, dim_labels=b01f_01io->b01f
+  reduce = f32[] reduce(convolution, constant.5), dimensions={0,1,2,3}, to_apply=Sum-reduction.6
+  ROOT tuple.1 = (s32[], f32[]) tuple(get-tuple-element.2, f32[] reduce)
 }
 
-ENTRY %top () -> f32[] {
-  %constant.7 = s32[] constant(100)
-  %constant.4 = f32[] constant(0)
-  %tuple.5.clone = (s32[], f32[]) tuple(s32[] %constant.7, f32[] %constant.4)
-  %call = (s32[], f32[]) call((s32[], f32[]) %tuple.5.clone), to_apply=%_body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
-  ROOT %get-tuple-element.41 = f32[] get-tuple-element((s32[], f32[]) %call), index=1
+ENTRY top {
+  constant.7 = s32[] constant(100)
+  constant.4 = f32[] constant(0)
+  tuple.5.clone = (s32[], f32[]) tuple(constant.7, constant.4)
+  call = (s32[], f32[]) call(tuple.5.clone), to_apply=_body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
+  ROOT get-tuple-element.41 = f32[] get-tuple-element(call), index=1
 }
 
 )";
@@ -2707,20 +2707,20 @@ TEST_F(AllocationFinderTest, InputTupleBiasAdd) {
   std::string hlo = R"(
 HloModule top
 
- %_pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
-   %arg_1 = f32[2] parameter(1)
-   %broadcast.12.7.clone = f32[2,2] broadcast(%arg_1), dimensions={1}
-   %arg_0 = f32[2,2] parameter(0)
-   ROOT %add.12.8.clone = f32[2,2] add(f32[2,2] %arg_0, f32[2,2] %broadcast.12.7.clone)
+ _pop_op_matmul_biasadd {
+   arg_1 = f32[2] parameter(1)
+   broadcast.12.7.clone = f32[2,2] broadcast(arg_1), dimensions={1}
+   arg_0 = f32[2,2] parameter(0)
+   ROOT add.12.8.clone = f32[2,2] add(arg_0, broadcast.12.7.clone)
  }
 
- ENTRY %c (arg0.12.0: (f32[2,2], f32[2,2], f32[2])) -> f32[2,2] {
-   %arg0 = (f32[2,2], f32[2,2], f32[2]) parameter(0)
-   %gte0 = f32[2,2] get-tuple-element((f32[2,2], f32[2,2], f32[2]) %arg0), index=0
-   %gte1 = f32[2,2] get-tuple-element((f32[2,2], f32[2,2], f32[2]) %arg0), index=1
-   %dot.12.6 = f32[2,2] dot(f32[2,2] %gte0, f32[2,2] %gte1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-   %gte2 = f32[2] get-tuple-element((f32[2,2], f32[2,2], f32[2]) %arg0), index=2
-   ROOT %call = f32[2,2] fusion(f32[2,2] %dot.12.6, %gte2), kind=kCustom, calls=%_pop_op_matmul_biasadd
+ ENTRY c {
+   arg0 = (f32[2,2], f32[2,2], f32[2]) parameter(0)
+   gte0 = f32[2,2] get-tuple-element(arg0), index=0
+   gte1 = f32[2,2] get-tuple-element(arg0), index=1
+   dot.12.6 = f32[2,2] dot(gte0, gte1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+   gte2 = f32[2] get-tuple-element(arg0), index=2
+   ROOT call = f32[2,2] fusion(dot.12.6, gte2), kind=kCustom, calls=_pop_op_matmul_biasadd
  }
 
 )";
@@ -2797,22 +2797,22 @@ TEST_F(AllocationFinderTest, InputTupleInfeedBiasAdd) {
   std::string hlo = R"(
 HloModule top
 
- %_pop_op_matmul_biasadd (arg_0: f32[2,2], arg_1: f32[2]) -> f32[2,2] {
-   %arg_1 = f32[2] parameter(1)
-   %broadcast.12.7.clone = f32[2,2] broadcast(%arg_1), dimensions={1}
-   %arg_0 = f32[2,2] parameter(0)
-   ROOT %add.12.8.clone = f32[2,2] add(f32[2,2] %arg_0, f32[2,2] %broadcast.12.7.clone)
+ _pop_op_matmul_biasadd {
+   arg_1 = f32[2] parameter(1)
+   broadcast.12.7.clone = f32[2,2] broadcast(arg_1), dimensions={1}
+   arg_0 = f32[2,2] parameter(0)
+   ROOT add.12.8.clone = f32[2,2] add(arg_0, broadcast.12.7.clone)
  }
 
- ENTRY %c () -> f32[2,2] {
-   %after-all = token[] after-all()
-   %infeed = ((f32[2,2], f32[2,2], f32[2]), token[]) infeed(token[] %after-all), infeed_config="140227418928528"
-   %arg0 = (f32[2,2], f32[2,2], f32[2]) get-tuple-element(((f32[2,2], f32[2,2], f32[2]), token[]) %infeed), index=0
-   %gte0 = f32[2,2] get-tuple-element((f32[2,2], f32[2,2], f32[2]) %arg0), index=0
-   %gte1 = f32[2,2] get-tuple-element((f32[2,2], f32[2,2], f32[2]) %arg0), index=1
-   %dot.12.6 = f32[2,2] dot(f32[2,2] %gte0, f32[2,2] %gte1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-   %gte2 = f32[2] get-tuple-element((f32[2,2], f32[2,2], f32[2]) %arg0), index=2
-   ROOT %call = f32[2,2] fusion(f32[2,2] %dot.12.6, %gte2), kind=kCustom, calls=%_pop_op_matmul_biasadd
+ ENTRY c {
+   after-all = token[] after-all()
+   infeed = ((f32[2,2], f32[2,2], f32[2]), token[]) infeed(after-all), infeed_config="140227418928528"
+   arg0 = (f32[2,2], f32[2,2], f32[2]) get-tuple-element(infeed), index=0
+   gte0 = f32[2,2] get-tuple-element(arg0), index=0
+   gte1 = f32[2,2] get-tuple-element(arg0), index=1
+   dot.12.6 = f32[2,2] dot(gte0, gte1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+   gte2 = f32[2] get-tuple-element(arg0), index=2
+   ROOT call = f32[2,2] fusion(dot.12.6, gte2), kind=kCustom, calls=_pop_op_matmul_biasadd
  }
 
 )";
@@ -2891,19 +2891,19 @@ TEST_F(AllocationFinderTest, NestedInputTupleBatchNormInfParamsWithPath) {
   std::string hlo = R"(
 HloModule top
 
-ENTRY %top (arg0: (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2])) -> f32[1,4,4,2] {
- %arg0 = (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) parameter(0)
- %gte0 = f32[1,4,4,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=0
- %gte1 = f32[1,1,2,2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=1
- %convolution.36.29 = f32[1,4,4,2] convolution(%gte0, %gte1), window={size=1x1}, dim_labels=b01f_01io->b01f
- %gte2 = (f32[1,2], f32[1,2]) get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=2
- %gte2.0 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=0
- %gte2.0_r = f32[2] reshape(%gte2.0)
- %gte2.1 = f32[1,2] get-tuple-element((f32[1,2], f32[1,2]) %gte2), index=1
- %gte2.1_r = f32[2] reshape(%gte2.1)
- %gte3 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=3
- %gte4 = f32[2] get-tuple-element((f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) %arg0), index=4
- ROOT %batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(%convolution.36.29, %gte2.0_r, %gte2.1_r, %gte3, %gte4), epsilon=0.001, feature_index=3
+ENTRY top {
+ arg0 = (f32[1,4,4,2], f32[1,1,2,2], (f32[1,2], f32[1,2]), f32[2], f32[2]) parameter(0)
+ gte0 = f32[1,4,4,2] get-tuple-element(arg0), index=0
+ gte1 = f32[1,1,2,2] get-tuple-element(arg0), index=1
+ convolution.36.29 = f32[1,4,4,2] convolution(gte0, gte1), window={size=1x1}, dim_labels=b01f_01io->b01f
+ gte2 = (f32[1,2], f32[1,2]) get-tuple-element(arg0), index=2
+ gte2.0 = f32[1,2] get-tuple-element(gte2), index=0
+ gte2.0_r = f32[2] reshape(gte2.0)
+ gte2.1 = f32[1,2] get-tuple-element(gte2), index=1
+ gte2.1_r = f32[2] reshape(gte2.1)
+ gte3 = f32[2] get-tuple-element(arg0), index=3
+ gte4 = f32[2] get-tuple-element(arg0), index=4
+ ROOT batch-norm-inference.36.31 = f32[1,4,4,2] batch-norm-inference(convolution.36.29, gte2.0_r, gte2.1_r, gte3, gte4), epsilon=0.001, feature_index=3
 }
 
 )";
@@ -3007,18 +3007,18 @@ TEST_F(AllocationFinderTest, ForwardAllocationTupleHasTupleSharding) {
   // Check that the layout gets forwarded to a custom op.
   std::string hlo = R"(
 HloModule top
-ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[2]) {
-  %arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
+ENTRY top {
+  arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
       sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}
-  %gte0 = f32[1,4,4,2] get-tuple-element(%arg0), index=0,
+  gte0 = f32[1,4,4,2] get-tuple-element(arg0), index=0,
       sharding={maximal device=0}
-  %gte1 = f32[2] get-tuple-element(%arg0), index=1,
+  gte1 = f32[2] get-tuple-element(arg0), index=1,
       sharding={maximal device=0}
-  %gte2 = f32[2] get-tuple-element(%arg0), index=2,
+  gte2 = f32[2] get-tuple-element(arg0), index=2,
       sharding={maximal device=0}
-  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %gte0, f32[2] %gte1, f32[2] %gte2), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
-}
-
+  ROOT cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(gte0, gte1, gte2),
+       custom_call_target="Popnn::GroupNormTraining",
+       backend_config="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"}
 )";
 
   auto config = GetModuleConfigForTest();
@@ -3095,16 +3095,18 @@ TEST_F(AllocationFinderTest, ForwardAllocationTupleHasNonTupleSharding) {
   // Check that the layout gets forwarded to a custom op.
   std::string hlo = R"(
 HloModule top
-ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[2]) {
-  %arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
+ENTRY top {
+  arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
       sharding={maximal device=0}
-  %gte0 = f32[1,4,4,2] get-tuple-element(%arg0), index=0,
+  gte0 = f32[1,4,4,2] get-tuple-element(arg0), index=0,
       sharding={maximal device=0}
-  %gte1 = f32[2] get-tuple-element(%arg0), index=1,
+  gte1 = f32[2] get-tuple-element(arg0), index=1,
       sharding={maximal device=0}
-  %gte2 = f32[2] get-tuple-element(%arg0), index=2,
+  gte2 = f32[2] get-tuple-element(arg0), index=2,
       sharding={maximal device=0}
-  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %gte0, f32[2] %gte1, f32[2] %gte2), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
+  ROOT cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(gte0, gte1, gte2),
+       custom_call_target="Popnn::GroupNormTraining",
+       backend_config="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
 }
 
 )";
@@ -3183,16 +3185,18 @@ TEST_F(AllocationFinderTest, ForwardAllocationTupleHasTupleShardingDoesnMatch) {
   // Check that the layout gets forwarded to a custom op.
   std::string hlo = R"(
 HloModule top
-ENTRY %top (arg0: (f32[1,4,4,2], f32[2], f32[2])) -> (f32[1,4,4,2], f32[2], f32[2]) {
-  %arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
+ENTRY top {
+  arg0 = (f32[1,4,4,2], f32[2], f32[2]) parameter(0),
       sharding={{maximal device=0}, {maximal device=0}, {maximal device=1}}
-  %gte0 = f32[1,4,4,2] get-tuple-element(%arg0), index=0,
+  gte0 = f32[1,4,4,2] get-tuple-element(arg0), index=0,
       sharding={maximal device=0}
-  %gte1 = f32[2] get-tuple-element(%arg0), index=1,
+  gte1 = f32[2] get-tuple-element(arg0), index=1,
       sharding={maximal device=0}
-  %gte2 = f32[2] get-tuple-element(%arg0), index=2,
+  gte2 = f32[2] get-tuple-element(arg0), index=2,
       sharding={maximal device=0}
-  ROOT %cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(f32[1,4,4,2] %gte0, f32[2] %gte1, f32[2] %gte2), custom_call_target="Popnn::GroupNormTraining", opaque="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
+  ROOT cc = (f32[1,4,4,2], f32[2], f32[2]) custom-call(gte0, gte1, gte2),
+       custom_call_target="Popnn::GroupNormTraining",
+       backend_config="{\"num_groups\":1,\"epsilon\":0.001,\"feature_index\":3}\n"
 }
 
 )";

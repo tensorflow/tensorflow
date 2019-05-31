@@ -492,9 +492,9 @@ ENTRY c1 {
   a = f32[20] parameter(0)
   b = f32[20] parameter(1)
   c = f32[] constant(2)
-  c_bcast = f32[20] broadcast(f32[] %c), dimensions={}
-  bc = f32[20] multiply(%b, %c_bcast)
-  ROOT res = f32[20] add(%a, %bc),
+  c_bcast = f32[20] broadcast(f32[] c), dimensions={}
+  bc = f32[20] multiply(b, c_bcast)
+  ROOT res = f32[20] add(a, bc),
   metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
 }
 
@@ -577,7 +577,7 @@ ENTRY c1 {
   p0 = s32[20] parameter(0)
   p1 = s32[20] parameter(1)
 
-  c = s32[20] custom-call(p0, p1), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
+  c = s32[20] custom-call(p0, p1), custom_call_target="Popnn::LstmLayerFwd", backend_config="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
 
   ROOT t = (s32[20]) tuple(c)
 }
@@ -653,7 +653,7 @@ ENTRY c1 {
   p0 = (s32[20], s32[20], s32[20], s32[20]) parameter(0)
   p0_0 = s32[20] get-tuple-element(p0), index=0
 
-  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", opaque="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
+  c = s32[20] custom-call(p0), custom_call_target="Popnn::LstmLayerFwd", backend_config="{\"num_channels\":4, \"is_training\":false, \"partials_dtype\":\"DT_FLOAT\"}\n"
 
   ROOT a = s32[20] add(p0_0, c)
 }
