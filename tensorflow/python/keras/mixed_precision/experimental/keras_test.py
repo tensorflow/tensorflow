@@ -31,9 +31,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
@@ -145,7 +147,7 @@ TESTCASES = ({
 })
 
 
-class KerasLayerTest(test.TestCase, parameterized.TestCase):
+class KerasLayerTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras layers."""
 
   @parameterized.named_parameters(*TESTCASES)
@@ -276,9 +278,19 @@ class KerasLayerTest(test.TestCase, parameterized.TestCase):
     # restored with mixed precision? Or vice versa?
 
 
-class KerasModelTest(test.TestCase, parameterized.TestCase):
+class KerasModelTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras models."""
 
+  def _is_strategy_supported(self, strategy_fn):
+    if (strategy_fn != default_strategy_fn and
+        testing_utils.should_run_eagerly()):
+      # Distribution strategies do not support running with `run_eagerly=True`
+      # in Keras Models.
+      return False
+    else:
+      return True
+
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters({
       'testcase_name': 'base',
       'strategy_fn': default_strategy_fn
@@ -298,9 +310,10 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'strategy_fn': create_mirrored_strategy,
       'cloning': False
   })
-  @test_util.run_in_graph_and_eager_modes
   def test_model(self, strategy_fn, use_operator=False, use_regularizer=False,
                  cloning=True):
+    if not self._is_strategy_supported(strategy_fn):
+      return
     regularizer = IdentityRegularizer() if use_regularizer else None
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
@@ -319,7 +332,8 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         # the variable will not change. So this tests the learning rate not
         # applied to a float16 value, but instead the float32 variable.
         opt = gradient_descent.SGD(2 ** -14)
-        model.compile(opt, loss=loss_fn, cloning=cloning)
+        model.compile(opt, loss=loss_fn, cloning=cloning,
+                      run_eagerly=testing_utils.should_run_eagerly())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((2, 1))
@@ -334,6 +348,7 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       expected -= 2 ** -14
     self.assertEqual(backend.eval(layer.v), expected)
 
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters({
       'testcase_name': 'base',
       'strategy_fn': default_strategy_fn
@@ -345,9 +360,10 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'strategy_fn': create_mirrored_strategy,
       'cloning': False,
   })
-  @test_util.run_in_graph_and_eager_modes
   def test_fixed_loss_scaling(self, strategy_fn, cloning=True):
     # Note: We do not test mixed precision in this method, only loss scaling.
+    if not self._is_strategy_supported(strategy_fn):
+      return
     loss_scale = 8.
     batch_size = 4
     with strategy_fn().scope():
@@ -370,7 +386,8 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
 
       opt = gradient_descent.SGD(1.)
       opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-      model.compile(opt, loss=loss_fn, cloning=cloning)
+      model.compile(opt, loss=loss_fn, cloning=cloning,
+                    run_eagerly=testing_utils.should_run_eagerly())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -381,6 +398,7 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
     expected = 0
     self.assertEqual(backend.eval(layer.v), expected)
 
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters({
       'testcase_name': 'base',
       'strategy_fn': default_strategy_fn
@@ -392,7 +410,6 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'strategy_fn': create_mirrored_strategy,
       'use_loss_scaling': True
   })
-  @test_util.run_in_graph_and_eager_modes
   def test_advanced_model(self, strategy_fn, use_loss_scaling=False):
 
     # The advanced model tests mixed-precision-related features that would occur
@@ -402,6 +419,8 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
     #  * Regularization on some variables and not others.
     #  * A fixed loss scale (if use_loss_scaling is True)
 
+    if not self._is_strategy_supported(strategy_fn):
+      return
     strategy = strategy_fn()
     if use_loss_scaling:
       loss_scale = 8.
@@ -443,7 +462,8 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         opt = gradient_descent.SGD(learning_rate)
         if use_loss_scaling:
           opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-        model.compile(opt, loss=loss_fn)
+        model.compile(opt, loss=loss_fn,
+                      run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((2, 1))
     y = np.ones((2, 1))
@@ -457,8 +477,7 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         # Layer does not have weight regularizer
         self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
 
-  # TODO(reedwm): Add and fix test where cloning=False is passed to
-  # Model.compile. Currently the test fails if cloning=False is passed.
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters({
       'testcase_name': 'base',
       'strategy_fn': default_strategy_fn
@@ -470,8 +489,9 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
       'strategy_fn': create_mirrored_strategy,
       'cloning': False,
   })
-  @test_util.run_in_graph_and_eager_modes
   def test_dynamic_loss_scaling(self, strategy_fn, cloning=True):
+    if not self._is_strategy_supported(strategy_fn):
+      return
     strategy = strategy_fn()
     initial_loss_scale = 2.
     batch_size = 4
@@ -505,7 +525,8 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         loss_scale = loss_scale_module.DynamicLossScale(
             initial_loss_scale=initial_loss_scale, increment_period=2)
         opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-        model.compile(opt, loss=loss_fn, cloning=cloning)
+        model.compile(opt, loss=loss_fn, cloning=cloning,
+                      run_eagerly=testing_utils.should_run_eagerly())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -578,45 +599,47 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(backend.get_value(model(x)), x + 100.)
     self.assertEqual(model.get_weights(), [np.array(100.)])
 
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def test_save_weights_with_dynamic_loss_scaling(self, strategy_fn):
-    with context.eager_mode():
-      strategy = strategy_fn()
-      if (isinstance(strategy, mirrored_strategy.MirroredStrategy) and
-          not context.executing_eagerly()):
-        # TODO(b/121381184): Enable running the test in this case.
-        return
+    if not self._is_strategy_supported(strategy_fn):
+      return
+    strategy = strategy_fn()
+    if (isinstance(strategy, mirrored_strategy.MirroredStrategy) and
+        not context.executing_eagerly()):
+      # TODO(b/121381184): Enable running the test in this case.
+      return
 
-      # Create and run model.
-      with strategy.scope():
-        x = layers.Input(shape=(2,), batch_size=2, dtype=dtypes.float32)
-        y = AddLayer(assert_type=dtypes.float32)(x)
-        model = models.Model(inputs=x, outputs=y)
+    # Create and run model.
+    with strategy.scope():
+      x = layers.Input(shape=(2,), batch_size=2, dtype=dtypes.float32)
+      y = AddLayer(assert_type=dtypes.float32)(x)
+      model = models.Model(inputs=x, outputs=y)
 
-        loss_scale = loss_scale_module.DynamicLossScale(
-            initial_loss_scale=1., increment_period=2., multiplier=2.)
-        opt = gradient_descent.SGD(1.)
-        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-        model.compile(optimizer=opt, loss='mse')
-      # Run for 3 steps (6 examples with a batch size of 2)
-      model.fit(np.zeros((6, 2)), np.zeros((6, 2)), batch_size=2)
-      self.assertEqual(backend.get_value(loss_scale()), 2)
-      self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
+      loss_scale = loss_scale_module.DynamicLossScale(
+          initial_loss_scale=1., increment_period=2., multiplier=2.)
+      opt = gradient_descent.SGD(1.)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      model.compile(optimizer=opt, loss='mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+    # Run for 3 steps (6 examples with a batch size of 2)
+    model.fit(np.zeros((6, 2)), np.zeros((6, 2)), batch_size=2)
+    self.assertEqual(backend.get_value(loss_scale()), 2)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
 
-      # Save model weights.
-      save_prefix = os.path.join(self.get_temp_dir(), 'ckpt')
-      model.save_weights(save_prefix)
+    # Save model weights.
+    save_prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    model.save_weights(save_prefix)
 
-      # Run model again for 1 step (2 examples with a batch size of 2)
-      model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
-      self.assertEqual(backend.get_value(loss_scale()), 4)
-      self.assertEqual(backend.get_value(loss_scale._num_good_steps), 0)
+    # Run model again for 1 step (2 examples with a batch size of 2)
+    model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
+    self.assertEqual(backend.get_value(loss_scale()), 4)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 0)
 
-      # Load model weights and ensure loss scale weights are restored.
-      model.load_weights(save_prefix)
-      self.assertEqual(backend.get_value(loss_scale()), 2)
-      self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
+    # Load model weights and ensure loss scale weights are restored.
+    model.load_weights(save_prefix)
+    self.assertEqual(backend.get_value(loss_scale()), 2)
+    self.assertEqual(backend.get_value(loss_scale._num_good_steps), 1)
 
 
 if __name__ == '__main__':

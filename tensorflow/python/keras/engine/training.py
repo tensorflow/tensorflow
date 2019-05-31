@@ -44,7 +44,6 @@ from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -1397,11 +1396,6 @@ class Model(network.Network):
     return target_tensors
 
   def _compile_eagerly(self, metrics, weighted_metrics, sample_weight_mode):
-    if isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer):
-      # TODO(reedwm): Support this.
-      raise ValueError('We currently do not support enabling `run_eagerly` '
-                       'with a LossScaleOptimizer.')
-
     # Prepare sample weight modes. List with the same length as model outputs.
     training_utils.prepare_sample_weight_modes(
         self._training_endpoints, sample_weight_mode)
