@@ -255,6 +255,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/keras/distribute:multi_worker_training_state",
     ],
 )
 

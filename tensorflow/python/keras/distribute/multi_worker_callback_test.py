@@ -37,6 +37,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
+from tensorflow.python.keras.distribute import multi_worker_training_state
 from tensorflow.python.platform import test
 
 
@@ -82,13 +83,21 @@ def generate_callback_test_function(custom_callable):
             num_epoch,
             steps,
             strategy,
-            saving_filepath=kwargs['saving_filepath'])
+            saving_filepath=kwargs['saving_filepath'],
+            barrier=kwargs['barrier'],
+            threading_local=kwargs['threading_local'])
 
     # Pass saving_filepath from the parent thread to ensure every worker has the
     # same fileapth to save.
     saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint.h5')
+    barrier = dc._Barrier(2)
+    threading_local = threading.local()
     threads = self.run_multiple_tasks_in_threads(
-        _independent_worker_fn, cluster_spec, saving_filepath=saving_filepath)
+        _independent_worker_fn,
+        cluster_spec,
+        saving_filepath=saving_filepath,
+        barrier=barrier,
+        threading_local=threading_local)
     if os.path.exists(saving_filepath):
       os.remove(saving_filepath)
 
@@ -110,7 +119,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
   # The callables of the actual testing content to be run go below.
   @staticmethod
   def callableForTestChiefOnlyCallback(model, test_obj, train_ds, num_epoch,
-                                       steps, strategy, saving_filepath):
+                                       steps, strategy, saving_filepath,
+                                       **kwargs):
 
     class ChiefOnly(keras.callbacks.Callback):
 
@@ -131,7 +141,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestModelCheckpointSavesOnChiefButNotOtherwise(
-      model, test_obj, train_ds, num_epoch, steps, strategy, saving_filepath):
+      model, test_obj, train_ds, num_epoch, steps, strategy, saving_filepath,
+      **kwargs):
     # Incorporate type/index information and thread id in saving_filepath to
     # ensure every worker has a unique path. Note that in normal use case the
     # saving_filepath will be the same for all workers, but we use different
@@ -184,7 +195,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
   @staticmethod
   def callableForTestLoadWeightFromModelCheckpoint(model, test_obj, train_ds,
                                                    num_epoch, steps, strategy,
-                                                   saving_filepath):
+                                                   saving_filepath, **kwargs):
     filepaths = []
     real_mkstemp = tempfile.mkstemp
     def mocked_mkstemp():
@@ -220,7 +231,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestModelRestoreCallback(model, test_obj, train_ds, num_epoch,
-                                          steps, strategy, saving_filepath):
+                                          steps, strategy, saving_filepath,
+                                          **kwargs):
 
     saving_filepath, history_after_one_more_epoch = \
         KerasMultiWorkerCallbackTest.initialFitting(
@@ -257,7 +269,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestUnmatchedModelFile(model, test_obj, train_ds, num_epoch,
-                                        steps, strategy, saving_filepath):
+                                        steps, strategy, saving_filepath,
+                                        **kwargs):
 
     # The saving_filepath shouldn't exist at the beginning.
     test_obj.assertFalse(os.path.exists(saving_filepath))
@@ -299,7 +312,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestReduceLROnPlateau(model, test_obj, train_ds, num_epoch,
-                                       steps, strategy, saving_filepath):
+                                       steps, strategy, saving_filepath,
+                                       **kwargs):
 
     cbks = [
         callbacks.ReduceLROnPlateau(
@@ -325,7 +339,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestEarlyStopping(model, test_obj, train_ds, num_epoch, steps,
-                                   strategy, saving_filepath):
+                                   strategy, saving_filepath, **kwargs):
 
     class EpochCounterCallback(callbacks.Callback):
 
@@ -347,7 +361,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestLearningRateScheduler(model, test_obj, train_ds, num_epoch,
-                                           steps, strategy, saving_filepath):
+                                           steps, strategy, saving_filepath,
+                                           **kwargs):
 
     cbks = [
         callbacks.LearningRateScheduler(
@@ -366,6 +381,84 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     test_obj.assertAllClose(
         float(K.get_value(model.optimizer.lr)), 0.25, atol=1e-8)
 
+  # pylint: disable=g-doc-args
+  @staticmethod
+  def callableForTestIntermediateDirForFTAreRemoved(model, test_obj, train_ds,
+                                                    num_epoch, steps, strategy,
+                                                    saving_filepath, **kwargs):
+    """Testing that the temporary directory are removed.
+
+    Some temporary directories are created for the purpose of fault tolerance.
+    This test ensures that such directories should have been removed at the time
+    `model.fit()` finishes successfully.
+    """
+
+    # `threading_local` and `barrier` objects have to be passed in from parent
+    # thread so both threads refer to the same object.
+    threading_local = kwargs['threading_local']
+    barrier = kwargs['barrier']
+
+    # Two threads will each has one copy of `temp_dirs_supposed_to_be_removed`
+    # list.
+    threading_local.temp_dirs_supposed_to_be_removed = []
+
+    callbacks_list = [
+        callbacks.ModelCheckpoint(
+            filepath=saving_filepath,
+            save_weights_only=True,
+            load_weights_on_restart=True),
+    ]
+
+    # Keep the references to the real function objects.
+    real_os_path_join = os.path.join
+    real_tempfile_mkdtemp = tempfile.mkdtemp
+
+    # Make a `os.path.join` wrapper, which will be patched onto the real
+    # function, so the temporary directories can be tracked.
+    def wrapper_os_path_join(path, *paths):
+      join_result = real_os_path_join(path, *paths)
+      if len(paths) == 1 and paths[0] == 'backup':
+        threading_local.temp_dirs_supposed_to_be_removed.append(join_result)
+      return join_result
+
+    # Likewise for `tempfile.mkdtemp`.
+    def wrapper_tempfile_mkdtemp():
+      result = real_tempfile_mkdtemp()
+      threading_local.temp_dirs_supposed_to_be_removed.append(result)
+      return result
+
+    # Now the two threads must sync here: if they are out of sync, one thread
+    # can go ahead and patch `os.path.join` while the other has not even
+    # assigned the real `os.path.join` to `real_os_path_join`. If this happened,
+    # the "real" `os.path.join` the slower thread would see is actually the
+    # wrapper of the other.
+    barrier.wait()
+
+    # Note that `wrapper_os_path_join` will respect the second patch. Both
+    # threads will refer to the same copy of `wrapper_os_path_join` because of
+    # the `barrier`. Likewise for `wrapper_tempfile_mkdtemp`.
+    with test.mock.patch.object(os.path, 'join',
+                                wrapper_os_path_join), test.mock.patch.object(
+                                    tempfile, 'mkdtemp',
+                                    wrapper_tempfile_mkdtemp):
+      barrier.wait()
+      model.fit(
+          x=train_ds,
+          epochs=num_epoch,
+          steps_per_epoch=steps,
+          callbacks=callbacks_list)
+
+    # Sync again to make sure `model.fit()` is done on both threads (so we can
+    # safely assert the directories are removed).
+    barrier.wait()
+
+    # There should be directory (names) that are supposed to be removed.
+    test_obj.assertTrue(threading_local.temp_dirs_supposed_to_be_removed)
+    for temp_dir_supposed_to_be_removed in (
+        threading_local.temp_dirs_supposed_to_be_removed):
+      # They should have been removed and thus don't exist.
+      test_obj.assertFalse(os.path.exists(temp_dir_supposed_to_be_removed))
+
   class PreemptionAtBatchBoundarySimulatingCallback(callbacks.Callback):
     """Callback to simulate preemtion at batch boundary."""
 
@@ -383,6 +476,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     def on_epoch_end(self, epoch, logs=None):
       assert epoch < 1
 
+  # TODO(rchao): Add tests for checking 0th and 2nd epoch boundary.
   class PreemptionAtEpochBoundarySimulatingCallback(callbacks.Callback):
     """Callback to simulate preemtion at epoch boundary."""
 
@@ -396,6 +490,9 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @combinations.generate(
       combinations.combine(
+          # Eager runtime unfortunately cannot be tested with multi-threading.
+          # TODO(rchao): Add test to use multi-process for eager mode after
+          # b/132095481 is resolved.
           mode=['graph'],
           strategy_cls=[collective_strategy.CollectiveAllReduceStrategy],
           required_gpus=[0, 1],
@@ -403,9 +500,14 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
           preemption_callback=[
               PreemptionAtEpochBoundarySimulatingCallback,
               PreemptionAtBatchBoundarySimulatingCallback
-          ]))
+          ],
+          # FT should work regardless of `ModelCheckpoint`'s parameters.
+          save_weights_only=[True, False],
+          load_weights_on_restart=[True, False],
+      ))
   def testFaultToleranceInSyncStrategy(self, strategy_cls, file_format,
-                                       preemption_callback):
+                                       preemption_callback, save_weights_only,
+                                       load_weights_on_restart):
     """Test fault-tolerance with multi-threading using sync dist-strat.
 
     This test simulates multi-worker training that is interrupted by a
@@ -421,10 +523,20 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     concludes by verifying the preemption-interrupted training can finish with
     the same loss and accuracy had the preemption not occurred.
 
+    TODO(rchao): Add test to check preemption on chief (possibly using multi
+    processes).
+
+    TODO(rchao): Add test to check fault-tolerance with multiple `model.fit()`.
+
+    TODO(rchao): Separate fault tolerance tests out to a different _test.py.
+
     Arguments:
       strategy_cls: The strategy class to use.
       file_format: `h5` or `tf`.
       preemption_callback: The callback to simulate preemption.
+      save_weights_only: The argument for `model.fit()`'s `save_weights_only`.
+      load_weights_on_restart: The argument for `model.fit()`'s
+        `load_weights_on_restart`.
     """
 
     def _independent_worker_fn(*args, **kwargs):  # pylint: disable=unused-argument
@@ -490,26 +602,30 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
             def on_epoch_begin(self, epoch, logs=None):
               # `_ckpt_saved_epoch` attribute is set at the end of every epoch.
-              self.test_obj.assertEqual(self.model._ckpt_saved_epoch is None,
-                                        epoch == 0)
+              self.test_obj.assertEqual(
+                  K.eval(self.model._ckpt_saved_epoch) ==
+                  multi_worker_training_state.CKPT_SAVED_EPOCH_UNUSED_VALUE,
+                  epoch == 0)
 
           callbacks_list = [
               callbacks.ModelCheckpoint(
                   filepath=saving_filepath,
-                  save_weights_only=True,
-                  load_weights_on_restart=True),
+                  save_weights_only=save_weights_only,
+                  load_weights_on_restart=load_weights_on_restart),
               CkptSavedEpochAssertingCallback(self)
           ]
           if before_restart:
             callbacks_list.append(preemption_callback())
 
-          self.assertIsNone(model._ckpt_saved_epoch)
+          self.assertFalse(
+              hasattr(model, multi_worker_training_state.CKPT_SAVED_EPOCH))
           history = model.fit(
               x=train_ds,
               epochs=num_epoch,
               steps_per_epoch=steps,
               callbacks=callbacks_list)
-          self.assertIsNone(model._ckpt_saved_epoch)
+          self.assertFalse(
+              hasattr(model, multi_worker_training_state.CKPT_SAVED_EPOCH))
 
           # `history` of the training result is collected to be compared against
           # each other. It is expected that the training results (loss and
@@ -637,6 +753,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       callableForTestEarlyStopping.__func__)
   test_learning_rate_scheduler = generate_callback_test_function(
       callableForTestLearningRateScheduler.__func__)
+  test_intermediate_dir_for_ft_are_removed = generate_callback_test_function(
+      callableForTestIntermediateDirForFTAreRemoved.__func__)
 
 
 if __name__ == '__main__':
