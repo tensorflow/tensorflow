@@ -776,7 +776,7 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinConv2d:
-        if (version == 1) {
+        if (version <= 2) {
           if ((android_sdk_version < kMinSdkVersionForNNAPI12) &&
               (IsHybridOperator(context, builtin_code, node) ||
                !IsFloatOrUint8Operator(context, node))) {
