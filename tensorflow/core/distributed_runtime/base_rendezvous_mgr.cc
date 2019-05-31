@@ -246,9 +246,11 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   // This copy must involve a GPU. Hence, "in" must support DMA
   // (e.g., string tensors do not work on GPU).  Variant copy DMA
   // checks happen inside CopyTensor::ViaDMA.
-  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT) {
-    done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
-                                 " tensor may not be copied from/to a GPU."));
+  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT &&
+      in.dtype() != DT_RESOURCE) {
+    done(errors::InvalidArgument(
+        "Non-DMA-safe ", DataTypeString(in.dtype()),
+        " tensor may not be copied from/to a device. Key: ", parsed.FullKey()));
     return;
   }
 
