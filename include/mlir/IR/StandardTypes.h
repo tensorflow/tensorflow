@@ -397,9 +397,6 @@ public:
                    location);
   }
 
-  // TODO(b/132735995) Get rid of this unsigned override.
-  unsigned getRank() const { return getShape().size(); }
-
   ArrayRef<int64_t> getShape() const;
 
   /// Returns an array of affine map pointers representing the memref affine

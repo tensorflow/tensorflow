@@ -40,7 +40,7 @@ void linalg::ViewOp::build(Builder *b, OperationState *result, Value *memRef,
                            ArrayRef<Value *> indexings) {
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
   result->addOperands({memRef});
-  assert(indexings.size() == memRefType.getRank() &&
+  assert(indexings.size() == static_cast<size_t>(memRefType.getRank()) &&
          "unexpected number of indexings (must match the memref rank)");
 
   result->addOperands(indexings);
@@ -107,7 +107,7 @@ ParseResult linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
   if (!memRefType)
     return parser->emitError(parser->getNameLoc(),
                              "memRef type expected for first type");
-  if (indexingsInfo.size() != memRefType.getRank())
+  if (indexingsInfo.size() != static_cast<size_t>(memRefType.getRank()))
     return parser->emitError(parser->getNameLoc(),
                              "expected " + Twine(memRefType.getRank()) +
                                  " indexings");
@@ -116,7 +116,7 @@ ParseResult linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(), "view type expected");
 
   ArrayRef<Type> indexingTypes = ArrayRef<Type>(types).drop_front().drop_back();
-  if (indexingTypes.size() != memRefType.getRank())
+  if (indexingTypes.size() != static_cast<size_t>(memRefType.getRank()))
     return parser->emitError(parser->getNameLoc(),
                              "expected " + Twine(memRefType.getRank()) +
                                  " indexing types");

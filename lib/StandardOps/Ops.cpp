@@ -1258,11 +1258,11 @@ static LogicalResult verify(DimOp op) {
   auto indexAttr = op.getAttrOfType<IntegerAttr>("index");
   if (!indexAttr)
     return op.emitOpError("requires an integer attribute named 'index'");
-  uint64_t index = indexAttr.getValue().getZExtValue();
+  int64_t index = indexAttr.getValue().getSExtValue();
 
   auto type = op.getOperand()->getType();
   if (auto tensorType = type.dyn_cast<RankedTensorType>()) {
-    if (index >= static_cast<uint64_t>(tensorType.getRank()))
+    if (index >= tensorType.getRank())
       return op.emitOpError("index is out of range");
   } else if (auto memrefType = type.dyn_cast<MemRefType>()) {
     if (index >= memrefType.getRank())
@@ -1459,12 +1459,15 @@ ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   }
 
   // Check that source/destination index list size matches associated rank.
-  if (srcIndexInfos.size() != types[0].cast<MemRefType>().getRank() ||
-      dstIndexInfos.size() != types[1].cast<MemRefType>().getRank())
+  if (srcIndexInfos.size() !=
+          static_cast<size_t>(types[0].cast<MemRefType>().getRank()) ||
+      dstIndexInfos.size() !=
+          static_cast<size_t>(types[1].cast<MemRefType>().getRank()))
     return parser->emitError(parser->getNameLoc(),
                              "memref rank not equal to indices count");
 
-  if (tagIndexInfos.size() != types[2].cast<MemRefType>().getRank())
+  if (tagIndexInfos.size() !=
+      static_cast<size_t>(types[2].cast<MemRefType>().getRank()))
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 
@@ -1543,7 +1546,8 @@ ParseResult DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "expected tag to be of memref type");
 
-  if (tagIndexInfos.size() != type.cast<MemRefType>().getRank())
+  if (tagIndexInfos.size() !=
+      static_cast<size_t>(type.cast<MemRefType>().getRank()))
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 

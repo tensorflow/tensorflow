@@ -148,7 +148,7 @@ ParseResult VectorTransferReadOp::parse(OpAsmParser *parser,
 
   // Extract optional paddingValue.
   // At this point, indexInfo may contain the optional paddingValue, pop it out.
-  if (indexInfo.size() != memrefType.getRank())
+  if (indexInfo.size() != static_cast<size_t>(memrefType.getRank()))
     return parser->emitError(parser->getNameLoc(),
                              "expected " + Twine(memrefType.getRank()) +
                                  " indices to the memref");

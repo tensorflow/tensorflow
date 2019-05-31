@@ -188,7 +188,7 @@ public:
     // dimensions, extracts the size from the memref descriptor.
     auto memrefSize = [int64Ty, pos, i64cst](MemRefType type, Value *memref,
                                              int dim) -> Value * {
-      assert(static_cast<size_t>(dim) < type.getRank());
+      assert(dim < type.getRank());
       if (type.getShape()[dim] != -1) {
         return i64cst(type.getShape()[dim]);
       }
