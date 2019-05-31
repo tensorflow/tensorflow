@@ -51,6 +51,9 @@ void* aligned_alloc(size_t alignment, size_t size, void** freeing_buffer) {
 
 // Use /proc/cpuinfo to test whether we have the right processor.
 bool HasSdotInstruction() {
+#ifdef __MINGW32__
+  return false;
+#else
   // TODO(strohman): Replace this with a proper API call once we are running
   // on kernels that can tell us about this instruction: (b/119112014)
   // Note that the C++ spec ensures that this variable will be initialized
@@ -90,6 +93,7 @@ bool HasSdotInstruction() {
     return found;
   }();
   return has_sdot;
+#endif  // MINGW32
 }
 
 }  // namespace
@@ -508,8 +512,9 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 }
 
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
-    const float* matrix, const uint8_t* ledger, int m_rows, int m_cols,
-    const float* vector, int n_batch, float* result, int result_stride) {
+    const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
+    float* __restrict__ result, int result_stride) {
   const int kBlockSize = 16;
   const int kNeonLanesPerBlock = 4;
   TFLITE_DCHECK_EQ(  // NOLINT

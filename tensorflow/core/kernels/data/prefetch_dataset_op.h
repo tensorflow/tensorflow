@@ -24,8 +24,19 @@ namespace data {
 
 class PrefetchDatasetOp : public UnaryDatasetOpKernel {
  public:
+  static constexpr const char kDatasetType[] = "Prefetch";
+  static constexpr const char kInputDataset[] = "input_dataset";
+  static constexpr const char kBufferSize[] = "buffer_size";
+  static constexpr const char kOutputTypes[] = "output_types";
+  static constexpr const char kOutputShapes[] = "output_shapes";
+  static constexpr const char kSlackPeriod[] = "slack_period";
+
   explicit PrefetchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    if (ctx->HasAttr(kSlackPeriod)) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kSlackPeriod, &slack_period_));
+    }
+  }
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -33,6 +44,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
+  int64 slack_period_ = 0;
 };
 
 }  // namespace data

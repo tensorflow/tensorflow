@@ -4,9 +4,10 @@
 # TODO(jlebar): None of these tests actually use the GPU, so they should not
 # need to run on machines with GPUs present.
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -200,8 +201,8 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",

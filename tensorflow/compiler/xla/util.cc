@@ -34,20 +34,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-tensorflow::mutex timer_stats_lock(tensorflow::LINKER_INITIALIZED);
-
-struct TimerStats {
-  double cumulative_secs = 0;
-  double max_secs = 0;
-  uint64 times_called = 0;
-};
-
-// Global mapping from timer IDs to timer statistics.
-auto& timers_stats GUARDED_BY(timer_stats_lock) =
-    *new absl::flat_hash_map<uint64, TimerStats>();
-}  // namespace
-
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
@@ -55,23 +41,21 @@ Status WithLogBacktrace(const Status& status) {
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label,
-                                       uint64 timer_id, bool enabled)
-    : enabled(enabled), label(label), timer_id(timer_id) {
+ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+                                       TimerStats* timer_stats)
+    : enabled(enabled), label(label), timer_stats(timer_stats) {
   if (enabled) {
     start_micros = tensorflow::Env::Default()->NowMicros();
   }
 }
 
-ScopedLoggingTimer::~ScopedLoggingTimer() {
+void ScopedLoggingTimer::StopAndLog() {
   if (enabled) {
-    // Locking here should not affect the performance, since logging requires
-    // locking in any case.
-    tensorflow::mutex_lock lock(timer_stats_lock);
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
     double secs = (end_micros - start_micros) / 1000000.0;
 
-    TimerStats& stats = timers_stats[timer_id];
+    TimerStats& stats = *timer_stats;
+    tensorflow::mutex_lock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -86,8 +70,11 @@ ScopedLoggingTimer::~ScopedLoggingTimer() {
               << ", max: "
               << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
               << ", #called: " << stats.times_called << ")";
+    enabled = false;
   }
 }
+
+ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
@@ -124,7 +111,7 @@ std::vector<int64> InversePermutation(
   DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation[input_permutation[i]] = i;
+    output_permutation.at(input_permutation.at(i)) = i;
   }
   return output_permutation;
 }
@@ -134,7 +121,7 @@ std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
   CHECK_EQ(p1.size(), p2.size());
   std::vector<int64> output;
   for (size_t i = 0; i < p1.size(); ++i) {
-    output.push_back(p1[p2[i]]);
+    output.push_back(p1.at(p2.at(i)));
   }
   return output;
 }

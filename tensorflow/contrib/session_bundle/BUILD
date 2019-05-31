@@ -1,9 +1,10 @@
 # Description:
 #   TensorFlow Serving session bundle.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -417,5 +418,4 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-# -----------------------------------------------------------------------------
-# Google-internal targets go here (must be at the end).
+# Placeholder for Google-internal load statements.

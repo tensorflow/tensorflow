@@ -2,11 +2,12 @@
 # Contains ops for factorization of data, including matrix factorization and
 # clustering.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")

@@ -23,6 +23,8 @@ import numpy as np
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import normalization
@@ -32,17 +34,16 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
-all_combinations = combinations.combine(
-    distribution=[
-        strategy_combinations.one_device_strategy,
-    ], mode=["graph"])
-
 
 class NormalizationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
-      combinations.times(all_combinations,
-                         combinations.combine(fused=[True, False])))
+      combinations.combine(
+          distribution=[
+              strategy_combinations.one_device_strategy,
+          ],
+          mode=["graph"],
+          fused=[True, False]))
   def disabled_testBNWithZeroBatchInput(self, distribution, fused):
     with distribution.scope(), self.cached_session() as sess:
       bn_list = []
@@ -106,6 +107,56 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
       np_output = sess.run(predict_op, {inputs_placeholder: inputs})
       self.assertEqual([], np_output.tolist())
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.one_device_strategy,
+          ],
+          mode=["eager"],
+          fused=[True, False]))
+  def testBNWithZeroBatchInput(self, distribution, fused):
+    with distribution.scope():
+      inputs = np.random.random((0, 4, 4, 3)).astype(np.float32) + 100
+      targets = np.random.random((0, 4, 4, 3)).astype(np.float32)
+      bn = normalization.BatchNormalization(
+          axis=3, epsilon=1e-3, momentum=0.9, fused=fused)
+      optimizer = gradient_descent.GradientDescentOptimizer(0.01)
+
+      @def_function.function
+      def train_step():
+        def step_fn(inputs, targets):
+          with backprop.GradientTape() as tape:
+            outputs = bn.apply(inputs, training=True)
+            loss = losses.mean_squared_error(targets, outputs)
+          grads = tape.gradient(loss, bn.variables)
+          optimizer.apply_gradients(zip(grads, bn.variables))
+          return loss
+
+        return distribution.experimental_run_v2(
+            step_fn, args=(inputs, targets))
+
+      for _ in range(100):
+        np_output = train_step().numpy()
+        self.assertEqual(0.0, np_output)
+
+      # Verify that the statistics and weights are not changed after training.
+      self.assertAllEqual([0, 0, 0], bn.moving_mean.numpy())
+      self.assertAllEqual([1, 1, 1], bn.moving_variance.numpy())
+      self.assertAllEqual([1, 1, 1], bn.gamma.numpy())
+      self.assertAllEqual([0, 0, 0], bn.beta.numpy())
+
+      @def_function.function
+      def test_step():
+        def step_fn(inputs):
+          outputs = bn.apply(inputs, training=False)
+          return outputs
+
+        return distribution.experimental_run_v2(
+            step_fn, args=(inputs,))
+
+      # Test inference.
+      self.assertAllEqual(np.zeros(shape=(0, 4, 4, 3), dtype=np.float32),
+                          test_step().numpy())
 
 if __name__ == "__main__":
   test.main()

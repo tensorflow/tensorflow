@@ -39,7 +39,10 @@ class FusedBatchNormOp : public XlaOpKernel {
     is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
 
-  void Compile(XlaOpKernelContext* ctx) override {
+  void Compile(XlaOpKernelContext* ctx) override { CompileImpl(ctx); }
+
+ protected:
+  virtual void CompileImpl(XlaOpKernelContext* ctx) {
     xla::PrimitiveType input_type;
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
@@ -116,8 +119,29 @@ class FusedBatchNormOp : public XlaOpKernel {
   bool is_on_gpu_;
 };
 
+class FusedBatchNormOpV3 : public FusedBatchNormOp {
+ public:
+  explicit FusedBatchNormOpV3(OpKernelConstruction* ctx)
+      : FusedBatchNormOp(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    FusedBatchNormOp::CompileImpl(ctx);
+    if (!ctx->status().ok()) {
+      return;
+    }
+    ctx->SetConstantOutput(5, Tensor());
+  }
+
+ private:
+  float epsilon_;
+  TensorFormat data_format_;
+  bool is_training_;
+  bool is_on_gpu_;
+};
+
 REGISTER_XLA_OP(Name("FusedBatchNorm"), FusedBatchNormOp);
 REGISTER_XLA_OP(Name("FusedBatchNormV2"), FusedBatchNormOp);
+REGISTER_XLA_OP(Name("FusedBatchNormV3"), FusedBatchNormOpV3);
 
 class FusedBatchNormGradOp : public XlaOpKernel {
  public:
@@ -233,6 +257,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("FusedBatchNormGrad"), FusedBatchNormGradOp);
 REGISTER_XLA_OP(Name("FusedBatchNormGradV2"), FusedBatchNormGradOp);
+REGISTER_XLA_OP(Name("FusedBatchNormGradV3"), FusedBatchNormGradOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -317,7 +317,7 @@ TF_CALL_POD_TYPES(REGISTER_KERNELS);
 TF_CALL_string(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
@@ -407,7 +407,7 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("axis")
                             .HostMemory("output"),
                         ReverseV2Op<CPUDevice, int32, int64>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T)                             \

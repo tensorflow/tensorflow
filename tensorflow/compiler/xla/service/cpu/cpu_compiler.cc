@@ -98,6 +98,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
+#include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
@@ -296,6 +297,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                           /*allow_mixed_precision=*/false);
 
+    pass.AddPass<ScatterExpander>();
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -315,6 +317,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopConstantSinking>();
     pass.AddPass<WhileLoopSimplifier>();
+
+    // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+    // pass.AddPass<SliceSinker>();
+
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
@@ -337,8 +343,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
 
   pipeline.AddPass<CpuInstructionFusion>();
-
-  pipeline.AddPass<ScatterExpander>();
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
@@ -535,7 +539,7 @@ Status CreateHloProfilingArtifacts(
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/,
-    DeviceMemoryAllocator* /*device_allocator*/) {
+    se::DeviceMemoryAllocator* /*device_allocator*/) {
   std::unique_ptr<llvm::TargetMachine> jit_target_machine =
       SimpleOrcJIT::InferTargetMachineForJIT(
           CompilerTargetOptions(module->config()),
@@ -595,7 +599,7 @@ struct OrcJITPostCompilationHook {
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* /*device_allocator*/) {
+    se::DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
@@ -656,7 +660,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       BufferAssigner::Run(module.get(),
                           absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
-                          /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
@@ -849,7 +852,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         BufferAssigner::Run(module,
                             absl::make_unique<SequentialHloOrdering>(schedule),
                             BufferSizeBytesFunction(), memory_alignment,
-                            /*allow_input_output_aliasing=*/false,
                             /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.

@@ -565,7 +565,7 @@ Status Conv2DShapeImpl(shape_inference::InferenceContext* c,
     TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
                                          /*num_dims=*/4, data_format));
   } else {
-    DCHECK(padding != Padding::EXPLICIT);
+    CHECK(padding != Padding::EXPLICIT);  // Crash ok.
   }
 
   DimensionHandle output_rows, output_cols;
@@ -871,6 +871,12 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
   c->set_output(2, vector_shape);
   c->set_output(3, vector_shape);
   c->set_output(4, vector_shape);
+  return Status::OK();
+}
+
+Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c) {
+  TF_RETURN_IF_ERROR(FusedBatchNormShape(c));
+  c->set_output(5, c->UnknownShape());
   return Status::OK();
 }
 

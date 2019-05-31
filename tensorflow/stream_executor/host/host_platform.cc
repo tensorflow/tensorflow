@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
 
@@ -71,9 +70,10 @@ port::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = MakeUnique<StreamExecutor>(
-      this, MakeUnique<HostExecutor>(config.plugin_config));
-  auto init_status = executor->Init(config.ordinal, config.device_options);
+  auto executor = absl::make_unique<StreamExecutor>(
+      this, absl::make_unique<HostExecutor>(config.plugin_config),
+      config.ordinal);
+  auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return port::Status(
         port::error::INTERNAL,

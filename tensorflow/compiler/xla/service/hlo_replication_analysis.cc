@@ -125,9 +125,8 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
       if (source_it == hlo_replication_.end()) {
         return false;
       }
-      ShapeTree<bool> copy(dest->shape(), true);
-      copy.CopySubtreeFrom(source_it->second, {}, {});
-      return assign_or_combine_shapetree(std::move(copy), dest);
+      return assign_or_combine_shapetree(ShapeTree<bool>(source_it->second),
+                                         dest);
     };
     // For the opcodes below that we do special handling, we don't need to
     // explicitly check mark_everything_not_replicated because if it is set, the

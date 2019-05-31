@@ -25,6 +25,7 @@ import math
 import sys
 import time
 
+from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -147,7 +148,7 @@ def filter_test_messages(s):
 
 
 @test_util.with_control_flow_v2
-class ControlFlowTest(test.TestCase):
+class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testRefIdentity(self):
@@ -448,12 +449,8 @@ class ControlFlowTest(test.TestCase):
       values = constant_op.constant(10)
       indices = constant_op.constant(0)
       x = ops.IndexedSlices(values, indices)
-      v1_msg = "The two structures don't have the same nested structure"
-      v2_msg = ("true_fn and false_fn arguments to tf.cond must have the same "
-                "number, type, and overall structure of return values.")
       with self.assertRaisesRegexp(
-          TypeError,
-          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
+          TypeError, "Cannot reconcile tf.cond 0-th outputs"):
         control_flow_ops.cond(
             constant_op.constant(True),
             lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices),
@@ -516,7 +513,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(sess.run(g, {pred: True}), [2.0, 2.0, 2.0])
       self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
 
-  @test_util.disable_control_flow_v2("b/113293074")
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
@@ -666,6 +662,22 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], self.evaluate(r))
 
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  @test_util.run_v1_only("Uses tf.gradients")
+  def testCondResourceGrad(self, dtype):
+    init = constant_op.constant([7.], dtype=dtype)
+    v1 = variables.Variable(init)
+
+    age = constant_op.constant(3., dtype=dtype)
+    pred = math_ops.greater(age, 4.)
+    fn1 = lambda: age
+    fn2 = lambda: v1
+    r = control_flow_ops.cond(pred, fn1, fn2)
+
+    grad = gradients_impl.gradients(r, v1)[0]
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(grad, [1.])
+
   @test_util.run_gpu_only
   @test_util.run_deprecated_v1
   def testCond_Device(self):
@@ -779,6 +791,33 @@ class ControlFlowTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError,
         "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+      f()
+
+  def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
+
+    @def_function.function
+    def f():
+      c = constant_op.constant(1.)
+      inputs = {"c": c}
+
+      def br1_fn(inputs):
+        inputs["c"] = array_ops.identity(inputs["c"], name="br1_identity")
+        return inputs["c"]
+
+      def br4_fn(inputs):
+        return array_ops.identity(inputs["c"])
+
+      def other_fn():
+        return array_ops.identity(c)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(2),
+          [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
+           lambda: br4_fn(inputs)])
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
       f()
 
   def testCondListOutput(self):
@@ -1044,7 +1083,6 @@ class ControlFlowTest(test.TestCase):
       result = gradients_impl.gradients(z, x)[0]
       self.assertEqual(1.0, self.evaluate(result))
 
-  @test_util.disable_control_flow_v2("b/113327884")
   @test_util.run_v1_only("b/120545219")
   def testCondGrad_Gather(self):
     with self.cached_session() as sess:
@@ -1054,20 +1092,20 @@ class ControlFlowTest(test.TestCase):
       fn1 = lambda: array_ops.identity(v1)
       fn2 = lambda: array_ops.gather(v1, [1, 1])
       r = control_flow_ops.cond(pred, fn1, fn2)
+      # The following `grad` is a Tensor since it is the aggregation of an
+      # IndexedSlice and a Tensor. It is an `IndexedSlices` with control flow
+      # v2.
       grad = gradients_impl.gradients(r, [v1])[0]
       self.evaluate(variables.global_variables_initializer())
-      # Should just be [1, 1], but possibly a sparse representation
-      gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 1})
-      dense_gv = [
-          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
-      ]
-      self.assertAllEqual(dense_gv, [1.0, 1.0])
-      # Should be [0, 2], as the else forwards v1[1] twice
-      gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 3})
-      dense_gv = [
-          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
-      ]
-      self.assertAllEqual(dense_gv, [0.0, 2.0])
+
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        self.assertIsInstance(grad, ops.IndexedSlices)
+
+      grad_value = sess.run(grad, feed_dict={c: 1})
+      self.assertAllEqual(gradient_checker_v2._to_numpy(grad_value), [1.0, 1.0])
+
+      grad_value = sess.run(grad, feed_dict={c: 3})
+      self.assertAllEqual(gradient_checker_v2._to_numpy(grad_value), [0.0, 2.0])
 
   @test_util.run_deprecated_v1
   def testCondGrad_ResourceVarSparseRead(self):
@@ -2825,7 +2863,6 @@ class ControlFlowTest(test.TestCase):
     var = resource_variable_ops.ResourceVariable([1., 2., 3., 4.])
     self.evaluate(variables.global_variables_initializer())
     grad = self.evaluate(bar(var))
-    self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
   def testWhileGrad_ResourceVarInNestedFunctionCall(self):
@@ -2849,7 +2886,6 @@ class ControlFlowTest(test.TestCase):
     var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
     self.evaluate(variables.global_variables_initializer())
     grad = self.evaluate(bar(var))
-    self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
   def testWhileGrad_ResourceVarInLoopInFunctionCall(self):
@@ -2875,7 +2911,6 @@ class ControlFlowTest(test.TestCase):
     var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
     self.evaluate(variables.global_variables_initializer())
     grad = self.evaluate(bar(var))
-    self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
 
   def testWhileCondGrad_ResourceVarInFunctionCall(self):
@@ -2905,8 +2940,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWhileGrad_ResourceVarSparseRead(self):
-    # NOTE(skyewm): this test is interesting because the
-    # ResourceVariable.sparse_read gradient function returns an IndexedSlices.
+    # NOTE(skyewm): this test is interesting because the gradient is the
+    # aggregation result of IndexedSlices and Tensors.
     var = resource_variable_ops.ResourceVariable(np.ones(5),
                                                  dtype=dtypes.float32)
     r = control_flow_ops.while_loop(
@@ -2917,14 +2952,13 @@ class ControlFlowTest(test.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
     grad_val = self.evaluate(grad)
-    self.assertIsInstance(grad_val, ops.IndexedSlicesValue)
     arr = gradient_checker_v2._to_numpy(grad_val)
     self.assertAllEqual(arr, [0., 12., 0., 12., 0.])
 
   @test_util.run_deprecated_v1
   def testWhileGrad_MultiResourceVarSparseRead(self):
-    # NOTE(skyewm): this test is interesting because the
-    # ResourceVariable.sparse_read gradient function returns an IndexedSlices.
+    # NOTE(skyewm): this test is interesting because the gradient is the
+    # aggregation result of IndexedSlices and Tensors.
     var1 = resource_variable_ops.ResourceVariable(np.ones(5),
                                                   dtype=dtypes.float32)
     var2 = resource_variable_ops.ResourceVariable(np.ones(3),
@@ -2947,8 +2981,6 @@ class ControlFlowTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     var1_grad_val = self.evaluate(var1_grad)
     var2_grad_val = self.evaluate(var2_grad)
-    self.assertIsInstance(var1_grad_val, ops.IndexedSlicesValue)
-    self.assertIsInstance(var2_grad_val, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(var1_grad_val),
                         [0., 1., 0., 1., 0.])
     self.assertAllEqual(gradient_checker_v2._to_numpy(var2_grad_val),
@@ -4315,6 +4347,34 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(st1.indices, st3.indices)
     self.assertAllEqual(st1.values, st3.values)
     self.assertAllEqual(st1.dense_shape, st3.dense_shape)
+
+  def _buildWhileWithShapeInvariants(self, shape_invariants):
+    r = constant_op.constant([1, 2])
+
+    def cond(_):
+      return False
+
+    def body(_):
+      return constant_op.constant([1])
+
+    return control_flow_ops.while_loop(
+        cond, body, [r], shape_invariants=shape_invariants)
+
+  def testWhileOutputShapeWithShapeInvariantsUnknownRank(self):
+    @def_function.function
+    def runTest():
+      while_output = self._buildWhileWithShapeInvariants(
+          [tensor_shape.TensorShape(None)])
+      self.assertIsNone(while_output.shape.rank)
+    runTest()
+
+  def testWhileOutputShapeWithShapeInvariantsPartialShape(self):
+    @def_function.function
+    def runTest():
+      while_output = self._buildWhileWithShapeInvariants(
+          [tensor_shape.TensorShape([None])])
+      self.assertAllEqual(while_output.shape.as_list(), [None])
+    runTest()
 
 
 class ControlFlowContextCheckTest(test.TestCase):

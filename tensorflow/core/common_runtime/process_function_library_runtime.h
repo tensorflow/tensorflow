@@ -261,10 +261,25 @@ class ProcessFunctionLibraryRuntime {
                         const std::vector<Node*>& arg_nodes,
                         const std::vector<Node*>& ret_nodes) const;
 
+  struct CleanUpItem {
+    string device;
+    uint64 step_id;
+    FunctionLibraryRuntime::Handle local_handle;
+  };
+
+  void RunInternal(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::Handle handle,
+                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
+                   FunctionLibraryRuntime::DoneCallback done) const;
+
   void RunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                       FunctionLibraryRuntime::Handle handle,
                       gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                      std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                       FunctionLibraryRuntime::DoneCallback done) const;
+  void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
+               FunctionLibraryRuntime::DoneCallback done) const;
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.
@@ -307,6 +322,7 @@ class ProcessFunctionLibraryRuntime {
 
   Env* const env_;
   const DeviceMgr* const device_mgr_;
+  DeviceSet device_set_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
 

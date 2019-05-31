@@ -372,7 +372,11 @@ Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
   const ResourceHandle& resource_handle = t.flat<ResourceHandle>()(0);
   const auto& map = *ctx->device_map();
   auto it = map.find(resource_handle.device());
-  DCHECK(it != map.end());
+  if (it == map.end()) {
+    LOG(ERROR) << "Cannot find resouce device: " << resource_handle.device()
+               << ".";
+    return nullptr;
+  }
   return it->second;
 }
 

@@ -142,15 +142,15 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
 }
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
-  item_ = item;
+  item_ = &item;
   return Status::OK();
 }
 
 Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
                                              RunMetadata* run_metadata,
                                              Costs* costs) const {
-  GrapplerItem item = item_;
-  item.graph = optimized_graph;
+  GraphDef graph_copy = optimized_graph;
+  GrapplerItem item = item_->WithGraph(std::move(graph_copy));
 
   auto status = scheduler_->Init(&item);
   if (!status.ok()) {

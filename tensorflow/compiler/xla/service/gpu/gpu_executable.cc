@@ -119,7 +119,8 @@ Status GpuExecutable::ExecuteThunks(
       op_annotation.emplace(
           thunk->hlo_instruction()->ToString(HloPrintOptions::Canonical()),
           absl::StrCat("#tf_op=", hlo->metadata().op_name(),
-                       ",hlo_op=", hlo->name(), "#"));
+                       ",hlo_op=", hlo->name(),
+                       ",hlo_module=", hlo->GetModule()->name(), "#"));
     }
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
@@ -136,7 +137,8 @@ Status GpuExecutable::ExecuteThunks(
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
     TF_RETURN_IF_ERROR(
-        thunk->ExecuteOnStream(buffer_allocations, stream, &profiler));
+        thunk->ExecuteOnStream(buffer_allocations, stream,
+                               run_options->run_options().run_id(), &profiler));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
       finish_event->Init();
@@ -226,11 +228,11 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   return &module_globals_.emplace(executor, std::move(globals)).first->second;
 }
 
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+    HloExecutionProfile* hlo_execution_profile, bool block_host_until_done) {
+  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -272,8 +274,6 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
       buffer_allocations_builder.Build(
           assignment_.get(), executor->device_ordinal(), memory_allocator));
 
-  bool block_host_until_done =
-      !memory_allocator->AllowsAsynchronousDeallocation();
   TF_RETURN_IF_ERROR(ExecuteThunks(run_options, *buffer_allocations,
                                    block_host_until_done,
                                    hlo_execution_profile));
@@ -339,12 +339,22 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
   return std::move(shaped_buffer);
 }
 
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  return Execute(run_options, arguments, hlo_execution_profile,
+                 /*block_host_until_done=*/true);
+}
+
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
-  // TODO(b/30671675): Implement asynchronous execution mode.
-  return Unimplemented(
-      "Asynchronous execution on stream is not yet supported on GPU.");
+  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+  // Force synchronous execution if the allocator requires it.
+  bool block_host_until_done =
+      !memory_allocator->AllowsAsynchronousDeallocation();
+  return Execute(run_options, arguments, nullptr, block_host_until_done);
 }
 
 const PointsToSet& GpuExecutable::GetRootPointsToSet() const {

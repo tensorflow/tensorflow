@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 
@@ -31,12 +32,11 @@ std::map<int, OptionalTensor> GetVariables(OpKernelContext* ctx) {
   std::map<int, OptionalTensor> variables;
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     if (ctx->input(i).dtype() == DT_RESOURCE) {
-      Var* variable = nullptr;
+      core::RefCountPtr<Var> variable;
       ResourceHandle handle = HandleFromInput(ctx, i);
       OptionalTensor& optional = variables[i];
       optional.name = handle.name();
       if (LookupResource(ctx, handle, &variable).ok()) {
-        core::ScopedUnref scoped_unref(variable);
         tf_shared_lock lock(*variable->mu());
         optional.present = true;
         optional.value = *variable->tensor();

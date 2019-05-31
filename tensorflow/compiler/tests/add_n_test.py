@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 class XlaAddNTest(xla_test.XLATestCase):
 
   def testAddTensorLists(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l1 = list_ops.tensor_list_reserve(
           element_shape=[], element_dtype=dtypes.float32, num_elements=3)
       l2 = list_ops.tensor_list_reserve(
@@ -44,7 +44,7 @@ class XlaAddNTest(xla_test.XLATestCase):
           [5.0, 0.0, 10.0])
 
   def testAddTensorListsFailsIfLeadingDimsMismatch(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       l1 = list_ops.tensor_list_reserve(
           element_shape=[], element_dtype=dtypes.float32, num_elements=2)
       l2 = list_ops.tensor_list_reserve(
@@ -56,7 +56,7 @@ class XlaAddNTest(xla_test.XLATestCase):
         list_ops.tensor_list_stack(l, element_dtype=dtypes.float32).eval()
 
   def testAddTensorListsFailsIfElementShapesMismatch(self):
-    with self.cached_session() as session, self.test_scope():
+    with self.session() as session, self.test_scope():
       # Use placeholders instead of constant values for shapes to prevent TF's
       # shape inference from catching this early.
       l1_element_shape = array_ops.placeholder(dtype=dtypes.int32)

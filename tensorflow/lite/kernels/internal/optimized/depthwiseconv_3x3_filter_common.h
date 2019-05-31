@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_3X3_FILTER_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_3X3_FILTER_COMMON_H_
 
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -319,11 +319,19 @@ template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
           int32 kStrideWidth, int32 kStrideHeight>
 struct DepthwiseConvWindow {};
 
+template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
+          int32 kStrideWidth, int32 kStrideHeight>
+struct DepthwiseConvWindowPerChannel {};
+
 enum class EdgeType { kCorner, kHorizontal, kVertical, kCenter };
 
 template <DepthwiseConvOutputRounding output_rounding, EdgeType kEdgeType,
           int kPadWidth, int kPadHeight>
 struct DepthwiseConvPartial {};
+
+template <DepthwiseConvOutputRounding output_rounding, EdgeType kEdgeType,
+          int kPadWidth, int kPadHeight>
+struct DepthwiseConvPartialPerChannel {};
 
 // Copies a subset of the input designated by |input_ptr| into |output_ptr|
 // with the specified output dimensions. Supports output depths of 64 only as
@@ -367,12 +375,19 @@ struct ShuffleParams {
         input_height(get_shuffle_input_size(stride_height, output_height)) {}
 };
 
+enum class QuantizationType {
+  kNonPerChannelUint8 = 0,
+  kPerChannelInt8 = 1,
+};
+
+template <
+    QuantizationType quantization_type = QuantizationType::kNonPerChannelUint8>
 inline bool Fast3x3FilterKernelSupported(
     const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
     int32 stride_width, int32 stride_height, int32 dilation_width_factor,
     int32 dilation_height_factor, int32 pad_width, int32 pad_height,
     int32 depth_multiplier, const RuntimeShape& output_shape,
-    int32 output_shift) {
+    int32 output_shift, const int32* output_shift_ptr = nullptr) {
   const int32 input_height = input_shape.Dims(1);
   const int32 input_width = input_shape.Dims(2);
   const int32 input_depth = input_shape.Dims(3);
@@ -380,6 +395,7 @@ inline bool Fast3x3FilterKernelSupported(
   const int32 filter_width = filter_shape.Dims(2);
   const int32 output_height = output_shape.Dims(1);
   const int32 output_width = output_shape.Dims(2);
+  const int32 output_depth = output_shape.Dims(3);
 
   bool supported =
       filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
@@ -392,6 +408,14 @@ inline bool Fast3x3FilterKernelSupported(
 
   if (!supported) {
     return false;
+  }
+
+  if (quantization_type == QuantizationType::kPerChannelInt8) {
+    for (int i = 0; i < output_depth; ++i) {
+      if (output_shift_ptr[i] > 0) {
+        return false;
+      }
+    }
   }
 
   // Handle case where padding is zero but padding type is not kValid.
@@ -502,7 +526,7 @@ inline void PreloadInputBlock(
     const T* ptr = row_ptr;
     for (int j = 0; j < total_width; ++j) {
       // Input data is loaded once.
-      asm volatile("prfm pldl1keep, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
+      optimized_ops_preload_l1_keep(ptr);
       ptr += input_depth;
     }
     row_ptr += input_height_stride;

@@ -1,5 +1,6 @@
 # Description:
 #   BenchmarkModel Android harness for TensorFlow Lite benchmarks.
+
 package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0

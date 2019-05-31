@@ -19,6 +19,7 @@ from __future__ import print_function
 import copy
 import json
 import os
+import pickle
 
 import numpy
 import six
@@ -27,7 +28,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import normalization
@@ -109,6 +112,73 @@ class ListTests(test.TestCase):
     self.assertIn(v, model.variables)
     self.assertIn(v, model.trainable_variables)
     self.assertNotIn(v, model.non_trainable_variables)
+    self.assertIn(model.layer_list[0].trainable_weights[0],
+                  model.trainable_weights)
+
+  def testSubModelTracking(self):
+    model = training.Model()
+    model.v = variables.Variable(1.)
+    self.assertIn(model.v, model.trainable_weights)
+    model2 = training.Model()
+    model2.m = [model]
+    self.assertIn(model.v, model2.trainable_weights)
+
+  def testSubSequentialTracking(self):
+
+    class _Subclassed(training.Model):
+
+      def __init__(self, wrapped):
+        super(_Subclassed, self).__init__()
+        self._wrapped = wrapped
+
+      def call(self, x):
+        return self._wrapped(x)
+
+    model = sequential.Sequential()
+    layer = core.Dense(1)
+    model.add(layer)
+    model2 = _Subclassed(model)
+    model2(array_ops.ones([1, 2]))
+    model2.m = [model]
+    self.assertIn(layer.kernel, model2.trainable_weights)
+
+  def testLayerTrackedThroughSequential(self):
+    class AttrDict(dict):
+
+      def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+    def ffnet(layer_sizes, name):
+      ff = sequential.Sequential(name=name)
+      for i, width in enumerate(layer_sizes):
+        ff.add(core.Dense(
+            width,
+            activation=("relu" if i < len(layer_sizes)-1 else None)))
+      return ff
+
+    class MyModel2(training.Model):
+
+      def __init__(self, config, name="my_model_2"):
+        super(MyModel2, self).__init__(name=name)
+        self._num_tokens = config.num_tokens
+
+        # list of sub-models
+        self._ffnet = [ffnet(config.module_layers + (self._num_tokens,), "ff")]
+
+      def null_input(self):
+        return array_ops.zeros([1, self._num_tokens], dtype=dtypes.float32)
+
+      def call(self, input_, module_index=None):
+        return self._ffnet[0](input_)
+
+    m2 = MyModel2(AttrDict(
+        num_tokens=5,
+        module_layers=(50, 30)))
+
+    # Construct
+    m2(m2.null_input())
+    self.assertLen(m2.trainable_variables, 6)
 
   def testJSONSerialization(self):
     obj = tracking.AutoTrackable()
@@ -292,6 +362,13 @@ class ListWrapperTest(test.TestCase):
 
     if not_overridden:
       self.fail("_ListWrapper does not override %s" % (not_overridden))
+
+  def testPickle(self):
+    original = data_structures._ListWrapper([1, 2])
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual([1, 2], deserialized)
 
   def testSameStructure(self):
     l = [1]
@@ -594,15 +671,6 @@ class MappingTests(test.TestCase):
     model.save_weights(save_path)
     model.load_weights(save_path)
 
-  def testDelNoSave(self):
-    model = training.Model()
-    model.d = {}
-    model.d["a"] = []
-    del model.d["a"]
-    save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
-      model.save_weights(save_path)
-
   def testPopNoSave(self):
     model = training.Model()
     model.d = {}
@@ -621,14 +689,13 @@ class MappingTests(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "modified outside the wrapper"):
       model.save_weights(save_path)
 
-  def testOverwriteNoSave(self):
+  def testOverwriteCanStillSave(self):
     model = training.Model()
     model.d = {}
     model.d["a"] = {}
     model.d["a"] = {}
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
-      model.save_weights(save_path)
+    model.save_weights(save_path)
 
   def testIter(self):
     model = training.Model()
@@ -754,6 +821,13 @@ class MappingTests(test.TestCase):
     result = data_structures._DictWrapper([(1, 2), (3, 4)])
     self.assertIsInstance(result, dict)
     self.assertEqual({1: 2, 3: 4}, result)
+
+  def testPickle(self):
+    original = data_structures._DictWrapper(dict(a=1, b=2))
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual(dict(a=1, b=2), deserialized)
 
   def testListAddOrder(self):
     self.assertEqual([1., 2.],

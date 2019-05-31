@@ -22,6 +22,7 @@ import abc
 import six
 
 from tensorflow.python.data.util import structure
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -31,13 +32,14 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.experimental.Optional")
 @six.add_metaclass(abc.ABCMeta)
-class Optional(object):
+class Optional(composite_tensor.CompositeTensor):
   """Wraps a nested structure of tensors that may/may not be present at runtime.
 
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
   `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
-  contains the next value from a `tf.data.Iterator` if one exists, or a "none"
+  contains the next value from a `tf.compat.v1.data.Iterator` if one exists, or
+  a "none"
   value that indicates the end of the sequence has been reached.
   """
 
@@ -146,6 +148,24 @@ class _OptionalImpl(Optional):
   def value_structure(self):
     return self._value_structure
 
+  def _to_components(self):
+    return [self._variant_tensor]
+
+  def _component_metadata(self):
+    return self._value_structure
+
+  @classmethod
+  def _from_components(cls, components, metadata):
+    return _OptionalImpl(components[0], metadata)
+
+  def _shape_invariant_to_components(self, shape=None):
+    del shape  # not used
+    return tensor_shape.TensorShape([])  # optional component is always a scalar
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._variant_tensor, "graph")
+
 
 @tf_export("data.experimental.OptionalStructure")
 class OptionalStructure(structure.Structure):
@@ -153,6 +173,14 @@ class OptionalStructure(structure.Structure):
 
   def __init__(self, value_structure):
     self._value_structure = value_structure
+
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, OptionalStructure) and
+            self._value_structure == other._value_structure)
+
+  def __hash__(self):
+    return hash(self._value_structure)
 
   @property
   def _flat_shapes(self):

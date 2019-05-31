@@ -195,6 +195,11 @@ typedef struct {
   float re, im;  // real and imaginary parts, respectively.
 } TfLiteComplex64;
 
+// Half precision data type compatible with the C99 definition.
+typedef struct {
+  uint16_t data;
+} TfLiteFloat16;
+
 // Types supported by tensor
 typedef enum {
   kTfLiteNoType = 0,
@@ -207,6 +212,7 @@ typedef enum {
   kTfLiteInt16 = 7,
   kTfLiteComplex64 = 8,
   kTfLiteInt8 = 9,
+  kTfLiteFloat16 = 10,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -259,6 +265,8 @@ typedef union {
   int32_t* i32;
   int64_t* i64;
   float* f;
+  // Placeholder for 16b float type. Use uint16* in the pointer union for now.
+  TfLiteFloat16* f16;
   char* raw;
   const char* raw_const;
   uint8_t* uint8;
