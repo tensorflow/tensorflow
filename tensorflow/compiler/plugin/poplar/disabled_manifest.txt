@@ -69,21 +69,7 @@ RandomOpsTest.testTruncatedNormalIsNotConstant # disable until poplar CPU random
 XlaAddNTest # Disable due to variants in lists
 WhileTest.testMap # Disable due to variants in lists
 WhileTest.testMaxItersSimpleV2 # Disable due to variants in lists
-ListOpsTest.testDoNotConstantFoldVariants # Disable due to variants in lists
-ListOpsTest.testElementShape # Disable due to variants in lists
-ListOpsTest.testEmptyTensorListMax # Disable due to variants in lists
-ListOpsTest.testGetSet # Disable due to variants in lists
-ListOpsTest.testGetSetReserved # Disable due to variants in lists
-ListOpsTest.testGetSetReservedNonScalar # Disable due to variants in lists
-ListOpsTest.testListFromTensor # Disable due to variants in lists
-ListOpsTest.testPushInEmptyListWithUnknownElementShape # Disable due to variants in lists
-ListOpsTest.testPushPop # Disable due to variants in lists
-ListOpsTest.testPushPopSeparateLists # Disable due to variants in lists
-ListOpsTest.testSetDoesNotUpdatePushIndex # Disable due to variants in lists
-ListOpsTest.testSetStackReservedUnknownElementShape # Disable due to variants in lists
-ListOpsTest.testStack # Disable due to variants in lists
-ListOpsTest.testStackWithUninitializedTensors # Disable due to variants in lists
-ListOpsTest.testZerosLikeForTensorList # Disable due to variants in lists
+ListOpsTest # Disable due to variants in lists
 StatelessRandomOpsTest.testDeterminism # poplibs CPU mode does not obey seed
 StatelessRandomOpsTest.testRandomUniformIsInRange # poplar CPU model random uniform int doesn't obey limits
 StatelessRandomOpsTest.testTruncatedNormal # Tests float64
