@@ -4,7 +4,8 @@ op {
   description: << END
   Given an input tensor, this function computes tangent of every
   element in the tensor. Input range is `(-inf, inf)` and
-  output range is `(-inf, inf)`.
+  output range is `(-inf, inf)`. If input lies outside the boundary, `nan`
+  is returned.
 
   ```python
   x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10000, float("inf")])
