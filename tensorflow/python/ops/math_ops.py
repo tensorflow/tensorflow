@@ -1123,6 +1123,12 @@ def floordiv(x, y, name=None):
   `x // y` floor division in Python 3 and in Python 2.7 with
   `from __future__ import division`.
 
+  ```python
+  # Example
+  tf.math.floordiv(8, 5) # Returns a tensor of 1.
+  tf.math.floordiv(2.5, 1.5) # Returns a tensor of 1.0.
+  ```
+  
   `x` and `y` must have the same type, and the result will have the same type
   as well.
 
