@@ -806,9 +806,7 @@ public:
   NamedAttributeList(ArrayRef<NamedAttribute> attributes);
 
   /// Return all of the attributes on this operation.
-  ArrayRef<NamedAttribute> getAttrs() const {
-    return attrs ? attrs.getValue() : llvm::None;
-  }
+  ArrayRef<NamedAttribute> getAttrs() const;
 
   /// Replace the held attributes with ones provided in 'newAttrs'.
   void setAttrs(ArrayRef<NamedAttribute> attributes);

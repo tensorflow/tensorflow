@@ -954,6 +954,10 @@ NamedAttributeList::NamedAttributeList(ArrayRef<NamedAttribute> attributes) {
   setAttrs(attributes);
 }
 
+ArrayRef<NamedAttribute> NamedAttributeList::getAttrs() const {
+  return attrs ? attrs.getValue() : llvm::None;
+}
+
 /// Replace the held attributes with ones provided in 'newAttrs'.
 void NamedAttributeList::setAttrs(ArrayRef<NamedAttribute> attributes) {
   // Don't create an attribute list if there are no attributes.
