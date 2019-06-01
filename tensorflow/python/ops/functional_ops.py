@@ -495,7 +495,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
 # pylint: disable=invalid-name
 def If(cond, inputs, then_branch, else_branch, name=None):
-  r"""output = Cond(inputs) ? then_branch(inputs) : else_branch(inputs).
+  """output = Cond(inputs) ? then_branch(inputs) : else_branch(inputs).
 
   Args:
     cond: A `Tensor`. A scalar. If the scalar is not a boolean, the scalar is
@@ -524,7 +524,7 @@ def If(cond, inputs, then_branch, else_branch, name=None):
 
 
 def Gradient(inputs, f, name=None):
-  r"""Computes the gradient function for function f via backpropagation.
+  """Computes the gradient function for function f via backpropagation.
 
   Args:
     inputs: A list of tensors of size N + M.
@@ -580,7 +580,7 @@ def _LoopBodyCaptureWrapper(func):
 
 # pylint: disable=invalid-name,protected-access
 def While(input_, cond, body, name=None, hostmem=None):
-  r"""output = input; While (Cond(output)) { output = Body(output) }.
+  """output = input; While (Cond(output)) { output = Body(output) }.
 
   Args:
     input_: A list of `Tensor` objects.
@@ -728,7 +728,7 @@ def For(start,
         name=None,
         hostmem=None,
         rewrite_with_while=None):
-  r"""out = input; for i in range(start, limit, delta) out = body(i, out).
+  """out = input; for i in range(start, limit, delta) out = body(i, out).
 
   Args:
     start: A `Tensor` of type `int32`.
