@@ -106,20 +106,3 @@ parts:
       - tensorflow
     plugin: cmake
     source: files/
-
-apps:
- tensorflow:
-    command: bin/wrapper $SNAP/usr/share/tensorflow/bin/tensorflow
-    desktop: usr/share/applications/tensorflow.desktop
-    environment:
-      # Fallback to XWayland if running in a Wayland session.
-      DISABLE_WAYLAND: 1
-      GSETTINGS_SCHEMA_DIR: $SNAP/usr/share/glib-2.0/schemas
-
-  url-handler:
-    command: bin/wrapper $SNAP/usr/share/tensorflow/bin/tensorflow --open-url
-    desktop: usr/share/applications/tensorflow-url-handler.desktop
-    environment:
-      # Fallback to XWayland if running in a Wayland session.
-      DISABLE_WAYLAND: 1
-      GSETTINGS_SCHEMA_DIR: $SNAP/usr/share/glib-2.0/schemas
