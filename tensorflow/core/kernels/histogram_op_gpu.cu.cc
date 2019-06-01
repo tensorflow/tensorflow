@@ -114,8 +114,8 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != gpuSuccess) {
-      return errors::Internal("Could not launch HistogramRange: ",
-                              GpuGetErrorString(err), ".");
+      return errors::Internal(
+          "Could not launch HistogramRange: ", GpuGetErrorString(err), ".");
     }
 
     return Status::OK();
