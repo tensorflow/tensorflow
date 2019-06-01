@@ -726,14 +726,14 @@ int TF_PickUnusedPortOrDie() {
   return tensorflow::internal::PickUnusedPortOrDie();
 }
 
-TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
+TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
                                                 void* data, size_t len) {
-  auto dtype = static_cast<tensorflow::DataType>(dtype_arg);
+  auto dtype = static_cast<tensorflow::DataType>(data_type);
   DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return new TFE_TensorHandle(tensor, nullptr, nullptr);
+  return new TFE_TensorHandle(tensor);
 }
 
 namespace {
