@@ -541,7 +541,7 @@ DenseElementsAttr DenseElementsAttr::get(ShapedType type,
                                          ArrayRef<Attribute> values) {
   assert(type.getElementType().isIntOrFloat() &&
          "expected int or float element type");
-  assert(values.size() == type.getNumElements() &&
+  assert(static_cast<int64_t>(values.size()) == type.getNumElements() &&
          "expected 'values' to contain the same number of elements as 'type'");
 
   // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
@@ -588,7 +588,7 @@ Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
 
   // Verify that the rank of the indices matches the held type.
   auto rank = type.getRank();
-  if (static_cast<size_t>(rank) != index.size())
+  if (rank != static_cast<int64_t>(index.size()))
     return Attribute();
 
   // Verify that all of the indices are within the shape dimensions.
@@ -673,7 +673,7 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
 // of 'type'.
 DenseElementsAttr DenseElementsAttr::get(ShapedType type,
                                          ArrayRef<APInt> values) {
-  assert(values.size() == type.getNumElements() &&
+  assert(static_cast<int64_t>(values.size()) == type.getNumElements() &&
          "expected 'values' to contain the same number of elements as 'type'");
 
   size_t bitWidth = getDenseElementBitwidth(type.getElementType());

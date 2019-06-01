@@ -115,10 +115,10 @@ unsigned ShapedType::getElementTypeBitWidth() const {
   return getElementType().getIntOrFloatBitWidth();
 }
 
-unsigned ShapedType::getNumElements() const {
+int64_t ShapedType::getNumElements() const {
   assert(hasStaticShape() && "cannot get element count of dynamic shaped type");
   auto shape = getShape();
-  unsigned num = 1;
+  int64_t num = 1;
   for (auto dim : shape)
     num *= dim;
   return num;
@@ -128,7 +128,10 @@ int64_t ShapedType::getRank() const { return getShape().size(); }
 
 bool ShapedType::hasRank() const { return !isa<UnrankedTensorType>(); }
 
-int64_t ShapedType::getDimSize(unsigned i) const { return getShape()[i]; }
+int64_t ShapedType::getDimSize(int64_t i) const {
+  assert(i >= 0 && i < getRank() && "invalid index for shaped type");
+  return getShape()[i];
+}
 
 /// Get the number of bits require to store a value of the given shaped type.
 /// Compute the value recursively since tensors are allowed to have vectors as
@@ -162,7 +165,7 @@ ArrayRef<int64_t> ShapedType::getShape() const {
   }
 }
 
-unsigned ShapedType::getNumDynamicDims() const {
+int64_t ShapedType::getNumDynamicDims() const {
   return llvm::count_if(getShape(), isDynamic);
 }
 

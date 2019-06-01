@@ -197,7 +197,7 @@ public:
   unsigned getElementTypeBitWidth() const;
 
   /// If this is a ranked type, return the number of elements. Otherwise, abort.
-  unsigned getNumElements() const;
+  int64_t getNumElements() const;
 
   /// If this is a ranked type, return the rank. Otherwise, abort.
   int64_t getRank() const;
@@ -216,11 +216,11 @@ public:
 
   /// If this is a ranked type, return the number of dimensions with dynamic
   /// size. Otherwise, abort.
-  unsigned getNumDynamicDims() const;
+  int64_t getNumDynamicDims() const;
 
   /// If this is ranked type, return the size of the specified dimension.
   /// Otherwise, abort.
-  int64_t getDimSize(unsigned i) const;
+  int64_t getDimSize(int64_t i) const;
 
   /// Get the total amount of bits occupied by a value of this type.  This does
   /// not take into account any memory layout or widening constraints, e.g. a
