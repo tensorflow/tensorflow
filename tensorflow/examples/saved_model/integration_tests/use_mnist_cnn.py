@@ -57,26 +57,9 @@ flags.DEFINE_bool(
 flags.DEFINE_bool(
     'fast_test_mode', False,
     'Shortcut training for running in unit tests.')
-flags.DEFINE_string('strategy', None,
-                    'Name of the distribution strategy to use.')
-
-
-class MaybeDistributionScope(object):
-  """Provides a context allowing no distribution strategy."""
-
-  def __init__(self, distribution):
-    self._distribution = distribution
-    self._scope = None
-
-  def __enter__(self):
-    if self._distribution:
-      self._scope = self._distribution.scope()
-      self._scope.__enter__()
-
-  def __exit__(self, exc_type, value, traceback):
-    if self._distribution:
-      self._scope.__exit__(exc_type, value, traceback)
-      self._scope = None
+flags.DEFINE_bool(
+    'use_mirrored_strategy', False,
+    'Whether to use mirrored distribution strategy.')
 
 
 def make_feature_extractor(saved_model_path, trainable,
@@ -114,12 +97,12 @@ def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
 def main(argv):
   del argv
 
-  named_strategy = (
-      mnist_util.named_strategies.get(FLAGS.strategy)
-      if FLAGS.strategy else None)
-  strategy = named_strategy.strategy if named_strategy else None
+  if FLAGS.use_mirrored_strategy:
+    strategy = tf.distribute.MirroredStrategy()
+  else:
+    strategy = tf.distribute.get_strategy()
 
-  with MaybeDistributionScope(strategy):
+  with strategy.scope():
     feature_extractor = make_feature_extractor(
         FLAGS.export_dir,
         FLAGS.retrain,

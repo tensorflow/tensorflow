@@ -539,9 +539,7 @@ py_library(
         ":device_util",
         ":distribute_lib",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
@@ -1034,7 +1032,6 @@ distribute_py_test(
     main = "saved_model_save_load_test.py",
     deps = [
         ":saved_model_test_base",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/saved_model",
     ],
 )
