@@ -113,7 +113,7 @@ def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
 
 @tf_export("strings.format")
 def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
-  r"""Formats a string template using a list of tensors.
+  """Formats a string template using a list of tensors.
 
   Formats a string template using a list of tensors, abbreviating tensors by
   only printing the first and last `summarize` elements of each dimension
