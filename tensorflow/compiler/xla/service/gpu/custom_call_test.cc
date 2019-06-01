@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/includes/cuda_headers/third_party/gpus/cuda/include/driver_types.h"
+#define PLATFORM "CUDA"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
+#define PLATFORM "ROCM"
+#endif
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -23,6 +29,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/stream_executor/gpu/gpu_types.h"
+
+#if GOOGLE_CUDA
+#define gpuSuccess cudaSuccess
+#define gpuMemcpyAsync cudaMemcpyAsync
+#define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
+#define gpuMemcpy cudaMemcpy
+#define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
+#elif TENSORFLOW_USE_ROCM
+#define gpuSuccess hipSuccess
+#define gpuMemcpyAsync hipMemcpyAsync
+#define gpuMemcpyDeviceToDevice hipMemcpyDeviceToDevice
+#define gpuMemcpy hipMemcpy
+#define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
+#define gpuMemcpyHostToDevice hipMemcpyHostToDevice
+#endif
 
 namespace xla {
 namespace {
@@ -30,11 +53,11 @@ namespace {
 class CustomCallTest : public ClientLibraryTestBase {};
 
 bool is_invoked_called = false;
-void Callback_IsInvoked(CUstream /*stream*/, void** /*buffers*/,
+void Callback_IsInvoked(se::gpu::GpuStreamHandle /*stream*/, void** /*buffers*/,
                         const char* /*opaque*/, size_t /*opaque_len*/) {
   is_invoked_called = true;
 }
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_IsInvoked, "CUDA");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_IsInvoked, PLATFORM);
 
 TEST_F(CustomCallTest, IsInvoked) {
   XlaBuilder b(TestName());
@@ -52,16 +75,15 @@ TEST_F(CustomCallTest, UnknownTarget) {
              /*opaque=*/"");
   ASSERT_FALSE(Execute(&b, {}).ok());
 }
-
-void Callback_Memcpy(CUstream stream, void** buffers, const char* /*opaque*/,
-                     size_t /*opaque_len*/) {
+void Callback_Memcpy(se::gpu::GpuStreamHandle stream, void** buffers,
+                     const char* /*opaque*/, size_t /*opaque_len*/) {
   void* src = buffers[0];
   void* dst = buffers[1];
-  auto err = cudaMemcpyAsync(dst, src, /*count=*/sizeof(float) * 128,
-                             cudaMemcpyDeviceToDevice, stream);
-  ASSERT_EQ(err, cudaSuccess);
+  auto err = gpuMemcpyAsync(dst, src, /*count=*/sizeof(float) * 128,
+                            gpuMemcpyDeviceToDevice, stream);
+  ASSERT_EQ(err, gpuSuccess);
 }
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Memcpy, "CUDA");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Memcpy, PLATFORM);
 TEST_F(CustomCallTest, Memcpy) {
   XlaBuilder b(TestName());
   CustomCall(&b, "Callback_Memcpy",
@@ -73,12 +95,12 @@ TEST_F(CustomCallTest, Memcpy) {
 
 // Check that opaque handles nulls within the string.
 std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
-void Callback_Opaque(CUstream /*stream*/, void** /*buffers*/,
+void Callback_Opaque(se::gpu::GpuStreamHandle /*stream*/, void** /*buffers*/,
                      const char* opaque, size_t opaque_len) {
   std::string opaque_str(opaque, opaque_len);
   ASSERT_EQ(opaque_str, kExpectedOpaque);
 }
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Opaque, "CUDA");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Opaque, PLATFORM);
 TEST_F(CustomCallTest, Opaque) {
   XlaBuilder b(TestName());
   CustomCall(&b, "Callback_Opaque", /*operands=*/{},
@@ -86,7 +108,7 @@ TEST_F(CustomCallTest, Opaque) {
   TF_ASSERT_OK(Execute(&b, {}).status());
 }
 
-void Callback_SubBuffers(CUstream stream, void** buffers,
+void Callback_SubBuffers(se::gpu::GpuStreamHandle stream, void** buffers,
                          const char* /*opaque*/, size_t /*opaque_len*/) {
   // `buffers` is a flat array containing device pointers to the following.
   //
@@ -116,7 +138,7 @@ void Callback_SubBuffers(CUstream stream, void** buffers,
   // because buffers contains pointers to device memory, we have to retrieve
   // these values via cudaMemcpy.
   void* p0[2];
-  cudaMemcpy(p0, buffers[0], 2 * sizeof(void*), cudaMemcpyDeviceToHost);
+  gpuMemcpy(p0, buffers[0], 2 * sizeof(void*), gpuMemcpyDeviceToHost);
   ASSERT_EQ(p0[0], buffers[1]);
   ASSERT_EQ(p0[1], buffers[2]);
 
@@ -125,7 +147,7 @@ void Callback_SubBuffers(CUstream stream, void** buffers,
   //   (*buffers[3])[0] == buffers[4]
   //   (*buffers[3])[1] == buffers[5].
   void* p1[2];
-  cudaMemcpy(p1, buffers[3], 2 * sizeof(void*), cudaMemcpyDeviceToHost);
+  gpuMemcpy(p1, buffers[3], 2 * sizeof(void*), gpuMemcpyDeviceToHost);
   ASSERT_EQ(p1[0], buffers[4]);
   ASSERT_EQ(p1[1], buffers[5]);
 
@@ -136,24 +158,24 @@ void Callback_SubBuffers(CUstream stream, void** buffers,
   // Write the results.  First set the root tuple output buffer to {b7, b8,
   // b11}.
   void* root[3] = {buffers[7], buffers[8], buffers[11]};
-  cudaMemcpy(buffers[6], root, 3 * sizeof(void*), cudaMemcpyHostToDevice);
+  gpuMemcpy(buffers[6], root, 3 * sizeof(void*), gpuMemcpyHostToDevice);
 
   // Now set the sub-tuple output buffer at index 8 to {b9, b10}.
   void* sub_tuple[2] = {buffers[9], buffers[10]};
-  cudaMemcpy(buffers[8], sub_tuple, 2 * sizeof(void*), cudaMemcpyDeviceToHost);
+  gpuMemcpy(buffers[8], sub_tuple, 2 * sizeof(void*), gpuMemcpyDeviceToHost);
 
   // Now set output leaf buffers 7, 9, 10, and 11, copying data from the
   // corresponding same-sized inputs.
-  cudaMemcpyAsync(buffers[7], buffers[5], 8 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[9], buffers[1], 128 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[10], buffers[2], 256 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[11], buffers[4], 1024 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[7], buffers[5], 8 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[9], buffers[1], 128 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[10], buffers[2], 256 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[11], buffers[4], 1024 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
 }
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_SubBuffers, "CUDA");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_SubBuffers, PLATFORM);
 TEST_F(CustomCallTest, SubBuffers) {
   XlaBuilder b(TestName());
   CustomCall(&b, "Callback_SubBuffers", /*operands=*/
