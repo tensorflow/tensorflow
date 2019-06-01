@@ -576,16 +576,89 @@ def to_code(entity,
             indentation='  ',
             experimental_optional_features=converter.Feature.ALL,
             experimental_partial_types=None):
-  """Similar to `to_graph`, but returns Python source code as a string.
+  """`to_code` is a low-level API that returns the AutoGraph generated Python 
+  source code as a string. This is similar to `to_graph`, which returns the 
+  TensorFlow graph, instead of Python.
 
   Also see: `tf.autograph.to_graph`.
 
   `to_graph` returns the Python source code that can be used to generate a
   TensorFlow graph that is functionally identical to the input Python code.
+  
+  __Example__
+  For example, given this tf.function Autograph code, we can also output the generated Python code:
+   ```
+   @tf.function
+   def sum_even(items):
+     s = 0
+     for c in items:
+       if c % 2 > 0:
+         continue
+       s += c
+     return s
+
+   # typical usage of autograph
+   # sum_even(tf.constant([10, 12, 15, 20]))
+   # outputs
+   # <tf.Tensor: id=1622, shape=(), dtype=int32, numpy=42>
+
+   # let’s look at the generated code
+   print(tf.autograph.to_code(sum_even.python_function))
+
+   ```
+   Outputs:
+   ```
+   from __future__ import print_function
+
+   def tf__sum_even(items):
+     try:
+       with ag__.function_scope('sum_even'):
+         do_return = False
+         retval_ = None
+         s = 0
+
+         def loop_body(loop_vars, s_2):
+           with ag__.function_scope('loop_body'):
+             c = loop_vars
+             continue_ = False
+             cond = ag__.gt(c % 2, 0)
+
+             def if_true():
+               with ag__.function_scope('if_true'):
+                 continue_ = True
+                 return continue_
+
+             def if_false():
+               with ag__.function_scope('if_false'):
+                 return continue_
+             continue_ = ag__.if_stmt(cond, if_true, if_false)
+             cond_1 = ag__.not_(continue_)
+
+             def if_true_1():
+               with ag__.function_scope('if_true_1'):
+                 s_1, = s_2,
+                 s_1 += c
+                 return s_1
+
+             def if_false_1():
+               with ag__.function_scope('if_false_1'):
+                 return s_2
+             s_2 = ag__.if_stmt(cond_1, if_true_1, if_false_1)
+             return s_2,
+         s, = ag__.for_stmt(items, None, loop_body, (s,))
+         do_return = True
+         retval_ = s
+         return retval_
+     except:
+       ag__.rewrite_graph_construction_error(ag_source_map__)
+
+   tf__sum_even.autograph_info__ = {}
+   ```
+
 
   Args:
-    entity: Python callable or class to convert.
-    recursive: Whether to recursively convert any functions that the
+    entity: class or callable, name of Python callable or class to convert.
+    recursive: boolean, Whether to recursively convert any functions that the
       converted function may call.
     arg_values: Optional dict of value hints for symbols including
       function arguments mapping string names to actual values. For example,
@@ -602,7 +675,7 @@ def to_code(entity,
       use.
 
   Returns:
-    The converted code as string.
+    The converted Python code as type `string`.
   """
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
