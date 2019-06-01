@@ -494,7 +494,7 @@ TEST_F(SliceSinkerTest, Cascade) {
   EXPECT_THAT(slice1->slice_strides(), ElementsAre(1, 1));
 }
 
-TEST_F(SliceSinkerTest, DifferentTypeOperation) {
+TEST_F(SliceSinkerTest, SameOpcodeDifferentResultElementTypes) {
   const char* kModuleStr = R"(
     HloModule m
     test {

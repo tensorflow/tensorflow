@@ -69,7 +69,10 @@ bool IsElementwiseOperationOnSimilarSlices(const HloInstruction* inst) {
 // checks whether another operation, candidate, is an operation that hasn't been
 // transformed and is similar to operation_on_slices as defined by the following
 // criteria:
-// (1) candidate has the same opcode as the operation_on_slices.
+// (1) candidate has the same opcode and result element type as
+//     operation_on_slices. The check for same result element type is necessary
+//     because kConvert can produce different result element types for the same
+//     input element type.
 // (2) The ith operand of candidate is a slice from the same slice source of
 //     the ith operand in operation_on_slices.
 // (3) All operands of candidate are slices taken from the same indices as the
