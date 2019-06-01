@@ -330,10 +330,33 @@ cuda_py_test(
         ":multi_worker_testing_utils",
         "//tensorflow/python/keras",
     ],
-    shard_count = 14,
+    # TODO(b/132384649): Enable for guitar and oss tests.
     tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/132384649): Flakily times out.
+        "no_oss",
+        "noguitar",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "multi_worker_fault_tolerance_test",
+    srcs = ["multi_worker_fault_tolerance_test.py"],
+    additional_deps = [
+        ":distribute",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        ":multi_worker_testing_utils",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 14,
+    # TODO(b/132384649): Enable for guitar and oss tests.
+    tags = [
+        "no_oss",
+        "noguitar",
     ],
     xla_enable_strict_auto_jit = True,
 )
