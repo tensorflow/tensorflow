@@ -8,10 +8,11 @@ op {
 ```python
 x = tf.constant([2, 4])
 y = tf.constant(2)
-tf.math.equal(x, y) ==> array([ True, False])
+tf.math.equal(x, y) ==> array([True, False])
 
 x = tf.constant([2, 4])
 y = tf.constant([2, 4])
-tf.math.equal(x, y) ==> array([ True,  True])
+tf.math.equal(x, y) ==> array([True,  True])
+```
 END
 }

@@ -3,7 +3,7 @@ op {
   summary: "Computes exponential of x element-wise.  \\\\(y = e^x\\\\)."
   description: <<END
   This function computes the exponential of every element in the input tensor.
-  i.e. exp(x) or e^(x), where `x` is the input tensor.
+  i.e. `exp(x)` or `e^(x)`, where `x` is the input tensor.
   `e` denotes Euler's number and is approximately equal to 2.718281.
   Output is positive for any real input.
 
