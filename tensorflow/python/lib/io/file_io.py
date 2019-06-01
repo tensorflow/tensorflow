@@ -311,9 +311,12 @@ def delete_file_v2(path):
     errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
     NotFoundError if the path does not exist.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.DeleteFile(compat.as_bytes(path), status)
-
+  try: 
+    with errors.raise_exception_on_not_ok_status() as status:
+      pywrap_tensorflow.DeleteFile(compat.as_bytes(path), status)
+  except errors.NotFoundError:
+    return False
+  return True
 
 def read_file_to_string(filename, binary_mode=False):
   """Reads the entire contents of a file to a string.
