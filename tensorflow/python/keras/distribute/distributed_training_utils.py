@@ -596,12 +596,13 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
-  elif not is_distributing_by_cloning(model):
-    sample_weights = None  # b/129503665
-  else:
-    sample_weights = [
-        None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
-    ]
+  elif sample_weights is not None and is_distributing_by_cloning(model):
+    if context.executing_eagerly() and not model._compile_distribution:
+      raise NotImplementedError('`sample_weight` is not supported when using '
+                                'tf.distribute.Strategy in eager mode and '
+                                'cloning=True.')
+    sample_weights = flatten_per_replica_values(strategy, sample_weights)
+
   ins = [inputs, targets, sample_weights]
   return tuple(ins)
 
@@ -835,15 +836,9 @@ def _make_replica_execution_function(model, mode):
   return func
 
 
-def _make_execution_function_with_cloning(model, mode):
-  """Clones or re-uses models to run one step of distributed model execution."""
+def _make_replicated_models_with_cloning(model, mode):
+  """Build models on each replica."""
   strategy = model._distribution_strategy
-
-  distributed_model = get_distributed_model(model, mode)
-  # If distributed model for a particular `mode` is already built, use the
-  # `_distribution_function` on that distributed model.
-  if distributed_model:
-    return distributed_model._distributed_function
 
   # If distributed_model is not built, create one for `mode`.
   if model._compile_distribution:
@@ -851,9 +846,26 @@ def _make_execution_function_with_cloning(model, mode):
   else:
     _build_distributed_network(model, strategy, mode)
 
-  # We've just created the distributed model. So `distributed_model` should be
-  # not None.
+
+def _make_execution_function_with_cloning(model, mode):
+  """Clones or re-uses models to run one step of distributed model execution."""
   distributed_model = get_distributed_model(model, mode)
+  # TODO(b/134069401): Create a cache for the distributed model and exec
+  # function that incorporates additional attributes to be part of the cache key
+  # than just the mode.
+  # If distributed model for a particular `mode` is already built, use the
+  # `_distribution_function` on that distributed model.
+  # If you have updated the sample_weight_mode on the model, then you will need
+  # to recompile metrics and recreate the execution function. This is indicated
+  # by the `_recompile_exec_function` property.
+  if (distributed_model and hasattr(distributed_model, '_distribution_function')
+      and not (hasattr(distributed_model, '_recompile_exec_function') and
+               distributed_model._recompile_exec_function)):
+    return distributed_model._distributed_function
+
+  if not distributed_model:
+    _make_replicated_models_with_cloning(model, mode)
+    distributed_model = get_distributed_model(model, mode)
   assert distributed_model
 
   # Also create an execution fuction on that distributed model.
@@ -865,6 +877,7 @@ def _make_execution_function_with_cloning(model, mode):
   # We cache the distributed execution function on the model since creating
   # distributed models and exection functions are expensive.
   distributed_model._distributed_function = distributed_function
+  distributed_model._recompile_exec_function = False
   return distributed_function
 
 
@@ -1088,3 +1101,24 @@ def filter_distributed_callbacks(callbacks_list):
   return [
       callback for callback in callbacks_list if not callback._chief_worker_only
   ]  # pylint: disable=protected-access
+
+
+def _update_sample_weight_modes(model, mode, sample_weights):
+  """Update sample_weight_mode of the distributed model."""
+  if is_distributing_by_cloning(model):
+    distributed_model = get_distributed_model(model, mode)
+    if not distributed_model:
+      _make_replicated_models_with_cloning(model, mode)
+      distributed_model = get_distributed_model(model, mode)
+    distributed_model._recompile_exec_function = any(
+        [e.sample_weights_mismatch() for e in model._training_endpoints])
+
+    if sample_weights:
+      distributed_models = flatten_per_replica_values(
+          model._distribution_strategy, distributed_model)
+      # sample_weights is a tuple of 1 list where the number of elements in the
+      # list is equal to the number of replicas in sync.
+      sample_weights = sample_weights[0]
+      if sample_weights and None not in sample_weights:
+        for m, sw in zip(distributed_models, sample_weights):
+          m._update_sample_weight_modes(sample_weights=[sw])
