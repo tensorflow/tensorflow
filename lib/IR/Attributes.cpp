@@ -964,6 +964,11 @@ void NamedAttributeList::setAttrs(ArrayRef<NamedAttribute> attributes) {
 }
 
 /// Return the specified attribute if present, null otherwise.
+Attribute NamedAttributeList::get(StringRef name) const {
+  return attrs ? attrs.get(name) : nullptr;
+}
+
+/// Return the specified attribute if present, null otherwise.
 Attribute NamedAttributeList::get(Identifier name) const {
   return attrs ? attrs.get(name) : nullptr;
 }

@@ -814,9 +814,7 @@ public:
   void setAttrs(ArrayRef<NamedAttribute> attributes);
 
   /// Return the specified attribute if present, null otherwise.
-  Attribute get(StringRef name) const {
-    return attrs ? attrs.get(name) : nullptr;
-  }
+  Attribute get(StringRef name) const;
   Attribute get(Identifier name) const;
 
   /// If the an attribute exists with the specified name, change it to the new
