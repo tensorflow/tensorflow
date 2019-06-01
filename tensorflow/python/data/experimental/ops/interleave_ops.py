@@ -154,7 +154,7 @@ def sample_from_datasets_v2(datasets, weights=None, seed=None):
     `weights` if provided, otherwise with uniform probability.
 
   Raises:
-    TypeError: If the `datasets` or `weights` arguments have the wrong type.
+    TypeError: If the `datasets` or `weights` arguments are not of type `float32` or `float64`.
     ValueError: If the `weights` argument is specified and does not match the
       length of the `datasets` element.
   """
