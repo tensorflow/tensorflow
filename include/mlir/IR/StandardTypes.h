@@ -477,7 +477,7 @@ public:
   void getFlattenedTypes(SmallVectorImpl<Type> &types);
 
   /// Return the number of held types.
-  unsigned size() const;
+  size_t size() const;
 
   /// Iterate over the held elements.
   using iterator = ArrayRef<Type>::iterator;
@@ -485,7 +485,7 @@ public:
   iterator end() const { return getTypes().end(); }
 
   /// Return the element type at index 'index'.
-  Type getType(unsigned index) const {
+  Type getType(size_t index) const {
     assert(index < size() && "invalid index for tuple type");
     return getTypes()[index];
   }

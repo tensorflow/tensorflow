@@ -404,4 +404,4 @@ void TupleType::getFlattenedTypes(SmallVectorImpl<Type> &types) {
 }
 
 /// Return the number of element types.
-unsigned TupleType::size() const { return getImpl()->size(); }
+size_t TupleType::size() const { return getImpl()->size(); }
