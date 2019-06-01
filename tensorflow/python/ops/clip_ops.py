@@ -39,7 +39,7 @@ from tensorflow.python.util.tf_export import tf_export
 @dispatch.add_dispatch_support
 def clip_by_value(t, clip_value_min, clip_value_max,
                   name=None):
-  """Clips tensor values to a specified min and max.
+  """Clips tensor values to a specified minimum and maximum value.
 
   Given a tensor `t`, this operation returns a tensor of the same type and
   shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
