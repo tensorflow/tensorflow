@@ -88,6 +88,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",

@@ -960,6 +960,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
         "@six_archive//:six",
     ],
@@ -1185,6 +1186,7 @@ py_library(
         ":tf2",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:monitoring",
     ],
 )
 
@@ -3713,6 +3715,7 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
         "@six_archive//:six",
     ],
 )

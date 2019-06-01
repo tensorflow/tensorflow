@@ -39,6 +39,7 @@ from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
@@ -74,6 +75,10 @@ tensor_spec = LazyLoader(
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
 _USE_C_SHAPES = True
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/ops_eager_execution",
+    "Whether ops.enable_eager_execution() is called.")
 
 
 def tensor_id(tensor):
@@ -5873,6 +5878,7 @@ def enable_eager_execution(config=None, device_policy=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
+  _api_usage_gauge.get_cell().set(True)
   if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
@@ -5889,6 +5895,7 @@ def disable_eager_execution():
   created. It can be used at the beginning of the program for complex migration
   projects from TensorFlow 1.x to 2.x.
   """
+  _api_usage_gauge.get_cell().set(False)
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
