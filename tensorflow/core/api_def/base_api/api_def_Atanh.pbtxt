@@ -10,7 +10,7 @@ op {
 
   ```python
   x = tf.constant([-float("inf"), -1, -0.5, 1, 0, 0.5, 10, float("inf")])
-  tf.math.atanh(x) ==> [nan -inf -0.54930615 inf  0. 0.54930615 nan cnan]
+  tf.math.atanh(x) ==> [nan -inf -0.54930615 inf  0. 0.54930615 nan nan]
   ```
 END
 }
