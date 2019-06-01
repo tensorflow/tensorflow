@@ -30,9 +30,10 @@ _BATCH_SIZE = 10
 
 
 def _get_data_for_simple_models():
-  x_train = constant_op.constant(np.random.rand(1, 3), dtype=dtypes.float32)
-  y_train = constant_op.constant(np.random.rand(1, 5), dtype=dtypes.float32)
-  x_predict = constant_op.constant(np.random.rand(1, 3), dtype=dtypes.float32)
+  x_train = constant_op.constant(np.random.rand(1000, 3), dtype=dtypes.float32)
+  y_train = constant_op.constant(np.random.rand(1000, 5), dtype=dtypes.float32)
+  x_predict = constant_op.constant(
+      np.random.rand(1000, 3), dtype=dtypes.float32)
 
   return x_train, y_train, x_predict
 

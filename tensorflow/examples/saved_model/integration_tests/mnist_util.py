@@ -18,17 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 import tensorflow.compat.v2 as tf
+
+from tensorflow.python.distribute import strategy_combinations
 
 INPUT_SHAPE = (28, 28, 1)
 NUM_CLASSES = 10
 
 
+_strategies = [
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.mirrored_strategy_with_one_cpu,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.mirrored_strategy_with_two_gpus
+]
+
+named_strategies = collections.OrderedDict()
+named_strategies[None] = None
+
+for strategy in _strategies:
+  named_strategies[str(strategy)] = strategy
+
+
 def load_reshaped_data(use_fashion_mnist=False, fake_tiny_data=False):
   """Returns MNIST or Fashion MNIST train and test data."""
   if fake_tiny_data:
-    num_fakes = 10
+    num_fakes = 1280
     x_train = x_test = np.zeros((num_fakes, 28, 28), dtype=np.uint8)
     y_train = y_test = np.zeros((num_fakes,), dtype=np.int64)
   else:

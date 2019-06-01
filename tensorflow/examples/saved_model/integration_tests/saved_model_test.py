@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import tensorflow.compat.v2 as tf
 
-from tensorflow.examples.saved_model.integration_tests import integration_scripts
+from tensorflow.examples.saved_model.integration_tests import integration_scripts as scripts
+from tensorflow.examples.saved_model.integration_tests import mnist_util
+from tensorflow.python.distribute import combinations
 
 
-class SavedModelTest(integration_scripts.TestCase):
+class SavedModelTest(scripts.TestCase, parameterized.TestCase):
 
   def __init__(self, method_name="runTest", has_extra_deps=False):
     super(SavedModelTest, self).__init__(method_name)
@@ -76,10 +79,17 @@ class SavedModelTest(integration_scripts.TestCase):
     self.assertCommandSucceeded(
         "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
 
-  def test_mnist_cnn_with_mirrored_strategy(self):
+  @combinations.generate(
+      combinations.combine(
+          named_strategy=list(mnist_util.named_strategies.values())))
+  def test_mnist_cnn_with_mirrored_strategy(self, named_strategy):
     self.skipIfMissingExtraDeps()
-    self.skipTest(
-        "b/129134185 - saved model and distribution strategy integration")
+
+    name = str(named_strategy)
+    if named_strategy:
+      combinations.maybe_skip_test(self, named_strategy.required_tpu,
+                                   named_strategy.required_gpus)
+
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_mnist_cnn",
@@ -89,10 +99,9 @@ class SavedModelTest(integration_scripts.TestCase):
         "use_mnist_cnn",
         export_dir=export_dir,
         fast_test_mode="true",
-        use_mirrored_strategy=True,
-    )
+        strategy=name)
 
 
 if __name__ == "__main__":
-  integration_scripts.MaybeRunScriptInstead()
+  scripts.MaybeRunScriptInstead()
   tf.test.main()

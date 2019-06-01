@@ -539,7 +539,7 @@ class ConcreteFunction(object):
           raise NotImplementedError(
               "Keyword arguments not supported when calling a "
               "wrap_function-decorated function.")
-        return self._call_flat(args)
+        return self._call_flat(args, self.captured_inputs)
       raise AssertionError(
           "Tried to call a concrete function obtained from an internal API "
           "through the public interface. Use get_concrete_function instead.")
@@ -569,7 +569,7 @@ class ConcreteFunction(object):
           raise TypeError("Got two values for keyword '{}'.".format(unused_key))
       raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
           list(kwargs.keys()), list(self._arg_keywords)))
-    return self._call_flat(args)
+    return self._call_flat(args, self.captured_inputs)
 
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.
@@ -588,14 +588,17 @@ class ConcreteFunction(object):
     return self._call_flat(
         (t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
-                           resource_variable_ops.ResourceVariable))))
+                           resource_variable_ops.ResourceVariable))),
+        self.captured_inputs)
 
-  def _call_flat(self, args):
+  def _call_flat(self, args, captured_inputs):
     """Executes the wrapped function.
 
     Args:
       args: a list of Tensors or Variables.  Any CompositeTensors should be
         expanded before calling this method.
+      captured_inputs: the captured inputs that are also part of the input args
+        to the actual execution. By default, it should be self._captured_inputs.
 
     Returns:
       The result of applying the TF function to `args`.
@@ -657,10 +660,10 @@ class ConcreteFunction(object):
         raise ValueError("All inputs to `ConcreteFunction`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
-    args = tensor_inputs + self._captured_inputs
+    args = tensor_inputs + captured_inputs
 
     if (tape.should_record(tensor_inputs) or
-        tape.should_record(self._captured_inputs)):
+        tape.should_record(captured_inputs)):
       if context.executing_eagerly():
         return self._eager_backprop_call(args)
       else:
@@ -716,7 +719,8 @@ class ConcreteFunction(object):
     side_outputs = op.outputs[num_inference_outputs:]
     args = list(doutputs[:num_inference_outputs]) + list(side_outputs)
     return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
-        (a for a in args if a is not None))
+        (a for a in args if a is not None),
+        self._backward_graph_function.captured_inputs)
 
   @property
   def name(self):
@@ -903,7 +907,8 @@ class ConcreteFunction(object):
       args = [a for i, a in enumerate(args)
               if a is not None and i not in skip_positions]
       return self._backward_graph_function._call_flat(  # pylint: disable=protected-access
-          list(args) + side_outputs)
+          list(args) + side_outputs,
+          self._backward_graph_function.captured_inputs)
 
     tape.record_operation(self._forward_function.signature.name, real_outputs,
                           args, backward_function)

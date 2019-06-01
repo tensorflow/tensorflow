@@ -31,6 +31,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:strategy_combinations",
     ],
 )
 
@@ -41,7 +42,9 @@ cuda_py_test(
     ],
     additional_deps = [
         ":integration_scripts",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:combinations",
     ],
     shard_count = 4,
     tags = [

@@ -21,11 +21,16 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -42,6 +47,58 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _unused_handle():
+  """Returns a placeholder as handle that is not supposed to be accessed."""
+  error_message = ("Trying to access a placeholder that is not supposed to be "
+                   "executed. This means you are executing a graph generated "
+                   "from cross-replica context in an in-replica context.")
+
+  assert_op = control_flow_ops.Assert(
+      array_ops.placeholder_with_default(False, shape=()),
+      [error_message])
+
+  with ops.control_dependencies([assert_op]):
+    return array_ops.placeholder(dtype=dtypes.resource)
+
+
+class _WrapperFunction(function.ConcreteFunction):
+  """A class wraps a concrete function to handle different distributed contexts.
+
+  The reason for wrapping a concrete function is because the _captured_inputs
+  fields used for in-replica context and cross-replica context are different.
+  When `load()` is called from within a tf.distribute.strategy scope, the
+  captured inputs are distributed variables. When using these distributed
+  variables during calling the function, we need different approaches when it is
+  in-replica and when it is not in-replica. When it is in replica, naturally we
+  should use the corresponding component of the distributed variable; when it is
+  not in-replica, calling the function should mean that it is constructing a
+  graph that is not actually going to be used. A typical use case is when
+  constructing a functional model. In this case, return a placeholder with a
+  control dependency to ensure that is is never accessed.
+  """
+
+  def __init__(self, concrete_function):
+    # Shallow copy the concrete_function
+    self.__dict__.update(vars(concrete_function))
+
+  def _call_flat(self, args, captured_inputs):
+    assert captured_inputs is self._captured_inputs
+    del captured_inputs
+
+    def get_in_replica_handle(x):
+      return x.handle if ds_values.is_distributed_variable(x) else x
+
+    def get_cross_replica_handle(x):
+      return _unused_handle() if ds_values.is_distributed_variable(x) else x
+
+    if ds_context.get_replica_context() is not None:  # in-replica context
+      captured_inputs = list(map(get_in_replica_handle, self._captured_inputs))
+    else:  # cross-replica context
+      captured_inputs = list(
+          map(get_cross_replica_handle, self._captured_inputs))
+    return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
+
+
 class _Loader(object):
   """Helper class to load an object-based SavedModel."""
 
@@ -55,6 +112,12 @@ class _Loader(object):
     self._concrete_functions = (
         function_deserialization.load_function_def_library(
             meta_graph.graph_def.library))
+
+    for name, concrete_function in self._concrete_functions.items():
+      # Wrap all the concrete function so that they are capable of dealing with
+      # both in replica and cross replica cases.
+      self._concrete_functions[name] = _WrapperFunction(concrete_function)
+
     self._load_all()
     # TODO(b/124045874): There are limitations with functions whose captures
     # trigger other functions to be executed. For now it is only guaranteed to
@@ -122,7 +185,9 @@ class _Loader(object):
     """Resolves a node id into a tensor to be captured for a function."""
     with ops.init_scope():
       obj = self._nodes[node_id]
-      if resource_variable_ops.is_resource_variable(obj):
+      if ds_values.is_distributed_variable(obj):
+        return obj
+      elif resource_variable_ops.is_resource_variable(obj):
         return obj.handle
       elif isinstance(obj, tracking.TrackableAsset):
         return obj.asset_path
@@ -277,13 +342,25 @@ class _Loader(object):
         variables.validate_synchronization_aggregation_trainable(
             proto.synchronization, proto.aggregation, proto.trainable,
             name=dbg_name))
-    return resource_variable_ops.UninitializedVariable(
-        shape=proto.shape,
-        dtype=proto.dtype,
-        name=name,
-        trainable=trainable,
-        synchronization=synchronization,
-        aggregation=aggregation), setattr
+
+    def uninitialized_variable_creator(next_creator, **kwargs):
+      """A variable creator that creates uninitialized variables."""
+      del next_creator
+      return resource_variable_ops.UninitializedVariable(**kwargs)
+
+    # Create a variable_creator_scope that creates uninitialized variables with
+    # a lower priority such that a potential distributed variable_creator_scope
+    # can take precedence.
+    with ops.get_default_graph()._variable_creator_scope(  # pylint: disable=protected-access
+        uninitialized_variable_creator,
+        priority=50):
+      return variables.Variable(
+          shape=proto.shape,
+          dtype=proto.dtype,
+          name=name,
+          trainable=trainable,
+          synchronization=synchronization,
+          aggregation=aggregation), setattr
 
   def _recreate_constant(self, proto):
     tensor_proto = self._operation_attributes[proto.operation]["value"].tensor
