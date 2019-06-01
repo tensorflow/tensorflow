@@ -58,7 +58,7 @@ _BaseSlice = slice
 @tf_export("identity")
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
-  r"""Return a tensor with the same shape and contents as input.
+  """Return a tensor with the same shape and contents as input.
 
   Args:
     input: A `Tensor`.
