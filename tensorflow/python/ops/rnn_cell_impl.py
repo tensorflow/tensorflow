@@ -25,8 +25,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import hashlib
-import numbers
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -36,7 +34,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
-from tensorflow.python.keras import layers as keras_layer
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import base as base_layer
@@ -46,8 +43,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import rnn_cell_wrapper_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
@@ -1080,27 +1076,6 @@ class LSTMCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def _enumerated_map_structure_up_to(shallow_structure, map_fn, *args, **kwargs):
-  ix = [0]
-
-  def enumerated_fn(*inner_args, **inner_kwargs):
-    r = map_fn(ix[0], *inner_args, **inner_kwargs)
-    ix[0] += 1
-    return r
-
-  return nest.map_structure_up_to(shallow_structure, enumerated_fn, *args,
-                                  **kwargs)
-
-
-def _default_dropout_state_filter_visitor(substate):
-  if isinstance(substate, LSTMStateTuple):
-    # Do not perform dropout on the memory state.
-    return LSTMStateTuple(c=False, h=True)
-  elif isinstance(substate, tensor_array_ops.TensorArray):
-    return False
-  return True
-
-
 class _RNNCellWrapperV1(RNNCell):
   """Base class for cells wrappers V1 compatibility.
 
@@ -1108,8 +1083,9 @@ class _RNNCellWrapperV1(RNNCell):
   are compatible with V1 and V2, and defines helper methods for this purpose.
   """
 
-  def __init__(self, cell):
-    super(_RNNCellWrapperV1, self).__init__()
+  def __init__(self, cell, *args, **kwargs):
+    super(_RNNCellWrapperV1, self).__init__(*args, **kwargs)
+    assert_like_rnncell("cell", cell)
     self.cell = cell
     if isinstance(cell, trackable.Trackable):
       self._track_trackable(self.cell, name="cell")
@@ -1158,447 +1134,59 @@ class _RNNCellWrapperV1(RNNCell):
     return self._call_wrapped_cell(
         inputs, state, cell_call_fn=self.cell.__call__, scope=scope)
 
+  def get_config(self):
+    config = {
+        "cell": {
+            "class_name": self.cell.__class__.__name__,
+            "config": self.cell.get_config()
+        },
+    }
+    base_config = super(_RNNCellWrapperV1, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
-class _RNNCellWrapperV2(keras_layer.AbstractRNNCell):
-  """Base class for cells wrappers V2 compatibility.
-
-  This class along with `_RNNCellWrapperV1` allows to define cells wrappers that
-  are compatible with V1 and V2, and defines helper methods for this purpose.
-  """
-
-  def __init__(self, cell, *args, **kwargs):
-    super(_RNNCellWrapperV2, self).__init__(*args, **kwargs)
-    self.cell = cell
-
-  def call(self, inputs, state, **kwargs):
-    """Runs the RNN cell step computation.
-
-    When `call` is being used, we assume that the wrapper object has been built,
-    and therefore the wrapped cells has been built via its `build` method and
-    its `call` method can be used directly.
-
-    This allows to use the wrapped cell and the non-wrapped cell equivalently
-    when using `call` and `build`.
-
-    Args:
-      inputs: A tensor with wrapped cell's input.
-      state: A tensor or tuple of tensors with wrapped cell's state.
-      **kwargs: Additional arguments passed to the wrapped cell's `call`.
-
-    Returns:
-      A pair containing:
-
-      - Output: A tensor with cell's output.
-      - New state: A tensor or tuple of tensors with new wrapped cell's state.
-    """
-    return self._call_wrapped_cell(
-        inputs, state, cell_call_fn=self.cell.call, **kwargs)
-
-  def build(self, inputs_shape):
-    """Builds the wrapped cell."""
-    self.cell.build(inputs_shape)
-    self.built = True
-
-
-class DropoutWrapperBase(object):
-  """Operator adding dropout to inputs and outputs of the given cell."""
-
-  def __init__(self,
-               cell,
-               input_keep_prob=1.0,
-               output_keep_prob=1.0,
-               state_keep_prob=1.0,
-               variational_recurrent=False,
-               input_size=None,
-               dtype=None,
-               seed=None,
-               dropout_state_filter_visitor=None):
-    """Create a cell with added input, state, and/or output dropout.
-
-    If `variational_recurrent` is set to `True` (**NOT** the default behavior),
-    then the same dropout mask is applied at every step, as described in:
-    [A Theoretically Grounded Application of Dropout in Recurrent
-    Neural Networks. Y. Gal, Z. Ghahramani](https://arxiv.org/abs/1512.05287).
-
-    Otherwise a different dropout mask is applied at every time step.
-
-    Note, by default (unless a custom `dropout_state_filter` is provided),
-    the memory state (`c` component of any `LSTMStateTuple`) passing through
-    a `DropoutWrapper` is never modified.  This behavior is described in the
-    above article.
-
-    Args:
-      cell: an RNNCell, a projection to output_size is added to it.
-      input_keep_prob: unit Tensor or float between 0 and 1, input keep
-        probability; if it is constant and 1, no input dropout will be added.
-      output_keep_prob: unit Tensor or float between 0 and 1, output keep
-        probability; if it is constant and 1, no output dropout will be added.
-      state_keep_prob: unit Tensor or float between 0 and 1, output keep
-        probability; if it is constant and 1, no output dropout will be added.
-        State dropout is performed on the outgoing states of the cell. **Note**
-        the state components to which dropout is applied when `state_keep_prob`
-        is in `(0, 1)` are also determined by the argument
-        `dropout_state_filter_visitor` (e.g. by default dropout is never applied
-        to the `c` component of an `LSTMStateTuple`).
-      variational_recurrent: Python bool.  If `True`, then the same dropout
-        pattern is applied across all time steps per run call. If this parameter
-        is set, `input_size` **must** be provided.
-      input_size: (optional) (possibly nested tuple of) `TensorShape` objects
-        containing the depth(s) of the input tensors expected to be passed in to
-        the `DropoutWrapper`.  Required and used **iff** `variational_recurrent
-        = True` and `input_keep_prob < 1`.
-      dtype: (optional) The `dtype` of the input, state, and output tensors.
-        Required and used **iff** `variational_recurrent = True`.
-      seed: (optional) integer, the randomness seed.
-      dropout_state_filter_visitor: (optional), default: (see below).  Function
-        that takes any hierarchical level of the state and returns a scalar or
-        depth=1 structure of Python booleans describing which terms in the state
-        should be dropped out.  In addition, if the function returns `True`,
-        dropout is applied across this sublevel.  If the function returns
-        `False`, dropout is not applied across this entire sublevel.
-        Default behavior: perform dropout on all terms except the memory (`c`)
-          state of `LSTMCellState` objects, and don't try to apply dropout to
-        `TensorArray` objects: ```
-        def dropout_state_filter_visitor(s):
-          if isinstance(s, LSTMCellState): # Never perform dropout on the c
-            state. return LSTMCellState(c=False, h=True)
-          elif isinstance(s, TensorArray): return False return True ```
-
-    Raises:
-      TypeError: if `cell` is not an `RNNCell`, or `keep_state_fn` is provided
-        but not `callable`.
-      ValueError: if any of the keep_probs are not between 0 and 1.
-    """
-    super(DropoutWrapperBase, self).__init__(cell)
-    assert_like_rnncell("cell", cell)
-
-    if (dropout_state_filter_visitor is not None and
-        not callable(dropout_state_filter_visitor)):
-      raise TypeError("dropout_state_filter_visitor must be callable")
-    self._dropout_state_filter = (
-        dropout_state_filter_visitor or _default_dropout_state_filter_visitor)
-    with ops.name_scope("DropoutWrapperInit"):
-
-      def tensor_and_const_value(v):
-        tensor_value = ops.convert_to_tensor(v)
-        const_value = tensor_util.constant_value(tensor_value)
-        return (tensor_value, const_value)
-
-      for prob, attr in [(input_keep_prob, "input_keep_prob"),
-                         (state_keep_prob, "state_keep_prob"),
-                         (output_keep_prob, "output_keep_prob")]:
-        tensor_prob, const_prob = tensor_and_const_value(prob)
-        if const_prob is not None:
-          if const_prob < 0 or const_prob > 1:
-            raise ValueError("Parameter %s must be between 0 and 1: %d" %
-                             (attr, const_prob))
-          setattr(self, "_%s" % attr, float(const_prob))
-        else:
-          setattr(self, "_%s" % attr, tensor_prob)
-
-    # Set variational_recurrent, seed before running the code below
-    self._variational_recurrent = variational_recurrent
-    self._seed = seed
-
-    self._recurrent_input_noise = None
-    self._recurrent_state_noise = None
-    self._recurrent_output_noise = None
-
-    if variational_recurrent:
-      if dtype is None:
-        raise ValueError(
-            "When variational_recurrent=True, dtype must be provided")
-
-      def convert_to_batch_shape(s):
-        # Prepend a 1 for the batch dimension; for recurrent
-        # variational dropout we use the same dropout mask for all
-        # batch elements.
-        return array_ops.concat(([1], tensor_shape.TensorShape(s).as_list()), 0)
-
-      def batch_noise(s, inner_seed):
-        shape = convert_to_batch_shape(s)
-        return random_ops.random_uniform(shape, seed=inner_seed, dtype=dtype)
-
-      if (not isinstance(self._input_keep_prob, numbers.Real) or
-          self._input_keep_prob < 1.0):
-        if input_size is None:
-          raise ValueError(
-              "When variational_recurrent=True and input_keep_prob < 1.0 or "
-              "is unknown, input_size must be provided")
-        self._recurrent_input_noise = _enumerated_map_structure_up_to(
-            input_size,
-            lambda i, s: batch_noise(s, inner_seed=self._gen_seed("input", i)),
-            input_size)
-      self._recurrent_state_noise = _enumerated_map_structure_up_to(
-          cell.state_size,
-          lambda i, s: batch_noise(s, inner_seed=self._gen_seed("state", i)),
-          cell.state_size)
-      self._recurrent_output_noise = _enumerated_map_structure_up_to(
-          cell.output_size,
-          lambda i, s: batch_noise(s, inner_seed=self._gen_seed("output", i)),
-          cell.output_size)
-
-  def _gen_seed(self, salt_prefix, index):
-    if self._seed is None:
-      return None
-    salt = "%s_%d" % (salt_prefix, index)
-    string = (str(self._seed) + salt).encode("utf-8")
-    return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
-
-  @property
-  def wrapped_cell(self):
-    return self.cell
-
-  @property
-  def state_size(self):
-    return self.cell.state_size
-
-  @property
-  def output_size(self):
-    return self.cell.output_size
-
-  def zero_state(self, batch_size, dtype):
-    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self.cell.zero_state(batch_size, dtype)
-
-  def _variational_recurrent_dropout_value(
-      self, index, value, noise, keep_prob):
-    """Performs dropout given the pre-calculated noise tensor."""
-    # uniform [keep_prob, 1.0 + keep_prob)
-    random_tensor = keep_prob + noise
-
-    # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
-    binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.div(value, keep_prob) * binary_tensor
-    ret.set_shape(value.get_shape())
-    return ret
-
-  def _dropout(self,
-               values,
-               salt_prefix,
-               recurrent_noise,
-               keep_prob,
-               shallow_filtered_substructure=None):
-    """Decides whether to perform standard dropout or recurrent dropout."""
-
-    if shallow_filtered_substructure is None:
-      # Put something so we traverse the entire structure; inside the
-      # dropout function we check to see if leafs of this are bool or not.
-      shallow_filtered_substructure = values
-
-    if not self._variational_recurrent:
-
-      def dropout(i, do_dropout, v):
-        if not isinstance(do_dropout, bool) or do_dropout:
-          return nn_ops.dropout_v2(
-              v, rate=1. - keep_prob, seed=self._gen_seed(salt_prefix, i))
-        else:
-          return v
-
-      return _enumerated_map_structure_up_to(
-          shallow_filtered_substructure, dropout,
-          *[shallow_filtered_substructure, values])
-    else:
-
-      def dropout(i, do_dropout, v, n):
-        if not isinstance(do_dropout, bool) or do_dropout:
-          return self._variational_recurrent_dropout_value(i, v, n, keep_prob)
-        else:
-          return v
-
-      return _enumerated_map_structure_up_to(
-          shallow_filtered_substructure, dropout,
-          *[shallow_filtered_substructure, values, recurrent_noise])
-
-  def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
-    """Runs the wrapped cell and applies dropout.
-
-    Args:
-      inputs: A tensor with wrapped cell's input.
-      state: A tensor or tuple of tensors with wrapped cell's state.
-      cell_call_fn: Wrapped cell's method to use for step computation (cell's
-        `__call__` or 'call' method).
-      **kwargs: Additional arguments.
-
-    Returns:
-      A pair containing:
-
-      - Output: A tensor with cell's output.
-      - New state: A tensor or tuple of tensors with new wrapped cell's state.
-    """
-
-    def _should_dropout(p):
-      return (not isinstance(p, float)) or p < 1
-
-    if _should_dropout(self._input_keep_prob):
-      inputs = self._dropout(inputs, "input", self._recurrent_input_noise,
-                             self._input_keep_prob)
-    output, new_state = cell_call_fn(inputs, state, **kwargs)
-    if _should_dropout(self._state_keep_prob):
-      # Identify which subsets of the state to perform dropout on and
-      # which ones to keep.
-      shallow_filtered_substructure = nest.get_traverse_shallow_structure(
-          self._dropout_state_filter, new_state)
-      new_state = self._dropout(new_state, "state", self._recurrent_state_noise,
-                                self._state_keep_prob,
-                                shallow_filtered_substructure)
-    if _should_dropout(self._output_keep_prob):
-      output = self._dropout(output, "output", self._recurrent_output_noise,
-                             self._output_keep_prob)
-    return output, new_state
+  @classmethod
+  def from_config(cls, config, custom_objects=None):
+    config = config.copy()
+    cell = config.pop("cell")
+    try:
+      assert_like_rnncell("cell", cell)
+      return cls(cell, **config)
+    except TypeError:
+      raise ValueError("RNNCellWrapper cannot reconstruct the wrapped cell. "
+                       "Please overwrite the cell in the config with a RNNCell "
+                       "instance.")
 
 
 @tf_export(v1=["nn.rnn_cell.DropoutWrapper"])
-class DropoutWrapper(DropoutWrapperBase, _RNNCellWrapperV1):
+class DropoutWrapper(rnn_cell_wrapper_impl.DropoutWrapperBase,
+                     _RNNCellWrapperV1):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
     super(DropoutWrapper, self).__init__(*args, **kwargs)
 
-  __init__.__doc__ = DropoutWrapperBase.__init__.__doc__
-
-
-@tf_export("nn.RNNCellDropoutWrapper", v1=[])
-class DropoutWrapperV2(DropoutWrapperBase, _RNNCellWrapperV2):
-  """Operator adding dropout to inputs and outputs of the given cell."""
-
-  def __init__(self, *args, **kwargs):
-    super(DropoutWrapperV2, self).__init__(*args, **kwargs)
-
-  __init__.__doc__ = DropoutWrapperBase.__init__.__doc__
-
-
-class ResidualWrapperBase(object):
-  """RNNCell wrapper that ensures cell inputs are added to the outputs."""
-
-  def __init__(self, cell, residual_fn=None):
-    """Constructs a `ResidualWrapper` for `cell`.
-
-    Args:
-      cell: An instance of `RNNCell`.
-      residual_fn: (Optional) The function to map raw cell inputs and raw cell
-        outputs to the actual cell outputs of the residual network.
-        Defaults to calling nest.map_structure on (lambda i, o: i + o), inputs
-          and outputs.
-    """
-    super(ResidualWrapperBase, self).__init__(cell)
-    self._residual_fn = residual_fn
-
-  @property
-  def state_size(self):
-    return self.cell.state_size
-
-  @property
-  def output_size(self):
-    return self.cell.output_size
-
-  def zero_state(self, batch_size, dtype):
-    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self.cell.zero_state(batch_size, dtype)
-
-  def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
-    """Run the cell and then apply the residual_fn on its inputs to its outputs.
-
-    Args:
-      inputs: cell inputs.
-      state: cell state.
-      cell_call_fn: Wrapped cell's method to use for step computation (cell's
-        `__call__` or 'call' method).
-      **kwargs: Additional arguments passed to the wrapped cell's `call`.
-
-    Returns:
-      Tuple of cell outputs and new state.
-
-    Raises:
-      TypeError: If cell inputs and outputs have different structure (type).
-      ValueError: If cell inputs and outputs have different structure (value).
-    """
-    outputs, new_state = cell_call_fn(inputs, state, **kwargs)
-
-    # Ensure shapes match
-    def assert_shape_match(inp, out):
-      inp.get_shape().assert_is_compatible_with(out.get_shape())
-
-    def default_residual_fn(inputs, outputs):
-      nest.assert_same_structure(inputs, outputs)
-      nest.map_structure(assert_shape_match, inputs, outputs)
-      return nest.map_structure(lambda inp, out: inp + out, inputs, outputs)
-
-    res_outputs = (self._residual_fn or default_residual_fn)(inputs, outputs)
-    return (res_outputs, new_state)
+  __init__.__doc__ = rnn_cell_wrapper_impl.DropoutWrapperBase.__init__.__doc__
 
 
 @tf_export(v1=["nn.rnn_cell.ResidualWrapper"])
-class ResidualWrapper(ResidualWrapperBase, _RNNCellWrapperV1):
+class ResidualWrapper(rnn_cell_wrapper_impl.ResidualWrapperBase,
+                      _RNNCellWrapperV1):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
     super(ResidualWrapper, self).__init__(*args, **kwargs)
 
-  __init__.__doc__ = ResidualWrapperBase.__init__.__doc__
-
-
-@tf_export("nn.RNNCellResidualWrapper", v1=[])
-class ResidualWrapperV2(ResidualWrapperBase, _RNNCellWrapperV2):
-  """RNNCell wrapper that ensures cell inputs are added to the outputs."""
-
-  def __init__(self, *args, **kwargs):
-    super(ResidualWrapperV2, self).__init__(*args, **kwargs)
-
-  __init__.__doc__ = ResidualWrapperBase.__init__.__doc__
-
-
-class DeviceWrapperBase(object):
-  """Operator that ensures an RNNCell runs on a particular device."""
-
-  def __init__(self, cell, device):
-    """Construct a `DeviceWrapper` for `cell` with device `device`.
-
-    Ensures the wrapped `cell` is called with `tf.device(device)`.
-
-    Args:
-      cell: An instance of `RNNCell`.
-      device: A device string or function, for passing to `tf.device`.
-    """
-    super(DeviceWrapperBase, self).__init__(cell)
-    self._device = device
-
-  @property
-  def state_size(self):
-    return self.cell.state_size
-
-  @property
-  def output_size(self):
-    return self.cell.output_size
-
-  def zero_state(self, batch_size, dtype):
-    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      with ops.device(self._device):
-        return self.cell.zero_state(batch_size, dtype)
-
-  def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
-    """Run the cell on specified device."""
-    with ops.device(self._device):
-      return cell_call_fn(inputs, state, **kwargs)
+  __init__.__doc__ = rnn_cell_wrapper_impl.ResidualWrapperBase.__init__.__doc__
 
 
 @tf_export(v1=["nn.rnn_cell.DeviceWrapper"])
-class DeviceWrapper(DeviceWrapperBase, _RNNCellWrapperV1):
+class DeviceWrapper(rnn_cell_wrapper_impl.DeviceWrapperBase,
+                    _RNNCellWrapperV1):
 
   def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
     super(DeviceWrapper, self).__init__(*args, **kwargs)
 
-  __init__.__doc__ = DeviceWrapperBase.__init__.__doc__
-
-
-@tf_export("nn.RNNCellDeviceWrapper", v1=[])
-class DeviceWrapperV2(DeviceWrapperBase, _RNNCellWrapperV2):
-  """Operator that ensures an RNNCell runs on a particular device."""
-
-  def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
-    super(DeviceWrapperV2, self).__init__(*args, **kwargs)
-
-  __init__.__doc__ = DeviceWrapperBase.__init__.__doc__
+  __init__.__doc__ = rnn_cell_wrapper_impl.DeviceWrapperBase.__init__.__doc__
 
 
 @tf_export(v1=["nn.rnn_cell.MultiRNNCell"])

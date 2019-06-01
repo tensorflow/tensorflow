@@ -387,6 +387,7 @@ py_library(
         "layers/pooling.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
+        "layers/rnn_cell_wrapper_v2.py",
         "layers/serialization.py",
         "layers/wrappers.py",
         "utils/kernelized_utils.py",
@@ -957,6 +958,22 @@ tf_py_test(
     shard_count = 4,
     tags = [
         "noasan",  # http://b/78599823
+        "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "rnn_cell_wrapper_v2_test",
+    size = "medium",
+    srcs = ["layers/rnn_cell_wrapper_v2_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = [
         "notsan",
     ],
 )

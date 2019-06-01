@@ -3328,6 +3328,7 @@ py_library(
     srcs = [
         "ops/rnn_cell.py",
         "ops/rnn_cell_impl.py",
+        "ops/rnn_cell_wrapper_impl.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
