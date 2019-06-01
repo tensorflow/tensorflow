@@ -557,11 +557,11 @@ def angle(input, name=None):
 
   ```
   # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-  tf.angle(input) ==> [2.0132, 1.056]
+  tf.angle(input) ==> [2.3373, 1.959]
   ```
 
   Args:
-    input: A `Tensor`. Must be one of the following types: `float`, `double`,
+    input: A `Tensor`. Must be one of the following types: `int`, `float`, `double`,
       `complex64`, `complex128`.
     name: A name for the operation (optional).
 
