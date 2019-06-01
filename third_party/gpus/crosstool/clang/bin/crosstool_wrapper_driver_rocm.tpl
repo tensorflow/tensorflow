@@ -191,7 +191,9 @@ def InvokeHipcc(argv, log=False):
            host_compiler_options +
            ' ' + GCC_HOST_COMPILER_PATH +
            ' -I .' + includes + ' ' + srcs + ' -M -o ' + depfile)
+    cmd = HIPCC_ENV.replace(';', ' ') + ' ' + cmd
     if log: Log(cmd)
+    if VERBOSE: print(cmd)
     exit_status = os.system(cmd)
     if exit_status != 0:
       return exit_status
