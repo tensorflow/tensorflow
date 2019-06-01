@@ -1737,8 +1737,8 @@ def sparse_reset_shape(sp_input, new_shape=None):
       equal in every dimension compared to the original shape [2, 3, 5].
 
     - On the other hand, setting new_shape as [2, 3, 4] is also an error: The
-      third dimension is smaller than the original shape [2, 3, 5] (and an
-      `InvalidArgumentError` will be raised).
+      third dimension is smaller than the original shape [2, 3, 5] and an
+      `InvalidArgumentError` will be raised.
 
     - If `new_shape` is None, the returned SparseTensor will have a shape
       [2, 3, 4], which is the tight bounding box of `sp_input`.
