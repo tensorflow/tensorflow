@@ -66,24 +66,28 @@ class SPV_ScalarOrVectorOf<Type type> :
     Type<Or<[type.predicate, VectorOf<[type]>.predicate]>,
          "scalar/vector of " # type.description>;
 
-def SPV_AM_Logical   : EnumAttrCase<"Logical">;
-def SPV_AM_Pysical32 : EnumAttrCase<"Pysical32">;
-def SPV_AM_Pysical64 : EnumAttrCase<"Pysical64">;
+// Begin enum section. Generated from SPIR-V spec; DO NOT MODIFY!
 
+def SPV_AM_Logical                    : EnumAttrCase<"Logical">;
+def SPV_AM_Physical32                 : EnumAttrCase<"Physical32">;
+def SPV_AM_Physical64                 : EnumAttrCase<"Physical64">;
+def SPV_AM_PhysicalStorageBuffer64EXT : EnumAttrCase<"PhysicalStorageBuffer64EXT">;
 def SPV_AddressingModelAttr :
-    EnumAttr<"AddressingModel", "SPIR-V addressing model", [
-      SPV_AM_Logical, SPV_AM_Pysical32, SPV_AM_Pysical64
+    EnumAttr<"AddressingModel", "valid SPIR-V AddressingModel", [
+      SPV_AM_Logical, SPV_AM_Physical32, SPV_AM_Physical64,
+      SPV_AM_PhysicalStorageBuffer64EXT
     ]>;
 
 def SPV_MM_Simple    : EnumAttrCase<"Simple">;
 def SPV_MM_GLSL450   : EnumAttrCase<"GLSL450">;
 def SPV_MM_OpenCL    : EnumAttrCase<"OpenCL">;
 def SPV_MM_VulkanKHR : EnumAttrCase<"VulkanKHR">;
-
 def SPV_MemoryModelAttr :
-    EnumAttr<"MemoryModel", "SPIR-V memory model", [
+    EnumAttr<"MemoryModel", "valid SPIR-V MemoryModel", [
       SPV_MM_Simple, SPV_MM_GLSL450, SPV_MM_OpenCL, SPV_MM_VulkanKHR
     ]>;
+
+// End enum section. Generated from SPIR-V spec; DO NOT MODIFY!
 
 //===----------------------------------------------------------------------===//
 // SPIR-V op definitions
