@@ -3577,6 +3577,9 @@ def group(*inputs, **kwargs):
 
   When this op finishes, all ops in `inputs` have finished. This op has no
   output.
+  
+  A group operations can run multiple operations at the same time, 
+  operations are not sequential and they will be executed when tf.group will be called.
 
   See also `tf.tuple` and
   `tf.control_dependencies`.
@@ -3584,6 +3587,18 @@ def group(*inputs, **kwargs):
   Args:
     *inputs: Zero or more tensors to group.
     name: A name for this operation (optional).
+  
+  Example:
+      >> import tensorflow as tf
+      >> sess = tf.InteractiveSession()
+      >> a = tf.Variable(1.0)
+      >> b = tf.Variable(5.0)
+      >> c = tf.Variable(0.0)
+      >> d = tf.Variable(10.0)
+      >> grp = tf.group(tf.assign(a, b), tf.assign(c, d))
+      >> sess.run(tf.global_variables_initializer())
+      >> sess.run(grp)
+      >> print(sess.run((a,c)))
 
   Returns:
     An Operation that executes all its inputs.
