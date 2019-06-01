@@ -58,7 +58,7 @@ _BaseSlice = slice
 @tf_export("identity")
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
-  r"""Return a tensor with the same shape and contents as input.
+  """Return a tensor with the same shape and contents as input.
 
   Args:
     input: A `Tensor`.
@@ -3291,7 +3291,7 @@ def gather(params,
            name=None,
            axis=None,
            batch_dims=0):
-  r"""Gather slices from params axis axis according to indices.
+  """Gather slices from params axis axis according to indices.
 
   Gather slices from params axis `axis` according to `indices`.  `indices` must
   be an integer tensor of any dimension (usually 0-D or 1-D).
@@ -3403,7 +3403,7 @@ def batch_gather(params, indices, name=None):
 
 
 def _batch_gather(params, indices, batch_dims, axis=None):
-  r"""Gather slices from params according to indices with leading batch dims.
+  """Gather slices from params according to indices with leading batch dims.
 
   This operation assumes that the leading `batch_dims` dimensions of `indices`
   and `params` are batch dimensions; and performs a `tf.gather` operation within
@@ -3644,7 +3644,7 @@ def extract_image_patches_v2(
     padding,
     name=None):
   # pylint: disable=line-too-long
-  r"""Extract `patches` from `images` and put them in the \"depth\" output dimension.
+  """Extract `patches` from `images` and put them in the \"depth\" output dimension.
 
   Args:
     images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]
