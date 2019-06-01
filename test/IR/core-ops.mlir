@@ -282,6 +282,9 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %{{[0-9]+}} = rank %arg0 : tensor<4x4x?xf32>
   %72 = rank %t : tensor<4x4x?xf32>
 
+  // CHECK: = constant unit
+  %73 = constant unit
+
   return
 }
 

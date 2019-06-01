@@ -1121,6 +1121,9 @@ static LogicalResult verify(ConstantOp &op) {
     return success();
   }
 
+  if (type.isa<NoneType>() && value.isa<UnitAttr>())
+    return success();
+
   return op.emitOpError(
       "requires a result type that aligns with the 'value' attribute");
 }
