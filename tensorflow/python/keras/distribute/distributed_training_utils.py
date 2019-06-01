@@ -603,9 +603,6 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
     ]
   ins = [inputs, targets, sample_weights]
-  if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
-                                               int):
-    ins += [True]
   return tuple(ins)
 
 
@@ -624,7 +621,7 @@ def is_distributing_by_cloning(model):
     otherwise.
   """
   return (model._cloning or model._compile_distribution or
-          not context.executing_eagerly() or
+          not ops.executing_eagerly_outside_functions() or
           K.is_tpu_strategy(model._distribution_strategy))
 
 
@@ -796,9 +793,9 @@ def _make_execution_function_without_cloning(model, mode):
     per_replica_function = _make_replica_execution_function(model, mode)
 
     @def_function.function
-    def distributed_function(x, y, sample_weights, learning_phase=None):
+    def distributed_function(input_fn):
       """A single step of the distributed execution across replicas."""
-      del learning_phase
+      x, y, sample_weights = input_fn()
       # Call `Model.{train,test,predict}_on_batch` on every replica passing
       # PerReplicas as arguments.  On every replica inside this call, each
       # PerReplica object will return the value for that replica.  The outputs
@@ -810,8 +807,10 @@ def _make_execution_function_without_cloning(model, mode):
           strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
       return all_outputs
 
-    # `numpy` translates Tensors to values in Eager mode.
-    return lambda inputs: [out.numpy() for out in distributed_function(*inputs)]
+    def execution_function(input_fn):
+      # `numpy` translates Tensors to values in Eager mode.
+      return [out.numpy() for out in distributed_function(input_fn)]
+    return execution_function
 
 
 def _make_replica_execution_function(model, mode):

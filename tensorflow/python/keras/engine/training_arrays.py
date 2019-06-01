@@ -283,7 +283,14 @@ def model_iteration(model,
         # Get outputs.
         try:
           # `ins` can be callable in tf.distribute.Strategy + eager case.
-          actual_inputs = ins() if callable(ins) else ins
+          # TODO(b/134179782):  Simplify this condition when cloning never
+          # happens.
+          if not callable(ins) or (
+              model._distribution_strategy and
+              not distributed_training_utils.is_distributing_by_cloning(model)):
+            actual_inputs = ins
+          else:
+            actual_inputs = ins()
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
           if is_dataset:
