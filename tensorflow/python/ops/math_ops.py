@@ -478,6 +478,9 @@ def complex(real, imag, name=None):
 
   Returns:
     A `Tensor` of type `complex64` or `complex128`.
+
+  Raises: 
+    TypeError: Real and imag must be correct types
   """
   real = ops.convert_to_tensor(real, name="real")
   imag = ops.convert_to_tensor(imag, name="imag")
