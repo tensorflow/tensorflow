@@ -930,17 +930,29 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       retvals_copy.push_back(retvals[i]);
       retvals_copy[i]->Ref();
     }
+
+    // This is required to ensure that the tensor handles stay alive across the
+    // execution.
+    gtl::InlinedVector<TensorHandle*, 4> inputs = op->Inputs();
+    for (auto* handle : inputs) {
+      handle->Ref();
+    }
+
     // Unable to capture via std::move, so bind instead.
     auto* node = new eager::RemoteExecuteNode(
-        remote_node_id, std::move(request), eager_client, op->Inputs(),
+        remote_node_id, std::move(request), eager_client,
         std::bind(
-            [](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
-               const Status& status, const eager::EnqueueResponse& response) {
+            [inputs](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
+                     const Status& status,
+                     const eager::EnqueueResponse& response) {
               if (!status.ok()) return;
               for (int i = 0; i < retvals.size(); i++) {
                 retvals[i]->SetRemoteShape(MakeUnique<TensorShape>(
                     response.queue_response(0).shape(i)));
                 retvals[i]->Unref();
+              }
+              for (auto* handle : inputs) {
+                handle->Unref();
               }
             },
             std::move(retvals_copy), std::placeholders::_1,
