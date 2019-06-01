@@ -7,6 +7,7 @@ Must all be the same size and shape.
 END
   }
   summary: "Add all input tensors element wise."
+
   ```python
   x = [9, 7, 10]
   tf.math.add_n(x) ==> 26
