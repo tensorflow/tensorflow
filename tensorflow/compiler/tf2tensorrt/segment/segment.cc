@@ -459,7 +459,7 @@ Status SegmentGraph(const Graph* tf_graph,
   }
   LOG(INFO) << msg << "(For more information see "
             << "https://docs.nvidia.com/deeplearning"
-            << "/dgx/tf-trt-user-guide/index.html#supported-ops).";
+            << "/frameworks/tf-trt-user-guide/index.html#supported-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
