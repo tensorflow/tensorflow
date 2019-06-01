@@ -235,6 +235,10 @@ def choose_from_datasets_v2(datasets, choice_dataset):
   datasets = [tf.data.Dataset.from_tensors("foo").repeat(),
               tf.data.Dataset.from_tensors("bar").repeat(),
               tf.data.Dataset.from_tensors("baz").repeat()]
+              
+  ----- clarification needed
+  It is not clear, if string is only allowed value for datasets? Can I pass anther data type such as float or another set of integers?
+  ------
 
   # Define a dataset containing `[0, 1, 2, 0, 1, 2, 0, 1, 2]`.
   choice_dataset = tf.data.Dataset.range(3).repeat(3)
