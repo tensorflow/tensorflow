@@ -169,22 +169,22 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_Callable) {
 
     Status s = session->RunCallable(handle, {}, nullptr, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                      "`fetch_tensors` must be provided"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "`fetch_tensors` must be provided"));
 
     TF_ASSERT_OK(session->ReleaseCallable(handle));
 
     std::vector<Tensor> outputs;
     s = session->RunCallable(handle, {}, &outputs, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         s.error_message(),
         "Attempted to run callable after handle was released"));
 
     s = session->RunCallable(handle + 1, {}, &outputs, nullptr);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
     EXPECT_TRUE(
-        str_util::StrContains(s.error_message(), "No such callable handle"));
+        absl::StrContains(s.error_message(), "No such callable handle"));
   }
 }
 
@@ -260,8 +260,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(
-        str_util::StrContains(s.error_message(), "would create a cycle"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "would create a cycle"));
   }
 
   {
@@ -275,7 +274,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown node"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "unknown node"));
   }
 
   {
@@ -290,7 +289,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "unknown edge"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "unknown edge"));
   }
 
   {
@@ -305,7 +304,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsNotFound(s));
     EXPECT_TRUE(
-        str_util::StrContains(s.error_message(), "unable to find feed output"));
+        absl::StrContains(s.error_message(), "unable to find feed output"));
   }
 
   {
@@ -322,7 +321,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
   }
 
   {
@@ -337,7 +336,7 @@ TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
     Session::CallableHandle handle;
     Status s = session->MakeCallable(callable_options, &handle);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
-    EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
   }
 }
 
@@ -762,7 +761,7 @@ TEST(DirectSessionTest, MultipleFeedTest) {
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
 }
 
 TEST(DirectSessionTest, MultipleFeedTest_Callable) {
@@ -845,7 +844,7 @@ TEST(DirectSessionTest, MultipleFeedTest_Callable) {
           {first_identity->name() + ":0", second_identity->name() + ":0"}, {}),
       &handle);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
 }
 
 TEST(DirectSessionTest, TestTensorConnectionUseTwice) {
@@ -999,7 +998,7 @@ TEST(DirectSessionTest, MultipleFeedTestSomeSyncRun) {
       {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
       &outputs, nullptr);
   EXPECT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "fed more than once"));
 }
 
 REGISTER_OP("ThreadID").Input("x: int64").Output("y: int64").Doc(R"doc(
@@ -1229,8 +1228,8 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
   s = session->PRun(handle, {{first_const->name(), value_11}},
                     {third_identity->name() + ":0"}, &outputs);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "can't be computed from the feeds"));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "can't be computed from the feeds"));
 }
 
 TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
@@ -1259,8 +1258,8 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
   // Fetch fourth_identity without feeds.
   s = session->PRun(handle, {}, {fourth_identity->name() + ":0"}, &outputs);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
-  EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "can't be computed from the feeds"));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "can't be computed from the feeds"));
 
   // Feed switch_node:1 and fetch fourth_identity.
   s = session->PRun(handle, {{switch_node->name() + ":1", bool_value}},
@@ -2093,7 +2092,7 @@ void TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(
     Session::CallableHandle handle;
     Status status = session->MakeCallable(opts, &handle);
     EXPECT_FALSE(status.ok()) << DataType_Name(dtype);
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         status.error_message(),
         strings::StrCat(
             "Cannot feed or fetch tensor 'y:0' from device ", gpu_device_name,
@@ -2109,7 +2108,7 @@ void TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(
     Session::CallableHandle handle;
     Status status = session->MakeCallable(opts, &handle);
     EXPECT_FALSE(status.ok());
-    EXPECT_TRUE(str_util::StrContains(
+    EXPECT_TRUE(absl::StrContains(
         status.error_message(),
         strings::StrCat(
             "Cannot feed or fetch tensor 'x:0' from device ", gpu_device_name,

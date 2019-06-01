@@ -966,6 +966,37 @@ class FusedConvInt8CPUTests(object):
       for test_param in self._test_params:
         self.runTest(test_param, apply_relu)
 
+  def testRoundingMode(self):
+    """Verify the fused convolution op uses half-to-even rounding mode."""
+    batches = 1
+    input_size = 2
+    input_channels = 1
+    output_channels = 1
+    conv_input = np.array([1, 2, 3, 4]).reshape(
+        (batches, input_size, input_size, input_channels)).astype(np.int8)
+    kernel = np.array([1]).reshape(
+        (1, 1, input_channels, output_channels)).astype(np.int8)
+    biases = np.zeros((output_channels)).astype(np.float32)
+
+    with self.session() as sess, self.test_scope():
+      actual = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
+          math_ops.cast(conv_input, dtypes.qint8),
+          math_ops.cast(kernel, dtypes.qint8),
+          biases,
+          strides=[1, 1, 1, 1],
+          padding="SAME",
+          conv_input_scale=0.5,
+          side_input_scale=0.0,
+          activation_mode="None",
+          data_format="NHWC",
+          filter_format="HWIO")
+      actual_value = sess.run(actual)
+      # The convolution output scaled is [0.5, 1.0, 1.5, 2.0]. After rounding
+      # half to even, the final output is [0, 1, 2, 2].
+      self.assertTrue(
+          np.array_equal(actual_value.flatten(),
+                         np.array([0, 1, 2, 2]).astype(np.int8)))
+
 
 # Test that GPU and CPU kernels produce identical results for QInt8 data type.
 class FusedConvInt8CorrespondenceTests(object):

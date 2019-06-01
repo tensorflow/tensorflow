@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/synchronization/barrier.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -187,6 +189,24 @@ TEST(ThreadPool, ParallelForWithWorkerId) {
     for (int i = 0; i < num_threads + 1; i++) {
       ASSERT_FALSE(threads_running[i]);
     }
+  }
+}
+
+TEST(ThreadPool, Parallelism) {
+  // Test that if we have N threads and schedule N tasks,
+  // all tasks will be scheduled at the same time.
+  // Failure mode for this test will be episodic timeouts (does not terminate).
+  ThreadPool pool(Env::Default(), "test", kNumThreads);
+  for (int iter = 0; iter < 2000; iter++) {
+    absl::Barrier barrier(kNumThreads);
+    absl::BlockingCounter counter(kNumThreads);
+    for (int t = 0; t < kNumThreads; ++t) {
+      pool.Schedule([&]() {
+        barrier.Block();
+        counter.DecrementCount();
+      });
+    }
+    counter.Wait();
   }
 }
 

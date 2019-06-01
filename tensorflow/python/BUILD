@@ -180,7 +180,11 @@ py_library(
         "//tensorflow/python/compiler",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:monitoring",
@@ -606,6 +610,7 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -1388,6 +1393,7 @@ tf_py_test(
     tags = [
         "no_pip",
 	"no_rocm_v2",
+        "no_windows",
     ],
 )
 
@@ -1496,6 +1502,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -2457,6 +2464,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+        ":util",
     ],
 )
 
@@ -2969,6 +2977,7 @@ cuda_py_test(
     tags = [
         "no_rocm",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -6449,6 +6458,8 @@ cuda_py_test(
         "grappler",
         "no_rocm",
     ],
+    # This test analyzes the graph, but XLA changes the names of nodes.
+    xla_enable_strict_auto_jit = False,
 )
 
 tf_gen_op_wrapper_private_py(

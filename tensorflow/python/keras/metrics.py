@@ -219,7 +219,7 @@ class Metric(Layer):
       *args:
       **kwargs: A mini-batch of inputs to the Metric.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def result(self):
@@ -228,7 +228,7 @@ class Metric(Layer):
     Result computation is an idempotent operation that simply calculates the
     metric value using the state variables.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   ### For use by subclasses ###
   @doc_controls.for_subclass_implementers

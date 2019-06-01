@@ -993,6 +993,23 @@ const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
   return t;
 }
 
+TFE_TensorHandle* TFE_TensorHandleMaybeCopyToHostCPU(TFE_TensorHandle* h,
+                                                     TF_Status* status) {
+  // TensorHandles created by PyFuncOp lack context and therefore could
+  // not be copied.
+  if (!h->handle->OnHostCPU() && h->handle->Context() != nullptr) {
+    tensorflow::TensorHandle* handle;
+    status->status = tensorflow::EagerCopyToDevice(
+        h->handle, h->handle->Context(), "CPU:0", &handle);
+    if (status->status.ok()) {
+      return new TFE_TensorHandle(handle);
+    } else {
+      return nullptr;
+    }
+  }
+  return h;
+}
+
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
   TFE_ContextAsyncWait(ctx, status);

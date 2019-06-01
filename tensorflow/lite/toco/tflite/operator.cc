@@ -22,6 +22,7 @@ limitations under the License.
 
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
+#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/custom_operator.h"
 #include "tensorflow/lite/toco/tflite/simple_operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tensorflow/lite/toco/tflite/whitelisted_flex_ops.h"
 
 namespace toco {
 
@@ -2646,7 +2646,7 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
 
-  if (!IsWhitelistedFlexOp(tensorflow_op_name)) {
+  if (!::tflite::flex::IsWhitelistedFlexOp(tensorflow_op_name)) {
     LOG(WARNING) << "Op " << tensorflow_op_name
                  << " is a valid TensorFlow op but has not been whitelisted for"
                     " the TensorFlow Lite flex op set.";

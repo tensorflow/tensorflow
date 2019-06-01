@@ -61,7 +61,7 @@ class CudnnBatchNormForwardInferenceThunk : public Thunk {
       const CudnnBatchNormForwardInferenceThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:
@@ -92,7 +92,7 @@ class CudnnBatchNormForwardTrainingThunk : public Thunk {
       const CudnnBatchNormForwardTrainingThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:
@@ -126,7 +126,7 @@ class CudnnBatchNormBackwardThunk : public Thunk {
       delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

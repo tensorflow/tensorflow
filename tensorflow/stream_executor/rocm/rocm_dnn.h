@@ -253,8 +253,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
-      DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 

@@ -993,7 +993,8 @@ class PForConfig(object):
 
   def _lookup_reduction(self, pl):
     """Lookups Placeholder `pl` in the reduction map."""
-    assert isinstance(pl, ops.Tensor)
+    msg = "Expected Tensor, got {} of type {}."
+    assert isinstance(pl, ops.Tensor), msg.format(pl, type(pl))
     return self._reduce_concat_map.get(pl, None)
 
 

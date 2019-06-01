@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -405,7 +406,7 @@ class RNN(Layer):
     self.state_spec = None
     self._states = None
     self.constants_spec = None
-    self._num_constants = None
+    self._num_constants = 0
 
   @property
   def states(self):
@@ -744,7 +745,7 @@ class RNN(Layer):
       updates = []
       for state_, state in zip(nest.flatten(self.states), nest.flatten(states)):
         updates.append(state_ops.assign(state_, state))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -768,7 +769,7 @@ class RNN(Layer):
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
-      if self._num_constants is None:
+      if not self._num_constants:
         initial_state = inputs[1:]
       else:
         initial_state = inputs[1:-self._num_constants]
@@ -852,7 +853,7 @@ class RNN(Layer):
         'unroll': self.unroll,
         'time_major': self.time_major
     }
-    if self._num_constants is not None:
+    if self._num_constants:
       config['num_constants'] = self._num_constants
     if self.zero_output_for_mask:
       config['zero_output_for_mask'] = self.zero_output_for_mask
@@ -869,7 +870,7 @@ class RNN(Layer):
   def from_config(cls, config, custom_objects=None):
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
     cell = deserialize_layer(config.pop('cell'), custom_objects=custom_objects)
-    num_constants = config.pop('num_constants', None)
+    num_constants = config.pop('num_constants', 0)
     layer = cls(cell, **config)
     layer._num_constants = num_constants
     return layer
@@ -2122,7 +2123,13 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.implementation = implementation
-    self.state_size = [self.units, self.units]
+    # tuple(_ListWrapper) was silently dropping list content in at least 2.7.10,
+    # and fixed after 2.7.16. Converting the state_size to wrapper around
+    # NoDependency(), so that the base_layer.__setattr__ will not convert it to
+    # ListWrapper. Down the stream, self.states will be a list since it is
+    # generated from nest.map_structure with list, and tuple(list) will work
+    # properly.
+    self.state_size = data_structures.NoDependency([self.units, self.units])
     self.output_size = self.units
 
   @tf_utils.shape_type_conversion
@@ -2691,7 +2698,7 @@ def _standardize_args(inputs, initial_state, constants, num_constants):
     # could be a list of items, or list of list if the initial_state is complex
     # structure, and finally followed by constants which is a flat list.
     assert initial_state is None and constants is None
-    if num_constants is not None:
+    if num_constants:
       constants = inputs[-num_constants:]
       inputs = inputs[:-num_constants]
     if len(inputs) > 1:

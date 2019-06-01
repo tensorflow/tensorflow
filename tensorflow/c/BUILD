@@ -22,6 +22,7 @@ filegroup(
         "c_api.h",
         "c_api_experimental.h",
         "tf_attrtype.h",
+        "tf_datatype.h",
         "tf_status.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
@@ -53,6 +54,7 @@ tf_cuda_library(
     hdrs = [
         "c_api.h",
         "c_api_internal.h",
+        "tf_datatype.h",
         "tf_status.h",
     ],
     visibility = [
@@ -86,6 +88,7 @@ tf_cuda_library(
     hdrs = [
         "c_api.h",
         "tf_attrtype.h",
+        "tf_datatype.h",
         "tf_status.h",
     ],
     copts = tf_copts(),
@@ -117,6 +120,7 @@ tf_cuda_library(
     deps = [
         ":c_api_internal",
         ":tf_attrtype",
+        ":tf_datatype",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -155,6 +159,21 @@ cc_library(
         "//conditions:default": [
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:lib",
+        ],
+    }),
+)
+
+cc_library(
+    name = "tf_datatype",
+    srcs = ["tf_datatype.cc"],
+    hdrs = ["tf_datatype.h"],
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
         ],
     }),
 )

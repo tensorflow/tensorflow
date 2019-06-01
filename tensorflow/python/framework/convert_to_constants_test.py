@@ -21,12 +21,17 @@ from __future__ import print_function
 import os
 
 from tensorflow.python import keras
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import convert_to_constants
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
@@ -51,9 +56,9 @@ class VariablesToConstantsTest(test.TestCase):
                              input_data):
     # Check that the converted ConcreteFunction produces the same result as the
     # original Function.
-    expected_value = func(input_data)
+    expected_value = nest.flatten(func(input_data))
     actual_value = nest.flatten(converted_concrete_func(input_data))
-    self.assertEqual(expected_value.numpy(), actual_value)
+    self.assertEqual(expected_value[0].numpy(), actual_value)
 
     # Ensure the shape is retained.
     self.assertEqual(converted_concrete_func.inputs[0].shape, input_data.shape)
@@ -65,7 +70,7 @@ class VariablesToConstantsTest(test.TestCase):
     # Load it back and make sure it works.
     loaded_obj = load(save_dir)
     actual_value = nest.flatten(loaded_obj.signatures["mykey"](input_data))
-    self.assertEqual(expected_value.numpy(), actual_value)
+    self.assertEqual(expected_value[0].numpy(), actual_value)
 
   @test_util.run_v2_only
   def testConstSavedModel(self):
@@ -231,6 +236,44 @@ class VariablesToConstantsTest(test.TestCase):
     actual_value = nest.flatten(output_func(input_data))
     self.assertEqual(expected_value.numpy(), actual_value)
 
+  def _v1_single_metagraph_saved_model(self):
+    export_graph = ops.Graph()
+    with export_graph.as_default():
+      start = array_ops.placeholder(
+          shape=[1, 1], dtype=dtypes.float32, name="start")
+      distractor = variables.RefVariable(-1., name="distractor")
+      v = variables.RefVariable(3., name="v")
+      local_variable = variables.VariableV1(
+          1.,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          trainable=False,
+          use_resource=True)
+      output = array_ops.identity(start * v * local_variable, name="output")
+      with session_lib.Session() as session:
+        session.run([v.initializer, distractor.initializer,
+                     local_variable.initializer])
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"start": start},
+            outputs={"output": output},
+            legacy_init_op=local_variable.initializer)
+    return path
+
+  @test_util.run_v2_only
+  def test_ref_variable_import(self):
+    saved = self._v1_single_metagraph_saved_model()
+    imported = load(saved)
+    fn = imported.signatures["serving_default"]
+    output_func = convert_to_constants.convert_variables_to_constants_v2(fn)
+    constant_graph_def = output_func.graph.as_graph_def()
+    self.assertEqual(0, self._getNumVariables(constant_graph_def))
+    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+
+    input_data = constant_op.constant(1., shape=[1, 1])
+    root = tracking.AutoTrackable()
+    self._testConvertedFunction(root, fn, output_func, input_data)
 
 if __name__ == "__main__":
   test.main()

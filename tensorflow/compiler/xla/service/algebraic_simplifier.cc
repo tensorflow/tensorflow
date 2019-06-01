@@ -1122,20 +1122,6 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
     return ReplaceInstruction(divide, new_divide);
   }
 
-  // A / Broaddcast(B) => A * Broadcast(1/B)
-  if (Match(divide, m::Divide(m::Op(&a), m::Broadcast(&c, m::Op(&b))))) {
-    auto one = MakeBroadcastHlo(
-        computation_->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::One(b->shape().element_type()))),
-        {}, b->shape().dimensions());
-    TF_ASSIGN_OR_RETURN(auto recip, MakeBinaryHlo(HloOpcode::kDivide, one, b));
-    auto recip_broadcast =
-        MakeBroadcastHlo(recip, c->dimensions(), c->shape().dimensions());
-    TF_ASSIGN_OR_RETURN(auto new_divide, MakeBinaryHlo(HloOpcode::kMultiply, a,
-                                                       recip_broadcast));
-    return ReplaceInstruction(divide, new_divide);
-  }
-
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
   if (Match(divide, m::Divide(m::Divide(m::Op(&a), m::Op(&b)),
                               m::Divide(m::Op(&c), m::Op(&d))))) {

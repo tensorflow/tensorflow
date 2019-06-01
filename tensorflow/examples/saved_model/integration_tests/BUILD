@@ -55,6 +55,7 @@ cuda_py_test(
         "no_cuda",
         "no_pip",  # b/131697937
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 # b/132234211: Target added to support internal test target that runs the test

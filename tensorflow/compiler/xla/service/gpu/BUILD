@@ -13,9 +13,10 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -339,6 +340,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":hlo_execution_profiler",
+        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -354,6 +356,7 @@ tf_cuda_library(
         ":buffer_allocations",
         ":hlo_execution_profiler",
         ":thunk",
+        "//tensorflow/compiler/xla:refcounting_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
         "//tensorflow/compiler/xla:util",
@@ -472,6 +475,7 @@ cc_library(
      + if_cuda_is_configured([
         ":cusolver_context",
         "//tensorflow/stream_executor/cuda:cuda_stream",
+        "//tensorflow/stream_executor/cuda:curand_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
@@ -691,6 +695,9 @@ cc_library(
         "cusolver_context.h"]
     ),
     deps =  if_cuda_is_configured([
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cublas_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

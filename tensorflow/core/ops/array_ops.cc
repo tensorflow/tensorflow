@@ -686,7 +686,7 @@ REGISTER_OP("SplitV")
                           : total_size != split_dim_size) {
             return errors::InvalidArgument(
                 "can't split axis of size ", split_dim_size,
-                " into pieces of size [", str_util::Join(data, ","), "]");
+                " into pieces of size [", absl::StrJoin(data, ","), "]");
           }
         }
       }

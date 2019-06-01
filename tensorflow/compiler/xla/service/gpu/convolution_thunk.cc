@@ -43,7 +43,7 @@ ConvolutionThunk::ConvolutionThunk(
 
 Status ConvolutionThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   std::vector<se::DeviceMemoryBase> operand_se_buffers;
   for (const auto& buffer : operand_buffers_) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));

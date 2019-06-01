@@ -197,6 +197,11 @@ class ExecutorBarrier {
         error_rendez->Ref();
       }
 
+      if (!s.ok() && !StatusGroup::IsDerived(s) &&
+          !status_group_.HasLogMessages()) {
+        status_group_.AttachLogMessages();
+      }
+
       status_group_.Update(s);
 
       // If this is the last call to WhenDone, call the final callback

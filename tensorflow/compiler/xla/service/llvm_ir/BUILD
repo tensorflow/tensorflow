@@ -1,9 +1,10 @@
 # Description:
 #    Libraries for helping construct LLVM IR for XLA backends.
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",

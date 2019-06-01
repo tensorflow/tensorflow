@@ -75,6 +75,13 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
       combinations.times(keras_test_lib.all_strategy_combinations(),
                          combinations.combine(cloning=[True, False])))
   def test_callbacks_in_fit(self, distribution, cloning):
+    # These tests pass in Google's internal build, but certain combinations
+    # fail in some of our open source builds. This next line is automatically
+    # rewritten by our conversion script.
+    in_tf_open_source = True
+    if (not context.executing_eagerly() and in_tf_open_source and
+        distribution.num_replicas_in_sync > 1):
+      self.skipTest('Test broken; see b/129793413 and b/117920141')
     with distribution.scope():
       model = keras_test_lib.get_model()
       model.compile(

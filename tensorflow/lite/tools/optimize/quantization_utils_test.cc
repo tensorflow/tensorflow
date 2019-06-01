@@ -56,7 +56,8 @@ TEST(QuantizationUtilsTest, NumElements) {
   EXPECT_EQ(num_elements, 5);
 
   tensor.shape = {};
-  EXPECT_EQ(kTfLiteError, NumElements(tensor, &num_elements));
+  EXPECT_EQ(kTfLiteOk, NumElements(tensor, &num_elements));
+  EXPECT_EQ(num_elements, 1);
 }
 
 TEST(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {

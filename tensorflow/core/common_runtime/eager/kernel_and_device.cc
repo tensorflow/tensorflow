@@ -133,6 +133,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
     // ops, we rely on Grappler to do the correct graph pruning.
     optimization_options.allow_pruning_stateful_and_dataset_ops = true;
 
+    optimization_options.is_eager_mode = true;
+
     // All the nested function calls will be executed and optimized via
     // PartitionedCallOp, there is no need to optimize functions now.
     optimization_options.optimize_function_library = false;

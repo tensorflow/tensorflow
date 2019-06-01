@@ -8,9 +8,8 @@ package(
         "//nlp/projects/atc/tf/ops:__pkg__",
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 

@@ -530,8 +530,8 @@ class BatchNormalizationBase(Layer):
           return self._assign_moving_average(self.moving_variance, variance,
                                              momentum, inputs_size)
 
-      self.add_update(mean_update, inputs=True)
-      self.add_update(variance_update, inputs=True)
+      self.add_update(mean_update)
+      self.add_update(variance_update)
 
     return output
 
@@ -779,8 +779,8 @@ class BatchNormalizationBase(Layer):
           false_branch = lambda: self.moving_variance
           return tf_utils.smart_cond(training, true_branch, false_branch)
 
-      self.add_update(mean_update, inputs=True)
-      self.add_update(variance_update, inputs=True)
+      self.add_update(mean_update)
+      self.add_update(variance_update)
 
     else:
       mean, variance = self.moving_mean, self.moving_variance

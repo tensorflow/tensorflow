@@ -344,7 +344,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if self.stateful:
       updates = [state_ops.assign(self.states[0], states[0])]
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -909,7 +909,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs

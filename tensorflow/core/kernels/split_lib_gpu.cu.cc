@@ -125,7 +125,6 @@ __global__ void split_v_kernel(const T* input_ptr,
 
   // verbose declaration needed due to template
   GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
-
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {
@@ -199,13 +198,13 @@ void SplitOpGPULaunch<T>::Run(const Eigen::GpuDevice& d, const T* input,
                               int32 prefix_dim_size, int32 split_dim_size,
                               int32 suffix_dim_size,
                               const GpuDeviceArrayStruct<T*>& output_ptr_data) {
-  GpuLaunchConfig config = GetGpuLaunchConfig(
-      prefix_dim_size * split_dim_size * suffix_dim_size, d);
+  GpuLaunchConfig config =
+      GetGpuLaunchConfig(prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
   TF_CHECK_OK(GpuLaunchKernel(SplitOpKernel<T>, config.block_count,
-                               config.thread_per_block, 0, d.stream(), input,
-                               prefix_dim_size, split_dim_size, suffix_dim_size,
-                               output_ptr_data));
+                              config.thread_per_block, 0, d.stream(), input,
+                              prefix_dim_size, split_dim_size, suffix_dim_size,
+                              output_ptr_data));
 }
 
 template <typename T, typename IntType>
