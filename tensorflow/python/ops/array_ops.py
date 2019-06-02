@@ -67,7 +67,24 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 
   Returns:
     A `Tensor`. Has the same type as `input`.
+    
+  Raises:
+    ValueError: If input is None.
+    
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.zeros(shape=(3,3)) + 4
+    >> y = tf.identity(x)
+    >> print(y)
+    tf.Tensor(
+    [[4. 4. 4.]
+     [4. 4. 4.]
+     [4. 4. 4.]], shape=(3, 3), dtype=float32)
+     ```
   """
+  if input is None:
+    raise ValueError("The input Specified is None. Must specified an input to tf.identity()")
   if context.executing_eagerly() and not hasattr(input, "graph"):
     input = ops.convert_to_tensor(input)
     in_device = input.backing_device
