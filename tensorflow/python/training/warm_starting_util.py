@@ -48,7 +48,7 @@ class VocabInfo(
   See `tf.estimator.WarmStartSettings` for examples of using
   VocabInfo to warm-start.
 
-  Attributes:
+  Args:
     new_vocab: [Required] A path to the new vocabulary file (used with the
       model to be trained).
     new_vocab_size: [Required] An integer indicating how many entries of the new
