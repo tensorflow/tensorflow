@@ -151,7 +151,7 @@ const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
 }
 
 char* TF_FunctionDebugString(TF_Function* func, size_t* len) {
-  const auto& debug_str = func->fdef.DebugString();
+  const auto& debug_str = DebugString(func->fdef);
   *len = debug_str.size();
   char* ret = static_cast<char*>(malloc(*len + 1));
   memcpy(ret, debug_str.c_str(), *len + 1);
@@ -726,14 +726,14 @@ int TF_PickUnusedPortOrDie() {
   return tensorflow::internal::PickUnusedPortOrDie();
 }
 
-TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
+TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
                                                 void* data, size_t len) {
-  auto dtype = static_cast<tensorflow::DataType>(dtype_arg);
+  auto dtype = static_cast<tensorflow::DataType>(data_type);
   DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return new TFE_TensorHandle(tensor, nullptr, nullptr);
+  return new TFE_TensorHandle(tensor);
 }
 
 namespace {

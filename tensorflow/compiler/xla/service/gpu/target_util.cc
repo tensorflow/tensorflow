@@ -36,14 +36,6 @@ struct TargetIntrinsics {
 // corresponding to the give TargetIntrinsicID.
 struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
   switch (intrin) {
-    case TargetIntrinsicID::kShflDownF32: {
-      return {llvm::Intrinsic::nvvm_shfl_sync_down_f32,
-              llvm::Intrinsic::not_intrinsic};
-    }
-    case TargetIntrinsicID::kShflDownI32: {
-      return {llvm::Intrinsic::nvvm_shfl_sync_down_i32,
-              llvm::Intrinsic::not_intrinsic};
-    }
     case TargetIntrinsicID::kThreadIdx: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
               llvm::Intrinsic::amdgcn_workitem_id_x};

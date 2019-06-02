@@ -22,13 +22,15 @@ import collections
 import contextlib
 import copy
 import random
-import six
 import threading
+import numpy as np
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -57,6 +59,11 @@ DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
 SYNC = 0
 ASYNC = 1
+
+_tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
+                                  "Whether tf2.enable() is called.")
+
+_tf2_gauge.get_cell().set(tf2.enabled())
 
 
 class _EagerTensorCache(object):
@@ -359,7 +366,14 @@ class Context(object):
   def _set_global_seed(self, seed):
     """Set a global eager mode seed for random ops."""
     self._seed = seed
-    self._rng = random.Random(self._seed)
+    # `random.Random(seed)` needs `seed` to be hashable, while values of type
+    # e.g. `np.int64` or `np.ndarray` are not. We use `int(...)` to convert them
+    # to int.
+    try:
+      hash(seed)
+    except TypeError:
+      seed = int(np.array(seed))
+    self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tensorflow.TFE_ContextClearCaches(self._context_handle)
@@ -1126,6 +1140,9 @@ class Context(object):
     if dev in self._virtual_device_map:
       raise ValueError(
           "Cannot set memory growth on device when virtual devices configured")
+
+    if dev.device_type != "GPU":
+      raise ValueError("Cannot set memory growth on non-GPU devices")
 
     self._memory_growth_map[dev] = enable
 

@@ -244,11 +244,11 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
                                      "resource variable op in called function");
   }
 
-  if (!op_filter_.allow_slow_and_inaccurate_ops && OpIsInaccurate(node)) {
+  if (!op_filter_.allow_inaccurate_ops && OpIsInaccurate(node)) {
     return LogNotCompilableAndReturn(node, "operation with correctness issues");
   }
 
-  if (!op_filter_.allow_slow_and_inaccurate_ops && OpIsSlow(node)) {
+  if (!op_filter_.allow_slow_ops && OpIsSlow(node)) {
     return LogNotCompilableAndReturn(node, "slow operation");
   }
 
@@ -268,8 +268,8 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
       registration.elide_assert_and_checknumerics;
   op_filter.allow_ops_producing_or_consuming_variant =
       registration.cluster_variant_ops;
-  op_filter.allow_slow_and_inaccurate_ops =
-      registration.cluster_slow_and_inaccurate_ops;
+  op_filter.allow_slow_ops = registration.cluster_slow_ops;
+  op_filter.allow_inaccurate_ops = registration.cluster_inaccurate_ops;
   return op_filter;
 }
 

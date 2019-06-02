@@ -89,6 +89,25 @@ struct RecvNodeDescriptorEqual {
   }
 };
 
+void UpdateDeviceAnnotationState(const NodeDef* node,
+                                 const NodeState& node_state,
+                                 DeviceState* device) {
+  bool annotated = node->attr().count(kExecutionCount) > 0;
+  int64 execution_count = annotated ? node->attr().at(kExecutionCount).i() : 1;
+
+  if (annotated) {
+    auto& shape_annotation_stats = device->shape_annotation_stats;
+    shape_annotation_stats.num_ops_annotated += 1;
+    shape_annotation_stats.num_ops_executed += execution_count;
+    shape_annotation_stats.num_ops_executed_more_than_once +=
+        execution_count > 1 ? 1 : 0;
+    shape_annotation_stats.num_ops_with_incompatible_shapes +=
+        node_state.shape_incompatible ? 1 : 0;
+    shape_annotation_stats.num_ops_with_dynamic_shapes +=
+        (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
+  }
+}
+
 }  // namespace
 
 const NodeDef* LIFOManager::GetCurrNode() {
@@ -359,7 +378,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   graph_properties_ = absl::make_unique<GraphProperties>(*item);
   if (use_static_shapes_) {
     TF_RETURN_IF_ERROR(graph_properties_->InferStatically(
-        true, use_aggressive_shape_inference_));
+        true, use_aggressive_shape_inference_, true));
   } else {
     TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }
@@ -517,7 +536,7 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
     // of feed and fetch nodes, by default we consider all placeholders as feed
     // nodes, but some of them may not be needed for the default fetch node.
     VLOG(1) << "Some feed nodes were not consumed by the fetch fanin: "
-            << str_util::Join(feed_nodes, ",");
+            << absl::StrJoin(feed_nodes, ",");
   }
 
   initialized_ = true;
@@ -714,6 +733,8 @@ NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
       graph_properties_->GetInputProperties(node->name());
   node_state.output_properties =
       graph_properties_->GetOutputProperties(node->name());
+  node_state.shape_incompatible =
+      graph_properties_->CheckShapeIncompatible(node->name());
 
   // Some ops may need further processing to the input / output properties:
   // _Send and _Recv.
@@ -791,6 +812,7 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   node_state.execution_count = node->attr().count(kExecutionCount) == 0
                                    ? 1
                                    : node->attr().at(kExecutionCount).i();
+
   Costs total_node_costs =
       MultiplyCosts(node_costs, node_state.execution_count);
   graph_costs_ = CombineCosts(graph_costs_, total_node_costs);
@@ -823,6 +845,9 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   device.device_costs = CombineCosts(device.device_costs, total_node_costs);
   auto curr_time = device.GetCurrTime();
   node_state.time_finished = curr_time;
+
+  // Update shape annotation states.
+  UpdateDeviceAnnotationState(node, node_state, &device);
 
   // Update device memory usage.
   if (!IsPersistent(*node)) {
@@ -972,6 +997,21 @@ Costs VirtualScheduler::Summary() const {
             << " ops processed in total, with "
             << state.device_costs.num_ops_with_unknown_shapes
             << " having unknown shapes";
+
+    // Device shape annotation statistics.
+    const auto& device_annotation_stats = state.shape_annotation_stats;
+    if (device_annotation_stats.num_ops_annotated > 0) {
+      VLOG(1) << device_annotation_stats.num_ops_annotated
+              << " ops with shape annotation, with "
+              << device_annotation_stats.num_ops_executed_more_than_once
+              << " executed more than once, "
+              << device_annotation_stats.num_ops_with_dynamic_shapes
+              << " with dynamic shapes, "
+              << device_annotation_stats.num_ops_with_incompatible_shapes
+              << " with incompatible shapes, "
+              << device_annotation_stats.num_ops_executed
+              << " ops executed in total.";
+    }
 
     VLOG(1) << "Per-op execution time / compute time / memory time "
             << " / intermediate memory time"

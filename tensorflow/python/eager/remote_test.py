@@ -28,10 +28,10 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 
 
-class RemoteTest(test.TestCase):
+class SingleWorkerTest(test.TestCase):
 
   def setUp(self):
-    super(RemoteTest, self).setUp()
+    super(SingleWorkerTest, self).setUp()
 
     workers, _ = test_util.create_local_cluster(1, 0)
     remote.connect_to_remote_host(workers[0].target)
@@ -40,9 +40,9 @@ class RemoteTest(test.TestCase):
 
     @def_function.function
     def basic(i):
-      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
+      with ops.device('/job:localhost/replica:0/task:0/cpu:0'):
         a = constant_op.constant([2]) + i
-      with ops.device('/job:worker/replica:0/task:1/cpu:0'):
+      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
         b = constant_op.constant([1])
 
       return a + b
@@ -51,7 +51,7 @@ class RemoteTest(test.TestCase):
     self.assertAllEqual(basic(constant_op.constant([1])).numpy(), [4])
 
   def testMultiDeviceFunctionVariable(self):
-    with ops.device('/job:worker/replica:0/task:1/cpu:0'):
+    with ops.device('/job:worker/replica:0/task:0/cpu:0'):
       variable_b = variables.Variable(1)
 
     @def_function.function
@@ -61,7 +61,7 @@ class RemoteTest(test.TestCase):
     self.assertAllEqual(with_variable(constant_op.constant([2])).numpy(), [3])
 
   def testMultiDeviceFunctionRemoteOutput(self):
-    with ops.device('/job:worker/replica:0/task:1/cpu:0'):
+    with ops.device('/job:worker/replica:0/task:0/cpu:0'):
       variable_b = variables.Variable(1)
 
     @def_function.function
@@ -83,12 +83,35 @@ class RemoteTest(test.TestCase):
         return i + constant_op.constant([2])
 
     with self.assertRaises(errors.InvalidArgumentError) as cm:
-      with ops.device('/job:worker/replica:0/task:1/cpu:0'):
+      with ops.device('/job:worker/replica:0/task:0/cpu:0'):
         self.assertAllEqual(
             ambiguous_device(constant_op.constant([2])).numpy(), [3])
 
     self.assertIn('the output node must match exactly one device',
                   cm.exception.message)
+
+
+class MultiWorkersTest(test.TestCase):
+
+  def setUp(self):
+    super(MultiWorkersTest, self).setUp()
+
+    workers, _ = test_util.create_local_cluster(2, 0)
+    remote.connect_to_remote_host([workers[0].target, workers[1].target])
+
+  def testMultiDeviceFunctionOnRemoteDevice(self):
+    with ops.device('/job:worker/replica:0/task:1'):
+      variable_b = variables.Variable(1.0)
+
+    @def_function.function
+    def remote_function(i):
+      with ops.device('/job:worker/replica:0/task:0'):
+        a = i + variable_b
+      c = a + 1.0
+      return c
+
+    with ops.device('/job:worker/replica:0/task:0'):
+      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
 
 if __name__ == '__main__':

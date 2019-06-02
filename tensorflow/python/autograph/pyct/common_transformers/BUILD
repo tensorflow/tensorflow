@@ -1,4 +1,6 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
@@ -24,9 +26,6 @@ py_library(
     deps = [
         "@gast_archive//:gast",
         "@six_archive//:six",
-        # TODO(aqj) Revisit this dependency direction when pyct is more
-        # modularized
-        "//tensorflow/python/autograph/pyct",
     ],
 )
 
@@ -36,7 +35,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [
-        ":common_transformers",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/pyct",
     ],
 )

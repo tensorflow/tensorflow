@@ -99,22 +99,21 @@ int ASharedMemory_create(const char* name, size_t size) {
   nnapi.name = reinterpret_cast<name##_fn>(  \
       LoadFunction(handle, #name, /*optional*/ true));
 
+#define LOAD_FUNCTION_RENAME(handle, name, symbol) \
+  nnapi.name = reinterpret_cast<name##_fn>(        \
+      LoadFunction(handle, symbol, /*optional*/ false));
+
 const NnApi LoadNnApi() {
   NnApi nnapi = {};
   nnapi.android_sdk_version = 0;
 
 #ifdef __ANDROID__
-  void* libandroid = nullptr;
   nnapi.android_sdk_version = GetAndroidSdkVersion();
   if (nnapi.android_sdk_version < 27) {
     NNAPI_LOG("nnapi error: requires android sdk version to be at least %d",
               27);
     nnapi.nnapi_exists = false;
     return nnapi;
-  }
-  libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
-  if (libandroid == nullptr) {
-    NNAPI_LOG("nnapi error: unable to open library %s", "libandroid.so");
   }
 #endif  // __ANDROID__
 
@@ -158,8 +157,26 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksExecution_startCompute);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_wait);
   LOAD_FUNCTION(libneuralnetworks, ANeuralNetworksEvent_free);
+
+  // ASharedMemory_create has different implementations in Android depending on
+  // the partition. Generally it can be loaded from libandroid.so but in vendor
+  // partition (e.g. if a HAL wants to use NNAPI) it is only accessible through
+  // libcutils.
 #ifdef __ANDROID__
-  LOAD_FUNCTION(libandroid, ASharedMemory_create);
+  void* libandroid = nullptr;
+  libandroid = dlopen("libandroid.so", RTLD_LAZY | RTLD_LOCAL);
+  if (libandroid != nullptr) {
+    LOAD_FUNCTION(libandroid, ASharedMemory_create);
+  } else {
+    void* cutils_handle = dlopen("libcutils.so", RTLD_LAZY | RTLD_LOCAL);
+    if (cutils_handle != nullptr) {
+      LOAD_FUNCTION_RENAME(cutils_handle, ASharedMemory_create,
+                           "ashmem_create_region");
+    } else {
+      NNAPI_LOG("nnapi error: unable to open neither libraries %s and %s",
+                "libandroid.so", "libcutils.so");
+    }
+  }
 #else
   nnapi.ASharedMemory_create = ASharedMemory_create;
 #endif  // __ANDROID__

@@ -178,8 +178,8 @@ struct ConvCacheStats {
   int64 cache_misses = 0;
 
   void LogStats() {
-    VLOG(1) << "Cache hits: " << cache_hits;
-    VLOG(1) << "Cache misses: " << cache_misses;
+    VLOG(2) << "Cache hits: " << cache_hits;
+    VLOG(2) << "Cache misses: " << cache_misses;
   }
 };
 
@@ -243,6 +243,59 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   return result_or;
 }
 
+// Unimplemented for integers yet.
+template <typename T, typename Generator>
+typename std::enable_if<std::is_integral<T>::value, T>::type
+UniformDistribution(T lhs, T rhs, Generator* gen) = delete;
+
+template <typename T, typename Generator>
+typename std::enable_if<std::is_floating_point<T>::value, T>::type
+UniformDistribution(T lhs, T rhs, Generator* gen) {
+  return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
+}
+
+template <typename T>
+void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer) {
+  static_assert(
+      std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
+      "Unimplemented for integers yet.");
+
+  // Accesses to static variables are not locked, since the caller is already
+  // in a critical section.
+  static std::vector<T>* host_buffer = [] {
+    // Use a large prime number to fragment the accesses.
+    auto* ret = new std::vector<T>(10069);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    for (auto& element : *ret) {
+      using RandomType =
+          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
+                                    T>::type;
+      element = T(UniformDistribution(RandomType(0), RandomType(1), &gen));
+    }
+    return ret;
+  }();
+  static int64 host_index = 0;
+
+  char* current_addr = static_cast<char*>(buffer.opaque());
+  CHECK_EQ(0, buffer.size() % sizeof(T));
+  int64 elements_left = buffer.size() / sizeof(T);
+  while (elements_left > 0) {
+    CHECK_LE(host_index, host_buffer->size());
+    if (host_buffer->size() == host_index) {
+      host_index = 0;
+    }
+    int64 elements_copied =
+        std::min<int64>(host_buffer->size() - host_index, elements_left);
+    DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
+    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
+                       elements_copied * sizeof(T));
+    current_addr += elements_copied * sizeof(T);
+    elements_left -= elements_copied;
+    host_index += elements_copied;
+  }
+}
+
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction* instr) {
   XLA_SCOPED_LOGGING_TIMER(
@@ -269,45 +322,22 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
-    se_allocator.emplace(stream_exec_->platform(),
-                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
+    se_allocator.emplace(stream_exec_);
     allocator = &*se_allocator;
   }
 
   const auto initialize_buffer = [&stream,
                                   &result_shape](DeviceMemoryBase buffer) {
-    constexpr float kBroadcastedConstant = 0.1f;
     switch (result_shape.element_type()) {
-      case xla::F16: {
-        // Broadcast a constant to the buffer, instead of zeroing the buffer. A
-        // non-zero constant is useful for the cross checking, because
-        // zero-inputs may not always reveal the bugs.
-        CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
-        size_t left_over_bytes = buffer.size() % 4;
-        CHECK_EQ(0, left_over_bytes % 2);
-
-        static const Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
-                                             Eigen::half(kBroadcastedConstant)};
-        uint32 bits;
-        static_assert(sizeof(bits) == sizeof(halfs), "");
-        memcpy(&bits, halfs, sizeof(bits));
-
-        size_t aligned_size = buffer.size() / 4 * 4;
-        stream.ThenMemset32(&buffer, bits, aligned_size);
-
-        DeviceMemoryBase left_over(
-            static_cast<char*>(buffer.opaque()) + aligned_size,
-            left_over_bytes);
-        stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
+      case xla::F16:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer));
         break;
-      }
-      case xla::F32: {
-        uint32 bits;
-        memcpy(&bits, &kBroadcastedConstant, sizeof(bits));
-        stream.ThenMemset32(&buffer, bits, buffer.size());
+      case xla::F32:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer));
         break;
-      }
-      // TODO(timshen): populate non-zero data for f64.
+      case xla::F64:
+        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer));
+        break;
       default:
         stream.ThenMemZero(&buffer, buffer.size());
     }
@@ -425,6 +455,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
             << AlgorithmToString(first_algorithm) << " vs "
             << AlgorithmToString(alg);
         PrintPlatformInfo(&stream);
+        VLOG(1) << "Full module on failure: \n"
+                << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         auto* reference_conv = fail->mutable_reference_conv();
@@ -462,12 +494,10 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
+    VLOG(1) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
-    // print more information instead of logging to the logger.
-    if (crash_on_checking_failure) {
-      LOG(INFO) << "Autotuning result: " << log.ShortDebugString();
-    } else {
-      VLOG(2) << "Autotuning result:\n" << log.DebugString();
+    // omitting logging through the logger.
+    if (!crash_on_checking_failure) {
       tensorflow::Logger::Singleton()->LogProto(log);
     }
   }
@@ -527,7 +557,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   }
 
   auto best_algo = std::move(best_algo_or).ValueOrDie();
-  VLOG(1) << "Setting cudnn conv to use algorithm "
+  VLOG(2) << "Setting cudnn conv to use algorithm "
           << best_algo.conv().algorithm() << " and "
           << NumBytesToString(best_algo.scratch_bytes())
           << " of scratch memory: " << instr->ToString()
@@ -548,7 +578,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
-  VLOG(1) << "Replacing convolution " << instr->ToString() << " with "
+  VLOG(2) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));

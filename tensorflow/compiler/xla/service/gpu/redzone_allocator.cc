@@ -290,9 +290,9 @@ StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT> comparison_kernel,
-      (CreateTypedKernel<se::DeviceMemory<uint8>, uint8, uint64,
-                         se::DeviceMemory<uint64>>(
-          "redzone_checker", redzone_checker_ptx, compiled_ptx, executor)));
+      (executor->CreateTypedKernel<se::DeviceMemory<uint8>, uint8, uint64,
+                                   se::DeviceMemory<uint64>>(
+          "redzone_checker", redzone_checker_ptx, compiled_ptx)));
 
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(

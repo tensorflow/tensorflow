@@ -35,7 +35,6 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -342,7 +341,12 @@ class Network(base_layer.Layer):
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
-        self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
+        # Use batch_input_shape here because non-eager composite tensors may not
+        # have a shape attribute that's meaningful (sparse, for instance, has
+        # a tensor that's non-constant and needs to be fed). This means that
+        # input layers that create placeholders will need to have the
+        # batch_input_shape attr to allow for input shape validation.
+        self._feed_input_shapes.append(layer._batch_input_shape)
         self._feed_inputs.append(layer.input)
 
   def _set_output_names(self):
@@ -1308,11 +1312,6 @@ class Network(base_layer.Layer):
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
         saving.save_weights_to_hdf5_group(f, self.layers)
-        # TODO(rchao): Save this attribute in a decoupled checkpoint file
-        # that is solely for the purpose of fault tolerance.
-        if self._ckpt_saved_epoch is not None:
-          f.attrs[callbacks.CKPT_SAVED_EPOCH] = str(
-              self._ckpt_saved_epoch).encode('utf8')
     else:
       if context.executing_eagerly():
         session = None
@@ -1412,12 +1411,6 @@ class Network(base_layer.Layer):
     with h5py.File(filepath, 'r') as f:
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
-      # TODO(rchao): Load this attribute from a decoupled metadata+checkpoint
-      # file that is solely for the purpose of fault tolerance. Decide if we
-      # should use TF or HDF5 format for the metadata.
-      if callbacks.CKPT_SAVED_EPOCH in f.attrs:
-        self._ckpt_saved_epoch = f.attrs[callbacks.CKPT_SAVED_EPOCH].decode(
-            'utf8')
       if by_name:
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:

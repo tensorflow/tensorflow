@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow/stream_executor:__subpackages__"])
 
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 cc_library(
     name = "platform",
@@ -19,6 +20,7 @@ cc_library(
         ["dlopen_checker.cc"],
     ),
     hdrs = ["dso_loader.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor/lib",

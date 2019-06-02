@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 
 namespace xla {
 namespace cpu {
@@ -135,6 +136,10 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
   // *) Emit custom loops (kSelectAndScatter).
   // *) Operations that are not thread safe (like infeed and rng).
   // *) Tuple-shaped.
+  // *) Operations that might be implemented as an in-place
+  //    dynamic-update-slice, because we can't know how many output elements
+  //    they will write (out-of-place will touch the whole output buffer, while
+  //    in-place will only touch the updated elements).
   // TODO(b/27458679) Parallelize instructions which are skipped here.
   auto opcode = instruction->opcode();
   if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
@@ -148,6 +153,7 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
        PotentiallyImplementedAsEigenConvolution(*instruction,
                                                 target_machine_features_)) ||
       (opcode == HloOpcode::kFusion && !instruction->IsLoopFusion()) ||
+      llvm_ir::MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
       instruction->shape().IsTuple()) {
     return 1;
   }

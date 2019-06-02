@@ -39,6 +39,7 @@ from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
@@ -74,6 +75,10 @@ tensor_spec = LazyLoader(
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
 _USE_C_SHAPES = True
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/ops_eager_execution",
+    "Whether ops.enable_eager_execution() is called.")
 
 
 def tensor_id(tensor):
@@ -763,16 +768,26 @@ class _EagerTensorBase(Tensor):
 
   # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  # TODO(slebedev): avoid redundant copy in all of the following methods.
   def __int__(self):
     return int(self.numpy())
+
+  def __long__(self):
+    return long(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
 
   def __index__(self):
-    return int(self.numpy())
+    maybe_arr = self.numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
 
   def __array__(self, dtype=None):
+    # This is only called if the buffer interface conversion failed.
+    # Remove once numpy/numpy#13507 is merged and released or py_function
+    # creates EagerTensors with a non-nullptr context.
     return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):
@@ -3508,13 +3523,6 @@ class Graph(object):
 
     # Add function to graph
     # pylint: disable=protected-access
-    # Handle functions created without using the C API. TODO(apassos,skyewm)
-    # remove this when all functions are generated using the C API by default
-    # as this will be unnecessary.
-    if not function._c_func:
-      serialized = function.definition.SerializeToString()
-      c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-      function._c_func = c_api_util.ScopedTFFunction(c_func)
     gradient = (
         function._grad_func._c_func.func if function._grad_func else None)
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
@@ -5870,6 +5878,7 @@ def enable_eager_execution(config=None, device_policy=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
+  _api_usage_gauge.get_cell().set(True)
   if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
@@ -5886,6 +5895,7 @@ def disable_eager_execution():
   created. It can be used at the beginning of the program for complex migration
   projects from TensorFlow 1.x to 2.x.
   """
+  _api_usage_gauge.get_cell().set(False)
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
@@ -5956,8 +5966,8 @@ def enable_eager_execution_internal(config=None,
         (context._context._config, config, context._context._device_policy,
          device_policy, context._context._execution_mode, execution_mode))
   else:
-    raise ValueError(
-        "tf.enable_eager_execution must be called at program startup.")
+    # We already created everything, so update the thread local data.
+    context._context._thread_local_data.is_eager = True
 
   # Monkey patch to get rid of an unnecessary conditional since the context is
   # now initialized.

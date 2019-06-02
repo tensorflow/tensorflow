@@ -50,7 +50,7 @@ TEST(CudnnRNNOpsTest, ForwardLstm_ShapeFn) {
   std::vector<int> output_shape = {seq_length, batch_size,
                                    num_units * dir_count};
   auto shape_to_str = [](const std::vector<int>& v) {
-    return strings::StrCat("[", str_util::Join(v, ","), "]");
+    return strings::StrCat("[", absl::StrJoin(v, ","), "]");
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
@@ -82,7 +82,7 @@ TEST(CudnnRNNOpsTest, ForwardV2Lstm_ShapeFn) {
   std::vector<int> output_shape = {seq_length, batch_size,
                                    num_units * dir_count};
   auto shape_to_str = [](const std::vector<int>& v) {
-    return strings::StrCat("[", str_util::Join(v, ","), "]");
+    return strings::StrCat("[", absl::StrJoin(v, ","), "]");
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
@@ -115,7 +115,7 @@ TEST(CudnnRNNOpsTest, ForwardV3Lstm_ShapeFn) {
                                    num_units * dir_count};
   std::vector<int> seq_lengths_shape = {batch_size};
   auto shape_to_str = [](const std::vector<int>& v) {
-    return strings::StrCat("[", str_util::Join(v, ","), "]");
+    return strings::StrCat("[", absl::StrJoin(v, ","), "]");
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",

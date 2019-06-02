@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/function.h"
@@ -33,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -594,10 +597,9 @@ int64 AnonymousIteratorHandleOp::current_id_(0);
 void MakeIteratorOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  IteratorResource* iterator_resource;
+  core::RefCountPtr<IteratorResource> iterator_resource;
   OP_REQUIRES_OK(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
-  core::ScopedUnref unref(iterator_resource);
   OP_REQUIRES_OK(ctx, iterator_resource->SetIteratorFromDataset(ctx, dataset));
 }
 
@@ -748,10 +750,13 @@ class ReduceDatasetOp : public AsyncOpKernel {
         delete raw_iterator;
         done();
       });
+      auto done = []() {};
 
       // Iterate through the input dataset.
       Status status;
       while (true) {
+        OP_REQUIRES_ASYNC(ctx, !ctx->cancellation_manager()->IsCancelled(),
+                          errors::Cancelled("Operation was cancelled"), done);
         std::vector<Tensor> next_input_element;
         bool end_of_input;
         status = raw_iterator->GetNext(&iter_ctx, &next_input_element,
@@ -780,6 +785,19 @@ class ReduceDatasetOp : public AsyncOpKernel {
         ctx->SetStatus(status);
         return;
       }
+
+      OP_REQUIRES_ASYNC(ctx, state.size() == output_types_.size(),
+                        errors::InvalidArgument(
+                            "The number of result elements does not match "
+                            "the size of output types: ",
+                            state.size(), " vs. ", output_types_.size()),
+                        done);
+      OP_REQUIRES_ASYNC(ctx, state.size() == output_shapes_.size(),
+                        errors::InvalidArgument(
+                            "The number of result elements does not match "
+                            "the size of output shapes: ",
+                            state.size(), " vs. ", output_shapes_.size()),
+                        done);
       for (int i = 0; i < state.size(); ++i) {
         OP_REQUIRES_ASYNC(
             ctx, state[i].dtype() == output_types_[i],
@@ -1285,6 +1303,8 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("ReduceDataset");
 
 }  // namespace
 

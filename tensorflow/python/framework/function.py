@@ -191,6 +191,28 @@ class Defun(object):
         **self._extra_kwargs)
 
 
+class _DefinedFunctionDeleter(object):
+  """Unregister function from eager context."""
+
+  def __init__(self, name):
+    self.name = name
+
+  def __del__(self):
+    try:
+      context.remove_function(self.name)
+    except TypeError:
+      # Suppress some exceptions, mainly for the case when we're running on
+      # module deletion. Things that can go wrong include the context module
+      # already being unloaded, self._handle._handle_data no longer being
+      # valid, and so on. Printing warnings in these cases is silly
+      # (exceptions raised from __del__ are printed as warnings to stderr).
+      pass  # 'NoneType' object is not callable when the handle has been
+      # partially unloaded.
+    except AttributeError:
+      pass  # 'NoneType' object has no attribute 'eager_mode' when context has
+      # been unloaded. Will catch other module unloads as well.
+
+
 class _DefinedFunction(object):
   """_DefinedFunction encapsulates a function definition and its properties.
 
@@ -262,6 +284,7 @@ class _DefinedFunction(object):
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
+    self._function_deleter = None
     self._sub_functions = {}  # Constructed with _definition or _c_func
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
@@ -297,6 +320,11 @@ class _DefinedFunction(object):
         fdef = function_pb2.FunctionDef()
         proto_data = c_api.TF_GetBuffer(buf)
         fdef.ParseFromString(compat.as_bytes(proto_data))
+        with ops.init_scope():
+          if context.executing_eagerly():
+            context.add_function(self._c_func.func)
+            self._function_deleter = _DefinedFunctionDeleter(
+                fdef.signature.name)
       return fdef
     return self._definition
 

@@ -50,7 +50,7 @@ CustomCallThunk::CustomCallThunk(
 
 Status CustomCallThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
   auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
   auto typed_call_target =

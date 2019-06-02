@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
@@ -344,7 +343,7 @@ class _PythonLoopChecker(object):
 
   def _check_unroll_limits(self):
     if LIMIT_PYTHON_ITERATIONS and self.iterations > PYTHON_MAX_ITERATIONS:
-      raise errors.ExecutionError('Python', 'iteration limit exceeded')
+      raise ValueError('iteration limit exceeded')
 
   def _stop_checking_inefficient_unroll(self):
     self.check_inefficient_unroll = False

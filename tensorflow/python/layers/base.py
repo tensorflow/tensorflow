@@ -64,7 +64,7 @@ def keras_style_scope():
   class RNNModel(tf.keras.Model):
 
     def __init__(self, name):
-      super(RNNModel, self.).__init__(name=name)
+      super(RNNModel, self).__init__(name=name)
       self.rnn = tf.compat.v1.nn.rnn_cell.MultiRNNCell(
         [tf.compat.v1.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
 

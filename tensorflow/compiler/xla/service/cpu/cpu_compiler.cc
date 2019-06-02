@@ -297,6 +297,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                           /*allow_mixed_precision=*/false);
 
+    pass.AddPass<ScatterExpander>();
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -316,7 +317,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopConstantSinking>();
     pass.AddPass<WhileLoopSimplifier>();
-    pass.AddPass<SliceSinker>();
+
+    // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+    // pass.AddPass<SliceSinker>();
+
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
@@ -339,8 +343,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
 
   pipeline.AddPass<CpuInstructionFusion>();
-
-  pipeline.AddPass<ScatterExpander>();
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),

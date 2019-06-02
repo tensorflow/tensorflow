@@ -341,10 +341,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
                        for _ in range(2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
-  def testGroupByWindowBatching(self, drop_remainder):
+  def testGroupByWindowStaticBatch(self, drop_remainder):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         [[array_ops.constant(i, dtype=dtypes.int64)] * 3 for i in range(40)])
-    reduce_fn = lambda bucket_id, ds: ds.batch(
+    reduce_fn = lambda bucket_id, ds: ds.batch(  # pylint: disable=g-long-lambda
         batch_size=10, drop_remainder=drop_remainder)
     dataset = dataset.apply(
         grouping.group_by_window(
@@ -359,6 +359,23 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
                        for j in range(4)
                        for k in range(2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testGroupByWindowDynamicBatch(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(40).map(lambda x: x % 2)
+    reduce_fn = lambda bucket_id, ds: ds.batch(  # pylint: disable=g-long-lambda
+        batch_size=(bucket_id + 1) * 5, drop_remainder=drop_remainder)
+    dataset = dataset.apply(
+        grouping.group_by_window(
+            key_func=lambda x: x, reduce_func=reduce_fn, window_size=10))
+    dataset = distribute._RebatchDataset(dataset, num_workers=2)
+
+    self.assertEqual([[None]],
+                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    # pylint: disable=g-complex-comprehension
+    x = [(2, 0), (2, 0), (2, 0), (2, 0), (2, 0), (5, 1), (5, 1), (2, 0), (2, 0),
+         (2, 0), (2, 0), (2, 0), (5, 1), (5, 1)]
+    expected_output = [[value] * batch_size for batch_size, value in x]
+    self.assertDatasetProduces(dataset, expected_output)
 
 
 if __name__ == "__main__":

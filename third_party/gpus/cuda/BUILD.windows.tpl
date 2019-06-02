@@ -76,7 +76,7 @@ cc_import(
 )
 
 cuda_header_library(
-    name = "cublas_virtual_headers",
+    name = "cublas_headers",
     hdrs = [":cublas-include"],
     include_prefix = "third_party/gpus/cuda/include",
     includes = ["cublas/include"],

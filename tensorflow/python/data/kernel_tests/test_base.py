@@ -43,6 +43,10 @@ class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
     else:
       dataset_ops.Dataset = dataset_ops.DatasetV1
 
+  def assert_op_cancelled(self, op):
+    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+      self.evaluate(op)
+
   def assertSparseValuesEqual(self, a, b):
     """Asserts that two SparseTensors/SparseTensorValues are equal."""
     self.assertAllEqual(a.indices, b.indices)

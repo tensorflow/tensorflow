@@ -23,6 +23,7 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
@@ -262,6 +263,8 @@ class TimeDistributed(Wrapper):
     if (hasattr(self.layer, 'activity_regularizer') and
         self.layer.activity_regularizer is not None):
       regularization_loss = self.layer.activity_regularizer(y)
+      base_layer_utils.check_graph_consistency(
+          regularization_loss, method='activity_regularizer')
       self.add_loss(regularization_loss, inputs)
     return y
 
@@ -449,7 +452,7 @@ class Bidirectional(Wrapper):
     self.return_state = layer.return_state
     self.supports_masking = True
     self._trainable = True
-    self._num_constants = None
+    self._num_constants = 0
     # We don't want to track `layer` since we're already tracking the two copies
     # of it we actually run.
     self._setattr_tracking = False
@@ -581,6 +584,9 @@ class Bidirectional(Wrapper):
       # input. Update the input_spec to match the inputs.
       full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
                         ] + additional_specs
+      # Removing kwargs since the value are passed with input list.
+      kwargs['initial_state'] = None
+      kwargs['constants'] = None
 
       # Perform the call with temporarily replaced input_spec
       original_input_spec = self.input_spec
@@ -606,25 +612,40 @@ class Bidirectional(Wrapper):
     if generic_utils.has_arg(self.layer.call, 'constants'):
       kwargs['constants'] = constants
 
-    if initial_state is not None and generic_utils.has_arg(
-        self.layer.call, 'initial_state'):
-      forward_inputs = [inputs[0]]
-      backward_inputs = [inputs[0]]
-      pivot = len(initial_state) // 2 + 1
-      # add forward initial state
-      forward_state = inputs[1:pivot]
-      forward_inputs += forward_state
-      if self._num_constants is None:
-        # add backward initial state
-        backward_state = inputs[pivot:]
-        backward_inputs += backward_state
+    if generic_utils.has_arg(self.layer.call, 'initial_state'):
+      if isinstance(inputs, list) and len(inputs) > 1:
+        # initial_states are keras tensors, which means they are passed in
+        # together with inputs as list. The initial_states need to be split into
+        # forward and backward section, and be feed to layers accordingly.
+        forward_inputs = [inputs[0]]
+        backward_inputs = [inputs[0]]
+        pivot = (len(inputs) - self._num_constants) // 2 + 1
+        # add forward initial state
+        forward_inputs += inputs[1:pivot]
+        if not self._num_constants:
+          # add backward initial state
+          backward_inputs += inputs[pivot:]
+        else:
+          # add backward initial state
+          backward_inputs += inputs[pivot:-self._num_constants]
+          # add constants for forward and backward layers
+          forward_inputs += inputs[-self._num_constants:]
+          backward_inputs += inputs[-self._num_constants:]
+        forward_state, backward_state = None, None
+        if 'constants' in kwargs:
+          kwargs['constants'] = None
+      elif initial_state is not None:
+        # initial_states are not keras tensors, eg eager tensor from np array.
+        # They are only passed in from kwarg initial_state, and should be passed
+        # to forward/backward layer via kwarg initial_state as well.
+        forward_inputs, backward_inputs = inputs, inputs
+        half = len(initial_state) // 2
+        forward_state = initial_state[:half]
+        backward_state = initial_state[half:]
       else:
-        # add backward initial state
-        backward_state = inputs[pivot:-self._num_constants]
-        backward_inputs += backward_state
-        # add constants for forward and backward layers
-        forward_inputs += inputs[-self._num_constants:]
-        backward_inputs += inputs[-self._num_constants:]
+        forward_inputs, backward_inputs = inputs, inputs
+        forward_state, backward_state = None, None
+
       y = self.forward_layer.call(forward_inputs,
                                   initial_state=forward_state, **kwargs)
       y_rev = self.backward_layer.call(backward_inputs,
@@ -700,7 +721,7 @@ class Bidirectional(Wrapper):
 
   def get_config(self):
     config = {'merge_mode': self.merge_mode}
-    if self._num_constants is not None:
+    if self._num_constants:
       config['num_constants'] = self._num_constants
 
     if hasattr(self, '_backward_layer_config'):
@@ -715,7 +736,7 @@ class Bidirectional(Wrapper):
   def from_config(cls, config, custom_objects=None):
     # Instead of updating the input, create a copy and use that.
     config = config.copy()
-    num_constants = config.pop('num_constants', None)
+    num_constants = config.pop('num_constants', 0)
     backward_layer_config = config.pop('backward_layer', None)
     if backward_layer_config is not None:
       from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top

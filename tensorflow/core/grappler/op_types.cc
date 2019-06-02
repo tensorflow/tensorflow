@@ -150,7 +150,8 @@ bool IsControlFlow(const NodeDef& node) {
          node.op() == "LoopCond" ||
          node.op() == "Merge" ||
          node.op() == "NextIteration" ||
-         node.op() == "Switch";
+         node.op() == "Switch" ||
+         node.op() == "_SwitchN";
   // clang-format on
 }
 
@@ -523,7 +524,7 @@ bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }
 
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Switch" || op == "RefSwitch";
+  return op == "_SwitchN" || op == "Switch" || op == "RefSwitch";
 }
 
 bool IsSymbolicGradient(const NodeDef& node) {
@@ -689,7 +690,7 @@ bool ModifiesInputsInPlace(const NodeDef& node) {
   }
 
   std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
-  if (str_util::StrContains(op_name, "inplace")) {
+  if (absl::StrContains(op_name, "inplace")) {
     return true;
   }
   return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
@@ -944,8 +945,8 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "RandomPoissonV2"}));
   const string& op_name = node.op();
   return kNonForwardingOps->count(op_name) > 0 ||
-         str_util::StrContains(op_name, "Segment") ||
-         str_util::StartsWith(op_name, "Quantize");
+         absl::StrContains(op_name, "Segment") ||
+         absl::StartsWith(op_name, "Quantize");
 }
 
 }  // namespace grappler

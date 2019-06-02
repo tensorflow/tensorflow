@@ -11,9 +11,10 @@
 #   # for GPU benchmarks
 #   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
 #
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -165,6 +166,7 @@ tf_kernel_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
     ],
 )
@@ -1264,7 +1266,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     prefix = "unique_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_kernel_library(
@@ -1604,6 +1608,50 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":conv_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "conv_grad_filter_ops_benchmark_test",
+    size = "medium",
+    srcs = ["conv_grad_filter_ops_benchmark_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":host_constant_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "conv_grad_input_ops_benchmark_test",
+    size = "medium",
+    srcs = ["conv_grad_input_ops_benchmark_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":host_constant_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/cc:cc_ops",
@@ -2714,7 +2762,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 tf_kernel_library(
@@ -3013,7 +3061,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_reader_op",
     prefix = "identity_reader_op",
-    deps = IO_DEPS,
+    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 tf_kernel_library(
@@ -3079,7 +3127,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "whole_file_read_ops",
     prefix = "whole_file_read_ops",
-    deps = IO_DEPS,
+    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 tf_cc_tests(
@@ -3115,7 +3163,6 @@ cc_library(
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
-        ":einsum_op",
         ":lu_op",
         ":matrix_exponential_op",
         ":matrix_inverse_op",
@@ -3137,7 +3184,7 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
-    # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
+    # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
@@ -3311,21 +3358,6 @@ tf_kernel_library(
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ],
-)
-
-tf_kernel_library(
-    name = "einsum_op",
-    prefix = "einsum_op",
-    deps = [
-        ":batch_matmul_op",
-        ":reduction_ops",
-        ":transpose_functor",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -5035,6 +5067,7 @@ STATE_DEPS = [
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
@@ -6106,6 +6139,7 @@ filegroup(
         "in_topk_op.h",
         "initializable_lookup_table.cc",
         "logging_ops.cc",
+        "logging_ops.h",
         "lookup_table_init_op.cc",
         "lookup_table_op.cc",
         "lookup_util.cc",
@@ -6807,6 +6841,28 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_qmatmul_op_test",
+    size = "small",
+    srcs = ["mkl_qmatmul_op_test.cc"],
+    deps = [
+        ":mkl_input_conversion_op",
+        ":mkl_qmatmul_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Android-only test for quantized multiply.
 cc_binary(
     name = "quantized_mul_op_test_android_only",
@@ -7234,6 +7290,27 @@ tf_cc_test(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_qmatmul_op",
+    srcs = ["mkl_qmatmul_op.cc"],
+    hdrs = [
+        "mkl_quantized_conv_ops.h",
+        "no_op.h",
+    ],
+    deps = [
+        ":bounds_check",
+        ":matmul_op",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ] + mkl_deps(),
+)
+
+tf_mkl_kernel_library(
     name = "mkl_conv_op",
     hdrs = [
         "mkl_quantized_conv_ops.h",
@@ -7601,6 +7678,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/db:sqlite",
         "//tensorflow/core/summary:schema",

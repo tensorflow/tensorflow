@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -532,11 +533,32 @@ class OpOutputList {
 // a mutex to prevent concurrent access to the tensor.
 struct TensorValue {
   TensorValue() : mutex_if_ref(nullptr), tensor(nullptr) {}
-  TensorValue(Tensor* t)  // NOLINT(runtime/explicit)
-      : mutex_if_ref(nullptr), tensor(t) {}
+  explicit TensorValue(Tensor* t) : mutex_if_ref(nullptr), tensor(t) {}
   TensorValue(mutex* mu, Tensor* t) : mutex_if_ref(mu), tensor(t) {}
   Tensor* operator->() const { return tensor; }
   bool is_ref() const { return mutex_if_ref != nullptr; }
+
+  // Return the dtype of the Tensor. For references, return the underlying type.
+  DataType dtype() const {
+    if (is_ref()) {
+      return MakeRefType(tensor->dtype());
+    } else {
+      return tensor->dtype();
+    }
+  }
+
+  // Return the dtype of the Tensor. For references, return the underlying type.
+  // This variation on the dtype() acquires the lock for references.
+  //
+  // TODO(b/133843385): Disallow dtype modifications
+  DataType dtype_safe() const {
+    if (is_ref()) {
+      tf_shared_lock ml(*mutex_if_ref);
+      return MakeRefType(tensor->dtype());
+    } else {
+      return tensor->dtype();
+    }
+  }
 
   mutex* mutex_if_ref;  // nullptr if not a ref, != nullptr if a ref
   Tensor* tensor;
@@ -1291,6 +1313,9 @@ class OpKernelContext {
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
 
+  // Keep track of calls to ScopeAllocator.
+  std::unordered_set<int32> allocated_scope_ids_;
+
   // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
 
@@ -1540,11 +1565,7 @@ inline DataType OpKernelContext::input_dtype(int index) const {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_inputs());
   const TensorValue& value((*params_->inputs)[index]);
-  if (value.is_ref()) {
-    return MakeRefType(value->dtype());
-  } else {
-    return value->dtype();
-  }
+  return value.dtype();
 }
 
 inline MemoryType OpKernelContext::input_memory_type(int index) const {

@@ -84,9 +84,8 @@ class PopulateTRTEngineCache : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     ResourceHandle handle = HandleFromInput(ctx, 0);
-    TRTEngineCacheResource* resource = nullptr;
+    core::RefCountPtr<TRTEngineCacheResource> resource;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
-    core::ScopedUnref unref_me(resource);
 
     auto allocator = resource->allocator_.get();
     OP_REQUIRES(ctx, allocator != nullptr,

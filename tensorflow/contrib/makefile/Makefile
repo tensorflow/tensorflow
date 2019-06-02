@@ -109,7 +109,7 @@ $(HOST_NSYNC_LIB) \
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
-	HOST_LIBS += -ldl -lpthread
+	HOST_LIBS += -ldl -lpthread -lrt
 endif
 
 # If we're on a Pi, link in pthreads and dl
@@ -259,7 +259,7 @@ endif
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
-	LIBS += -ldl -lpthread
+	LIBS += -ldl -lpthread -lrt
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
@@ -636,6 +636,7 @@ CORE_CC_ALL_SRCS := \
 $(ABSL_CC_SRCS) \
 tensorflow/c/c_api.cc \
 tensorflow/c/kernels.cc \
+tensorflow/c/tf_datatype.cc \
 tensorflow/c/tf_status.cc \
 tensorflow/c/tf_status_helper.cc \
 $(wildcard tensorflow/core/*.cc) \

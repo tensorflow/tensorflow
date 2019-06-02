@@ -45,5 +45,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                                "tensorflow.compat.v2"])
     }
 
+    self.inserts_after_imports = {
+        ("tensorflow", None): ["tensorflow.disable_v2_behavior()"],
+        ("tensorflow", "tf"): ["tf.disable_v2_behavior()"],
+    }
+
     # TODO(kaftan,annarev): specify replacement from TensorFlow import to
     # compat.v1 import.

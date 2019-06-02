@@ -108,16 +108,14 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
-    if compile_options.argument_layouts:
-      argument_layouts = compile_options.argument_layouts
-    else:
-      argument_layouts = c_computation.GetProgramShape().parameter_shapes()
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
     options.debug_options.xla_cpu_fast_math_honor_nans = True
-    return _xla.LocalExecutable.Compile(c_computation, argument_layouts,
-                                        options, self.client)
+    return _xla.LocalExecutable.Compile(c_computation,
+                                        compile_options.argument_layouts,
+                                        options, self.client,
+                                        compile_options.device_assignment)
 
 
 def _cpu_backend_factory():
@@ -145,7 +143,7 @@ def _gpu_backend_factory():
     config.memory_fraction = float(memory_fraction)
 
   client = _xla.LocalClient.Get(
-      platform='gpu', xla_platform_id='CUDA', asynchronous=False,
+      platform='gpu', xla_platform_id='CUDA', asynchronous=True,
       allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
@@ -356,12 +354,23 @@ class Buffer(object):
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following
   # API:
-  # def to_py(self):
   # def shape(self) -> Shape:
   # def device(self) -> int:
   # def delete(self):
   # def destructure(self) -> [Buffer]
   # def is_deleted(self) -> bool:
+  # def block_host_until_ready(self):
+  #    """Blocks the calling thread until the buffer is ready on device."""
+  # def copy_to_host_async(self):
+  #    """Requests a copy of the buffer to the host.
+  #
+  #       Does not block waiting for the copy. Values fetched are available via
+  #       `to_py()`; the purpose of `copy_to_host_async` is to prefetch values
+  #       for subsequent `to_py()` calls, especially when requesting many values
+  #       at once.
+  #    """
+  # def to_py(self):
+  #    """Returns the value of the buffer as a Python tuple tree of ndarrays."""
   #
   # TODO(phawkins): remove Buffer and its static methods completely, have
   # clients call methods on Backend to create buffers.
@@ -419,6 +428,27 @@ def transfer_from_outfeed(shape, device_ordinal=0):
       shape.with_major_to_minor_layout_if_absent(), device_ordinal)
 
 
+DeviceAssignment = _xla.DeviceAssignment
+DeviceAssignment.__doc__ = """
+A DeviceAssignment is a C++ object with the following signature.
+
+def create(assignment):
+  '''Builds a device assignment.
+
+   Args:
+     assignment: a 2D numpy array of device ordinal integers, indexed by
+       [replica][computation_in_replica].
+   Returns:
+     A device assignment.
+  '''
+
+def replica_count():
+  '''Returns the number of replicas.'''
+def computation_count():
+  '''Returns the number of computations per replica.'''
+"""
+
+
 class CompileOptions(object):
   """Python object for XLA compile options.
 
@@ -436,6 +466,7 @@ class CompileOptions(object):
     self.num_replicas = 1
     self.argument_layouts = None
     self.result_layout = None
+    self.device_assignment = None
 
 
 class Computation(object):

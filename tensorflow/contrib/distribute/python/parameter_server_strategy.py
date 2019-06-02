@@ -46,7 +46,7 @@ class ParameterServerStrategy(distribute_lib.StrategyV1):
   becomes local training where variables are assigned to local CPU or the only
   GPU. When each worker has more than one GPU, operations will be replicated on
   these GPUs. In both cases, operations are replicated but variables are not and
-  these workers share a common view for which paramater server a variable is
+  these workers share a common view for which parameter server a variable is
   assigned to.
 
   This class assumes between-graph replication will be used and works on a graph

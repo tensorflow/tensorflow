@@ -15,7 +15,9 @@ limitations under the License.
 
 package org.tensorflow;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -127,6 +129,28 @@ public class EagerSessionTest {
       fail();
     } catch (IllegalStateException e) {
       // ok
+    }
+  }
+
+  @Test
+  public void defaultSession() throws Exception {
+    EagerSession.Options options =
+        EagerSession.options().resourceCleanupStrategy(ResourceCleanupStrategy.ON_SESSION_CLOSE);
+    EagerSession.initDefault(options);
+    EagerSession session = EagerSession.getDefault();
+    assertNotNull(session);
+    assertEquals(ResourceCleanupStrategy.ON_SESSION_CLOSE, session.resourceCleanupStrategy());
+    try {
+      EagerSession.initDefault(options);
+      fail();
+    } catch (IllegalStateException e) {
+      // expected
+    }
+    try {
+      session.close();
+      fail();
+    } catch (IllegalStateException e) {
+      // expected
     }
   }
 

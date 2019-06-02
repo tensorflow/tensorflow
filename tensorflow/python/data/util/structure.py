@@ -835,8 +835,16 @@ class RaggedTensorStructure(Structure):
       raise ValueError(
           "ragged_rank must be greater than zero. Found ragged_rank: %d" %
           self._ragged_rank)
-    return ragged_tensor.RaggedTensor._from_variant(
+    result = ragged_tensor.RaggedTensor._from_variant(
         flat_value[0], dtype=self._dtype, output_ragged_rank=self._ragged_rank)
+    if self._shape.ndims is not None:
+      outer_dim = tensor_shape.dimension_value(self._shape[0])
+      if outer_dim is not None:
+        result.row_splits.set_shape([outer_dim + 1])
+      result.flat_values.set_shape(
+          tensor_shape.TensorShape([None]).concatenate(
+              self._shape[1 + self._ragged_rank:]))
+    return result
 
   @staticmethod
   def from_value(value):

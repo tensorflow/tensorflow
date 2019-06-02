@@ -29,17 +29,13 @@ namespace gpu {
 // Rewrites Cholesky calls into CustomCall HLOs that call into cuSolver.
 class CusolverRewriter : public HloModulePass {
  public:
-  CusolverRewriter(se::StreamExecutor* stream_exec,
-                   se::DeviceMemoryAllocator* allocator);
+  CusolverRewriter();
   absl::string_view name() const override { return "cusolver-rewriter"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
-
-  se::StreamExecutor* stream_exec_;   // never null
-  se::DeviceMemoryAllocator* allocator_;  // may be null
 };
 
 }  // namespace gpu

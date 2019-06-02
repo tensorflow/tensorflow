@@ -94,7 +94,8 @@ class EagerContext : public core::RefCounted {
       bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
       Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
       DistributedFunctionLibraryRuntime* cluster_flr = nullptr,
-      std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr);
+      std::function<Rendezvous*(const int64)> rendezvous_creator = nullptr,
+      const DeviceMgr* remote_device_mgr = nullptr);
 
   ~EagerContext();
 
@@ -148,7 +149,7 @@ class EagerContext : public core::RefCounted {
 
   const FunctionDef* FindFunctionDef(const string& name);
 
-  Status FindDeviceByName(const string& name, Device** result);
+  Status FindDeviceByName(const string& name, Device** result) const;
 
   Device* HostCPU() const { return devices_[0]; }
 
@@ -162,7 +163,7 @@ class EagerContext : public core::RefCounted {
 
   Status RemoveFunction(const string& func);
 
-  KernelAndDevice* GetCachedKernel(Fprint128 cache_key);
+  core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
@@ -206,7 +207,8 @@ class EagerContext : public core::RefCounted {
                                               : local_unowned_device_manager_;
   }
   const tensorflow::DeviceMgr* remote_device_mgr() const {
-    return remote_device_manager_.get();
+    return (remote_device_manager_ != nullptr) ? remote_device_manager_.get()
+                                               : remote_unowned_device_manager_;
   }
 
   // TODO(apassos) remove the need for this
@@ -277,6 +279,13 @@ class EagerContext : public core::RefCounted {
   // All child threads will be reset() when destructing EagerContext.
   void AddChildThread(std::unique_ptr<Thread> thread);
 
+  Status FindDeviceFromName(const char* device_name, Device** device) const;
+
+  bool IsLocal(const Device* d) const;
+  bool OnSameTask(const Device* first, const Device* second) const;
+  // Gets the CPU device on the task of device.
+  Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
+
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
@@ -292,7 +301,11 @@ class EagerContext : public core::RefCounted {
   // Only one of the below is set.
   std::unique_ptr<const DeviceMgr> local_device_manager_;
   const DeviceMgr* local_unowned_device_manager_;
+
+  // Only one of the below is set. remote_unowned_device_manager_ is set on
+  // remote worker to allow running multi-device function on remote worker.
   std::unique_ptr<DeviceMgr> remote_device_manager_;
+  const DeviceMgr* remote_unowned_device_manager_;
 
   // Devices owned by device_manager
   std::vector<Device*> devices_;
@@ -316,9 +329,15 @@ class EagerContext : public core::RefCounted {
   std::function<void(std::function<void()>)> runner_;
 
   mutex cache_mu_;
-  std::unordered_map<Fprint128, KernelAndDevice*, Fprint128Hasher> kernel_cache_
-      GUARDED_BY(cache_mu_);
-  std::unordered_map<string, std::vector<Fprint128>*> active_functions_
+  struct RegisteredFunction : public core::RefCounted {
+    ~RegisteredFunction() override {}
+
+    std::unique_ptr<std::vector<Fprint128>> cached_kernel_keys;
+  };
+  std::unordered_map<Fprint128, core::RefCountPtr<KernelAndDevice>,
+                     Fprint128Hasher>
+      kernel_cache_ GUARDED_BY(cache_mu_);
+  std::unordered_map<string, RegisteredFunction*> registered_functions_
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.
