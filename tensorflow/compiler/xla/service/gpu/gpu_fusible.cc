@@ -172,7 +172,7 @@ bool IsLoopFusible(const HloInstruction& instr) {
           instr.opcode() == HloOpcode::kDynamicSlice ||
           instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
           (instr.opcode() == HloOpcode::kFusion &&
-           instr.fusion_kind() == HloInstruction::FusionKind::kLoop)
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
 	  instr.opcode() == HloOpcode::kGather ||
           instr.opcode() == HloOpcode::kIota ||
           instr.opcode() == HloOpcode::kPad ||
@@ -306,8 +306,8 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1, const HloInstruction& i
   operands.insert(instr2.operands().begin(), instr2.operands().end());
   // If there's an edge between `a` and `b`, don't count it: We're fusing that
   // producer -> consumer relationship.
-  operands.erase(a);
-  operands.erase(b);
+  operands.erase(instr1);
+  operands.erase(instr2);
   return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
 }
 
