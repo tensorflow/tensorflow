@@ -15,6 +15,13 @@
 """`tf.data.Dataset` API for input pipelines.
 
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
+
+Tutorials
+
+* [Loading NumPy Data](https://www.tensorflow.org/alpha/tutorials/load_data/numpy)
+* [Loading Images](https://www.tensorflow.org/alpha/tutorials/load_data/images)
+* [Pix2Pix](https://www.tensorflow.org/alpha/tutorials/generative/pix2pix)
+
 """
 
 from __future__ import absolute_import
