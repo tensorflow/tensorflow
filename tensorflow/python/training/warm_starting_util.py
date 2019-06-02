@@ -67,6 +67,10 @@ class VocabInfo(
       default, 0, corresponds to the most common use case (embeddings or
       linear weights for binary classification / regression).  An axis of 1
       could be used for warm-starting output layers with class vocabularies.
+      
+  Returns:
+    A `VocabInfo` which represents the vocabulary information for warm-starting.
+
       Example Usage:
 ```python
       embeddings_vocab_info = tf.VocabInfo(
