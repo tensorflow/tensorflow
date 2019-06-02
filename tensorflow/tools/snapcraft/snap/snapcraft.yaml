@@ -100,9 +100,23 @@ parts:
       -usr/share/icons
       -usr/share/lintian
       -usr/share/man
-
+      
+ CUDA:
+    after:
+      - tensorflow-gpu
+    plugin: cmake
+    source: files/
+    
   wrapper:
     after:
       - tensorflow
     plugin: cmake
     source: files/
+    
+apps:
+ tensorflow:
+ 
+    environment:
+      # Fallback to XWayland if running in a Wayland session.
+      DISABLE_WAYLAND: 1
+      GSETTINGS_SCHEMA_DIR: $SNAP/usr/share/glib-2.0/schemas
