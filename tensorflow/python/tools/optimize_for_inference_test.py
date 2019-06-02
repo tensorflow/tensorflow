@@ -175,11 +175,11 @@ class OptimizeForInferenceTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testFoldFusedBatchNorms(self):
     for data_format, use_gpu, conv2d_func in [
-            ("NHWC", False, nn_ops.conv2d),
-            ("NCHW", True, nn_ops.conv2d),
-            ("NHWC", False, nn_ops.depthwise_conv2d_native),
-            ("NCHW", True, nn_ops.depthwise_conv2d_native)
-            ]:
+        ("NHWC", False, nn_ops.conv2d),
+        ("NCHW", True, nn_ops.conv2d),
+        ("NHWC", False, nn_ops.depthwise_conv2d_native),
+        ("NCHW", True, nn_ops.depthwise_conv2d_native)
+        ]:
       with self.cached_session(use_gpu=use_gpu) as sess:
         inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
         input_op = constant_op.constant(

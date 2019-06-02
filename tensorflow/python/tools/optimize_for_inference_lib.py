@@ -340,7 +340,7 @@ def fold_batch_norms(input_graph_def):
       channel_multiplier = weights.shape[3]
       while not it.finished:
         current_scale = scale_value[it.multi_index[2] * channel_multiplier
-            + it.multi_index[3]]
+                                    + it.multi_index[3]]
         it[0] *= current_scale
         it.iternext()
     scaled_weights_op = node_def_pb2.NodeDef()
