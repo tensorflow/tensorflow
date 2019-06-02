@@ -2728,6 +2728,9 @@ class RegisterGradient(object):
     Args:
       op_type: The string type of an operation. This corresponds to the
         `OpDef.name` field for the proto that defines the operation.
+
+    Raises:
+      TypeError: If `op_type` is not string.
     """
     if not isinstance(op_type, six.string_types):
       raise TypeError("op_type must be a string")
