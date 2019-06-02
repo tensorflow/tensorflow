@@ -67,9 +67,8 @@ class VocabInfo(
       default, 0, corresponds to the most common use case (embeddings or
       linear weights for binary classification / regression).  An axis of 1
       could be used for warm-starting output layers with class vocabularies.
-
-      For example:
-
+      Example Usage:
+```python
       embeddings_vocab_info = tf.VocabInfo(
           new_vocab='embeddings_vocab',
           new_vocab_size=100,
@@ -98,7 +97,8 @@ class VocabInfo(
           backup_initializer=tf.zeros_initializer(),
           axis=0)
 
-      Currently, only axis=0 and axis=1 are supported.
+# Currently, only axis=0 and axis=1 are supported.
+```
   """
 
   def __new__(cls,
