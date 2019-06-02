@@ -578,6 +578,10 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
 
   @test_util.run_in_graph_and_eager_modes
   def testAssignMethod(self):
+    # Test for when ResourceVariable is not a TensorShape object
+    v = resource_variable_ops.ResourceVariable(array_ops.zeros([50, 50]), shape=[None, 50])
+    self.evaluate(v.assign(array_ops.zeros([10, 50])))
+
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(v.assign(2.0))
