@@ -92,6 +92,67 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   A `Dataset` can be used to represent an input pipeline as a
   collection of elements (nested structures of tensors) and a "logical
   plan" of transformations that act on those elements.
+  
+  
+For example:
+
+    ```python
+    tf.print("tf.keras.model.fit() can take a single tf.data.Dataset for training features and labels. \
+    In this case, fit expects the form of each input row to be a tuple where the first element \
+    is set of features and the second element of the tuple is the label.")
+
+    tf.print("Consider a training dataset of this form: \n"
+          "(where the data represents the relationship "
+          "Label is sum of Features inputs x1 and x2)\n"
+          "Feat1 Feat2 Label\n"
+          "1     2     3\n"
+          "4     5     9\n"
+          "10    11    21\n")
+
+
+    # Create a tensor for each row
+    tensor_1 = tf.tuple((1, 2, 3))     # makes (1,2,3)
+    tensor_2 = tf.tuple((4, 5, 9))     # makes (4,5,9)
+    tensor_3 = tf.tuple((10, 11, 21))  # makes (10,11,12)
+
+
+    # create a dataset for each tensor
+    ds_1 = tf.data.Dataset.from_tensors(tensor_1)
+    ds_2 = tf.data.Dataset.from_tensors(tensor_2)
+    ds_3 = tf.data.Dataset.from_tensors(tensor_3)
+
+    # combine the datasets into one dataset
+    # makes
+    # (1, 2, 3)
+    # (4, 5, 9)
+    # (10, 11, 21)
+    combined_ds = ds_1.concatenate(ds_2).concatenate(ds_3)
+
+
+    def dump_ds(a_ds):
+        tf.print("Dump of dataset")
+        tf.print(a_ds)
+        for val in a_ds:
+            tf.print(val)
+
+    dump_ds(combined_ds)
+
+    # A routine for forming a dataset that can be used by model.fit
+    # where features are in left most part of tuple and right part of tuple is label
+    def reorder_to_features_and_label(val1, val2, label):
+        return ([val1, val2], label)
+
+    # Use the routine to reorder the dataset
+    # makes
+    # ([1 2], 3)
+    # ([4 5], 9)
+    # ([10 11], 21)
+    reordered_ds = combined_ds.map(reorder_to_features_and_label)
+
+    dump_ds(reordered_ds)
+    ```
+  
+  
   """
 
   def __init__(self, variant_tensor):
