@@ -329,6 +329,13 @@ class Conv1D(Conv):
   Output shape:
     3D tensor with shape: `(batch_size, new_steps, filters)`
       `steps` value might have changed due to padding or strides.
+  
+  Examples:
+  ```python
+  # Small convolutional model for 128-length vectors
+  model = Sequential()
+  model.add(Conv1D(32, 3, activation='relu', input_shape(, 128))
+  ```
   """
 
   def __init__(self,
