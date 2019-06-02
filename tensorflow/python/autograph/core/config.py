@@ -28,8 +28,6 @@ DoNotConvert = config_lib.DoNotConvert
 # This list is evaluated in order and stops at the first rule that tests True
 # for a definitely_convert of definitely_bypass call.
 CONVERSION_RULES = (
-    Convert('tensorflow.python.data.ops'),
-
     DoNotConvert('tensorflow'),
 
     # TODO(b/133417201): Remove.

@@ -203,7 +203,6 @@ tf_py_test(
     srcs = ["sequence_feature_column_test.py"],
     additional_deps = [
         ":feature_column_v2",
-        ":feature_column_v2_test",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
@@ -212,12 +211,9 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-    ],
-    tags = [
-        "no_pip",
-        "no_windows",
     ],
 )
 

@@ -1281,7 +1281,7 @@ Status ConstantFolding::FoldMergeNode(NodeDef* node, GraphDef* output_graph) {
             node_map_->AddOutput(const_index->name(), output->name());
           } else {
             // This is a control dependency (or an invalid edge since the
-            // merge node has only 2 inputs): preserve them.
+            // merge node has only 2 outputs): preserve them.
           }
         }
       }

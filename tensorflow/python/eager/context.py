@@ -30,6 +30,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -58,6 +59,11 @@ DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
     pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
 SYNC = 0
 ASYNC = 1
+
+_tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
+                                  "Whether tf2.enable() is called.")
+
+_tf2_gauge.get_cell().set(tf2.enabled())
 
 
 class _EagerTensorCache(object):

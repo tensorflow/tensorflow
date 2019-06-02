@@ -68,6 +68,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
+    if (cycle_length == model::kAutoTune) {
+      cycle_length = port::NumSchedulableCPUs();
+    }
     OP_REQUIRES(ctx, cycle_length > 0,
                 errors::InvalidArgument("`cycle_length` must be > 0"));
 

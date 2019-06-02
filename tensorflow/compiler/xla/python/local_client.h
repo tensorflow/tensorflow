@@ -197,8 +197,9 @@ struct AllocatorConfig {
   };
   Kind kind = Kind::kDefault;
 
-  // Only used if kind == kBFC. Fraction of available memory to allocate.
-  double memory_fraction = .9;
+  // Only used if kind == kBFC. The maximum fraction of available memory to
+  // allocate.
+  double memory_fraction = 1.0;
 };
 
 // Encapsulates the state of Python session with XLA.

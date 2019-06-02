@@ -44,7 +44,6 @@ from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -52,10 +51,12 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
+
 
 _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                         'keras api usage', 'method')
@@ -137,10 +138,6 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
-
-    # The epoch at which the checkpoint is saved. Used for fault-tolerance.
-    # See `_maybe_load_initial_epoch_from_ckpt()` for more information.
-    self._ckpt_saved_epoch = None
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -1399,11 +1396,6 @@ class Model(network.Network):
     return target_tensors
 
   def _compile_eagerly(self, metrics, weighted_metrics, sample_weight_mode):
-    if isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer):
-      # TODO(reedwm): Support this.
-      raise ValueError('We currently do not support enabling `run_eagerly` '
-                       'with a LossScaleOptimizer.')
-
     # Prepare sample weight modes. List with the same length as model outputs.
     training_utils.prepare_sample_weight_modes(
         self._training_endpoints, sample_weight_mode)
@@ -1552,7 +1544,7 @@ class Model(network.Network):
             else:
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
-                  losses_utils.squeeze_or_expand_dimensions(
+                  tf_losses_utils.squeeze_or_expand_dimensions(
                       mask, sample_weight=sample_weight))
               sample_weight *= mask
 
@@ -2705,27 +2697,21 @@ class Model(network.Network):
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
-    When `_ckpt_saved_epoch` attribute is not None in a `Model` object at the
-    time the training starts, this is under multi-worker training setting and
-    indicates the worker is recovering from previous failure. In this case,
-    infer `initial_epoch` from `self._ckpt_saved_epoch` to continue previous
-    unfinished training from certain epoch.
+    Refer to tensorflow/python/keras/distribute/multi_worker_training_state.py
+    for more information.
 
     Arguments:
       initial_epoch: The original initial_epoch user passes in in `fit()`.
-      mode: The training mode.
+      mode: The mode for running `model.fit()`.
 
     Returns:
       If the training is recovering from previous failure under multi-worker
       training setting, return the epoch the training is supposed to continue
       at. Otherwise, return the `initial_epoch` the user passes in.
     """
-    # TODO(rchao): Add recovery for validation case
-    # (when mode == ModeKeys.TEST).
-    if mode == ModeKeys.TRAIN and self._ckpt_saved_epoch is not None:
-      # The most recently saved epoch is one epoch prior to the epoch it failed
-      # at, so return '_ckpt_saved_epoch' plus one.
-      return int(self._ckpt_saved_epoch) + 1
+    if hasattr(self, '_training_state'):
+      return self._training_state.maybe_load_initial_epoch_from_ckpt(
+          initial_epoch, mode)
     return initial_epoch
 
   def _assert_compile_was_called(self):

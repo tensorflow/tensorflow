@@ -318,28 +318,29 @@ class FusedConv2DBiasActivationTest(object):
       tensors = []
       ref_tensors = []
       for (data_format, use_gpu) in _GetTestConfigs():
-        for dtype in self._DtypesToTest(use_gpu):
-          for filter_format in self._FilterFormatsToTest(use_gpu):
-            result, expected = self._SetupValuesForDevice(
-                tensor_in_sizes, filter_in_sizes, bias, strides, padding,
-                "Relu", data_format, filter_format, dtype)
-          tensors.append(result)
-          ref_tensors.append(expected)
+        with ops.device("/gpu:0" if use_gpu else "/cpu:0"):
+          for dtype in self._DtypesToTest(use_gpu):
+            for filter_format in self._FilterFormatsToTest(use_gpu):
+              result, expected = self._SetupValuesForDevice(
+                  tensor_in_sizes, filter_in_sizes, bias, strides, padding,
+                  "Relu", data_format, filter_format, dtype)
+            tensors.append(result)
+            ref_tensors.append(expected)
 
-          values = sess.run(tensors)
-          ref_values = sess.run(ref_tensors)
-          for i in range(len(tensors)):
-            conv = tensors[i]
-            value = values[i]
-            ref_value = ref_values[i]
-            tf_logging.info("expected = %s", ref_value)
-            tf_logging.info("actual = %s", value)
-            tol = 1e-5
-            if value.dtype == np.float16:
-              tol = 1e-3
-            self.assertAllClose(
-                np.ravel(ref_value), np.ravel(value), atol=tol, rtol=tol)
-            self.assertShapeEqual(value, conv)
+            values = sess.run(tensors)
+            ref_values = sess.run(ref_tensors)
+            for i in range(len(tensors)):
+              conv = tensors[i]
+              value = values[i]
+              ref_value = ref_values[i]
+              tf_logging.info("expected = %s", ref_value)
+              tf_logging.info("actual = %s", value)
+              tol = 1e-5
+              if value.dtype == np.float16:
+                tol = 1e-3
+              self.assertAllClose(
+                  np.ravel(ref_value), np.ravel(value), atol=tol, rtol=tol)
+              self.assertShapeEqual(value, conv)
 
   def testConv2D1x1Filter(self, gpu_only=True):
     if gpu_only and not test.is_gpu_available():
@@ -639,6 +640,21 @@ def _CalculateConvolvedOutputDim(input_dim, filter_dim, stride, padding_type):
 def _GetFusedConvInt8TestParams():
   """Returns test parameters shared by all Int8 FusedConv tests."""
   _test_params = [
+      {
+          "batch_size": 4,
+          "input_channels": 256,
+          "output_channels": 256,
+          "input_height": 228,
+          "input_width": 228,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 1,
+          "horizontal_stride": 1,
+          "conv_input_scale": 0.00002,
+          "side_input_scale": 0.2,
+          "bias_scale": 1.0,
+          "padding_type": "SAME"
+      },
       {
           "batch_size": 1,
           "input_channels": 4,

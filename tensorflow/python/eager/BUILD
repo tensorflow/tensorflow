@@ -88,6 +88,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
@@ -669,6 +670,7 @@ cuda_py_test(
         ":remote",
         "//tensorflow/python:resource_variable_ops",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out

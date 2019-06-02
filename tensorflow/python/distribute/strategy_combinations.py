@@ -24,6 +24,8 @@ from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import one_device_strategy as one_device_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
@@ -101,6 +103,9 @@ mirrored_strategy_with_two_gpus = combinations.NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+# Should call set_virtual_cpus_to_at_least(3) in your test's setUp methods.
+mirrored_strategy_with_cpu_1_and_2 = combinations.NamedDistribution(
+    "Mirrored2CPU", lambda: mirrored_lib.MirroredStrategy(["/cpu:1", "/cpu:2"]))
 central_storage_strategy_with_two_gpus = combinations.NamedDistribution(
     "CentralStorage2GPUs",
     lambda: central_storage_strategy.CentralStorageStrategy._from_num_gpus(2),  # pylint: disable=protected-access
@@ -140,6 +145,28 @@ optimizers_v2 = [
 optimizers_v1_and_v2 = optimizers_v1 + optimizers_v2
 
 graph_and_eager_modes = ["graph", "eager"]
+
+
+# This function should be called in a test's `setUp` method with the
+# maximum value needed in any test.
+def set_virtual_cpus_to_at_least(num_virtual_cpus):
+  """Create virtual CPU devices if they haven't yet been created."""
+  if num_virtual_cpus < 1:
+    raise ValueError("`num_virtual_cpus` must be at least 1 not %r" %
+                     (num_virtual_cpus,))
+  physical_devices = config.list_physical_devices("CPU")
+  if not physical_devices:
+    raise RuntimeError("No CPUs found")
+  configs = config.get_virtual_device_configuration(physical_devices[0])
+  if configs is None:
+    virtual_devices = [context.VirtualDeviceConfiguration()
+                       for _ in range(num_virtual_cpus)]
+    config.set_virtual_device_configuration(
+        physical_devices[0], virtual_devices)
+  else:
+    if len(configs) < num_virtual_cpus:
+      raise RuntimeError("Already configured with %d < %d virtual CPUs" %
+                         (len(configs), num_virtual_cpus))
 
 
 def distributions_and_v1_optimizers():

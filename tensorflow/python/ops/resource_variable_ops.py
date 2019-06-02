@@ -1760,6 +1760,9 @@ class UninitializedVariable(ResourceVariable):
               value = self._read_variable_op()
             self._graph_element = value
           ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
+          # Do *not* add to TRAINABLE_VARIABLES here, even if self._trainable,
+          # because retraining or frozen use of imported SavedModels is
+          # controlled at higher levels of model building.
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint

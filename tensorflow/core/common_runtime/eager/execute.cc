@@ -247,33 +247,6 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   return Status::OK();
 }
 
-}  // namespace
-
-namespace {
-bool IsLocal(EagerContext* ctx, tensorflow::Device* d) {
-  if (d == nullptr || ctx->remote_device_mgr() == nullptr) return true;
-  tensorflow::Device* tmp;
-  return ctx->local_device_mgr()->LookupDevice(d->name(), &tmp).ok();
-}
-
-bool OnSameTask(EagerContext* ctx, Device* first, Device* second) {
-  if (first == nullptr) first = ctx->HostCPU();
-  if (second == nullptr) second = ctx->HostCPU();
-  return first->parsed_name().job == second->parsed_name().job &&
-         first->parsed_name().replica == second->parsed_name().replica &&
-         first->parsed_name().task == second->parsed_name().task;
-}
-
-// Gets the CPU device on the task of device.
-Status CPUDeviceOnTask(EagerContext* ctx, tensorflow::Device* device,
-                       tensorflow::Device** cpu_device) {
-  string cpu_device_name;
-  TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
-      device->name(), &cpu_device_name));
-
-  return ctx->FindDeviceByName(cpu_device_name, cpu_device);
-}
-
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
                                                const tensorflow::Fprint128& b) {
   return {tensorflow::FingerprintCat64(a.low64, b.low64),
@@ -284,25 +257,6 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
                                                const int64 b) {
   auto x = tensorflow::FingerprintCat64(a.low64, b);
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
-}
-
-Status FindDeviceFromName(const EagerContext* ctx, const char* device_name,
-                          Device** device) {
-  *device = ctx->HostCPU();
-  if (device_name == nullptr || strlen(device_name) == 0) {
-    return Status::OK();
-  }
-
-  auto status = ctx->local_device_mgr()->LookupDevice(device_name, device);
-  if (status.ok()) {
-    return status;
-  }
-
-  if (ctx->remote_device_mgr() != nullptr) {
-    return ctx->remote_device_mgr()->LookupDevice(device_name, device);
-  }
-
-  return status;
 }
 
 bool IsMultiDevice(const FunctionDef* fdef, const string& op_device) {
@@ -353,7 +307,7 @@ Status AddInputDevicesToCacheKey(const EagerContext* ctx,
 
       Device* input_device;
       TF_RETURN_IF_ERROR(
-          FindDeviceFromName(ctx, device_name.c_str(), &input_device));
+          ctx->FindDeviceFromName(device_name.c_str(), &input_device));
       input_dev_ptrs->push_back(input_device);
     } else if (MTypeFromDType(tensor_handle->dtype) == HOST_MEMORY) {
       input_dev_ptrs->push_back(cpu_device);
@@ -849,10 +803,10 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         // If the expected and actual devices are on the same task, don't
         // explicitly copy, and instead depend on the copy to happen locally
         // when the op is executed on the device.
-        !OnSameTask(ctx, op->Device(), input_device)) {
+        !ctx->OnSameTask(op->Device(), input_device)) {
       tensorflow::Device* remote_cpu_device;
       TF_RETURN_IF_ERROR(
-          CPUDeviceOnTask(ctx, op->Device(), &remote_cpu_device));
+          ctx->CPUDeviceOnTask(op->Device(), &remote_cpu_device));
       // TODO(b/110044833): It's possible the same tensor gets copied to the
       // remote device repeatedly.
       // Always copy to the remote CPU so that the actual device can be
@@ -930,17 +884,29 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       retvals_copy.push_back(retvals[i]);
       retvals_copy[i]->Ref();
     }
+
+    // This is required to ensure that the tensor handles stay alive across the
+    // execution.
+    gtl::InlinedVector<TensorHandle*, 4> inputs = op->Inputs();
+    for (auto* handle : inputs) {
+      handle->Ref();
+    }
+
     // Unable to capture via std::move, so bind instead.
     auto* node = new eager::RemoteExecuteNode(
-        remote_node_id, std::move(request), eager_client, op->Inputs(),
+        remote_node_id, std::move(request), eager_client,
         std::bind(
-            [](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
-               const Status& status, const eager::EnqueueResponse& response) {
+            [inputs](const gtl::InlinedVector<TensorHandle*, 2>& retvals,
+                     const Status& status,
+                     const eager::EnqueueResponse& response) {
               if (!status.ok()) return;
               for (int i = 0; i < retvals.size(); i++) {
                 retvals[i]->SetRemoteShape(MakeUnique<TensorShape>(
                     response.queue_response(0).shape(i)));
                 retvals[i]->Unref();
+              }
+              for (auto* handle : inputs) {
+                handle->Unref();
               }
             },
             std::move(retvals_copy), std::placeholders::_1,
@@ -1084,7 +1050,7 @@ Status EagerExecute(EagerOperation* op,
                     int* num_retvals) {
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
-  bool op_is_local = IsLocal(op->EagerContext(), op->Device());
+  bool op_is_local = op->EagerContext()->IsLocal(op->Device());
 
   if (op_is_local) {
     return EagerLocalExecute(op, retvals, num_retvals);
@@ -1328,12 +1294,12 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     send_device = ctx->HostCPU();
   }
 
-  bool sender_is_local = IsLocal(ctx, send_device);
+  bool sender_is_local = ctx->IsLocal(send_device);
 
   tensorflow::Device* recv_device;
-  TF_RETURN_IF_ERROR(FindDeviceFromName(ctx, device_name, &recv_device));
+  TF_RETURN_IF_ERROR(ctx->FindDeviceFromName(device_name, &recv_device));
 
-  bool recver_is_local = IsLocal(ctx, recv_device);
+  bool recver_is_local = ctx->IsLocal(recv_device);
 
   if (sender_is_local && recver_is_local) {
     return LocalEagerCopyToDevice(h, ctx, recv_device, result);

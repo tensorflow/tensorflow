@@ -197,7 +197,14 @@ TF_CALL_int64(DECLARE_GPU_SPECS);
 #define REGISTER_GPU_KERNEL(T)                                            \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("DataFormatDimMap").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      DataFormatDimMapOp<GPUDevice, T>);
+      DataFormatDimMapOp<GPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("DataFormatDimMap")                        \
+                              .Device(DEVICE_GPU)                         \
+                              .HostMemory("x")                            \
+                              .HostMemory("y")                            \
+                              .Label("host")                              \
+                              .TypeConstraint<T>("T"),                    \
+                          DataFormatDimMapOp<CPUDevice, T>);
 TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
