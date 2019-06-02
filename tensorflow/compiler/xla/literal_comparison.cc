@@ -662,14 +662,23 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual) {
     case PRED:
       result = Equal<bool>(expected, actual, index, 0);
       break;
-    case U8:
-      result = Equal<uint8>(expected, actual, index, 0);
+    case S8:
+      result = Equal<int8>(expected, actual, index, 0);
+      break;
+    case S16:
+      result = Equal<int16>(expected, actual, index, 0);
       break;
     case S32:
       result = Equal<int32>(expected, actual, index, 0);
       break;
     case S64:
       result = Equal<int64>(expected, actual, index, 0);
+      break;
+    case U8:
+      result = Equal<uint8>(expected, actual, index, 0);
+      break;
+    case U16:
+      result = Equal<uint16>(expected, actual, index, 0);
       break;
     case U32:
       result = Equal<uint32>(expected, actual, index, 0);

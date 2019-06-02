@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 class ResamplerOpsTest(xla_test.XLATestCase):
 
   def _assertForwardOpMatchesExpected(self, image_np, warp_np, expected):
-    with self.test_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       input_image = array_ops.placeholder(image_np.dtype)
       warp = array_ops.placeholder(warp_np.dtype)
       resampled = resampler.resampler(input_image, warp, name='resampler')
@@ -41,7 +41,7 @@ class ResamplerOpsTest(xla_test.XLATestCase):
 
   def _assertBackwardOpMatchesExpected(self, input_np, warp_np, grad_output_np,
                                        expected_grad_data, expected_grad_warp):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       input_image = array_ops.placeholder(input_np.dtype)
       warp = array_ops.placeholder(warp_np.dtype)
       grad_output = array_ops.placeholder(grad_output_np.dtype)

@@ -33,7 +33,7 @@ class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
@@ -237,4 +237,5 @@ class LinearOperatorDiagTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorDiagTest)
   test.main()

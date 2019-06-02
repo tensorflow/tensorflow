@@ -1324,9 +1324,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
 
 
 @tf_export(
-    "sparse.SparseConditionalAccumulator",
     v1=["sparse.SparseConditionalAccumulator", "SparseConditionalAccumulator"])
-@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 

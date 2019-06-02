@@ -140,6 +140,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "trainable"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
@@ -214,6 +218,10 @@ tf_class {
   member_method {
     name: "compute_output_shape"
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_signature"
+    argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

@@ -84,6 +84,11 @@ bool IsReduceInputFusion(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
+  // TODO(b/129089333): Don't fuse variadic reduce.
+  if (instr.opcode() == HloOpcode::kReduce && instr.shape().IsTuple()) {
+    return false;
+  }
+
   return IsReduceInputFusion(instr) ||
          IsReductionFromOrToContiguousDimensions(instr);
 }

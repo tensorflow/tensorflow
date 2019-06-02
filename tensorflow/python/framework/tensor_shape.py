@@ -19,11 +19,16 @@ from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/v2_tensorshape",
+    "Whether tensor_shape.enable_v2_tensorshape() is called.")
 
 
 @tf_export(v1=["enable_v2_tensorshape"])
@@ -75,6 +80,7 @@ def enable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = True
+  _api_usage_gauge.get_cell().set(True)
 
 
 @tf_export(v1=["disable_v2_tensorshape"])
@@ -85,6 +91,7 @@ def disable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = False
+  _api_usage_gauge.get_cell().set(False)
 
 
 @tf_export(
@@ -245,7 +252,10 @@ class Dimension(object):
     Returns:
       True if this Dimension and `other` are compatible.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     return (self._value is None or other.value is None or
             self._value == other.value)
 
@@ -293,7 +303,10 @@ class Dimension(object):
       ValueError: If `self` and `other` are not compatible (see
         is_compatible_with).
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     self.assert_is_compatible_with(other)
     if self._value is None:
       return Dimension(other.value)
@@ -322,7 +335,10 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the sum of `self` and `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -361,7 +377,10 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the subtraction of `other` from `self`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:

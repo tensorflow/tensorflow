@@ -220,8 +220,11 @@ class _SaveableView(object):
         asset_filename_map={},
         asset_index={})
     for node_id, obj in enumerate(self.nodes):
-      if isinstance(obj, tracking.TrackableResource):
-        new_resource = obj._create_resource()  # pylint: disable=protected-access
+      if isinstance(obj, tracking.CapturableResource):
+        # pylint: disable=protected-access
+        with ops.device(obj._resource_device):
+          new_resource = obj._create_resource()
+        # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
@@ -421,7 +424,7 @@ def _generate_signatures(signature_functions, resource_map):
 
 
 def _trace_resource_initializers(accessible_objects):
-  """Create concrete functions from `TrackableResource` objects."""
+  """Create concrete functions from `CapturableResource` objects."""
   resource_initializers = []
 
   def _wrap_initializer(obj):
@@ -432,7 +435,7 @@ def _trace_resource_initializers(accessible_objects):
     return lambda: _wrap_initializer(obj)
 
   for obj in accessible_objects:
-    if isinstance(obj, tracking.TrackableResource):
+    if isinstance(obj, tracking.CapturableResource):
       resource_initializers.append(def_function.function(
           _wrap_obj_initializer(obj),
           # All inputs are captures.
@@ -605,8 +608,8 @@ def _write_object_proto(obj, proto, asset_file_def_index):
         function_serialization.serialize_bare_concrete_function(obj))
   elif isinstance(obj, _CapturedConstant):
     proto.constant.operation = obj.graph_tensor.op.name
-  elif isinstance(obj, tracking.TrackableResource):
-    proto.resource.SetInParent()
+  elif isinstance(obj, tracking.CapturableResource):
+    proto.resource.device = obj._resource_device  # pylint: disable=protected-access
   else:
     registered_type_proto = revived_types.serialize(obj)
     if registered_type_proto is None:
@@ -627,7 +630,7 @@ def save(obj, export_dir, signatures=None):
   Example usage:
 
   ```python
-  class Adder(tf.train.Checkpoint):
+  class Adder(tf.Module):
 
     @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
     def add(self, x):
@@ -743,17 +746,6 @@ def save(obj, export_dir, signatures=None):
   producer. There are however other sources of incompatibilities which are not
   handled automatically, such as when the exported model contains operations
   which the consumer does not have definitions for.
-
-  The current implementation of `tf.saved_model.save` targets serving use-cases,
-  but omits information which will be necessary for the planned future
-  implementation of `tf.saved_model.load`. Exported models using the current
-  `save` implementation, and other existing SavedModels, will not be compatible
-  with `tf.saved_model.load` when it is implemented. Further, `save` will in the
-  future attempt to export `@tf.function`-decorated methods which it does not
-  currently inspect, so some objects which are exportable today will raise
-  exceptions on export in the future (e.g. due to complex/non-serializable
-  default arguments). Such backwards-incompatible API changes are expected only
-  prior to the TensorFlow 2.0 release.
 
   Args:
     obj: A trackable object to export.

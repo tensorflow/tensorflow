@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace tflite {
 namespace evaluation {
@@ -37,6 +38,15 @@ TfLiteModelInfo GetTfliteModelInfo(const Interpreter& interpreter) {
 }
 
 }  // namespace
+
+TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
+    TfLiteDelegate* delegate) {
+  if (!interpreter_) {
+    LOG(ERROR) << "Stage not initialized before calling ApplyCustomDelegate";
+    return kTfLiteError;
+  }
+  return interpreter_->ModifyGraphWithDelegate(delegate);
+}
 
 TfLiteStatus TfliteInferenceStage::Init() {
   if (!config_.specification().has_tflite_inference_params()) {
@@ -57,14 +67,36 @@ TfLiteStatus TfliteInferenceStage::Init() {
   model_ = FlatBufferModel::BuildFromFile(params.model_file_path().c_str());
   resolver_.reset(new ops::builtin::BuiltinOpResolver);
   InterpreterBuilder(*model_, *resolver_)(&interpreter_);
-  if (params.delegate() == TfliteInferenceParams::NNAPI) {
-    interpreter_->UseNNAPI(true);
-  }
   if (!interpreter_) {
     LOG(ERROR) << "Could not build interpreter";
     return kTfLiteError;
   }
   interpreter_->SetNumThreads(params.num_threads());
+
+  // TODO(b/122482115): Add support for multiple delegates in
+  // TfLiteInferenceParams.
+  if (params.delegate() == TfliteInferenceParams::NNAPI) {
+    Interpreter::TfLiteDelegatePtr delegate = CreateNNAPIDelegate();
+    if (delegate) {
+      delegates_.push_back(std::move(delegate));
+    } else {
+      LOG(WARNING) << "NNAPI not supported";
+    }
+  } else if (params.delegate() == TfliteInferenceParams::GPU) {
+    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate(model_.get());
+    if (delegate) {
+      delegates_.push_back(std::move(delegate));
+    } else {
+      LOG(WARNING) << "GPU not supported";
+    }
+  }
+  for (int i = 0; i < delegates_.size(); ++i) {
+    if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=
+        kTfLiteOk) {
+      LOG(FATAL) << "Failed to apply delegate %d" << i;
+    }
+  }
+
   interpreter_->AllocateTensors();
   model_info_ = GetTfliteModelInfo(*interpreter_);
 
@@ -86,7 +118,7 @@ TfLiteStatus TfliteInferenceStage::Run() {
   // Copy input data.
   for (int i = 0; i < interpreter_->inputs().size(); ++i) {
     TfLiteTensor* tensor = interpreter_->tensor(interpreter_->inputs()[i]);
-    std::memcpy(tensor->data.raw, (*inputs_)[i], tensor->bytes);
+    tensor->data.raw = static_cast<char*>(inputs_->at(i));
   }
 
   // Invoke.

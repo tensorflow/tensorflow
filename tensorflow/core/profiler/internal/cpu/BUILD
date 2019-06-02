@@ -1,8 +1,7 @@
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
@@ -16,14 +15,14 @@ tf_cuda_library(
         "host_tracer.cc",
     ],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:traceme_recorder",
-        # "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
 )

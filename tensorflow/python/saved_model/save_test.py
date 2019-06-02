@@ -33,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
@@ -119,6 +120,10 @@ class SaveTest(test.TestCase):
         _import_and_infer(
             save_dir, {"z": 1.}, signature_key="non_default_key"))
 
+  def test_unbuilt_model_does_not_prevent_saving(self):
+    root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
+    save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
+
   def test_version_information_included(self):
     root = tracking.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -166,11 +171,6 @@ class SaveTest(test.TestCase):
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
                           tensor_spec.TensorSpec(None, dtypes.float32)],))
     root.f([constant_op.constant(1.), constant_op.constant(1.)])
-    # Concrete functions must always have uniquely named Tensor inputs. Save
-    # relies on this.
-    with self.assertRaisesRegexp(
-        ValueError, "two arguments named 'x'"):
-      root.f.get_concrete_function()
 
   def test_nested_outputs(self):
     root = tracking.AutoTrackable()
@@ -262,7 +262,7 @@ class SaveTest(test.TestCase):
 
   def test_docstring(self):
 
-    class Adder(util.Checkpoint):
+    class Adder(module.Module):
 
       @def_function.function(input_signature=[tensor_spec.TensorSpec(
           shape=None, dtype=dtypes.float32)])
@@ -330,6 +330,9 @@ class SaveTest(test.TestCase):
     save.save(root, save_dir)
 
   def test_function_with_captured_dataset(self):
+    if test_util.is_gpu_available():
+      self.skipTest("Currently broken when a GPU is available.")
+
     class HasDataset(module.Module):
 
       def __init__(self):

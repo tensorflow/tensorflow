@@ -23,34 +23,35 @@ namespace optimize {
 namespace operator_property {
 
 struct OperatorProperty {
+  // Is a quantized operations currently supported.
+  bool quantizable = true;
   // Per axis.
-  bool per_axis;
+  bool per_axis = false;
   // TODO(jianlijianli): remove dimension index and read it from tensor instead.
-  int per_axis_index;
+  int per_axis_index = 0;
 
   // Op has arbitrary number of inputs, such as concat.
-  bool arbitrary_inputs;
+  bool arbitrary_inputs = false;
   // Input and weight indexes. Unable to separate the two because of ops such as
   // ADD.
-  std::vector<int> input_indexes;
+  std::vector<int> input_indexes = {};
 
   // Output indexes
-  std::vector<int> output_indexes;
+  std::vector<int> output_indexes = {};
 
   // Bias indexes.
-  std::vector<int> biases;
+  std::vector<int> biases = {};
 
   // Constraints.
-  bool restrict_same_input_output_scale;
-  bool restriction_on_output;
-  std::pair<float, float> restricted_value_on_output;
+  bool restrict_same_input_output_scale = false;
+  bool restriction_on_output = false;
+  std::pair<float, float> restricted_value_on_output = {0.0, 0.0};
 
   // Op version.
-  int version;
+  int version = 1;
 };
 
-TfLiteStatus GetOperatorProperty(const BuiltinOperator& op,
-                                 OperatorProperty* property);
+OperatorProperty GetOperatorProperty(const BuiltinOperator& op);
 
 }  // namespace operator_property
 }  // namespace optimize

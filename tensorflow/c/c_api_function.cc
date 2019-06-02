@@ -185,7 +185,8 @@ Status FillFunctionBody(
 
     // Collect regular and control inputs. Regular inputs are indexed
     // by the index at which they come into the `node`. Control inputs
-    // don't follow any order.
+    // don't follow any order, and we sort control inputs to make sure generated
+    // NodeDef is deterministic.
     in_edges.clear();
     in_edges.resize(node->num_inputs(), nullptr);
     control_edges.clear();
@@ -197,6 +198,10 @@ Status FillFunctionBody(
         in_edges[edge->dst_input()] = edge;
       }
     }
+    std::sort(control_edges.begin(), control_edges.end(),
+              [](const Edge* a, const Edge* b) {
+                return a->src()->name() < b->src()->name();
+              });
 
     // Add regular inputs.
     for (size_t i = 0; i < in_edges.size(); ++i) {
@@ -295,7 +300,8 @@ Status FillFunctionBody(
 }
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
-// code in tensorflow/python/framework/function.py.
+// function graph_to_function_def(), which is located in
+// tensorflow/python/framework/graph_to_function_def.py.
 Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
                           bool append_hash_to_fn_name,
                           const std::vector<const Node*>& body_nodes,
@@ -444,7 +450,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
         ") and the number of control output names (",
         control_output_names.size(), ") to match but they do not.");
   }
-  std::unordered_set<string> control_output_names_set;
+  std::set<string> control_output_names_set;
   for (int i = 0; i < control_outputs.size(); ++i) {
     string signature_name;
     if (!control_output_names.empty()) {
@@ -465,8 +471,10 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       return errors::InvalidArgument(
           "Control output node name must be not empty");
     }
-    fdef->mutable_signature()->add_control_output(signature_name);
     (*fdef->mutable_control_ret())[signature_name] = control_output_node;
+  }
+  for (const string& control_output : control_output_names_set) {
+    fdef->mutable_signature()->add_control_output(control_output);
   }
 
   return Status::OK();

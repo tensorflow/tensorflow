@@ -1252,6 +1252,22 @@ class AstToCfgTest(test.TestCase):
         ),
     )
 
+  def test_list_comprehension(self):
+
+    def test_fn(a):
+      c = [b for b in a]
+      return c
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'c = [b for b in a]', 'return c'),
+            ('c = [b for b in a]', 'return c', None),
+        ),
+    )
+
 
 if __name__ == '__main__':
   test.main()

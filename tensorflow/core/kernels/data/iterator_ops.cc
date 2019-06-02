@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/function.h"
@@ -33,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -237,6 +240,8 @@ class IteratorResource : public ResourceBase {
   // destroyed, essentially triggering the iterator deletion.
   class Deleter {
    public:
+    Deleter() : deleter_() {}
+
     Deleter(ResourceHandle handle, ResourceMgr* resource_manager)
         : deleter_(std::make_shared<Helper>(handle, resource_manager)) {}
 
@@ -247,6 +252,10 @@ class IteratorResource : public ResourceBase {
     Deleter(const Deleter& rhs) : deleter_(rhs.deleter_) {
       VLOG(3) << "IteratorResource::Deleter copy constructor called.";
     }
+
+    Deleter& operator=(const Deleter& rhs) = delete;
+
+    Deleter& operator=(Deleter&& rhs) = default;
 
     virtual ~Deleter() {
       VLOG(3) << "IteratorResource::Deleter destructor called.";
@@ -358,6 +367,9 @@ class IteratorStateVariant {
       Decode(*other.data_);
     }
   }
+  IteratorStateVariant& operator=(IteratorStateVariant&& other) = default;
+  IteratorStateVariant& operator=(const IteratorStateVariant& other) = delete;
+
   // Initializes this object with the current state of the iterator so
   // that it can be written on the next call to Encode().
   Status InitializeFromIterator(OpKernelContext* ctx,
@@ -585,10 +597,9 @@ int64 AnonymousIteratorHandleOp::current_id_(0);
 void MakeIteratorOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  IteratorResource* iterator_resource;
+  core::RefCountPtr<IteratorResource> iterator_resource;
   OP_REQUIRES_OK(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
-  core::ScopedUnref unref(iterator_resource);
   OP_REQUIRES_OK(ctx, iterator_resource->SetIteratorFromDataset(ctx, dataset));
 }
 
@@ -681,15 +692,16 @@ class ReduceDatasetOp : public AsyncOpKernel {
   explicit ReduceDatasetOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
         background_worker_(ctx->env(), "tf_data_reduce_dataset") {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &reduce_func_));
+    bool use_inter_op_parallelism;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
+                                     &use_inter_op_parallelism));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    params.use_inter_op_parallelism = use_inter_op_parallelism;
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
-                                     &use_inter_op_parallelism_));
-    OP_REQUIRES_OK(ctx,
-                   CreateFunctionLibraryDefinition(
-                       ctx->function_library()->GetFunctionLibraryDefinition(),
-                       reduce_func_.name(), &lib_def_));
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -706,14 +718,10 @@ class ReduceDatasetOp : public AsyncOpKernel {
       std::vector<Tensor> state(inputs.begin(), inputs.end());
 
       std::unique_ptr<CapturedFunction> captured_func;
-      CapturedFunction::Params fn_params;
-      fn_params.use_inter_op_parallelism = use_inter_op_parallelism_;
-      fn_params.is_multi_device_function = true;
-      fn_params.lib_def = lib_def_;
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          CapturedFunction::Create(reduce_func_, ctx, "other_arguments",
-                                   fn_params, &captured_func),
+          CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
+                                   &captured_func),
           done);
 
       IteratorContext::Params params(ctx);
@@ -742,10 +750,13 @@ class ReduceDatasetOp : public AsyncOpKernel {
         delete raw_iterator;
         done();
       });
+      auto done = []() {};
 
       // Iterate through the input dataset.
       Status status;
       while (true) {
+        OP_REQUIRES_ASYNC(ctx, !ctx->cancellation_manager()->IsCancelled(),
+                          errors::Cancelled("Operation was cancelled"), done);
         std::vector<Tensor> next_input_element;
         bool end_of_input;
         status = raw_iterator->GetNext(&iter_ctx, &next_input_element,
@@ -774,6 +785,19 @@ class ReduceDatasetOp : public AsyncOpKernel {
         ctx->SetStatus(status);
         return;
       }
+
+      OP_REQUIRES_ASYNC(ctx, state.size() == output_types_.size(),
+                        errors::InvalidArgument(
+                            "The number of result elements does not match "
+                            "the size of output types: ",
+                            state.size(), " vs. ", output_types_.size()),
+                        done);
+      OP_REQUIRES_ASYNC(ctx, state.size() == output_shapes_.size(),
+                        errors::InvalidArgument(
+                            "The number of result elements does not match "
+                            "the size of output shapes: ",
+                            state.size(), " vs. ", output_shapes_.size()),
+                        done);
       for (int i = 0; i < state.size(); ++i) {
         OP_REQUIRES_ASYNC(
             ctx, state[i].dtype() == output_types_[i],
@@ -795,12 +819,10 @@ class ReduceDatasetOp : public AsyncOpKernel {
   }
 
  private:
-  NameAttrList reduce_func_;
+  std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  bool use_inter_op_parallelism_;
   BackgroundWorker background_worker_;
-  std::shared_ptr<FunctionLibraryDefinition> lib_def_;
 };
 
 class OneShotIteratorOp : public AsyncOpKernel {
@@ -921,12 +943,6 @@ class OneShotIteratorOp : public AsyncOpKernel {
         &f_handle));
     FunctionLibraryRuntime::Options opts;
     opts.cancellation_manager = ctx->cancellation_manager();
-    // Choose a step ID that is guaranteed not to clash with any
-    // Session-generated step ID. DirectSession only generates
-    // non-negative step IDs (contiguous, starting from 0), and
-    // MasterSession generates 56-bit random step IDs whose MSB is
-    // always 0, so a negative random step ID should suffice.
-    opts.step_id = -std::abs(static_cast<int64>(random::New64()));
     ScopedStepContainer step_container(opts.step_id, [ctx](const string& name) {
       ctx->resource_manager()->Cleanup(name).IgnoreError();
     });
@@ -1226,8 +1242,9 @@ REGISTER_KERNEL_BUILDER(
     MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_CPU).Priority(2),
                         DeleteIteratorOp);
-REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE_GPU).Priority(1),
-                        DeleteIteratorOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DeleteIterator").Device(DEVICE_GPU).HostMemory("deleter").Priority(1),
+    DeleteIteratorOp);
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIterator").Device(DEVICE_CPU).Priority(2),
     AnonymousIteratorHandleOp);
@@ -1286,6 +1303,8 @@ REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("DeserializeIterator").Device(DEVICE_CPU),
                         DeserializeIteratorOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("ReduceDataset");
 
 }  // namespace
 

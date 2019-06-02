@@ -733,15 +733,16 @@ ScopedAllocatorOptimizer::ScopedAllocatorOptimizer(
 Status ScopedAllocatorOptimizer::Optimize(Cluster* /*cluster*/,
                                           const GrapplerItem& item,
                                           GraphDef* optimized_graph) {
-  *optimized_graph = item.graph;
   // Nodes that cannot be removed from the graph without damaging correctness,
   // typically fetch nodes.
   nodes_to_preserve_ = item.NodesToPreserve();
 
   GraphProperties graph_properties(item);
   const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-  LOG_WARNING_AND_RETURN_IF_ERROR(
-      graph_properties.InferStatically(assume_valid_feeds));
+  LOG_WARNING_AND_RETURN_IF_ERROR(graph_properties.InferStatically(
+      assume_valid_feeds, /*aggressive_shape_inference=*/false,
+      /*include_tensor_values=*/false));
+  *optimized_graph = item.graph;
   node_map_.reset(new NodeMap(optimized_graph));
 
   LOG_WARNING_AND_RETURN_IF_ERROR(ScopedAllocatorOptimizer::ProcessGraphDef(

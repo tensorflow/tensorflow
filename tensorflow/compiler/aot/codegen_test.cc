@@ -86,7 +86,8 @@ class ParseCppClassTest : public ::testing::Test {
   void ExpectFail(const string& cpp_class) {
     string class_name;
     std::vector<string> namespaces;
-    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces), Status::OK());
+    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces), Status::OK())
+        << cpp_class;
   }
 };
 
@@ -100,6 +101,9 @@ TEST_F(ParseCppClassTest, ParseOK) {
   ExpectOK("foo::MyClass", "MyClass", {"foo"});
   ExpectOK("_foo::MyClass", "MyClass", {"_foo"});
   ExpectOK("_foo::_MyClass", "_MyClass", {"_foo"});
+  ExpectOK("::foo::bar::MyClass", "MyClass", {"foo", "bar"});
+  ExpectOK("::_foo::MyClass", "MyClass", {"_foo"});
+  ExpectOK("::_foo::_MyClass", "_MyClass", {"_foo"});
   // Make sure we didn't skip a valid letter or digit
   string ident;
   for (char c = 'a'; c <= 'z'; c++) {
@@ -120,12 +124,15 @@ TEST_F(ParseCppClassTest, ParseOK) {
 TEST_F(ParseCppClassTest, ParseFail) {
   ExpectFail("");
   ExpectFail("::");
-  ExpectFail("::MyClass");  // valid C++, but disallowed for simpler code.
   ExpectFail("0");
   ExpectFail("a.b");
   ExpectFail("a:b");
+  ExpectFail(":foo::bar");
   ExpectFail("good::.bad");
   ExpectFail("good:::bad");
+  ExpectFail("good::bad::");
+  ExpectFail("good::::bad");
+  ExpectFail("::::bad");
   ExpectFail("good:: bad");
   ExpectFail("good::0bad");
 }

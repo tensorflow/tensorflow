@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -198,8 +199,10 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RuntimeError):
       context.set_log_device_placement(True)
-    with self.assertRaises(RuntimeError):
-      context.set_log_device_placement(False)
+
+    # If the setting the device placement is a no-op, do not throw a runtime
+    # exception.
+    context.set_log_device_placement(False)
 
   @test_util.run_gpu_only
   @reset_eager
@@ -493,6 +496,19 @@ class DeviceTest(test.TestCase):
     for gpu in gpus:
       self.assertIsNotNone(gpu.name)
 
+  @reset_eager
+  def testV1CompatibilityDummyInivisibleDeviceList(self):
+    gpus = config.list_physical_devices('GPU')
+    if gpus:
+      self.skipTest('Test requires no GPUs')
+
+    # Ensure GPU options left untouched on CPU only environments
+    context.context()._physical_devices = None
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list='0'))
+    new_config = context.context().config
+    self.assertEqual(new_config.gpu_options.visible_device_list, '0')
+
   @test_util.run_gpu_only
   @reset_eager
   def testV1Compatibility(self):
@@ -503,19 +519,59 @@ class DeviceTest(test.TestCase):
     context.context()._physical_devices = None
 
     # Ensure CPU is split
-    context.context()._config = config_pb2.ConfigProto(device_count={'CPU': 2},)
+    context.context()._config = config_pb2.ConfigProto(device_count={'CPU': 2})
     new_config = context.context().config
     self.assertEqual(new_config.device_count['CPU'], 2)
     context.context()._physical_devices = None
 
-    # Ensure Handle visible device list parsing
+    # Handle empty visible device list
     context.context()._config = config_pb2.ConfigProto(
-        gpu_options=config_pb2.GPUOptions(visible_device_list='',),)
+        gpu_options=config_pb2.GPUOptions(visible_device_list=''))
     gpus = config.list_physical_devices('GPU')
+    gpu_count = len(gpus)
     new_config = context.context().config
     self.assertEqual(new_config.gpu_options.visible_device_list,
                      ','.join(str(i) for i in range(len(gpus))))
     context.context()._physical_devices = None
+
+    # Handle invalid visible device list
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list=str(gpu_count)))
+    with self.assertRaisesRegexp(ValueError, 'Invalid visible device index'):
+      gpus = config.list_physical_devices('GPU')
+      new_config = context.context().config
+    context.context()._physical_devices = None
+
+    # Handle single visible device list
+    context.context()._config = config_pb2.ConfigProto(
+        gpu_options=config_pb2.GPUOptions(visible_device_list=str(gpu_count-1)))
+    gpus = config.list_physical_devices('GPU')
+    new_config = context.context().config
+    self.assertEqual(new_config.gpu_options.visible_device_list,
+                     str(gpu_count-1))
+    context.context()._physical_devices = None
+
+  def testConfigureCollectiveOps(self):
+    context.context().configure_collective_ops(
+        collective_leader='/job:worker/replica:0/task:0',
+        scoped_allocator_enabled_ops=('CollectiveReduce',),
+        use_nccl_communication=False,
+        device_filters=['/job:worker/task:1'])
+    new_config = context.context().config
+
+    # Verify group leader
+    self.assertEqual('/job:worker/replica:0/task:0',
+                     new_config.experimental.collective_group_leader)
+
+    # Verify device filters.
+    self.assertEqual(['/job:worker/task:1'], new_config.device_filters)
+
+    # Verify rewrite options.
+    new_rewrite_options = new_config.graph_options.rewrite_options
+    self.assertEqual(rewriter_config_pb2.RewriterConfig.ON,
+                     new_rewrite_options.scoped_allocator_optimization)
+    self.assertEqual(['CollectiveReduce'],
+                     new_rewrite_options.scoped_allocator_opts.enable_op)
 
 
 if __name__ == '__main__':

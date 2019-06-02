@@ -169,7 +169,6 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -246,6 +245,7 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/trackable_object_graph.proto",
     "protobuf/control_flow.proto",
+    "protobuf/data/experimental/snapshot.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",
     "protobuf/meta_graph.proto",
@@ -349,6 +349,8 @@ cc_library(
     deps = [
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -910,6 +912,7 @@ tf_cuda_library(
         "framework/kernel_def_builder.h",
         "framework/kernel_def_util.h",
         "framework/log_memory.h",
+        "framework/logging.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
         "framework/node_def_builder.h",
@@ -942,12 +945,13 @@ tf_cuda_library(
         "framework/tracking_allocator.h",
         "framework/type_index.h",
         "framework/type_traits.h",
+        "framework/typed_allocator.h",
         "framework/types.h",
         "public/version.h",
         "util/activation_mode.h",
         "util/batch_util.h",
         "util/bcast.h",
-        "util/cuda_kernel_helper.h",
+        "util/matmul_bcast.h",
         "util/device_name_utils.h",
         "util/dump_graph.h",
         "util/events_writer.h",
@@ -990,6 +994,56 @@ tf_cuda_library(
         ":framework_internal",
         "@com_google_absl//absl/base",
     ],
+)
+
+# This is redundant with the "framework" target above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+cc_library(
+    name = "allocator",
+    srcs = [
+        "framework/allocator.cc",
+        "framework/allocator_registry.h",
+        "framework/numeric_types.h",
+        "framework/tracking_allocator.cc",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+    ],
+    hdrs = [
+        "framework/allocator.h",
+    ],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "//third_party/eigen3",
+    ] + if_static(extra_deps = [":allocator_registry_impl"]),
+    alwayslink = 1,
+)
+
+# This target will be included in libtensorflow_framework.so via the
+# framework_internal_impl target.
+# All other dependencies on this target need to go through if_static guard,
+# as otherwise duplicate registration in the registry will cause crashes.
+cc_library(
+    name = "allocator_registry_impl",
+    srcs = [
+        "framework/allocator.h",
+        "framework/allocator_registry.cc",
+        "framework/allocator_registry.h",
+        "framework/cpu_allocator_impl.cc",
+        "framework/numeric_types.h",
+        "framework/tracking_allocator.h",
+        "framework/type_traits.h",
+    ],
+    deps = [
+        ":lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1056,6 +1110,7 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1175,7 +1230,10 @@ tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
     ],
-    deps = [":protos_all_cc"],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 tf_gen_op_libs(
@@ -1528,6 +1586,7 @@ cc_library(
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
+        "//tensorflow/core/kernels:mkl_aggregate_ops",
         "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_dequantize_op",
         "//tensorflow/core/kernels:mkl_conv_op",
@@ -1536,8 +1595,9 @@ cc_library(
         "//tensorflow/core/kernels:mkl_identity_op",
         "//tensorflow/core/kernels:mkl_input_conversion_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
-        "//tensorflow/core/kernels:mkl_requantize_ops",
         "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_qmatmul_op",
+        "//tensorflow/core/kernels:mkl_requantize_ops",
         "//tensorflow/core/kernels:mkl_quantize_op",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
@@ -1545,7 +1605,6 @@ cc_library(
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_transpose_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
-        "//tensorflow/core/kernels:mkl_aggregate_ops",
     ]) + if_cuda([
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
@@ -1639,9 +1698,14 @@ cc_library(
     ] + if_dynamic_kernels(
         [],
         otherwise = [
+            "//tensorflow/core/kernels:aggregate_ops",
+            "//tensorflow/core/kernels:bcast_ops",
             "//tensorflow/core/kernels:cast_op",
             "//tensorflow/core/kernels:constant_op",
+            "//tensorflow/core/kernels:identity_op",
             "//tensorflow/core/kernels:random_ops",
+            "//tensorflow/core/kernels:reduction_ops",
+            "//tensorflow/core/kernels:reshape_op",
         ],
     ),
 )
@@ -1669,6 +1733,13 @@ tf_cuda_library(
         ":direct_session_internal",
     ],
     alwayslink = 1,
+)
+
+# -----------------------------------------------------------------------------
+# MKL targets
+cc_library(
+    name = "mkl_graph_util",
+    hdrs = ["graph/mkl_graph_util.h"],
 )
 
 # -----------------------------------------------------------------------------
@@ -1728,6 +1799,10 @@ filegroup(
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/**/logger.cc",
+            # Exclude env_time and logging to avoid collisions with
+            # :platform_base, a common dependency for downstream targets.
+            "platform/**/env_time.cc",
+            "platform/**/logging.cc",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/rocm.h",
@@ -1754,10 +1829,12 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "//tensorflow/core/common_runtime/eager:srcs",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/tensor_bundle:android_srcs",
         "//tensorflow/c:srcs",
+        "//tensorflow/c/eager:srcs",
     ] + glob(
         [
             "common_runtime/**/*.h",
@@ -1774,7 +1851,6 @@ filegroup(
             "**/*testlib*",
             "**/*main.cc",
             "common_runtime/gpu/**/*",
-            "common_runtime/eager/*",
             "common_runtime/gpu_device_factory.*",
             "graph/dot.*",
         ],
@@ -1823,6 +1899,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1847,6 +1924,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1856,6 +1934,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        ":platform_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -1867,7 +1946,6 @@ cc_library(
     srcs = if_emscripten([":mobile_srcs_no_runtime"]),
     copts = ["-DSUPPORT_SELECTIVE_REGISTRATION"] + tf_opts_nortti_if_emscripten(),
     defines = ["TENSORFLOW_LITE_PROTOS"],
-    linkopts = ["-lz"],
     tags = [
         "manual",
         "notap",
@@ -1879,6 +1957,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@zlib_archive//:zlib",
     ],
@@ -1921,6 +2000,7 @@ cc_library(
         ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
+        "@farmhash_archive//:farmhash",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -2190,6 +2270,13 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_pyclif_proto_library(
+    name = "framework/variable_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/variable.proto",
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
 # Internal targets
 
@@ -2265,6 +2352,7 @@ tf_proto_library_cc(
     srcs = ["protobuf/eager_service.proto"],
     has_services = 1,
     cc_api_version = 2,
+    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
     protodeps = tf_additional_all_protos(),
     visibility = [
@@ -2812,6 +2900,10 @@ tf_cuda_library(
         exclude = [
             "**/*test*",
             "**/*main.cc",
+            "framework/allocator.cc",
+            "framework/cpu_allocator_impl.cc",
+            "framework/allocator_registry.cc",
+            "framework/tracking_allocator.cc",
             "example/example_parser_configuration.*",
             "example/feature_util.cc",
             "util/reporter.cc",
@@ -2843,6 +2935,8 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":allocator_registry_impl",
+        ":allocator",
         ":feature_util",
         ":lib",
         ":lib_internal",
@@ -2858,6 +2952,7 @@ tf_cuda_library(
         "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ] + if_static(
         extra_deps = ["@protobuf_archive//:protobuf"],
@@ -2925,7 +3020,6 @@ cc_library(
 tf_cuda_library(
     name = "cuda_device_functions",
     hdrs = [
-        "util/cuda_device_functions.h",
         "util/gpu_device_functions.h",
     ],
     visibility = ["//visibility:public"],
@@ -3072,10 +3166,12 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/executor.h",
     "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
+    "common_runtime/input_colocation_exemption_registry.h",
     "common_runtime/isolate_placer_inspection_required_ops_pass.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_function_call_op.h",
     "common_runtime/lower_if_op.h",
+    "common_runtime/lower_case_op.h",
     "common_runtime/lower_functional_ops.h",
     "common_runtime/lower_while_op.h",
     "common_runtime/memory_types.h",
@@ -3108,9 +3204,7 @@ tf_cuda_library(
     name = "core_cpu_impl",
     srcs = [
         "common_runtime/accumulate_n_optimizer.cc",
-        "common_runtime/allocator_retry.cc",
         "common_runtime/base_collective_executor.cc",
-        "common_runtime/bfc_allocator.cc",
         "common_runtime/buf_rendezvous.cc",
         "common_runtime/build_graph_options.cc",
         "common_runtime/collective_executor_mgr.cc",
@@ -3134,10 +3228,12 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
+        "common_runtime/input_colocation_exemption_registry.cc",
         "common_runtime/inspecting_placer.cc",
         "common_runtime/inspecting_placer.h",
         "common_runtime/isolate_placer_inspection_required_ops_pass.cc",
         "common_runtime/local_device.cc",
+        "common_runtime/lower_case_op.cc",
         "common_runtime/lower_function_call_op.cc",
         "common_runtime/lower_functional_ops.cc",
         "common_runtime/lower_if_op.cc",
@@ -3181,6 +3277,7 @@ tf_cuda_library(
     hdrs = CORE_CPU_LIB_HEADERS,
     copts = tf_copts(),
     deps = [
+        ":bfc_allocator",
         ":graph",
         ":framework",
         ":framework_internal",
@@ -3194,6 +3291,8 @@ tf_cuda_library(
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal:traceme_recorder",
     ] + mkl_deps(),
     alwayslink = 1,
 )
@@ -3223,6 +3322,7 @@ tf_cuda_library(
         ":lib",
         ":proto_text",
         ":protos_all_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
@@ -3238,6 +3338,36 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+# This is redundant with the "core_cpu_*" targets above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+cc_library(
+    name = "bfc_allocator",
+    srcs = [
+        "common_runtime/allocator_retry.cc",
+        "common_runtime/allocator_retry.h",
+        "common_runtime/bfc_allocator.cc",
+    ],
+    hdrs = ["common_runtime/bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":lib",
+        ":lib_internal",
+        ":shared_counter",
+    ],
+)
+
+cc_library(
+    name = "shared_counter",
+    hdrs = ["common_runtime/shared_counter.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+    ],
+)
+
 cc_library(
     name = "regexp_internal",
     hdrs = [
@@ -3247,6 +3377,7 @@ cc_library(
         "//tensorflow/compiler:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = [":lib_internal"],
 )
@@ -3272,6 +3403,7 @@ tf_cuda_library(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/profiler/lib:profiler_graph_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -3299,7 +3431,7 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_copts(),
-    cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
     visibility = [
         "//tensorflow:internal",
     ],
@@ -3308,7 +3440,6 @@ tf_cuda_library(
         ":lib",
         ":protos_all_cc",
         "//tensorflow/core/profiler/internal:profiler_interface",
-        # "//tensorflow/stream_executor/lib",
     ] + tf_additional_device_tracer_deps(),
     alwayslink = True,
 )
@@ -3351,16 +3482,17 @@ cc_library(
 )
 
 GPU_RUNTIME_HEADERS = [
-    "common_runtime/gpu/gpu_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
+    "common_runtime/gpu/gpu_host_allocator.h",
     "common_runtime/gpu/gpu_id.h",
     "common_runtime/gpu/gpu_id_manager.h",
     "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
+    "common_runtime/gpu/gpu_mem_allocator.h",
     "common_runtime/gpu/gpu_process_state.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
@@ -3370,7 +3502,6 @@ GPU_RUNTIME_HEADERS = [
 tf_cuda_library(
     name = "gpu_runtime_impl",
     srcs = [
-        "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_cudamalloc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
@@ -3388,6 +3519,7 @@ tf_cuda_library(
         ":core_cpu_lib",
         ":framework",
         ":framework_internal",
+        ":gpu_bfc_allocator",
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
@@ -3396,6 +3528,7 @@ tf_cuda_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -3415,6 +3548,40 @@ tf_cuda_library(
         ":stream_executor",
         "//third_party/eigen3",
     ] + if_static([":gpu_runtime_impl"]),
+)
+
+# This is redundant with the "gpu_runtime_*" targets above. It's useful for
+# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
+tf_cuda_library(
+    name = "gpu_bfc_allocator",
+    srcs = [
+        "common_runtime/gpu/gpu_bfc_allocator.cc",
+    ],
+    hdrs = ["common_runtime/gpu/gpu_bfc_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":bfc_allocator",
+        ":gpu_mem_allocator",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+    ],
+)
+
+tf_cuda_library(
+    name = "gpu_mem_allocator",
+    srcs = [
+        "common_runtime/gpu/gpu_id.h",
+    ],
+    hdrs = ["common_runtime/gpu/gpu_mem_allocator.h"],
+    features = ["parse_headers"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":allocator",
+        ":lib_internal",
+        ":stream_executor",
+    ],
 )
 
 tf_cuda_library(
@@ -3642,6 +3809,8 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@zlib_archive//:zlib",
     ],
 )
@@ -3657,6 +3826,7 @@ tf_cc_test(
         ":protos_all_cc",
         ":test",
         "//third_party/eigen3",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3977,6 +4147,7 @@ tf_cc_tests(
         "util/events_writer_test.cc",
         "util/example_proto_fast_parsing_test.cc",
         "util/example_proto_helper_test.cc",
+        "util/matmul_bcast_test.cc",
         "util/memmapped_file_system_test.cc",
         "util/presized_cuckoo_map_test.cc",
         "util/reffed_status_callback_test.cc",
@@ -4248,6 +4419,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_input_conversion_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_qmatmul_op",
         "//tensorflow/core/kernels:mkl_quantize_op",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
@@ -4844,7 +5016,7 @@ tf_cc_test_gpu(
     name = "gpu_debug_allocator_test",
     size = "medium",
     srcs = ["common_runtime/gpu/gpu_debug_allocator_test.cc"],
-    args = ["\"--gtest_death_test_style=threadsafe\""],
+    args = ["--gtest_death_test_style=threadsafe"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
@@ -5096,6 +5268,19 @@ tf_cc_test_gpu(
 )
 
 tf_cc_tests(
+    name = "common_runtime_input_colocation_exemption_registry_test",
+    size = "small",
+    srcs = ["common_runtime/input_colocation_exemption_registry_test.cc"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":test",
+        ":test_main",
+        ":testlib",
+    ],
+)
+
+tf_cc_tests(
     name = "common_runtime_lower_function_call_test",
     size = "small",
     srcs = ["common_runtime/lower_function_call_op_test.cc"],
@@ -5123,6 +5308,30 @@ tf_cc_tests(
     name = "common_runtime_lower_if_op_test",
     size = "small",
     srcs = ["common_runtime/lower_if_op_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+    ],
+)
+
+tf_cc_tests(
+    name = "common_runtime_lower_case_op_test",
+    size = "small",
+    srcs = ["common_runtime/lower_case_op_test.cc"],
     deps = [
         ":all_kernels",
         ":core_cpu",
@@ -5278,9 +5487,7 @@ transitive_hdrs(
     ],
 )
 
-# -----------------------------------------------------------------------------
-# Google-internal targets go here (must be at the end).
-
+# Placeholder for Google-internal load statements.
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 
 genrule(

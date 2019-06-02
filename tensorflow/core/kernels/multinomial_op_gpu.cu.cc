@@ -109,7 +109,7 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     output.device(d) = output.constant(0LL);
 
     const int32 work_items = batch_size * num_samples * num_classes;
-    CudaLaunchConfig config = GetCudaLaunchConfig(work_items, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(work_items, d);
     TF_CHECK_OK(CudaLaunchKernel(
         MultinomialKernel<OutputType>, config.block_count,
         config.thread_per_block, 0, d.stream(), config.virtual_thread_count,

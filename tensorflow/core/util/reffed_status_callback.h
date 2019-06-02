@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_REFFED_STATUS_CALLBACK_H_
 #define TENSORFLOW_CORE_UTIL_REFFED_STATUS_CALLBACK_H_
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -28,33 +29,30 @@ namespace tensorflow {
 // UpdateStatus(), or Status::OK() if no non-OK status was set.
 class ReffedStatusCallback : public core::RefCounted {
  public:
-  explicit ReffedStatusCallback(StatusCallback done)
-      : done_(std::move(done)), status_(Status::OK()) {}
+  explicit ReffedStatusCallback(StatusCallback done) : done_(std::move(done)) {}
 
   void UpdateStatus(const Status& s) {
-    if (!s.ok()) {
-      mutex_lock lock(mu_);
-      if (status_.ok()) status_.Update(s);
-    }
+    mutex_lock lock(mu_);
+    status_group_.Update(s);
   }
 
   bool ok() {
-    mutex_lock lock(mu_);
-    return status_.ok();
+    tf_shared_lock lock(mu_);
+    return status_group_.ok();
   }
 
   // Returns a copy of the current status.
   Status status() {
-    mutex_lock lock(mu_);
-    return status_;
+    tf_shared_lock lock(mu_);
+    return status_group_.as_summary_status();
   }
 
-  ~ReffedStatusCallback() { done_(status_); }
+  ~ReffedStatusCallback() { done_(status_group_.as_summary_status()); }
 
  private:
   StatusCallback done_;
   mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  StatusGroup status_group_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

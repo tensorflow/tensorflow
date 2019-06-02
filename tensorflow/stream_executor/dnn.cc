@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/dnn.h"
 
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "absl/strings/str_format.h"
 
 namespace stream_executor {
 namespace dnn {
 
 uint64 AlgorithmDesc::hash() const {
-  return ::tensorflow::Hash64Combine(algo_id(), tensor_ops_enabled());
+  auto p = std::make_pair(algo_id(), tensor_ops_enabled());
+  return absl::Hash<decltype(p)>()(p);
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
@@ -283,13 +284,13 @@ void BatchDescriptor::CloneFrom(const BatchDescriptor& other) {
 string BatchDescriptor::ToString() const {
   string spatial;
   for (int i = 0; i < ndims(); i++) {
-    port::Appendf(&spatial, "%lld ", spatial_size()[i]);
+    absl::StrAppendFormat(&spatial, "%d ", spatial_size()[i]);
   }
-  return port::Printf(
-      "{count: %lld feature_map_count: %lld spatial: %s "
+  return absl::StrFormat(
+      "{count: %d feature_map_count: %d spatial: %s "
       "value_min: %f value_max: %f layout: %s}",
-      count(), feature_map_count(), spatial.c_str(), value_min_, value_max_,
-      DataLayoutString(layout()).c_str());
+      count(), feature_map_count(), spatial, value_min_, value_max_,
+      DataLayoutString(layout()));
 }
 
 string BatchDescriptor::ToShortString() const {
@@ -301,7 +302,7 @@ string BatchDescriptor::ToShortString() const {
 
   string spatial = "s";
   for (int i = 0; i < ndims(); i++) {
-    port::Appendf(&spatial, "%lld ", spatial_size()[i]);
+    absl::StrAppendFormat(&spatial, "%d ", spatial_size()[i]);
   }
 
   string suffix;
@@ -394,13 +395,13 @@ void FilterDescriptor::CloneFrom(const FilterDescriptor& other) {
 }
 
 string FilterDescriptor::ToString() const {
-  string desc = port::Printf(
-      "{output_feature_map_count: %lld input_feature_map_count: %lld "
+  string desc = absl::StrFormat(
+      "{output_feature_map_count: %d input_feature_map_count: %d "
       "layout: %s shape: ",
       output_feature_map_count(), input_feature_map_count(),
-      FilterLayoutString(layout()).c_str());
+      FilterLayoutString(layout()));
   for (int i = 0; i < ndims(); i++) {
-    port::Appendf(&desc, "%lld ", input_filter_dims()[i]);
+    absl::StrAppendFormat(&desc, "%d ", input_filter_dims()[i]);
   }
   absl::StrAppend(&desc, "}");
 
@@ -416,7 +417,7 @@ string FilterDescriptor::ToShortString() const {
 
   string spatial = "s";
   for (int i = 0; i < ndims(); i++) {
-    port::Appendf(&spatial, "%lld ", input_filter_dims()[i]);
+    absl::StrAppendFormat(&spatial, "%d ", input_filter_dims()[i]);
   }
 
   switch (layout()) {
@@ -470,29 +471,28 @@ string ConvolutionDescriptor::ToString() const {
   string strides;
   string dilations;
   for (int i = 0; i < ndims(); i++) {
-    port::Appendf(&padding, "%lld ", this->padding()[i]);
-    port::Appendf(&strides, "%lld ", this->strides()[i]);
-    port::Appendf(&dilations, "%lld ", this->dilations()[i]);
+    absl::StrAppendFormat(&padding, "%d ", this->padding()[i]);
+    absl::StrAppendFormat(&strides, "%d ", this->strides()[i]);
+    absl::StrAppendFormat(&dilations, "%d ", this->dilations()[i]);
   }
 
-  return port::Printf(
+  return absl::StrFormat(
       "{zero_padding: %s pad_alignment: %s filter_strides: %s dilation_rates: "
       "%s}",
-      padding.c_str(), PadAlignmentString(pad_alignment()).c_str(),
-      strides.c_str(), dilations.c_str());
+      padding, PadAlignmentString(pad_alignment()), strides, dilations);
 }
 
 string ConvolutionDescriptor::ToShortString() const {
   string desc;
   for (int i = 0; i < ndims(); i++) {
-    if (i > 0) port::Appendf(&desc, "_");
-    port::Appendf(&desc, "p%d:%lld", i, padding()[i]);
+    if (i > 0) absl::StrAppend(&desc, "_");
+    absl::StrAppendFormat(&desc, "p%d:%d", i, padding()[i]);
   }
   for (int i = 0; i < ndims(); i++) {
-    port::Appendf(&desc, "_s%d:%lld", i, strides()[i]);
+    absl::StrAppendFormat(&desc, "_s%d:%d", i, strides()[i]);
   }
   for (int i = 0; i < ndims(); i++) {
-    port::Appendf(&desc, "_d%d:%lld", i, dilations()[i]);
+    absl::StrAppendFormat(&desc, "_d%d:%d", i, dilations()[i]);
   }
   return desc;
 }
@@ -524,25 +524,24 @@ string PoolingDescriptor::ToString() const {
 
   string window, strides, padding;
   for (int i = 0; i < ndims_; i++) {
-    port::Appendf(&window, "%lld ", window_[i]);
-    port::Appendf(&strides, "%lld ", strides_[i]);
-    port::Appendf(&padding, "%lld", padding_[i]);
+    absl::StrAppendFormat(&window, "%d ", window_[i]);
+    absl::StrAppendFormat(&strides, "%d ", strides_[i]);
+    absl::StrAppendFormat(&padding, "%d", padding_[i]);
   }
 
   const char* propagate_string = propagate_nans_ ? "Yes" : "No";
 
-  return port::Printf(
+  return absl::StrFormat(
       "{mode: %s window: %s strides: %s padding: %s propagate NaNs: %s}",
-      mode_string, window.c_str(), strides.c_str(), padding.c_str(),
-      propagate_string);
+      mode_string, window, strides, padding, propagate_string);
 }
 
 string PoolingDescriptor::ToShortString() const {
   string window, strides, padding;
   for (int i = 0; i < ndims_; i++) {
-    port::Appendf(&window, "_w%d:%lld", i, window_[i]);
-    port::Appendf(&strides, "_s%d:%lld", i, strides_[i]);
-    port::Appendf(&padding, "_p%d:%lld", i, padding_[i]);
+    absl::StrAppendFormat(&window, "_w%d:%d", i, window_[i]);
+    absl::StrAppendFormat(&strides, "_s%d:%d", i, strides_[i]);
+    absl::StrAppendFormat(&padding, "_p%d:%d", i, padding_[i]);
   }
   return absl::StrCat(mode_ == dnn::PoolingMode::kMaximum ? "max" : "avg",
                       window, strides, padding,
@@ -569,7 +568,7 @@ void NormalizeDescriptor::CloneFrom(const NormalizeDescriptor& other) {
 }
 
 string NormalizeDescriptor::ToString() const {
-  return port::Printf(
+  return absl::StrFormat(
       "{bias: %f range: %d alpha: %f beta: %f wrap_around: %d "
       "segment_size: %d}",
       bias_, range_, alpha_, beta_, wrap_around_, segment_size_);

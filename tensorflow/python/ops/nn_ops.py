@@ -1904,7 +1904,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
       value is given it is replicated in the `H` and `W` dimension. By default
       the `N` and `C` dimensions are set to 1. The dimension order is determined
       by the value of `data_format`, see below for details.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -2168,9 +2168,9 @@ def conv2d_transpose_v2(
     input: A 4-D `Tensor` of type `float` and shape `[batch, height, width,
       in_channels]` for `NHWC` data format or `[batch, in_channels, height,
       width]` for `NCHW` data format.
-    filters: A 4-D `Tensor` with the same type as `value` and shape `[height,
+    filters: A 4-D `Tensor` with the same type as `input` and shape `[height,
       width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
-      must match that of `value`.
+      must match that of `input`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
@@ -2192,7 +2192,7 @@ def conv2d_transpose_v2(
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, or if
@@ -3036,7 +3036,8 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
-    logits: Unscaled log probabilities.
+    logits: Per-label activations, typically a linear output. These activation
+      energies are interpreted as unnormalized log probabilities.
     axis: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
@@ -3221,7 +3222,8 @@ def softmax_cross_entropy_with_logits(
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
-    logits: Unscaled log probabilities.
+    logits: Per-label activations, typically a linear output. These activation
+      energies are interpreted as unnormalized log probabilities.
     dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
     axis: Alias for dim.
@@ -3284,9 +3286,10 @@ def sparse_softmax_cross_entropy_with_logits(
       must be an index in `[0, num_classes)`. Other values will raise an
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
-    logits: Unscaled log probabilities of shape
+    logits: Per-label activations (typically a linear output) of shape
       `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32`, or
-      `float64`.
+      `float64`. These activation energies are interpreted as unnormalized log
+      probabilities.
     name: A name for the operation (optional).
 
   Returns:
@@ -3976,6 +3979,25 @@ def max_pool_with_argmax_v1(  # pylint: disable=missing-docstring,invalid-name
 
 
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
+
+
+@ops.RegisterStatistics("Conv3D", "flops")
+def _calc_conv3d_flops(graph, node):
+  """Calculates the compute resources needed for Conv3D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(
+      graph, node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_time = int(filter_shape[0])
+  filter_height = int(filter_shape[1])
+  filter_width = int(filter_shape[2])
+  filter_in_depth = int(filter_shape[3])
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
+  return ops.OpStats("flops", (output_count * filter_in_depth * filter_time *
+                               filter_height * filter_width * 2))
 
 
 @ops.RegisterStatistics("Conv2D", "flops")
@@ -4733,11 +4755,11 @@ def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 
   This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-  prediction for the target class is among the top `k` predictions among
-  all predictions for example `i`. Note that the behavior of `InTopK` differs
-  from the `TopK` op in its handling of ties; if multiple classes have the
-  same prediction value and straddle the top-`k` boundary, all of those
-  classes are considered to be in the top `k`.
+  prediction for the target class is finite (not inf, -inf, or nan) and among
+  the top `k` predictions among all predictions for example `i`. Note that the
+  behavior of `InTopK` differs from the `TopK` op in its handling of ties; if
+  multiple classes have the same prediction value and straddle the top-`k`
+  boundary, all of those classes are considered to be in the top `k`.
 
   More formally, let
 

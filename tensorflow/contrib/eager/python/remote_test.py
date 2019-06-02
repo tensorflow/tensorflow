@@ -23,6 +23,7 @@ import os
 
 import numpy as np
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.contrib.eager.python import parameter_server
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
@@ -92,10 +93,11 @@ class RemoteExecutionTest(test.TestCase):
 
   def setUp(self):
     # Start the local server.
+    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
     context.set_server_def(
         server_def=get_server_def(
             JOB_NAME,
-            local_server_port=0,
+            local_server_port=local_port,
             remote_server_addresses=[
                 self._cached_server1_target, self._cached_server2_target
             ],
@@ -201,7 +203,7 @@ class RemoteExecutionTest(test.TestCase):
     """Basic server connection."""
     remote.connect_to_remote_host(self._cached_server1_target)
 
-    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
+    with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
       x1 = array_ops.ones([2, 2])
       x2 = array_ops.ones([2, 2])
       y = math_ops.matmul(x1, x2)

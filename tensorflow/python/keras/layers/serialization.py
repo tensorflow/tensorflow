@@ -38,6 +38,7 @@ from tensorflow.python.keras.layers.noise import *
 from tensorflow.python.keras.layers.normalization import *
 from tensorflow.python.keras.layers.pooling import *
 from tensorflow.python.keras.layers.recurrent import *
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import *
 from tensorflow.python.keras.layers.wrappers import *
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.util.tf_export import keras_export

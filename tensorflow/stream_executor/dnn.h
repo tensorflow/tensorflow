@@ -26,10 +26,10 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <tuple>
+#include <type_traits>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
@@ -70,19 +70,34 @@ inline void SetDim(std::vector<int64>* data, DimIndex dim, int64 value) {
   return SetDim(absl::MakeSpan(*data), dim, value);
 }
 
-// tensorflow::int64 is not the same type as tensorflow::protobuf_int64 in
-// open-source. Wrapper function that gives an int64 array slice view of a
-// repeated int64 protobuf field.
-inline absl::Span<const int64> AsInt64Slice(
-    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
-  return absl::Span<const int64>(reinterpret_cast<const int64*>(v.data()),
-                                 v.size());
+// int64 is not the same type as tensorflow::protobuf_int64 in open-source. This
+// wrapper function gives an int64 array slice view of a repeated int64 protobuf
+// field.
+//
+// T should be a protobuf RepeatedField.
+template <typename T>
+inline absl::Span<const int64> AsInt64Slice(const T& repeated_field) {
+  using data_ty =
+      typename std::remove_reference<decltype(*repeated_field.data())>::type;
+  static_assert(std::is_integral<data_ty>::value &&
+                    std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
+                "repeated_field.data() must return a pointer to a signed "
+                "64-bit integer type.");
+  return absl::Span<const int64>(
+      reinterpret_cast<const int64*>(repeated_field.data()),
+      repeated_field.size());
 }
-
-inline absl::Span<int64> AsInt64Slice(
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* v) {
-  return absl::Span<int64>(reinterpret_cast<int64*>(v->mutable_data()),
-                           v->size());
+template <typename T>
+inline absl::Span<int64> AsInt64Slice(T* repeated_field) {
+  using data_ty =
+      typename std::remove_reference<decltype(*repeated_field->data())>::type;
+  static_assert(std::is_integral<data_ty>::value &&
+                    std::is_signed<data_ty>::value && sizeof(data_ty) == 8,
+                "repeated_field->data() must return a pointer to a signed "
+                "64-bit integer type.");
+  return absl::Span<int64>(
+      reinterpret_cast<int64*>(repeated_field->mutable_data()),
+      repeated_field->size());
 }
 
 // Returns a string representation of the given data layout.
@@ -1009,6 +1024,8 @@ class DnnSupport {
       DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
       DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) {
     return false;
@@ -1026,6 +1043,8 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
       DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) {
     return false;
@@ -1055,7 +1074,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) {
+      DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -1069,8 +1090,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
-      DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) {
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 

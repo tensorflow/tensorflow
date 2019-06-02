@@ -459,7 +459,7 @@ Status GrpcSession::ReleaseCallable(CallableHandle handle) {
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
-    return str_util::StartsWith(options.target, kSchemePrefix);
+    return absl::StartsWith(options.target, kSchemePrefix);
   }
 
   Status NewSession(const SessionOptions& options,

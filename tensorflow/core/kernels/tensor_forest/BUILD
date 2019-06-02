@@ -3,9 +3,8 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
@@ -27,6 +26,7 @@ tf_kernel_library(
         ":resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )
@@ -38,6 +38,7 @@ tf_kernel_library(
         ":resources",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )

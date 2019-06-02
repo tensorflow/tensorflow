@@ -1,11 +1,19 @@
 path: "tensorflow.train.experimental"
 tf_module {
   member {
-    name: "PythonState"
+    name: "DynamicLossScale"
     mtype: "<type \'type\'>"
   }
-  member_method {
-    name: "enable_mixed_precision_graph_rewrite"
-    argspec: "args=[\'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'dynamic\'], "
+  member {
+    name: "FixedLossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LossScale"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PythonState"
+    mtype: "<type \'type\'>"
   }
 }

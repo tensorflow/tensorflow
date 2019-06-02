@@ -1059,12 +1059,12 @@ def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
   NOTE: Prefer using the Tensor division operator or tf.divide which obey Python
-  division operator semantics.
+  3 division operator semantics.
 
-  This function divides `x` and `y`, forcing Python 2.7 semantics. That is,
-  if one of `x` or `y` is a float, then the result will be a float.
-  Otherwise, the output will be an integer type. Flooring semantics are used
-  for integer division.
+  This function divides `x` and `y`, forcing Python 2 semantics. That is, if `x`
+  and `y` are both integers then the result will be an integer. This is in
+  contrast to Python 3, where division with `/` is always a float while division
+  with `//` is always an integer.
 
   Args:
     x: `Tensor` numerator of real numeric type.
@@ -1209,7 +1209,29 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
-  """x ^ y = (x | y) & ~(x & y)."""
+  """Logical XOR function.
+
+  x ^ y = (x | y) & ~(x & y)
+
+  Inputs are tensor and if the tensors contains more than one element, an
+  element-wise logical XOR is computed.
+
+  Usage:
+
+  ```python
+  x = tf.constant([False, False, True, True], dtype = tf.bool)
+  y = tf.constant([False, True, False, True], dtype = tf.bool)
+  z = tf.logical_xor(x, y, name="LogicalXor")
+  #  here z = [False  True  True False]
+  ```
+
+  Args:
+      x: A `Tensor` type bool.
+      y: A `Tensor` of type bool.
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
   # TODO(alemi) Make this a cwise op if people end up relying on it.
   return gen_math_ops.logical_and(
       gen_math_ops.logical_or(x, y),
@@ -2434,6 +2456,7 @@ def trace(x, name=None):
 
 
 @tf_export("linalg.matmul", "matmul")
+@dispatch.add_dispatch_support
 def matmul(a,
            b,
            transpose_a=False,
@@ -3393,8 +3416,8 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
   segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
-  Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
+  first dimension, selecting a subset of dimension 0, specified by `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3463,7 +3486,65 @@ def sparse_segment_sum_v2(data,
                           segment_ids,
                           num_segments=None,
                           name=None):
-  return sparse_segment_mean(
+  r"""Computes the sum along sparse segments of a tensor.
+
+  Read [the section on
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  for an explanation of segments.
+
+  Like `tf.math.segment_sum`, but `segment_ids` can have rank less than `data`'s
+  first dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  For example:
+
+  ```python
+  c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+
+  # Select two rows, one segment.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
+  # => [[0 0 0 0]]
+
+  # Select two rows, two segment.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
+  # => [[ 1  2  3  4]
+  #     [-1 -2 -3 -4]]
+
+  # With missing segment ids.
+  tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 2]),
+                        num_segments=4)
+  # => [[ 1  2  3  4]
+  #     [ 0  0  0  0]
+  #     [-1 -2 -3 -4]
+  #     [ 0  0  0  0]]
+
+  # Select all rows, two segments.
+  tf.sparse.segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
+  # => [[0 0 0 0]
+  #     [5 6 7 8]]
+
+  # Which is equivalent to:
+  tf.math.segment_sum(c, tf.constant([0, 0, 1]))
+  ```
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`. Values
+      should be sorted and can be repeated.
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  return sparse_segment_sum(
       data, indices, segment_ids, name=name, num_segments=num_segments)
 
 
@@ -3480,8 +3561,9 @@ def sparse_segment_mean(data,
   segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
-  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
+  `data`'s first dimension, selecting a subset of dimension 0, specified by
+  `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3525,8 +3607,9 @@ def sparse_segment_mean_v2(data,
   segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
   for an explanation of segments.
 
-  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
-  dimension, selecting a subset of dimension 0, specified by `indices`.
+  Like `tf.math.segment_mean`, but `segment_ids` can have rank less than
+  `data`'s first dimension, selecting a subset of dimension 0, specified by
+  `indices`.
   `segment_ids` is allowed to have missing ids, in which case the output will
   be zeros at those indices. In those cases `num_segments` is used to determine
   the size of the output.
@@ -3596,7 +3679,12 @@ def sparse_segment_sqrt_n_v2(data,
                              name=None):
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
 
-  `N` is the size of the segment being reduced.
+  Read [the section on
+  segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+  for an explanation of segments.
+
+  Like `tf.sparse.segment_mean`, but instead of dividing by the size of the
+  segment, `N`, divide by `sqrt(N)` instead.
 
   Args:
     data: A `Tensor` with data that will be assembled in the output.

@@ -11,9 +11,10 @@
 #   # for GPU benchmarks
 #   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
 #
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
@@ -31,6 +32,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
+    "if_cuda_or_rocm",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_shared_object",
@@ -46,7 +48,10 @@ load(
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -64,6 +69,11 @@ load(
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+    "if_rocm_is_configured",
+)
 
 config_setting(
     # Add "--define tensorflow_xsmm=1" to your build command to use libxsmm for
@@ -156,6 +166,7 @@ tf_kernel_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
     ],
 )
@@ -197,6 +208,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
     ] + if_nccl([
         "@local_config_nccl//:nccl",
         "//tensorflow/core/nccl:nccl_lib",
@@ -741,6 +753,7 @@ cc_library(
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
+        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
@@ -753,6 +766,7 @@ cc_library(
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
         "//tensorflow:ios": [],
+        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
@@ -932,6 +946,7 @@ cc_library(
         ":edit_distance_op",
         ":extract_image_patches_op",
         ":extract_volume_patches_op",
+        ":fingerprint_op",
         ":gather_nd_op",
         ":gather_op",
         ":guarantee_const_op",
@@ -1019,6 +1034,28 @@ tf_kernel_library(
     name = "edit_distance_op",
     prefix = "edit_distance_op",
     deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "fingerprint_op",
+    prefix = "fingerprint_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_cc_test(
+    name = "fingerprint_op_test",
+    size = "small",
+    srcs = ["fingerprint_op_test.cc"],
+    kernels = [":fingerprint_op"],
+    deps = [
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_kernel_library(
@@ -1229,7 +1266,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     prefix = "unique_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_kernel_library(
@@ -1260,6 +1299,8 @@ tf_kernel_library(
     deps = if_cuda([
         ":cuda_solvers",
         "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
     ]) + ARRAY_DEPS,
 )
 
@@ -1268,7 +1309,9 @@ cc_library(
     deps = [
         ":ragged_gather_op",
         ":ragged_range_op",
+        ":ragged_tensor_from_variant_op",
         ":ragged_tensor_to_sparse_kernel",
+        ":ragged_tensor_to_variant_op",
     ],
 )
 
@@ -1335,6 +1378,56 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_tensor_to_variant_op",
+    srcs = ["ragged_tensor_to_variant_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_tensor_from_variant_op",
+    srcs = ["ragged_tensor_from_variant_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_to_variant_op_test",
+    size = "small",
+    srcs = ["ragged_tensor_to_variant_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_to_variant_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_tensor_from_variant_op_test",
+    size = "small",
+    srcs = ["ragged_tensor_from_variant_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_tensor_from_variant_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1510,6 +1603,9 @@ tf_cuda_cc_test(
     name = "conv_ops_benchmark_test",
     size = "medium",
     srcs = ["conv_ops_benchmark_test.cc"],
+    tags = [
+        "nomac",  # b/132448918
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -1520,10 +1616,54 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "conv_grad_filter_ops_benchmark_test",
+    size = "medium",
+    srcs = ["conv_grad_filter_ops_benchmark_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":host_constant_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "conv_grad_input_ops_benchmark_test",
+    size = "medium",
+    srcs = ["conv_grad_input_ops_benchmark_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":host_constant_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -1648,6 +1788,26 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+    ],
+)
+
+tf_cc_test(
+    name = "in_topk_op_test",
+    size = "small",
+    srcs = ["in_topk_op_test.cc"],
+    deps = [
+        ":in_topk_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
     ],
 )
 
@@ -2229,7 +2389,9 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
-    ] + if_cuda(["@cub_archive//:cub"]),
+    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_kernel_library(
@@ -2472,6 +2634,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -2484,6 +2647,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
         "//third_party/eigen3",
     ],
 )
@@ -2495,11 +2659,13 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream",
         "@com_google_absl//absl/strings",
     ],
@@ -2596,7 +2762,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 tf_kernel_library(
@@ -2895,7 +3061,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_reader_op",
     prefix = "identity_reader_op",
-    deps = IO_DEPS,
+    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 tf_kernel_library(
@@ -2961,7 +3127,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "whole_file_read_ops",
     prefix = "whole_file_read_ops",
-    deps = IO_DEPS,
+    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
 )
 
 tf_cc_tests(
@@ -3009,6 +3175,7 @@ cc_library(
         ":self_adjoint_eig_op",
         ":self_adjoint_eig_v2_op",
         ":svd_op",
+        ":tridiagonal_matmul_op",
         ":tridiagonal_solve_op",
     ],
 )
@@ -3017,7 +3184,7 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
-    # @local_config_cuda//cuda:cusolver, //third_party/eigen3:blas,
+    # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
@@ -3144,6 +3311,15 @@ tf_kernel_library(
     prefix = "matrix_triangular_solve_op",
     deps = LINALG_DEPS + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
+    ]),
+)
+
+tf_kernel_library(
+    name = "tridiagonal_matmul_op",
+    srcs = ["tridiagonal_matmul_op.cc"],
+    gpu_srcs = ["tridiagonal_matmul_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
     ]),
 )
 
@@ -3481,7 +3657,11 @@ tf_kernel_library(
     name = "reduction_ops",
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
-    deps = MATH_DEPS + [":transpose_functor"] + if_cuda(["@cub_archive//:cub"]),
+    deps = MATH_DEPS + [":transpose_functor"] + if_cuda([
+        "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_kernel_library(
@@ -3503,7 +3683,11 @@ tf_kernel_library(
         "scan_ops_gpu_float.cu.cc",
         "scan_ops_gpu_half.cu.cc",
     ],
-    deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
+    deps = MATH_DEPS + if_cuda([
+        "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_kernel_library(
@@ -3662,19 +3846,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
-    ],
-)
-
-tf_cc_test(
-    name = "batch_matmul_op_common_test",
-    size = "small",
-    srcs = ["batch_matmul_op_common_test.cc"],
-    deps = [
-        ":batch_matmul_op",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
     ],
 )
 
@@ -3943,6 +4114,8 @@ tf_kernel_library(
     ] + if_cuda([
         "@cub_archive//:cub",
         "@local_config_cuda//cuda:cudnn_header",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
     ]),
 )
 
@@ -4023,11 +4196,16 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-    deps = NN_DEPS + [":redux_functor"] + if_cuda([
+    deps = NN_DEPS + [
+        ":redux_functor",
+    ] + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
         "//tensorflow/core:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
     ]),
 )
 
@@ -4036,13 +4214,15 @@ tf_kernel_library(
     prefix = "fused_batch_norm_op",
     deps = NN_DEPS + [
         ":fill_functor",
-    ],
+    ] + if_cuda([
+        "//tensorflow/core:stream_executor",
+    ]),
 )
 
 tf_kernel_library(
     name = "in_topk_op",
     prefix = "in_topk_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + [":reduction_ops"],
 )
 
 tf_kernel_library(
@@ -4060,9 +4240,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "softmax_op",
     prefix = "softmax_op",
-    deps = NN_DEPS + if_cuda([
+    deps = NN_DEPS + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
     ]),
 )
 
@@ -4095,7 +4278,11 @@ tf_kernel_library(
         "topk_op_gpu_int8.cu.cc",
         "topk_op_gpu_uint8.cu.cc",
     ],
-    deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]),
+    deps = NN_DEPS + if_cuda([
+        "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_kernel_library(
@@ -4118,7 +4305,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ] + if_cuda(["@cub_archive//:cub"]),
+    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_kernel_library(
@@ -4129,7 +4318,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ] + if_cuda(["@cub_archive//:cub"]),
+    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_kernel_library(
@@ -4142,7 +4333,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_grad",
-    ] + if_cuda(["@cub_archive//:cub"]),
+    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
+        "@rocprim_archive//:rocprim",
+    ]),
 )
 
 tf_cuda_cc_test(
@@ -4716,9 +4909,12 @@ tf_kernel_library(
     deps = SPARSE_DEPS + [
         ":bounds_check",
         "//third_party/eigen3",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
     ]),
 )
 
@@ -4871,6 +5067,7 @@ STATE_DEPS = [
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
@@ -4980,9 +5177,11 @@ cc_library(
         ":string_format_op",
         ":string_join_op",
         ":string_length_op",
+        ":string_lower_op",
         ":string_split_op",
         ":string_strip_op",
         ":string_to_hash_bucket_op",
+        ":string_upper_op",
         ":substr_op",
         ":unicode_ops",
         ":unicode_script_op",
@@ -5119,6 +5318,24 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "string_lower_op",
+    prefix = "string_lower_op",
+    deps = STRING_DEPS + [
+        "@com_google_absl//absl/strings",
+        "@icu//:common",
+    ],
+)
+
+tf_kernel_library(
+    name = "string_upper_op",
+    prefix = "string_upper_op",
+    deps = STRING_DEPS + [
+        "@com_google_absl//absl/strings",
+        "@icu//:common",
+    ],
+)
+
+tf_kernel_library(
     name = "substr_op",
     prefix = "substr_op",
     deps = STRING_DEPS,
@@ -5210,9 +5427,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
         ":reduction_ops",
+    ]) + if_cuda([
         "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@rocprim_archive//:rocprim",
     ]),
 )
 
@@ -5565,8 +5785,6 @@ filegroup(
     name = "mobile_srcs",
     srcs = [
         "avgpooling_op.h",
-        "batch_matmul_op_common.cc",
-        "batch_matmul_op_common.h",
         "batch_util.h",
         "cwise_ops.h",
         "cwise_ops_common.h",
@@ -5757,7 +5975,6 @@ filegroup(
         "initializable_lookup_table.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
-        "logging_ops.h",
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",
@@ -5919,8 +6136,10 @@ filegroup(
         "dynamic_stitch_op.cc",
         "fft_ops.cc",
         "in_topk_op.cc",
+        "in_topk_op.h",
         "initializable_lookup_table.cc",
         "logging_ops.cc",
+        "logging_ops.h",
         "lookup_table_init_op.cc",
         "lookup_table_op.cc",
         "lookup_util.cc",
@@ -6038,6 +6257,7 @@ filegroup(
 )
 
 ANDROID_TEXTUAL_HDRS = [
+    "eigen_spatial_convolutions-inl.h",
     "gather_nd_op_cpu_impl.h",
     "gemm_functors.h",
     "mirror_pad_op_cpu_impl.h",
@@ -6067,7 +6287,6 @@ filegroup(
             "*_3d*",
             "*.cu.*",
             # Ops already in android_srcs
-            "batch_matmul_op_common.cc",
             "pooling_ops_common.cc",
             # Ops which we are currently excluding because they are likely
             # not used on Android. Those ops also do not compile if included,
@@ -6107,6 +6326,8 @@ filegroup(
             "batch_kernels.*",
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
+            "string_lower_op.cc",  # Requires ICU for unicode.
+            "string_upper_op.cc",  # Requires ICU for unicode.
             "unicode_ops.cc",
             "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
@@ -6620,6 +6841,28 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_qmatmul_op_test",
+    size = "small",
+    srcs = ["mkl_qmatmul_op_test.cc"],
+    deps = [
+        ":mkl_input_conversion_op",
+        ":mkl_qmatmul_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Android-only test for quantized multiply.
 cc_binary(
     name = "quantized_mul_op_test_android_only",
@@ -6714,6 +6957,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:mkl_graph_util",
         "@gemmlowp",
     ] + mkl_deps(),
 )
@@ -7046,6 +7290,27 @@ tf_cc_test(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_qmatmul_op",
+    srcs = ["mkl_qmatmul_op.cc"],
+    hdrs = [
+        "mkl_quantized_conv_ops.h",
+        "no_op.h",
+    ],
+    deps = [
+        ":bounds_check",
+        ":matmul_op",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ] + mkl_deps(),
+)
+
+tf_mkl_kernel_library(
     name = "mkl_conv_op",
     hdrs = [
         "mkl_quantized_conv_ops.h",
@@ -7056,6 +7321,8 @@ tf_mkl_kernel_library(
         ":bounds_check",
         ":conv_ops",
         ":ops_util",
+        "@com_google_absl//absl/strings",
+        "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -7166,6 +7433,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:mkl_graph_util",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
         "@gemmlowp",
@@ -7284,26 +7552,22 @@ tf_mkl_kernel_library(
         "no_op.h",
         "reference_gemm.h",
     ],
-    deps = if_mkl(
-        [
-            ":concat_lib_hdrs",
-            ":conv_ops",
-            ":cwise_op",
-            ":eigen_helpers",
-            ":image_resizer_state",
-            ":ops_util",
-            ":pooling_ops",
-            ":quantization_utils",
-            ":transpose_functor",
-            "//third_party/eigen3",
-            "@gemmlowp",
-            "@mkl_dnn",
-            "//tensorflow/core:core_cpu",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//third_party/mkl:intel_binary_blob",
-        ],
-    ),
+    deps = [
+        ":concat_lib_hdrs",
+        ":conv_ops",
+        ":cwise_op",
+        ":eigen_helpers",
+        ":image_resizer_state",
+        ":ops_util",
+        ":pooling_ops",
+        ":quantization_utils",
+        ":transpose_functor",
+        "//third_party/eigen3",
+        "@gemmlowp",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ] + mkl_deps(),
 )
 
 tf_cc_test_mkl(
@@ -7414,6 +7678,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/db:sqlite",
         "//tensorflow/core/summary:schema",
@@ -7474,9 +7739,6 @@ tf_kernel_library(
         "@icu//:common",
     ],
 )
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
 
 # Library to link with when compiling the cwise_op kernels directly,
 # e.g. for selective registration.

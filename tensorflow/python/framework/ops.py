@@ -39,6 +39,7 @@ from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
@@ -62,12 +63,22 @@ from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency: ops -> tensor_spec -> ops
+tensor_spec = LazyLoader(
+    "tensor_spec", globals(),
+    "tensorflow.python.framework.tensor_spec")
 
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
 _USE_C_SHAPES = True
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/ops_eager_execution",
+    "Whether ops.enable_eager_execution() is called.")
 
 
 def tensor_id(tensor):
@@ -752,21 +763,32 @@ class _EagerTensorBase(Tensor):
     """
     if self.dtype == dtypes.resource:
       raise ValueError("Resource handles are not convertible to numpy.")
-    return self._cpu_nograd()._numpy()  # pylint: disable=protected-access
+    maybe_arr = self._cpu_nograd()._numpy()  # pylint: disable=protected-access
+    return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
   # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
+  # TODO(slebedev): avoid redundant copy in all of the following methods.
   def __int__(self):
     return int(self.numpy())
+
+  def __long__(self):
+    return long(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
 
   def __index__(self):
-    return int(self.numpy())
+    maybe_arr = self.numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
 
   def __array__(self, dtype=None):
-    return np.array(self.numpy(), dtype=dtype)
+    # This is only called if the buffer interface conversion failed.
+    # Remove once numpy/numpy#13507 is merged and released or py_function
+    # creates EagerTensors with a non-nullptr context.
+    return np.asarray(self.numpy(), dtype=dtype)
 
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
@@ -880,7 +902,10 @@ class _EagerTensorBase(Tensor):
       self_device = self.device
 
       def grad_fun(dresult):
-        return [dresult._copy(device_name=self_device)]
+        return [
+            dresult._copy(device_name=self_device)
+            if hasattr(dresult, "_copy") else dresult
+        ]
 
       tape.record_operation("_copy", [new_tensor], [self], grad_fun)
     return new_tensor
@@ -1683,7 +1708,8 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
-    _get_graph_from_inputs([values, indices, dense_shape])
+    if not isinstance(values, tensor_spec.TensorSpec):
+      _get_graph_from_inputs([values, indices, dense_shape])
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape
@@ -1751,14 +1777,17 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
     if shape is None:
       shape = self._values.shape
     if self._dense_shape is None:
-      return [shape, shape[:1]]  # values, indices
+      return (shape, shape[:1])  # values, indices
     else:
       # values, indices, dense_shape
-      return [shape, shape[:1], tensor_shape.TensorShape([shape.ndims])]
+      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
 
   @property
   def _is_graph_tensor(self):
     return hasattr(self._values, "graph")
+
+  def consumers(self):
+    return self._consumers()
 
 
 IndexedSlicesValue = collections.namedtuple(
@@ -2579,8 +2608,15 @@ class Operation(object):
     func = attr_value_pb2.NameAttrList(name=func_name)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(func=func))
 
+  def _set_func_list_attr(self, attr_name, func_names):
+    """Private method used to set a list(function) attribute in the node_def."""
+    funcs = [attr_value_pb2.NameAttrList(name=func_name)
+             for func_name in func_names]
+    funcs_list = attr_value_pb2.AttrValue.ListValue(func=funcs)
+    self._set_attr(attr_name, attr_value_pb2.AttrValue(list=funcs_list))
+
   def _set_type_list_attr(self, attr_name, types):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(type) attribute in the node_def."""
     if not types:
       return
     if isinstance(types[0], dtypes.DType):
@@ -2589,7 +2625,7 @@ class Operation(object):
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=types_list))
 
   def _set_shape_list_attr(self, attr_name, shapes):
-    """Private method used to set a function attribute in the node_def."""
+    """Private method used to set a list(shape) attribute in the node_def."""
     shapes = [s.as_proto() for s in shapes]
     shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
@@ -3487,13 +3523,6 @@ class Graph(object):
 
     # Add function to graph
     # pylint: disable=protected-access
-    # Handle functions created without using the C API. TODO(apassos,skyewm)
-    # remove this when all functions are generated using the C API by default
-    # as this will be unnecessary.
-    if not function._c_func:
-      serialized = function.definition.SerializeToString()
-      c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-      function._c_func = c_api_util.ScopedTFFunction(c_func)
     gradient = (
         function._grad_func._c_func.func if function._grad_func else None)
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
@@ -5849,6 +5878,7 @@ def enable_eager_execution(config=None, device_policy=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
+  _api_usage_gauge.get_cell().set(True)
   if context.default_execution_mode != context.EAGER_MODE:
     return enable_eager_execution_internal(
         config=config,
@@ -5865,6 +5895,7 @@ def disable_eager_execution():
   created. It can be used at the beginning of the program for complex migration
   projects from TensorFlow 1.x to 2.x.
   """
+  _api_usage_gauge.get_cell().set(False)
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
@@ -5935,8 +5966,8 @@ def enable_eager_execution_internal(config=None,
         (context._context._config, config, context._context._device_policy,
          device_policy, context._context._execution_mode, execution_mode))
   else:
-    raise ValueError(
-        "tf.enable_eager_execution must be called at program startup.")
+    # We already created everything, so update the thread local data.
+    context._context._thread_local_data.is_eager = True
 
   # Monkey patch to get rid of an unnecessary conditional since the context is
   # now initialized.

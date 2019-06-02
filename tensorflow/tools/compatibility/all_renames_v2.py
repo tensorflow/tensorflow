@@ -69,6 +69,22 @@ manual_symbol_renames = {
         "tf.io.gfile.stat",
     "tf.gfile.Walk":
         "tf.io.gfile.walk",
+    "tf.contrib.cluster_resolver.ClusterResolver":
+        "tf.distribute.cluster_resolver.ClusterResolver",
+    "tf.contrib.cluster_resolver.GceClusterResolver":
+        "tf.distribute.cluster_resolver.GCEClusterResolver",
+    "tf.contrib.cluster_resolver.KubernetesClusterResolver":
+        "tf.distribute.cluster_resolver.KubernetesClusterResolver",
+    "tf.contrib.cluster_resolver.SimpleClusterResolver":
+        "tf.distribute.cluster_resolver.SimpleClusterResolver",
+    "tf.contrib.cluster_resolver.SlurmClusterResolver":
+        "tf.distribute.cluster_resolver.SlurmClusterResolver",
+    "tf.contrib.cluster_resolver.TFConfigClusterResolver":
+        "tf.distribute.cluster_resolver.TFConfigClusterResolver",
+    "tf.contrib.cluster_resolver.TPUClusterResolver":
+        "tf.distribute.cluster_resolver.TPUClusterResolver",
+    "tf.contrib.cluster_resolver.UnionClusterResolver":
+        "tf.distribute.cluster_resolver.UnionClusterResolver",
     "tf.contrib.data.AUTOTUNE":
         "tf.data.experimental.AUTOTUNE",
     "tf.contrib.data.Counter":
@@ -159,6 +175,8 @@ manual_symbol_renames = {
         "tf.CriticalSection",
     "tf.contrib.framework.is_tensor":
         "tf.is_tensor",
+    "tf.contrib.framework.load_variable":
+        "tf.train.load_variable",
     "tf.contrib.framework.nest.assert_same_structure":
         "tf.nest.assert_same_structure",
     "tf.contrib.framework.nest.flatten":
@@ -201,6 +219,8 @@ manual_symbol_renames = {
         "tf.sort",
     "tf.contrib.framework.argsort":
         "tf.argsort",
+    "tf.contrib.summary.all_summary_ops":
+        "tf.compat.v1.summary.all_v2_summary_ops",
     "tf.contrib.summary.always_record_summaries":
         "tf.compat.v2.summary.record_if",
     "tf.contrib.summary.audio":
@@ -253,6 +273,8 @@ manual_symbol_renames = {
         "tf.compat.v1.tpu.shard",
     "tf.contrib.tpu.shutdown_system":
         "tf.compat.v1.tpu.shutdown_system",
+    "tf.contrib.training.checkpoints_iterator":
+        "tf.train.checkpoints_iterator",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
     "tf.manip.batch_to_space_nd":
@@ -314,8 +336,6 @@ manual_symbol_renames = {
         "tf.compat.v1.nn.fused_batch_norm",
     "tf.nn.softmax_cross_entropy_with_logits_v2":
         "tf.nn.softmax_cross_entropy_with_logits",
-    "tf.nn.sigmoid_cross_entropy_with_logits":
-        "tf.nn.sigmoid_cross_entropy_with_logits",
     "tf.losses.Reduction.MEAN":
         "tf.compat.v1.losses.Reduction.MEAN",
     "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
@@ -508,10 +528,6 @@ manual_symbol_renames = {
         "tf.nn.conv2d_transpose",
     "tf.test.compute_gradient":
         "tf.compat.v1.test.compute_gradient",
-    "tf.xla.experimental.compile":
-        "tf.xla.experimental.compile",
-    "tf.xla.experimental.jit_scope":
-        "tf.xla.experimental.jit_scope",
 }
 # pylint: enable=line-too-long
 

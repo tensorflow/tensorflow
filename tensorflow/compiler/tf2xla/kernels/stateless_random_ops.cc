@@ -35,7 +35,17 @@ namespace tensorflow {
 
 namespace {
 
-xla::BitGeneratorTy GetBitGeneratorForDevice(absl::string_view) {
+xla::BitGeneratorTy GetBitGeneratorForDevice(
+    absl::string_view device_type_string) {
+  // The Philox algorithm may cause performance regression on other devices.
+  // Turn on the Philox algorithm for the CPU and GPU backends only.
+  if (device_type_string == DEVICE_GPU_XLA_JIT ||
+      device_type_string == DEVICE_CPU_XLA_JIT) {
+    return [](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+      return xla::PhiloxBitGenerator(key, state, shape, /*scramble=*/true);
+    };
+  }
+
   return xla::ThreeFryBitGenerator;
 }
 

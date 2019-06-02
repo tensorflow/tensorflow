@@ -28,6 +28,17 @@ namespace grappler {
 
 Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* output) {
+  bool can_optimize = false;
+  for (const NodeDef& node : item.graph.node()) {
+    if (IsAssert(node) || IsCheckNumerics(node) || IsPrint(node)) {
+      can_optimize = true;
+      break;
+    }
+  }
+  if (!can_optimize) {
+    return errors::Aborted("Nothing to do.");
+  }
+
   *output = item.graph;
   for (NodeDef& node : *output->mutable_node()) {
     if (IsAssert(node)) {

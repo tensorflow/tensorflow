@@ -48,7 +48,7 @@ class Member {
   Status SetResourceDeviceName(const Node& node);
   Status SetRequestedDeviceName(const Node& node);
 
-  void FillPossibleDevices(PossibleDevices* possible_device) const;
+  Status FillPossibleDevices(PossibleDevices* possible_device) const;
 
   Status EnsureCompatibilityAcrossResourceEdge(
       const Node& src, const Member& src_root,
@@ -202,9 +202,11 @@ class Member {
 // device is ignored.
 class ColocationGraph {
  public:
-  // graph, flib_def, and device_set must not be null and must outlive this
-  // ColocationGraph. default_device can be null. If not, must outlive this.
-  ColocationGraph(const Graph* graph, const FunctionLibraryDefinition* flib_def,
+  // graph, flib_def, and device_set must not be null and must outlive
+  // this ColocationGraph. default_device can be null. If not, must outlive
+  // this.
+  ColocationGraph(const Graph* graph, const FunctionStack& stack,
+                  const FunctionLibraryDefinition* flib_def,
                   const DeviceSet* device_set, const Device* default_device,
                   bool allow_soft_placement, bool log_device_placement);
 
@@ -338,6 +340,7 @@ class ColocationGraph {
   }
 
   const Graph& graph_;
+  const FunctionStack stack_;
   const FunctionLibraryDefinition& flib_def_;
   std::vector<Member> members_;
   InspectingPlacer inspecting_placer_;

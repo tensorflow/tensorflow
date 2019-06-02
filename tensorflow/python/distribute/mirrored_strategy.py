@@ -429,9 +429,10 @@ class MirroredStrategy(distribute_lib.Strategy):
   The multi-worker version will be added in the future.
 
   Args:
-    devices: a list of device strings.
+    devices: a list of device strings.  If `None`, all available GPUs are used.
+    If no GPUs are found, CPU is used.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
-      set, nccl will be use by default.
+      set, nccl will be used by default.
   """
 
   def __init__(self, devices=None, cross_device_ops=None):
@@ -548,7 +549,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
       for i, d in enumerate(devices):
-        with ops.init_scope(), ops.device(d):
+        with ops.device(d):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = value_list[0].name.split(":")[0]
@@ -558,7 +559,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
             def initial_value_fn(device=d):
-              if context.executing_eagerly():
+              if context.executing_eagerly() or ops.inside_function():
                 init_value = value_list[0].value()
                 return array_ops.identity(init_value)
               else:
@@ -584,7 +585,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
-        dataset, self._input_workers, self._num_replicas_in_sync)
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -597,16 +601,35 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           num_input_pipelines=num_workers,
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
-    return input_lib.InputFunctionIterator(
-        input_fn, self._input_workers, input_contexts)
+    return input_lib.InputFunctionIterator(input_fn, self._input_workers,
+                                           input_contexts,
+                                           self._container_strategy())
 
   def _experimental_distribute_dataset(self, dataset):
-    return input_lib.get_distributed_dataset(dataset, self._input_workers,
-                                             self._num_replicas_in_sync)
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    input_contexts = []
+    num_workers = self._input_workers.num_workers
+    for i in range(num_workers):
+      input_contexts.append(distribute_lib.InputContext(
+          num_input_pipelines=num_workers,
+          input_pipeline_id=i,
+          num_replicas_in_sync=self._num_replicas_in_sync))
+
+    return input_lib.DistributedDatasetsFromFunction(
+        dataset_fn,
+        self._input_workers,
+        input_contexts,
+        self._container_strategy())
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -956,20 +979,20 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     # `tf.function` and there is a merge_call in `fn`. This breaks because each
     # thread tries to create a distinct tf.function. Each tf.function creation
     # takes a lock, and so if there is a merge call in the middle, the lock is
-    # never releases and subsequent replica threads cannot proceed to define
+    # never released and subsequent replica threads cannot proceed to define
     # their own functions. Checking for the graph being the same is one way for
     # us to check this didn't happen.
     if ops.get_default_graph() != t.graph:
       raise RuntimeError(
-          "`merge_call` called while defining a new graph. "
-          "This can happen if the function `fn` passed to "
-          "`strategy.experimental_run()` or "
-          "`strategy.extended.call_for_each_replica()` is decorated with "
-          "`@tf.function`. In this case, wrap the call to "
-          "`strategy.experimental_run()` or "
-          "`strategy.extended.call_for_each_replica()` with `@tf.function` "
-          "instead of `fn`. This will avoid mismatching graphs and also "
-          "improve performance.")
+          "`merge_call` called while defining a new graph or a tf.function. "
+          "This can often happen if the function `fn` passed to "
+          "`strategy.experimental_run()` is decorated with "
+          "`@tf.function` (or contains a nested `@tf.function`), and `fn` "
+          "contains a synchronization point, such as aggregating gradients. "
+          "This behavior is not yet supported. Instead, please wrap the entire "
+          "call `strategy.experimental_run(fn)` in a `@tf.function`, and avoid "
+          "nested `tf.function`s that may potentially cross a synchronization "
+          "boundary.")
 
     t.has_paused.set()
     t.should_run.wait()

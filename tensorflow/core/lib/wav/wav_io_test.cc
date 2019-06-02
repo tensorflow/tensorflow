@@ -204,7 +204,7 @@ TEST(WavIO, ChunkSizeOverflow) {
       wav_data_string, &decoded_audio, &decoded_sample_count,
       &decoded_channel_count, &decoded_sample_rate);
   EXPECT_FALSE(decode_status.ok());
-  EXPECT_TRUE(str_util::StrContains(decode_status.error_message(), "too large"))
+  EXPECT_TRUE(absl::StrContains(decode_status.error_message(), "too large"))
       << decode_status.error_message();
 }
 

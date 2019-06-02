@@ -32,6 +32,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -51,6 +52,10 @@ __all__ = [
     "get_local_variable", "variable_scope", "variable_op_scope",
     "no_regularizer", "VariableSynchronization", "VariableAggregation"
 ]
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/resource_variables",
+    "Whether variable_scope.enable_resource_variables() is called.")
 
 
 class _PartitionInfo(object):
@@ -226,6 +231,7 @@ def enable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = True
+  _api_usage_gauge.get_cell().set(True)
 
 
 @tf_export(v1=["resource_variables_enabled"])
@@ -259,6 +265,7 @@ def disable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = False
+  _api_usage_gauge.get_cell().set(False)
 
 
 class _VariableStore(object):
@@ -893,7 +900,7 @@ class _VariableStore(object):
       else:
         # Instantiate initializer if provided initializer is a type object.
         if tf_inspect.isclass(initializer):
-          initializer = initializer(dtype=dtype)
+          initializer = initializer()
         if shape is not None and shape.is_fully_defined():
           init_val = lambda: initializer(  # pylint: disable=g-long-lambda
               shape.as_list(),
@@ -2469,6 +2476,7 @@ def default_variable_creator(next_creator=None, **kwargs):
   use_resource = kwargs.get("use_resource", None)
   synchronization = kwargs.get("synchronization", None)
   aggregation = kwargs.get("aggregation", None)
+  shape = kwargs.get("shape", None)
 
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
@@ -2490,7 +2498,8 @@ def default_variable_creator(next_creator=None, **kwargs):
         import_scope=import_scope,
         distribute_strategy=distribute_strategy,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
   else:
     return variables.RefVariable(
         initial_value=initial_value,
@@ -2505,7 +2514,8 @@ def default_variable_creator(next_creator=None, **kwargs):
         expected_shape=expected_shape,
         import_scope=import_scope,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
 
 
 def default_variable_creator_v2(next_creator=None, **kwargs):
@@ -2523,6 +2533,7 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
   distribute_strategy = kwargs.get("distribute_strategy", None)
   synchronization = kwargs.get("synchronization", None)
   aggregation = kwargs.get("aggregation", None)
+  shape = kwargs.get("shape", None)
 
   return resource_variable_ops.ResourceVariable(
       initial_value=initial_value,
@@ -2536,7 +2547,8 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
       import_scope=import_scope,
       distribute_strategy=distribute_strategy,
       synchronization=synchronization,
-      aggregation=aggregation)
+      aggregation=aggregation,
+      shape=shape)
 
 
 variables.default_variable_creator = default_variable_creator

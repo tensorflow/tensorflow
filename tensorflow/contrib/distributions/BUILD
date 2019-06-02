@@ -2,12 +2,13 @@
 #   Contains ops for statistical distributions (with pdf, cdf, sample, etc...).
 #   APIs here are meant to evolve over time.
 
-package(default_visibility = [
-    "//learning/brain/contrib/bayesflow:__subpackages__",
-    "//tensorflow:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//learning/brain/contrib/bayesflow:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -94,7 +95,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "@six_archive//:six",
         "//tensorflow/contrib/learn",
-        "//tensorflow/contrib/learn:head_test",
+        "//tensorflow/contrib/learn:head_test_lib",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",

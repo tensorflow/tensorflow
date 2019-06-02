@@ -243,7 +243,7 @@ class PlacerTest : public ::testing::Test {
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
   Status Place(Graph* graph, DeviceSet* devices, bool allow_soft_placement,
                bool log_device_placement) {
-    Placer placer(graph, &graph->flib_def(), devices, nullptr,
+    Placer placer(graph, "", &graph->flib_def(), devices, nullptr,
                   allow_soft_placement, log_device_placement);
     return placer.Run();
   }
@@ -280,7 +280,7 @@ class PlacerTest : public ::testing::Test {
 
     RebuildNodeNameMap(*graph);
 
-    Placer placer(graph, &graph->flib_def(), devices, nullptr,
+    Placer placer(graph, "", &graph->flib_def(), devices, nullptr,
                   allow_soft_placement, log_device_placement);
     return placer.Run();
   }
@@ -2815,6 +2815,128 @@ TEST_F(NestedPlacerTest, NestedTwoFunctionsBackToBack) {
       "Nodes were connected by a reference connection (requiring them to be on "
       "the same device), but the two nodes were assigned two different "
       "devices"))
+      << s.ToString();
+}
+
+FunctionDef RecursiveResourceIdentity() {
+  return FDH::Create(
+      // Name
+      "RecursiveResourceIdentity",
+      // Args
+      {"x: resource"},
+      // Return values
+      {"y: resource"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"out"},
+           "PartitionedCall",
+           {"x"},
+           {{"Tin", DataTypeSlice{DT_RESOURCE}},
+            {"Tout", DataTypeSlice{DT_RESOURCE}},
+            {"f", FDH::FunctionRef("RecursiveResourceIdentity", {})}}},
+      },
+      // Output mapping
+      {{"y", "out:output:0"}});
+}
+
+TEST_F(NestedPlacerTest, DirectRecursion) {
+  GraphDef graph = GDef(
+      {
+          NDef("a", "_Arg", {}, {{"T", DT_RESOURCE}}),
+          NDef("y", "PartitionedCall", {"a"},
+               {{"Tin", DataTypeSlice{DT_RESOURCE}},
+                {"Tout", DataTypeSlice{DT_RESOURCE}},
+                {"f", FDH::FunctionRef("RecursiveResourceIdentity", {})}}),
+          NDef("r1", "_Retval", {"y:0"}, {{"T", DT_RESOURCE}}),
+      },
+      // FunctionLib
+      {RecursiveResourceIdentity()});
+
+  Graph g(OpRegistry::Global());
+  TF_EXPECT_OK(BuildGraph(graph, &g));
+
+  Status s = CallOptPassesAndPlace(&g);
+  EXPECT_EQ(error::UNIMPLEMENTED, s.code()) << s.ToString();
+  EXPECT_TRUE(absl::StrContains(
+      s.error_message(),
+      "Recursive function calls are not supported. Node {{node out}} inside "
+      "the body of {{function_node RecursiveResourceIdentity}} calls function "
+      "{{function_node RecursiveResourceIdentity}}"))
+      << s.ToString();
+}
+
+FunctionDef RecursiveF1() {
+  return FDH::Create(
+      // Name
+      "RecursiveF1",
+      // Args
+      {"x: resource"},
+      // Return values
+      {"y: resource"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"out"},
+           "PartitionedCall",
+           {"x"},
+           {{"Tin", DataTypeSlice{DT_RESOURCE}},
+            {"Tout", DataTypeSlice{DT_RESOURCE}},
+            {"f", FDH::FunctionRef("RecursiveF2", {})}}},
+      },
+      // Output mapping
+      {{"y", "out:output:0"}});
+}
+
+FunctionDef RecursiveF2() {
+  return FDH::Create(
+      // Name
+      "RecursiveF2",
+      // Args
+      {"x: resource"},
+      // Return values
+      {"y: resource"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"out"},
+           "PartitionedCall",
+           {"x"},
+           {{"Tin", DataTypeSlice{DT_RESOURCE}},
+            {"Tout", DataTypeSlice{DT_RESOURCE}},
+            {"f", FDH::FunctionRef("RecursiveF1", {})}}},
+      },
+      // Output mapping
+      {{"y", "out:output:0"}});
+}
+
+TEST_F(NestedPlacerTest, IndirectRecursion) {
+  GraphDef graph = GDef(
+      {
+          NDef("a", "_Arg", {}, {{"T", DT_RESOURCE}}),
+          NDef("y", "PartitionedCall", {"a"},
+               {{"Tin", DataTypeSlice{DT_RESOURCE}},
+                {"Tout", DataTypeSlice{DT_RESOURCE}},
+                {"f", FDH::FunctionRef("RecursiveF1", {})}}),
+          NDef("r1", "_Retval", {"y:0"}, {{"T", DT_RESOURCE}}),
+      },
+      // FunctionLib
+      {RecursiveF1(), RecursiveF2()});
+
+  Graph g(OpRegistry::Global());
+  TF_EXPECT_OK(BuildGraph(graph, &g));
+
+  Status s = CallOptPassesAndPlace(&g);
+  EXPECT_EQ(error::UNIMPLEMENTED, s.code()) << s.ToString();
+  EXPECT_TRUE(absl::StrContains(
+      s.error_message(),
+      "Recursive function calls are not supported. Node {{node out}} inside "
+      "the body of {{function_node RecursiveF2}} calls function "
+      "{{function_node RecursiveF1}} which is already present in the call "
+      "stack"))
       << s.ToString();
 }
 

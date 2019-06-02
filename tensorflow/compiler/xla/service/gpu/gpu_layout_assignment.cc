@@ -57,9 +57,11 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
-  // If we're not Volta or not fp16, the decision is easy: Use NCHW.
-  if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16 &&
-        IsVoltaOrLater(*stream_executor))) {
+  // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
+  // NCHW.
+  if (instr->operand(0)->shape().element_type() != xla::PrimitiveType::F16 ||
+      !IsVoltaOrLater(*stream_executor) ||
+      instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -32,28 +33,50 @@ limitations under the License.
 
 namespace xla {
 
-// Converts a pybind11-style NumPy dtype to a PrimitiveType.
-StatusOr<PrimitiveType> NumpyTypeToPrimitiveType(
-    const pybind11::dtype& np_type);
+// Helper that converts a failing StatusOr to an exception.
+// For use only inside pybind11 code.
+template <typename T>
+T ValueOrThrow(StatusOr<T> v) {
+  if (!v.ok()) {
+    throw std::runtime_error(v.status().ToString());
+  }
+  return v.ConsumeValueOrDie();
+}
+
+// Converts a NumPy dtype to a PrimitiveType.
+StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
+
+// Converts a PrimitiveType to a Numpy dtype.
+StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
 // buffers with the literals. Takes ownership of `literal` and keeps the
 // necessary pieces alive using Python reference counting.
 // Requires the GIL.
-StatusOr<pybind11::object> LiteralToPython(
-    std::unique_ptr<xla::Literal> literal);
+StatusOr<pybind11::object> LiteralToPython(std::shared_ptr<Literal> literal);
 
 // Converts a Python object into an XLA shape and a vector of leaf buffers.
 // The leaf buffers correspond to a depth-first, left-to-right traversal of
 // the Python value.
 // Requires the GIL.
 struct PythonBufferTree {
-  absl::InlinedVector<xla::BorrowingLiteral, 1> leaves;
-  xla::Shape shape;
+  // Holds a reference to the arrays pointed to by `leaves`, since we may
+  // need to make a copy if the array is not in a C-style layout.
+  absl::InlinedVector<pybind11::object, 1> arrays;
+  absl::InlinedVector<BorrowingLiteral, 1> leaves;
+  Shape shape;
 };
 StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
+
+// Converts a sequence of int64s to a Python tuple of ints.
+// Pybind11 by default converts a std::vector<int64> to a Python list; for
+// shapes we frequently want a tuple instead.
+pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
+
+// Converts a Python sequence of integers to a std::vector<int64>
+std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
 
 }  // namespace xla
 
@@ -64,12 +87,16 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(
 namespace pybind11 {
 namespace detail {
 
+// When absl::optional is an alias for std::optional, the type_caster
+// specializations are provided by pybind11.
+#ifndef ABSL_HAVE_STD_OPTIONAL
 // absl::optional
 template <typename T>
 struct type_caster<absl::optional<T>> : optional_caster<absl::optional<T>> {};
 
 template <>
 struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
+#endif
 
 // absl::Span
 template <typename T>
@@ -147,9 +174,13 @@ struct type_caster<xla::BorrowingLiteral> {
  public:
   PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
 
+  // Pybind appears to keep type_casters alive until the callee has run.
+  pybind11::array array;
+
   bool load(handle handle, bool) {
-    pybind11::array array = pybind11::array::ensure(
-        handle, pybind11::array::c_style | pybind11::array::forcecast);
+    array = pybind11::array::ensure(
+        handle, pybind11::array::c_style |
+                    pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
     if (!array) return false;
     pybind11::buffer_info buffer_info = array.request();
 
@@ -157,7 +188,7 @@ struct type_caster<xla::BorrowingLiteral> {
     for (int i = 0; i < array.ndim(); ++i) {
       dims[i] = array.shape(i);
     }
-    auto type = xla::NumpyTypeToPrimitiveType(array.dtype());
+    auto type = xla::DtypeToPrimitiveType(array.dtype());
     if (!type.ok()) {
       throw std::runtime_error(type.status().ToString());
     }

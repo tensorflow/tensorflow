@@ -67,15 +67,11 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
 filegroup(
     name = "mobile_srcs",
-    srcs = [
-        "profiler_session.cc",
-        "profiler_session.h",
-    ],
+    srcs = glob(["*"]),
     visibility = ["//visibility:public"],
 )

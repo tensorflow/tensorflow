@@ -23,7 +23,7 @@ from absl import flags
 
 import numpy as np
 import tensorflow.compat.v2 as tf
-from tensorflow.examples.saved_model.integration_tests import util
+import tensorflow_hub as hub
 
 FLAGS = flags.FLAGS
 
@@ -42,7 +42,8 @@ def train(fine_tuning):
   l = tf.keras.layers
   model = tf.keras.Sequential()
   model.add(l.Reshape((), batch_input_shape=[None, 1], dtype=tf.string))
-  model.add(util.CustomLayer(module, output_shape=[10], trainable=fine_tuning))
+  # TODO(b/124219898): output_shape should be optional.
+  model.add(hub.KerasLayer(module, output_shape=[10], trainable=fine_tuning))
   model.add(l.Dense(100, activation="relu"))
   model.add(l.Dense(50, activation="relu"))
   model.add(l.Dense(1, activation="sigmoid"))

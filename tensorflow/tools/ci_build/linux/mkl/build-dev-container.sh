@@ -146,7 +146,7 @@ function test_container()
   debug "ID of the running docker container: ${CONTAINER_ID}"
 
   debug "Performing basic sanity checks on the running container..."
-  TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'import tensorflow as tf; print(tf.pywrap_tensorflow.IsMklEnabled())'")
+  TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'")
   debug "Running test command: ${TEST_CMD}"
   if [ "${TEST_CMD}" = "True" ] ; then
       echo "PASS: MKL enabled test in ${TEMP_IMAGE_NAME}"

@@ -1580,6 +1580,9 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
+  if (IsCustomFusion()) {
+    return Status::OK();
+  }
   absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
   for (int i = 0; i < operand_count(); ++i) {
@@ -1593,8 +1596,8 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return Status::OK();
   }
-  TF_RETURN_IF_ERROR(
-      fused_instructions_computation()->RemoveUnusedParameters());
+  TF_RETURN_IF_ERROR(fused_instructions_computation()
+                         ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return Status::OK();
 }
@@ -2046,13 +2049,13 @@ HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, absl::string_view opaque)
+    absl::string_view custom_call_target, string opaque)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
-      opaque_(opaque.begin(), opaque.end()),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false) {
+  set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -2060,16 +2063,16 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target, absl::string_view opaque,
+    absl::string_view custom_call_target, string opaque,
     absl::Span<const Shape> operand_shapes_with_layout)
     : HloInstruction(HloOpcode::kCustomCall, shape),
       custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
-      opaque_(opaque.begin(), opaque.end()),
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(true),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
                                   operand_shapes_with_layout.end()) {
+  set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -2085,7 +2088,6 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
         *convolution_dimension_numbers_;
   }
   proto.set_custom_call_target(custom_call_target_);
-  proto.set_custom_call_opaque(opaque_);
   proto.set_feature_group_count(feature_group_count_);
   proto.set_batch_group_count(batch_group_count_);
   if (layout_constrained()) {
@@ -2119,11 +2121,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
   // an HloComputation.
   extra.push_back(
       StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
-  // If the opaque string becomes enormous we may want to reconsider printing
-  // this inline and consider other options.
-  if (!opaque_.empty()) {
-    extra.push_back(StrCat("opaque=\"", CEscape(opaque_), "\""));
-  }
+
   if (layout_constrained()) {
     std::vector<string> shape_strings;
     for (const Shape& shape : operand_shapes_with_layout_) {
@@ -2171,8 +2169,9 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       }
     }
   }
-  return custom_call_target_ == casted_other.custom_call_target_ &&
-         opaque_ == casted_other.opaque_;
+  // Note: backend_config comparison is done in Identical, which is the
+  // intended/exposed way to compare computations, and so not repeated here.
+  return custom_call_target_ == casted_other.custom_call_target_;
 }
 
 std::unique_ptr<HloInstruction>

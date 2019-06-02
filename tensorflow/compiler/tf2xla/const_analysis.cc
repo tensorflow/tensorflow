@@ -125,6 +125,8 @@ Status BackwardsConstAnalysis(const Graph& g,
   return status;
 }
 
+namespace {
+
 Status GetFunctionBody(FunctionLibraryRuntime* flib_runtime, const Node* node,
                        StringPiece func_attr_name, const FunctionBody** fbody) {
   NameAttrList name_attr_list;
@@ -135,6 +137,50 @@ Status GetFunctionBody(FunctionLibraryRuntime* flib_runtime, const Node* node,
   *fbody = flib_runtime->GetFunctionBody(func_handle);
   return Status::OK();
 }
+
+Status GetFunctionBodies(FunctionLibraryRuntime* flib_runtime, const Node* node,
+                         StringPiece func_list_attr_name,
+                         std::vector<const FunctionBody*>* fbodies) {
+  std::vector<NameAttrList> name_attr_lists;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(node->def(), func_list_attr_name, &name_attr_lists));
+  for (const NameAttrList& name_attr_list : name_attr_lists) {
+    FunctionLibraryRuntime::Handle func_handle;
+    TF_RETURN_IF_ERROR(flib_runtime->Instantiate(
+        name_attr_list.name(), AttrSlice(&name_attr_list.attr()),
+        &func_handle));
+    fbodies->push_back(flib_runtime->GetFunctionBody(func_handle));
+  }
+  return Status::OK();
+}
+
+Status CondConstInputIndices(
+    absl::Span<const FunctionBody* const> branch_bodies,
+    std::vector<int>* const_input_idxs, FunctionLibraryRuntime* flib_runtime) {
+  TF_RET_CHECK(!branch_bodies.empty());
+  TF_RET_CHECK(branch_bodies[0] != nullptr);
+  int num_inputs = branch_bodies[0]->fdef.signature().input_arg_size();
+  // Stores indices of the "branch function" inputs that are expected to be
+  // compile time constants.
+  std::vector<bool> compile_time_const_arg_indices(num_inputs);
+  for (auto fbody : branch_bodies) {
+    TF_RET_CHECK(fbody != nullptr);
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+        *(fbody->graph), &compile_time_const_arg_indices,
+        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+  }
+  for (int i = 0; i < compile_time_const_arg_indices.size(); i++) {
+    if (compile_time_const_arg_indices[i]) {
+      // The 0th input is the pred or branch index, which is not passed to the
+      // branches. So the i'th input of a branch function corresponds to the
+      // i + 1'th input of the If/Case op.
+      const_input_idxs->push_back(i + 1);
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 Status GetCompileTimeConstInputs(const Node* node,
                                  std::vector<int>* const_input_idxs,
@@ -179,6 +225,7 @@ Status GetCompileTimeConstInputs(const Node* node,
         }
       }
     }
+    return Status::OK();
   } else if (node->type_string() == "If") {
     const FunctionBody* fthen = nullptr;
     const FunctionBody* felse = nullptr;
@@ -186,31 +233,17 @@ Status GetCompileTimeConstInputs(const Node* node,
         GetFunctionBody(flib_runtime, node, "then_branch", &fthen));
     TF_RETURN_IF_ERROR(
         GetFunctionBody(flib_runtime, node, "else_branch", &felse));
-    TF_RET_CHECK(fthen);
-    TF_RET_CHECK(felse);
-    int num_inputs = fthen->fdef.signature().input_arg_size();
-    // Stores indices of the "branch function" inputs that are expected to be
-    // compile time constants.
-    std::vector<bool> compile_time_const_arg_indices(num_inputs);
-    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-        *(fthen->graph), &compile_time_const_arg_indices,
-        /*compile_time_const_nodes=*/nullptr, flib_runtime));
-    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-        *(felse->graph), &compile_time_const_arg_indices,
-        /*compile_time_const_nodes=*/nullptr, flib_runtime));
-    for (int i = 0; i < compile_time_const_arg_indices.size(); i++) {
-      if (compile_time_const_arg_indices[i]) {
-        // The 0th input is the loop condition which is not passed to the
-        // branches. So the i'th input of a branch function corresponds to
-        // i + 1'th input of the If op.
-        const_input_idxs->push_back(i + 1);
-      }
-    }
+    return CondConstInputIndices({fthen, felse}, const_input_idxs,
+                                 flib_runtime);
+  } else if (node->type_string() == "Case") {
+    std::vector<const FunctionBody*> branch_bodies;
+    TF_RETURN_IF_ERROR(
+        GetFunctionBodies(flib_runtime, node, "branches", &branch_bodies));
+    return CondConstInputIndices(branch_bodies, const_input_idxs, flib_runtime);
   } else {
     return XlaOpRegistry::CompileTimeConstantInputs(node->def(), node->op_def(),
                                                     const_input_idxs);
   }
-  return Status::OK();
 }
 
 }  // namespace tensorflow
