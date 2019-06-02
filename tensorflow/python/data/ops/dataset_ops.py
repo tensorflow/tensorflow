@@ -150,6 +150,10 @@ For example:
     reordered_ds = combined_ds.map(reorder_to_features_and_label)
 
     dump_ds(reordered_ds)
+    
+    
+    # assuming model.compile() for a keras model done earlier
+    model.fit(reordered_ds, epochs=1000)
     ```
   
   
