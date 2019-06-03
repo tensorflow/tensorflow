@@ -157,6 +157,12 @@ public:
   // Returns this op's extra class declaration code.
   StringRef getExtraClassDeclaration() const;
 
+  // Returns the Tablegen definition this operator was constructed from.
+  // TODO(antiagainst,zinenko): do not expose the TableGen record, this is a
+  // temporary solution to OpEmitter requiring a Record because Operator does
+  // not provide enough methods.
+  const llvm::Record &getDef() const;
+
 private:
   // Populates the vectors containing operands, attributes, results and traits.
   void populateOpStructure();

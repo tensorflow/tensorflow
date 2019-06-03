@@ -14,6 +14,12 @@ def OpA : NS_Op<"one_normal_operand_op", []> {
 
 // CHECK-LABEL: OpA definitions
 
+// CHECK:      OpAOperandAdaptor::OpAOperandAdaptor
+// CHECK-NEXT: tblgen_operands = values
+
+// CHECK:      OpAOperandAdaptor::input
+// CHECK-NEXT: return tblgen_operands[0]
+
 // CHECK:      void OpA::build
 // CHECK-SAME:   Value *input
 // CHECK:        tblgen_state->operands.push_back(input);
@@ -40,6 +46,16 @@ def OpC : NS_Op<"all_variadic_inputs_op", [SameVariadicOperandSize]> {
   let arguments = (ins Variadic<AnyTensor>:$input1, Variadic<AnyTensor>:$input2);
 }
 
+// CHECK-LABEL: OpCOperandAdaptor::input1
+// CHECK-NEXT:    variadicOperandSize = (tblgen_operands.size() - 0) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 0;
+// CHECK-NEXT:    return {std::next(tblgen_operands.begin(), offset), std::next(tblgen_operands.begin(), offset + variadicOperandSize)};
+
+// CHECK-LABEL: OpCOperandAdaptor::input2
+// CHECK-NEXT:    variadicOperandSize = (tblgen_operands.size() - 0) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 1;
+// CHECK-NEXT:    return {std::next(tblgen_operands.begin(), offset), std::next(tblgen_operands.begin(), offset + variadicOperandSize)};
+
 // CHECK-LABEL: Operation::operand_range OpC::input1()
 // CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 0) / 2;
 // CHECK-NEXT:    offset = 0 + variadicOperandSize * 0;
@@ -58,6 +74,21 @@ def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> 
   let arguments = (ins Variadic<AnyTensor>:$input1, AnyTensor:$input2, Variadic<AnyTensor>:$input3);
 }
 
+// CHECK-LABEL: OpDOperandAdaptor::input1() {
+// CHECK-NEXT:    variadicOperandSize = (tblgen_operands.size() - 1) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 0;
+// CHECK-NEXT:    return {std::next(tblgen_operands.begin(), offset), std::next(tblgen_operands.begin(), offset + variadicOperandSize)};
+
+// CHECK-LABEL: Value *OpDOperandAdaptor::input2() {
+// CHECK-NEXT:    variadicOperandSize = (tblgen_operands.size() - 1) / 2;
+// CHECK-NEXT:    offset = 0 + variadicOperandSize * 1;
+// CHECK-NEXT:    return tblgen_operands[offset];
+
+// CHECK-LABEL: OpDOperandAdaptor::input3() {
+// CHECK-NEXT:    variadicOperandSize = (tblgen_operands.size() - 1) / 2;
+// CHECK-NEXT:    offset = 1 + variadicOperandSize * 1;
+// CHECK-NEXT:    return {std::next(tblgen_operands.begin(), offset), std::next(tblgen_operands.begin(), offset + variadicOperandSize)};
+
 // CHECK-LABEL: Operation::operand_range OpD::input1()
 // CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 1) / 2;
 // CHECK-NEXT:    offset = 0 + variadicOperandSize * 0;
@@ -66,7 +97,7 @@ def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> 
 // CHECK-LABEL: Value *OpD::input2()
 // CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 1) / 2;
 // CHECK-NEXT:    offset = 0 + variadicOperandSize * 1;
-// CHECK-NEXT:    return this->getOperand(offset);
+// CHECK-NEXT:    return this->getOperation()->getOperand(offset);
 
 // CHECK-LABEL: Operation::operand_range OpD::input3()
 // CHECK-NEXT:    variadicOperandSize = (this->getNumOperands() - 1) / 2;
@@ -81,6 +112,21 @@ def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> 
 def OpE : NS_Op<"one_variadic_among_multi_normal_inputs_op", []> {
   let arguments = (ins AnyTensor:$input1, AnyTensor:$input2, Variadic<AnyTensor>:$input3, AnyTensor:$input4, AnyTensor:$input5);
 }
+
+// CHECK-LABEL:  Value *OpEOperandAdaptor::input1() {
+// CHECK-NEXT:    return tblgen_operands[0];
+
+// CHECK-LABEL:  Value *OpEOperandAdaptor::input2() {
+// CHECK-NEXT:    return tblgen_operands[1];
+
+// CHECK-LABEL:  OpEOperandAdaptor::input3() {
+// CHECK-NEXT:    return {std::next(tblgen_operands.begin(), 2), std::next(tblgen_operands.begin(), 2 + tblgen_operands.size() - 4)};
+
+// CHECK-LABEL:  Value *OpEOperandAdaptor::input4() {
+// CHECK-NEXT:    return tblgen_operands[tblgen_operands.size() - 2];
+
+// CHECK-LABEL:  Value *OpEOperandAdaptor::input5() {
+// CHECK-NEXT:    return tblgen_operands[tblgen_operands.size() - 1];
 
 // CHECK-LABEL: Value *OpE::input1()
 // CHECK-NEXT:    return this->getOperation()->getOperand(0);

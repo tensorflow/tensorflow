@@ -49,6 +49,14 @@ class RewritePattern;
 class Type;
 class Value;
 
+/// This is an adaptor from a list of values to named operands of OpTy.  In a
+/// generic operation context, e.g., in dialect conversions, an ordered array of
+/// `Value`s is treated as operands of `OpTy`.  This adaptor takes a reference
+/// to the array and provides accessors with the same names as `OpTy` for
+/// operands.  This makes possible to create function templates that operate on
+/// either OpTy or OperandAdaptor<OpTy> seamlessly.
+template <typename OpTy> using OperandAdaptor = typename OpTy::OperandAdaptor;
+
 /// This is a vector that owns the patterns inside of it.
 using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
 using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;

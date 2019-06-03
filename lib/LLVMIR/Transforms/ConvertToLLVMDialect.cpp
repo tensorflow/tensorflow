@@ -503,6 +503,7 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
     assert(operands.size() == 1 && "dealloc takes one operand");
+    OperandAdaptor<DeallocOp> transformed(operands);
 
     // Insert the `free` declaration if it is not already present.
     Function *freeFunc =
@@ -513,11 +514,12 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
       op->getFunction()->getModule()->getFunctions().push_back(freeFunc);
     }
 
-    auto type = operands[0]->getType().cast<LLVM::LLVMType>();
+    auto type = transformed.memref()->getType().cast<LLVM::LLVMType>();
     auto hasStaticShape = type.getUnderlyingType()->isPointerTy();
     Type elementPtrType = hasStaticShape ? type : type.getStructElementType(0);
-    Value *bufferPtr = extractMemRefElementPtr(
-        rewriter, op->getLoc(), operands[0], elementPtrType, hasStaticShape);
+    Value *bufferPtr =
+        extractMemRefElementPtr(rewriter, op->getLoc(), transformed.memref(),
+                                elementPtrType, hasStaticShape);
     Value *casted = rewriter.create<LLVM::BitcastOp>(
         op->getLoc(), getVoidPtrType(), bufferPtr);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
@@ -542,13 +544,14 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
     auto memRefCastOp = cast<MemRefCastOp>(op);
+    OperandAdaptor<MemRefCastOp> transformed(operands);
     auto targetType = memRefCastOp.getType();
     auto sourceType = memRefCastOp.getOperand()->getType().cast<MemRefType>();
 
     // Copy the data buffer pointer.
     auto elementTypePtr = getMemRefElementPtrType(targetType, lowering);
     Value *buffer =
-        extractMemRefElementPtr(rewriter, op->getLoc(), operands[0],
+        extractMemRefElementPtr(rewriter, op->getLoc(), transformed.source(),
                                 elementTypePtr, sourceType.hasStaticShape());
     // Account for static memrefs as target types
     if (targetType.hasStaticShape())
@@ -583,7 +586,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
           sourceSize == -1
               ? rewriter.create<LLVM::ExtractValueOp>(
                     op->getLoc(), getIndexType(),
-                    operands[0], // NB: dynamic memref
+                    transformed.source(), // NB: dynamic memref
                     getIntegerArrayAttr(rewriter, sourceDynamicDimIdx++))
               : createIndexConstant(rewriter, op->getLoc(), sourceSize);
       newDescriptor = rewriter.create<LLVM::InsertValueOp>(
@@ -612,8 +615,8 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
 
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
-    assert(operands.size() == 1 && "expected exactly one operand");
     auto dimOp = cast<DimOp>(op);
+    OperandAdaptor<DimOp> transformed(operands);
     MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
 
     auto shape = type.getShape();
@@ -630,7 +633,7 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
           ++position;
       }
       rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(
-          op, getIndexType(), operands[0],
+          op, getIndexType(), transformed.memrefOrTensor(),
           getIntegerArrayAttr(rewriter, position));
     } else {
       rewriter.replaceOp(
@@ -759,10 +762,11 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
     auto loadOp = cast<LoadOp>(op);
+    OperandAdaptor<LoadOp> transformed(operands);
     auto type = loadOp.getMemRefType();
 
-    Value *dataPtr = getDataPtr(op->getLoc(), type, operands.front(),
-                                operands.drop_front(), rewriter, getModule());
+    Value *dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
+                                transformed.indices(), rewriter, getModule());
     auto elementType = lowering.convertType(type.getElementType());
 
     rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, elementType,
@@ -778,10 +782,12 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   void rewrite(Operation *op, ArrayRef<Value *> operands,
                PatternRewriter &rewriter) const override {
     auto type = cast<StoreOp>(op).getMemRefType();
+    OperandAdaptor<StoreOp> transformed(operands);
 
-    Value *dataPtr = getDataPtr(op->getLoc(), type, operands[1],
-                                operands.drop_front(2), rewriter, getModule());
-    rewriter.replaceOpWithNewOp<LLVM::StoreOp>(op, operands[0], dataPtr);
+    Value *dataPtr = getDataPtr(op->getLoc(), type, transformed.memref(),
+                                transformed.indices(), rewriter, getModule());
+    rewriter.replaceOpWithNewOp<LLVM::StoreOp>(op, transformed.value(),
+                                               dataPtr);
   }
 };
 

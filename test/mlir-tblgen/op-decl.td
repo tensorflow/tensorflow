@@ -39,9 +39,19 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
 
 // CHECK-LABEL: NS::AOp declarations
 
+// CHECK:  class AOpOperandAdaptor {
+// CHECK:  public:
+// CHECK:    AOpOperandAdaptor(ArrayRef<Value *> values);
+// CHECK:    Value *a();
+// CHECK:    ArrayRef<Value *> b();
+// CHECK:  private:
+// CHECK:    ArrayRef<Value *> tblgen_operands;
+// CHECK:  };
+
 // CHECK: class AOp : public Op<AOp, OpTrait::AtLeastNResults<1>::Impl, OpTrait::HasNoSideEffect, OpTrait::AtLeastNOperands<1>::Impl> {
 // CHECK: public:
 // CHECK:   using Op::Op;
+// CHECK:   using OperandAdaptor = AOpOperandAdaptor;
 // CHECK:   static StringRef getOperationName();
 // CHECK:   Value *a();
 // CHECK:   Operation::operand_range b();

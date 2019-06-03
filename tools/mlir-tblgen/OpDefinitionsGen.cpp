@@ -110,8 +110,8 @@ public:
   void writeDefTo(raw_ostream &os, StringRef namePrefix) const;
 
 private:
-  // Returns true if the given C++ `type` ends with '&' or '*'.
-  static bool endsWithRefOrPtr(StringRef type);
+  // Returns true if the given C++ `type` ends with '&' or '*', or is empty.
+  static bool elideSpaceAfterType(StringRef type);
 
   std::string returnType;
   std::string methodName;
@@ -142,7 +142,8 @@ public:
   // querying properties.
   enum Property {
     MP_None = 0x0,
-    MP_Static = 0x1, // Static method
+    MP_Static = 0x1,      // Static method
+    MP_Constructor = 0x2, // Constructor
   };
 
   OpMethod(StringRef retType, StringRef name, StringRef params,
@@ -168,18 +169,21 @@ private:
   OpMethodBody methodBody;
 };
 
-// Class for holding an op for C++ code emission
-class OpClass {
+// A class used to emit C++ classes from Tablegen.  Contains a list of public
+// methods and a list of private fields to be emitted.
+class Class {
 public:
-  explicit OpClass(StringRef name, StringRef extraClassDeclaration = "");
+  explicit Class(StringRef name);
 
-  // Adds an op trait.
-  void addTrait(Twine trait);
-
-  // Creates a new method in this op's class.
+  // Creates a new method in this class.
   OpMethod &newMethod(StringRef retType, StringRef name, StringRef params = "",
                       OpMethod::Property = OpMethod::MP_None,
                       bool declOnly = false);
+
+  OpMethod &newConstructor(StringRef params = "", bool declOnly = false);
+
+  // Creates a new field in this class.
+  void newField(StringRef type, StringRef name, StringRef defaultValue = "");
 
   // Writes this op's class as a declaration to the given `os`.
   void writeDeclTo(raw_ostream &os) const;
@@ -189,11 +193,27 @@ public:
   // Returns the C++ class name of the op.
   StringRef getClassName() const { return className; }
 
+protected:
+  std::string className;
+  SmallVector<OpMethod, 8> methods;
+  SmallVector<std::string, 4> fields;
+};
+
+// Class for holding an op for C++ code emission
+class OpClass : public Class {
+public:
+  explicit OpClass(StringRef name, StringRef extraClassDeclaration = "");
+
+  // Adds an op trait.
+  void addTrait(Twine trait);
+
+  // Writes this op's class as a declaration to the given `os`.  Redefines
+  // Class::writeDeclTo to also emit traits and extra class declarations.
+  void writeDeclTo(raw_ostream &os) const;
+
 private:
-  StringRef className;
   StringRef extraClassDeclaration;
   SmallVector<std::string, 4> traits;
-  SmallVector<OpMethod, 8> methods;
 };
 } // end anonymous namespace
 
@@ -202,7 +222,7 @@ OpMethodSignature::OpMethodSignature(StringRef retType, StringRef name,
     : returnType(retType), methodName(name), parameters(params) {}
 
 void OpMethodSignature::writeDeclTo(raw_ostream &os) const {
-  os << returnType << (endsWithRefOrPtr(returnType) ? "" : " ") << methodName
+  os << returnType << (elideSpaceAfterType(returnType) ? "" : " ") << methodName
      << "(" << parameters << ")";
 }
 
@@ -224,13 +244,13 @@ void OpMethodSignature::writeDefTo(raw_ostream &os,
     return result;
   };
 
-  os << returnType << (endsWithRefOrPtr(returnType) ? "" : " ") << namePrefix
+  os << returnType << (elideSpaceAfterType(returnType) ? "" : " ") << namePrefix
      << (namePrefix.empty() ? "" : "::") << methodName << "("
      << removeParamDefaultValue(parameters) << ")";
 }
 
-bool OpMethodSignature::endsWithRefOrPtr(StringRef type) {
-  return type.endswith("&") || type.endswith("*");
+bool OpMethodSignature::elideSpaceAfterType(StringRef type) {
+  return type.empty() || type.endswith("&") || type.endswith("*");
 }
 
 OpMethodBody::OpMethodBody(bool declOnly) : isEffective(!declOnly) {}
@@ -287,19 +307,54 @@ void OpMethod::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
   os << "}";
 }
 
+Class::Class(StringRef name) : className(name) {}
+
+OpMethod &Class::newMethod(StringRef retType, StringRef name, StringRef params,
+                           OpMethod::Property property, bool declOnly) {
+  methods.emplace_back(retType, name, params, property, declOnly);
+  return methods.back();
+}
+
+OpMethod &Class::newConstructor(StringRef params, bool declOnly) {
+  return newMethod("", getClassName(), params, OpMethod::MP_Constructor,
+                   declOnly);
+}
+
+void Class::newField(StringRef type, StringRef name, StringRef defaultValue) {
+  std::string varName = formatv("{0} {1}", type, name).str();
+  std::string field = defaultValue.empty()
+                          ? varName
+                          : formatv("{0} = {1}", varName, defaultValue).str();
+  fields.push_back(std::move(field));
+}
+
+void Class::writeDeclTo(raw_ostream &os) const {
+  os << "class " << className << " {\n";
+  os << "public:\n";
+  for (const auto &method : methods) {
+    method.writeDeclTo(os);
+    os << '\n';
+  }
+  os << '\n';
+  os << "private:\n";
+  for (const auto &field : fields)
+    os.indent(2) << field << ";\n";
+  os << "};\n";
+}
+
+void Class::writeDefTo(raw_ostream &os) const {
+  for (const auto &method : methods) {
+    method.writeDefTo(os, className);
+    os << "\n\n";
+  }
+}
+
 OpClass::OpClass(StringRef name, StringRef extraClassDeclaration)
-    : className(name), extraClassDeclaration(extraClassDeclaration) {}
+    : Class(name), extraClassDeclaration(extraClassDeclaration) {}
 
 // Adds the given trait to this op. Prefixes "OpTrait::" to `trait` implicitly.
 void OpClass::addTrait(Twine trait) {
   traits.push_back(("OpTrait::" + trait).str());
-}
-
-OpMethod &OpClass::newMethod(StringRef retType, StringRef name,
-                             StringRef params, OpMethod::Property property,
-                             bool declOnly) {
-  methods.emplace_back(retType, name, params, property, declOnly);
-  return methods.back();
 }
 
 void OpClass::writeDeclTo(raw_ostream &os) const {
@@ -308,20 +363,15 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
     os << ", " << trait;
   os << "> {\npublic:\n";
   os << "  using Op::Op;\n";
+  os << "  using OperandAdaptor = " << className << "OperandAdaptor;\n";
   for (const auto &method : methods) {
     method.writeDeclTo(os);
     os << "\n";
   }
   // TODO: Add line control markers to make errors easier to debug.
-  os << extraClassDeclaration << "\n";
-  os << "};";
-}
-
-void OpClass::writeDefTo(raw_ostream &os) const {
-  for (const auto &method : methods) {
-    method.writeDefTo(os, className);
-    os << "\n\n";
-  }
+  if (!extraClassDeclaration.empty())
+    os << extraClassDeclaration << "\n";
+  os << "};\n";
 }
 
 //===----------------------------------------------------------------------===//
@@ -332,11 +382,11 @@ namespace {
 // Helper class to emit a record into the given output stream.
 class OpEmitter {
 public:
-  static void emitDecl(const Record &def, raw_ostream &os);
-  static void emitDef(const Record &def, raw_ostream &os);
+  static void emitDecl(const Operator &op, raw_ostream &os);
+  static void emitDef(const Operator &op, raw_ostream &os);
 
 private:
-  OpEmitter(const Record &def);
+  OpEmitter(const Operator &op);
 
   void emitDecl(raw_ostream &os);
   void emitDef(raw_ostream &os);
@@ -385,6 +435,8 @@ private:
   void genOpNameGetter();
 
   // The TableGen record for this op.
+  // TODO(antiagainst,zinenko): OpEmitter should not have a Record directly,
+  // it should rather go through the Operator for better abstraction.
   const Record &def;
 
   // The wrapper operator class for querying information from this op.
@@ -398,8 +450,8 @@ private:
 };
 } // end anonymous namespace
 
-OpEmitter::OpEmitter(const Record &def)
-    : def(def), op(def),
+OpEmitter::OpEmitter(const Operator &op)
+    : def(op.getDef()), op(op),
       opClass(op.getCppClassName(), op.getExtraClassDeclaration()) {
   verifyCtx.withOp("(*this->getOperation())");
 
@@ -418,22 +470,19 @@ OpEmitter::OpEmitter(const Record &def)
   genFolderDecls();
 }
 
-void OpEmitter::emitDecl(const Record &def, raw_ostream &os) {
-  OpEmitter(def).emitDecl(os);
+void OpEmitter::emitDecl(const Operator &op, raw_ostream &os) {
+  OpEmitter(op).emitDecl(os);
 }
 
-void OpEmitter::emitDef(const Record &def, raw_ostream &os) {
-  OpEmitter(def).emitDef(os);
+void OpEmitter::emitDef(const Operator &op, raw_ostream &os) {
+  OpEmitter(op).emitDef(os);
 }
 
 void OpEmitter::emitDecl(raw_ostream &os) {
-  os << formatv(opCommentHeader, op.getQualCppClassName(), "declarations");
   opClass.writeDeclTo(os);
 }
 
 void OpEmitter::emitDef(raw_ostream &os) {
-  os << formatv(opCommentHeader, op.getQualCppClassName(), "definitions");
-
   opClass.writeDefTo(os);
 }
 
@@ -480,7 +529,21 @@ void OpEmitter::genAttrGetters() {
   }
 }
 
-void OpEmitter::genNamedOperandGetters() {
+// Generates the named operand getter methods for the given Operator `op` and
+// puts them in `opClass`.  Uses `rangeType` as the return type of getters that
+// return a range of operands (individual operands are `Value *` and each
+// element in the range must also be `Value *`); use `rangeBeginCall` to get an
+// iterator to the beginning of the operand range; use `rangeSizeCall` to obtain
+// the number of operands. `getOperandCallPattern` contains the code necessary
+// to obtain a single operand whose position will be substituted instead of
+// "{0}" marker in the pattern.  Note that the pattern should work for any kind
+// of ops, in particular for one-operand ops that may not have the
+// `getOperand(unsigned)` method.
+static void generateNamedOperandGetters(const Operator &op, Class &opClass,
+                                        StringRef rangeType,
+                                        StringRef rangeBeginCall,
+                                        StringRef rangeSizeCall,
+                                        StringRef getOperandCallPattern) {
   const int numOperands = op.getNumOperands();
   const int numVariadicOperands = op.getNumVariadicOperands();
   const int numNormalOperands = numOperands - numVariadicOperands;
@@ -499,20 +562,22 @@ void OpEmitter::genNamedOperandGetters() {
         continue;
 
       if (operand.isVariadic()) {
-        auto &m = opClass.newMethod("Operation::operand_range", operand.name);
+        auto &m = opClass.newMethod(rangeType, operand.name);
         m.body() << formatv(
-            "  return {{std::next(operand_begin(), {0}), "
-            "std::next(operand_begin(), {0} + this->getNumOperands() - {1})};",
-            i, numNormalOperands);
+            "  return {{std::next({2}, {0}), std::next({2}, {0} + {3} - {1})};",
+            i, numNormalOperands, rangeBeginCall, rangeSizeCall);
         emittedVariadicOperand = true;
       } else {
         auto &m = opClass.newMethod("Value *", operand.name);
-        m.body() << "  return this->getOperation()->getOperand(";
-        if (emittedVariadicOperand)
-          m.body() << "this->getNumOperands() - " << numOperands - i;
-        else
-          m.body() << i;
-        m.body() << ");\n";
+
+        auto operandIndex =
+            emittedVariadicOperand
+                ? formatv("{0} - {1}", rangeSizeCall, numOperands - i).str()
+                : std::to_string(i);
+
+        m.body() << "  return "
+                 << formatv(getOperandCallPattern.data(), operandIndex)
+                 << ";\n";
       }
     }
     return;
@@ -535,25 +600,34 @@ void OpEmitter::genNamedOperandGetters() {
       continue;
 
     const char *code = R"(
-  int variadicOperandSize = (this->getNumOperands() - {0}) / {1};
+  int variadicOperandSize = ({4} - {0}) / {1};
   int offset = {2} + variadicOperandSize * {3};
   return )";
     auto sizeAndOffset =
         formatv(code, numNormalOperands, numVariadicOperands,
-                emittedNormalOperands, emittedVariadicOperands);
+                emittedNormalOperands, emittedVariadicOperands, rangeSizeCall);
 
     if (operand.isVariadic()) {
-      auto &m = opClass.newMethod("Operation::operand_range", operand.name);
-      m.body() << sizeAndOffset
-               << "{std::next(operand_begin(), offset), "
-                  "std::next(operand_begin(), offset + variadicOperandSize)};";
+      auto &m = opClass.newMethod(rangeType, operand.name);
+      m.body() << sizeAndOffset << "{std::next(" << rangeBeginCall
+               << ", offset), std::next(" << rangeBeginCall
+               << ", offset + variadicOperandSize)};";
       ++emittedVariadicOperands;
     } else {
       auto &m = opClass.newMethod("Value *", operand.name);
-      m.body() << sizeAndOffset << "this->getOperand(offset);";
+      m.body() << sizeAndOffset
+               << formatv(getOperandCallPattern.data(), "offset") << ";";
       ++emittedNormalOperands;
     }
   }
+}
+
+void OpEmitter::genNamedOperandGetters() {
+  generateNamedOperandGetters(
+      op, opClass, /*rangeType=*/"Operation::operand_range",
+      /*rangeBeginCall=*/"operand_begin()",
+      /*rangeSizeCall=*/"this->getNumOperands()",
+      /*getOperandCallPattern=*/"this->getOperation()->getOperand({0})");
 }
 
 void OpEmitter::genNamedResultGetters() {
@@ -1103,15 +1177,61 @@ void OpEmitter::genOpNameGetter() {
   method.body() << "  return \"" << op.getOperationName() << "\";\n";
 }
 
+//===----------------------------------------------------------------------===//
+// OpOperandAdaptor emitter
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Helper class to emit Op operand adaptors to an output stream.  Operand
+// adaptors are wrappers around ArrayRef<Value *> that provide named operand
+// getters identical to those defined in the Op.
+class OpOperandAdaptorEmitter {
+public:
+  static void emitDecl(const Operator &op, raw_ostream &os);
+  static void emitDef(const Operator &op, raw_ostream &os);
+
+private:
+  explicit OpOperandAdaptorEmitter(const Operator &op);
+
+  Class adapterClass;
+};
+} // end namespace
+
+OpOperandAdaptorEmitter::OpOperandAdaptorEmitter(const Operator &op)
+    : adapterClass(op.getCppClassName().str() + "OperandAdaptor") {
+  adapterClass.newField("ArrayRef<Value *>", "tblgen_operands");
+  auto &constructor = adapterClass.newConstructor("ArrayRef<Value *> values");
+  constructor.body() << "  tblgen_operands = values;\n";
+
+  generateNamedOperandGetters(op, adapterClass,
+                              /*rangeType=*/"ArrayRef<Value *>",
+                              /*rangeBeginCall=*/"tblgen_operands.begin()",
+                              /*rangeSizeCall=*/"tblgen_operands.size()",
+                              /*getOperandCallPattern=*/"tblgen_operands[{0}]");
+}
+
+void OpOperandAdaptorEmitter::emitDecl(const Operator &op, raw_ostream &os) {
+  OpOperandAdaptorEmitter(op).adapterClass.writeDeclTo(os);
+}
+
+void OpOperandAdaptorEmitter::emitDef(const Operator &op, raw_ostream &os) {
+  OpOperandAdaptorEmitter(op).adapterClass.writeDefTo(os);
+}
+
 // Emits the opcode enum and op classes.
 static void emitOpClasses(const std::vector<Record *> &defs, raw_ostream &os,
                           bool emitDecl) {
   IfDefScope scope("GET_OP_CLASSES", os);
   for (auto *def : defs) {
+    Operator op(*def);
     if (emitDecl) {
-      OpEmitter::emitDecl(*def, os);
+      os << formatv(opCommentHeader, op.getQualCppClassName(), "declarations");
+      OpOperandAdaptorEmitter::emitDecl(op, os);
+      OpEmitter::emitDecl(op, os);
     } else {
-      OpEmitter::emitDef(*def, os);
+      os << formatv(opCommentHeader, op.getQualCppClassName(), "definitions");
+      OpOperandAdaptorEmitter::emitDef(op, os);
+      OpEmitter::emitDef(op, os);
     }
   }
 }

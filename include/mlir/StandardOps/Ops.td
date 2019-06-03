@@ -663,7 +663,7 @@ def MemRefCastOp : CastOp<"memref_cast"> {
        %3 = memref_cast %1 : memref<4xf32> to memref<?xf32>
   }];
 
-  let arguments = (ins AnyMemRef);
+  let arguments = (ins AnyMemRef:$source);
   let results = (outs AnyMemRef);
 
   let extraClassDeclaration = [{

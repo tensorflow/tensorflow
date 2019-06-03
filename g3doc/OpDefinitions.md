@@ -400,11 +400,13 @@ the other for definitions. The former is generated via the `-gen-op-decls`
 command-line option, while the latter is via the `-gen-op-defs` option.
 
 The definition file contains all the op method definitions, which can be
-included and enabled by defining `GET_OP_CLASSES`. Besides, it also
-contains a comma-separated list of all defined ops, which can be included
-and enabled by defining `GET_OP_LIST`.
+included and enabled by defining `GET_OP_CLASSES`. For each operation,
+OpDefinitionsGen generates an operation class and an
+[operand adaptor](#operand-adaptors) class. Besides, it also contains a
+comma-separated list of all defined ops, which can be included and enabled by
+defining `GET_OP_LIST`.
 
-### Class name and namespaces
+#### Class name and namespaces
 
 For each operation, its generated C++ class name is the symbol `def`ed with
 TableGen with dialect prefix removed. The first `_` serves as the delimiter.
@@ -422,6 +424,36 @@ This means the qualified name of the generated C++ class does not necessarily
 match exactly with the operation name as explained in
 [Operation name](#operation-name). This is to allow flexible naming to satisfy
 coding style requirements.
+
+#### Operand adaptors
+
+For each operation, we automatically generate an _operand adaptor_. This class
+solves the problem of accessing operands provided as a list of `Value`s without
+using "magic" constants. The operand adaptor takes a reference to an array of
+`Value *` and provides methods with the same names as those in the operation
+class to access them. For example, for a binary arithmethic operation, it may
+provide `.lhs()` to access the first operand and `.rhs()` to access the second
+operand.
+
+The operand adaptor class lives in the same namespace as the operation class,
+and has the name of the operation followed by `OperandAdaptor`. A template
+declaration `OperandAdaptor<>` is provided to look up the operand adaptor for
+the given operation.
+
+Operand adaptors can be used in function templates that also process operations:
+
+```c++
+template <typename BinaryOpTy>
+std::pair<Value *, Value *> zip(BinaryOpTy &&op) {
+  return std::make_pair(op.lhs(), op.rhs());;
+}
+
+void process(AddOp op, ArrayRef<Value *> newOperands) {
+  zip(op);
+  zip(OperandAdaptor<AddOp>(newOperands));
+  /*...*/
+}
+```
 
 ## Constraints
 

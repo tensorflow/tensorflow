@@ -87,6 +87,8 @@ StringRef tblgen::Operator::getExtraClassDeclaration() const {
   return def.getValueAsString(attr);
 }
 
+const llvm::Record &tblgen::Operator::getDef() const { return def; }
+
 tblgen::TypeConstraint
 tblgen::Operator::getResultTypeConstraint(int index) const {
   DagInit *results = def.getValueAsDag("results");
