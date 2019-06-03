@@ -39,6 +39,8 @@ static bool OpFilter(KernelDef* kdef) {
   if (kdef->op() == "MaxPoolGradGrad") return false;
   if (kdef->op() == "MaxPool3DGradGrad") return false;
   if (kdef->op() == "Multinomial") return false;
+  if (kdef->op() == "NonMaxSuppressionV4") return false;
+  if (kdef->op() == "Qr") return false;
   if (kdef->op() == "Real") return false;
 
   if (kdef->op() == "Const") {

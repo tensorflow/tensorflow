@@ -24,7 +24,7 @@ RandomOpsTest.testTruncatedNormalIsInRange  # Too slow
 RandomOpsTest.testShuffle1d # Need to implement 'sort'
 MatrixBandPartTest  # Too slow
 UnaryOpsTest.testAllTypeOps # Need bitwise reductions
-QrOpTest.testLarge2000x2000 # Assertion in reduction
+QrOpTest # No QR support
 GatherTest.testHigherRank # Bad
 MatrixTriangularSolveOpTest.testBatch # Arithmetic precision?
 XlaOpsTest.testShiftRightLogical # using UINT32
@@ -75,3 +75,17 @@ StatelessRandomOpsTest.testDeterminism # poplibs CPU mode does not obey seed
 StatelessRandomOpsTest.testRandomUniformIsInRange # poplar CPU model random uniform int doesn't obey limits
 StatelessRandomOpsTest.testTruncatedNormal # Tests float64
 CategoricalTest.testCategoricalIsInRange # Uses argmax inline
+ResizeBilinearTest.test112x112To512x512 # Too slow
+ResizeBilinearTest.test112x112To512x512 # Too slow
+ResizeBilinearTest.test256x48To2048x384 # Too slow
+ResizeBilinearTest.test320x60To2048x384 # Too slow
+ResizeBilinearTest.test448x84To2048x384 # Too slow
+ResizeBilinearTest.test69x69To545x545 # Too slow
+ResizeBilinearTest.test86x86To545x545 # Too slow
+ResizeBilinearTest.test103x103To545x545 # Too slow
+ResizeBilinearTest.test120x120To545x545 # Too slow
+ResizeBilinearTest.test57x57To456x456 # Too slow
+ResizeBilinearTest.test72x72To456x456 # Too slow
+ResizeBilinearTest.test86x86To456x456 # Too slow
+ResizeBilinearTest.test100x100To456x456 # Too slow
+NonMaxSuppressionTest # Complex reductions
