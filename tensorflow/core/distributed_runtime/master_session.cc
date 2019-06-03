@@ -966,8 +966,7 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
         // TODO(zhengxq): we should implement a LOG_FIRST_N and LOG_EVERY_N for
         // more general usage.
         static int log_counter = 0;
-        if (log_counter < 10) {
-          log_counter++;
+        if (log_counter++ < 10) {
           LOG(WARNING) << "Failed to find node " << ns.node_name()
                        << " for dev " << dev_name;
         }
