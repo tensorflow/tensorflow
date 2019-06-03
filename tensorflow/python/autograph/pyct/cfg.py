@@ -701,6 +701,12 @@ class AstToCfg(gast.NodeVisitor):
   def visit_Pass(self, node):
     self._process_basic_statement(node)
 
+  def visit_Global(self, node):
+    self._process_basic_statement(node)
+
+  def visit_Nonlocal(self, node):
+    self._process_basic_statement(node)
+
   def visit_Print(self, node):
     self._process_basic_statement(node)
 

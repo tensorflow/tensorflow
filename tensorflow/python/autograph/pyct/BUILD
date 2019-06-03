@@ -38,6 +38,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/python/autograph/pyct/common_transformers",
         "@astor_archive//:astor",
         "@gast_archive//:gast",
         "@six_archive//:six",

@@ -2492,7 +2492,7 @@ class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g. spatial or spatio-temporal).
 
   Arguments:
-    cropping: Int, or tuple of 23ints, or tuple of 3 tuples of 2 ints.
+    cropping: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to depth, height, and width.
       - If tuple of 3 ints: interpreted as two different

@@ -23,4 +23,4 @@ DEFINE_BINARY2(random_gamma_grad, float, double);
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -384,7 +384,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           _uses_dataset.get_concrete_function(
               dataset_ops.Dataset.zip((first_dataset, second_dataset))))
 
-  def testLimitedRetracingWithCompositeTensors(self):
+  def testLimitedRetracing(self):
     trace_count = [0]
 
     @def_function.function

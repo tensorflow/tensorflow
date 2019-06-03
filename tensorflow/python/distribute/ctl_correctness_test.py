@@ -24,7 +24,6 @@ from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
@@ -33,6 +32,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 
 _NUM_SAMPLES = 64
 _BATCH_SIZE = 32
@@ -82,10 +82,9 @@ def get_data():
 
 def compute_loss(labels, logits, reg_losses):
   pred_loss = keras.losses.mean_squared_error(labels, logits)
-  scaled_loss = math_ops.reduce_sum(pred_loss) * (1.0 / _BATCH_SIZE)
-  l2_loss = (math_ops.reduce_sum(reg_losses) *
-             (1.0 /
-              ds_context.get_replica_context().num_replicas_in_sync))
+  scaled_loss = nn.compute_average_loss(
+      pred_loss, global_batch_size=_BATCH_SIZE)
+  l2_loss = nn.scale_regularization_loss(reg_losses)
   return scaled_loss + l2_loss
 
 

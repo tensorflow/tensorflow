@@ -460,6 +460,10 @@ cc_library(
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:kernel",
+<<<<<<< HEAD
+=======
+        "//tensorflow/stream_executor/cuda:cuda_stream",
+>>>>>>> upstream/master
         "//tensorflow/stream_executor/gpu:gpu_stream",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/algorithm:container",

@@ -35,6 +35,8 @@ namespace toco {
 
 namespace tflite {
 
+// LINT.IfChange
+
 class AveragePool
     : public BuiltinOperator<AveragePoolOperator, ::tflite::Pool2DOptions,
                              ::tflite::BuiltinOptions_Pool2DOptions> {
@@ -2367,6 +2369,8 @@ class FloorDiv : public SimpleOperator<FloorDivOperator> {
     return 1;
   }
 };
+
+// LINT.ThenChange(//tensorflow/lite/toco/tflite/op_version.cc")
 
 namespace {
 // Build a vector containing all the known operators.

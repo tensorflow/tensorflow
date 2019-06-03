@@ -127,7 +127,8 @@ const std::vector<int>& FrameView::Frames(const NodeDef& node) const {
   DCHECK(is_inferred_) << "FrameView is not initialized";
   auto frames = node_to_frames_.find(&node);
   if (frames == node_to_frames_.end()) {
-    LOG(WARNING) << "Node doesn't belong to the graph used for initialization";
+    LOG(WARNING) << "Node '" << node.name()
+                 << "' doesn't belong to the graph used for initialization";
     return node_has_no_frames_;
   } else {
     return frames->second;

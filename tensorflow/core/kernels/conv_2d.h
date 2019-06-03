@@ -343,12 +343,12 @@ struct SwapDimension0And2InTensor3 {
                   const gtl::ArraySlice<int64>& input_dims, T* out);
 };
 
-// Transforms back filter from OIHW to HWOI format to reverse effect of
+// Transforms back filter from OIHW or OHWI to HWOI format to reverse effect of
 // TransformFilter above.
-// TODO(hinsu): Support reverse transformation from filter format OHWI as well.
 template <typename Device, typename T, int NDIMS>
 struct ReverseTransformFilter {
-  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+  void operator()(const Device& d, FilterTensorFormat src_filter_format,
+                  typename TTypes<T, NDIMS>::ConstTensor in,
                   typename TTypes<T, NDIMS>::Tensor out);
 };
 

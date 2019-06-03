@@ -44,6 +44,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_stack
 
 
 # Prefix to be added to unbound input names so they are easily identifiable.
@@ -52,7 +53,8 @@ _UNBOUND_INPUT_PREFIX = "$unbound_inputs_"
 # List of collections that didn't register proto functions, as a result in
 # a previously exported meta_graph the items are of a different data type.
 _COMPAT_COLLECTION_LIST = [ops.GraphKeys.LOCAL_VARIABLES,
-                           ops.GraphKeys.MODEL_VARIABLES]
+                           ops.GraphKeys.MODEL_VARIABLES,
+                           ops.GraphKeys.METRIC_VARIABLES]
 
 
 def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
@@ -534,9 +536,9 @@ def create_graph_debug_info_def(operations):
   for op in operations:
     # Gets the stack trace of the operation and then the file location.
     node_name = op.name
-    node_to_trace[node_name] = error_interpolation.compute_useful_stack(op)
-    for trace in node_to_trace[node_name]:
-      all_file_names.add(trace[0])
+    node_to_trace[node_name] = error_interpolation.compute_useful_frames(op, 10)
+    for frame in node_to_trace[node_name]:
+      all_file_names.add(frame[tf_stack.TB_FILENAME])
 
   # Sets the `files` field in the GraphDebugInfo proto
   graph_debug_info_def.files.extend(all_file_names)
@@ -549,12 +551,14 @@ def create_graph_debug_info_def(operations):
   # Creates the FileLineCol proto for each node and sets the value in the
   # GraphDebugInfo proto. We only store the file name index for each node to
   # save the storage space.
-  for node_name, trace in node_to_trace.items():
+  for node_name, frames in node_to_trace.items():
     trace_def = graph_debug_info_def.traces[node_name]
-    for file_name, line, func, code in trace:
-      file_index = file_to_index[file_name]
+    for frame in reversed(frames):
       trace_def.file_line_cols.add(
-          file_index=file_index, line=line, func=func, code=code)
+          file_index=file_to_index[frame[tf_stack.TB_FILENAME]],
+          line=frame[tf_stack.TB_LINENO],
+          func=frame[tf_stack.TB_FUNCNAME],
+          code=frame[tf_stack.TB_CODEDICT])
 
   return graph_debug_info_def
 

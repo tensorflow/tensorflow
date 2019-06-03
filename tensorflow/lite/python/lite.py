@@ -453,20 +453,22 @@ class TFLiteConverter(TFLiteConverterBase):
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
-    post_training_quantize: deprecated, please specify
-     `[Optimize.DEFAULT]` for `optimizations` instead. Boolean
-     indicating whether to quantize the weights of the converted float model.
-     Model size will be reduced and there will be latency improvements
-     (at the cost of accuracy). (default False)
+    post_training_quantize: Deprecated. Please specify `[Optimize.DEFAULT]` for
+      `optimizations` instead. Boolean indicating whether to quantize the
+      weights of the converted float model.  Model size will be reduced and
+      there will be latency improvements (at the cost of accuracy).
+      (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
       --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
-    target_ops: Experimental flag, subject to change. Set of OpsSet
-      options indicating which converter to use.
+    target_ops: Deprecated. Please specify `target_spec.supported_ops` instead.
+      Set of OpsSet options indicating which converter to use.
       (default set([OpsSet.TFLITE_BUILTINS]))
+    target_spec: Experimental flag, subject to change. Specification of target
+      device.
     optimizations: Experimental flag, subject to change. A list of optimizations
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
@@ -541,7 +543,7 @@ class TFLiteConverter(TFLiteConverterBase):
     self._post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
-    self.target_ops = set([OpsSet.TFLITE_BUILTINS])
+    self.target_spec = TargetSpec()
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -774,6 +776,11 @@ class TFLiteConverter(TFLiteConverterBase):
       else:
         self.optimizations = []
       return
+    if name == "target_ops":
+      warnings.warn("Property %s is deprecated, please use "
+                    "target_spec.supported_ops instead." % name)
+      self.target_spec.supported_ops = value
+      return
     object.__setattr__(self, name, value)
 
   def __getattribute__(self, name):
@@ -782,6 +789,10 @@ class TFLiteConverter(TFLiteConverterBase):
                     "please use optimizations=[Optimize.DEFAULT]"
                     " instead." % name)
       return Optimize.DEFAULT in set(self.optimizations)
+    if name == "target_ops":
+      warnings.warn("Property %s is deprecated, please use "
+                    "target_spec.supported_ops instead." % name)
+      return self.target_spec.supported_ops
     return object.__getattribute__(self, name)
 
   def convert(self):
@@ -796,7 +807,8 @@ class TFLiteConverter(TFLiteConverterBase):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    self._target_ops = self.target_ops
+    self._target_ops = self.target_spec.supported_ops
+
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
@@ -875,7 +887,7 @@ class TFLiteConverter(TFLiteConverterBase):
         "change_concat_input_ranges": self.change_concat_input_ranges,
         "allow_custom_ops": self.allow_custom_ops,
         "post_training_quantize": weight_only_quantize,
-        "target_ops": self.target_ops,
+        "target_ops": self._target_ops,
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video
     }

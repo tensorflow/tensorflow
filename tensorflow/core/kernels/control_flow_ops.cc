@@ -39,12 +39,30 @@ void SwitchOp::Compute(OpKernelContext* context) {
   }
 }
 
+void SwitchNOp::Compute(OpKernelContext* context) {
+  const Tensor& output_index_t = context->input(1);
+  OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_index_t.shape()),
+              errors::InvalidArgument("The second input must be a scalar, "
+                                      "but it has shape ",
+                                      output_index_t.shape().DebugString()));
+  int output_index = output_index_t.scalar<int>()();
+  if (output_index < 0 || output_index >= num_outputs()) {
+    output_index = num_outputs() - 1;
+  }
+  context->set_output(output_index, context->input(0));
+}
+
 #define REGISTER_CPU_SWITCH(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Switch")                  \
                               .Device(DEVICE_CPU)         \
                               .HostMemory("pred")         \
                               .TypeConstraint<type>("T"), \
-                          SwitchOp)
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_CPU)         \
+                              .HostMemory("output_index") \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
 
 #define REGISTER_CPU_REF_SWITCH(type)                     \
   REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
@@ -58,7 +76,12 @@ void SwitchOp::Compute(OpKernelContext* context) {
                               .Device(DEVICE_GPU)         \
                               .HostMemory("pred")         \
                               .TypeConstraint<type>("T"), \
-                          SwitchOp)
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("output_index") \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
 
 #define REGISTER_GPU_REF_SWITCH(type)                     \
   REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \
@@ -96,7 +119,14 @@ TF_CALL_variant(REGISTER_GPU_SWITCH);
                               .HostMemory("output_false") \
                               .HostMemory("output_true")  \
                               .TypeConstraint<type>("T"), \
-                          SwitchOp)
+                          SwitchOp)                       \
+  REGISTER_KERNEL_BUILDER(Name("_SwitchN")                \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("data")         \
+                              .HostMemory("output_index") \
+                              .HostMemory("outputs")      \
+                              .TypeConstraint<type>("T"), \
+                          SwitchNOp)
 
 #define REGISTER_GPU_HOST_REF_KERNEL(type)                \
   REGISTER_KERNEL_BUILDER(Name("RefSwitch")               \

@@ -565,6 +565,7 @@ template struct LaunchConv2DOp<CPUDevice, double>;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
+<<<<<<< HEAD
 // Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
 bool IsVoltaOrLater(const se::StreamExecutor& stream_exec) {
   int major, minor;
@@ -575,6 +576,8 @@ bool IsVoltaOrLater(const se::StreamExecutor& stream_exec) {
 }
 #endif 
 
+=======
+>>>>>>> upstream/master
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());

@@ -106,6 +106,7 @@ KNOWN_STRING_CONSTRUCTOR_ERRORS = (
     AssertionError,
     AttributeError,
     KeyError,
+    NameError,
     NotImplementedError,
     RuntimeError,
     StopIteration,
