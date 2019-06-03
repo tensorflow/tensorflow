@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,26 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#ifndef TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
-#define TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_PADDED_BATCH_DATASET_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_PADDED_BATCH_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
 namespace tensorflow {
 namespace data {
 
-class PrefetchDatasetOp : public UnaryDatasetOpKernel {
+class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
-  static constexpr const char* const kDatasetType = "Prefetch";
+  static constexpr const char* const kDatasetType = "PaddedBatch";
   static constexpr const char* const kInputDataset = "input_dataset";
-  static constexpr const char* const kBufferSize = "buffer_size";
-  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kBatchSize = "batch_size";
+  static constexpr const char* const kPaddedShapes = "padded_shapes";
+  static constexpr const char* const kPaddingValues = "padding_values";
+  static constexpr const char* const kDropRemainder = "drop_remainder";
+  static constexpr const char* const kParallelCopy = "parallel_copy";
+  static constexpr const char* const kToutputTypes = "Toutput_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kSlackPeriod = "slack_period";
+  static constexpr const char* const kNumPaddedShapes = "N";
 
-  explicit PrefetchDatasetOp(OpKernelConstruction* ctx);
+  explicit PaddedBatchDatasetOp(OpKernelConstruction* ctx);
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -39,10 +41,11 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
-  int64 slack_period_ = 0;
+  const int op_version_;
+  bool parallel_copy_ = false;
 };
 
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_PADDED_BATCH_DATASET_OP_H_

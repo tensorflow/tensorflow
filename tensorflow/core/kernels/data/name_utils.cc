@@ -29,8 +29,14 @@ string OpName(const string& dataset_type) {
     return "FilterDataset";
   } else if (dataset_type == "FlatMap") {
     return "FlatMapDataset";
+  } else if (dataset_type == "Generator") {
+    return "GeneratorDataset";
+  } else if (dataset_type == "Interleave") {
+    return "InterleaveDataset";
   } else if (dataset_type == "Map") {
     return "MapDataset";
+  } else if (dataset_type == "PaddedBatch") {
+    return "PaddedBatchDataset";
   } else if (dataset_type == "Prefetch") {
     return "PrefetchDataset";
   } else if (dataset_type == "Range") {
@@ -47,7 +53,7 @@ string DatasetDebugString(const string& dataset_type,
   }
 
   string debug_str;
-  strings::StrAppend(&debug_str, dataset_type, "Op(");
+  strings::StrAppend(&debug_str, OpName(dataset_type), "Op(");
   auto iter = args.begin();
   while (iter != args.end() - 1) {
     strings::StrAppend(&debug_str, *iter, ", ");
