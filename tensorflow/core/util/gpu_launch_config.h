@@ -374,6 +374,17 @@ Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
 CREATE_CUDA_HOST_FUNCTION_ALIAS(GetGpu2DLaunchConfig, GetCuda2DLaunchConfig);
 
 #if GOOGLE_CUDA
+// Returns a raw reference to the current cuda stream.  Required by a
+// number of kernel calls (for which StreamInterface* does not work), i.e.
+// CUB and certain cublas primitives.
+inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
+  const cudaStream_t* ptr = CHECK_NOTNULL(
+      reinterpret_cast<const cudaStream_t*>(context->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->GpuStreamMemberHack()));
+  return *ptr;
+}
 template <typename DeviceFunc>
 Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                          const Eigen::GpuDevice& d,
