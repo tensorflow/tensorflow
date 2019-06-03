@@ -18,13 +18,14 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/poplibs_ops.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace poplarplugin {
 
 // Constructor.
 HloPrintTensor::HloPrintTensor(HloInstruction* input)
-    : HloPoplarInstruction(input->shape(), {input},
+    : HloPoplarInstruction(ShapeUtil::MakeTokenShape(), {input},
                            GetPoplibsCustomOpTargetString(
                                PoplibsOp::Poputil, PoplibsOp::PrintTensor),
                            {}) {}
@@ -40,6 +41,8 @@ absl::flat_hash_map<int64, int64> HloPrintTensor::LayoutDependencies() const {
 uint64 HloPrintTensor::NumberOfInplaceOperands() const { return 0; }
 
 bool HloPrintTensor::IsPopOpsElementwise() const { return false; }
+
+bool HloPrintTensor::HasSideEffectNoRecurse() const { return true; }
 
 // Creates an instance of a HloOneHotInstruction
 std::unique_ptr<HloInstruction> CreateHloPrintTensor(HloInstruction* input) {

@@ -36,6 +36,8 @@ class HloPrintTensor : public HloPoplarInstruction {
 
   bool IsPopOpsElementwise() const;
 
+  bool HasSideEffectNoRecurse() const override;
+
  private:
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const>,

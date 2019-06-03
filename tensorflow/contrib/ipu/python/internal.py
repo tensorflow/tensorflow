@@ -33,15 +33,84 @@ def remap(x, name=None):
   return gen_poputil_ops.ipu_remap(x, name=name)
 
 
-def print_tensor(x, name=None):
-  """Clone and map the input linearly across the IPU.
+def print_tensor(input, name=None):
+  """Print the specified input.
 
   Args:
-    x: The tensor to print.
+    input: The tensor to print.
     name: Optional op name.
 
   Returns:
-    The input, and will print the contents of the tensor.
+    An operator that prints the specified input to the standard error. For the
+    tensor to be printed one must either return it as part of their XLA function
+    which is consumed by ipu_compiler.compile, or include the returned op in the
+    input to session.run, or use the operator as a control dependency for
+    executed ops by specifying with tf.control_dependencies([print_op]).
+
+  Examples:
+    1. Returning the print operation as part of the XLA function:
+
+    .. code-block:: python
+
+       import tensorflow as tf
+
+       from tensorflow.contrib.ipu import internal
+       from tensorflow.contrib.ipu import ops
+
+       def my_net(v):
+         print_op = internal.print_tensor(v)
+         v = v + 1
+         return v, print_op
+
+       with ops.ipu_scope("/device:IPU:0"):
+         res = ipu_compiler.compile(my_net, inputs=[v])
+
+       ...
+       ...
+
+     2. Including the print operation in session.run:
+
+     .. code-block:: python
+
+       import numpy as np
+       import tensorflow as tf
+
+       from tensorflow.contrib.ipu import internal
+       from tensorflow.contrib.ipu import ops
+
+       with ops.ipu_scope("/device:IPU:0"):
+         pa = tf.placeholder(np.float32, [2, 2], name="a")
+         print_op = internal.print_tensor(pa)
+         x = pa + 1
+
+       with tf.Session() as session:
+        result = session.run([x, print_op], feed_dict={pa : np.ones([2, 2])})
+
+       ...
+       ...
+
+     3. Using control dependencies:
+
+     .. code-block:: python
+
+       import numpy as np
+       import tensorflow as tf
+
+       from tensorflow.contrib.ipu import internal
+       from tensorflow.contrib.ipu import ops
+
+       with ops.ipu_scope("/device:IPU:0"):
+         pa = tf.placeholder(np.float32, [2, 2], name="a")
+         print_op = internal.print_tensor(pa)
+         with tf.control_dependencies([print_op]):
+           x = pa + 1
+
+       with tf.Session() as session:
+        result = session.run(x, feed_dict={pa : np.ones([2, 2])})
+
+       ...
+       ...
+
   """
 
-  return gen_poputil_ops.ipu_print_tensor(x, name=name)
+  return gen_poputil_ops.ipu_print_tensor(input, name=name)

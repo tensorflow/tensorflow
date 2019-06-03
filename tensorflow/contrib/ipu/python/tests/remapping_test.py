@@ -21,7 +21,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.contrib.ipu import ipu_compiler
-from tensorflow.contrib.ipu.python import internal
+from tensorflow.contrib.ipu import internal
 
 
 class MappingTest(test_util.TensorFlowTestCase):

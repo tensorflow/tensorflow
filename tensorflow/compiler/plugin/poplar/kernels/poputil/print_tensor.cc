@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 #include "absl/container/flat_hash_set.h"
 
@@ -51,18 +51,12 @@ class PoputilPrintTensorOp : public XlaOpKernel, IpuOpKernel {
     xla::XlaBuilder* b = ctx->builder();
 
     auto input = ctx->Input(0);
-    auto shape = ctx->InputShape(0);
 
-    xla::Shape xla_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
-
-    xla::XlaOp output =
-        xla::CustomCall(b,
-                        GetPoplibsCustomOpTargetString(PoplibsOp::Poputil,
-                                                       PoplibsOp::PrintTensor),
-                        {input}, xla_shape, attribute_map_.Serialise());
-
-    ctx->SetOutput(0, output);
+    xla::XlaOp output = xla::CustomCall(
+        b,
+        GetPoplibsCustomOpTargetString(PoplibsOp::Poputil,
+                                       PoplibsOp::PrintTensor),
+        {input}, xla::ShapeUtil::MakeTokenShape(), attribute_map_.Serialise());
   }
 
  private:
