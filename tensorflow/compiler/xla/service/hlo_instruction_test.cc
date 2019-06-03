@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -1734,7 +1735,8 @@ TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallHasSideEffect) {
   auto instr2 = instr1->Clone();
   EXPECT_TRUE(instr1->Identical(*instr2));
 
-  instr1->set_has_side_effect(true);
+  auto custom_call_instr1 = Cast<HloCustomCallInstruction>(instr1.get());
+  custom_call_instr1->set_has_side_effect(true);
   EXPECT_FALSE(instr1->Identical(*instr2));
 }
 
@@ -1766,19 +1768,22 @@ TEST_F(HloInstructionTest, CloneHasSideEffectOnCustomCall) {
   auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                                 /*operands=*/{},
                                                 /*custom_call_target=*/"foo");
-  EXPECT_FALSE(instr->has_side_effect());
-  instr->set_has_side_effect(true);
-  EXPECT_TRUE(instr->has_side_effect());
+  auto custom_call_instr = Cast<HloCustomCallInstruction>(instr.get());
+  EXPECT_FALSE(custom_call_instr->has_side_effect());
+  custom_call_instr->set_has_side_effect(true);
+  EXPECT_TRUE(custom_call_instr->has_side_effect());
   auto clone = instr->Clone();
-  EXPECT_TRUE(clone->has_side_effect());
+  auto custom_call_clone = Cast<HloCustomCallInstruction>(clone.get());
+  EXPECT_TRUE(custom_call_clone->has_side_effect());
 }
 
 TEST_F(HloInstructionTest, CustomCallHasSideEffect) {
   auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                                 /*operands=*/{},
                                                 /*custom_call_target=*/"foo");
+  auto custom_call_instr = Cast<HloCustomCallInstruction>(instr.get());
   EXPECT_FALSE(instr->HasSideEffect());
-  instr->set_has_side_effect(true);
+  custom_call_instr->set_has_side_effect(true);
   EXPECT_TRUE(instr->HasSideEffect());
 }
 

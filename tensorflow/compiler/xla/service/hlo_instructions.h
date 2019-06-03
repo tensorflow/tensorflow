@@ -1217,12 +1217,14 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_batch_group_count(int64 batch_group_count) {
     batch_group_count_ = batch_group_count;
   }
-  void set_has_side_effect(const bool has_side_effect) {
+  // Sets whether this custom call has a side-effect - by default a custom call
+  // has no side-effects.
+  void set_has_side_effect(bool has_side_effect) {
     has_side_effect_ = has_side_effect;
   }
   int64 feature_group_count() const { return feature_group_count_; }
   int64 batch_group_count() const { return batch_group_count_; }
-  const bool has_side_effect() const { return has_side_effect_; }
+  bool has_side_effect() const { return has_side_effect_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1261,7 +1263,7 @@ class HloCustomCallInstruction : public HloInstruction {
   // For layout-constrained custom calls, this vector holds the shape with
   // layout for each operand.
   std::vector<Shape> operand_shapes_with_layout_;
-  // Whether this call has a side-effect - by default there are no side-effects.
+  // Whether this custom call has a side-effect.
   bool has_side_effect_;
 };
 

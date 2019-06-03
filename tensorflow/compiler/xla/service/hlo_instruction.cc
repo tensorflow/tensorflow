@@ -1272,7 +1272,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kAllReduce:
       return all_reduce_id().has_value();
     case HloOpcode::kCustomCall:
-      return has_side_effect();
+      return Cast<HloCustomCallInstruction>(this)->has_side_effect();
     default:
       return false;
   }
@@ -3607,14 +3607,6 @@ void HloInstruction::set_scatter(HloComputation* computation) {
 
 const string& HloInstruction::custom_call_target() const {
   return Cast<HloCustomCallInstruction>(this)->custom_call_target();
-}
-
-const bool HloInstruction::has_side_effect() const {
-  return Cast<HloCustomCallInstruction>(this)->has_side_effect();
-}
-
-void HloInstruction::set_has_side_effect(const bool has_side_effect) {
-  Cast<HloCustomCallInstruction>(this)->set_has_side_effect(has_side_effect);
 }
 
 const PaddingConfig& HloInstruction::padding_config() const {

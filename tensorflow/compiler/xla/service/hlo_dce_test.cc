@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -93,10 +94,10 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
 TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
   // Verify that custom call instruction with side-effect is not removed.
   auto builder = HloComputation::Builder(TestName());
-  auto instr = builder.AddInstruction(
+  auto instr = Cast<HloCustomCallInstruction>(builder.AddInstruction(
       HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                        /*operands=*/{},
-                                       /*custom_call_target=*/"foo"));
+                                       /*custom_call_target=*/"foo")));
   instr->set_has_side_effect(true);
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 

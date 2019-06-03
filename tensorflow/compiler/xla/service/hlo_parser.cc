@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
@@ -1572,20 +1573,21 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *custom_call_target,
             backend_config ? *backend_config : ""));
       }
+      auto custom_call_instr = Cast<HloCustomCallInstruction>(instruction);
       if (window.has_value()) {
-        instruction->set_window(*window);
+        custom_call_instr->set_window(*window);
       }
       if (dnums.has_value()) {
-        instruction->set_convolution_dimension_numbers(*dnums);
+        custom_call_instr->set_convolution_dimension_numbers(*dnums);
       }
       if (feature_group_count.has_value()) {
-        instruction->set_feature_group_count(*feature_group_count);
+        custom_call_instr->set_feature_group_count(*feature_group_count);
       }
       if (batch_group_count.has_value()) {
-        instruction->set_batch_group_count(*batch_group_count);
+        custom_call_instr->set_batch_group_count(*batch_group_count);
       }
       if (has_side_effect.has_value()) {
-        instruction->set_has_side_effect(*has_side_effect);
+        custom_call_instr->set_has_side_effect(*has_side_effect);
       }
       break;
     }
