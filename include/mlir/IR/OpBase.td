@@ -396,11 +396,9 @@ def F64Tensor  : TensorOf<[F64]>;
 
 // Memref type.
 
-// TODO(b/132735995) Use ShapedContainerType when MemRef subclasses ShapedType.
 // Memrefs are blocks of data with fixed type and rank.
 class MemRefOf<list<Type> allowedTypes> :
-    ContainerType<AnyTypeOf<allowedTypes>, IsMemRefTypePred,
-                    "$_self.cast<MemRefType>().getElementType()", "memref">;
+    ShapedContainerType<allowedTypes, IsMemRefTypePred, "memref">;
 
 def AnyMemRef : MemRefOf<[AnyType]>;
 
