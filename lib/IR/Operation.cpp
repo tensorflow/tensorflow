@@ -816,14 +816,14 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
 
   auto type = op->getResult(0)->getType().dyn_cast<ShapedType>();
   if (!type)
-    return op->emitOpError("requires vector or tensor type results");
+    return op->emitOpError("requires shaped type results");
   auto elementType = type.getElementType();
 
   // Verify result element type matches first result's element type.
   for (auto result : drop_begin(op->getResults(), 1)) {
     auto resultType = result->getType().dyn_cast<ShapedType>();
     if (!resultType)
-      return op->emitOpError("requires vector or tensor type results");
+      return op->emitOpError("requires shaped type results");
     if (resultType.getElementType() != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");
@@ -833,7 +833,7 @@ OpTrait::impl::verifySameOperandsAndResultElementType(Operation *op) {
   for (auto operand : op->getOperands()) {
     auto operandType = operand->getType().dyn_cast<ShapedType>();
     if (!operandType)
-      return op->emitOpError("requires vector or tensor type operands");
+      return op->emitOpError("requires shaped type operands");
     if (operandType.getElementType() != elementType)
       return op->emitOpError(
           "requires the same element type for all operands and results");

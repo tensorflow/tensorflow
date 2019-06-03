@@ -1061,7 +1061,7 @@ class TCresVTEtIsSameAsOp<int i, int j> : And<[
 // Type Constraint operands' Element type are all Same At the given `indices`.
 // We query the operands' types into a list and check they are all the same.
 // Precondition:
-// 1) all operands involved are of vector or tensor type and
+// 1) all operands involved are of shaped type and
 // 2) the indices are not out of range.
 class TCopVTEtAreSameAt<list<int> indices> :
     CPred<"llvm::is_splat(mlir::functional::map("
