@@ -101,8 +101,8 @@ TEST_FUNC(SDBM_StripeInducedIneqs) {
 
   //      CHECK:       cst   d0   d1
   // CHECK-NEXT: cst   inf  inf  inf
-  // CHECK-NEXT: d0    inf  inf    2
-  // CHECK-NEXT: d1    inf    0    0
+  // CHECK-NEXT: d0    inf  inf    0
+  // CHECK-NEXT: d1    inf    2    0
   // CHECK-NEXT: d1 = d0 # 3
   sdbm.print(llvm::outs());
 }
@@ -118,10 +118,30 @@ TEST_FUNC(SDBM_StripeTemporaries) {
 
   //      CHECK:       cst   d0   t0
   // CHECK-NEXT: cst   inf  inf    0
-  // CHECK-NEXT: d0    inf  inf    2
-  // CHECK-NEXT: t0    inf    0  inf
+  // CHECK-NEXT: d0    inf  inf    0
+  // CHECK-NEXT: t0    inf    2  inf
   // CHECK-NEXT: t0 = d0 # 3
   sdbm.print(llvm::outs());
+}
+
+TEST_FUNC(SDBM_ElideInducedInequalities) {
+  // Build an SDBM defined by a single stripe equality d0 = s0 # 3 and make sure
+  // the induced inequalities are not present after converting the SDBM back
+  // into lists of expressions.
+  auto sdbm = SDBM::get(llvm::None, {dim(0) - stripe(symb(0), 3)});
+
+  SmallVector<SDBMExpr, 4> eqs, ineqs;
+  sdbm.getSDBMExpressions(dialect(), ineqs, eqs);
+  // CHECK-EMPTY:
+  for (auto ineq : ineqs)
+    ineq.print(llvm::outs() << '\n');
+  llvm::outs() << "\n";
+
+  // CHECK: d0 - s0 # 3
+  // CHECK-EMPTY:
+  for (auto eq : eqs)
+    eq.print(llvm::outs() << '\n');
+  llvm::outs() << "\n\n";
 }
 
 TEST_FUNC(SDBM_StripeTightening) {
@@ -129,25 +149,29 @@ TEST_FUNC(SDBM_StripeTightening) {
   //
   //   d0 = s0 # 3 # 5
   //   s0 # 3 # 5 - d1 + 42 = 0
-  //   d0 - s0 # 3 <= 2
+  //   s0 # 3 - d0 <= 2
   //
   // where the last inequality is tighter than that induced by the first stripe
-  // equality (d0 - s0 # 3 <= 5 - 1 = 4).  Check that the conversion from SDBM
+  // equality (s0 # 3 - d0 <= 5 - 1 = 4).  Check that the conversion from SDBM
   // back to the lists of constraints conserves both the stripe equality and the
   // tighter inequality.
   auto s = stripe(stripe(symb(0), 3), 5);
-  auto tight = dim(0) - stripe(symb(0), 3) - 2;
+  auto tight = stripe(symb(0), 3) - dim(0) - 2;
   auto sdbm = SDBM::get({tight}, {s - dim(0), s - dim(1) + 42});
 
   SmallVector<SDBMExpr, 4> eqs, ineqs;
   sdbm.getSDBMExpressions(dialect(), ineqs, eqs);
-  // CHECK-DAG: d0 - s0 # 3 + -2
-  // CHECK-DAG: d1 - d0 + -42
-  // CHEKC-DAG: d0 - s0 # 3 # 5
+  // CHECK: s0 # 3 - d0 + -2
+  // CHECK-EMPTY:
   for (auto ineq : ineqs)
-    ineq.print(llvm::outs());
+    ineq.print(llvm::outs() << '\n');
+  llvm::outs() << "\n";
+
+  // CHECK-DAG: d1 - d0 + -42
+  // CHECK-DAG: d0 - s0 # 3 # 5
   for (auto eq : eqs)
-    eq.print(llvm::outs());
+    eq.print(llvm::outs() << '\n');
+  llvm::outs() << "\n\n";
 }
 
 TEST_FUNC(SDBM_StripeTransitive) {
@@ -165,10 +189,10 @@ TEST_FUNC(SDBM_StripeTransitive) {
 
   //      CHECK:       cst   d0   d1   d2   t0
   // CHECK-NEXT: cst   inf  inf  inf  inf  inf
-  // CHECK-NEXT: d0    inf    0    0  inf    0
-  // CHECK-NEXT: d1    inf    2  inf  inf  inf
-  // CHECK-NEXT: d2    inf  inf  inf  inf    6
-  // CHECK-NEXT: t0    inf    0  inf    0  inf
+  // CHECK-NEXT: d0    inf    0    2  inf    0
+  // CHECK-NEXT: d1    inf    0  inf  inf  inf
+  // CHECK-NEXT: d2    inf  inf  inf  inf    0
+  // CHECK-NEXT: t0    inf    0  inf    6  inf
   // CHECK-NEXT: t0 = d2 # 7
   // CHECK-NEXT: d0 = d1 # 3
   sdbm.print(llvm::outs());

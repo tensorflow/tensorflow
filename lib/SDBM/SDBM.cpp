@@ -271,7 +271,7 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
   }
 
   // Assign the remaining stripe expressions to temporary variables.  These
-  // expressions are the ones hat could not be associated with an existing
+  // expressions are the ones that could not be associated with an existing
   // variable in the previous step.
   for (auto expr : stripes) {
     if (pointExprToStripe.count(expr))
@@ -323,10 +323,10 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
   }
 
   // Add the inequalities induced by stripe equalities.
-  //   t = x # C  =>  x <= t <= x + C - 1
+  //   t = x # C  =>  t <= x <= t + C - 1
   // which is equivalent to
-  //   {x - t <= 0;
-  //    t - x - (C - 1) <= 0}.
+  //   {t - x <= 0;
+  //    x - t - (C - 1) <= 0}.
   for (const auto &pair : result.stripeToPoint) {
     auto stripe = pair.second.cast<SDBMStripeExpr>();
     SDBMBuilderResult update = builder.visit(stripe.getVar());
@@ -336,10 +336,11 @@ SDBM SDBM::get(ArrayRef<SDBMExpr> inequalities, ArrayRef<SDBMExpr> equalities) {
            "unexpected non-zero value in stripe expression");
     update.negativePos.clear();
     update.negativePos.push_back(pair.first);
-
+    update.value = -(stripe.getStripeFactor().getValue() - 1);
     updateMatrix(result, update);
+
     std::swap(update.negativePos, update.positivePos);
-    update.value -= stripe.getStripeFactor().getValue() - 1;
+    update.value = 0;
     updateMatrix(result, update);
   }
 
@@ -363,7 +364,7 @@ void SDBM::convertDBMElement(unsigned row, unsigned col,
   auto diffIJValue = at(col, row);
   auto diffJIValue = at(row, col);
 
-  // If symmetric entries are equal, so are the corresponding expressions.
+  // If symmetric entries are opposite, the corresponding expressions are equal.
   if (diffIJValue.isFinite() &&
       diffIJValue.getValue() == -diffJIValue.getValue()) {
     equalities.push_back(rowExpr - colExpr - diffIJValue.getValue());
@@ -372,12 +373,12 @@ void SDBM::convertDBMElement(unsigned row, unsigned col,
 
   // Given an inequality x0 - x1 <= A, check if x0 is a stripe variable derived
   // from x1: x0 = x1 # B.  If so, it would imply the constraints
-  // x1 <= x0 <= x1 + (B - 1) <=> x1 - x0 <= 0 and x0 - x1 <= (B - 1).
-  // Therefore, if A >= (B - 1), this inequality is subsumed by that implied
+  // x0 <= x1 <= x0 + (B - 1) <=> x0 - x1 <= 0 and x1 - x0 <= (B - 1).
+  // Therefore, if A >= 0, this inequality is subsumed by that implied
   // by the stripe equality and thus can be elided.
   // Similarly, check if x1 is a stripe variable derived from x0: x1 = x0 # C.
-  // If so, it would imply the constraints x0 <= x1 <= x0 + (C - 1) <=>
-  // <=> x0 - x1 <= 0 and x1 - x0 <= (C - 1).  Therefore, if A >= 0, this
+  // If so, it would imply the constraints x1 <= x0 <= x1 + (C - 1) <=>
+  // <=> x1 - x0 <= 0 and x0 - x1 <= (C - 1).  Therefore, if A >= (C - 1), this
   // inequality can be elided.
   //
   // Note: x0 and x1 may be a stripe expressions themselves, we rely on stripe
@@ -388,13 +389,13 @@ void SDBM::convertDBMElement(unsigned row, unsigned col,
     if (stripeToPoint.count(x0)) {
       auto stripe = stripeToPoint[x0].cast<SDBMStripeExpr>();
       SDBMPositiveExpr var = stripe.getVar();
-      if (x1Expr == var && value >= stripe.getStripeFactor().getValue() - 1)
+      if (x1Expr == var && value >= 0)
         return true;
     }
     if (stripeToPoint.count(x1)) {
       auto stripe = stripeToPoint[x1].cast<SDBMStripeExpr>();
       SDBMPositiveExpr var = stripe.getVar();
-      if (x0Expr == var && value >= 0)
+      if (x0Expr == var && value >= stripe.getStripeFactor().getValue() - 1)
         return true;
     }
     return false;
