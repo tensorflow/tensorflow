@@ -332,3 +332,5 @@ ScatterTest.OutOfBoundsUpdateWindow POPLAR
 
 PrngTest.PassInGlobalRngSeed POPLAR // disable until poplar CPU random works
 PrngTest.DifferentValuesForIdenticalRngNodesInSameComputation  POPLAR
+
+QrTest POPLAR // No Qr op
