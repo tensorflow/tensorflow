@@ -122,8 +122,9 @@
 * XLA
   * XLA HLO graphs can be inspected with interactive_graphviz tool now.
 * Estimator
-  * Use tf.compat.v1.estimator.inputs instead of tf.estimator.inputs
-  * Replace contrib references with tf.estimator.experimental.* for apis in early_stopping.py
+  * Use `tf.compat.v1.estimator.inputs` instead of `tf.estimator.inputs`
+  * Replace `contrib` references with `tf.estimator.experimental.*` for APIs in `early_stopping.py`
+  * Determining the “correct” value of the `--iterations_per_loop` for TPUEstimator or DistributionStrategy continues to be a challenge for our users. We propose dynamically tuning the `--iterations_per_loop` variable, specifically for using TPUEstimator in training mode, based on a user target TPU execution time. Users might specify a value such as: `--iterations_per_loop=300s`, which will result in roughly 300 seconds being spent on the TPU between host side operations.
 
 
 ## Thanks to our Contributors
