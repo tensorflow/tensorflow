@@ -23,6 +23,7 @@ import six
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
@@ -949,5 +950,6 @@ def is_tensor(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a tensor or "tensor-like", `False` if not.
   """
-  return (isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x) or  # pylint: disable=protected-access
+  return (isinstance(x, tensor_like._TensorLike) or  # pylint: disable=protected-access
+          ops.is_dense_tensor_like(x) or
           getattr(x, "is_tensor_like", False))
