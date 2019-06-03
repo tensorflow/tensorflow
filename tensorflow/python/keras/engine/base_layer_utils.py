@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+
 import enum
 
 from tensorflow.python.distribute import distribution_strategy_context
@@ -612,3 +613,9 @@ def mark_as_return(outputs, acd):
     # pylint: enable=protected-access
 
   return nest.map_structure(_mark_as_return, outputs)
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method
