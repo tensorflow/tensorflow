@@ -90,12 +90,26 @@ we aim to align on the same level of platform support as
 [LLVM](https://llvm.org/docs/GettingStarted.html#requirements). For now, MLIR
 has been tested on Linux and macOS, with recent versions of clang and with gcc 7.
 
-```
+```sh
 git clone https://github.com/llvm/llvm-project.git
 git clone https://github.com/tensorflow/mlir llvm-project/llvm/projects/mlir
 mkdir llvm-project/build
 cd llvm-project/build
 cmake -G Ninja ../llvm -DLLVM_BUILD_EXAMPLES=ON -DLLVM_ENABLE_CXX1Y=Y -DLLVM_TARGETS_TO_BUILD="host"
+cmake --build . --target check-mlir
+```
+
+To compile on Windows using Visual Studio 2017:
+
+```bat
+REM In shell with Visual Studio environment set up, e.g., with command such as
+REM   <visual-studio-install>\Auxiliary\Build\vcvarsall.bat" x64
+REM invoked.
+git clone https://github.com/llvm/llvm-project.git
+git clone https://github.com/tensorflow/mlir llvm-project\llvm\projects\mlir
+mkdir llvm-project\build
+cd llvm-project\build
+cmake ..\llvm -G "Visual Studio 15 2017 Win64" -DLLVM_BUILD_EXAMPLES=ON -DLLVM_ENABLE_CXX1Y=Y -DLLVM_TARGETS_TO_BUILD="host" -DCMAKE_BUILD_TYPE=Release -Thost=x64
 cmake --build . --target check-mlir
 ```
 
