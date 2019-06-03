@@ -26,8 +26,8 @@ import os
 import pdb
 import re
 import sys
-import traceback
 import textwrap
+import traceback
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
@@ -39,11 +39,13 @@ from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import tf_stack
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -110,6 +112,21 @@ class _ErrorMetadata(errors.ErrorMetadataBase):
     # For user defined exceptions, we could define an interface that allowed
     # them to work under this mechanism.
     return StagingError(self.get_message())
+
+
+class StackTraceMapper(tf_stack.StackTraceMapper):
+  """Remaps generated code to code it originated from."""
+
+  def __init__(self, converted_fn):
+    self._source_map = converted_fn.ag_source_map
+
+  def map(self, filename, lineno, name):
+    loc = origin_info.LineLocation(filename=filename, lineno=lineno)
+    if loc not in self._source_map:
+      return filename, lineno, name
+
+    origin = self._source_map[loc]
+    return origin.loc.filename, origin.loc.lineno, origin.function_name
 
 
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
@@ -183,12 +200,14 @@ def do_not_convert_internal(f):
   return f
 
 
-def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
+@tf_export('autograph.experimental.do_not_convert')
+def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
   """Decorator that suppresses the conversion of a function.
 
   See also: docs/pyfunc_dtypes.md
 
   Args:
+    func: function to decorate.
     run_as: RunMode, specifies how to use the function in TensorFlow.
     return_dtypes: Optional[Iterable[ Union[tf.DType,
       utils.py_func.MatchDType]]], the return data types of the converted
@@ -196,35 +215,39 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
       None if the function has no return values.
 
   Returns:
-    Callable, a decorator that wraps the original function.
+    If `func` is not None, returns a `Callable` which is equivalent to
+    `func`, but is not converted by AutoGraph.
+    If `func` is None, returns a decorator that, when invoked with a
+    single `func` argument, returns a `Callable` equivalent to the
+    above case.
   """
+  if func is None:
+    return functools.partial(
+        do_not_convert,
+        run_as=run_as,
+        return_dtypes=return_dtypes)
 
-  def decorator(f):
-    """Decorator implementation."""
+  @functools.wraps(func)
+  def graph_wrapper(*args, **kwargs):
+    return func(*args, **kwargs)
 
-    @functools.wraps(f)
-    def graph_wrapper(*args, **kwargs):
-      return f(*args, **kwargs)
+  @functools.wraps(func)
+  def py_func_wrapper(*args, **kwargs):
+    if kwargs:
+      raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
+    # TODO(mdan): Add support for kwargs.
+    return py_func.wrap_py_func(
+        func, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
 
-    @functools.wraps(f)
-    def py_func_wrapper(*args, **kwargs):
-      if kwargs:
-        raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
-      # TODO(mdan): Add support for kwargs.
-      return py_func.wrap_py_func(
-          f, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
+  if run_as == RunMode.GRAPH:
+    wrapper = graph_wrapper
+  elif run_as == RunMode.PY_FUNC:
+    wrapper = py_func_wrapper
+  else:
+    raise ValueError('unknown value for run_as: %s' % run_as)
 
-    if run_as == RunMode.GRAPH:
-      wrapper = graph_wrapper
-    elif run_as == RunMode.PY_FUNC:
-      wrapper = py_func_wrapper
-    else:
-      raise ValueError('unknown value for run_as: %s' % run_as)
-
-    setattr(wrapper, '__ag_compiled', True)
-    return wrapper
-
-  return decorator
+  setattr(wrapper, '__ag_compiled', True)
+  return wrapper
 
 
 def _attach_metadata(e, f, converted):
@@ -319,6 +342,11 @@ def converted_call(f, owner, options, args, kwargs):
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
       return py_builtins.overload_of(f)(*args)
+
+  # TODO(mdan): Clean up the naming inconsistency.
+  if hasattr(f, 'autograph_info__') or hasattr(f, '__ag_compiled'):
+    logging.log(2, 'Permanently whitelisted: %s: already converted', f)
+    return _call_unconverted(f, args, kwargs)
 
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
@@ -448,16 +476,17 @@ def converted_call(f, owner, options, args, kwargs):
       raise
     logging.warn(
         'Entity %s could not be transformed and will be executed as-is.'
-        ' Please report this to the AutgoGraph team. When filing the bug, set'
+        ' Please report this to the AutoGraph team. When filing the bug, set'
         ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
         ' attach the full output. Cause: %s', target_entity, e)
     return _call_unconverted(f, args, kwargs)
 
   try:
-    if kwargs is not None:
-      result = converted_f(*effective_args, **kwargs)
-    else:
-      result = converted_f(*effective_args)
+    with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():
+      if kwargs is not None:
+        result = converted_f(*effective_args, **kwargs)
+      else:
+        result = converted_f(*effective_args)
   except Exception as e:
     _attach_metadata(e, converted_f, True)
     raise

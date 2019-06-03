@@ -126,33 +126,16 @@ void PickReasonableMultiplier(
                        bias_shape_inference, bias_data, output_shape_inference,
                        &output_multiplier);
 
-  bool should_use_per_channel = true;
-
-  // TODO(b/132879305): Support stride == 2 per-channel case.
-  if (params.stride_width == 2 || params.stride_height == 2) {
-    should_use_per_channel = false;
-  }
-
-  // TODO(b/132878669): Support padding.
-  if (params.padding_values.width != 0 || params.padding_values.height != 0) {
-    should_use_per_channel = false;
-  }
-
   int base_multiplier;
   int base_shift;
   QuantizeMultiplier(output_multiplier, &base_multiplier, &base_shift);
   for (int i = 0; i < output_depth; ++i) {
-    if (should_use_per_channel) {
-      // multipliers typically range in [2^30 ; 2^31 - 1].
-      // Values in [0, 2^30 - 1] are normally unused, but harmless.
-      // Thus a good way to randomize multipliers is to subtract from them
-      // a random value smaller than 2^30 but still significant compared to it.
-      output_multiplier_ptr[i] = base_multiplier - (std::rand() % (1 << 26));
-      output_shift_ptr[i] = base_shift - 1 + (std::rand() % 4);
-    } else {
-      output_multiplier_ptr[i] = base_multiplier;
-      output_shift_ptr[i] = base_shift;
-    }
+    // multipliers typically range in [2^30 ; 2^31 - 1].
+    // Values in [0, 2^30 - 1] are normally unused, but harmless.
+    // Thus a good way to randomize multipliers is to subtract from them
+    // a random value smaller than 2^30 but still significant compared to it.
+    output_multiplier_ptr[i] = base_multiplier - (std::rand() % (1 << 26));
+    output_shift_ptr[i] = base_shift - 1 + (std::rand() % 4);
   }
 }
 
@@ -206,20 +189,49 @@ void CompareRoundingResults(int flat_size, const int depth_multiplier,
 }
 #endif
 
-void TryTestOneDepthwiseConv3x3Filter() {
+bool GenerateValidShapeConfigurations(
+    int filter_width, int filter_height, int depth_multiplier,
+    int dilation_width_factor, int dilation_height_factor,
+    RuntimeShape* input_shape_inference, RuntimeShape* filter_shape_inference,
+    RuntimeShape* output_shape_inference, int* pad_width, int* pad_height,
+    int* stride) {
   const int batch = UniformRandomInt(1, 3);
   const int input_depth = 8 * ExponentialRandomPositiveInt(0.9f, 10, 50);
-  int input_width = UniformRandomInt(5, 50);
-  int input_height = UniformRandomInt(5, 50);
+  const int input_width = UniformRandomInt(5, 50);
+  const int input_height = UniformRandomInt(5, 50);
+  *stride = UniformRandomInt(1, 2);
+  const bool test_pad = UniformRandomInt(0, 1);
+  const auto padding_type = test_pad ? PaddingType::kValid : PaddingType::kSame;
+
+  const int output_depth = input_depth * depth_multiplier;
+
+  input_shape_inference->BuildFrom(
+      {batch, input_height, input_width, input_depth});
+
+  filter_shape_inference->BuildFrom(
+      {1, filter_height, filter_width, output_depth});
+
+  EXPECT_TRUE(ComputeConvSizes(
+      *input_shape_inference, output_depth, filter_width, filter_height,
+      *stride, dilation_width_factor, dilation_height_factor, padding_type,
+      output_shape_inference, pad_width, pad_height));
+
+  // We just care about whether the shape is suitable so we use non-per-channel
+  // case.
+  return optimized_ops::depthwise_conv::Fast3x3FilterKernelSupported<
+      optimized_ops::depthwise_conv::QuantizationType::kNonPerChannelUint8>(
+      *input_shape_inference, *filter_shape_inference, *stride, *stride,
+      dilation_width_factor, dilation_height_factor, *pad_width, *pad_height,
+      depth_multiplier, *output_shape_inference, 0);
+}
+
+void TryTestOneDepthwiseConv3x3Filter() {
   const int filter_width = 3;
   const int filter_height = 3;
   const int depth_multiplier = 1;
-  const int stride = UniformRandomInt(1, 2);
   // We don't support dilations in the 3x3 filter.
   const int dilation_width_factor = 1;
   const int dilation_height_factor = 1;
-  // Currently only support valid for per-channel fast kernel.
-  const auto padding_type = PaddingType::kValid;
 
   const int output_activation_min = -128;
   const int output_activation_max = 127;
@@ -227,19 +239,25 @@ void TryTestOneDepthwiseConv3x3Filter() {
   const std::int32_t input_offset = UniformRandomInt(-25, 25);
   const std::int32_t output_offset = UniformRandomInt(-25, 25);
 
-  const int output_depth = input_depth * depth_multiplier;
-
-  RuntimeShape input_shape_inference(
-      {batch, input_height, input_width, input_depth});
+  RuntimeShape input_shape_inference;
+  RuntimeShape filter_shape_inference;
   RuntimeShape output_shape_inference;
   int pad_width, pad_height;
-  EXPECT_TRUE(ComputeConvSizes(
-      input_shape_inference, output_depth, filter_width, filter_height, stride,
-      dilation_width_factor, dilation_height_factor, padding_type,
-      &output_shape_inference, &pad_width, &pad_height));
+  int stride;
 
-  RuntimeShape filter_shape_inference(
-      {1, filter_height, filter_width, output_depth});
+  // Keeps trying until we get valid shape/configurations for 3x3 filter case.
+  bool generated_valid_configurations_for_3x3_kernel = false;
+  while (!generated_valid_configurations_for_3x3_kernel) {
+    generated_valid_configurations_for_3x3_kernel =
+        GenerateValidShapeConfigurations(
+            filter_width, filter_height, depth_multiplier,
+            dilation_width_factor, dilation_height_factor,
+            &input_shape_inference, &filter_shape_inference,
+            &output_shape_inference, &pad_width, &pad_height, &stride);
+  }
+
+  const int output_depth = output_shape_inference.Dims(3);
+
   RuntimeShape bias_shape_inference({1, 1, 1, output_depth});
   const int input_buffer_size = input_shape_inference.FlatSize();
   const int filter_buffer_size = filter_shape_inference.FlatSize();
@@ -262,6 +280,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
   params.depth_multiplier = depth_multiplier;
   params.input_offset = input_offset;
   params.output_offset = output_offset;
+  params.weights_offset = 0;
   params.quantized_activation_min = output_activation_min;
   params.quantized_activation_max = output_activation_max;
 

@@ -59,7 +59,7 @@ Uniquer* GetUniquer() {
   return uniquer;
 }
 
-static string UniquifyName(const string& name) {
+static std::string UniquifyName(const std::string& name) {
   Uniquer* uniquer = GetUniquer();
   absl::MutexLock lock(&uniquer->mu);
   return uniquer->name_uniquer.GetUniqueName(name);
@@ -239,7 +239,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__repr__", &ProgramShape::ToString);
 
   // Literals
-  py::class_<Literal>(m, "Literal").def("__repr__", &Literal::ToString);
+  py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
+      .def("__repr__", &Literal::ToString);
   py::class_<LiteralSlice>(m, "LiteralSlice");
   py::implicitly_convertible<Literal, LiteralSlice>();
   py::implicitly_convertible<BorrowingLiteral, LiteralSlice>();
@@ -295,6 +296,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
+      .def("block_host_until_ready", &PyLocalBuffer::BlockHostUntilReady)
+      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
       .def("to_py", &PyLocalBuffer::ToPython)
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
@@ -441,10 +444,8 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Outfeed", &Outfeed, py::arg("operand"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
   ops.def("Pad", &Pad);
-  ops.def(
-      "Parameter",
-      static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&, const string&)>(
-          &Parameter));
+  ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+                                             const std::string&)>(&Parameter));
   ops.def("QR",
           [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
             TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));

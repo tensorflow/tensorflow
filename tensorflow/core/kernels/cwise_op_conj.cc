@@ -22,7 +22,7 @@ REGISTER2(UnaryOp, CPU, "Conj", functor::conj, complex64, complex128);
 
 REGISTER_VARIANT(UnaryVariantOp, CPU, "Conj", CONJ_VARIANT_UNARY_OP);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("Conj").Device(DEVICE_GPU).TypeConstraint<Variant>("T"),
     UnaryVariantOp<GPUDevice, CONJ_VARIANT_UNARY_OP>);

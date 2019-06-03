@@ -195,6 +195,7 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "StridedSlice",
                                           "StridedSliceGrad",
                                           "Switch",
+                                          "_SwitchN",
                                           "Tile",
                                           "TruncateDiv",
                                           "TruncateMod",
@@ -1943,7 +1944,15 @@ class SwitchProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
-  std::set<int> GetOutputPos() const override { return {0, 1}; }
+  std::set<int> GetOutputPos() const override {
+    std::set<int> output_pos;
+    const int num_outs =
+        node_->attr().count("num_outs") ? node_->attr().at("num_outs").i() : 2;
+    for (int i = 0; i < num_outs; i++) {
+      output_pos.insert(i);
+    }
+    return output_pos;
+  }
 };
 
 class TileProcessor : public AgnosticNodeProcessor {
@@ -2209,7 +2218,10 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   GraphProperties graph_properties(item);
-  TF_RETURN_IF_ERROR(graph_properties.InferStatically(false));
+  TF_RETURN_IF_ERROR(
+      graph_properties.InferStatically(/*assume_valid_feeds=*/false,
+                                       /*aggressive_shape_inference=*/false,
+                                       /*include_tensor_values=*/false));
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   virtual_placer_.reset(new VirtualPlacer(cluster->GetDevices()));

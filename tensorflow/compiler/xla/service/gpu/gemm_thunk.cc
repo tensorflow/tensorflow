@@ -446,7 +446,7 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       implements_whole_instruction_(implements_whole_instruction) {}
 
 Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                  se::Stream* stream,
+                                  se::Stream* stream, const RunId& /*run_id*/,
                                   HloExecutionProfiler* profiler) {
   auto fn = [&]() {
     switch (output_shape_.element_type()) {

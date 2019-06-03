@@ -1,8 +1,7 @@
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
@@ -62,7 +61,7 @@ cc_library(
     name = "arena_planner",
     srcs = ["arena_planner.cc"],
     hdrs = ["arena_planner.h"],
-    copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
+    copts = TFLITE_DEFAULT_COPTS,
     deps = [
         ":graph_info",
         ":memory_planner",

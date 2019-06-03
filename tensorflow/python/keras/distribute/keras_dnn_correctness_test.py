@@ -117,8 +117,9 @@ class TestDistributionStrategyDnnCorrectness(
   @combinations.generate(
       keras_correctness_test_base
       .strategy_minus_tpu_and_input_config_combinations_eager())
-  def disabled_test_dnn_correctness_with_partial_last_batch(
+  def test_dnn_correctness_with_partial_last_batch(
       self, distribution, use_numpy, use_validation_data):
+    distribution.extended.experimental_enable_get_next_as_optional = True
     self.run_correctness_test(
         distribution,
         use_numpy,

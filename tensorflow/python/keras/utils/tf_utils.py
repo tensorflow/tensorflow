@@ -108,7 +108,8 @@ def get_reachable_from_inputs(inputs, targets=None):
   """
   inputs = nest.flatten(inputs)
   reachable = set(inputs)
-  if targets:
+  if targets and not isinstance(targets, set):
+    targets = nest.flatten(targets)
     targets = set(targets)
   queue = inputs[:]
 

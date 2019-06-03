@@ -32,6 +32,14 @@ limitations under the License.
 
 #define kFloatWeightsPerNeonLane 4
 
+#if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+#define TFLITE_USE_STD_ALIGN
+#endif
+
+#ifdef TFLITE_USE_STD_ALIGN
+#include <stdalign.h>
+#endif
+
 namespace tflite {
 namespace tensor_utils {
 namespace {
@@ -41,12 +49,19 @@ namespace {
 // alignment.
 // Caller is responsible by freeing the allocated memory by calling free on
 // the passed freeing_buffer pointer.
-void* aligned_alloc(size_t alignment, size_t size, void** freeing_buffer) {
+inline void* aligned_alloc(size_t alignment, size_t size,
+                           void** freeing_buffer) {
+#ifdef TFLITE_USE_STD_ALIGN
+  *freeing_buffer = ::aligned_alloc(
+      alignment, (size + alignment - 1) / alignment * alignment);
+  return *freeing_buffer;
+#else
   *freeing_buffer = malloc(size + alignment);
   const size_t offset = ((uintptr_t)*freeing_buffer) % alignment;  // NOLINT
   return offset == 0
              ? *freeing_buffer
              : ((char*)*freeing_buffer + (alignment - offset));  // NOLINT
+#endif
 }
 
 // Use /proc/cpuinfo to test whether we have the right processor.
@@ -512,8 +527,9 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 }
 
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
-    const float* matrix, const uint8_t* ledger, int m_rows, int m_cols,
-    const float* vector, int n_batch, float* result, int result_stride) {
+    const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
+    float* __restrict__ result, int result_stride) {
   const int kBlockSize = 16;
   const int kNeonLanesPerBlock = 4;
   TFLITE_DCHECK_EQ(  // NOLINT

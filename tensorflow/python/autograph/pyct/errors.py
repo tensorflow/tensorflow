@@ -106,6 +106,7 @@ KNOWN_STRING_CONSTRUCTOR_ERRORS = (
     AssertionError,
     AttributeError,
     KeyError,
+    NameError,
     NotImplementedError,
     RuntimeError,
     StopIteration,
@@ -163,9 +164,14 @@ class ErrorMetadataBase(object):
           frame_info.filename[path_idx:],
           frame_info.lineno,
           frame_info.function_name,
-          ' *' if frame_info.converted else '',
+          '  *' if frame_info.converted else '',
       ))
-      lines.append('        {}'.format(frame_info.code.strip()))
+      if frame_info.code is None:
+        code_snippet = '<source unavailable>'
+      else:
+        code_snippet = frame_info.code.strip()
+      lines.append('        {}'.format(code_snippet))
+
     lines.append('')
 
     message_lines = self.cause_message.split('\n')

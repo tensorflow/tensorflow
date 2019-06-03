@@ -20,7 +20,6 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
@@ -74,15 +73,11 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
     def recalculate_output_shapes(output_shapes):
       """Recalculates the output_shapes after dividing it by num_workers."""
       if len(output_shapes) < 1:
-        raise ValueError("Input shape should have at least one dimension.")
-      if (tensor_shape.dimension_value(output_shapes[0]) and
-          tensor_shape.dimension_value(output_shapes[0]) % num_workers != 0):
-        raise errors.InvalidArgumentError(
-            None, None,
-            "First dim of input shape: %d is not divisible by num_workers: %d" %
-            (output_shapes[0], num_workers))
+        raise ValueError(
+            "Input shape should have at least one dimension. "
+            "Perhaps your input dataset is not batched?")
       output_dims = [d for d in output_shapes.dims]
-      output_dims[0] = output_dims[0] // num_workers
+      output_dims[0] = (output_dims[0] + num_workers - 1) // num_workers
       return tensor_shape.TensorShape(output_dims)
 
     input_types = dataset_ops.get_legacy_output_types(self._input_dataset)

@@ -453,25 +453,49 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
   }
 };
 
-// Converts Cudnn filter format OIHW back to TensorFlow filter format HWIO.
-// TODO(hinsu): Support reverse transformation from filter format OHWI as well.
+// Converts Cudnn filter format OIHW or OHWI back to TensorFlow filter format
+// HWIO.
 template <typename T, int NDIMS>
 struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
   typedef GPUDevice Device;
-  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+  void operator()(const Device& d, FilterTensorFormat src_filter_format,
+                  typename TTypes<T, NDIMS>::ConstTensor in,
                   typename TTypes<T, NDIMS>::Tensor out) {
     Dimension<3> combined_dims;
-    combined_dims[0] = in.dimension(0);  // output filters
-    combined_dims[1] = in.dimension(1);  // input filters
-    combined_dims[2] = in.dimension(2);  // spatial dimensions
-    for (int i = 3; i < NDIMS; ++i) {
-      combined_dims[2] *= in.dimension(i);
+
+    if (src_filter_format == FORMAT_OIHW) {
+      combined_dims[0] = in.dimension(0);  // output filters
+      combined_dims[1] = in.dimension(1);  // input filters
+      combined_dims[2] = in.dimension(2);  // spatial dimensions
+      for (int i = 3; i < NDIMS; ++i) {
+        combined_dims[2] *= in.dimension(i);
+      }
+
+      GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
+      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
+                                   config.block_count, config.thread_per_block,
+                                   0, d.stream(), config.virtual_thread_count,
+                                   in.data(), combined_dims, out.data()));
+
+    } else if (src_filter_format == FORMAT_OHWI) {
+      combined_dims[0] = in.dimension(0);  // output filters
+      combined_dims[1] = in.dimension(1);  // spatial dimensions
+      for (int i = 2; i < NDIMS - 1; i++) {
+        combined_dims[1] *= in.dimension(i);
+      }
+      combined_dims[2] = in.dimension(NDIMS - 1);  // input filters
+
+      GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
+      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 0, 1>,
+                                   config.block_count, config.thread_per_block,
+                                   0, d.stream(), config.virtual_thread_count,
+                                   in.data(), combined_dims, out.data()));
+
+    } else {
+      // TODO(ezhulenev): Set error status in OpKernelContext instead.
+      LOG(FATAL) << "Unsupported filter format: "
+                 << ToString(src_filter_format);
     }
-    GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), config.virtual_thread_count,
-                                 in.data(), combined_dims, out.data()));
   }
 };
 

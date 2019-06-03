@@ -174,8 +174,8 @@ cc_test(
     name = "gl_buffer_test",
     srcs = ["gl_buffer_test.cc"],
     linkopts = [
-        "-lGLESv3",
         "-lEGL",
+        "-lGLESv2",
     ],
     tags = [
         "local",
@@ -260,8 +260,10 @@ cc_library(
     srcs = ["gl_sync.cc"],
     hdrs = ["gl_sync.h"],
     deps = [
+        ":gl_buffer",
         ":gl_call",
         ":gl_errors",
+        ":gl_program",
         ":portable",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],

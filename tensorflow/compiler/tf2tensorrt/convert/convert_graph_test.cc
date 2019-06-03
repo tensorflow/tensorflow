@@ -239,7 +239,7 @@ class ConvertAfterShapesTest : public ::testing::Test {
     params.output_names = &output_names;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;
-    params.minimum_segment_size = 2;
+    params.minimum_segment_size = 1;
     params.graph_properties = &graph_properties;
     params.use_calibration = false;
 

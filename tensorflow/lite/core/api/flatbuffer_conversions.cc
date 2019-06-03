@@ -290,6 +290,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_FullyConnectedOptions()) {
         params->activation = parse_activation(
             fully_connected_params->fused_activation_function());
+        params->keep_num_dims = fully_connected_params->keep_num_dims();
         switch (fully_connected_params->weights_format()) {
           case FullyConnectedOptionsWeightsFormat_DEFAULT:
             params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;

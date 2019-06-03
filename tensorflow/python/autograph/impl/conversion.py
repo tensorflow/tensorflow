@@ -81,6 +81,10 @@ class _ConvertedEntityFactoryInfo(
     source_map: Dict.
   """
 
+  def __str__(self):
+    return '_ConvertedEntityFactoryInfo({} in {})'.format(
+        self.converted_name, self.module_name)
+
   def get_module(self):
     return sys.modules[self.module_name]
 
@@ -333,21 +337,21 @@ def is_whitelisted_for_graph(o, check_call_override=True):
   else:
     m = tf_inspect.getmodule(o)
 
+  # Examples of callables that lack a __module__ property include builtins.
   if hasattr(m, '__name__'):
-    # Builtins typically have unnamed modules.
-    for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
-      if m.__name__.startswith(prefix + '.') or m.__name__ == prefix:
-        logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
+    for rule in config.CONVERSION_RULES:
+      action = rule.get_action(m)
+      if action == config.Action.CONVERT:
+        logging.log(2, 'Not whitelisted: %s: %s', o, rule)
+        return False
+      elif action == config.Action.DO_NOT_CONVERT:
+        logging.log(2, 'Whitelisted: %s: %s', o, rule)
         return True
-
-  if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
-    logging.log(2, 'Whitelisted: %s: already converted', o)
-    return True
 
   if tf_inspect.isgeneratorfunction(o):
     logging.warn(
-        'Entity {} appears to be a generator function. It will not be converted'
-        ' by AutoGraph.'.format(o), 1)
+        'Entity %s appears to be a generator function. It will not be converted'
+        ' by AutoGraph.', o)
     logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
     return True
 
@@ -394,11 +398,6 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     # Due to the way they're constructed, namedtuple types cannot be converted
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
-    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
-      logging.warn(
-          'Entity {} looks like a namedtuple subclass. Its constructor will'
-          ' not be converted by AutoGraph, but if it has any custom methods,'
-          ' those will be.'.format(o), 1)
     logging.log(2, 'Whitelisted: %s: named tuple', o)
     return True
 

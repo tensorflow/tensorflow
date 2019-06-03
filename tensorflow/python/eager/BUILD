@@ -1,4 +1,6 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -86,6 +88,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
         "//tensorflow/python:errors",
@@ -93,6 +96,17 @@ py_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "context_test",
+    size = "small",
+    srcs = ["context_test.py"],
+    additional_deps = [
+        ":context",
+        ":test",
     ],
 )
 
@@ -645,7 +659,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "remote_test",
     size = "medium",
     srcs = ["remote_test.py"],
@@ -656,6 +670,7 @@ tf_py_test(
         ":remote",
         "//tensorflow/python:resource_variable_ops",
     ],
+    grpc_enabled = True,
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out

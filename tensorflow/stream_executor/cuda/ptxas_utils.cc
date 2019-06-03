@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -120,11 +121,9 @@ port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
                         compilation_options.ToTuple()};
   auto it = ptx_cache.find(cache_key);
   if (it == ptx_cache.end()) {
-    auto compiled_or = CompilePtx(device_ordinal, ptx, compilation_options);
-    TF_RETURN_IF_ERROR(compiled_or.status());
-    std::vector<uint8> compiled = std::move(compiled_or.ValueOrDie());
-    it =
-        ptx_cache.emplace(cache_key, std::move(compiled_or.ValueOrDie())).first;
+    TF_ASSIGN_OR_RETURN(std::vector<uint8> compiled,
+                        CompilePtx(device_ordinal, ptx, compilation_options));
+    it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
   }
 
   CHECK(it != ptx_cache.end());

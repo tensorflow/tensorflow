@@ -364,7 +364,7 @@ class ResourceVariable(variables.VariableV1):
 
   def __init__(self,
                initial_value=None,
-               trainable=True,
+               trainable=None,
                collections=None,
                validate_shape=True,  # pylint: disable=unused-argument
                caching_device=None,
@@ -388,6 +388,7 @@ class ResourceVariable(variables.VariableV1):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+         Defaults to `True` unless `synchronization` is set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: Ignored. Provided for compatibility with tf.Variable.
@@ -473,7 +474,7 @@ class ResourceVariable(variables.VariableV1):
 
   def _init_from_args(self,
                       initial_value=None,
-                      trainable=True,
+                      trainable=None,
                       collections=None,
                       caching_device=None,
                       name=None,
@@ -494,6 +495,7 @@ class ResourceVariable(variables.VariableV1):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        Defaults to `True` unless `synchronization` is set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       caching_device: Optional device string or function describing where the
@@ -1655,6 +1657,11 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.METRIC_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
 
 
 def is_resource_variable(var):
@@ -1753,6 +1760,9 @@ class UninitializedVariable(ResourceVariable):
               value = self._read_variable_op()
             self._graph_element = value
           ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
+          # Do *not* add to TRAINABLE_VARIABLES here, even if self._trainable,
+          # because retraining or frozen use of imported SavedModels is
+          # controlled at higher levels of model building.
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint

@@ -1,6 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -21,10 +24,6 @@ package_group(
         "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
     ],
-)
-
-package(
-    default_visibility = [":internal"],
 )
 
 load(

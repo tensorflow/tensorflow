@@ -100,7 +100,7 @@ Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
   }
   if (!DMAHelper::CanUseDMA(&src)) {
     return errors::Internal("GPU copy from non-DMA ",
-                            DataTypeString(src.dtype()), "tensor");
+                            DataTypeString(src.dtype()), " tensor");
   }
   return Status::OK();
 }

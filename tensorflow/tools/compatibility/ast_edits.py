@@ -617,6 +617,8 @@ class _PastaEditVisitor(ast.NodeVisitor):
     new_aliases = []
     import_updated = False
     import_renames = getattr(self._api_change_spec, "import_renames", {})
+    inserts_after_imports = getattr(self._api_change_spec,
+                                    "inserts_after_imports", {})
 
     # This loop processes imports in the format
     # import foo as f, bar as b
@@ -647,6 +649,35 @@ class _PastaEditVisitor(ast.NodeVisitor):
       new_alias = ast.alias(name=new_name, asname=new_asname)
       new_aliases.append(new_alias)
       import_updated = True
+
+      # Insert any followup lines that should happen after this import.
+      full_import = (import_alias.name, import_alias.asname)
+      insert_offset = 1
+      for line_to_insert in inserts_after_imports.get(full_import, []):
+        assert self._stack[-1] is node
+        parent = self._stack[-2]
+
+        new_line_node = pasta.parse(line_to_insert)
+        ast.copy_location(new_line_node, node)
+        parent.body.insert(
+            parent.body.index(node) + insert_offset, new_line_node)
+        insert_offset += 1
+
+        # Insert a newline after the import if necessary
+        old_suffix = pasta.base.formatting.get(node, "suffix")
+        if old_suffix is None:
+          old_suffix = os.linesep
+        if os.linesep not in old_suffix:
+          pasta.base.formatting.set(node, "suffix", old_suffix + os.linesep)
+
+        # Apply indentation to new node.
+        pasta.base.formatting.set(new_line_node, "prefix",
+                                  pasta.base.formatting.get(node, "prefix"))
+        pasta.base.formatting.set(new_line_node, "suffix", os.linesep)
+        self.add_log(
+            INFO, node.lineno, node.col_offset,
+            "Adding `%s` after import of %s" %
+            (new_line_node, import_alias.name))
 
     # Replace the node if at least one import needs to be updated.
     if import_updated:

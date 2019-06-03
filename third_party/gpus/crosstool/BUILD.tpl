@@ -29,6 +29,7 @@ cc_toolchain_suite(
         "x64_windows|msvc-cl": ":cc-compiler-windows",
         "x64_windows": ":cc-compiler-windows",
         "arm": ":cc-compiler-local",
+        "aarch64": ":cc-compiler-local",
         "k8": ":cc-compiler-local",
         "piii": ":cc-compiler-local",
         "ppc": ":cc-compiler-local",

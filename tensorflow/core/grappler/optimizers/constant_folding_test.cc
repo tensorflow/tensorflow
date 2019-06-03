@@ -2390,12 +2390,11 @@ TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("ConstantFolding/concat2_partial_split_0_0", "Const", {}, {}, &want);
+  AddNode("ConstantFolding/concat2_partial_split_0", "Const", {}, {}, &want);
   AddNode("axis", "Const", {}, {}, &want);
   AddNode("ph", "Placeholder", {}, {}, &want);
   AddNode("concat2", "ConcatV2",
-          {"ConstantFolding/concat2_partial_split_0_0", "ph", "axis"}, {},
-          &want);
+          {"ConstantFolding/concat2_partial_split_0", "ph", "axis"}, {}, &want);
 
   CompareGraphs(want, got);
 }

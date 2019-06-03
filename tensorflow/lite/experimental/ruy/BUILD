@@ -2,10 +2,9 @@
 
 # TODO(b/123403203) actually make TFLite use ruy.
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 load(":ruy_visibility.bzl", "ruy_visibility")

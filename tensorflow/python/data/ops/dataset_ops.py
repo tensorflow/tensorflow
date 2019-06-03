@@ -79,6 +79,11 @@ wrap_function = LazyLoader(
 ops.NotDifferentiable("ReduceDataset")
 
 
+# A constant that can be used to enable auto-tuning.
+AUTOTUNE = -1
+tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
+
+
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
@@ -282,9 +287,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       An `Iterator` over the elements of this dataset.
 
     Raises:
-      RuntimeError: If eager execution is not enabled.
+      RuntimeError: If not inside of tf.function and not executing eagerly.
     """
-    return iterator_ops.IteratorV2(self)
+    if (context.executing_eagerly()
+        or ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+      return iterator_ops.IteratorV2(self)
+    else:
+      raise RuntimeError("__iter__() is only supported inside of tf.function "
+                         "or when eager execution is enabled.")
 
   @abc.abstractproperty
   def _element_structure(self):
@@ -699,8 +709,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def prefetch(self, buffer_size):
     """Creates a `Dataset` that prefetches elements from this dataset.
 
-    Note that if the dataset was batched using `Dataset.batch`, each element is
-    a batch and this operation will prefetch `buffer_size` batches.
+    Note: Like other `Dataset` methods, prefetch operates on the
+    elements of the input dataset. It has no concept of examples vs. batches.
+    `examples.prefetch(2)` will prefetch two elements (2 examples),
+    while `examples.batch(20).prefetch(2)` will prefetch 2 elements
+    (2 batches, of 20 examples each).
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum
@@ -1161,7 +1174,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   def interleave(self,
                  map_func,
-                 cycle_length,
+                 cycle_length=AUTOTUNE,
                  block_length=1,
                  num_parallel_calls=None):
     """Maps `map_func` across this dataset, and interleaves the results.
@@ -1218,10 +1231,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       map_func: A function mapping a nested structure of tensors (having shapes
         and types defined by `self.output_shapes` and `self.output_types`) to a
         `Dataset`.
-      cycle_length: The number of elements from this dataset that will be
-        processed concurrently.
-      block_length: The number of consecutive elements to produce from each
-        input element before cycling to another input element.
+      cycle_length: (Optional.) The number of input elements that will be
+        processed concurrently. If not specified, the value will be derived from
+        the number of available CPU cores. If the `num_parallel_calls` argument
+        is set to `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument
+        also identifies the maximum degree of parallelism.
+      block_length: (Optional.) The number of consecutive elements to produce
+        from each input element before cycling to another input element.
       num_parallel_calls: (Optional.) If specified, the implementation creates a
         threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
@@ -1867,7 +1883,7 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.interleave)
   def interleave(self,
                  map_func,
-                 cycle_length,
+                 cycle_length=AUTOTUNE,
                  block_length=1,
                  num_parallel_calls=None):
     return DatasetV1Adapter(super(DatasetV1, self).interleave(

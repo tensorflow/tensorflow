@@ -1,7 +1,6 @@
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
@@ -185,7 +184,7 @@ tf_library(
     name = "test_graph_tfmatmulandadd",
     testonly = 1,
     config = "test_graph_tfmatmulandadd.config.pbtxt",
-    cpp_class = "MatMulAndAddComp",
+    cpp_class = "::foo::bar::MatMulAndAddComp",
     graph = "test_graph_tfmatmulandadd.pb",
     tags = [
         "manual",

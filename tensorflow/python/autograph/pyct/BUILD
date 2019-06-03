@@ -1,4 +1,6 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -36,6 +38,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/python/autograph/pyct/common_transformers",
         "@astor_archive//:astor",
         "@gast_archive//:gast",
         "@six_archive//:six",
@@ -81,6 +84,18 @@ py_test(
 py_test(
     name = "compiler_test",
     srcs = ["compiler_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "errors_test",
+    srcs = ["errors_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [

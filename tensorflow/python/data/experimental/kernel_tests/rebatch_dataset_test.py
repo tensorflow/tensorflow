@@ -63,14 +63,14 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     with self.assertRaisesRegexp(ValueError, "at least one dimension"):
       distribute._RebatchDataset(dataset, num_workers=4)
 
-  def testNotDivisibleError(self, drop_remainder):
+  def testNotDivisible(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1024).batch(
         32, drop_remainder=drop_remainder)
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "not divisible by"):
-      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=5)
-      next_element = self.getNext(rebatched_dataset)
-      self.evaluate(next_element())
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=5)
+    expected_output = [[k for k in range(i, i + 7)] for i in range(0, 1022, 7)]  # pylint: disable=g-complex-comprehension
+    if not drop_remainder:
+      expected_output.append([1022, 1023])
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   def testTupleOutput(self, drop_remainder):
     dataset = (
@@ -341,10 +341,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
                        for _ in range(2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
-  def testGroupByWindowBatching(self, drop_remainder):
+  def testGroupByWindowStaticBatch(self, drop_remainder):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         [[array_ops.constant(i, dtype=dtypes.int64)] * 3 for i in range(40)])
-    reduce_fn = lambda bucket_id, ds: ds.batch(
+    reduce_fn = lambda bucket_id, ds: ds.batch(  # pylint: disable=g-long-lambda
         batch_size=10, drop_remainder=drop_remainder)
     dataset = dataset.apply(
         grouping.group_by_window(
@@ -359,6 +359,25 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
                        for j in range(4)
                        for k in range(2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testGroupByWindowDynamicBatch(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(40).map(lambda x: x % 2)
+    reduce_fn = lambda bucket_id, ds: ds.batch(  # pylint: disable=g-long-lambda
+        batch_size=(bucket_id + 1) * 5, drop_remainder=drop_remainder)
+    dataset = dataset.apply(
+        grouping.group_by_window(
+            key_func=lambda x: x, reduce_func=reduce_fn, window_size=10))
+    dataset = distribute._RebatchDataset(dataset, num_workers=2)
+
+    self.assertEqual([[None]],
+                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    pairs = [(3, 0), (3, 0), (3, 0)]
+    if not drop_remainder:
+      pairs.extend([(1, 0)])
+    pairs.extend([(5, 1), (5, 1)])
+    pairs = pairs * 2
+    expected_output = [[value] * batch_size for batch_size, value in pairs]
+    self.assertDatasetProduces(dataset, expected_output)
 
 
 if __name__ == "__main__":

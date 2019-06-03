@@ -1,8 +1,7 @@
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -563,6 +562,17 @@ py_library(
     ],
 )
 
+py_test(
+    name = "combinations_test",
+    srcs = ["combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
+    ],
+)
+
 py_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
@@ -574,12 +584,27 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "strategy_combinations_test",
+    srcs = ["strategy_combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        ":reduce_util",
+        ":strategy_combinations",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -593,17 +618,6 @@ py_library(
     ],
 )
 
-py_test(
-    name = "combinations_test",
-    srcs = ["combinations_test.py"],
-    python_version = "PY2",
-    deps = [
-        ":combinations",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:backend",
-    ],
-)
-
 py_library(
     name = "multi_worker_test_base",
     srcs = ["multi_worker_test_base.py"],
@@ -612,9 +626,9 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:keras_lib",
         "//tensorflow/python:session",
         "//tensorflow/python:util",
-        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -635,6 +649,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_xla_py_test(
@@ -665,6 +680,7 @@ distribute_py_test(
         "no_windows",
     ],
     deps = [
+        ":collective_all_reduce_strategy",
         ":mirrored_strategy",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -693,6 +709,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -717,6 +734,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -729,6 +747,7 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     grpc_enabled = True,
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -911,6 +930,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -942,6 +962,7 @@ cuda_py_test(
         "multi_and_single_gpu",
         "no_windows_gpu",  # TODO(b/130551176)
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 distribute_py_test(
@@ -1023,5 +1044,24 @@ distribute_py_test(
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
+    ],
+)
+
+distribute_py_test(
+    name = "ctl_correctness_test",
+    srcs = ["ctl_correctness_test.py"],
+    main = "ctl_correctness_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:keras_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
     ],
 )

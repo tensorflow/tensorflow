@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import collections
 import functools
-import six
 import uuid
+import six
 
 from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
@@ -278,7 +278,7 @@ class StaticHashTable(InitializableLookupTableBase):
       # shared across different kernels. If no "shared_name" is set and
       # "use_node_name_sharing" is False, then each kernel gets its own local
       # resource.
-      self._shared_name = "table_%s" % (str(uuid.uuid4()),)
+      self._shared_name = "hash_table_%s" % (str(uuid.uuid4()),)
     self._name = name or "hash_table"
     self._table_name = None
     super(StaticHashTable, self).__init__(default_value, initializer)
@@ -426,8 +426,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
         # To maintain forward compatibiltiy, use the old implementation.
         init_op = gen_lookup_ops.initialize_table_v2(table.resource_handle,
                                                      self._keys, self._values)
-    if init_op is not None:
-      ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
 
@@ -609,8 +608,7 @@ class TextFileInitializer(TableInitializerBase):
       init_op = gen_lookup_ops.initialize_table_from_text_file_v2(
           table.resource_handle, filename, self._key_index, self._value_index,
           -1 if self._vocab_size is None else self._vocab_size, self._delimiter)
-    if init_op is not None:
-      ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+    ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g.,
     # if it is a placeholder) then it does not make sense to track it as an
     # asset.

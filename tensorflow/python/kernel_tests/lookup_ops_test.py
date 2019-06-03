@@ -255,9 +255,8 @@ class StaticHashTableTest(BaseLookupTableTest):
       table = self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.initialize_table(table)
-
-      with self.assertRaisesOpError("Table already initialized"):
-        self.initialize_table(table)
+      # Make sure that initializing twice doesn't throw any errors.
+      self.initialize_table(table)
 
   def testInitializationWithInvalidDimensions(self):
     default_val = -1
@@ -272,7 +271,7 @@ class StaticHashTableTest(BaseLookupTableTest):
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
   @test_util.run_v1_only("Sessions not available in TF2.0")
-  def DISABLE_testMultipleSessions(self):
+  def testMultipleSessions(self):
     # Start a server
     server = server_lib.Server({"local0": ["localhost:0"]},
                                protocol="grpc",
@@ -297,7 +296,7 @@ class StaticHashTableTest(BaseLookupTableTest):
     # Init the table in the second session and verify that we do not get a
     # "Table already initialized" error.
     with session2:
-      self.initialize_table(table)
+      table.initializer.run()
       self.assertAllEqual(3, self.evaluate(table.size()))
 
   @test_util.run_v2_only

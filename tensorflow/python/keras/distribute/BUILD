@@ -5,9 +5,10 @@
 load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -40,11 +41,20 @@ py_library(
         "//tensorflow/python/keras:optimizers",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras:saving",
+        "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
+)
+
+py_library(
+    name = "multi_worker_training_state",
+    srcs = [
+        "multi_worker_training_state.py",
+    ],
+    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -267,6 +277,7 @@ cuda_py_test(
         "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -302,6 +313,7 @@ cuda_py_test(
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -318,11 +330,35 @@ cuda_py_test(
         ":multi_worker_testing_utils",
         "//tensorflow/python/keras",
     ],
-    shard_count = 14,
+    # TODO(b/132384649): Enable for guitar and oss tests.
     tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/132384649): Flakily times out.
+        "no_oss",
+        "noguitar",
     ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "multi_worker_fault_tolerance_test",
+    srcs = ["multi_worker_fault_tolerance_test.py"],
+    additional_deps = [
+        ":distribute",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        ":multi_worker_testing_utils",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 14,
+    # TODO(b/132384649): Enable for guitar and oss tests.
+    tags = [
+        "no_oss",
+        "noguitar",
+    ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -340,6 +376,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

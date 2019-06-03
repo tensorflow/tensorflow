@@ -206,7 +206,7 @@ Status StartTracing(const tensorflow::string& service_addr,
   opts.set_include_dataset_ops(include_dataset_ops);
   while (true) {
     std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
-              << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
+              << "Remaining attempt(s): " << --remaining_attempts << std::endl;
     if (hostnames.empty()) {
       status = Profile(service_addr, logdir, duration_ms, repository_root,
                        session_id, opts);
@@ -216,7 +216,8 @@ Status StartTracing(const tensorflow::string& service_addr,
                           session_id, opts);
     }
     if (remaining_attempts <= 0 || status.ok() ||
-        status.code() != tensorflow::error::Code::UNAVAILABLE)
+        status.code() != tensorflow::error::Code::UNAVAILABLE ||
+        status.code() != tensorflow::error::Code::ALREADY_EXISTS)
       break;
     std::cout << "No trace event is collected. Automatically retrying."
               << std::endl
@@ -243,8 +244,8 @@ MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
   return request;
 }
 
-void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, bool timestamp, int num_queries) {
+Status StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
+                       int monitoring_level, bool timestamp, int num_queries) {
   for (int query = 0; query < num_queries; ++query) {
     MonitorRequest request =
         PopulateMonitorRequest(duration_ms, monitoring_level, timestamp);
@@ -258,12 +259,14 @@ void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
             "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
             channel_args));
     MonitorResponse response;
-    TF_QCHECK_OK(FromGrpcStatus(stub->Monitor(&context, request, &response)));
+    TF_RETURN_IF_ERROR(
+        FromGrpcStatus(stub->Monitor(&context, request, &response)));
 
     std::cout << "Cloud TPU Monitoring Results (Sample " << query + 1
               << "):\n\n"
               << response.data() << std::flush;
   }
+  return Status::OK();
 }
 
 }  // namespace client
