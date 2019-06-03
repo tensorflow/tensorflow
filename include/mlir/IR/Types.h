@@ -137,6 +137,9 @@ public:
   template <typename U> U dyn_cast_or_null() const;
   template <typename U> U cast() const;
 
+  // Support type casting Type to itself.
+  static bool classof(Type) { return true; }
+
   /// Return the classification for this type.
   unsigned getKind() const;
 
