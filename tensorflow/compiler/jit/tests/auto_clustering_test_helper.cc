@@ -157,6 +157,7 @@ Status AutoClusteringTest::RunAutoClusteringTest(
   return Status::OK();
 }
 
+#if defined(PLATFORM_GOOGLE)
 Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
                                    benchmark::State& state) {
   GraphDef graph_def;
@@ -181,4 +182,6 @@ Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
 
   return Status::OK();
 }
+#endif  // PLATFORM_GOOGLE
+
 }  // namespace tensorflow

@@ -50,10 +50,13 @@ class AutoClusteringTest : public ::testing::Test {
                                absl::string_view golden_summary_file_path);
 };
 
+#if defined(PLATFORM_GOOGLE)
 // Reads the GraphDef stored in graph_def_path (which must be a pbtxt file) and
 // benchmarks MarkForCompilationPass on this graphdef.
 Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
                                    benchmark::State& state);
+#endif  // PLATFORM_GOOGLE
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_TESTS_AUTO_CLUSTERING_TEST_HELPER_H_
