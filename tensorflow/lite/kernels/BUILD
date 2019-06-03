@@ -128,8 +128,8 @@ cc_library(
     name = "tflite_with_ruy_default",
     visibility = ["//visibility:private"],
     deps = select({
-        # TODO(b/133306271): Enable for ARM64 after validating performance.
-        "//tensorflow:android_arm64": [],
+        "//tensorflow:android_arm64": [":tflite_with_ruy_enabled"],
+        ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
         "//conditions:default": [],
     }),
 )
