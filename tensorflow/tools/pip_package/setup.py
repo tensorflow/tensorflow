@@ -47,7 +47,7 @@ DOCLINES = __doc__.split('\n')
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '1.13.1'
+_VERSION = '2.0.0-alpha0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
@@ -59,8 +59,8 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.14.5, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
-    'tensorboard >= 1.13.0, < 1.14.0',
-    'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
+    'tb-nightly >= 1.14.0a20190301, < 1.14.0a20190302',
+    'tf-estimator-nightly >= 1.14.0.dev2019030115, < 1.14.0.dev2019030116',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
 ]
