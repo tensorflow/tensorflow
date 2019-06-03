@@ -64,7 +64,7 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // Determines whether the combination of `a` and `b` into a (possibly
 // multi-output) fusion would be "too large" -- i.e., have more operands and
 // outputs than is allowed.
-bool FusionWouldBeTooLarge(const HloInstruction* a, const HloInstruction* b);
+bool FusionWouldBeTooLarge(const HloInstruction& instr1, const HloInstruction& instr2);
 
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.

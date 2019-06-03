@@ -311,8 +311,8 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1, const HloInstruction& i
   operands.insert(instr2.operands().begin(), instr2.operands().end());
   // If there's an edge between `a` and `b`, don't count it: We're fusing that
   // producer -> consumer relationship.
-  operands.erase(instr1);
-  operands.erase(instr2);
+  operands.erase(&instr1);
+  operands.erase(&instr2);
   return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
 }
 

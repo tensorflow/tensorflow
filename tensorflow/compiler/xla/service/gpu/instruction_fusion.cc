@@ -150,7 +150,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
   // The following checks are potentially expensive.	
-  if (FusionWouldBeTooLarge(consumer, producer)) {
+  if (FusionWouldBeTooLarge(*consumer, *producer)) {
     return false;
   }
   // Also check that our emitter can handle the fusion node. We currently can

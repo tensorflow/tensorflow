@@ -647,6 +647,12 @@ TEST_F(GpuFusibleTest, IsFusibleAsMultiOutputFusionRoot) {
   auto module = ParseHloString(R"(
     HloModule test_module
 
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
     ENTRY Scatter {
       p0 = s32[3,3] parameter(0)
       operand = s32[3,3] add(p0, p0)
@@ -675,7 +681,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
       c0 = f32[] constant(0)
       exp = f32[32,32,32]{2,1,0} exponential(p0)
       reduce = f32[32,32]{1,0} reduce(exp, c0), dimensions={2},
-        to_apply=scalar_add_computation
+        to_apply=scalar_add
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, exp)
     })"))
                     .ValueOrDie();
@@ -699,7 +705,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
       c0 = f32[] constant(0)
       add = f32[32,32,32]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_add
       reduce = f32[32,32]{1,0} reduce(add, c0), dimensions={2},
-        to_apply=scalar_add_computation
+        to_apply=scalar_add
       ROOT root = (f32[32,32]{1,0}, f32[32,32,32]{2,1,0}) tuple(reduce, add)
     })"))
                     .ValueOrDie();
@@ -726,10 +732,10 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
       p0.2 = f32[32,32,32]{2,1,0} parameter(0)
       c1 = f32[] constant(0)
       r1 = f32[32,32]{1,0} reduce(p0.2, c1), dimensions={2},
-        to_apply=scalar_add_computation
+        to_apply=scalar_add
       mul = f32[32,32,32]{2,1,0} multiply(p0.2, p0.2)
       r2 = f32[32,32]{1,0} reduce(mul, c1), dimensions={2},
-        to_apply=scalar_add_computation
+        to_apply=scalar_add
       ROOT tuple = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(r1, r2)
     }
 
@@ -763,7 +769,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
       broadcast = f32[2,2,2,2]{3,2,1,0} broadcast(mul), dimensions={3,2,1}
       c1 = f32[] constant(0)
       ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2,2]{3,2,1,0} broadcast,
-        f32[] c1), dimensions={1,3}, to_apply=scalar_add_computation
+        f32[] c1), dimensions={1,3}, to_apply=scalar_add
     }
 
     ENTRY reduce {
@@ -796,7 +802,7 @@ TEST_F(GpuFusibleTest,
       p0.2 = f16[128,1024,32,32]{1,3,2,0} parameter(0)
       convert = f32[128,1024,32,32]{1,3,2,0} convert(p0.2)
       c0.2 = f32[] constant(0)
-      ROOT reduce = f32[1024]{0} reduce(convert, c0.2), dimensions={0,2,3}, to_apply=scalar_add_computation
+      ROOT reduce = f32[1024]{0} reduce(convert, c0.2), dimensions={0,2,3}, to_apply=scalar_add
     }
     ENTRY reduce {
       p0 = f16[128,1024,32,32]{3,2,1,0} parameter(0)
@@ -831,37 +837,14 @@ TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
       ROOT root = (f32[], f32[], f32[16,16,16,16], f32[16]) tuple(reduce, constant.1, broadcast, constant)
     })")
                     .ValueOrDie();
-
+  // Do not fuse if producer is a non-scalar constant or consumer is non-fusion node
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
   const HloInstruction* consumer2 = root->operand(2);
   const HloInstruction* producer2 = root->operand(3);
-  ASSERT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
-  ASSERT_FALSE(IsProducerConsumerFusible(*producer2, *consumer2));
-}
-
-TEST_F(GpuFusibleTest, MultiOutputFusion) {
-  // sub --> add --> tuple
-  //  \---------------/
-  auto module = ParseHloString(R"(
-    HloModule test_module
-    ENTRY OutputFusion {
-     p0 = f32[4,3]{1,0} parameter(0)
-     p1 = f32[4,3]{1,0} parameter(1)
-     p2 = f32[4,3]{1,0} parameter(2)
-     sub = f32[4,3]{1,0} subtract(p0, p2)
-     add = f32[4,3]{1,0} add(sub, p1)
-     ROOT tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub, add)
-    })")
-                    .ValueOrDie();
-
-  // Multi-output fusion is disabled here and performed in the
-  // GpuMultiOutputFusion pass instead.
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  const HloInstruction* producer = root->operand(0);
-  const HloInstruction* consumer = root->operand(1);
   ASSERT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
+  ASSERT_FALSE(IsProducerConsumerFusible(*producer2, *consumer2));
 }
 
 TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
@@ -883,7 +866,7 @@ TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
                     .ValueOrDie();
 
   const HloInstruction* consumer = module->entry_computation()->root_instruction();
-  const HloInstruction* producer = root->operand(0);
+  const HloInstruction* producer = consumer->operand(0);
   ASSERT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
 }
 
@@ -898,7 +881,7 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
                     .ValueOrDie();
 
   const HloInstruction* consumer = module->entry_computation()->root_instruction();
-  const HloInstruction* producer = root->operand(0);
+  const HloInstruction* producer = consumer->operand(0);
   ASSERT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
 }
 
