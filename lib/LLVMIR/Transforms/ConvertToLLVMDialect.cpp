@@ -986,7 +986,11 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
     LLVMTypeConverter converter(&getContext());
     OwningRewritePatternList patterns;
     populateStdToLLVMConversionPatterns(converter, patterns);
-    if (failed(applyConversionPatterns(m, converter, std::move(patterns))))
+
+    ConversionTarget target(getContext());
+    target.addLegalDialects<LLVM::LLVMDialect>();
+    if (failed(
+            applyConversionPatterns(m, target, converter, std::move(patterns))))
       signalPassFailure();
   }
 };

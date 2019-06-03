@@ -29,6 +29,7 @@
 #include "mlir/LLVMIR/LLVMLowering.h"
 #include "mlir/LLVMIR/Transforms.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/LowerAffine.h"
 
 #include "linalg1/ConvertToLLVMDialect.h"
 #include "linalg1/LLVMIntrinsics.h"
@@ -145,12 +146,12 @@ static void populateLinalg3ToLLVMConversionPatterns(
 }
 
 void linalg::convertLinalg3ToLLVM(Module &module) {
-  // Remove affine constructs if any by using an existing pass.
-  PassManager pm;
-  pm.addPass(createLowerAffinePass());
-  auto rr = pm.run(&module);
-  (void)rr;
-  assert(succeeded(rr) && "affine loop lowering failed");
+  // Remove affine constructs.
+  for (auto &func : module) {
+    auto rr = lowerAffineConstructs(func);
+    (void)rr;
+    assert(succeeded(rr) && "affine loop lowering failed");
+  }
 
   // Convert Linalg ops to the LLVM IR dialect using the converter defined
   // above.
@@ -160,7 +161,10 @@ void linalg::convertLinalg3ToLLVM(Module &module) {
   populateLinalg1ToLLVMConversionPatterns(patterns, module.getContext());
   populateLinalg3ToLLVMConversionPatterns(patterns, module.getContext());
 
-  auto r = applyConversionPatterns(module, converter, std::move(patterns));
+  ConversionTarget target(*module.getContext());
+  target.addLegalDialects<LLVM::LLVMDialect>();
+  auto r =
+      applyConversionPatterns(module, target, converter, std::move(patterns));
   (void)r;
   assert(succeeded(r) && "conversion failed");
 }

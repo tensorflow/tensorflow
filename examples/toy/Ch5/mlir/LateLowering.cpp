@@ -24,6 +24,7 @@
 
 #include "toy/Dialect.h"
 
+#include "linalg1/Dialect.h"
 #include "linalg1/Intrinsics.h"
 #include "linalg1/ViewOp.h"
 #include "linalg3/ConvertToLLVMDialect.h"
@@ -338,7 +339,11 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
                        ReturnOpConversion>::build(toyPatterns, &getContext());
 
     // Perform Toy specific lowering.
-    if (failed(applyConversionPatterns(getModule(), typeConverter,
+    ConversionTarget target(getContext());
+    target.addLegalDialects<AffineOpsDialect, linalg::LinalgDialect,
+                            LLVM::LLVMDialect, StandardOpsDialect>();
+    target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
+    if (failed(applyConversionPatterns(getModule(), target, typeConverter,
                                        std::move(toyPatterns)))) {
       getModule().getContext()->emitError(
           UnknownLoc::get(getModule().getContext()), "Error lowering Toy\n");

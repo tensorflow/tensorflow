@@ -27,6 +27,7 @@
 
 #include "toy/Dialect.h"
 
+#include "linalg1/Dialect.h"
 #include "linalg1/Intrinsics.h"
 #include "linalg1/ViewOp.h"
 #include "linalg3/TensorOps.h"
@@ -124,9 +125,14 @@ public:
 /// dialect.
 struct EarlyLoweringPass : public FunctionPass<EarlyLoweringPass> {
   void runOnFunction() override {
+    ConversionTarget target(getContext());
+    target.addLegalDialects<linalg::LinalgDialect, StandardOpsDialect>();
+    target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
+
     OwningRewritePatternList patterns;
     RewriteListBuilder<MulOpConversion>::build(patterns, &getContext());
-    if (failed(applyConversionPatterns(getFunction(), std::move(patterns)))) {
+    if (failed(applyConversionPatterns(getFunction(), target,
+                                       std::move(patterns)))) {
       getContext().emitError(mlir::UnknownLoc::get(&getContext()),
                              "Error lowering Toy\n");
       signalPassFailure();

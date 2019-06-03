@@ -25,6 +25,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/MapVector.h"
 
 namespace mlir {
 
@@ -136,18 +137,108 @@ public:
       SmallVectorImpl<NamedAttributeList> &convertedArgAttrs);
 };
 
+/// This class describes a specific conversion target.
+class ConversionTarget {
+public:
+  /// This enumeration corresponds to the specific action to take when
+  /// considering an operation legal for this conversion target.
+  enum class LegalizationAction {
+    /// The target supports this operation.
+    Legal,
+
+    /// This operation has dynamic legalization constraints that must be checked
+    /// by the target.
+    Dynamic
+  };
+
+  /// The type used to store operation legality information.
+  using LegalityMapTy = llvm::MapVector<OperationName, LegalizationAction>;
+
+  ConversionTarget(MLIRContext &ctx) : ctx(ctx) {}
+  virtual ~ConversionTarget() = default;
+
+  /// Runs a custom legalization query for the given operation. This should
+  /// return true if the given operation is legal, otherwise false.
+  virtual bool isLegal(Operation *op) const {
+    llvm_unreachable(
+        "targets with custom legalization must override 'isLegal'");
+  }
+
+  /// Register a legality action for the given operation.
+  void setOpAction(OperationName op, LegalizationAction action) {
+    legalOperations[op] = action;
+  }
+  template <typename OpT> void setOpAction(LegalizationAction action) {
+    setOpAction(OperationName(OpT::getOperationName(), &ctx), action);
+  }
+
+  /// Register the given operations as legal.
+  template <typename OpT> void addLegalOp() {
+    setOpAction<OpT>(LegalizationAction::Legal);
+  }
+  template <typename OpT, typename OpT2, typename... OpTs> void addLegalOp() {
+    addLegalOp<OpT>();
+    addLegalOp<OpT2, OpTs...>();
+  }
+
+  /// Register the operations of the given dialects as legal.
+  void addLegalDialects(ArrayRef<StringRef> dialectNames);
+  template <typename... Names>
+  void addLegalDialects(StringRef name, Names... names) {
+    SmallVector<StringRef, 2> dialectNames({name, names...});
+    addLegalDialects(dialectNames);
+  }
+  template <typename... Args> void addLegalDialects() {
+    SmallVector<StringRef, 2> dialectNames({Args::getDialectNamespace()...});
+    addLegalDialects(dialectNames);
+  }
+
+  /// Register the given operation as dynamically legal, i.e. requiring custom
+  /// handling by the target via 'isLegal'.
+  template <typename OpT> void addDynamicallyLegalOp() {
+    setOpAction<OpT>(LegalizationAction::Dynamic);
+  }
+  template <typename OpT, typename OpT2, typename... OpTs>
+  void addDynamicallyLegalOp() {
+    addDynamicallyLegalOp<OpT>();
+    addDynamicallyLegalOp<OpT2, OpTs...>();
+  }
+
+  /// Get the legality action for the given operation.
+  llvm::Optional<LegalizationAction> getOpAction(OperationName op) const {
+    auto it = legalOperations.find(op);
+    if (it != legalOperations.end())
+      return it->second;
+    return llvm::None;
+  }
+
+  /// Returns a range of operations that this target has defined to be legal in
+  /// some capacity.
+  llvm::iterator_range<LegalityMapTy::const_iterator> getLegalOps() const {
+    return llvm::make_range(legalOperations.begin(), legalOperations.end());
+  }
+
+private:
+  /// A deterministic mapping of operation name to the specific legality action
+  /// to take.
+  LegalityMapTy legalOperations;
+
+  /// The current context this target applies to.
+  MLIRContext &ctx;
+};
+
 /// Convert the given module with the provided conversion patterns and type
 /// conversion object. If conversion fails for specific functions, those
 /// functions remains unmodified.
-LLVM_NODISCARD
-LogicalResult applyConversionPatterns(Module &module, TypeConverter &converter,
-                                      OwningRewritePatternList &&patterns);
+LLVM_NODISCARD LogicalResult applyConversionPatterns(
+    Module &module, ConversionTarget &target, TypeConverter &converter,
+    OwningRewritePatternList &&patterns);
 
 /// Convert the given function with the provided conversion patterns. This will
 /// convert as many of the operations within 'fn' as possible given the set of
 /// patterns.
 LLVM_NODISCARD
-LogicalResult applyConversionPatterns(Function &fn,
+LogicalResult applyConversionPatterns(Function &fn, ConversionTarget &target,
                                       OwningRewritePatternList &&patterns);
 
 } // end namespace mlir
