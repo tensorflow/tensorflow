@@ -296,6 +296,7 @@ cc_library(
     hdrs = ["slicing.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "@com_google_absl//absl/types:span",
     ],
@@ -471,6 +472,7 @@ cc_library(
 xla_test(
     name = "svd_test",
     srcs = ["svd_test.cc"],
+    # Blacklisted because the tests are flaky.
     blacklisted_backends = [
         "cpu",
         "gpu",

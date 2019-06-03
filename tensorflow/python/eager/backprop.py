@@ -568,8 +568,8 @@ def _aggregate_grads(gradients):
       if isinstance(grad, ops.Tensor):
         indexed_slices = ops.IndexedSlices(
             grad,
-            math_ops.range(grad.shape[0]),
-            constant_op.constant(grad.shape.as_list()))
+            math_ops.range(array_ops.shape(grad)[0]),
+            array_ops.shape(grad))
         indexed_slices_list.append(indexed_slices)
       else:
         indexed_slices_list.append(grad)
@@ -723,7 +723,7 @@ class GradientTape(object):
   with tf.GradientTape(watch_accessed_variables=False) as tape:
     tape.watch(variable_a)
     y = variable_a ** 2  # Gradients will be available for `variable_a`.
-    z = variable_b ** 3  # No gradients will be avaialble since `variable_b` is
+    z = variable_b ** 3  # No gradients will be available since `variable_b` is
                          # not being watched.
   ```
 

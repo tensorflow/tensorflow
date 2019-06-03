@@ -203,6 +203,7 @@ tf_cc_test(
     deps = [
         ":ops",
         ":scope",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

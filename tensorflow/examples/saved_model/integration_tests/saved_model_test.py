@@ -18,26 +18,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import subprocess
-
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.examples.saved_model.integration_tests import integration_scripts
 
 
-class SavedModelTest(tf.test.TestCase):
+class SavedModelTest(integration_scripts.TestCase):
 
-  def assertCommandSucceeded(self, script_name, **flags):
-    """Runs a test script via run_script."""
-    run_script = resource_loader.get_path_to_datafile("run_script")
-    command_parts = [run_script]
-    for flag_key, flag_value in flags.items():
-      command_parts.append("--%s=%s" % (flag_key, flag_value))
-    env = dict(TF2_BEHAVIOR="enabled", SCRIPT_NAME=script_name)
-    logging.info("Running: %s with environment flags %s" % (command_parts, env))
-    subprocess.check_call(command_parts, env=dict(os.environ, **env))
+  def __init__(self, method_name="runTest", has_extra_deps=False):
+    super(SavedModelTest, self).__init__(method_name)
+    self.has_extra_deps = has_extra_deps
+
+  def skipIfMissingExtraDeps(self):
+    """Skip test if it requires extra dependencies.
+
+    b/132234211: The extra dependencies are not available in all environments
+    that run the tests, e.g. "tensorflow_hub" is not available from tests
+    within "tensorflow" alone. Those tests are instead run by another
+    internal test target.
+    """
+    if not self.has_extra_deps:
+      self.skipTest("Missing extra dependencies")
 
   def test_text_rnn(self):
     export_dir = self.get_temp_dir()
@@ -50,6 +51,7 @@ class SavedModelTest(tf.test.TestCase):
     self.assertCommandSucceeded("use_rnn_cell", model_dir=export_dir)
 
   def test_text_embedding_in_sequential_keras(self):
+    self.skipIfMissingExtraDeps()
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_simple_text_embedding", export_dir=export_dir)
@@ -57,6 +59,9 @@ class SavedModelTest(tf.test.TestCase):
         "use_model_in_sequential_keras", model_dir=export_dir)
 
   def test_text_embedding_in_dataset(self):
+    if tf.test.is_gpu_available():
+      self.skipTest("b/132156097 - fails if there is a gpu available")
+
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_simple_text_embedding", export_dir=export_dir)
@@ -64,6 +69,7 @@ class SavedModelTest(tf.test.TestCase):
         "use_text_embedding_in_dataset", model_dir=export_dir)
 
   def test_mnist_cnn(self):
+    self.skipIfMissingExtraDeps()
     export_dir = self.get_temp_dir()
     self.assertCommandSucceeded(
         "export_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
@@ -71,6 +77,7 @@ class SavedModelTest(tf.test.TestCase):
         "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
 
   def test_mnist_cnn_with_mirrored_strategy(self):
+    self.skipIfMissingExtraDeps()
     self.skipTest(
         "b/129134185 - saved model and distribution strategy integration")
     export_dir = self.get_temp_dir()
@@ -85,5 +92,7 @@ class SavedModelTest(tf.test.TestCase):
         use_mirrored_strategy=True,
     )
 
+
 if __name__ == "__main__":
+  integration_scripts.MaybeRunScriptInstead()
   tf.test.main()

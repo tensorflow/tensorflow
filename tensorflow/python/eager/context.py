@@ -851,6 +851,17 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
+  def remove_function(self, name):
+    """Remove a function from the context.
+
+    Once removed, the function cannot be executed anymore.
+
+    Args:
+      name: function signature name.
+    """
+    self.ensure_initialized()
+    pywrap_tensorflow.TFE_ContextRemoveFunction(self._handle, name)
+
   def has_function(self, name):
     """Check if a function `name` is registered."""
     self.ensure_initialized()
@@ -959,7 +970,14 @@ class Context(object):
         self.set_virtual_device_configuration(
             cpus[0], [VirtualDeviceConfiguration() for _ in range(num_cpus)])
 
+    # Parse GPU options
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
+
+    # If there are no GPUs detected, simply ignore all the GPU options passed in
+    # rather than doing any validation checks.
+    if not gpus:
+      return
+
     gpu_count = self._config.device_count.get("GPU", None)
 
     visible_gpus = []
@@ -1187,6 +1205,9 @@ class Context(object):
 
   @log_device_placement.setter
   def log_device_placement(self, enabled):
+    if self._log_device_placement == enabled:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
           "Device placement logging must be set at program startup")
@@ -1240,7 +1261,7 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
 
   def disable_graph_collection(self):
-    """Disables graph collections of executed functions."""
+    """Disables graph collection of executed functions."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
@@ -1579,16 +1600,16 @@ def disable_run_metadata():
 
 
 def enable_graph_collection():
-  """Enables tracing of op execution via RunMetadata.
+  """Enables graph collection of executed functions.
 
-  To retrieve the accumulated metadata call context.export_run_metadata()
-  and to stop tracing call context.disable_run_metadata().
+  To retrieve the accumulated graphs call context.export_run_metadata()
+  and to stop collecting graphs call context.disable_graph_collection().
   """
   context().enable_graph_collection()
 
 
 def disable_graph_collection():
-  """Disables tracing of op execution via RunMetadata."""
+  """Disables graph collection of executed functions."""
   context().disable_graph_collection()
 
 
@@ -1611,6 +1632,11 @@ def set_server_def(server_def):
 def add_function(fdef):
   """Add a function definition to the context."""
   context().add_function(fdef)
+
+
+def remove_function(name):
+  """Remove a function from the context."""
+  context().remove_function(name)
 
 
 # Not every user creates a Context via context.context()

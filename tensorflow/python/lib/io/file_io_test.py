@@ -20,9 +20,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+import numpy as np
 
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
@@ -605,6 +607,14 @@ class FileIoTest(test.TestCase):
         expected_match)
     # Change noread back so that it could be cleaned during tearDown.
     os.chmod(noread_path, 0o777)
+
+  def testFileSeekableWithZip(self):
+    # Note: Test case for GitHub issue 27276, issue only exposed in python 3.7+.
+    filename = os.path.join(self._base_dir, "a.npz")
+    np.savez_compressed(filename, {"a": 1, "b": 2})
+    with gfile.GFile(filename, "rb") as f:
+      info = np.load(f, allow_pickle=True)
+    _ = [i for i in info.items()]
 
 
 if __name__ == "__main__":

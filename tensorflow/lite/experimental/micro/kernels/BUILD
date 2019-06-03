@@ -13,8 +13,10 @@ load(
 cc_library(
     name = "micro_ops",
     srcs = [
+        "conv.cc",
         "depthwise_conv.cc",
         "fully_connected.cc",
+        "pooling.cc",
         "softmax.cc",
     ],
     hdrs = [
@@ -49,7 +51,9 @@ cc_library(
 cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
+        "conv.cc",
         "fully_connected.cc",
+        "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
         "softmax.cc",
     ],
@@ -79,6 +83,19 @@ cc_library(
     deps = [
         ":portable_optimized_micro_ops",
         "//tensorflow/lite/experimental/micro:micro_framework",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "pooling_test",
+    srcs = [
+        "pooling_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
@@ -125,6 +142,19 @@ tflite_micro_cc_test(
     name = "softmax_test",
     srcs = [
         "softmax_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "conv_test",
+    srcs = [
+        "conv_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

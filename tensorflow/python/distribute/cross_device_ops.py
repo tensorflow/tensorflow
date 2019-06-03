@@ -209,6 +209,9 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
     raise ValueError("`per_replica_value` must be non-empty")
   count = len(all_values)
 
+  if (count == 1 and all_values[0].device == reduce_to_device):
+    return all_values[0]
+
   with ops.device(reduce_to_device):
     with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
       reduced = cross_device_utils.aggregate_tensors_or_indexed_slices(
@@ -1154,8 +1157,8 @@ def choose_the_best(devices, session_config=None):
 
   Args:
     devices: a list of devices passed to `tf.distribute.Strategy`.
-    session_config: a `tf.ConfigProto` or `None`. If `None`, it will make
-      decision based on all local devices.
+    session_config: a `tf.compat.v1.ConfigProto` or `None`. If `None`, it will
+      make decision based on all local devices.
 
   Returns:
     A subclass of `CrossDeviceOps`.

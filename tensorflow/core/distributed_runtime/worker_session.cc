@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
+#include "tensorflow/core/platform/monitoring.h"
+
 namespace tensorflow {
 
 namespace {
@@ -96,39 +98,55 @@ WorkerSession::WorkerSession(const string& session_name,
                              const string& worker_name,
                              std::unique_ptr<WorkerCacheInterface> worker_cache,
                              std::unique_ptr<DeviceMgr> device_mgr,
-                             std::unique_ptr<GraphMgr> graph_mgr)
+                             std::unique_ptr<GraphMgr> graph_mgr,
+                             std::unique_ptr<DeviceMgr> remote_device_mgr)
     : session_name(session_name),
       worker_name(worker_name),
       worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
       graph_mgr(std::move(graph_mgr)),
-      cluster_flr(
-          new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
+      cluster_flr(new ClusterFunctionLibraryRuntime(
+          this, !session_name.empty(),
+          remote_device_mgr ? remote_device_mgr.get() : nullptr)),
       device_mgr_(std::move(device_mgr)),
-      borrowed_device_mgr_(nullptr) {}
+      borrowed_device_mgr_(nullptr),
+      remote_device_mgr_(std::move(remote_device_mgr)) {
+  // Starts exporting metrics through a platform-specific monitoring API (if
+  // provided). For builds using "tensorflow/core/platform/default", this is
+  // currently a no-op.
+  monitoring::StartExporter();
+}
 
 /* static */
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
-    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr) {
-  return std::shared_ptr<WorkerSession>(
-      new WorkerSession(session_name, worker_name, std::move(worker_cache),
-                        borrowed_device_mgr, std::move(graph_mgr)));
+    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    std::unique_ptr<DeviceMgr> remote_device_mgr) {
+  return std::shared_ptr<WorkerSession>(new WorkerSession(
+      session_name, worker_name, std::move(worker_cache), borrowed_device_mgr,
+      std::move(graph_mgr), std::move(remote_device_mgr)));
 }
 
 WorkerSession::WorkerSession(const string& session_name,
                              const string& worker_name,
                              std::unique_ptr<WorkerCacheInterface> worker_cache,
                              DeviceMgr* borrowed_device_mgr,
-                             std::unique_ptr<GraphMgr> graph_mgr)
+                             std::unique_ptr<GraphMgr> graph_mgr,
+                             std::unique_ptr<DeviceMgr> remote_device_mgr)
     : session_name(session_name),
       worker_name(worker_name),
       worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
       graph_mgr(std::move(graph_mgr)),
-      cluster_flr(
-          new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
+      cluster_flr(new ClusterFunctionLibraryRuntime(this, !session_name.empty(),
+                                                    remote_device_mgr.get())),
       device_mgr_(nullptr),
-      borrowed_device_mgr_(borrowed_device_mgr) {}
+      borrowed_device_mgr_(borrowed_device_mgr),
+      remote_device_mgr_(std::move(remote_device_mgr)) {
+  // Starts exporting metrics through a platform-specific monitoring API (if
+  // provided). For builds using "tensorflow/core/platform/default", this is
+  // currently a no-op.
+  monitoring::StartExporter();
+}
 
 WorkerSession::~WorkerSession() {
   if (graph_mgr) {

@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/kernels/logging_ops.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"

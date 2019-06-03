@@ -29,7 +29,7 @@ namespace xla {
 namespace gpu {
 
 FftScratchAllocator::FftScratchAllocator(
-    int device_ordinal, DeviceMemoryAllocator* memory_allocator)
+    int device_ordinal, se::DeviceMemoryAllocator* memory_allocator)
     : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
 int64 FftScratchAllocator::GetMemoryLimitInBytes(se::Stream* stream) {
@@ -48,12 +48,12 @@ StatusOr<se::DeviceMemory<uint8>> FftScratchAllocator::AllocateBytes(
             byte_size, GetMemoryLimitInBytes(stream)));
   }
 
-  TF_ASSIGN_OR_RETURN(OwningDeviceMemory allocated_buffer,
+  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
                       memory_allocator_->Allocate(device_ordinal_, byte_size,
                                                   /*retry_on_failure=*/false));
   total_allocated_bytes_ += byte_size;
 
-  se::DeviceMemoryBase buffer_addr = allocated_buffer.AsDeviceMemoryBase();
+  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
   allocated_buffers_.push_back(std::move(allocated_buffer));
   return se::DeviceMemory<uint8>(buffer_addr);
 }

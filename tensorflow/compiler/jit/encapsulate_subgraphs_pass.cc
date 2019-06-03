@@ -2497,8 +2497,6 @@ Status EncapsulateSubgraphsInFunctions(
     const Graph& graph_in, const RewriteSubgraphFn& rewrite_subgraph_fn,
     bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
     FunctionLibraryDefinition* library) {
-  Status s;
-
   Encapsulator encapsulator(std::move(group_attribute),
                             std::move(outside_compilation_attribute),
                             &graph_in);
