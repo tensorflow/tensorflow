@@ -92,7 +92,7 @@ cc_library(
 tf_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
-    tags = ["requires-gpu-sm35", "no_rocm"],
+    tags = ["requires-gpu-sm35"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test_helpers",
@@ -103,8 +103,12 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:test",
+    ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-    ],
+     ])
+     + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+     ]),
 )
 
 cc_library(
@@ -483,6 +487,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
      ])
      + if_rocm_is_configured([
+        "//tensorflow/stream_executor/rocm:rocm_stream",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
      ]),
