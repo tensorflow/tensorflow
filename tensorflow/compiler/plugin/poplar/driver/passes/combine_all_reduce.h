@@ -16,18 +16,29 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_COMBINE_ALL_REDUCE_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_COMBINE_ALL_REDUCE_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
+
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace poplarplugin {
 
+struct CompilerAnnotations;
+
 class CombineAllReduce : public HloModulePass {
  public:
+  CombineAllReduce(CompilerAnnotations& annotations);
   absl::string_view name() const override { return "combine-all-reduce"; };
 
   // Run the pass on the given HLO module.  Returns whether it modified the
   // module.
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  StatusOr<HloInstructionSequence> CombineAllReduces(
+      HloComputation* comp, const HloInstructionSequence& sequence);
+
+  InplaceInstructions& inplace_instructions;
 };
 
 }  // namespace poplarplugin

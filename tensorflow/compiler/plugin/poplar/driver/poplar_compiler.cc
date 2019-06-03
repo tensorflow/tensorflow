@@ -563,7 +563,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
           size_function, CreateLookAheadMemoryScheduler(
                              poplarExecutor->GetMaxAllReduceBufferSize()));
     }
-    pipeline.AddPass<CombineAllReduce>();
+    pipeline.AddPass<CombineAllReduce>(resources.annotations);
 
     TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
   }
