@@ -287,8 +287,6 @@ TokenHloTest POPLAR // Don't do tokens
 
 IntegerDivideOpTest.SignedOverflow POPLAR // Crashes - find out why
 
-ConvolutionHloTest.ConvolveF32ForwardReversed POPLAR // Need to support reversed kernels
-
 IotaR3PredTest POPLAR // iota PRED support
 
 ArrayElementwiseOpTest.ClampF32 POPLAR // NaN propagation

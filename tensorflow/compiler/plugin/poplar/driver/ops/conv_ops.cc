@@ -130,12 +130,15 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
   std::vector<unsigned int> d_i;
   std::vector<unsigned int> d_w;
   std::vector<unsigned int> zeros;
-  std::vector<bool> falses;
+  std::vector<bool> flipInput;
+  std::vector<bool> flipKernel;
 
   for (int64 i = 0; i < window.dimensions().size(); i++) {
     n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
     w_s.push_back(window.dimensions(i).stride());
+    flipInput.push_back(false);
+    flipKernel.push_back(window.dimensions(i).window_reversal());
     if (window.dimensions(i).padding_low() < 0) {
       unsigned int p = -window.dimensions(i).padding_low();
       unsigned int d = window.dimensions(i).base_dilation();
@@ -160,13 +163,12 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
     }
     d_i.push_back(window.dimensions(i).base_dilation());
     d_w.push_back(window.dimensions(i).window_dilation());
-    falses.push_back(false);
     zeros.push_back(0);
   }
 
   poplin::ConvParams params(dtype, dtype, n_b, n_s, f_s, n_i, n_o, n_g, t_l,
-                            t_u, d_i, p_l, p_u, falses, zeros, zeros, d_w,
-                            zeros, zeros, falses, zeros, zeros, w_s, zeros,
+                            t_u, d_i, p_l, p_u, flipInput, zeros, zeros, d_w,
+                            zeros, zeros, flipKernel, zeros, zeros, w_s, zeros,
                             zeros);
 
   return params;
