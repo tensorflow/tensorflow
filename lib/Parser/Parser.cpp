@@ -3219,15 +3219,14 @@ public:
   ParseResult parseColonTypeList(SmallVectorImpl<Type> &result) override {
     if (parser.parseToken(Token::colon, "expected ':'"))
       return failure();
+    return parser.parseTypeListNoParens(result);
+  }
 
-    do {
-      if (auto type = parser.parseType())
-        result.push_back(type);
-      else
-        return failure();
-
-    } while (parser.consumeIf(Token::comma));
-    return success();
+  /// Parse an arrow followed by a type list, which must have at least one type.
+  ParseResult parseOptionalArrowTypeList(SmallVectorImpl<Type> &result) {
+    if (!parser.consumeIf(Token::arrow))
+      return success();
+    return parser.parseFunctionResultTypes(result);
   }
 
   ParseResult parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
@@ -3311,6 +3310,11 @@ public:
 
   ParseResult parseRParen() override {
     return parser.parseToken(Token::r_paren, "expected ')'");
+  }
+
+  /// Parses a ')' if present.
+  ParseResult parseOptionalRParen() override {
+    return success(parser.consumeIf(Token::r_paren));
   }
 
   ParseResult parseOperandList(SmallVectorImpl<OperandType> &result,
@@ -3411,6 +3415,20 @@ public:
     return parser.parseRegion(region, regionArguments);
   }
 
+  /// Parses an optional region.
+  ParseResult parseOptionalRegion(Region &region,
+                                  ArrayRef<OperandType> arguments,
+                                  ArrayRef<Type> argTypes) override {
+    if (parser.getToken().isNot(Token::l_brace)) {
+      if (!arguments.empty())
+        return emitError(
+            parser.getToken().getLoc(),
+            "optional region with explicit entry arguments must be defined");
+      return success();
+    }
+    return parseRegion(region, arguments, argTypes);
+  }
+
   /// Parse a region argument.  Region arguments define new values, so this also
   /// checks if the values with the same name has not been defined yet.  The
   /// type of the argument will be resolved later by a call to `parseRegion`.
@@ -3426,6 +3444,13 @@ public:
       return failure();
     }
     return success();
+  }
+
+  /// Parse an optional region argument.
+  ParseResult parseOptionalRegionArgument(OperandType &argument) override {
+    if (parser.getToken().isNot(Token::percent_identifier))
+      return success();
+    return parseRegionArgument(argument);
   }
 
   //===--------------------------------------------------------------------===//

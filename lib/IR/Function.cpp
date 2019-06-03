@@ -17,9 +17,11 @@
 
 #include "mlir/IR/Function.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/OpImplementation.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
@@ -215,4 +217,202 @@ void Function::walk(const std::function<void(Operation *)> &callback) {
   // Walk each of the blocks within the function.
   for (auto &block : getBlocks())
     block.walk(callback);
+}
+
+//===----------------------------------------------------------------------===//
+// Function Operation.
+//===----------------------------------------------------------------------===//
+
+void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
+                   FunctionType type, ArrayRef<NamedAttribute> attrs) {
+  result->addAttribute("name", builder->getStringAttr(name));
+  result->addAttribute("type", builder->getTypeAttr(type));
+  result->attributes.append(attrs.begin(), attrs.end());
+  result->addRegion();
+}
+
+/// Parsing/Printing methods.
+static ParseResult
+parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
+                  SmallVectorImpl<OpAsmParser::OperandType> &argNames,
+                  SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
+  if (parser->parseLParen())
+    return failure();
+
+  // The argument list either has to consistently have ssa-id's followed by
+  // types, or just be a type list.  It isn't ok to sometimes have SSA ID's and
+  // sometimes not.
+  auto parseArgument = [&]() -> ParseResult {
+    llvm::SMLoc loc;
+    parser->getCurrentLocation(&loc);
+
+    // Parse argument name if present.
+    OpAsmParser::OperandType argument;
+    Type argumentType;
+    if (succeeded(parser->parseOptionalRegionArgument(argument)) &&
+        !argument.name.empty()) {
+      // Reject this if the preceding argument was missing a name.
+      if (argNames.empty() && !argTypes.empty())
+        return parser->emitError(loc,
+                                 "expected type instead of SSA identifier");
+      argNames.push_back(argument);
+
+      if (parser->parseColonType(argumentType))
+        return failure();
+    } else if (!argNames.empty()) {
+      // Reject this if the preceding argument had a name.
+      return parser->emitError(loc, "expected SSA identifier");
+    } else if (parser->parseType(argumentType)) {
+      return failure();
+    }
+
+    // Add the argument type.
+    argTypes.push_back(argumentType);
+
+    // TODO(riverriddle) Parse argument attributes.
+    // Parse the attribute dict.
+    // SmallVector<NamedAttribute, 2> attrs;
+    // if (parser->parseOptionalAttributeDict(attrs))
+    //  return failure();
+    // argAttrs.push_back(attrs);
+    return success();
+  };
+
+  // Parse the function arguments.
+  if (parser->parseOptionalRParen()) {
+    do {
+      if (parseArgument())
+        return failure();
+    } while (succeeded(parser->parseOptionalComma()));
+    parser->parseRParen();
+  }
+
+  return success();
+}
+
+/// Parse a function signature, starting with a name and including the
+/// parameter list.
+static ParseResult parseFunctionSignature(
+    OpAsmParser *parser, FunctionType &type,
+    SmallVectorImpl<OpAsmParser::OperandType> &argNames,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
+  SmallVector<Type, 4> argTypes;
+  if (parseArgumentList(parser, argTypes, argNames, argAttrs))
+    return failure();
+
+  // Parse the return types if present.
+  SmallVector<Type, 4> results;
+  if (parser->parseOptionalArrowTypeList(results))
+    return failure();
+  type = parser->getBuilder().getFunctionType(argTypes, results);
+  return success();
+}
+
+ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
+  FunctionType type;
+  SmallVector<OpAsmParser::OperandType, 4> entryArgs;
+  SmallVector<SmallVector<NamedAttribute, 2>, 4> argAttrs;
+  auto &builder = parser->getBuilder();
+
+  // Parse the name as a function attribute.
+  FunctionAttr nameAttr;
+  if (parser->parseAttribute(nameAttr, "name", result->attributes))
+    return failure();
+  // Convert the parsed function attr into a string attr.
+  result->attributes.back().second = builder.getStringAttr(nameAttr.getValue());
+
+  // Parse the function signature.
+  if (parseFunctionSignature(parser, type, entryArgs, argAttrs))
+    return failure();
+  result->addAttribute("type", builder.getTypeAttr(type));
+
+  // If function attributes are present, parse them.
+  if (succeeded(parser->parseOptionalKeyword("attributes")))
+    if (parser->parseOptionalAttributeDict(result->attributes))
+      return failure();
+
+  // TODO(riverriddle) Parse argument attributes.
+  // Add the attributes to the function arguments.
+  // for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
+  //   if (!argAttrs[i].empty())
+  //     result->addAttribute(("arg" + Twine(i)).str(),
+  //                          builder.getDictionaryAttr(argAttrs[i]));
+
+  // Parse the optional function body.
+  auto *body = result->addRegion();
+  if (parser->parseOptionalRegion(
+          *body, entryArgs, entryArgs.empty() ? llvm::None : type.getInputs()))
+    return failure();
+
+  return success();
+}
+
+static void printFunctionSignature(OpAsmPrinter *p, FuncOp op) {
+  *p << '(';
+
+  auto fnType = op.getType();
+  bool isExternal = op.isExternal();
+  for (unsigned i = 0, e = op.getNumArguments(); i != e; ++i) {
+    if (i > 0)
+      *p << ", ";
+
+    // If this is an external function, don't print argument labels.
+    if (!isExternal) {
+      p->printOperand(op.getArgument(i));
+      *p << ": ";
+    }
+
+    p->printType(fnType.getInput(i));
+
+    // TODO(riverriddle) Print argument attributes.
+    // Print the attributes for this argument.
+    // p->printOptionalAttrDict(op.getArgAttrs(i));
+  }
+  *p << ')';
+
+  switch (fnType.getResults().size()) {
+  case 0:
+    break;
+  case 1: {
+    *p << " -> ";
+    auto resultType = fnType.getResults()[0];
+    bool resultIsFunc = resultType.isa<FunctionType>();
+    if (resultIsFunc)
+      *p << '(';
+    p->printType(resultType);
+    if (resultIsFunc)
+      *p << ')';
+    break;
+  }
+  default:
+    *p << " -> (";
+    interleaveComma(fnType.getResults(), *p);
+    *p << ')';
+    break;
+  }
+}
+
+void FuncOp::print(OpAsmPrinter *p) {
+  *p << "func @" << getName();
+
+  // Print the signature.
+  printFunctionSignature(p, *this);
+
+  // Print out function attributes, if present.
+  auto attrs = getAttrs();
+
+  // We must have more attributes than <name, type>.
+  constexpr unsigned kNumHiddenAttrs = 2;
+  if (attrs.size() > kNumHiddenAttrs) {
+    *p << "\n  attributes ";
+    p->printOptionalAttrDict(attrs, {"name", "type"});
+  }
+
+  // Print the body if this is not an external function.
+  if (!isExternal()) {
+    p->printRegion(getBody(), /*printEntryBlockArgs=*/false,
+                   /*printBlockTerminators=*/true);
+    *p << '\n';
+  }
+  *p << '\n';
 }

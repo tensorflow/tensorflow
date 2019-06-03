@@ -169,6 +169,9 @@ public:
   /// Parse a ')' token.
   virtual ParseResult parseRParen() = 0;
 
+  /// Parses a ')' if present.
+  virtual ParseResult parseOptionalRParen() = 0;
+
   /// This parses an equal(=) token!
   virtual ParseResult parseEqual() = 0;
 
@@ -198,6 +201,10 @@ public:
 
   /// Parse a colon followed by a type list, which must have at least one type.
   virtual ParseResult parseColonTypeList(SmallVectorImpl<Type> &result) = 0;
+
+  /// Parse an optional arrow followed by a type list.
+  virtual ParseResult
+  parseOptionalArrowTypeList(SmallVectorImpl<Type> &result) = 0;
 
   /// Parse a keyword followed by a type.
   ParseResult parseKeywordType(const char *keyword, Type &result) {
@@ -320,9 +327,17 @@ public:
                                   ArrayRef<OperandType> arguments,
                                   ArrayRef<Type> argTypes) = 0;
 
+  /// Parses an optional region.
+  virtual ParseResult parseOptionalRegion(Region &region,
+                                          ArrayRef<OperandType> arguments,
+                                          ArrayRef<Type> argTypes) = 0;
+
   /// Parse a region argument.  Region arguments define new values, so this also
   /// checks if the values with the same name has not been defined yet.
   virtual ParseResult parseRegionArgument(OperandType &argument) = 0;
+
+  /// Parse an optional region argument.
+  virtual ParseResult parseOptionalRegionArgument(OperandType &argument) = 0;
 
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser

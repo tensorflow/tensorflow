@@ -310,12 +310,6 @@ func @undef() {
 
 // -----
 
-func @missing_rbrace() {
-  return
-func @d() {return} // expected-error {{custom op 'func' is unknown}}
-
-// -----
-
 func @malformed_type(%a : intt) { // expected-error {{expected non-function type}}
 }
 

@@ -143,6 +143,10 @@ struct BuiltinDialect : public Dialect {
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,
              MemRefType, NoneType, OpaqueType, RankedTensorType, TupleType,
              UnrankedTensorType, VectorType>();
+
+    // TODO: FuncOp should be moved to a different dialect when it has been
+    // fully decoupled from the core.
+    addOperations<FuncOp>();
   }
 };
 
@@ -484,8 +488,9 @@ std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() {
 }
 
 void Dialect::addOperation(AbstractOperation opInfo) {
-  assert(opInfo.name.split('.').first == getNamespace() &&
-         "op name doesn't start with dialect namespace");
+  assert(getNamespace().empty() ||
+         opInfo.name.split('.').first == getNamespace() &&
+             "op name doesn't start with dialect namespace");
   assert(&opInfo.dialect == this && "Dialect object mismatch");
   auto &impl = context->getImpl();
 

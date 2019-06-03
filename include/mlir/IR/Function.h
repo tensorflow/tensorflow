@@ -22,10 +22,8 @@
 #ifndef MLIR_IR_FUNCTION_H
 #define MLIR_IR_FUNCTION_H
 
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Block.h"
-#include "mlir/IR/Identifier.h"
-#include "mlir/IR/Location.h"
+#include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
 class BlockAndValueMapping;
@@ -318,6 +316,85 @@ private:
 
   void operator=(Function &) = delete;
   friend struct llvm::ilist_traits<Function>;
+};
+
+//===--------------------------------------------------------------------===//
+// Function Operation.
+//===--------------------------------------------------------------------===//
+
+/// FuncOp represents a function, or a named operation containing one region
+/// that forms a CFG(Control Flow Graph). The region of a function is not
+/// allowed to implicitly capture global values, and all external references
+/// must use Function arguments or attributes.
+class FuncOp : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
+                         OpTrait::NthRegionIsIsolatedAbove<0>::Impl> {
+public:
+  using Op::Op;
+  static StringRef getOperationName() { return "func"; }
+
+  static void build(Builder *builder, OperationState *result, StringRef name,
+                    FunctionType type, ArrayRef<NamedAttribute> attrs);
+
+  /// Parsing/Printing methods.
+  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p);
+
+  /// Returns the name of this function.
+  StringRef getName() { return getAttrOfType<StringAttr>("name").getValue(); }
+
+  /// Returns the type of this function.
+  FunctionType getType() {
+    return getAttrOfType<TypeAttr>("type").getValue().cast<FunctionType>();
+  }
+
+  /// Returns true if this function is external, i.e. it has no body.
+  bool isExternal() { return empty(); }
+
+  //===--------------------------------------------------------------------===//
+  // Body Handling
+  //===--------------------------------------------------------------------===//
+
+  Region &getBody() { return getOperation()->getRegion(0); }
+
+  /// This is the list of blocks in the function.
+  using RegionType = Region::RegionType;
+  RegionType &getBlocks() { return getBody().getBlocks(); }
+
+  // Iteration over the block in the function.
+  using iterator = RegionType::iterator;
+  using reverse_iterator = RegionType::reverse_iterator;
+
+  iterator begin() { return getBody().begin(); }
+  iterator end() { return getBody().end(); }
+  reverse_iterator rbegin() { return getBody().rbegin(); }
+  reverse_iterator rend() { return getBody().rend(); }
+
+  bool empty() { return getBody().empty(); }
+  void push_back(Block *block) { getBody().push_back(block); }
+  void push_front(Block *block) { getBody().push_front(block); }
+
+  Block &back() { return getBody().back(); }
+  Block &front() { return getBody().front(); }
+
+  //===--------------------------------------------------------------------===//
+  // Argument Handling
+  //===--------------------------------------------------------------------===//
+
+  /// Returns number of arguments.
+  unsigned getNumArguments() { return getType().getInputs().size(); }
+
+  /// Gets argument.
+  BlockArgument *getArgument(unsigned idx) {
+    return getBlocks().front().getArgument(idx);
+  }
+
+  // Supports non-const operand iteration.
+  using args_iterator = Block::args_iterator;
+  args_iterator args_begin() { return front().args_begin(); }
+  args_iterator args_end() { return front().args_end(); }
+  llvm::iterator_range<args_iterator> getArguments() {
+    return {args_begin(), args_end()};
+  }
 };
 
 } // end namespace mlir
