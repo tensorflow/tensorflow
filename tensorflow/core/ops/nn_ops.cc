@@ -2988,8 +2988,6 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       return Status::OK();
     });
 
-<<<<<<< HEAD
-
 #ifdef TENSORFLOW_USE_ROCM
 
 REGISTER_OP("_ROCmFusedConvolutionBiasActivation")
@@ -3300,7 +3298,7 @@ REGISTER_OP("_ROCmFusedAddNReluGrad")
 )doc");
 
 #endif  //  TENSORFLOW_USE_ROCM
-=======
+
 // Fusion of Quantized MatMul and BiasAdd.
 REGISTER_OP("QuantizedMatMulWithBias")
     .Input("a: T1")
@@ -3397,7 +3395,6 @@ REGISTER_OP("QuantizedMatMulWithBiasAndReluAndRequantize")
       c->set_output(2, c->Scalar());
       return Status::OK();
     });
->>>>>>> upstream/master
 
 REGISTER_OP("QuantizedConv2DPerChannel")
     .Input("input: Tinput")

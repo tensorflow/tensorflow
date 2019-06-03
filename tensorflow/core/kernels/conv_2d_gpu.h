@@ -476,11 +476,11 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
         combined_dims[2] *= in.dimension(i);
       }
 
-      GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
-                                   config.block_count, config.thread_per_block,
-                                   0, d.stream(), config.virtual_thread_count,
-                                   in.data(), combined_dims, out.data()));
+      GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
+      TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
+                                  config.block_count, config.thread_per_block,
+                                  0, d.stream(), config.virtual_thread_count,
+                                  in.data(), combined_dims, out.data()));
 
     } else if (src_filter_format == FORMAT_OHWI) {
       combined_dims[0] = in.dimension(0);  // output filters
@@ -490,25 +490,17 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
       }
       combined_dims[2] = in.dimension(NDIMS - 1);  // input filters
 
-      GpuLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-      TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 0, 1>,
-                                   config.block_count, config.thread_per_block,
-                                   0, d.stream(), config.virtual_thread_count,
-                                   in.data(), combined_dims, out.data()));
+      GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
+      TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 0, 1>,
+                                  config.block_count, config.thread_per_block,
+                                  0, d.stream(), config.virtual_thread_count,
+                                  in.data(), combined_dims, out.data()));
 
     } else {
       // TODO(ezhulenev): Set error status in OpKernelContext instead.
       LOG(FATAL) << "Unsupported filter format: "
                  << ToString(src_filter_format);
     }
-<<<<<<< HEAD
-    GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
-    TF_CHECK_OK(GpuLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
-                                 config.block_count, config.thread_per_block, 0,
-                                 d.stream(), config.virtual_thread_count,
-                                 in.data(), combined_dims, out.data()));
-=======
->>>>>>> upstream/master
   }
 };
 

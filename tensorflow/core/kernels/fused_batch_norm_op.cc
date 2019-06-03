@@ -388,10 +388,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
   }
 };
 
-<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
-#if GOOGLE_CUDA
 
 namespace {
 // NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
@@ -412,7 +409,6 @@ bool BatchnormSpatialPersistentEnabled() {
 }
 }  // namespace
 
->>>>>>> upstream/master
 template <typename T, typename U>
 struct FusedBatchNorm<GPUDevice, T, U> {
   void operator()(OpKernelContext* context, const Tensor& x,
