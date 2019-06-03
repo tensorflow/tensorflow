@@ -1272,7 +1272,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kAllReduce:
       return all_reduce_id().has_value();
     case HloOpcode::kCustomCall:
-      return Cast<HloCustomCallInstruction>(this)->has_side_effect();
+      return has_side_effect();
     default:
       return false;
   }
