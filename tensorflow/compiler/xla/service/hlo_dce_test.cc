@@ -101,7 +101,7 @@ TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
   auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
   HloDCE dce;
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
@@ -111,14 +111,14 @@ TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
 TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
   // Verify that custom call instruction without side-effect is removed.
   auto builder = HloComputation::Builder(TestName());
-  auto instr = builder.AddInstruction(
+  builder.AddInstruction(
       HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                        /*operands=*/{},
                                        /*custom_call_target=*/"foo"));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
   auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
   HloDCE dce;
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));

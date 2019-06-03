@@ -449,8 +449,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                            operands(2), computations(1));
       break;
     case HloOpcode::kCustomCall: {
-      auto custom_call_instr =
-          Cast<HloCustomCallInstruction>(instruction.get());
       if (proto.constrain_layout()) {
         // A proto RepeatedPtrField cannot be converted to a Span (it is a
         // vector of pointers essentially) so create a vector of shapes to pass
@@ -468,6 +466,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
                              proto.backend_config());
       }
+      auto custom_call_instr =
+          Cast<HloCustomCallInstruction>(instruction.get());
       if (proto.has_window()) {
         custom_call_instr->set_window(proto.window());
       }
