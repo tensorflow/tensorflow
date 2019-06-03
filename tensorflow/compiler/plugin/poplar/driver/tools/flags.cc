@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 #include <mutex>
@@ -63,10 +64,7 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
       {"dump_schedule_as_dot", "Dumps the scheduler graph as a dot file."},
       {"tensor_map_file_path", "Directory for tensor map dump files."},
       {"fallback_scheduler",
-       "Use the sync list scheduler rather than the default one."},
-      {"add_all_reduce_copies",
-       "EXPERIMENTAL Adds extra copies before performing an all reduce "
-       "operation - can improve compiler performance."}};
+       "Use the sync list scheduler rather than the default one."}};
   return flag_usage;
 }
 
@@ -115,15 +113,19 @@ void AllocateAndParseFlags() {
   // Use the fallback scheduler instead of the default one.
   poplar_xla_flags->fallback_scheduler = false;
 
-  // TODO T8856 - remove this flag.
-  // Indicates whether to add the copies before the all reduce.
-  poplar_xla_flags->add_all_reduce_copies = false;
+  // Struct for deprecated flags.
+  struct DeprecatedFlags {
+    bool add_all_reduce_copies = false;
+  };
 
+  DeprecatedFlags deprecated_flags;
   auto flag_usage = GetFlagUsage();
 
   std::vector<Flag> flag_list = {
 #define ADD_FLAG(FLAG_NAME) \
   Flag(#FLAG_NAME, &poplar_xla_flags->FLAG_NAME, flag_usage.at(#FLAG_NAME)),
+#define ADD_DEPRECATED_FLAG(FLAG_NAME) \
+  Flag(#FLAG_NAME, &deprecated_flags.FLAG_NAME, ""),
       // clang-format off
     ADD_FLAG(help)
     ADD_FLAG(use_synthetic_data)
@@ -137,10 +139,13 @@ void AllocateAndParseFlags() {
     ADD_FLAG(dump_schedule_as_dot)
     ADD_FLAG(tensor_map_file_path)
     ADD_FLAG(fallback_scheduler)
-    ADD_FLAG(add_all_reduce_copies)
+
+    // Deprecated flags.
+    ADD_DEPRECATED_FLAG(add_all_reduce_copies)
 
 // clang-format on
 #undef ADD_FLAG
+#undef ADD_DEPRECATED_FLAG
   };
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_POPLAR_FLAGS", flag_list);
 
@@ -148,6 +153,12 @@ void AllocateAndParseFlags() {
   poplar_xla_flags->as_string = "";
   if (const char* flag_buffer = std::getenv("TF_POPLAR_FLAGS")) {
     poplar_xla_flags->as_string = flag_buffer;
+  }
+
+  if (deprecated_flags.add_all_reduce_copies) {
+    LOG(INFO)
+        << "The TensorFlow Poplar flag \"add_all_reduce_copies\" is "
+           "deprecated, has no effect and it will be removed in the future.";
   }
 }
 
