@@ -111,7 +111,6 @@ android_library(
         "src/main/java/org/tensorflow/ovic/OvicDetector.java",
         "src/main/java/org/tensorflow/ovic/OvicDetectorBenchmarker.java",
     ],
-    manifest = "//tensorflow/lite/java:AndroidManifest.xml",
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
         "//tensorflow/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
