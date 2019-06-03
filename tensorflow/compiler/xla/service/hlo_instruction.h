@@ -823,7 +823,7 @@ class HloInstruction {
 
   // Returns true if this instruction has a side effect, irrespective of whether
   // any called computations may contain an instruction with side effects.
-  bool HasSideEffectNoRecurse() const;
+  virtual bool HasSideEffectNoRecurse() const;
 
   // Returns true if this instruction has a side effect. An instruction has a
   // side effect if it uses certain opcodes or calls a computation with a side
