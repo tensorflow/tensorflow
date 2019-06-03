@@ -100,18 +100,18 @@ public:
       : public OpTrait::TraitBase<ConcreteType, ViewRanks<Ranks...>::Impl> {
   public:
     static LogicalResult verifyTrait(Operation *op) {
-      ArrayRef<unsigned> ranks{Ranks...};
-      if (op->getNumOperands() != ranks.size())
-        return op->emitError("expected " + Twine(ranks.size()) + " operands");
+      if (op->getNumOperands() != sizeof...(Ranks))
+        return op->emitError("expected ") << sizeof...(Ranks) << " operands";
+
+      unsigned ranks[]{Ranks...};
       for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
         auto viewType =
             op->getOperand(i)->getType().dyn_cast<mlir::linalg::ViewType>();
         if (!viewType)
-          return op->emitOpError("operand " + Twine(i) +
-                                 " must have view type ");
+          return op->emitOpError("operand ") << i << " must have view type ";
         if (ranks[i] != viewType.getRank())
-          return op->emitOpError("operand " + Twine(i) + " must have rank " +
-                                 Twine(ranks[i]));
+          return op->emitOpError("operand ")
+                 << i << " must have rank " << ranks[i];
       }
       return success();
     }
