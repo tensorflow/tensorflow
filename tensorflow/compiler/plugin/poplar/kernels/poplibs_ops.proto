@@ -37,6 +37,7 @@ message PoplibsOp {
     ReplicationNormalise = 25;
     ArgMin = 26;
     ArgMax = 27;
+    PrintTensor = 28;
   }
   required Op op = 2;
 }

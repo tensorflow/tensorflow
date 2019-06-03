@@ -27,3 +27,9 @@ from tensorflow.python.framework import ops
 def _poputil_remap_layer_backward(op, grads):
   """Gradients for the IpuRemap op."""
   return grads
+
+
+@ops.RegisterGradient("IpuPrintTensor")
+def _poputil_print_tensor_layer_backward(op, grads):
+  """Gradients for the IpuPrintTensor op."""
+  return grads

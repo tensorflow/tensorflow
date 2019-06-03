@@ -8,6 +8,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/custom_ops/ipu_inter_copy.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/flags.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -102,25 +103,17 @@ class LookAheadScheduler {
     int64 net_memory_usage;
 
     bool is_all_reduce;
+
+    // If this cluster is just an IPU copy, we put IPU copy into their own
+    // cluster so we can schedule them ASAP without messing up the rest of the
+    // schedule.
+    bool is_ipu_copy;
   };
 
-  // So we can store Cluster::Ref in a priority queue or any other structure
-  // that needs a custom comparitor.
-  struct ClusterComparitor {
+  // Compare only the two IDs of the cluster. To be used when we want to sort
+  // clusters but when we don't need the actual scheduling logic.
+  struct ClusterIDComparitor {
     bool operator()(const Cluster::Ref& lhs, const Cluster::Ref& rhs) const {
-      if (lhs->net_memory_usage != rhs->net_memory_usage) {
-        return lhs->net_memory_usage < rhs->net_memory_usage;
-      }
-
-      if (rhs->nodes.empty()) {
-        // Nothing compares less than an empty set.
-        return false;
-      }
-
-      if (lhs->nodes.empty()) {
-        return true;
-      }
-
       // Compare the minimum HloInstruction id between the two clusters.
       auto compare_id = [](const HloInstruction* inst1,
                            const HloInstruction* inst2) {
@@ -128,6 +121,23 @@ class LookAheadScheduler {
       };
       return compare_id(*absl::c_min_element(lhs->nodes, compare_id),
                         *absl::c_min_element(rhs->nodes, compare_id));
+    }
+  };
+
+  // So we can store Cluster::Ref in a priority queue or any other structure
+  // that needs a custom comparitor.
+  struct ClusterComparitor {
+    bool operator()(const Cluster::Ref& lhs, const Cluster::Ref& rhs) const {
+      // Schedule IPU copies first always.
+      if (lhs->is_ipu_copy) {
+        return false;
+      }
+
+      if (lhs->net_memory_usage != rhs->net_memory_usage) {
+        return lhs->net_memory_usage < rhs->net_memory_usage;
+      }
+
+      return ClusterIDComparitor{}(lhs, rhs);
     }
   };
 
@@ -143,7 +153,7 @@ class LookAheadScheduler {
     // Compute the full cluster graph and store it in parent.
     void ClusterNodes();
 
-    const std::set<Cluster::Ref, ClusterComparitor>& GetRoots() {
+    const std::set<Cluster::Ref, ClusterIDComparitor>& GetRoots() {
       return root_nodes;
     }
 
@@ -161,7 +171,7 @@ class LookAheadScheduler {
     // Roots of the cluster graph. These are nodes which have no strict
     // dependencies (a dependency that isn't itself) so can be scheduled
     // immediately.
-    std::set<Cluster::Ref, ClusterComparitor> root_nodes;
+    std::set<Cluster::Ref, ClusterIDComparitor> root_nodes;
 
     absl::flat_hash_map<HloInstruction*, Cluster::Ref>
         previously_clustered_node;
@@ -362,16 +372,21 @@ void LookAheadScheduler::ClusterHelper::GroupChainsOfInstructions() {
     // We mark these so they can be added to their own seperately managed queue.
     ref->is_all_reduce = instruction->opcode() == HloOpcode::kAllReduce;
 
+    // Likewise for IPU copies, keep them in their own cluster but these
+    // clusters will go into the normal queue.
+    ref->is_ipu_copy = DynCast<HloIpuInterCopy>(instruction) != nullptr;
+
     // Add the child nodes to the cluster.
     HloInstruction* current_instruction = instruction;
     while (current_instruction && current_instruction->user_count() == 1 &&
            current_instruction->control_successors().empty() &&
-           !ref->is_all_reduce) {
+           !ref->is_all_reduce && !ref->is_ipu_copy) {
       HloInstruction* user = current_instruction->users()[0];
       // Check the child hasn't already been added to a cluster. We want all
       // reduce instructions to be in their own cluster.
       if (previously_clustered_node.count(user) != 0 ||
-          user->opcode() == HloOpcode::kAllReduce)
+          user->opcode() == HloOpcode::kAllReduce ||
+          nullptr != DynCast<HloIpuInterCopy>(user))
         break;
 
       // Add the child.
@@ -385,10 +400,16 @@ void LookAheadScheduler::ClusterHelper::GroupChainsOfInstructions() {
 }
 
 void LookAheadScheduler::ClusterHelper::BuildDependencyGraph() {
+  // Sort using the O(1) container then the very few that are left go into the
+  // deterministically sorted O(log(N)) container after.
+  std::unordered_set<Cluster::Ref> root_nodes_temp{};
+
   // Build the dependency map of the clusters.
   for (Cluster& cluster : parent->cluster_memory_storage) {
     // Could be a root node. We will remove if this is invalidated later.
-    if (cluster.dependencies.empty()) root_nodes.insert(&cluster);
+    if (cluster.dependencies.empty()) {
+      root_nodes_temp.insert(&cluster);
+    }
 
     for (HloInstruction* node : cluster.nodes) {
       // Add any users of this cluster to the dependency set.
@@ -403,7 +424,9 @@ void LookAheadScheduler::ClusterHelper::BuildDependencyGraph() {
 
           if (pair.second) cluster.reverse_dependencies.push_back(itr->second);
 
-          if (root_nodes.count(itr->second) != 0) root_nodes.erase(itr->second);
+          if (root_nodes_temp.count(itr->second) != 0) {
+            root_nodes_temp.erase(itr->second);
+          }
         }
       }
 
@@ -417,9 +440,16 @@ void LookAheadScheduler::ClusterHelper::BuildDependencyGraph() {
 
           if (pair.second) cluster.reverse_dependencies.push_back(itr->second);
 
-          if (root_nodes.count(itr->second) != 0) root_nodes.erase(itr->second);
+          if (root_nodes_temp.count(itr->second) != 0) {
+            root_nodes_temp.erase(itr->second);
+          }
         }
       }
+    }
+
+    root_nodes.clear();
+    for (Cluster::Ref ref : root_nodes_temp) {
+      root_nodes.insert(ref);
     }
   }
 }
@@ -501,7 +531,6 @@ void LookAheadScheduler::AddDepsToWaitOrReadyQueue(
           wait_queue[child_dependency];
 
       pending_deps.erase(node_just_added);
-
       if (pending_deps.size() == 0) {
         AddToReady(child_dependency);
       }
@@ -538,7 +567,6 @@ HloInstructionSequence LookAheadScheduler::CreateSchedule() {
   while (!ready_queue.empty() || !sync_queue.empty()) {
     // Deque.
     Cluster::Ref r = PopFromQueue(should_all_reduce);
-
     if (scheduled_clusters.count(r) != 0) continue;
 
     // Schedule each instruction.

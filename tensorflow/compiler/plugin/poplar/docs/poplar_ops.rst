@@ -36,3 +36,11 @@ The original paper on group normalization:
 `"Group Normalization", Yuxin Wu, Kaiming He <https://arxiv.org/abs/1803.08494>`_.
 
 See :py:func:`tensorflow.contrib.ipu.group_norm`.
+
+
+Debugging Numerical Issues
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The values held in a tensor can be printed by calling ipu.internal.print_tensor.
+This function takes in a tensor and returns the same tensor, and will print it
+to stdout as a side effect.
