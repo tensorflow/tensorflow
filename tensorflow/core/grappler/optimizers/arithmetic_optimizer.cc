@@ -3101,12 +3101,11 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
     *pack_output_shape = slice_properties[0].shape();
-    const int pack_input_rank = pack_output_shape->dims() - 1;
+    const int pack_output_rank = pack_output_shape->dims();
     if (*pack_axis < 0) {
-      // The ndims of any input into Pack op is its output ndims - 1.
-      *pack_axis += pack_input_rank;
+      *pack_axis += pack_output_rank;
     }
-    if (*pack_axis < 0 || *pack_axis >= pack_input_rank) {
+    if (*pack_axis < 0 || *pack_axis >= pack_output_rank) {
       return errors::InvalidArgument(
           "Pack node (", pack->name(),
           ") axis attribute is out of bounds: ", pack->attr().at("axis").i());
