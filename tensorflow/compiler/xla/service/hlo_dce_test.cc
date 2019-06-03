@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -87,6 +88,49 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(4, computation->instruction_count());
+}
+
+TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
+  // Verify that custom call instruction with side-effect is not removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto instr = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo"));
+  auto custom_call_instr = static_cast<HloCustomCallInstruction*>(instr);
+  custom_call_instr->set_has_side_effect(true);
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewUnverifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(2, computation->instruction_count());
+
+  HloDCE dce;
+  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(2, computation->instruction_count());
+}
+
+TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
+  // Verify that custom call instruction without side-effect is removed.
+  auto builder = HloComputation::Builder(TestName());
+  auto instr = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                       /*operands=*/{},
+                                       /*custom_call_target=*/"foo"));
+  auto custom_call_instr = static_cast<HloCustomCallInstruction*>(instr);
+  builder.AddInstruction(HloInstruction::CreateTuple({}));
+
+  auto module = CreateNewUnverifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(2, computation->instruction_count());
+
+  HloDCE dce;
+  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+
+  EXPECT_EQ(1, computation->instruction_count());
 }
 
 TEST_F(HloDceTest, DeadParameters) {

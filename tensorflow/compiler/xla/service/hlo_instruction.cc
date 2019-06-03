@@ -481,6 +481,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       static_cast<HloCustomCallInstruction*>(instruction.get())
           ->set_batch_group_count(
               std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
+      static_cast<HloCustomCallInstruction*>(instruction.get())
+          ->set_has_side_effect(proto.custom_call_has_side_effect());
       break;
     case HloOpcode::kPad:
       TF_RET_CHECK(proto.has_padding_config());
@@ -1270,6 +1272,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
       return true;
     case HloOpcode::kAllReduce:
       return all_reduce_id().has_value();
+    case HloOpcode::kCustomCall:
+      return Cast<HloCustomCallInstruction>(this)->has_side_effect();
     default:
       return false;
   }
