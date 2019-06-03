@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
 
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
-#include "tensorflow/core/platform/platform.h"
 #ifdef IS_MOBILE_PLATFORM
 #include "tensorflow/core/lib/monitoring/mobile_counter.h"
 #else
@@ -27,6 +31,7 @@ limitations under the License.
 #include <atomic>
 #include <map>
 
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 #include "tensorflow/core/platform/logging.h"
@@ -48,7 +53,7 @@ namespace monitoring {
 // This class is thread-safe.
 class CounterCell {
  public:
-  CounterCell(int64 value) : value_(value) {}
+  explicit CounterCell(int64 value) : value_(value) {}
   ~CounterCell() {}
 
   // Atomically increments the value by step.
@@ -97,6 +102,8 @@ class Counter {
   template <typename... Labels>
   CounterCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
 
+  Status GetStatus() { return status_; }
+
  private:
   explicit Counter(
       const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def)
@@ -109,9 +116,18 @@ class Counter {
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
-            })) {}
+            })) {
+    if (registration_handle_) {
+      status_ = Status::OK();
+    } else {
+      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+                       "Another metric with the same name already exists.");
+    }
+  }
 
   mutable mutex mu_;
+
+  Status status_;
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.

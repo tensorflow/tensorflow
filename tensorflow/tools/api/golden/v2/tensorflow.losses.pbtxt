@@ -33,10 +33,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LogLoss"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Loss"
     mtype: "<type \'type\'>"
   }

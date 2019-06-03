@@ -46,4 +46,7 @@ enum IODataType {
 
   // Int8, quantized based on QuantizationParameters in schema.
   INT8 = 9;
+
+  // Half precision float, not quantized.
+  FLOAT16 = 10;
 }

@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "SamplingDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "rate"
+    description: <<END
+A scalar representing the sample rate of elements from the `input_dataset`
+that should be taken.
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+A scalar representing seed of random number generator.
+END
+  }
+  in_arg {
+    name: "seed2"
+    description: <<END
+A scalar representing seed2 of random number generator.
+END
+  }
+  summary: "Creates a dataset that contains `rate` elements from the `input_dataset`."
+}

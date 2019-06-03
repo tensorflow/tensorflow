@@ -37,8 +37,6 @@ class FusionMerger : public HloModulePass {
   absl::string_view name() const override { return "fusion merger"; }
 
   StatusOr<bool> Run(HloModule* module) override;
-
-  static double GetThresholdFlopsToBytesRatio() { return 1.0; }
 };
 
 }  // namespace gpu

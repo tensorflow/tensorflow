@@ -45,13 +45,15 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
+# Also update tensorflow/tensorflow.bzl and
+# tensorflow/core/public/version.h
 _VERSION = '2.0.0-alpha0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
-    'google_pasta >= 0.1.2',
+    'google_pasta >= 0.1.6',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
     'numpy >= 1.14.5, < 2.0',
@@ -60,6 +62,7 @@ REQUIRED_PACKAGES = [
     'tb-nightly >= 1.14.0a20190301, < 1.14.0a20190302',
     'tf-estimator-nightly >= 1.14.0.dev2019030115, < 1.14.0.dev2019030116',
     'termcolor >= 1.1.0',
+    'wrapt >= 1.11.1',
 ]
 
 if sys.byteorder == 'little':
@@ -235,7 +238,8 @@ else:
 headers = (
     list(find_files('*.h', 'tensorflow/core')) + list(
         find_files('*.h', 'tensorflow/stream_executor')) +
-    list(find_files('*.h', 'google/protobuf_archive/src')) + list(
+    list(find_files('*.h', 'google/protobuf_archive/src')) +
+    list(find_files('*.inc', 'google/protobuf_archive/src')) + list(
         find_files('*', 'third_party/eigen3')) + list(
             find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +

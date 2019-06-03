@@ -24,7 +24,7 @@ namespace tensorflow {
 // This is a strong keyed hash function interface for strings.
 // The hash function is deterministic on the content of the string within the
 // process. The key of the hash is an array of 2 uint64 elements.
-// A strong hash make it dificult, if not infeasible, to compute inputs that
+// A strong hash makes it difficult, if not infeasible, to compute inputs that
 // hash to the same bucket.
 //
 // Usage:

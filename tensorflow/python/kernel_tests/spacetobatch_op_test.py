@@ -104,11 +104,15 @@ class SpaceToBatchTest(test.TestCase, PythonOpImpl):
     with self.cached_session(use_gpu=True):
       # outputs = space_to_batch(inputs)
       x_tf = self.space_to_batch(
-          math_ops.to_float(inputs), paddings, block_size=block_size)
+          math_ops.cast(inputs, dtypes.float32),
+          paddings,
+          block_size=block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
       # inputs = batch_to_space(outputs)
       x_tf = self.batch_to_space(
-          math_ops.to_float(outputs), paddings, block_size=block_size)
+          math_ops.cast(outputs, dtypes.float32),
+          paddings,
+          block_size=block_size)
       self.assertAllEqual(x_tf.eval(), inputs)
 
   def _testOne(self, inputs, block_size, outputs):
@@ -200,11 +204,11 @@ class SpaceToBatchNDTest(test.TestCase):
       with self.cached_session(use_gpu=use_gpu):
         # outputs = space_to_batch(inputs)
         x_tf = array_ops.space_to_batch_nd(
-            math_ops.to_float(inputs), block_shape, paddings)
+            math_ops.cast(inputs, dtypes.float32), block_shape, paddings)
         self.assertAllEqual(x_tf.eval(), outputs)
         # inputs = batch_to_space(outputs)
         x_tf = array_ops.batch_to_space_nd(
-            math_ops.to_float(outputs), block_shape, paddings)
+            math_ops.cast(outputs, dtypes.float32), block_shape, paddings)
         self.assertAllEqual(x_tf.eval(), inputs)
 
   def _testDirect(self, input_shape, block_shape, paddings):

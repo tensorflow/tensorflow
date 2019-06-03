@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+from distutils import version as distutils_version  # pylint: disable=g-bad-import-order
 import os.path
 import re
 
@@ -43,6 +44,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_stack
 
 
 # Prefix to be added to unbound input names so they are easily identifiable.
@@ -51,7 +53,8 @@ _UNBOUND_INPUT_PREFIX = "$unbound_inputs_"
 # List of collections that didn't register proto functions, as a result in
 # a previously exported meta_graph the items are of a different data type.
 _COMPAT_COLLECTION_LIST = [ops.GraphKeys.LOCAL_VARIABLES,
-                           ops.GraphKeys.MODEL_VARIABLES]
+                           ops.GraphKeys.MODEL_VARIABLES,
+                           ops.GraphKeys.METRIC_VARIABLES]
 
 
 def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
@@ -533,9 +536,9 @@ def create_graph_debug_info_def(operations):
   for op in operations:
     # Gets the stack trace of the operation and then the file location.
     node_name = op.name
-    node_to_trace[node_name] = error_interpolation.compute_useful_stack(op)
-    for trace in node_to_trace[node_name]:
-      all_file_names.add(trace[0])
+    node_to_trace[node_name] = error_interpolation.compute_useful_frames(op, 10)
+    for frame in node_to_trace[node_name]:
+      all_file_names.add(frame[tf_stack.TB_FILENAME])
 
   # Sets the `files` field in the GraphDebugInfo proto
   graph_debug_info_def.files.extend(all_file_names)
@@ -548,12 +551,14 @@ def create_graph_debug_info_def(operations):
   # Creates the FileLineCol proto for each node and sets the value in the
   # GraphDebugInfo proto. We only store the file name index for each node to
   # save the storage space.
-  for node_name, trace in node_to_trace.items():
+  for node_name, frames in node_to_trace.items():
     trace_def = graph_debug_info_def.traces[node_name]
-    for file_name, line, func, code in trace:
-      file_index = file_to_index[file_name]
+    for frame in reversed(frames):
       trace_def.file_line_cols.add(
-          file_index=file_index, line=line, func=func, code=code)
+          file_index=file_to_index[frame[tf_stack.TB_FILENAME]],
+          line=frame[tf_stack.TB_LINENO],
+          func=frame[tf_stack.TB_FUNCNAME],
+          code=frame[tf_stack.TB_CODEDICT])
 
   return graph_debug_info_def
 
@@ -854,9 +859,30 @@ def import_scoped_meta_graph_with_return_elements(
         producer_op_list=producer_op_list,
         return_elements=return_elements)
 
+    # TensorFlow versions before 1.9 (not inclusive) exported SavedModels
+    # without a VariableDef.trainable field set.
+    tf_version = meta_graph_def.meta_info_def.tensorflow_version
+    if not tf_version:
+      variables_have_trainable = True
+    else:
+      variables_have_trainable = (
+          distutils_version.LooseVersion(tf_version)
+          >= distutils_version.LooseVersion("1.9"))
+
+    # Sort collections so we see TRAINABLE_VARIABLES first and can default these
+    # variables to trainable if the value is not set in their VariableDef.
+    sorted_collections = []
+    if ops.GraphKeys.TRAINABLE_VARIABLES in meta_graph_def.collection_def:
+      sorted_collections.append(
+          (ops.GraphKeys.TRAINABLE_VARIABLES,
+           meta_graph_def.collection_def[ops.GraphKeys.TRAINABLE_VARIABLES]))
+    for key, value in sorted(meta_graph_def.collection_def.items()):
+      if key != ops.GraphKeys.TRAINABLE_VARIABLES:
+        sorted_collections.append((key, value))
+
     # Restores all the other collections.
     variable_objects = {}
-    for key, col_def in sorted(meta_graph_def.collection_def.items()):
+    for key, col_def in sorted_collections:
       # Don't add unbound_inputs to the new graph.
       if key == unbound_inputs_col_name:
         continue
@@ -869,6 +895,13 @@ def import_scoped_meta_graph_with_return_elements(
                       key)
         continue
       from_proto = ops.get_from_proto_function(key)
+
+      # Temporary change to allow the TFMA evaluator to read metric variables
+      # saved as a bytes list.
+      # TODO(kathywu): Remove this hack once cl/248406059 has been submitted.
+      if key == ops.GraphKeys.METRIC_VARIABLES:
+        # Metric variables will use the same proto functions as GLOBAL_VARIABLES
+        from_proto = ops.get_from_proto_function(ops.GraphKeys.GLOBAL_VARIABLES)
       if from_proto and kind == "bytes_list":
         proto_type = ops.get_collection_proto_type(key)
         if key in ops.GraphKeys._VARIABLE_COLLECTIONS:  # pylint: disable=protected-access
@@ -877,6 +910,14 @@ def import_scoped_meta_graph_with_return_elements(
             if variable is None:
               proto = proto_type()
               proto.ParseFromString(value)
+              if not variables_have_trainable:
+                # If the VariableDef proto does not contain a "trainable"
+                # property because it was exported before that property was
+                # added, we default it to whether the variable is in the
+                # TRAINABLE_VARIABLES collection. We've sorted
+                # TRAINABLE_VARIABLES to be first, so trainable variables will
+                # be created from that collection.
+                proto.trainable = (key == ops.GraphKeys.TRAINABLE_VARIABLES)
               variable = from_proto(
                   proto, import_scope=scope_to_prepend_to_names)
               variable_objects[value] = variable

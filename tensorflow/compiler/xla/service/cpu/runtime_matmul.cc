@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matvec.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -69,6 +70,7 @@ void MatMul(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
   // Matrix multiply is a special case of the "contract" operation where
   // the contraction is performed along dimension 1 of the lhs and dimension
   // 0 of the rhs.
+  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
   C.device(*run_options->intra_op_thread_pool()) = A.contract(B, dims);
 }
 

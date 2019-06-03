@@ -75,6 +75,7 @@ def _activation_summary(x):
 
   Args:
     x: Tensor
+
   Returns:
     nothing
   """
@@ -112,16 +113,15 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
     name: name of the variable
     shape: list of ints
     stddev: standard deviation of a truncated Gaussian
-    wd: add L2Loss weight decay multiplied by this float. If None, weight
-        decay is not added for this Variable.
+    wd: add L2Loss weight decay multiplied by this float. If None, weight decay
+      is not added for this Variable.
 
   Returns:
     Variable Tensor
   """
   dtype = tf.float32
-  var = _variable_on_cpu(name, shape,
-                         tf.truncated_normal_initializer(
-                             stddev=stddev, dtype=dtype))
+  var = _variable_on_cpu(
+      name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
   if wd is not None:
     weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)
@@ -176,10 +176,10 @@ def inference(images):
   Returns:
     Logits.
   """
-  # We instantiate all variables using tf.get_variable() instead of
+  # We instantiate all variables using tf.compat.v1.get_variable() instead of
   # tf.Variable() in order to share variables across multiple GPU training runs.
   # If we only ran this model on a single GPU, we could simplify this function
-  # by replacing all instances of tf.get_variable() with tf.Variable().
+  # by replacing all instances of tf.compat.v1.get_variable() with tf.Variable().
   #
   # While instantiating conv and local layers, we add mask and threshold
   # variables to the layer by calling the pruning.apply_mask() function.
@@ -276,8 +276,8 @@ def loss(logits, labels):
   Add summary for "Loss" and "Loss/avg".
   Args:
     logits: Logits from inference().
-    labels: Labels from distorted_inputs or inputs(). 1-D tensor
-            of shape [batch_size]
+    labels: Labels from distorted_inputs or inputs(). 1-D tensor of shape
+      [batch_size]
 
   Returns:
     Loss tensor of type float.
@@ -302,6 +302,7 @@ def _add_loss_summaries(total_loss):
 
   Args:
     total_loss: Total loss from loss().
+
   Returns:
     loss_averages_op: op for generating moving averages of losses.
   """
@@ -331,6 +332,7 @@ def train(total_loss, global_step):
     total_loss: Total loss from loss().
     global_step: Integer Variable counting the number of training steps
       processed.
+
   Returns:
     train_op: op for training.
   """
@@ -388,9 +390,9 @@ def maybe_download_and_extract():
   if not os.path.exists(filepath):
 
     def _progress(count, block_size, total_size):
-      sys.stdout.write('\r>> Downloading %s %.1f%%' %
-                       (filename,
-                        float(count * block_size) / float(total_size) * 100.0))
+      sys.stdout.write(
+          '\r>> Downloading %s %.1f%%' %
+          (filename, float(count * block_size) / float(total_size) * 100.0))
       sys.stdout.flush()
 
     filepath, _ = urllib.request.urlretrieve(DATA_URL, filepath, _progress)

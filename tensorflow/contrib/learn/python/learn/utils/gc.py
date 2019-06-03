@@ -62,7 +62,7 @@ For example,
   # Delete everything not in 'both'.
   to_delete = gc.negation(both)
   for p in to_delete(all_paths):
-    gfile.DeleteRecursively(p.path)  # deletes:  "/tmp/1", "/tmp/2",
+    gfile.rmtree(p.path)  # deletes:  "/tmp/1", "/tmp/2",
                                      # "/tmp/3", "/tmp/4", "/tmp/6",
 """
 

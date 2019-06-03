@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
@@ -45,7 +44,7 @@ def make_csv_dataset(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -60,7 +59,7 @@ def make_csv_dataset(
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
-      records. See `tf.gfile.Glob` for pattern rules.
+      records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     column_names: An optional list of strings that corresponds to the CSV
@@ -173,7 +172,7 @@ def make_batched_features_dataset(file_pattern,
                                   shuffle=True,
                                   shuffle_buffer_size=10000,
                                   shuffle_seed=None,
-                                  prefetch_buffer_size=optimization.AUTOTUNE,
+                                  prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                   reader_num_threads=1,
                                   parser_num_threads=2,
                                   sloppy_ordering=False,
@@ -225,11 +224,11 @@ def make_batched_features_dataset(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-      `Example` records. See `tf.gfile.Glob` for pattern rules.
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
-      `VarLenFeature` values. See `tf.parse_example`.
+      `VarLenFeature` values. See `tf.io.parse_example`.
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
@@ -328,11 +327,11 @@ def read_batch_features(file_pattern,
 
   Args:
     file_pattern: List of files or patterns of file paths containing
-      `Example` records. See `tf.gfile.Glob` for pattern rules.
+      `Example` records. See `tf.io.gfile.glob` for pattern rules.
     batch_size: An int representing the number of records to combine
       in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
-      `VarLenFeature` values. See `tf.parse_example`.
+      `VarLenFeature` values. See `tf.io.parse_example`.
     reader: A function or class that can be
       called with a `filenames` tensor and (optional) `reader_args` and returns
       a `Dataset` of `Example` tensors. Defaults to `tf.data.TFRecordDataset`.
@@ -378,7 +377,7 @@ class LMDBDataset(dataset_ops.DatasetSource):
     (key value) pairs sequentially.
     For example:
     ```python
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
     dataset = tf.contrib.lmdb.LMDBDataset("/foo/bar.mdb")
 

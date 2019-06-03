@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
-using str_util::Join;
 using str_util::Split;
 using str_util::StringReplace;
 using strings::StrCat;
@@ -88,11 +87,11 @@ void CreateConstNode(const Tensor& tensor, const string& name,
 
 string GetMonolithicTensorKey(const string& tensor_slice_name) {
   std::vector<string> names = Split(tensor_slice_name, "/");
-  if (str_util::StartsWith(names[names.size() - 1], "part_")) {
+  if (absl::StartsWith(names[names.size() - 1], "part_")) {
     CHECK_GE(names.size(), 2);
     names.pop_back();
   }
-  return Join(names, "/");
+  return absl::StrJoin(names, "/");
 }
 
 Status ObtainTensorSlice(const GraphDef& input_graph_def,
@@ -102,8 +101,8 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
   for (const auto& node : input_graph_def.node()) {
     std::vector<string> node_name_parts = Split(node.name(), "/");
     if (node_name_parts.size() == 2 &&
-        str_util::StartsWith(node_name_parts[0], "save") &&
-        str_util::StartsWith(node_name_parts[1], "Assign") &&
+        absl::StartsWith(node_name_parts[0], "save") &&
+        absl::StartsWith(node_name_parts[1], "Assign") &&
         node.input(0) == target_name) {
       restore_node_name = node.input(1);
       break;

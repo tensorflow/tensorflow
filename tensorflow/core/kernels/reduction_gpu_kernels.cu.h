@@ -20,20 +20,21 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include <sstream>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "third_party/cub/device/device_reduce.cuh"
 #include "third_party/cub/device/device_segmented_reduce.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
 #include "third_party/cub/warp/warp_reduce.cuh"
-#include "cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cuComplex.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
-
-#include <sstream>
 
 namespace tensorflow {
 namespace functor {
@@ -41,9 +42,9 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-struct Sqrt {
+struct SqrtOfReal {
   __host__ __device__ T operator()(const T& a) const {
-    return Eigen::numext::sqrt(a);
+    return T(Eigen::numext::sqrt(Eigen::numext::real(a)));
   }
 };
 
@@ -54,54 +55,10 @@ struct Sum {
   }
 };
 
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded addition op for std::complex
-template <>
-struct Sum<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Sum<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
-  }
-};
-
 template <typename T>
 struct Prod {
   __host__ __device__ T operator()(const T& a, const T& b) const {
     return a * b;
-  }
-};
-
-// needed to work around a compiler bug in nvcc - it doesn't seem to like
-// the overloaded multiply op for std::complex
-template <>
-struct Prod<std::complex<float>> {
-  __host__ __device__ std::complex<float> operator()(
-      const std::complex<float>& a, const std::complex<float>& b) const {
-    auto result = cuCmulf(make_cuComplex(a.real(), a.imag()),
-                          make_cuComplex(b.real(), b.imag()));
-    return std::complex<float>(result.x, result.y);
-  }
-};
-
-template <>
-struct Prod<std::complex<double>> {
-  __host__ __device__ std::complex<double> operator()(
-      const std::complex<double>& a, const std::complex<double>& b) const {
-    auto result = cuCmul(make_cuDoubleComplex(a.real(), a.imag()),
-                         make_cuDoubleComplex(b.real(), b.imag()));
-    return std::complex<double>(result.x, result.y);
   }
 };
 
@@ -687,7 +644,6 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
         (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op, init));
 
     dim3 new_grid_dim((grid_dim.y * extent_y + 31) / 32, 1, 1);
-    dim3 num_threads(128, 1, 1);
     TF_CHECK_OK(CudaLaunchKernel(CleanupSegments<T*, OUT_T, Op>, new_grid_dim,
                                  block_dim, 0, cu_stream,
                                  (T*)temp_storage.flat<int8_t>().data(), out,
@@ -918,8 +874,8 @@ struct ReduceFunctor<GPUDevice, functor::EuclideanNormReducer<T>> {
                      const functor::EuclideanNormReducer<T>& reducer) {
     typedef cub::TransformInputIterator<T, Square<T>, T*> inputIterType;
     inputIterType input_itr((T*)in.data(), Square<T>());
-    typedef TransformOutputIterator<T, T, Sqrt<T>> outputIterType;
-    outputIterType output_itr((T*)out.data(), Sqrt<T>());
+    typedef TransformOutputIterator<T, T, SqrtOfReal<T>> outputIterType;
+    outputIterType output_itr((T*)out.data(), SqrtOfReal<T>());
     ReduceImpl<T, Sum<T>, outputIterType, inputIterType, ReductionAxes>(
         ctx, output_itr, input_itr, in.rank(), in.dimension(0),
         in.rank() >= 2 ? in.dimension(1) : 1,

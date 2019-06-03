@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 
-#include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include <type_traits>
+
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -1662,7 +1664,7 @@ inline void DepthwiseConvGeneral(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -1700,6 +1702,7 @@ inline void DepthwiseConvGeneral(
                    kAccBufferActualSize);
   TFLITE_DCHECK_LE(kAccBufferActualSize, kAccBufferMaxSize);
   TFLITE_DCHECK_GE(kOutputPixelsInAccBuffer, 1);
+  TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   // row_accum_func will point to the core accumulation function to be used
   // for this DepthwiseConv op.
@@ -1766,9 +1769,36 @@ inline void DepthwiseConvGeneral(
   const int filter_height_stride = filter_shape.Dims(3) * filter_shape.Dims(2);
 
   // Now that we have determined row_accum_func, we can start work.
-  uint8* output_ptr = output_data;
-  for (int b = 0; b < batches; ++b) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
+  int batch_start = 0;
+  int batch_end = batches;
+  int row_start = 0;
+  int row_end = output_height;
+  int output_ptr_offset = 0;
+
+  switch (thread_dim) {
+    case 0:
+      // Multithread along with the batch axis
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, batches);
+      batch_start = thread_start;
+      batch_end = thread_end;
+      output_ptr_offset = batch_start * FlatSizeSkipDim(output_shape, 0);
+      break;
+    case 1:
+      // Multithread along with the row axis
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, output_height);
+      row_start = thread_start;
+      row_end = thread_end;
+      output_ptr_offset = row_start * output_width * output_depth;
+      break;
+  }
+
+  uint8* output_ptr = output_data + output_ptr_offset;
+  int batch_step =
+      (output_height + row_start - row_end) * output_width * output_depth;
+  for (int b = batch_start; b < batch_end; ++b) {
+    for (int out_y = row_start; out_y < row_end; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
       const int filter_y_start =
           std::max(0, (-in_y_origin + dilation_height_factor - 1) /
@@ -1944,17 +1974,20 @@ inline void DepthwiseConvGeneral(
         }
       }
     }
+    output_ptr += batch_step;
   }
 }
 
 }  // namespace depthwise_conv
 
-inline void DepthwiseConv(
+template <DepthwiseConvOutputRounding kOutputRounding>
+inline void DepthwiseConvWithRounding(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -1975,6 +2008,26 @@ inline void DepthwiseConv(
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
+  // Dispatch to dot-product 3x3 kernels when supported.
+  if (cpu_flags.neon_dotprod) {
+    using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+    DotProduct3x3KernelType kernel_type =
+        optimized_ops::depthwise_conv::CategorizeDotProductKernel(
+            input_shape, filter_shape, params);
+    if (kernel_type != DotProduct3x3KernelType::kNone) {
+      gemmlowp::ScopedProfilingLabel specialized_label(
+          "DepthwiseConv/8bit/3x3XDotProduct");
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
+      return;
+    }
+  }
+
+  // Dispatch to non-dot-product 3x3 kernels when supported.
+
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -1988,9 +2041,10 @@ inline void DepthwiseConv(
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, output_shift)) {
     gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
-    depthwise_conv::DepthwiseConv3x3Filter(
+    depthwise_conv::DepthwiseConv3x3Filter<kOutputRounding>(
         params, input_shape, input_data, filter_shape, filter_data, bias_shape,
-        bias_data, output_shape, output_data);
+        bias_data, output_shape, output_data, thread_start, thread_end,
+        thread_dim);
     return;
   }
 #endif
@@ -1999,8 +2053,29 @@ inline void DepthwiseConv(
       "DepthwiseConv/8bit/General");
   depthwise_conv::DepthwiseConvGeneral(params, input_shape, input_data,
                                        filter_shape, filter_data, bias_shape,
-                                       bias_data, output_shape, output_data);
+                                       bias_data, output_shape, output_data,
+                                       thread_start, thread_end, thread_dim);
 }
+
+inline void DepthwiseConvImpl(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, const CpuFlags& cpu_flags, int thread_start,
+    int thread_end, int thread_dim) {
+  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kUpward>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, cpu_flags, thread_start, thread_end,
+      thread_dim);
+}
+
+void DepthwiseConv(const DepthwiseParams& params,
+                   const RuntimeShape& input_shape, const uint8* input_data,
+                   const RuntimeShape& filter_shape, const uint8* filter_data,
+                   const RuntimeShape& bias_shape, const int32* bias_data,
+                   const RuntimeShape& output_shape, uint8* output_data,
+                   const CpuFlags& cpu_flags);
 
 }  // namespace optimized_ops
 }  // namespace tflite

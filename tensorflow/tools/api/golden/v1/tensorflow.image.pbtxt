@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "combined_non_max_suppression"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'clip_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "convert_image_dtype"
@@ -62,7 +62,7 @@ tf_module {
   }
   member_method {
     name: "decode_image"
-    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'None\'], "
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\', \'expand_animations\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'None\', \'True\'], "
   }
   member_method {
     name: "decode_jpeg"
@@ -74,7 +74,7 @@ tf_module {
   }
   member_method {
     name: "draw_bounding_boxes"
-    argspec: "args=[\'images\', \'boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'images\', \'boxes\', \'name\', \'colors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "encode_jpeg"
@@ -95,6 +95,10 @@ tf_module {
   member_method {
     name: "extract_jpeg_shape"
     argspec: "args=[\'contents\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "extract_patches"
+    argspec: "args=[\'images\', \'sizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "flip_left_right"
@@ -131,6 +135,10 @@ tf_module {
   member_method {
     name: "non_max_suppression_padded"
     argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'pad_to_max_output_size\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "non_max_suppression_with_scores"
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'soft_nms_sigma\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'0.0\', \'None\'], "
   }
   member_method {
     name: "pad_to_bounding_box"
@@ -209,6 +217,10 @@ tf_module {
     argspec: "args=[\'images\', \'size\', \'align_corners\', \'name\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'False\'], "
   }
   member_method {
+    name: "resize_with_crop_or_pad"
+    argspec: "args=[\'image\', \'target_height\', \'target_width\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "rgb_to_grayscale"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -238,11 +250,11 @@ tf_module {
   }
   member_method {
     name: "ssim"
-    argspec: "args=[\'img1\', \'img2\', \'max_val\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\'], varargs=None, keywords=None, defaults=[\'11\', \'1.5\', \'0.01\', \'0.03\'], "
   }
   member_method {
     name: "ssim_multiscale"
-    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\'], "
+    argspec: "args=[\'img1\', \'img2\', \'max_val\', \'power_factors\', \'filter_size\', \'filter_sigma\', \'k1\', \'k2\'], varargs=None, keywords=None, defaults=[\'(0.0448, 0.2856, 0.3001, 0.2363, 0.1333)\', \'11\', \'1.5\', \'0.01\', \'0.03\'], "
   }
   member_method {
     name: "total_variation"
@@ -250,11 +262,11 @@ tf_module {
   }
   member_method {
     name: "transpose"
-    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'image\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "transpose_image"
-    argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'image\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "yiq_to_rgb"

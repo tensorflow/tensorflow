@@ -147,7 +147,7 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=array_ops.expand_dims(
               math_ops.range(i, dtype=dtypes.int64), 1),
-          values=array_ops.fill([math_ops.to_int32(i)], i),
+          values=array_ops.fill([math_ops.cast(i, dtypes.int32)], i),
           dense_shape=[i])
 
     dataset = dataset_ops.Dataset.range(10).map(_sparse).window(

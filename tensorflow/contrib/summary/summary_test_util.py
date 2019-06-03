@@ -59,7 +59,7 @@ def events_from_file(filepath):
     filepath: Path to the event file.
 
   Returns:
-    A list of all tf.Event protos in the event file.
+    A list of all tf.compat.v1.Event protos in the event file.
   """
   records = list(tf_record.tf_record_iterator(filepath))
   result = []
@@ -77,7 +77,7 @@ def events_from_logdir(logdir):
     logdir: The directory in which the single event file is sought.
 
   Returns:
-    A list of all tf.Event protos from the single event file.
+    A list of all tf.compat.v1.Event protos from the single event file.
 
   Raises:
     AssertionError: If logdir does not contain exactly one file.

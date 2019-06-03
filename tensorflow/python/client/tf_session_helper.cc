@@ -147,7 +147,8 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
       Set_TF_Status_from_Status(out_status, s);
       return;
     }
-    py_outputs_safe.emplace_back(make_safe(py_array));
+    py_outputs_safe.emplace_back(
+        make_safe(PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array))));
   }
 
   // 6. If we reach this point, we have successfully built a list of objects
@@ -194,16 +195,13 @@ void MakeCallableHelper(tensorflow::Session* session,
 
 void TF_DeprecatedSessionMakeCallable(TF_DeprecatedSession* session,
                                       const TF_Buffer* callable_options,
-                                      int64_t* out_handle,
-                                      TF_Status* out_status) {
-  MakeCallableHelper(session->session, callable_options, out_handle,
-                     out_status);
+                                      int64_t* out_handle, TF_Status* status) {
+  MakeCallableHelper(session->session, callable_options, out_handle, status);
 }
 void TF_SessionMakeCallable(TF_Session* session,
                             const TF_Buffer* callable_options,
-                            int64_t* out_handle, TF_Status* out_status) {
-  MakeCallableHelper(session->session, callable_options, out_handle,
-                     out_status);
+                            int64_t* out_handle, TF_Status* status) {
+  MakeCallableHelper(session->session, callable_options, out_handle, status);
 }
 
 namespace {
@@ -277,7 +275,8 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
       Set_TF_Status_from_Status(out_status, s);
       return;
     }
-    py_outputs_safe.push_back(make_safe(py_array));
+    py_outputs_safe.push_back(
+        make_safe(PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array))));
   }
 
   // If we reach this point, we have successfully built a list of objects
@@ -291,32 +290,28 @@ void RunCallableHelper(tensorflow::Session* session, int64_t handle,
 
 void TF_DeprecatedSessionRunCallable(TF_DeprecatedSession* session,
                                      int64_t handle, PyObject* feed_values,
-                                     TF_Status* out_status,
                                      PyObjectVector* out_values,
-                                     TF_Buffer* run_metadata) {
-  RunCallableHelper(session->session, handle, feed_values, out_status,
-                    out_values, run_metadata);
+                                     TF_Buffer* run_metadata,
+                                     TF_Status* status) {
+  RunCallableHelper(session->session, handle, feed_values, status, out_values,
+                    run_metadata);
   ClearDecrefCache();
 }
 void TF_SessionRunCallable(TF_Session* session, int64_t handle,
-                           PyObject* feed_values, TF_Status* out_status,
-                           PyObjectVector* out_values,
-                           TF_Buffer* run_metadata) {
-  RunCallableHelper(session->session, handle, feed_values, out_status,
-                    out_values, run_metadata);
+                           PyObject* feed_values, PyObjectVector* out_values,
+                           TF_Buffer* run_metadata, TF_Status* status) {
+  RunCallableHelper(session->session, handle, feed_values, status, out_values,
+                    run_metadata);
   ClearDecrefCache();
 }
 
 void TF_DeprecatedSessionReleaseCallable(TF_DeprecatedSession* session,
-                                         int64_t handle,
-                                         TF_Status* out_status) {
-  Set_TF_Status_from_Status(out_status,
-                            session->session->ReleaseCallable(handle));
+                                         int64_t handle, TF_Status* status) {
+  Set_TF_Status_from_Status(status, session->session->ReleaseCallable(handle));
 }
 void TF_SessionReleaseCallable(TF_Session* session, int64_t handle,
-                               TF_Status* out_status) {
-  Set_TF_Status_from_Status(out_status,
-                            session->session->ReleaseCallable(handle));
+                               TF_Status* status) {
+  Set_TF_Status_from_Status(status, session->session->ReleaseCallable(handle));
 }
 
 // Wrapper for TF_PRunSetup that converts the arguments to appropriate types.
@@ -348,9 +343,9 @@ void TF_PRun_wrapper(TF_DeprecatedSession* session, const char* handle,
 
 // Wrapper for TF_Reset that converts the string vectors to character arrays.
 void TF_Reset_wrapper(const TF_SessionOptions* opt,
-                      const NameVector& containers, TF_Status* out_status) {
+                      const NameVector& containers, TF_Status* status) {
   TF_Reset(opt, const_cast<const char**>(containers.data()), containers.size(),
-           out_status);
+           status);
 }
 
 void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
@@ -430,7 +425,8 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
       Set_TF_Status_from_Status(out_status, s);
       return;
     }
-    py_outputs_safe.emplace_back(make_safe(py_array));
+    py_outputs_safe.emplace_back(
+        make_safe(PyArray_Return(reinterpret_cast<PyArrayObject*>(py_array))));
   }
 
   // If we reach this point, we have successfully built a list of objects so we
@@ -679,7 +675,7 @@ PyObject* TF_TryEvaluateConstant_wrapper(TF_Graph* graph, TF_Output output,
   Status s = TF_TensorToPyArray(std::move(safe_result_tensor), &out);
   Set_TF_Status_from_Status(status, s);
   if (!s.ok()) Py_RETURN_NONE;
-  return out;
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(out));
 }
 
 }  // namespace tensorflow

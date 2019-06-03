@@ -89,7 +89,7 @@ def custom_gradient(f):
 
   ```python
   def log1pexp(x):
-    return tf.log(1 + tf.exp(x))
+    return tf.math.log(1 + tf.exp(x))
   ```
 
   Due to numerical instability, the gradient this function evaluated at x=100 is
@@ -110,7 +110,7 @@ def custom_gradient(f):
     e = tf.exp(x)
     def grad(dy):
       return dy * (1 - 1 / (1 + e))
-    return tf.log(1 + e), grad
+    return tf.math.log(1 + e), grad
   ```
 
   With this definition, the gradient at x=100 will be correctly evaluated as
@@ -210,11 +210,12 @@ def _graph_mode_decorator(f, *args, **kwargs):
       logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
                    "no ResourceVariables were used on the forward pass.")
   flat_result = nest.flatten(result)
+  flat_result_len = len(flat_result)
   all_tensors = flat_result + args + variables
 
   def tape_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
-    result_grads = result_grads[:len(flat_result)]
+    result_grads = result_grads[:flat_result_len]
     if variables:
       input_grads, variable_grads = grad_fn(*result_grads, variables=variables)
       if len(variable_grads) != len(variables):
@@ -228,7 +229,7 @@ def _graph_mode_decorator(f, *args, **kwargs):
     # gradients of the inputs of the custom_gradient function with the
     # gradients of the outputs as well.
     input_grads = nest.flatten(input_grads)
-    return ([None] * len(flat_result)) + input_grads + variable_grads
+    return ([None] * flat_result_len) + input_grads + variable_grads
 
   @ops.RegisterGradient(name)
   def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
@@ -238,6 +239,9 @@ def _graph_mode_decorator(f, *args, **kwargs):
   original_tensors = all_tensors
   with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
+
+  original_tensors = [ops.convert_to_tensor(x) for x in original_tensors]
+
   # Propagate handle data for happier shape inference for resource variables.
   for i, t in enumerate(original_tensors):
     if t.dtype == dtypes.resource and hasattr(t, "_handle_data"):
@@ -247,7 +251,7 @@ def _graph_mode_decorator(f, *args, **kwargs):
   for ot, t in zip(original_tensors, all_tensors):
     copy_handle_data(ot, t)
   return nest.pack_sequence_as(
-      structure=result, flat_sequence=all_tensors[:len(flat_result)])
+      structure=result, flat_sequence=all_tensors[:flat_result_len])
 
 
 def _eager_mode_decorator(f, *args, **kwargs):
@@ -268,6 +272,9 @@ def _eager_mode_decorator(f, *args, **kwargs):
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
 
+  input_tensors = [ops.convert_to_tensor(x) for x
+                   in list(args) + list(variables)]
+  arg_count = len(args)
   def actual_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
     if variables:
@@ -278,10 +285,13 @@ def _eager_mode_decorator(f, *args, **kwargs):
     else:
       input_grads = grad_fn(*result_grads)
       variable_grads = []
+    flat_grads = nest.flatten(input_grads)
+    if len(flat_grads) != arg_count:
+      raise ValueError(
+          "custom_gradient function expected to return", arg_count,
+          "gradients but returned", len(flat_grads), "instead.")
     return nest.flatten(input_grads) + variable_grads
 
-  input_tensors = [ops.convert_to_tensor(x) for x
-                   in list(args) + list(variables)]
   tape_lib.record_operation(f.__name__, flat_result, input_tensors,
                             actual_grad_fn)
   flat_result = list(flat_result)

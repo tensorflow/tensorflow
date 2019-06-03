@@ -39,7 +39,6 @@ TEST(BigtableTestClientTest, EmptyRowRead) {
       ::google::cloud::bigtable::Filter::Latest(1));
   auto rows = table.ReadRows(std::move(rowset), filter);
   EXPECT_EQ(rows.begin(), rows.end()) << "Some rows were returned in response!";
-  EXPECT_TRUE(rows.Finish().ok()) << "Error reading rows.";
 }
 
 TEST(BigtableTestClientTest, SingleRowWriteAndRead) {
@@ -55,15 +54,15 @@ TEST(BigtableTestClientTest, SingleRowWriteAndRead) {
   auto rows = table.ReadRows(std::move(rowset), filter);
   auto itr = rows.begin();
   EXPECT_NE(itr, rows.end()) << "No rows were returned in response!";
-  EXPECT_EQ(itr->row_key(), "r1");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v1");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r1");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v1");
 
   ++itr;
   EXPECT_EQ(itr, rows.end());
-  EXPECT_TRUE(rows.Finish().ok());
 }
 
 TEST(BigtableTestClientTest, MultiRowWriteAndSingleRowRead) {
@@ -82,15 +81,15 @@ TEST(BigtableTestClientTest, MultiRowWriteAndSingleRowRead) {
   auto itr = rows.begin();
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r1");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v1");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r1");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v1");
 
   ++itr;
   EXPECT_EQ(itr, rows.end()) << "Extra rows in the response.";
-  EXPECT_TRUE(rows.Finish().ok());
 }
 
 TEST(BigtableTestClientTest, MultiRowWriteAndRead) {
@@ -109,33 +108,35 @@ TEST(BigtableTestClientTest, MultiRowWriteAndRead) {
   auto itr = rows.begin();
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r1");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v1");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r1");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v1");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r2");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v2");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r2");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v2");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r3");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v3");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r3");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v3");
 
   ++itr;
   EXPECT_EQ(itr, rows.end()) << "Extra rows in the response.";
-  EXPECT_TRUE(rows.Finish().ok());
 }
 
 TEST(BigtableTestClientTest, MultiRowWriteAndPrefixRead) {
@@ -154,33 +155,35 @@ TEST(BigtableTestClientTest, MultiRowWriteAndPrefixRead) {
   auto itr = rows.begin();
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r1");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v1");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r1");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v1");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r2");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v2");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r2");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v2");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r3");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v3");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r3");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v3");
 
   ++itr;
   EXPECT_EQ(itr, rows.end()) << "Extra rows in the response.";
-  EXPECT_TRUE(rows.Finish().ok());
 }
 
 TEST(BigtableTestClientTest, ColumnFiltering) {
@@ -206,33 +209,35 @@ TEST(BigtableTestClientTest, ColumnFiltering) {
   auto itr = rows.begin();
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r1");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v1");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r1");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v1");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r2");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v2");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r2");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v2");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r3");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "v3");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r3");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "v3");
 
   ++itr;
   EXPECT_EQ(itr, rows.end()) << "Extra rows in the response.";
-  EXPECT_TRUE(rows.Finish().ok());
 }
 
 TEST(BigtableTestClientTest, RowKeys) {
@@ -257,33 +262,35 @@ TEST(BigtableTestClientTest, RowKeys) {
       table.ReadRows(::google::cloud::bigtable::RowRange::Prefix("r"), filter);
   auto itr = rows.begin();
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r1");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r1");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r2");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r2");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "");
 
   ++itr;
 
   EXPECT_NE(itr, rows.end()) << "Missing rows";
-  EXPECT_EQ(itr->row_key(), "r3");
-  EXPECT_EQ(itr->cells().size(), 1);
-  EXPECT_EQ(itr->cells()[0].family_name(), "f1");
-  EXPECT_EQ(itr->cells()[0].column_qualifier(), "c1");
-  EXPECT_EQ(itr->cells()[0].value(), "");
+  EXPECT_TRUE(*itr) << "Error reading row: " << itr->status().message();
+  EXPECT_EQ((*itr)->row_key(), "r3");
+  EXPECT_EQ((*itr)->cells().size(), 1);
+  EXPECT_EQ((*itr)->cells()[0].family_name(), "f1");
+  EXPECT_EQ((*itr)->cells()[0].column_qualifier(), "c1");
+  EXPECT_EQ((*itr)->cells()[0].value(), "");
 
   ++itr;
   EXPECT_EQ(itr, rows.end()) << "Extra rows in the response.";
-  EXPECT_TRUE(rows.Finish().ok());
 }
 
 TEST(BigtableTestClientTest, SampleKeys) {

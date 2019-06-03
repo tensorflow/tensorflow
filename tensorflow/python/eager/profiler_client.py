@@ -45,7 +45,6 @@ def start_tracing(service_addr,
   Raises:
     UnavailableError: If no trace event is collected.
   """
-  # TODO(fishx): Uses errors.raise_exception_on_not_ok_status instead.
   if not pywrap_tensorflow.TFE_ProfilerClientStartTracing(
       service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
       num_tracing_attempts):

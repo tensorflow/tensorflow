@@ -2,9 +2,8 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -33,6 +32,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column:feature_column_py",
+        "//tensorflow/python/feature_column:utils",
     ],
 )
 

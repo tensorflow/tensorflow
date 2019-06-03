@@ -27,12 +27,12 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
@@ -375,15 +375,15 @@ Status IncreaseDynamismForAutoJitPass::Run(
     const GraphOptimizationPassOptions& options) {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   if (flags->tf_xla_clustering_debug) {
-    dump_graph::DumpGraphToFile("before_increase_dynamism_for_auto_jit_pass",
-                                **options.graph, options.flib_def);
+    DumpGraphToFile("before_increase_dynamism_for_auto_jit_pass",
+                    **options.graph, options.flib_def);
   }
 
   bool changed;
   TF_RETURN_IF_ERROR(FindAndRewriteSlices(options.graph->get(), &changed));
   if (changed && flags->tf_xla_clustering_debug) {
-    dump_graph::DumpGraphToFile("increase_dynamism_for_auto_jit_pass",
-                                **options.graph, options.flib_def);
+    DumpGraphToFile("increase_dynamism_for_auto_jit_pass", **options.graph,
+                    options.flib_def);
   }
 
   return Status::OK();

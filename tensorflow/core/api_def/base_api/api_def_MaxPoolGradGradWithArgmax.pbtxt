@@ -44,5 +44,11 @@ END
 The type of padding algorithm to use.
 END
   }
+  attr {
+    name: "include_batch_in_index"
+    description: <<END
+Whether to include batch dimension in flattened index of `argmax`.
+END
+  }
   summary: "Computes second-order gradients of the maxpooling function."
 }

@@ -715,7 +715,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
                      std::pair<NodeDef*, NodeDef*>* swap_pair) {
   string task, device;
   if (!DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) ||
-      !str_util::StrContains(device, DEVICE_GPU)) {
+      !absl::StrContains(device, DEVICE_GPU)) {
     return errors::InvalidArgument("Can't swap input ", input_to_swap,
                                    " of node ", node->name(),
                                    " since it is not on GPU");
@@ -1238,10 +1238,10 @@ bool CrossesTaskOrCpuGpuBoundary(const NodeDef& node1, const NodeDef& node2) {
   string device2;
   DeviceNameUtils::SplitDeviceName(node2.device(), &task2, &device2);
   return task1 != task2 ||
-         (str_util::StrContains(device1, DEVICE_CPU) &&
-          str_util::StrContains(device2, DEVICE_GPU)) ||
-         (str_util::StrContains(device1, DEVICE_GPU) &&
-          str_util::StrContains(device2, DEVICE_CPU));
+         (absl::StrContains(device1, DEVICE_CPU) &&
+          absl::StrContains(device2, DEVICE_GPU)) ||
+         (absl::StrContains(device1, DEVICE_GPU) &&
+          absl::StrContains(device2, DEVICE_CPU));
 }
 
 // TODO(rmlarsen): Add distributed TF test.
@@ -1271,7 +1271,8 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   }
 
   GraphTopologyView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(*optimized_graph));
+  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(
+      *optimized_graph, /*ignore_control_edges=*/true));
   std::unordered_set<const NodeDef*> optimized_nodes;
 
   for (int i : assign_nodes) {
@@ -1283,8 +1284,13 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
       assign_nodes_in_fanout.push_back(&assign_node);
 
       std::vector<const NodeDef*> transitive_fanout;
+      // Find the nodes in transitive fanout. If a node is known to never
+      // forward its inputs, we can skip its fanout.
       DfsTraversal(graph_view, {graph_view.GetNode(i)},
                    TraversalDirection::kFollowOutputs,
+                   DfsPredicates::Advance([&](const NodeDef* node) {
+                     return !NeverForwardsInputs(*node);
+                   }),
                    DfsCallbacks::PreOrder([&](const NodeDef* node) {
                      transitive_fanout.push_back(node);
                    }));
@@ -1293,7 +1299,6 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
       // If all nodes in the transitive fanout are on the same device as the
       // assign node, there is no need to allocate the output in pinned memory.
       for (const NodeDef* fanout_node : transitive_fanout) {
-        // const NodeDef& fanout_node = optimized_graph->node(fanout);
         if (relax_constraint &&
             (IsSend(*fanout_node) ||
              CrossesTaskOrCpuGpuBoundary(*fanout_node, assign_node))) {

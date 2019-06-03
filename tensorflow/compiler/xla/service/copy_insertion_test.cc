@@ -420,9 +420,9 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto induction_variable =
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             limit_const->shape(), loop_state, 0));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(condition_result_shape_, HloOpcode::kLt,
-                                     induction_variable, limit_const));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        condition_result_shape_, induction_variable, limit_const,
+        ComparisonDirection::kLt));
     return builder.Build();
   }
 
@@ -1842,7 +1842,7 @@ HloModule TokensShouldNotBeCopied
   %param = (s32[], token[]) parameter(0)
   %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
   %constant = s32[] constant(42)
-  ROOT %less-than = pred[] less-than(s32[] %get-tuple-element, s32[] %constant)
+  ROOT %less-than = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
 }
 
 ENTRY %TokensShouldNotBeCopied () -> s32[] {
@@ -2060,7 +2060,7 @@ if-condition.v4 {
   p.2 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
   get-tuple-element.67 = s32[] get-tuple-element(p.2), index=0
   constant.4 = s32[] constant(0)
-  ROOT equal-to = pred[] equal-to(get-tuple-element.67, constant.4)
+  ROOT equal-to = pred[] compare(get-tuple-element.67, constant.4), direction=EQ
 }
 
 _functionalize_body_1__.v28 {
@@ -2070,7 +2070,7 @@ _functionalize_body_1__.v28 {
   add.4 = s32[] add(get-tuple-element.68, constant.7)
   get-tuple-element.69 = s32[] get-tuple-element(arg_tuple.4), index=1
   get-tuple-element.70 = s32[] get-tuple-element(arg_tuple.4), index=2
-  less-than-or-equal-to = pred[] less-than-or-equal-to(get-tuple-element.69, get-tuple-element.70)
+  less-than-or-equal-to = pred[] compare(get-tuple-element.69, get-tuple-element.70), direction=LE
   constant.8 = s32[] constant(0)
   select = s32[] select(less-than-or-equal-to, constant.8, constant.7)
   get-tuple-element.71 = s32[] get-tuple-element(arg_tuple.4), index=3
@@ -2087,7 +2087,7 @@ cond_wrapper.v3.1 {
   inputs.1 = (s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.75 = s32[] get-tuple-element(inputs.1), index=0
   constant.11 = s32[] constant(7)
-  ROOT less-than.2 = pred[] less-than(get-tuple-element.75, constant.11)
+  ROOT less-than.2 = pred[] compare(get-tuple-element.75, constant.11), direction=LT
 }
 
 _functionalize_body_2__.v25 {
@@ -2110,7 +2110,7 @@ cond_wrapper.v3.2 {
   inputs.2 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.83 = s32[] get-tuple-element(inputs.2), index=1
   constant.13 = s32[] constant(5)
-  ROOT less-than.3 = pred[] less-than(get-tuple-element.83, constant.13)
+  ROOT less-than.3 = pred[] compare(get-tuple-element.83, constant.13), direction=LT
 }
 
 ENTRY TestComputation {
@@ -2142,7 +2142,7 @@ if-condition.v4 {
   p.2 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
   get-tuple-element.67 = s32[] get-tuple-element(p.2), index=0
   constant.4 = s32[] constant(0)
-  ROOT equal-to = pred[] equal-to(get-tuple-element.67, constant.4)
+  ROOT equal-to = pred[] compare(get-tuple-element.67, constant.4), direction=EQ
 }
 
 if-body.v5.1 {
@@ -2159,7 +2159,7 @@ if-condition.v4.1 {
   p.4 = (s32[], (s32[], s32[], s32[]), (s32[])) parameter(0)
   get-tuple-element.71 = s32[] get-tuple-element(p.4), index=0
   constant.6 = s32[] constant(1)
-  ROOT equal-to.1 = pred[] equal-to(get-tuple-element.71, constant.6)
+  ROOT equal-to.1 = pred[] compare(get-tuple-element.71, constant.6), direction=EQ
 }
 
 _functionalize_body_1__.v28 {
@@ -2169,7 +2169,7 @@ _functionalize_body_1__.v28 {
   add.4 = s32[] add(get-tuple-element.72, constant.7)
   get-tuple-element.73 = s32[] get-tuple-element(arg_tuple.4), index=1
   get-tuple-element.74 = s32[] get-tuple-element(arg_tuple.4), index=2
-  less-than-or-equal-to = pred[] less-than-or-equal-to(get-tuple-element.73, get-tuple-element.74)
+  less-than-or-equal-to = pred[] compare(get-tuple-element.73, get-tuple-element.74), direction=LE
   constant.8 = s32[] constant(0)
   select = s32[] select(less-than-or-equal-to, constant.8, constant.7)
   get-tuple-element.75 = s32[] get-tuple-element(arg_tuple.4), index=3
@@ -2187,7 +2187,7 @@ cond_wrapper.v3.1 {
   inputs.1 = (s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.78 = s32[] get-tuple-element(inputs.1), index=0
   constant.11 = s32[] constant(7)
-  ROOT less-than.2 = pred[] less-than(get-tuple-element.78, constant.11)
+  ROOT less-than.2 = pred[] compare(get-tuple-element.78, constant.11), direction=LT
 }
 
 _functionalize_body_2__.v25 {
@@ -2210,7 +2210,7 @@ cond_wrapper.v3.2 {
   inputs.2 = (s32[], s32[], s32[], s32[], s32[]) parameter(0)
   get-tuple-element.86 = s32[] get-tuple-element(inputs.2), index=1
   constant.13 = s32[] constant(5)
-  ROOT less-than.3 = pred[] less-than(get-tuple-element.86, constant.13)
+  ROOT less-than.3 = pred[] compare(get-tuple-element.86, constant.13), direction=LT
 }
 
 ENTRY TestComputation {

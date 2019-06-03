@@ -56,7 +56,7 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     None, "stride is deprecated, use window_shift instead", "stride")
 @deprecation.deprecated(
     None, "Use `tf.data.Dataset.window(size=window_size, shift=window_shift, "
-    "stride=window_stride).flat_map(lambda x: x.batch(window.size))` "
+    "stride=window_stride).flat_map(lambda x: x.batch(window_size))` "
     "instead.")
 def sliding_window_batch(window_size,
                          stride=None,

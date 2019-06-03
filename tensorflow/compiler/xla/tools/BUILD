@@ -1,8 +1,9 @@
 # Tools and utilities that aid in XLA development and usage.
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow/compiler/xla:internal"])
+package(
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -72,6 +73,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//third_party/eigen3",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
@@ -231,6 +233,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],

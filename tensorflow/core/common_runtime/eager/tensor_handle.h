@@ -57,8 +57,15 @@ struct OutputGraphNode {
 // (unrelated to python TensorHandle).
 class TensorHandle : public core::RefCounted {
  public:
-  TensorHandle(const Tensor& t, Device* d, Device* op_device,
+  // TensorHandle with no assigned context
+  explicit TensorHandle(const class Tensor& t)
+      : TensorHandle(t, nullptr, nullptr, nullptr) {}
+  // TensorHandle with device == op_device
+  TensorHandle(const class Tensor& t, Device* d, EagerContext* ctx)
+      : TensorHandle(t, d, d, ctx) {}
+  TensorHandle(const class Tensor& t, Device* d, Device* op_device,
                EagerContext* ctx);
+  // TensorHandle for async Tensors
   TensorHandle(uint64 node_id, Device* d, Device* op_device,
                Device* resource_device, DataType dtype, EagerContext* ctx);
 
@@ -84,10 +91,6 @@ class TensorHandle : public core::RefCounted {
   tensorflow::Device* device() const { return device_; }
   tensorflow::Device* op_device() const { return op_device_; }
   tensorflow::Device* resource_device() const { return resource_device_; }
-
-  Status TensorAndDevice(const tensorflow::Tensor** tensor,
-                         tensorflow::Device** device,
-                         tensorflow::Device** op_device);
 
   Status Shape(tensorflow::TensorShape* shape);
 
@@ -122,14 +125,19 @@ class TensorHandle : public core::RefCounted {
   bool OnHostCPU() {
     mutex_lock ml(ctx_mutex_);
     return device_ == nullptr ||
-           (ctx_ == nullptr || ctx_->HostCPU() == device_);
+           (ctx_ != nullptr && ctx_->HostCPU() == device_);
   }
 
-  bool IsRemote();
+  bool IsRemote() const;
 
-  OutputGraphNode* getSymbolicTensor() const { return symbolic_tensor.get(); }
+  OutputGraphNode* getSymbolicTensor() const { return symbolic_tensor_.get(); }
 
   string DebugString() const;
+
+  // If this TensorHandle is 1) a local tensor, and 2) a resource variable,
+  // return data type and shape of the resource variable.
+  Status GetResourceVariableDtypeAndShape(
+      std::pair<DataType, TensorShape>* result);
 
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
@@ -138,7 +146,7 @@ class TensorHandle : public core::RefCounted {
   Status WaitReady();
   Status WaitForNode(uint64 node_id, bool return_if_is_ready);
 
-  bool IsReady();
+  bool IsReady() const;
 
   // Id for the EagerNode that will compute the value pointed to by this handle.
   // If the value is 0, the handle is already ready, but not vice-versa.
@@ -158,6 +166,9 @@ class TensorHandle : public core::RefCounted {
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
+  // Can be nullptr if the op producing this tensor was a function executed
+  // with function library runtime or if this tensor represents a symbolic
+  // tensor.
   tensorflow::Device* const op_device_;
 
   // If the tensor dtype is DT_RESOURCE, resource_device_ holds the device
@@ -175,18 +186,30 @@ class TensorHandle : public core::RefCounted {
   // This is currently used for remote tensor handles.
   const std::function<void()> call_on_destroy_;
 
-  mutex ctx_mutex_;
+  mutable mutex ctx_mutex_;
 
   // `ctx` is only guaranteed to be set if the handle is not "ready". This is
   // typically true when the handle was produced during async execution.
   // `ctx` object is not owned and should outlive this handle.
-  EagerContext* ctx_ GUARDED_BY(ctx_mutex_);
+  EagerContext* const ctx_ GUARDED_BY(ctx_mutex_);
   bool is_ready_ GUARDED_BY(ctx_mutex_);
 
   // When non-NULL, this tensor handle instance represents a symbolic tensor
   // (corresponding to a graph node), whose concrete value is to be produced by
   // executing that graph node.
-  std::unique_ptr<OutputGraphNode> symbolic_tensor;
+  std::unique_ptr<OutputGraphNode> symbolic_tensor_;
+
+  // If this TensorHandle is 1) a local tensor, and 2) a resource variable, we
+  // will store data type and shape of the resource variable to
+  // `resource_dtype_and_shape_`.
+  std::pair<DataType, TensorShape> resource_dtype_and_shape_
+      GUARDED_BY(ctx_mutex_);
+  // `resource_dtype_and_shape_status_` stores whether we succeeded to get data
+  // type of shape of this TensorHandle.
+  Status resource_dtype_and_shape_status_ GUARDED_BY(ctx_mutex_);
+  // `resource_dtype_and_shape_initialized_` indicates whether we have tried to
+  // get `resource_dtype_and_shape_`.
+  bool resource_dtype_and_shape_initialized_ GUARDED_BY(ctx_mutex_);
 };
 
 // If tensor's dtype is DT_RESOURCE, returns the device backing the resource.

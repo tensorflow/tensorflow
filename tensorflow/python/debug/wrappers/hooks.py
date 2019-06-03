@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.debug.lib import debug_utils
-from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import grpc_wrapper
@@ -31,7 +30,7 @@ from tensorflow.python.training import session_run_hook
 class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   """Command-line-interface debugger hook.
 
-  Can be used as a hook for `tf.train.MonitoredSession`s and
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
   `tf.estimator.Estimator`s. Provides a substitute for
   `tfdbg.LocalCLIDebugWrapperSession` in cases where the session is not directly
   available.
@@ -130,18 +129,6 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
       # pylint: disable=protected-access
       self._session_wrapper._decorate_run_options_for_profile(run_args.options)
       # pylint: enable=protected-access
-    elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
-      # The _finalized property must be set to False so that the NodeStepper
-      # can insert ops for retrieving TensorHandles.
-      # pylint: disable=protected-access
-      run_context.session.graph._finalized = False
-      # pylint: enable=protected-access
-
-      with stepper.NodeStepper(
-          run_context.session, run_context.original_args.fetches,
-          run_context.original_args.feed_dict) as node_stepper:
-        self._session_wrapper.invoke_node_stepper(
-            node_stepper, restore_variable_values_on_exit=True)
 
     return run_args
 
@@ -156,7 +143,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
 class DumpingDebugHook(session_run_hook.SessionRunHook):
   """A debugger hook that dumps debug data to filesystem.
 
-  Can be used as a hook for `tf.train.MonitoredSession`s and
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
   `tf.estimator.Estimator`s.
   """
 
@@ -235,7 +222,7 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
   When the arguments of debug_utils.watch_graph changes, strongly consider
   changing arguments here too so that features are available to tflearn users.
 
-  Can be used as a hook for `tf.train.MonitoredSession`s and
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
   `tf.estimator.Estimator`s.
   """
 

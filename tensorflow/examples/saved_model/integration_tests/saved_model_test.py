@@ -18,69 +18,81 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import subprocess
-
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.examples.saved_model.integration_tests import integration_scripts
 
 
-class SavedModelTest(tf.test.TestCase):
+class SavedModelTest(integration_scripts.TestCase):
 
-  def assertCommandSucceeded(self, binary, **flags):
-    command_parts = [binary]
-    for flag_key, flag_value in flags.items():
-      command_parts.append("--%s=%s" % (flag_key, flag_value))
+  def __init__(self, method_name="runTest", has_extra_deps=False):
+    super(SavedModelTest, self).__init__(method_name)
+    self.has_extra_deps = has_extra_deps
 
-    logging.info("Running: %s" % command_parts)
-    subprocess.check_call(
-        command_parts, env=dict(os.environ, TF2_BEHAVIOR="enabled"))
+  def skipIfMissingExtraDeps(self):
+    """Skip test if it requires extra dependencies.
 
-  @test_util.run_v2_only
+    b/132234211: The extra dependencies are not available in all environments
+    that run the tests, e.g. "tensorflow_hub" is not available from tests
+    within "tensorflow" alone. Those tests are instead run by another
+    internal test target.
+    """
+    if not self.has_extra_deps:
+      self.skipTest("Missing extra dependencies")
+
   def test_text_rnn(self):
     export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile(
-        "export_text_rnn_model")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+    self.assertCommandSucceeded("export_text_rnn_model", export_dir=export_dir)
+    self.assertCommandSucceeded("use_text_rnn_model", model_dir=export_dir)
 
-    use_binary = resource_loader.get_path_to_datafile("use_text_rnn_model")
-    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
-
-  @test_util.run_v2_only
   def test_rnn_cell(self):
     export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile(
-        "export_rnn_cell")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+    self.assertCommandSucceeded("export_rnn_cell", export_dir=export_dir)
+    self.assertCommandSucceeded("use_rnn_cell", model_dir=export_dir)
 
-    use_binary = resource_loader.get_path_to_datafile("use_rnn_cell")
-    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
-
-  @test_util.run_v2_only
   def test_text_embedding_in_sequential_keras(self):
+    self.skipIfMissingExtraDeps()
     export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile(
-        "export_simple_text_embedding")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir)
+    self.assertCommandSucceeded(
+        "export_simple_text_embedding", export_dir=export_dir)
+    self.assertCommandSucceeded(
+        "use_model_in_sequential_keras", model_dir=export_dir)
 
-    use_binary = resource_loader.get_path_to_datafile(
-        "use_model_in_sequential_keras")
-    self.assertCommandSucceeded(use_binary, model_dir=export_dir)
+  def test_text_embedding_in_dataset(self):
+    if tf.test.is_gpu_available():
+      self.skipTest("b/132156097 - fails if there is a gpu available")
 
-  @test_util.run_v2_only
+    export_dir = self.get_temp_dir()
+    self.assertCommandSucceeded(
+        "export_simple_text_embedding", export_dir=export_dir)
+    self.assertCommandSucceeded(
+        "use_text_embedding_in_dataset", model_dir=export_dir)
+
   def test_mnist_cnn(self):
+    self.skipIfMissingExtraDeps()
     export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile("export_mnist_cnn")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir,
-                                fast_test_mode="true")
+    self.assertCommandSucceeded(
+        "export_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
+    self.assertCommandSucceeded(
+        "use_mnist_cnn", export_dir=export_dir, fast_test_mode="true")
 
-    use_binary = resource_loader.get_path_to_datafile("use_mnist_cnn")
-    self.assertCommandSucceeded(use_binary, export_dir=export_dir,
-                                fast_test_mode="true")
+  def test_mnist_cnn_with_mirrored_strategy(self):
+    self.skipIfMissingExtraDeps()
+    self.skipTest(
+        "b/129134185 - saved model and distribution strategy integration")
+    export_dir = self.get_temp_dir()
+    self.assertCommandSucceeded(
+        "export_mnist_cnn",
+        export_dir=export_dir,
+        fast_test_mode="true")
+    self.assertCommandSucceeded(
+        "use_mnist_cnn",
+        export_dir=export_dir,
+        fast_test_mode="true",
+        use_mirrored_strategy=True,
+    )
+
 
 if __name__ == "__main__":
-  tf.enable_v2_behavior()
+  integration_scripts.MaybeRunScriptInstead()
   tf.test.main()

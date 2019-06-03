@@ -14,11 +14,40 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/testlib.h"
+#include "tensorflow/core/kernels/broadcast_to_op.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+namespace {
+
+Node* BroadcastTo(Graph* g, Node* input, Node* shape) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastTo")
+                  .Input(input)
+                  .Input(shape)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BatchMatmulV2(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BatchMatMulV2")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("adj_x", adj_x)
+                  .Attr("adj_y", adj_y)
+                  .Finalize(g, &ret));
+  return ret;
+}
 
 template <typename T>
 static Graph* BatchMatmul(int b, int m, int k, int n, bool adjoint_a,
@@ -30,6 +59,40 @@ static Graph* BatchMatmul(int b, int m, int k, int n, bool adjoint_a,
   in1.flat<T>().setRandom();
   test::graph::BatchMatmul(g, test::graph::Constant(g, in0),
                            test::graph::Constant(g, in1), adjoint_a, adjoint_b);
+  return g;
+}
+
+template <typename T>
+static Graph* BatchMatmulWithBroadcast(int b0, int b1, int m, int k, int n,
+                                       bool manual_broadcast, DataType type) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor in0(type, TensorShape({b0, m, k}));
+  in0.flat<T>().setRandom();
+  Tensor in1(type, TensorShape({b1, k, n}));
+  in1.flat<T>().setRandom();
+
+  Tensor broadcasted_in0_shape(DT_INT64, TensorShape({3}));
+  Tensor broadcasted_in1_shape(DT_INT64, TensorShape({3}));
+
+  Node* in0_node = nullptr;
+  Node* in1_node = nullptr;
+  if (manual_broadcast) {
+    for (int i = 0; i < 3; ++i) {
+      auto vec0 = broadcasted_in0_shape.vec<int64>();
+      auto vec1 = broadcasted_in1_shape.vec<int64>();
+      vec0(i) = (i == 0 ? std::max(b0, b1) : in0.shape().dim_size(i));
+      vec1(i) = (i == 0 ? std::max(b0, b1) : in1.shape().dim_size(i));
+    }
+    in0_node = BroadcastTo(g, test::graph::Constant(g, in0),
+                           test::graph::Constant(g, broadcasted_in0_shape));
+    in1_node = BroadcastTo(g, test::graph::Constant(g, in1),
+                           test::graph::Constant(g, broadcasted_in1_shape));
+  } else {
+    in0_node = test::graph::Constant(g, in0);
+    in1_node = test::graph::Constant(g, in1);
+  }
+
+  BatchMatmulV2(g, in0_node, in1_node, false, false);
   return g;
 }
 
@@ -58,6 +121,64 @@ static Graph* BatchMatmul(int b, int m, int k, int n, bool adjoint_a,
 // \
 // BM_BatchMatmulDev(M, K, N, TA, TB, double, DT_DOUBLE, gpu); \
 // BM_BatchMatmulDev(M, K, N, TA, TB, std::complex<double>, DT_COMPLEX128, gpu);
+
+// Macro arguments names: --------------------------------------------------- //
+//   B1: batch size of LHS
+//   B2: batch size of RHS
+//    M: outer dimension of LHS
+//    K: inner dimensions of LHS and RHS
+//    N: outer dimension of RHS
+//   MB: boolean indicating whether to use manual broadcasting
+//    T: C++ type of scalars (e.g. float, std::complex)
+//   TT: TensorFlow type of scalars (e.g. DT_FLOAT, DT_COMPLEX128
+//    D: Device (e.g. cpu, gpu)
+#define BM_BatchMatmulBCastDev(B1, B2, M, K, N, MB, T, TT, D)                  \
+  static void                                                                  \
+      BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D( \
+          int iters) {                                                         \
+    testing::UseRealTime();                                                    \
+    testing::ItemsProcessed(static_cast<int64>(iters) * std::max(B1, B2) * M * \
+                            K * N * 2);                                        \
+    test::Benchmark(#D, BatchMatmulWithBroadcast<T>(B1, B2, M, K, N, MB, TT))  \
+        .Run(iters);                                                           \
+  }                                                                            \
+  BENCHMARK(                                                                   \
+      BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D);
+
+#define BM_BatchMatmulBCast(B1, B2, M, K, N, MB) \
+  BM_BatchMatmulBCastDev(B1, B2, M, K, N, MB, float, DT_FLOAT, cpu);
+
+// Typical fully connected layers
+BM_BatchMatmulBCast(1, 128, 1, 1024, 1024, true);
+BM_BatchMatmulBCast(1, 128, 1, 1024, 1024, false);
+BM_BatchMatmulBCast(128, 1, 1, 1024, 1024, true);
+BM_BatchMatmulBCast(128, 1, 1, 1024, 1024, false);
+BM_BatchMatmulBCast(1, 128, 128, 1024, 1024, true);
+BM_BatchMatmulBCast(1, 128, 128, 1024, 1024, false);
+BM_BatchMatmulBCast(128, 1, 128, 1024, 1024, true);
+BM_BatchMatmulBCast(128, 1, 128, 1024, 1024, false);
+
+// Square matmul.
+BM_BatchMatmulBCast(1, 128, 512, 512, 512, true);
+BM_BatchMatmulBCast(1, 128, 512, 512, 512, false);
+BM_BatchMatmulBCast(128, 1, 512, 512, 512, true);
+BM_BatchMatmulBCast(128, 1, 512, 512, 512, false);
+BM_BatchMatmulBCast(1, 128, 1024, 1024, 1024, true);
+BM_BatchMatmulBCast(1, 128, 1024, 1024, 1024, false);
+BM_BatchMatmulBCast(128, 1, 1024, 1024, 1024, true);
+BM_BatchMatmulBCast(128, 1, 1024, 1024, 1024, false);
+
+// Matrix-vector multiplies.
+BM_BatchMatmulBCast(1, 128, 10000, 200, 1, true);
+BM_BatchMatmulBCast(1, 128, 10000, 200, 1, false);
+BM_BatchMatmulBCast(128, 1, 10000, 200, 1, true);
+BM_BatchMatmulBCast(128, 1, 10000, 200, 1, false);
+
+// Vector-matrix multiplies.
+BM_BatchMatmulBCast(1, 128, 1, 200, 10000, true);
+BM_BatchMatmulBCast(1, 128, 1, 200, 10000, false);
+BM_BatchMatmulBCast(128, 1, 1, 200, 10000, true);
+BM_BatchMatmulBCast(128, 1, 1, 200, 10000, false);
 
 // Typical fully connected layers
 BM_BatchMatmul(1, 1, 1024, 1024, false, false);
@@ -132,4 +253,5 @@ BM_BatchMatmul(1, 1, 200, 10000, true, true);
 BM_BatchMatmul(8, 1, 200, 10000, true, true);
 BM_BatchMatmul(32, 1, 200, 10000, true, true);
 
-}  // end namespace tensorflow
+}  // namespace
+}  // namespace tensorflow

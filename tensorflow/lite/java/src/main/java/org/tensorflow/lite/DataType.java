@@ -72,7 +72,7 @@ public enum DataType {
         "DataType error: DataType "
             + c
             + " is not recognized in Java (version "
-            + TensorFlowLite.version()
+            + TensorFlowLite.runtimeVersion()
             + ")");
   }
 
