@@ -35,6 +35,8 @@ tf_cc_test(
         "keras_imagenet_main.pbtxt",
         "keras_imagenet_main_graph_mode.golden_summary",
         "keras_imagenet_main_graph_mode.pbtxt",
+        "opens2s_gnmt_mixed_precision.golden_summary",
+        "opens2s_gnmt_mixed_precision.pbtxt.gz",
     ],
     tags = ["config-cuda-only"],
     deps = [
