@@ -150,7 +150,7 @@ def cast_to_floatx(x):
   Example:
   ```python
       >>> from tensorflow.keras import backend as K
-      >>> K.cast_to_floatx()
+      >>> K.floatx()
       'float32'
       >>> arr = numpy.array([1.0, 2.0], dtype='float64')
       >>> arr.dtype
