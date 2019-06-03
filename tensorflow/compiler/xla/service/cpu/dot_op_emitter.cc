@@ -1015,6 +1015,13 @@ bool DotImplementationCanHandleTranspose(
 bool DotOperandsAndResultMustHaveRowMajorLayout(
     const HloInstruction& dot_instr,
     const TargetMachineFeatures& target_machine_features) {
+  // Batched dots require the batch dimensions to be major. DotDecomposer always
+  // moves batch dimensions to the front of the shape, so force a row-major
+  // layout.
+  if (IsBatchDot(dot_instr)) {
+    return true;
+  }
+
   DotImplementationStrategy impl_strategy =
       GetDotImplementationStrategy(dot_instr.parent()->parent()->config(),
                                    DotInfo(dot_instr), target_machine_features);
