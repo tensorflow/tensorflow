@@ -255,7 +255,8 @@ UniformDistribution(T lhs, T rhs, Generator* gen) {
 }
 
 template <typename T>
-void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer) {
+void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
+                           int64* rng_state) {
   static_assert(
       std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
       "Unimplemented for integers yet.");
@@ -275,7 +276,8 @@ void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer) {
     }
     return ret;
   }();
-  static int64 host_index = 0;
+
+  int64& host_index = *rng_state;
 
   char* current_addr = static_cast<char*>(buffer.opaque());
   CHECK_EQ(0, buffer.size() % sizeof(T));
@@ -326,17 +328,22 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     allocator = &*se_allocator;
   }
 
-  const auto initialize_buffer = [&stream,
-                                  &result_shape](DeviceMemoryBase buffer) {
+  int64 rng_state = 0;
+
+  const auto initialize_buffer = [&stream, &result_shape,
+                                  &rng_state](DeviceMemoryBase buffer) {
     switch (result_shape.element_type()) {
       case xla::F16:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer));
+        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer),
+                              &rng_state);
         break;
       case xla::F32:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer));
+        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer),
+                              &rng_state);
         break;
       case xla::F64:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer));
+        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer),
+                              &rng_state);
         break;
       default:
         stream.ThenMemZero(&buffer, buffer.size());
