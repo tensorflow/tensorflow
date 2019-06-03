@@ -1603,6 +1603,12 @@ class HloInstruction {
   // Delegates to HloCustomCallInstruction::custom_call_target.
   const string& custom_call_target() const;
 
+  // Delegates to HloCustomCallInstruction::has_side_effect.
+  const bool has_side_effect() const;
+
+  // Delegates to HloCustomCallInstruction::set_has_side_effect.
+  void set_has_side_effect(const bool has_side_effect);
+
   // Delegates to HloPadInstruction::padding_config.
   const PaddingConfig& padding_config() const;
 

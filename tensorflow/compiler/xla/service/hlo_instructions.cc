@@ -2134,7 +2134,7 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
                            StrJoin(shape_strings, ", "), "}"));
   }
   if (has_side_effect_) {
-    extra.push_back(StrCat("has_side_effect=", has_side_effect_));
+    extra.push_back("has_side_effect=true");
   }
   return extra;
 }

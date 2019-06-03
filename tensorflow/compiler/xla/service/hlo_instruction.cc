@@ -448,7 +448,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                            proto.window(), operands(1),
                                            operands(2), computations(1));
       break;
-    case HloOpcode::kCustomCall:
+    case HloOpcode::kCustomCall: {
+      auto custom_call_instr =
+          Cast<HloCustomCallInstruction>(instruction.get());
       if (proto.constrain_layout()) {
         // A proto RepeatedPtrField cannot be converted to a Span (it is a
         // vector of pointers essentially) so create a vector of shapes to pass
@@ -467,23 +469,20 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                              proto.backend_config());
       }
       if (proto.has_window()) {
-        static_cast<HloCustomCallInstruction*>(instruction.get())
-            ->set_window(proto.window());
+        custom_call_instr->set_window(proto.window());
       }
       if (proto.has_convolution_dimension_numbers()) {
-        static_cast<HloCustomCallInstruction*>(instruction.get())
-            ->set_convolution_dimension_numbers(
-                proto.convolution_dimension_numbers());
+        custom_call_instr->set_convolution_dimension_numbers(
+            proto.convolution_dimension_numbers());
       }
-      static_cast<HloCustomCallInstruction*>(instruction.get())
-          ->set_feature_group_count(
-              std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
-      static_cast<HloCustomCallInstruction*>(instruction.get())
-          ->set_batch_group_count(
-              std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
-      static_cast<HloCustomCallInstruction*>(instruction.get())
-          ->set_has_side_effect(proto.custom_call_has_side_effect());
+      custom_call_instr->set_feature_group_count(
+          std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
+      custom_call_instr->set_batch_group_count(
+          std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
+      custom_call_instr->set_has_side_effect(
+          proto.custom_call_has_side_effect());
       break;
+    }
     case HloOpcode::kPad:
       TF_RET_CHECK(proto.has_padding_config());
       instruction =
@@ -3608,6 +3607,14 @@ void HloInstruction::set_scatter(HloComputation* computation) {
 
 const string& HloInstruction::custom_call_target() const {
   return Cast<HloCustomCallInstruction>(this)->custom_call_target();
+}
+
+const bool HloInstruction::has_side_effect() const {
+  return Cast<HloCustomCallInstruction>(this)->has_side_effect();
+}
+
+void HloInstruction::set_has_side_effect(const bool has_side_effect) {
+  Cast<HloCustomCallInstruction>(this)->set_has_side_effect(has_side_effect);
 }
 
 const PaddingConfig& HloInstruction::padding_config() const {

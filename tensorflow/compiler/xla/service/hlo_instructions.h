@@ -1261,7 +1261,7 @@ class HloCustomCallInstruction : public HloInstruction {
   // For layout-constrained custom calls, this vector holds the shape with
   // layout for each operand.
   std::vector<Shape> operand_shapes_with_layout_;
-  // Whether this call has a side-effect.
+  // Whether this call has a side-effect - by default there are no side-effects.
   bool has_side_effect_;
 };
 

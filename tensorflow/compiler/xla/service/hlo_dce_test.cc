@@ -97,19 +97,15 @@ TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
       HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                        /*operands=*/{},
                                        /*custom_call_target=*/"foo"));
-  auto custom_call_instr = static_cast<HloCustomCallInstruction*>(instr);
-  custom_call_instr->set_has_side_effect(true);
+  instr->set_has_side_effect(true);
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(2, computation->instruction_count());
-
   HloDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
-
-  EXPECT_EQ(2, computation->instruction_count());
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_FALSE(result);
 }
 
 TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
@@ -119,18 +115,14 @@ TEST_F(HloDceTest, CustomCallInstructionsWithoutSideEffect) {
       HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                        /*operands=*/{},
                                        /*custom_call_target=*/"foo"));
-  auto custom_call_instr = static_cast<HloCustomCallInstruction*>(instr);
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(2, computation->instruction_count());
-
   HloDCE dce;
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
-
-  EXPECT_EQ(1, computation->instruction_count());
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&dce, module.get()));
+  EXPECT_TRUE(result);
 }
 
 TEST_F(HloDceTest, DeadParameters) {
