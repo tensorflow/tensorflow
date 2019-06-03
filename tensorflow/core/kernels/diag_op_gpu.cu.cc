@@ -66,19 +66,6 @@ struct DiagFunctor<GPUDevice, T> {
         DiagGpuKernel<T>, diag_config.block_count, diag_config.thread_per_block,
         0, device.stream(), diag_config.virtual_thread_count, size, in, out));
 
-#if GOOGLE_CUDA
-    auto err = cudaGetLastError();
-    if (err != cudaSuccess) {
-      return errors::Internal(
-          "Could not launch DiagOp kernel: ", cudaGetErrorString(err), ".");
-    }
-#elif TENSORFLOW_USE_ROCM
-    auto err = hipGetLastError();
-    if (err != hipSuccess) {
-      return errors::Internal(
-          "Could not launch DiagOp kernel: ", hipGetErrorString(err), ".");
-    }
-#endif
     return Status::OK();
   }
 };
@@ -115,19 +102,6 @@ struct DiagPartFunctor<GPUDevice, T> {
                         diag_config.thread_per_block, 0, device.stream(),
                         diag_config.virtual_thread_count, size, in, out));
 
-#if GOOGLE_CUDA
-    auto err = cudaGetLastError();
-    if (err != cudaSuccess) {
-      return errors::Internal(
-          "Could not launch DiagPartOp kernel: ", cudaGetErrorString(err), ".");
-    }
-#elif TENSORFLOW_USE_ROCM
-    auto err = hipGetLastError();
-    if (err != hipSuccess) {
-      return errors::Internal(
-          "Could not launch DiagPartOp kernel: ", hipGetErrorString(err), ".");
-    }
-#endif
     return Status::OK();
   }
 };
