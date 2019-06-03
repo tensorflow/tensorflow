@@ -266,8 +266,8 @@ void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
   static std::vector<T>* host_buffer = [] {
     // Use a large prime number to fragment the accesses.
     auto* ret = new std::vector<T>(10069);
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    // Default-seeded random numbers.
+    std::mt19937 gen;
     for (auto& element : *ret) {
       using RandomType =
           typename std::conditional<std::is_same<T, Eigen::half>::value, float,
