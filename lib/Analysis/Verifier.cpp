@@ -274,8 +274,7 @@ LogicalResult FuncVerifier::verifyOperation(Operation &op) {
     return success();
 
   // Otherwise, verify that the parent dialect allows un-registered operations.
-  auto opName = op.getName().getStringRef();
-  auto dialectPrefix = opName.split('.').first;
+  auto dialectPrefix = op.getName().getDialect();
 
   // Check for an existing answer for the operation dialect.
   auto it = dialectAllowsUnknownOps.find(dialectPrefix);
@@ -291,7 +290,7 @@ LogicalResult FuncVerifier::verifyOperation(Operation &op) {
   }
 
   if (!it->second) {
-    return failure("unregistered operation '" + opName +
+    return failure("unregistered operation '" + op.getName().getStringRef() +
                        "' found in dialect ('" + dialectPrefix +
                        "') that does not allow unknown operations",
                    op);

@@ -38,6 +38,11 @@ OperationName::OperationName(StringRef name, MLIRContext *context) {
     representation = Identifier::get(name, context);
 }
 
+/// Return the name of the dialect this operation is registered to.
+StringRef OperationName::getDialect() const {
+  return getStringRef().split('.').first;
+}
+
 /// Return the name of this operation.  This always succeeds.
 StringRef OperationName::getStringRef() const {
   if (auto *op = representation.dyn_cast<const AbstractOperation *>())
@@ -275,10 +280,8 @@ Dialect *Operation::getDialect() {
     return &abstractOp->dialect;
 
   // If this operation hasn't been registered or doesn't have abstract
-  // operation, fall back to a dialect which matches the prefix.
-  auto opName = getName().getStringRef();
-  auto dialectPrefix = opName.split('.').first;
-  return getContext()->getRegisteredDialect(dialectPrefix);
+  // operation, try looking up the dialect name in the context.
+  return getContext()->getRegisteredDialect(getName().getDialect());
 }
 
 Region *Operation::getContainingRegion() const {
@@ -528,16 +531,9 @@ LogicalResult Operation::fold(ArrayRef<Attribute> operands,
     return success();
 
   // Otherwise, fall back on the dialect hook to handle it.
-  Dialect *dialect;
-  if (abstractOp) {
-    dialect = &abstractOp->dialect;
-  } else {
-    // If this operation hasn't been registered, lookup the parent dialect.
-    auto opName = getName().getStringRef();
-    auto dialectPrefix = opName.split('.').first;
-    if (!(dialect = getContext()->getRegisteredDialect(dialectPrefix)))
-      return failure();
-  }
+  Dialect *dialect = getDialect();
+  if (!dialect)
+    return failure();
 
   SmallVector<Attribute, 8> constants;
   if (failed(dialect->constantFoldHook(this, operands, constants)))

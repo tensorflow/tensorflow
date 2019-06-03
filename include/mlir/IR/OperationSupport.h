@@ -179,6 +179,9 @@ public:
   OperationName(AbstractOperation *op) : representation(op) {}
   OperationName(StringRef name, MLIRContext *context);
 
+  /// Return the name of the dialect this operation is registered to.
+  StringRef getDialect() const;
+
   /// Return the name of this operation.  This always succeeds.
   StringRef getStringRef() const;
 
