@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_executable.h"
@@ -437,22 +438,8 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true));
-  // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
-  // include headers, so no need for us to print them ourselves.
-  XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
-  XLA_VLOG_LINES(2, buffer_assignment->ToString());
-  VLOG(3) << "*** HLO After Optimization";
-  XLA_VLOG_LINES(3, module->ToString());
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
-#if 0
-  const string xla_dump_optimized_hlo_proto_to =
-      module->config().debug_options().xla_dump_hlo_as_text();
-  if (!xla_dump_optimized__hlo_proto_to.empty()) {
-    HloProto proto = MakeHloProto(*module, *buffer_assignment);
-    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, xla_dump_optimized_hlo_proto_to, module->name()));
-  }
-#endif
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       stream_exec->platform(), &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
