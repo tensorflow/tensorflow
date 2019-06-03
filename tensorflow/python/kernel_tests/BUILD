@@ -1455,6 +1455,7 @@ cuda_py_test(
         "noasan",
         "noguitar",
         "notap",
+        "optonly",
     ],
     xla_enable_strict_auto_jit = True,
 )
