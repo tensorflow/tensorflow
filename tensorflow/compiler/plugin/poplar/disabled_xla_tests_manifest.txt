@@ -323,6 +323,7 @@ VariadicReduceTest.Reduce_R3x2_to_R1x2_simple POPLAR // Variadic reduce
 VariadicReduceTest.Reduce_R1x2_to_R0x2_simple POPLAR
 VariadicReduceTest.Reduce_R3x2_to_R2x2_simple POPLAR
 VariadicReduceTest.Reduce_R1x2_to_R0x2_argmax POPLAR
+VariadicReduceTest.ReduceMultiOutputVariadicAnd POPLAR
 
 ScatterTest.OutOfBoundsIndex POPLAR // Don't currently handle bad bounds
 ScatterTest.OutOfBoundsUnsignedIndex POPLAR

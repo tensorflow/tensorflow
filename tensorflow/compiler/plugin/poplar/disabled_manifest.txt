@@ -60,6 +60,7 @@ BinaryOpsTest.testNextAfter # Unsigned int
 SelfAdjointEigOpTest # seg fault
 SvdOpTest # Seg fault
 CondTest.testCondConstPropagation # Switch node in cluster
+CondTest.testCondNoInputs # Switch node in cluster
 SegmentReductionOpsTest.testUnsortedSegmentOps1DIndices1DDataNegativeIndices #Scatter negative indices
 CategoricalTest.testCategoricalIsNotConstant # disable until poplar CPU random works
 CategoricalTest.testStatelessMultinomialIsInRange # No U64
@@ -73,3 +74,4 @@ ListOpsTest # Disable due to variants in lists
 StatelessRandomOpsTest.testDeterminism # poplibs CPU mode does not obey seed
 StatelessRandomOpsTest.testRandomUniformIsInRange # poplar CPU model random uniform int doesn't obey limits
 StatelessRandomOpsTest.testTruncatedNormal # Tests float64
+CategoricalTest.testCategoricalIsInRange # Uses argmax inline
