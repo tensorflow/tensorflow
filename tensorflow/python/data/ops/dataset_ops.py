@@ -54,6 +54,7 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -1391,7 +1392,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     with ops.name_scope("initial_state"):
       initial_state = structure_lib.normalize_tensors(initial_state)
-    state_structure = structure_lib.Structure.from_value(initial_state)
+    state_structure = type_spec.type_spec_from_value(initial_state)
 
     # Iteratively rerun the reduce function until reaching a fixed point on
     # `state_structure`.
@@ -2264,7 +2265,7 @@ class TensorDataset(DatasetSource):
   def __init__(self, tensors):
     """See `Dataset.from_tensors()` for details."""
     tensors = structure_lib.normalize_tensors(tensors)
-    self._structure = structure_lib.Structure.from_value(tensors)
+    self._structure = type_spec.type_spec_from_value(tensors)
     self._tensors = self._structure._to_tensor_list(tensors)  # pylint: disable=protected-access
 
     variant_tensor = gen_dataset_ops.tensor_dataset(
@@ -2284,7 +2285,7 @@ class TensorSliceDataset(DatasetSource):
     with ops.name_scope("tensors"):
       tensors = structure_lib.normalize_tensors(tensors)
 
-    batched_structure = structure_lib.Structure.from_value(tensors)
+    batched_structure = type_spec.type_spec_from_value(tensors)
     # pylint: disable=protected-access
     self._tensors = batched_structure._to_batched_tensor_list(tensors)
     self._structure = batched_structure._unbatch()
@@ -2377,51 +2378,33 @@ def to_variant(dataset):
   return dataset._variant_tensor  # pylint: disable=protected-access
 
 
+# TODO(b/133606651) Rename this class to DatasetSpec
 @tf_export("data.experimental.DatasetStructure")
-class DatasetStructure(structure_lib.Structure):
-  """Represents a `Dataset` of structured values."""
+class DatasetStructure(type_spec.TypeSpec):
+  """Type specification for `tf.data.Dataset`."""
 
-  def __init__(self, element_structure):
-    self._element_structure = element_structure
+  __slots__ = ["_element_structure"]
 
-  def __eq__(self, other):
-    # pylint: disable=protected-access
-    return (isinstance(other, DatasetStructure) and
-            self._element_structure == other._element_structure)
-
-  def __hash__(self):
-    return hash(self._element_structure)
+  def __init__(self, element_spec):
+    self._element_structure = element_spec
 
   @property
-  def _flat_shapes(self):
-    return [tensor_shape.scalar()]
+  def value_type(self):
+    return _VariantDataset
+
+  def _serialize(self):
+    return (self._element_structure,)
 
   @property
-  def _flat_types(self):
-    return [dtypes.variant]
+  def _component_specs(self):
+    return tensor_spec.TensorSpec([], dtypes.variant)
 
-  def is_compatible_with(self, other):
+  def _to_components(self, value):
+    return value._variant_tensor  # pylint: disable=protected-access
+
+  def _from_components(self, components):
     # pylint: disable=protected-access
-    return (isinstance(other, DatasetStructure) and
-            self._element_structure.is_compatible_with(
-                other._element_structure))
-
-  def _to_tensor_list(self, value):
-    return [value._variant_tensor]  # pylint: disable=protected-access
-
-  def _to_batched_tensor_list(self, value):
-    raise NotImplementedError("Unbatching for `tf.data.Dataset` objects.")
-
-  def _from_tensor_list(self, flat_value):
-    if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
-        not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
-      raise ValueError(
-          "DatasetStructure corresponds to a single tf.variant scalar.")
-    return self._from_compatible_tensor_list(flat_value)
-
-  def _from_compatible_tensor_list(self, flat_value):
-    # pylint: disable=protected-access
-    return _VariantDataset(flat_value[0], self._element_structure)
+    return _VariantDataset(components, self._element_structure)
 
   @staticmethod
   def from_value(value):
@@ -2436,17 +2419,11 @@ class DatasetStructure(structure_lib.Structure):
   def _to_legacy_output_classes(self):
     return self
 
-  def _batch(self, batch_size):
-    raise NotImplementedError("Batching for `tf.data.Dataset` objects.")
 
-  def _unbatch(self):
-    raise NotImplementedError("Unbatching for `tf.data.Dataset` objects.")
-
-
-# pylint: disable=protected-access
-structure_lib.Structure._register_custom_converter(DatasetV2,
-                                                   DatasetStructure.from_value)
-# pylint: enable=protected-access
+# TODO(b/133606651) Delete this registration when CompositeTensor is updated
+# to define a _type_spec field (since registration will be automatic).
+type_spec.register_type_spec_from_value_converter(
+    DatasetV2, DatasetStructure.from_value, allow_subclass=True)
 
 
 class StructuredFunctionWrapper(object):
@@ -2565,7 +2542,7 @@ class StructuredFunctionWrapper(object):
         ret = tuple(ret)
 
       try:
-        self._output_structure = structure_lib.Structure.from_value(ret)
+        self._output_structure = type_spec.type_spec_from_value(ret)
       except (ValueError, TypeError):
         raise TypeError("Unsupported return value from function passed to "
                         "%s: %s." % (transformation_name, ret))
@@ -2601,12 +2578,7 @@ class StructuredFunctionWrapper(object):
       # TODO(b/124254153): Enable autograph once the overhead is low enough.
       # TODO(mdan): Make sure autograph recurses into _wrapper_helper when on.
       @eager_function.defun_with_attributes(
-          input_signature=[
-              tensor_spec.TensorSpec(input_shape, input_type)  # pylint: disable=g-complex-comprehension
-              for input_shape, input_type in zip(
-                  self._input_structure._flat_shapes,
-                  self._input_structure._flat_types)
-          ],
+          input_signature=self._input_structure._flat_tensor_specs,
           autograph=False,
           attributes=defun_kwargs)
       def wrapper_fn(*args):  # pylint: disable=missing-docstring
@@ -2697,7 +2669,7 @@ class _GeneratorDataset(DatasetSource):
     """
     self._init_args = init_args
 
-    self._init_structure = structure_lib.Structure.from_value(init_args)
+    self._init_structure = type_spec.type_spec_from_value(init_args)
 
     self._init_func = StructuredFunctionWrapper(
         init_func,
