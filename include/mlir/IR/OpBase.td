@@ -618,6 +618,21 @@ class StringBasedAttr<Pred condition, string descr> : Attr<condition, descr> {
 def StrAttr : StringBasedAttr<CPred<"$_self.isa<StringAttr>()">,
                               "string attribute">;
 
+// Base class for attributes containing types. Example:
+//   def IntTypeAttr : TypeAttrBase<"IntegerType", "integer type attribute">
+// defines a type attribute containing an integer type.
+class TypeAttrBase<string retType, string description> :
+    Attr<And<[
+      CPred<"$_self.isa<TypeAttr>()">,
+      CPred<"$_self.cast<TypeAttr>().getValue().isa<" # retType # ">()">]>,
+    description> {
+  let storageType = [{ TypeAttr }];
+  let returnType = retType;
+  let convertFromStorage = "$_self.getValue().cast<" # retType # ">()";
+}
+
+def TypeAttr : TypeAttrBase<"Type", "any type attribute">;
+
 // An enum attribute case.
 class EnumAttrCase<string sym> : StringBasedAttr<
     CPred<"$_self.cast<StringAttr>().getValue() == \"" # sym # "\"">,
@@ -693,6 +708,9 @@ def F64ArrayAttr : TypedArrayAttrBase<F64Attr, "64-bit float array attribute"> {
 def StrArrayAttr : TypedArrayAttrBase<StrAttr, "string array attribute"> {
   let constBuilderCall = "$_builder.getStrArrayAttr($0)";
 }
+def TypeArrayAttr : TypedArrayAttrBase<TypeAttr, "type array attribute"> {
+  let constBuilderCall = ?;
+}
 
 // Attributes containing functions.
 def FunctionAttr : Attr<CPred<"$_self.isa<FunctionAttr>()">,
@@ -701,21 +719,6 @@ def FunctionAttr : Attr<CPred<"$_self.isa<FunctionAttr>()">,
   let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getFunctionAttr($0)";
 }
-
-// Base class for attributes containing types. Example:
-//   def IntTypeAttr : TypeAttrBase<"IntegerType", "integer type attribute">
-// defines a type attribute containing an integer type.
-class TypeAttrBase<string retType, string description> :
-    Attr<And<[
-      CPred<"$_self.isa<TypeAttr>()">,
-      CPred<"$_self.cast<TypeAttr>().getValue().isa<" # retType # ">()">]>,
-    description> {
-  let storageType = [{ TypeAttr }];
-  let returnType = retType;
-  let convertFromStorage = "$_self.getValue().cast<" # retType # ">()";
-}
-
-def TypeAttr : TypeAttrBase<"Type", "any type attribute">;
 
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
