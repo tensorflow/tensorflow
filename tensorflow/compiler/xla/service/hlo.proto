@@ -219,7 +219,7 @@ message HloInstructionProto {
   // elements in that dimension.
   repeated int64 outer_dimension_partitions = 64;
 
-  // Whether the kCustomCall instruction has a side effect, only present for
+  // Whether the kCustomCall instruction has side-effects, only present for
   // kCustomCall.
   bool custom_call_has_side_effect = 65;
 }
