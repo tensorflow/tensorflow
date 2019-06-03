@@ -23,6 +23,15 @@ config_setting(
     define_values = {"tflite_with_ruy": "false"},
 )
 
+config_setting(
+    name = "chromiumos_arm64",
+    values = {
+        "crosstool_top": "//external:chromiumos/crosstool",
+        "cpu": "arm",
+    },
+    visibility = ["//visibility:public"],
+)
+
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
     "//tensorflow:ios": [

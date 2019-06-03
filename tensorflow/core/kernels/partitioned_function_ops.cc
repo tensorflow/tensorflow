@@ -34,9 +34,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/stream_executor/stream.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 

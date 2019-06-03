@@ -75,11 +75,12 @@ struct TFE_Context {
 };
 
 struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
-                   tensorflow::Device* op_device)
-      : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
-
-  TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
+  explicit TFE_TensorHandle(tensorflow::TensorHandle* handle)
+      : handle(handle) {}
+  explicit TFE_TensorHandle(const tensorflow::Tensor& t)
+      : handle(new tensorflow::TensorHandle(t)) {}
+  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
+      : handle(new tensorflow::TensorHandle(t, d, nullptr)) {}
 
   tensorflow::TensorHandle* handle;
 

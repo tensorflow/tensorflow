@@ -66,8 +66,10 @@ EagerContext::EagerContext(
     bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
     Rendezvous* rendezvous, const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr,
-    std::function<Rendezvous*(const int64)> rendezvous_creator)
+    std::function<Rendezvous*(const int64)> rendezvous_creator,
+    const DeviceMgr* remote_device_mgr)
     : policy_(default_policy),
+      remote_unowned_device_manager_(remote_device_mgr),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
       rendezvous_creator_(std::move(rendezvous_creator)),
@@ -117,8 +119,8 @@ void EagerContext::InitDeviceMapAndAsync() {
     devices_map_[device->name()] = device;
   }
 
-  if (remote_device_manager_ != nullptr) {
-    for (auto* device : remote_device_manager_->ListDevices()) {
+  if (remote_device_mgr() != nullptr) {
+    for (auto* device : remote_device_mgr()->ListDevices()) {
       if (devices_map_.find(device->name()) == devices_map_.end()) {
         devices_map_[device->name()] = device;
         devices_.push_back(device);
@@ -270,7 +272,9 @@ const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
   return func_lib_def_.Find(name);
 }
 
-Status EagerContext::FindDeviceByName(const string& name, Device** result) {
+// TODO(gjn): Delete in favour of FindDeviceFromName
+Status EagerContext::FindDeviceByName(const string& name,
+                                      Device** result) const {
   auto it = devices_map_.find(name);
   if (it == devices_map_.end()) {
     return errors::InvalidArgument(name, " unknown device.");
@@ -332,6 +336,7 @@ ScopedStepContainer* EagerContext::StepContainer() {
 }
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
+  // Only client context can register function on remote worker context.
   if (remote_device_manager_ == nullptr) return Status::OK();
 #if !defined(IS_MOBILE_PLATFORM)
   BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
@@ -472,6 +477,49 @@ void EagerContext::SetShouldStoreStepStats(bool value) {
   }
 }
 
+Status EagerContext::FindDeviceFromName(const char* device_name,
+                                        Device** device) const {
+  *device = HostCPU();
+  if (device_name == nullptr || strlen(device_name) == 0) {
+    return Status::OK();
+  }
+
+  auto status = local_device_mgr()->LookupDevice(device_name, device);
+  if (status.ok()) {
+    return status;
+  }
+
+  if (remote_device_mgr() != nullptr) {
+    return remote_device_mgr()->LookupDevice(device_name, device);
+  }
+
+  return status;
+}
+
+bool EagerContext::IsLocal(const Device* d) const {
+  if (d == nullptr || remote_device_mgr() == nullptr) return true;
+  tensorflow::Device* tmp;
+  return local_device_mgr()->LookupDevice(d->name(), &tmp).ok();
+}
+
+bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
+  if (first == nullptr) first = HostCPU();
+  if (second == nullptr) second = HostCPU();
+  return first->parsed_name().job == second->parsed_name().job &&
+         first->parsed_name().replica == second->parsed_name().replica &&
+         first->parsed_name().task == second->parsed_name().task;
+}
+
+// Gets the CPU device on the task of device.
+Status EagerContext::CPUDeviceOnTask(const Device* device,
+                                     Device** cpu_device) const {
+  string cpu_device_name;
+  TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
+      device->name(), &cpu_device_name));
+
+  return FindDeviceByName(cpu_device_name, cpu_device);
+}
+
 namespace {
 Status GetTaskName(Device* d, string* task_name) {
   string ignored;
@@ -487,6 +535,10 @@ Status GetTaskName(Device* d, string* task_name) {
 Status EagerContext::GetClientAndContextID(Device* device,
                                            eager::EagerClient** client,
                                            uint64* context_id) {
+  if (remote_eager_workers_ == nullptr) {
+    return errors::Internal(
+        "Haven't set up remote eager worker in this eager context yet.");
+  }
   auto it = device_to_client_cache_.find(device);
   if (it != device_to_client_cache_.end()) {
     *client = it->second.first;

@@ -960,6 +960,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
         "@six_archive//:six",
     ],
@@ -1185,6 +1186,7 @@ py_library(
         ":tf2",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:monitoring",
     ],
 )
 
@@ -3326,6 +3328,7 @@ py_library(
     srcs = [
         "ops/rnn_cell.py",
         "ops/rnn_cell_impl.py",
+        "ops/rnn_cell_wrapper_impl.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -3714,6 +3717,7 @@ py_library(
         ":util",
         ":variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:monitoring",
         "@six_archive//:six",
     ],
 )
@@ -4065,6 +4069,7 @@ cuda_py_test(
         ":variables",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,

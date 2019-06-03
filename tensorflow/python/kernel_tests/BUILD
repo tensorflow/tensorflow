@@ -663,6 +663,7 @@ tf_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 16,
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(

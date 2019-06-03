@@ -29,13 +29,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.generic_utils import to_list
-from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.util import tf_decorator
@@ -299,10 +299,12 @@ def update_confusion_matrix_variables(variables_to_update,
           message='predictions must be <= 1')
   ]):
     if sample_weight is None:
-      y_pred, y_true = squeeze_or_expand_dimensions(y_pred, y_true)
+      y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+          y_pred, y_true)
     else:
-      y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-          y_pred, y_true, sample_weight=sample_weight)
+      y_pred, y_true, sample_weight = (
+          tf_losses_utils.squeeze_or_expand_dimensions(
+              y_pred, y_true, sample_weight=sample_weight))
 
   if top_k is not None:
     y_pred = _filter_top_k(y_pred, top_k)

@@ -208,12 +208,11 @@ static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
                          device_ordinal);
     }
     size_t allocator_memory = free_memory * memory_fraction;
-    LOG(INFO) << "XLA backend reserving " << allocator_memory << " out of "
-              << total_memory << " bytes on device " << device_ordinal
-              << " for BFCAllocator.";
+    LOG(INFO) << "XLA backend will use up to " << allocator_memory
+              << " bytes on device " << device_ordinal << " for BFCAllocator.";
 
     auto gpu_bfc_allocator = absl::make_unique<tensorflow::BFCAllocator>(
-        sub_allocator.release(), allocator_memory, /*allow_growth=*/false,
+        sub_allocator.release(), allocator_memory, /*allow_growth=*/true,
         absl::StrCat("GPU_", device_ordinal, "_bfc"));
     allocators.emplace_back(std::move(gpu_bfc_allocator));
   }
