@@ -758,18 +758,6 @@ func @sparsevectorattr() -> () {
   return
 }
 
-// CHECK-LABEL: func @loops_with_blockids() {
-func @loops_with_blockids() {
-^block0:
-  affine.for %i = 1 to 100 step 2 {
-  ^block1:
-    affine.for %j = 1 to 200 {
-    ^block2:
-    }
-  }
-  return
-}
-
 // CHECK-LABEL: func @unknown_dialect_type() -> !bar<""> {
 func @unknown_dialect_type() -> !bar<""> {
   // Unregistered dialect 'bar'.
@@ -928,5 +916,20 @@ func @pretty_dialect_type() {
 func @none_type() {
   // CHECK: "foo.unknown_op"() : () -> none
   %none_val = "foo.unknown_op"() : () -> none
+  return
+}
+
+// CHECK-LABEL: func @scoped_names
+func @scoped_names() {
+  // CHECK-NEXT: "foo.region_op"
+  "foo.region_op"() ({
+    // CHECK-NEXT: "foo.unknown_op"
+    %scoped_name = "foo.unknown_op"() : () -> none
+    "foo.terminator"() : () -> ()
+  }, {
+    // CHECK: "foo.unknown_op"
+    %scoped_name = "foo.unknown_op"() : () -> none
+    "foo.terminator"() : () -> ()
+  }) : () -> ()
   return
 }

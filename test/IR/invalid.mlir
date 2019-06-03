@@ -143,8 +143,8 @@ func @block_first_has_predecessor() {
 
 // -----
 
-func @empty() {
-} // expected-error {{function must have a body}}
+func @empty() { // expected-error {{function must have a body}}
+}
 
 // -----
 
@@ -344,7 +344,7 @@ func @argError() {
 // -----
 
 func @bbargMismatch(i32, f32) {
-// expected-error @+1 {{argument and block argument type mismatch}}
+// expected-error @-1 {{first block of function must have 2 arguments to match function signature}}
 ^bb42(%0: f32):
   return
 }
@@ -429,10 +429,10 @@ func @duplicate_induction_var() {
 
 // -----
 
-func @dominance_failure() {
+func @name_scope_failure() {
   affine.for %i = 1 to 10 {
   }
-  "xxx"(%i) : (index)->()   // expected-error {{operand #0 does not dominate this use}}
+  "xxx"(%i) : (index)->()   // expected-error {{use of undeclared SSA value name}}
   return
 }
 
@@ -691,7 +691,7 @@ func @elementsattr_malformed_opaque3() -> () {
 // -----
 
 func @redundant_signature(%a : i32) -> () {
-^bb0(%b : i32):  // expected-error {{invalid block name in function with named arguments}}
+^bb0(%b : i32):  // expected-error {{invalid block name in region with named arguments}}
   return
 }
 
@@ -1053,3 +1053,17 @@ func @bad_complex(complex<i32)
 
 // expected-error @+1 {{attribute names with a '.' are reserved for dialect-defined names}}
 #foo.attr = i32
+
+// -----
+
+func @invalid_region_dominance() {
+  "foo.region"() ({
+    // expected-error @+1 {{operand #0 does not dominate this use}}
+    "foo.use" (%def) : (i32) -> ()
+    "foo.yield" () : () -> ()
+  }, {
+    // expected-note @+1 {{operand defined here}}
+    %def = "foo.def" () : () -> i32
+  }) : () -> ()
+  return
+}
