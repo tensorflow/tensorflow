@@ -1538,6 +1538,23 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "replication_normalise_test",
+    size = "medium",
+    srcs = ["tests/replication_normalise_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 
 
 test_suite(
@@ -1584,6 +1601,7 @@ test_suite(
         "norm_graph_caching_sharded_test",
         "norm_graph_caching_test",
         "recomputation_test",
+        "replication_normalise_test",
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
         "pop_datastream_test",

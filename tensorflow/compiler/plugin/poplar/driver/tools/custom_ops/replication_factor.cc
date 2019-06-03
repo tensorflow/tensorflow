@@ -81,11 +81,11 @@ HloReplicationNormaliseInstruction::LayoutDependencies() const {
 }
 
 uint64 HloReplicationNormaliseInstruction::NumberOfInplaceOperands() const {
-  return 0;
+  return 1;
 }
 
 bool HloReplicationNormaliseInstruction::IsPopOpsElementwise() const {
-  return false;
+  return true;
 }
 
 std::unique_ptr<HloInstruction>
