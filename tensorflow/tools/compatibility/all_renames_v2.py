@@ -275,6 +275,8 @@ manual_symbol_renames = {
         "tf.compat.v1.tpu.shutdown_system",
     "tf.contrib.training.checkpoints_iterator":
         "tf.train.checkpoints_iterator",
+    "tf.contrib.layers.recompute_grad":
+        "tf.recompute_grad",
     "tf.count_nonzero":
         "tf.math.count_nonzero",
     "tf.manip.batch_to_space_nd":

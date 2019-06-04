@@ -3923,6 +3923,7 @@ cuda_py_test(
         ":variable_scope",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/keras:engine",
     ],
     tags = ["no_oss"],  # b/118709825
     xla_enable_strict_auto_jit = True,
