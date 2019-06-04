@@ -1724,8 +1724,22 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Returns:
     `image`, converted to `dtype`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3), dtype=tf.float32)
+    >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
+    ```
+  
+  Raises:
+    AttributeError: Type object has no attribute is_integer or is_floating
   """
   image = ops.convert_to_tensor(image, name='image')
+  if hasattr(dtype, 'is_floating') or hasattr(dtype, 'is_integer'):
+    pass
+  else:
+    raise AttributeError('Datatype provided must have is_integer or is_floating attribute')
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
