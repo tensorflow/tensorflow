@@ -514,8 +514,7 @@ StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
 
   TF_ASSIGN_OR_RETURN(
       bias, BroadcastTensor(bias, broadcast->shape(), broadcast->dimensions()));
-  TF_RETURN_IF_ERROR(ScaledInplaceConstantOrTensor(
-      graph, in, bias, 1.0f, prog, HloOpcode::kAdd, GetDebugName(inst)));
+  popops::addInPlace(graph, in, bias, prog, GetDebugName(inst));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, in));
   return prog;

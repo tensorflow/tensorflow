@@ -653,7 +653,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       ok = [
           '__seed*', 'host-exchange-local-copy',
-          'xw_plus_b/MatMul/dot.*/Conv_1/Convolve', 'xw_plus_b/fusion/AddTo'
+          'xw_plus_b/MatMul/dot.*/Conv_1/Convolve', 'xw_plus_b/fusion/Op/Add'
       ]
       self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
 
