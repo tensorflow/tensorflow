@@ -24,7 +24,7 @@ namespace {
 
 class TestTime : public EnvTime {
  public:
-  uint64 NowNanos() override { return now_micros_ * kMicrosToNanos; }
+  uint64 NowNanos() const override { return now_micros_ * kMicrosToNanos; }
 
   void SetTime(uint64 now_micros) { now_micros_ = now_micros; }
 

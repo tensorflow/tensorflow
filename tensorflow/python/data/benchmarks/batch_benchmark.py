@@ -48,6 +48,25 @@ class BatchBenchmark(benchmark_base.DatasetBenchmarkBase):
             name="sparse_num_elements_%d_batch_size_%d" % (non_zeros_per_row,
                                                            batch_size))
 
+  def benchmark_batch_dense(self):
+    for element_exp in [10, 12, 14, 16, 18, 20, 22]:
+      for batch_exp in [3, 6, 9]:
+        for parallel_copy in [True, False]:
+          element_size = 1 << element_exp
+          batch_size = 1 << batch_exp
+          dataset = dataset_ops.Dataset.from_tensors(
+              np.random.rand(element_size)).repeat().batch(batch_size)
+          options = dataset_ops.Options()
+          options.experimental_optimization.parallel_batch = parallel_copy
+          dataset = dataset.with_options(options)
+          tag = "_parallel" if parallel_copy else ""
+          self.run_and_report_benchmark(
+              dataset,
+              num_elements=(1 << (22 - batch_exp - element_exp // 2)),
+              iters=1,
+              name="batch_element_size_%d_batch_size_%d%s" %
+              (element_size, batch_size, tag))
+
 
 if __name__ == "__main__":
   benchmark_base.test.main()

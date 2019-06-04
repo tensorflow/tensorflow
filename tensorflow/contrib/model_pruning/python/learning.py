@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Wrapper around tf-slim's training code contrib/slim/python/slim/learning.py
+
 to support training of pruned models
 
 *******************************************************************
@@ -28,7 +29,8 @@ to support training of pruned models
   total_loss = slim.losses.get_total_loss()
 
   # Define the optimizer:
-  optimizer = tf.train.MomentumOptimizer(FLAGS.learning_rate, FLAGS.momentum)
+  optimizer = tf.compat.v1.train.MomentumOptimizer(FLAGS.learning_rate,
+  FLAGS.momentum)
 
   # Create the train_op
   train_op = slim.learning.create_train_op(total_loss, optimizer)
@@ -98,7 +100,8 @@ def train(train_op,
       thresholds.
     train_step_fn: The function to call in order to execute a single gradient
       step. The function must have take exactly four arguments: the current
-      session, the `train_op` `Tensor`, a global step `Tensor` and a dictionary.
+        session, the `train_op` `Tensor`, a global step `Tensor` and a
+        dictionary.
     train_step_kwargs: A dictionary which is passed to the `train_step_fn`. By
       default, two `Boolean`, scalar ops called "should_stop" and "should_log"
       are provided.
@@ -112,35 +115,36 @@ def train(train_op,
     global_step: The `Tensor` representing the global step. If left as `None`,
       then slim.variables.get_or_create_global_step() is used.
     number_of_steps: The max number of gradient steps to take during training,
-      as measured by 'global_step': training will stop if global_step is
-      greater than 'number_of_steps'. If the value is left as None, training
-      proceeds indefinitely.
+      as measured by 'global_step': training will stop if global_step is greater
+        than 'number_of_steps'. If the value is left as None, training proceeds
+        indefinitely.
     init_op: The initialization operation. If left to its default value, then
-      the session is initialized by calling `tf.global_variables_initializer()`.
+      the session is initialized by calling
+      `tf.compat.v1.global_variables_initializer()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
     local_init_op: The local initialization operation. If left to its default
       value, then the session is initialized by calling
-      `tf.local_variables_initializer()` and `tf.tables_initializer()`.
+      `tf.compat.v1.local_variables_initializer()` and
+      `tf.compat.v1.tables_initializer()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
     ready_op: Operation to check if the model is ready to use. If left to its
       default value, then the session checks for readiness by calling
-      `tf.report_uninitialized_variables()`.
+      `tf.compat.v1.report_uninitialized_variables()`.
     summary_op: The summary operation.
     save_summaries_secs: How often, in seconds, to save summaries.
-    summary_writer: `SummaryWriter` to use.  Can be `None`
-      to indicate that no summaries should be written. If unset, we
-      create a SummaryWriter.
+    summary_writer: `SummaryWriter` to use.  Can be `None` to indicate that no
+      summaries should be written. If unset, we create a SummaryWriter.
     startup_delay_steps: The number of steps to wait for before beginning. Note
       that this must be 0 if a sync_optimizer is supplied.
-    saver: Saver to save checkpoints. If None, a default one will be created
-      and used.
+    saver: Saver to save checkpoints. If None, a default one will be created and
+      used.
     save_interval_secs: How often, in seconds, to save the model to `logdir`.
-    sync_optimizer: an instance of tf.train.SyncReplicasOptimizer, or a list of
-      them. If the argument is supplied, gradient updates will be synchronous.
-      If left as `None`, gradient updates will be asynchronous.
-    session_config: An instance of `tf.ConfigProto` that will be used to
-      configure the `Session`. If left as `None`, the default will be used.
+    sync_optimizer: an instance of tf.compat.v1.train.SyncReplicasOptimizer, or
+      a list of them. If the argument is supplied, gradient updates will be
+      synchronous. If left as `None`, gradient updates will be asynchronous.
+    session_config: An instance of `tf.compat.v1.ConfigProto` that will be used
+      to configure the `Session`. If left as `None`, the default will be used.
     trace_every_n_steps: produce and save a `Timeline` in Chrome trace format
       and add it to the summaries every `trace_every_n_steps`. If None, no trace
       information will be produced or saved.

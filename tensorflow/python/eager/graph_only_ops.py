@@ -39,7 +39,7 @@ def graph_zeros_like(tensor):
 
 
 def graph_placeholder(dtype, shape, name=None):
-  """Graph-only version of tf.placeholder(), for internal use only."""
+  """Graph-only version of tf.compat.v1.placeholder(), for internal use only."""
   dtype = dtype.base_dtype
   dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
   if isinstance(shape, (list, tuple)):

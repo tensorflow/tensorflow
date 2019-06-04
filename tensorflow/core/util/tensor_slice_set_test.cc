@@ -218,10 +218,18 @@ TEST(TensorSliceSetTest, QueryMetaTwoD) {
     std::vector<std::pair<TensorSlice, string>> results;
     EXPECT_TRUE(tss.QueryMeta(s, &results));
     EXPECT_EQ(2, results.size());
-    EXPECT_EQ("2,2:0,3", results[0].first.DebugString());
-    EXPECT_EQ("slice_2", results[0].second);
-    EXPECT_EQ("0,2:-", results[1].first.DebugString());
-    EXPECT_EQ("slice_1", results[1].second);
+    // Allow results to be returned in either order
+    if (results[0].second == "slice_2") {
+      EXPECT_EQ("2,2:0,3", results[0].first.DebugString());
+      EXPECT_EQ("slice_2", results[0].second);
+      EXPECT_EQ("0,2:-", results[1].first.DebugString());
+      EXPECT_EQ("slice_1", results[1].second);
+    } else {
+      EXPECT_EQ("0,2:-", results[0].first.DebugString());
+      EXPECT_EQ("slice_1", results[0].second);
+      EXPECT_EQ("2,2:0,3", results[1].first.DebugString());
+      EXPECT_EQ("slice_2", results[1].second);
+    }
   }
 
   // Slice #4 includes the hole and so there is no match

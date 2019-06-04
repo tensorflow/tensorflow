@@ -19,12 +19,13 @@ limitations under the License.
 
 // We need to include cuda_kernel_helper.h before segment_reduction_ops.h
 // See comment in segment_reduction_ops.h for more details.
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+// clang-format off
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+// clang-format on
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_device_functions.h"
-
+#include "tensorflow/core/util/gpu_device_functions.h"
 
 namespace tensorflow {
 
@@ -137,7 +138,7 @@ void SegmentSumFunctor<T, Index>::operator()(
     return;
   }
   // Set 'output' to zeros.
-  CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
   TF_CHECK_OK(CudaLaunchKernel(SetZero<T>, config.block_count,
                                config.thread_per_block, 0, d.stream(),
                                output.size(), output.data()));
@@ -162,7 +163,7 @@ void SegmentSumFunctor<T, Index>::operator()(
   const Index total_stripe_count =
       input_inner_dim_size * input_outer_dim_num_stripe;
 
-  config = GetCudaLaunchConfig(total_stripe_count, d);
+  config = GetGpuLaunchConfig(total_stripe_count, d);
   TF_CHECK_OK(CudaLaunchKernel(
       SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
       config.block_count, config.thread_per_block, 0, d.stream(),
@@ -183,7 +184,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     }
     // Set 'output' to initial value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
-    CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
     TF_CHECK_OK(CudaLaunchKernel(
         SetToValue<T>, config.block_count, config.thread_per_block, 0,
         d.stream(), output.size(), output.data(), InitialValueF()()));
@@ -197,7 +198,7 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // *) 'input_outer_dim_size' is the total number of segments to process.
     const Index input_outer_dim_size = segment_ids.dimension(0);
     const Index input_inner_dim_size = data_size / input_outer_dim_size;
-    config = GetCudaLaunchConfig(data_size, d);
+    config = GetGpuLaunchConfig(data_size, d);
 
     TF_CHECK_OK(CudaLaunchKernel(
         UnsortedSegmentCustomKernel<T, Index, ReductionF>, config.block_count,

@@ -96,7 +96,7 @@ def audio_microfrontend(audio,
   Raises:
     ValueError: If the audio tensor is not explicitly a vector.
   """
-  audio_shape = audio.get_shape()
+  audio_shape = audio.shape
   if audio_shape.ndims is None:
     raise ValueError("Input to `AudioMicrofrontend` should have known rank.")
   if len(audio_shape) > 1:

@@ -30,7 +30,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 # pylint: disable=g-bad-import-order
-import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.spinn import data
 from third_party.examples.eager.spinn import spinn
 from tensorflow.contrib.summary import summary_test_util
@@ -59,7 +58,7 @@ def _generate_synthetic_snli_data_batch(sequence_length,
         [[3, 3, 2, 3, 3, 3, 2, 2, 2, 3, 3, 3,
           2, 3, 3, 2, 2, 3, 3, 3, 2, 2, 2, 2,
           3, 2, 2]] * batch_size, dtype=np.int64).T)
-  if tfe.num_gpus():
+  if test_util.is_gpu_available():
     labels = labels.gpu()
     prem = prem.gpu()
     prem_trans = prem_trans.gpu()
@@ -121,7 +120,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     super(SpinnTest, self).setUp()
-    self._test_device = "gpu:0" if tfe.num_gpus() else "cpu:0"
+    self._test_device = "gpu:0" if test_util.is_gpu_available() else "cpu:0"
     self._temp_data_dir = tempfile.mkdtemp()
 
   def tearDown(self):
@@ -436,7 +435,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
 class EagerSpinnSNLIClassifierBenchmark(test.Benchmark):
 
   def benchmarkEagerSpinnSNLIClassifier(self):
-    test_device = "gpu:0" if tfe.num_gpus() else "cpu:0"
+    test_device = "gpu:0" if test_util.is_gpu_available() else "cpu:0"
     with tf.device(test_device):
       burn_in_iterations = 2
       benchmark_iterations = 10

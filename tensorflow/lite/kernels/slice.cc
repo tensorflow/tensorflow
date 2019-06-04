@@ -172,27 +172,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // The dimensions in the kernel used to be in reverse-order, and TFLite
   // arranged the begins and sizes vectors accordingly. This macro incorporates
   // the needed reversing.
-#define TF_LITE_SLICE(data_type, kernel_type)                                \
-  {                                                                          \
-    TF_LITE_ENSURE_EQ(context, begins.size(), 4);                            \
-    TF_LITE_ENSURE_EQ(context, sizes.size(), 4);                             \
-    tflite::SliceParams op_params;                                           \
-    op_params.begin_count = 4;                                               \
-    op_params.size_count = 4;                                                \
-    for (int i = 0; i < 4; ++i) {                                            \
-      op_params.begin[i] = begins[3 - i];                                    \
-      op_params.size[i] = sizes[3 - i];                                      \
-    }                                                                        \
-                                                                             \
-    if (kernel_type == kGenericOptimized) {                                  \
-      optimized_ops::Slice<data_type>(                                       \
-          op_params, GetTensorShape(input), GetTensorData<data_type>(input), \
-          GetTensorShape(output), GetTensorData<data_type>(output));         \
-    } else {                                                                 \
-      reference_ops::Slice<data_type>(                                       \
-          op_params, GetTensorShape(input), GetTensorData<data_type>(input), \
-          GetTensorShape(output), GetTensorData<data_type>(output));         \
-    }                                                                        \
+#define TF_LITE_SLICE(data_type, kernel_type)                                  \
+  {                                                                            \
+    TF_LITE_ENSURE_EQ(context, begins.size(), 4);                              \
+    TF_LITE_ENSURE_EQ(context, sizes.size(), 4);                               \
+    tflite::SliceParams op_params;                                             \
+    op_params.begin_count = 4;                                                 \
+    op_params.size_count = 4;                                                  \
+    for (int i = 0; i < 4; ++i) {                                              \
+      op_params.begin[i] = begins[3 - i];                                      \
+      op_params.size[i] = sizes[3 - i];                                        \
+    }                                                                          \
+                                                                               \
+    if (kernel_type == kGenericOptimized) {                                    \
+      optimized_ops::Slice<data_type>(op_params, GetTensorShape(input), input, \
+                                      GetTensorShape(output), output);         \
+    } else {                                                                   \
+      reference_ops::Slice<data_type>(op_params, GetTensorShape(input), input, \
+                                      GetTensorShape(output), output);         \
+    }                                                                          \
   }
 
   switch (input->type) {
@@ -213,6 +211,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteBool:
       TF_LITE_SLICE(bool, kernel_type);
+      break;
+    case kTfLiteString:
+      TF_LITE_SLICE(string, kernel_type);
       break;
     default:
       context->ReportError(

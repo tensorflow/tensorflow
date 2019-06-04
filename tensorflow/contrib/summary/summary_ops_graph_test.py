@@ -20,6 +20,7 @@ import os
 import tempfile
 import time
 
+import unittest
 import six
 
 from tensorflow.contrib.summary import summary as summary_ops
@@ -108,7 +109,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
-      # Note: First tf.Event is always file_version.
+      # Note: First tf.compat.v1.Event is always file_version.
       self.assertEqual(1, get_total())
       sess.run(summary_ops.all_summary_ops())
       self.assertEqual(1, get_total())
@@ -126,7 +127,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
-      # Note: First tf.Event is always file_version.
+      # Note: First tf.compat.v1.Event is always file_version.
       self.assertEqual(1, get_total())
       sess.run(summary_ops.all_summary_ops())
       self.assertEqual(1, get_total())
@@ -237,6 +238,8 @@ class GraphDbTest(summary_test_util.SummaryDbTest):
     with self.assertRaises(TypeError):
       summary_ops.graph('')
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testGraphSummary(self):
     training_util.get_or_create_global_step()
     name = 'hi'

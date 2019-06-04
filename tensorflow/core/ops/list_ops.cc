@@ -215,7 +215,7 @@ REGISTER_OP("TensorListStack")
           return errors::InvalidArgument(
               "Trying to read from list with wrong element dtype. List has "
               "type ",
-              DataTypeString(list_shape_type.dtype), " but expectec type ",
+              DataTypeString(list_shape_type.dtype), " but expected type ",
               DataTypeString(element_dtype));
         }
         shape_inference::ShapeHandle ignored;
@@ -223,6 +223,11 @@ REGISTER_OP("TensorListStack")
             c->Merge(element_shape, list_shape_type.shape, &ignored));
         element_shape = list_shape_type.shape;
       }
+      shape_inference::ShapeHandle element_shape_input = c->UnknownShape();
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
+          1, &element_shape_input));
+      TF_RETURN_IF_ERROR(
+          c->Merge(element_shape, element_shape_input, &element_shape));
       int expected_num_elements = -1;
       TF_RETURN_IF_ERROR(c->GetAttr("num_elements", &expected_num_elements));
       shape_inference::ShapeHandle num_elements;
@@ -418,6 +423,11 @@ REGISTER_OP("TensorListGetItem")
                                          DataTypeString(list_shape_type.dtype));
         }
       }
+      shape_inference::ShapeHandle element_shape_input = c->UnknownShape();
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
+          2, &element_shape_input));
+      TF_RETURN_IF_ERROR(
+          c->Merge(element_shape, element_shape_input, &element_shape));
       c->set_output(0, element_shape);
       return Status::OK();
     });
@@ -486,6 +496,11 @@ REGISTER_OP("TensorListGather")
                                          DataTypeString(list_shape_type.dtype));
         }
       }
+      shape_inference::ShapeHandle element_shape_input = c->UnknownShape();
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
+          2, &element_shape_input));
+      TF_RETURN_IF_ERROR(
+          c->Merge(element_shape, element_shape_input, &element_shape));
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(c->input(1), element_shape, &out));
       c->set_output(0, out);

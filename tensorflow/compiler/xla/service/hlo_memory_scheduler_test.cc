@@ -147,6 +147,47 @@ ENTRY root {
                                       instructions_by_name.at("e")));
 }
 
+TEST_F(HloSchedulingTest, HostSendDoneSchedule) {
+  const char* const module_str = R"(
+HloModule module
+
+ENTRY entry {
+  %p = f32[1000, 1000] parameter(0)
+  %token.0 = token[] after-all()
+  %send = (f32[1000, 1000], token[]) send(%p, %token.0),
+    channel_id=0, is_host_transfer=true
+  %n1 = f32[1000, 1000] negate(%p)
+  %n2 = f32[1000, 1000] negate(%n1)
+  %n3 = f32[1000, 1000] negate(%n2)
+  %send-done = token[] send-done(%send), channel_id=0, is_host_transfer=true
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(module_str));
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
+  // Verify that all instructions are in the sequence.
+  const std::vector<HloInstruction*>& sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
+
+  std::unordered_map<string, const HloInstruction*> instructions_by_name;
+  for (const HloInstruction* instruction : sequence) {
+    instructions_by_name[instruction->name()] = instruction;
+  }
+
+  SequentialHloOrdering ordering(schedule);
+  EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("send-done"),
+                                      instructions_by_name.at("n1")));
+}
+
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   auto builder = HloComputation::Builder(TestName());
   const auto TUPLE_SIZE = 1;
@@ -254,8 +295,9 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
   HloInstruction* zero_vector =
       cond_builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR1<float>({0, 0, 0, 0})));
-  cond_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
+  cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_param,
+                                    zero_vector, ComparisonDirection::kNe));
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
 
   // param - 1

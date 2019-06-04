@@ -226,6 +226,10 @@ Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
 // Shape function for MatMul-like operations.
 Status MatMulShape(shape_inference::InferenceContext* c);
 
+// Shape function for Batched MatMul-like operations with broadcasting across
+// batch dimensions.
+Status BatchMatMulV2Shape(shape_inference::InferenceContext* c);
+
 // Shape function for BiasAdd-like operations.
 Status BiasAddShape(shape_inference::InferenceContext* c);
 
@@ -250,6 +254,9 @@ Status AvgPoolShape(shape_inference::InferenceContext* c);
 
 // Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
 Status FusedBatchNormShape(shape_inference::InferenceContext* c);
+
+// Shape function for FusedBatchNormV3 operations.
+Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c);
 
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
@@ -316,6 +323,12 @@ Status SliceShape(shape_inference::InferenceContext* c);
 // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
                             ShapeHandle values_shape, ShapeHandle shape_shape);
+
+Status ValidateVariableResourceHandle(
+    InferenceContext* c, std::vector<ShapeAndType>* shape_and_type);
+
+// Shape function for GatherNd operations.
+Status GatherNdShape(InferenceContext* c);
 
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);

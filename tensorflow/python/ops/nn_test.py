@@ -24,9 +24,12 @@ from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -41,6 +44,147 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.nn_impl import _compute_sampled_logits
 from tensorflow.python.platform import test as test_lib
+
+
+class LossUtilitiesTest(test_lib.TestCase):
+
+  def testComputeAverageLossGlobalBatchSize(self):
+    per_example_loss = [1, 2, 3, 4, 5]
+    loss = nn_impl.compute_average_loss(per_example_loss, global_batch_size=10)
+    self.assertEqual(self.evaluate(loss), 1.5)
+
+  def testComputeAverageLossDefaultGlobalBatchSize(self):
+    if not test_lib.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+
+    # Without strategy - num replicas = 1
+    per_example_loss = constant_op.constant([2.5, 6.2, 5.])
+    loss = nn_impl.compute_average_loss(per_example_loss)
+    self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.) / 3)
+
+    # With strategy - num replicas = 2
+    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
+    with strategy.scope():
+      per_replica_losses = strategy.experimental_run_v2(
+          nn_impl.compute_average_loss, args=(per_example_loss,))
+      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.) / 3)
+
+  def testComputeAverageLossSampleWeights(self):
+    if not test_lib.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+
+    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
+
+    with strategy.scope():
+      # Scalar sample weight
+      per_replica_losses = strategy.experimental_run_v2(
+          nn_impl.compute_average_loss,
+          args=([2., 4., 6.],),
+          kwargs={"sample_weight": 2})
+      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(self.evaluate(loss), (2. + 4. + 6.) * 2. / 3)
+
+      # Per example sample weight
+      per_replica_losses = strategy.experimental_run_v2(
+          nn_impl.compute_average_loss,
+          args=([2., 4., 6.],),
+          kwargs={"sample_weight": [0.3, 0.5, 0.2]})
+      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(
+          self.evaluate(loss), (2. * 0.3 + 4. * 0.5 + 6. * 0.2) / 3)
+
+      # Time-step sample weight
+      per_replica_losses = strategy.experimental_run_v2(
+          nn_impl.compute_average_loss,
+          args=([[2., 0.5], [4., 1.]],),
+          kwargs={"sample_weight": [[0.3, 0.7], [0.2, 0.8]]})
+      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(
+          self.evaluate(loss), (2. * 0.3 + 0.5 * 0.7 + 4. * 0.2 + 1. * 0.8) / 2)
+
+  def testComputeAverageLossInvalidSampleWeights(self):
+    with self.assertRaisesRegex(ValueError,
+                                "weights can not be broadcast to values"):
+      nn_impl.compute_average_loss([2.5, 6.2, 5.],
+                                   sample_weight=[0.2, 0.8],
+                                   global_batch_size=10)
+
+  def testComputeAverageLossDtype(self):
+    if not test_lib.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+
+    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
+
+    with strategy.scope():
+      per_example_loss = constant_op.constant([2., 4., 6.],
+                                              dtype=dtypes.float64)
+      per_replica_losses = strategy.experimental_run_v2(
+          nn_impl.compute_average_loss,
+          args=(per_example_loss,),
+          kwargs={"sample_weight": 2})
+      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
+      self.assertEqual(loss.dtype, dtypes.float64)
+
+  def testComputeAverageLossInvalidRank(self):
+    per_example_loss = constant_op.constant(2)
+
+    # Static rank
+    with self.assertRaisesRegex(
+        ValueError, "Invalid value passed for `per_example_loss`. "
+        "Expected a tensor with at least rank 1,"):
+      nn_impl.compute_average_loss(per_example_loss)
+
+    with context.graph_mode():
+      # Dynamic rank
+      per_example_loss = array_ops.placeholder(dtype=dtypes.float32)
+      loss = nn_impl.compute_average_loss(per_example_loss)
+
+      with self.cached_session() as sess:
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError,
+            "Invalid value passed for `per_example_loss`. "
+            "Expected a tensor with at least rank 1."):
+          sess.run(loss, {per_example_loss: 2})
+
+  def testComputeAverageLossInCrossReplicaContext(self):
+    if not test_lib.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+
+    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
+    with strategy.scope():
+      with self.assertRaisesRegex(
+          RuntimeError,
+          "You are calling `compute_average_loss` in cross replica context"):
+        nn_impl.compute_average_loss([2, 3])
+
+  def testScaleRegularizationLoss(self):
+    if not test_lib.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+
+    # Without strategy - num replicas = 1
+    reg_losses = constant_op.constant([2.5, 6.2, 5.])
+    loss = nn_impl.scale_regularization_loss(reg_losses)
+    self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.))
+
+    # With strategy - num replicas = 2
+    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
+    with strategy.scope():
+      per_replica_losses = strategy.experimental_run_v2(
+          nn_impl.scale_regularization_loss, args=(reg_losses,))
+      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.))
+
+  def testScaleRegularizationLossInCrossReplicaContext(self):
+    if not test_lib.is_gpu_available(cuda_only=True):
+      self.skipTest("No GPU available")
+
+    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
+    with strategy.scope():
+      with self.assertRaisesRegex(
+          RuntimeError, "You are calling `scale_regularization_loss` in "
+          "cross replica context"):
+        nn_impl.scale_regularization_loss([2, 3])
 
 
 class ZeroFractionTest(test_lib.TestCase):
@@ -463,6 +607,12 @@ class DropoutTest(test_lib.TestCase):
       nn_ops.dropout_v2(t, 1.1)
     with self.assertRaises(ValueError):
       nn_ops.dropout_v2(t, [0.0, 1.0])
+
+  def testLargeRate(self):
+    x_dim = 40
+    y_dim = 30
+    t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    _ = nn_ops.dropout_v2(t, 0.9)
 
   @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
@@ -1397,7 +1547,7 @@ class ConvolutionTest(test_lib.TestCase):
 
 class ConvTransposeTest(test_lib.TestCase):
 
-  def test1DTensor(self):
+  def test1D(self):
     t = array_ops.ones([2, 4, 3])
     v = array_ops.ones([2, 5, 3])
     strides = 2
@@ -1407,7 +1557,17 @@ class ConvTransposeTest(test_lib.TestCase):
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
-  def test2DTensor(self):
+  def test1DTensor(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 5]), strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2D(self):
     t = array_ops.ones([2, 4, 4, 3])
     v = array_ops.ones([2, 2, 5, 3])
     strides = 2
@@ -1417,13 +1577,35 @@ class ConvTransposeTest(test_lib.TestCase):
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
-  def test3DTensor(self):
+  def test2DTensor(self):
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv2d_transpose_v2(t, v, [2, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 5]),
+                               strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3D(self):
     t = array_ops.ones([2, 4, 4, 4, 3])
     v = array_ops.ones([2, 2, 2, 5, 3])
     strides = 2
 
     y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
     y2 = nn_ops.conv_transpose(t, v, [2, 8, 8, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 8, 5]),
+                               strides)
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
@@ -1438,7 +1620,9 @@ class ConvTransposeTest(test_lib.TestCase):
       nn_ops.conv_transpose(None, 2, [2, 3, 4, 2, 5, 1], "SAME")
 
   def testTensorsNoShape(self):
-    with self.assertRaisesRegex(ValueError, "output_shape cannot be None"):
+    with self.assertRaisesRegex(
+        ValueError,
+        "output_shape must be a tensor or sized collection."):
       nn_ops.conv_transpose(None, None, None, None)
 
 

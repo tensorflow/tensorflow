@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import multiprocessing
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -50,6 +52,8 @@ def _interleave(lists, cycle_length, block_length):
   # `open_iterators` are the iterators whose elements are currently being
   # interleaved.
   open_iterators = []
+  if cycle_length == dataset_ops.AUTOTUNE:
+    cycle_length = multiprocessing.cpu_count()
   for i in range(cycle_length):
     if all_iterators:
       open_iterators.append(all_iterators.pop(0))
@@ -133,11 +137,13 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("11", np.int64([4, 5, 6]), 7, 2, 3),
       ("12", np.int64([4, 5, 6]), 7, 2, 5),
       ("13", np.int64([4, 5, 6]), 7, 2, 7),
-      ("14", np.int64([]), 2, 3, None),
-      ("15", np.int64([0, 0, 0]), 2, 3, None),
-      ("16", np.int64([4, 0, 6]), 2, 3, None),
-      ("17", np.int64([4, 0, 6]), 2, 3, 1),
-      ("18", np.int64([4, 0, 6]), 2, 3, 2),
+      ("14", np.int64([4, 5, 6]), dataset_ops.AUTOTUNE, 3, None),
+      ("15", np.int64([4, 5, 6]), dataset_ops.AUTOTUNE, 3, 1),
+      ("16", np.int64([]), 2, 3, None),
+      ("17", np.int64([0, 0, 0]), 2, 3, None),
+      ("18", np.int64([4, 0, 6]), 2, 3, None),
+      ("19", np.int64([4, 0, 6]), 2, 3, 1),
+      ("20", np.int64([4, 0, 6]), 2, 3, 2),
   )
   def testInterleaveDataset(self, input_values, cycle_length, block_length,
                             num_parallel_calls):
@@ -216,8 +222,9 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("7", np.int64([4, 5, 6]), 7, 2, 3),
       ("8", np.int64([4, 5, 6]), 7, 2, 5),
       ("9", np.int64([4, 5, 6]), 7, 2, 7),
-      ("10", np.int64([4, 0, 6]), 2, 3, 1),
-      ("11", np.int64([4, 0, 6]), 2, 3, 2),
+      ("10", np.int64([4, 5, 6]), dataset_ops.AUTOTUNE, 3, 1),
+      ("11", np.int64([4, 0, 6]), 2, 3, 1),
+      ("12", np.int64([4, 0, 6]), 2, 3, 2),
   )
   def testSloppyInterleaveDataset(self, input_values, cycle_length,
                                   block_length, num_parallel_calls):
@@ -238,6 +245,18 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     for _ in range(len(expected_output)):
       actual_output.append(self.evaluate(get_next()))
     self.assertAllEqual(expected_output.sort(), actual_output.sort())
+
+  def testInterleaveMap(self):
+    dataset = dataset_ops.Dataset.range(100)
+
+    def interleave_fn(x):
+      dataset = dataset_ops.Dataset.from_tensors(x)
+      return dataset.map(lambda x: x + x)
+
+    dataset = dataset.interleave(interleave_fn, cycle_length=5)
+    dataset = dataset.interleave(interleave_fn, cycle_length=5)
+
+    self.assertDatasetProduces(dataset, [4 * x for x in range(100)])
 
 
 if __name__ == "__main__":

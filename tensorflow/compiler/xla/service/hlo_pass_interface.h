@@ -41,6 +41,8 @@ class HloPassInterface {
   // module group. Ideally, the module group variant would be named "Run" as
   // well, but C++ does not handle overloaded virtual methods well.
   virtual StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) = 0;
+
+  virtual bool IsPassPipeline() { return false; }
 };
 
 // Base class for passes which are module-scoped.
@@ -56,6 +58,14 @@ class HloModulePass : public HloPassInterface {
     }
     return changed;
   };
+
+  // Update the layout of a Shape to one that is supported by a given backend.
+  // One can call this function after modifying the Shape in case that modifying
+  // the Shape requires changes to the layout for the given Backend.
+  //
+  // TODO(b/129084868): Make this Backend dependent instead of requiring
+  // deriving from the pass the and overriding this function.
+  virtual void UpdateLayout(Shape* shape) {}
 };
 
 // Base class for passes which are module-group scoped. These passes cannot run

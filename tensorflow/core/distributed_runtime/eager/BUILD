@@ -1,8 +1,9 @@
-package(default_visibility = [
-    "//tensorflow:internal",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -36,8 +37,8 @@ cc_library(
         ":eager_client",
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
-        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
 

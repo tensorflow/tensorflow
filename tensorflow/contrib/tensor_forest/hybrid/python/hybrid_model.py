@@ -22,6 +22,7 @@ import collections
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework.python.ops import variables as framework_variables
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -110,14 +111,15 @@ class HybridModel(object):
     """The loss to minimize while training."""
 
     if self.is_regression:
-      diff = self.training_inference_graph(data) - math_ops.to_float(labels)
+      diff = self.training_inference_graph(data) - math_ops.cast(
+          labels, dtypes.float32)
       mean_squared_error = math_ops.reduce_mean(diff * diff)
       root_mean_squared_error = math_ops.sqrt(mean_squared_error, name="loss")
       loss = root_mean_squared_error
     else:
       loss = math_ops.reduce_mean(
           nn_ops.sparse_softmax_cross_entropy_with_logits(
-              labels=array_ops.squeeze(math_ops.to_int32(labels)),
+              labels=array_ops.squeeze(math_ops.cast(labels, dtypes.int32)),
               logits=self.training_inference_graph(data)),
           name="loss")
     if self.regularizer:

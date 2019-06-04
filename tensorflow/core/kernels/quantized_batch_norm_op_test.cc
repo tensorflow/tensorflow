@@ -16,7 +16,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -218,8 +217,7 @@ TEST_F(QuantizedBatchNormOpTest, SameAsFloat) {
       allocator(), DT_FLOAT,
       TensorShape({input_batch, input_height, input_width, input_depth}));
   thread::ThreadPool threadpool(Env::Default(), "test", 1);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, 1);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(), 1);
   const Tensor& const_input_float = input_float;
   const Tensor& const_mean_float = mean_float;
   const Tensor& const_variance_float = variance_float;

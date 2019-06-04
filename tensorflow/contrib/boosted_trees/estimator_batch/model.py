@@ -186,6 +186,10 @@ def model_builder(features,
         train_op_fn=_train_op_fn,
         logits=logits)
 
+    if output_leaf_index and gbdt_batch.LEAF_INDEX in predictions_dict:
+      estimator_spec.predictions[gbdt_batch.LEAF_INDEX] = predictions_dict[
+          gbdt_batch.LEAF_INDEX]
+
     estimator_spec = estimator_spec._replace(
         training_hooks=training_hooks + list(estimator_spec.training_hooks))
     return estimator_spec

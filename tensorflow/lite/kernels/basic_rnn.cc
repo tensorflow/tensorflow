@@ -27,16 +27,6 @@ namespace ops {
 namespace builtin {
 namespace rnn {
 
-namespace {
-int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
-  }
-}
-}  // namespace
-
 constexpr int kInputTensor = 0;
 constexpr int kWeightsTensor = 1;
 constexpr int kRecurrentWeightsTensor = 2;
@@ -95,9 +85,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size_array));
 
-  bool is_hybrid =
-      input->type == kTfLiteFloat32 && (input_weights->type == kTfLiteUInt8 ||
-                                        input_weights->type == kTfLiteInt8);
+  const bool is_hybrid = IsHybridOp(input, input_weights);
 
   // Allocate temporary tensors to store quantized values of input and
   // hidden_state tensors.

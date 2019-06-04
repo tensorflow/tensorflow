@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
@@ -31,18 +30,12 @@ class RemoteExecuteNode : public tensorflow::EagerNode {
   RemoteExecuteNode(
       tensorflow::uint64 id, std::unique_ptr<EnqueueRequest> request,
       EagerClient* eager_client,
-      const gtl::InlinedVector<TensorHandle*, 4>& inputs,
       std::function<void(const Status& status, const EnqueueResponse& response)>
           done_callback)
       : tensorflow::EagerNode(id),
         request_(std::move(request)),
         eager_client_(eager_client),
-        inputs_(inputs),
-        done_callback_(std::move(done_callback)) {
-    for (auto* handle : inputs_) {
-      handle->Ref();
-    }
-  }
+        done_callback_(std::move(done_callback)) {}
 
   RemoteExecuteNode(tensorflow::uint64 id,
                     std::unique_ptr<EnqueueRequest> request,
@@ -50,12 +43,6 @@ class RemoteExecuteNode : public tensorflow::EagerNode {
       : tensorflow::EagerNode(id),
         request_(std::move(request)),
         eager_client_(eager_client) {}
-
-  ~RemoteExecuteNode() {
-    for (auto* handle : inputs_) {
-      handle->Unref();
-    }
-  }
 
   tensorflow::Status Run() override {
     EnqueueResponse response;
@@ -78,10 +65,6 @@ class RemoteExecuteNode : public tensorflow::EagerNode {
  private:
   std::unique_ptr<EnqueueRequest> request_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
-
-  // This is required to ensure that the tensor handles stay alive across the
-  // execution.
-  gtl::InlinedVector<TensorHandle*, 4> inputs_;
 
   std::function<void(const Status& status, const EnqueueResponse& response)>
       done_callback_;

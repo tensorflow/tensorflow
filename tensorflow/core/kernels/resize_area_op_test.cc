@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -103,16 +104,16 @@ class ResizeAreaOpTest : public OpsTestBase {
         const float in_y1 = (y + 1) * height_scale;
         // The start and end height indices of all the cells that could
         // contribute to the target cell.
-        int64 y_start = floor(in_y);
-        int64 y_end = ceil(in_y1);
+        int64 y_start = std::floor(in_y);
+        int64 y_end = std::ceil(in_y1);
 
         for (int64 x = 0; x < out_width; ++x) {
           const float in_x = x * width_scale;
           const float in_x1 = (x + 1) * width_scale;
           // The start and end width indices of all the cells that could
           // contribute to the target cell.
-          int64 x_start = floor(in_x);
-          int64 x_end = ceil(in_x1);
+          int64 x_start = std::floor(in_x);
+          int64 x_end = std::ceil(in_x1);
 
           sum_data.setConstant(0.0);
           for (int64 i = y_start; i < y_end; ++i) {

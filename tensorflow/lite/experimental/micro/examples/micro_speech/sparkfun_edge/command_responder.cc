@@ -33,21 +33,29 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   }
   static int count = 0;
 
-  // Toggle the yellow LED every time an inference is performed.
+  // Toggle the blue LED every time an inference is performed.
   ++count;
   if (count & 1) {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_YELLOW);
+    am_hal_gpio_output_set(AM_BSP_GPIO_LED_BLUE);
   } else {
-    am_hal_gpio_output_clear(AM_BSP_GPIO_LED_YELLOW);
+    am_hal_gpio_output_clear(AM_BSP_GPIO_LED_BLUE);
   }
 
-  // Turn on the red LED if 'yes' was heard.
+  // Turn on the yellow LED if 'yes' was heard.
   am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
+  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_YELLOW);
+  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_GREEN);
   if (is_new_command) {
     error_reporter->Report("Heard %s (%d) @%dms", found_command, score,
                            current_time);
     if (found_command[0] == 'y') {
+      am_hal_gpio_output_set(AM_BSP_GPIO_LED_YELLOW);
+    }
+    if (found_command[0] == 'n') {
       am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
+    }
+    if (found_command[0] == 'u') {
+      am_hal_gpio_output_set(AM_BSP_GPIO_LED_GREEN);
     }
   }
 }

@@ -41,9 +41,9 @@ Status EagerExecute(
     tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* retvals,
     int* num_retvals);
 
-// Low-level utility to execute the kernel specified by kernel on device
-// 'device', with the inputs op_inputs, in the context 'ctx'.
-Status EagerKernelExecute(EagerContext* ctx, Device* device,
+// Low-level utility to execute the kernel specified by `kernel` on
+// `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
+Status EagerKernelExecute(EagerContext* ctx,
                           const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                           KernelAndDevice* kernel, NodeExecStats* maybe_stats,
                           StepStats* maybe_step_stats,

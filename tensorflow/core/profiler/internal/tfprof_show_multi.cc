@@ -159,7 +159,7 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
     legends.push_back("input shapes");
   }
   return strings::Printf("node name | %s\n",
-                         str_util::Join(legends, " | ").c_str());
+                         absl::StrJoin(legends, " | ").c_str());
 }
 
 string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
@@ -179,11 +179,11 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
         input_vec.push_back(strings::Printf("%d:unknown", s.first));
       } else {
         input_vec.push_back(strings::Printf(
-            "%d:%s", s.first, str_util::Join(s.second, "x").c_str()));
+            "%d:%s", s.first, absl::StrJoin(s.second, "x").c_str()));
       }
     }
     string shape_type_str = strings::Printf(
-        "input_type: %s", str_util::Join(input_vec, ",\t").c_str());
+        "input_type: %s", absl::StrJoin(input_vec, ",\t").c_str());
     auto t = input_shapes_attr.find(shape_type_str);
     if (t == input_shapes_attr.end()) {
       input_shapes_attr.insert(
@@ -215,7 +215,7 @@ string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
         "%s\t(run*%lld|defined*%lld)\texec_time: %s", s.first.c_str(),
         std::get<1>(t), std::get<0>(t), FormatTime(std::get<2>(t)).c_str()));
   }
-  return str_util::Join(input_types, "\n");
+  return absl::StrJoin(input_types, "\n");
 }
 
 std::vector<string> TFMultiShow::FormatTimes(const ShowMultiNode* node,

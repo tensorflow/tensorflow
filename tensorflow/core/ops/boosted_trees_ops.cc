@@ -97,6 +97,41 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
       return Status::OK();
     });
 
+REGISTER_OP("BoostedTreesCalculateBestFeatureSplit")
+    .Input("node_id_range: int32")
+    .Input("stats_summary: float32")
+    .Input("l1: float")
+    .Input("l2: float")
+    .Input("tree_complexity: float")
+    .Input("min_node_weight: float")
+    .Attr("logits_dimension: int >= 1")
+    .Attr("split_type: {'inequality'} = 'inequality'")
+    .Output("node_ids: int32")
+    .Output("gains: float32")
+    .Output("feature_dimensions: int32")
+    .Output("thresholds: int32")
+    .Output("left_node_contribs: float32")
+    .Output("right_node_contribs: float32")
+    .Output("split_with_default_directions: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle node_id_range_shape;
+      shape_inference::ShapeHandle unused_shape;
+      // node id range is rank 1 with 2 values.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &node_id_range_shape));
+      TF_RETURN_IF_ERROR(
+          c->Merge(node_id_range_shape, c->MakeShape({2}), &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused_shape));
+      ShapeHandle output_shape = c->MakeShape({c->UnknownDim()});
+      for (int i = 0; i < 7; ++i) {
+        c->set_output(i, output_shape);
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("BoostedTreesCreateEnsemble")
     .Input("tree_ensemble_handle: resource")
     .Input("stamp_token: int64")
@@ -178,6 +213,112 @@ REGISTER_OP("BoostedTreesMakeStatsSummary")
       }
       c->set_output(0,
                     c->MakeShape({num_features, max_splits, num_buckets, 2}));
+      return Status::OK();
+    });
+
+// V2 of BoostedTreesMakeStatsSummary. Supports multi-dim dense Tensor and
+// multi class.
+REGISTER_OP("BoostedTreesAggregateStats")
+    .Input("node_ids: int32")
+    .Input("gradients: float")
+    .Input("hessians: float")
+    .Input("feature: int32")
+    .Attr("max_splits: int >= 1")
+    .Attr("num_buckets: int >= 1")
+    .Output("stats_summary: float")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // Sets the shape of the output as a Rank 4 Tensor.
+      int max_splits;
+      int num_buckets;
+      TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_buckets", &num_buckets));
+
+      shape_inference::ShapeHandle node_ids_shape;
+      shape_inference::ShapeHandle gradients_shape;
+      shape_inference::ShapeHandle hessians_shape;
+      shape_inference::ShapeHandle feature_shape;
+
+      shape_inference::DimensionHandle batch_size = c->Dim(c->input(0), 0);
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &node_ids_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &gradients_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &hessians_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 2, &feature_shape));
+
+      // Verify all three inputs have same first dimension, i.e., batch_size.
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(gradients_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(hessians_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(feature_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+
+      DimensionHandle logits_dim = c->Dim(c->input(1), 1);
+      DimensionHandle hessian_dim = c->Dim(c->input(2), 1);
+      DimensionHandle feature_dim = c->Dim(c->input(3), 1);
+      DimensionHandle stats_dim;
+      TF_RETURN_IF_ERROR(c->Add(logits_dim, hessian_dim, &stats_dim));
+      c->set_output(
+          0, c->MakeShape({max_splits, num_buckets, feature_dim, stats_dim}));
+      return Status::OK();
+    });
+
+// Sparse Version of BoostedTreesAggregatesStats.
+REGISTER_OP("BoostedTreesSparseAggregateStats")
+    .Input("node_ids: int32")
+    .Input("gradients: float")
+    .Input("hessians: float")
+    .Input("feature_indices: int32")
+    .Input("feature_values: int32")
+    .Input("feature_shape: int32")
+    .Attr("max_splits: int >= 1")
+    .Attr("num_buckets: int >= 1")
+    .Output("stats_summary_indices: int32")
+    .Output("stats_summary_values: float")
+    .Output("stats_summary_shape: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      int max_splits;
+      int num_buckets;
+      TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
+      TF_RETURN_IF_ERROR(c->GetAttr("num_buckets", &num_buckets));
+
+      shape_inference::ShapeHandle node_ids_shape;
+      shape_inference::ShapeHandle gradients_shape;
+      shape_inference::ShapeHandle hessians_shape;
+      shape_inference::ShapeHandle feature_indices_shape;
+      shape_inference::ShapeHandle feature_values_shape;
+      shape_inference::ShapeHandle feature_shape;
+
+      shape_inference::DimensionHandle batch_size = c->Dim(c->input(0), 0);
+      shape_inference::DimensionHandle num_entries;
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &node_ids_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &gradients_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &hessians_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 2, &feature_indices_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 1, &feature_values_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 1, &feature_shape));
+
+      // Verify all inputs have same first dimension, i.e., batch_size.
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(gradients_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(hessians_shape, 0),
+                                  c->Dim(node_ids_shape, 0), &batch_size));
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(feature_indices_shape, 0),
+                                  c->Dim(feature_values_shape, 0),
+                                  &num_entries));
+
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(feature_shape, 0), 2, &unused));
+
+      DimensionHandle logits_dim = c->Dim(c->input(1), 1);
+      DimensionHandle hessian_dim = c->Dim(c->input(2), 1);
+      DimensionHandle stats_dim;
+      TF_RETURN_IF_ERROR(c->Add(logits_dim, hessian_dim, &stats_dim));
+
+      c->set_output(0, c->MakeShape({c->UnknownDim(), 4}));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->MakeShape({4}));
       return Status::OK();
     });
 

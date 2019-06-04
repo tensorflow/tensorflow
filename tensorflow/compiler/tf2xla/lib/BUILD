@@ -1,9 +1,8 @@
 # Utilities for building XLA computations.
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -80,5 +79,17 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "data_format",
+    srcs = ["data_format.cc"],
+    hdrs = ["data_format.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )

@@ -60,13 +60,6 @@ bazel build --define=mount_project="${PWD}" "${PKG}/generate:${TARGET}"
 cd "${TEMPDIR}"
 tar xvf "${ROOT}/bazel-bin/${PKG}/generate/${TARGET}_outputs.tar"
 
-# TODO(klimek): The skylark config rules should copy the files instead of
-# creating aliases.
-# Other than in @local_config_tensorrt, the header files in the remote config
-# repo are not relative to the repository root. Add a dummy include_prefix to
-# make them available as virtual includes.
-buildozer 'set include_prefix ""' //local_config_tensorrt:%cc_library
-
 # Delete all empty files: configurations leave empty files around when they are
 # unnecessary.
 find . -empty -delete

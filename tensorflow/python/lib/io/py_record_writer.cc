@@ -68,6 +68,11 @@ void PyRecordWriter::Flush(TF_Status* out_status) {
     return;
   }
   Status s = writer_->Flush();
+  if (s.ok()) {
+    // Per the RecordWriter contract, flushing the RecordWriter does not
+    // flush the underlying file.  Here we need to do both.
+    s = file_->Flush();
+  }
   if (!s.ok()) {
     Set_TF_Status_from_Status(out_status, s);
     return;
