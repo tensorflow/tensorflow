@@ -24166,6 +24166,13 @@ op {
       }
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "QuantizeAndDequantizeV3"
@@ -24213,6 +24220,13 @@ op {
         type: DT_FLOAT
         type: DT_DOUBLE
       }
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
