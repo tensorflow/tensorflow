@@ -3102,6 +3102,7 @@ Status ConvertBinary(OpConverterParams* params) {
 
   static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
       {"Add", nvinfer1::ElementWiseOperation::kSUM},
+      {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
       {"Mul", nvinfer1::ElementWiseOperation::kPROD},
       {"Sub", nvinfer1::ElementWiseOperation::kSUB},
       {"Div", nvinfer1::ElementWiseOperation::kDIV},
@@ -4606,8 +4607,8 @@ static void RegisterValidatableOpConverters(
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxArgs"}) {
     (*registration)[quantization_op_type] = ConvertQuantize;
   }
-  for (auto binary_op_type :
-       {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum", "Pow"}) {
+  for (auto binary_op_type : {"Add", "AddV2", "Mul", "Sub", "Div", "RealDiv",
+                              "Maximum", "Minimum", "Pow"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
   for (auto activation_op_pair : *ActivationTypeMap()) {

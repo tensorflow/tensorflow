@@ -2432,6 +2432,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Abs", ConvertSimpleOperator<AbsOperator, kAnyNumInputs, 1>},
       {"Add", ConvertSimpleOperator<AddOperator, 2, 1>},
+      {"AddV2", ConvertSimpleOperator<AddOperator, 2, 1>},
       {"AddN", ConvertSimpleOperator<AddNOperator, kAnyNumInputs, 1>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator, kAnyNumInputs, 1>},
       {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},

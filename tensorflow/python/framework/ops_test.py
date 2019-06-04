@@ -141,9 +141,8 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1, 2, 3])
       b = array_ops.ones([4, 5, 6])
       with self.assertRaisesRegexp(
-          ValueError,
-          r"Dimensions must be equal, but are 2 and 5 for 'add' \(op: 'Add'\) "
-          r"with input shapes: \[1,2,3\], \[4,5,6\]."):
+          ValueError, r"Dimensions must be equal, but are 2 and 5 for 'add' "
+          r"\(op: 'Add(V2)?'\) with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
 
 
@@ -660,7 +659,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(x.op.op_def.input_arg), 0)
     self.assertEqual(len(x.op.op_def.output_arg), 1)
 
-    self.assertEqual(z.op.op_def.name, "Add")
+    self.assertRegexpMatches(z.op.op_def.name, "Add(V2)?")
     self.assertEqual(len(z.op.op_def.input_arg), 2)
     self.assertEqual(len(z.op.op_def.output_arg), 1)
 
