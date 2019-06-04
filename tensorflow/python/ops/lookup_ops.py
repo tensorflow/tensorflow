@@ -1756,7 +1756,11 @@ class MutableHashTable(LookupInterface):
 
   def _gather_saveables_for_checkpoint(self):
     """For object-based checkpointing."""
-    return {"table": functools.partial(MutableHashTable._Saveable, table=self)}
+    return {
+        "table":
+            functools.partial(
+                MutableHashTable._Saveable, table=self, name=self._name)
+    }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for MutableHashTable."""
@@ -2048,7 +2052,11 @@ class DenseHashTable(LookupInterface):
 
   def _gather_saveables_for_checkpoint(self):
     """For object-based checkpointing."""
-    return {"table": functools.partial(DenseHashTable._Saveable, table=self)}
+    return {
+        "table":
+            functools.partial(
+                DenseHashTable._Saveable, table=self, name=self._name)
+    }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
