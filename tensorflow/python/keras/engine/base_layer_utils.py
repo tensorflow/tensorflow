@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+
 import enum
 
 from tensorflow.python.distribute import distribution_strategy_context
@@ -288,6 +289,9 @@ def is_in_eager_or_tf_function():
 
 def is_in_tf_function():
   """Returns if inside of a tf.function."""
+  # Check if running in V1 graph mode.
+  if not ops.executing_eagerly_outside_functions():
+    return False
   if not ops.inside_function():
     return False
   # Check if inside Keras FuncGraph.
@@ -612,3 +616,9 @@ def mark_as_return(outputs, acd):
     # pylint: enable=protected-access
 
   return nest.map_structure(_mark_as_return, outputs)
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method

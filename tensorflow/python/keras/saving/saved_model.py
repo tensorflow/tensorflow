@@ -12,36 +12,76 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# pylint: disable=protected-access
 """Utility functions to save/load keras Model to/from SavedModel."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import json
 import os
 import six
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function as defun
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import model_utils
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking.tracking import AutoTrackable
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import keras_export
+
+# To avoid circular dependencies between keras/engine and keras/saving,
+# code in keras/saving must delay imports.
+
+# TODO(b/134426265): Switch back to single-quotes to match the rest of the file
+# once the issue with copybara is fixed.
+# pylint:disable=g-inconsistent-quotes
+metrics_lib = LazyLoader("metrics_lib", globals(),
+                         "tensorflow.python.keras.metrics")
+models_lib = LazyLoader("models_lib", globals(),
+                        "tensorflow.python.keras.models")
+base_layer = LazyLoader(
+    "base_layer", globals(),
+    "tensorflow.python.keras.engine.base_layer")
+network_lib = LazyLoader(
+    "network_lib", globals(),
+    "tensorflow.python.keras.engine.network")
+sequential = LazyLoader(
+    "sequential", globals(),
+    "tensorflow.python.keras.engine.sequential")
+training_lib = LazyLoader(
+    "training_lib", globals(),
+    "tensorflow.python.keras.engine.training")
+# pylint:enable=g-inconsistent-quotes
 
 
 @keras_export('keras.experimental.export_saved_model')
@@ -144,9 +184,7 @@ def _export_model_variables(model, saved_model_path):
 
 def _save_v1_format(model, path, custom_objects, as_text, input_signature):
   """Exports model to v1 SavedModel format."""
-  from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
-
-  if not model._is_graph_network:
+  if not model._is_graph_network:  # pylint: disable=protected-access
     if isinstance(model, sequential.Sequential):
       # If input shape is not directly set in the model, the exported model
       # will infer the expected shapes of the input from the model.
@@ -163,7 +201,7 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
           'Subclassed models can only be exported for serving. Please set '
           'argument serving_only=True.')
 
-  builder = saved_model_builder._SavedModelBuilder(path)
+  builder = saved_model_builder._SavedModelBuilder(path)  # pylint: disable=protected-access
 
   # Manually save variables to export them in an object-based checkpoint. This
   # skips the `builder.add_meta_graph_and_variables()` step, which saves a
@@ -233,7 +271,6 @@ def _export_mode(
     ValueError: If the train/eval mode is being exported, but the model does
       not have an optimizer.
   """
-  from tensorflow.python.keras import models as models_lib  # pylint: disable=g-import-not-at-top
   compile_clone = (mode != mode_keys.ModeKeys.PREDICT)
   if compile_clone and not model.optimizer:
     raise ValueError(
@@ -264,12 +301,12 @@ def _export_mode(
     # Extract update and train ops from train/test/predict functions.
     train_op = None
     if mode == mode_keys.ModeKeys.TRAIN:
-      clone._make_train_function()
+      clone._make_train_function()  # pylint: disable=protected-access
       train_op = clone.train_function.updates_op
     elif mode == mode_keys.ModeKeys.TEST:
-      clone._make_test_function()
+      clone._make_test_function()  # pylint: disable=protected-access
     else:
-      clone._make_predict_function()
+      clone._make_predict_function()  # pylint: disable=protected-access
     g.get_collection_ref(ops.GraphKeys.UPDATE_OPS).extend(clone.state_updates)
 
     with session.Session().as_default():
@@ -292,7 +329,7 @@ def _export_mode(
         # Add graph and variables to SavedModel.
         # TODO(b/113134168): Switch to add_meta_graph_and_variables.
         clone.save_weights(checkpoint_path, save_format='tf', overwrite=True)
-        builder._has_saved_variables = True
+        builder._has_saved_variables = True  # pylint: disable=protected-access
 
       # Add graph to the SavedModel builder.
       builder.add_meta_graph(
@@ -313,7 +350,7 @@ def _create_signature_def_map(model, mode):
   inputs_dict = {name: x for name, x in zip(model.input_names, model.inputs)}
   if model.optimizer:
     targets_dict = {x.name.split(':')[0]: x
-                    for x in model._targets if x is not None}
+                    for x in model._targets if x is not None}  # pylint: disable=protected-access
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}
@@ -325,9 +362,8 @@ def _create_signature_def_map(model, mode):
   local_vars = set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
   vars_to_add = set()
   if metrics is not None:
-    from tensorflow.python.keras.metrics import Metric  # pylint: disable=g-import-not-at-top
     for key, value in six.iteritems(metrics):
-      if isinstance(value, Metric):
+      if isinstance(value, metrics_lib.Metric):
         vars_to_add.update(value.variables)
         # Convert Metric instances to (value_tensor, update_op) tuple.
         metrics[key] = (value.result(), value.updates[0])
@@ -406,3 +442,823 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
       compat.as_text(constants.VARIABLES_FILENAME))
   model.load_weights(checkpoint_prefix)
   return model
+
+################################################################################
+# Functional Style/V2 SavedModel functions                                     #
+################################################################################
+
+# All serialized attributes are listed within SerializedAttributes classes. See
+# the docstring in SerializedAttributes for more context
+
+# All attributes are saved under the 'keras_api' namespace. Only common
+# endpoints are attached directly to the root object.
+_KERAS_ATTR = 'keras_api'
+# Keys for the serialization cache.
+# Maps to the keras serialization dict {Layer --> SerializedAttributes object}
+_KERAS_CACHE_KEY = 'keras_serialized_attributes'
+
+
+class SerializedAttributes(object):
+  """Class that tracks and validates all serialization attributes.
+
+  Keras models contain many Python-defined components. For example, the
+  trainable_variable property lists the model's trainable variables by
+  recursively retrieving the trainable variables from each of the child layers.
+  Another example is model.call, a python function that calls child layers and
+  adds ops to the backend graph.
+
+  Only Tensorflow checkpointable objects and functions can be serialized to
+  SavedModel. Serializing a Keras model as-is results in a checkpointable object
+  that does not resemble a Keras model at all. Thus, extra checkpointable
+  objects and functions must be created during serialization.
+
+  **Defining new serialized attributes**
+  Child classes should be defined using:
+    SerializedAttributes.with_attributes(
+        'name', checkpointable_objects=[...], functions=[...], copy_from=[...])
+  This class is used to cache generated checkpointable objects and functions,
+  ensuring that new objects and functions are generated a single time.
+
+  **Usage during serialization**
+  Each Layer/Model object should have a corresponding instance of
+  SerializedAttributes. Create a new instance by calling
+  `SerializedAttributes.new(obj)`. Objects and functions may be saved using
+  `.set_and_validate_checkpointable_objects`/`.set_and_and_validate_functions`.
+  The properties `.checkpointable_objects` and `.functions` returns the cached
+  values.
+
+  **Adding/changing attributes to save to SavedModel**
+  1. Change the call to `SerializedAttributes.with_attributes` in the correct
+     class:
+     - CommonEndpoints: Base attributes to be added during serialization. If
+       these attributes are present in a Trackable object, it can be
+       deserialized to a Keras Model.
+     - LayerAttributes: Attributes to serialize for Layer objects.
+     - ModelAttributes: Attributes to serialize for Model objects.
+  2. Update class docstring
+  3. Update arguments to any calls to `set_and_validate_*`. For example, if
+     `call_raw_tensors` is added to the ModelAttributes function list, then
+     a `call_raw_tensors` function should be passed to
+     `set_and_validate_functions`.
+
+  **Common endpoints vs other attributes**
+  Only common endpoints are attached directly to the root object. Keras-specific
+  attributes are saved to a separate trackable object with the name "keras_api".
+  The number of objects attached to the root is limited because any naming
+  conflicts will cause user code to break.
+
+  Another reason is that this will only affect users who call
+  `tf.saved_model.load` instead of `tf.keras.models.load_model`. These are
+  advanced users who are likely to have defined their own tf.functions and
+  trackable objects. The added Keras-specific attributes are kept out of the way
+  in the "keras_api" namespace.
+
+  Properties defined in this class may be used to filter out keras-specific
+  attributes:
+  - `functions_to_serialize`: Returns dict of functions to attach to the root
+      object.
+  - `checkpointable_objects_to_serialize`: Returns dict of objects to attach to
+      the root object (including separate trackable object containing
+      keras-specific attributes)
+
+  All changes to the serialized attributes must be backwards-compatible, so
+  attributes should not be removed or modified without sufficient justification.
+  """
+
+  @staticmethod
+  def with_attributes(
+      name, checkpointable_objects=None, functions=None, copy_from=None):
+    """Creates a subclass with all attributes as specified in the arguments.
+
+    Args:
+      name: Name of subclass
+      checkpointable_objects: List of checkpointable objects to be serialized
+        in the SavedModel.
+      functions: List of functions to be serialized in the SavedModel.
+      copy_from: List of other SerializedAttributes subclasses. The returend
+        class will copy checkpoint objects/functions from each subclass.
+
+    Returns:
+      Child class with attributes as defined in the `checkpointable_objects`
+      and `functions` lists.
+    """
+    checkpointable_objects = checkpointable_objects or []
+    functions = functions or []
+
+    if copy_from is not None:
+      for cls in copy_from:
+        checkpointable_objects.extend(cls.all_checkpointable_objects)
+        functions.extend(cls.all_functions)
+
+    classdict = {
+        'all_checkpointable_objects': set(checkpointable_objects),
+        'all_functions': set(functions)}
+    return type(name, (SerializedAttributes,), classdict)
+
+  @staticmethod
+  def new(obj):
+    if isinstance(obj, training_lib.Model):
+      return ModelAttributes()
+    elif isinstance(obj, base_layer.Layer):
+      return LayerAttributes()
+    else:
+      raise TypeError('Internal error during serialization: Expected Keras '
+                      'Layer object, got {} of type {}'.format(obj, type(obj)))
+
+  def __init__(self):
+    self._object_dict = {}
+    self._function_dict = {}
+    self._keras_trackable = AutoTrackable()
+
+  @property
+  def functions(self):
+    """Returns dictionary of all functions."""
+    return {key: value for key, value in self._function_dict.items()
+            if value is not None}
+
+  @property
+  def checkpointable_objects(self):
+    """Returns dictionary of all checkpointable objects."""
+    return {key: value for key, value in self._object_dict.items()
+            if value is not None}
+
+  @property
+  def functions_to_serialize(self):
+    """Returns functions to attach to the root object during serialization."""
+    return {key: value for key, value in self.functions.items()
+            if key in CommonEndpoints.all_functions}
+
+  @property
+  def objects_to_serialize(self):
+    """Returns objects to attach to the root object during serialization."""
+    objects = {key: value for key, value in self.checkpointable_objects.items()
+               if key in CommonEndpoints.all_checkpointable_objects}
+    objects[_KERAS_ATTR] = self._keras_trackable
+    return objects
+
+  def set_and_validate_functions(self, function_dict):
+    """Saves function dictionary, and validates dictionary values."""
+    for key in self.all_functions:
+      if key in function_dict:
+        if (function_dict[key] is not None and  # Not all functions are required
+            not isinstance(function_dict[key],
+                           (defun.Function, def_function.Function))):
+          raise ValueError(
+              'Function dictionary contained a non-function object: {} (for key'
+              ' {})'.format(function_dict[key], key))
+        self._function_dict[key] = function_dict[key]
+        setattr(self._keras_trackable, key, function_dict[key])
+      else:
+        raise ValueError('Function {} missing from serialized function dict.'
+                         .format(key))
+    return self.functions
+
+  def set_and_validate_objects(self, object_dict):
+    """Saves objects to a dictionary, and validates the values."""
+    for key in self.all_checkpointable_objects:
+      if key in object_dict:
+        if not isinstance(object_dict[key], trackable.Trackable):
+          raise ValueError(
+              'Object dictionary contained a non-trackable object: {} (for key'
+              ' {})'.format(object_dict[key], key))
+        self._object_dict[key] = object_dict[key]
+        setattr(self._keras_trackable, key, object_dict[key])
+      else:
+        raise ValueError('Object {} missing from serialized object dict.')
+    return self.checkpointable_objects
+
+
+class CommonEndpoints(SerializedAttributes.with_attributes(
+    'CommonEndpoints',
+    checkpointable_objects=['variables', 'trainable_variables',
+                            'regularization_losses'],
+    functions=['__call__', 'call_and_return_all_conditional_losses',
+               '_default_save_signature'])):
+  """Common endpoints shared by all models loadable by Keras.
+
+  List of all attributes:
+    variables: List of all variables in the model and its sublayers.
+    trainable_variables: List of all trainable variables in the model and its
+      sublayers.
+    regulariation_losses: List of all unconditional losses (losses not dependent
+      on the inputs) in the model and its sublayers.
+    __call__: Function that takes inputs and returns the outputs of the model
+      call function.
+    call_and_return_all_conditional_losses: Function that returns a tuple of
+      (call function outputs, list of all losses that depend on the inputs).
+    _default_save_signature: Traced model call function. This is only included
+      if the top level exported object is a Keras model.
+  """
+
+
+class LayerAttributes(SerializedAttributes.with_attributes(
+    'LayerAttributes',
+    checkpointable_objects=['non_trainable_variables', 'layers', 'metrics'],
+    functions=['call_and_return_conditional_losses', 'activity_regularizer_fn'],
+    copy_from=[CommonEndpoints]
+    )):
+  """Layer checkpointable objects + functions that are saved to the SavedModel.
+
+  List of all attributes:
+    All attributes from CommonEndpoints
+    non_trainable_variables: List of non-trainable variables in the layer and
+      its sublayers.
+    layers: List of all sublayers.
+    metrics: List of all metrics in the layer and its sublayers.
+    call_and_return_conditional_losses: Function that takes inputs and returns a
+      tuple of (outputs of the call function, list of input-dependent losses).
+      The list of losses excludes the activity regularizer function, which is
+      separate to allow the deserialized Layer object to define a different
+      activity regularizer.
+    activity_regularizer_fn: Callable that returns the activity regularizer loss
+  """
+
+
+class ModelAttributes(SerializedAttributes.with_attributes(
+    'ModelAttributes',
+    copy_from=[LayerAttributes])):
+  """Model checkpointable objects + functions that are saved to the SavedModel.
+
+  List of all attributes:
+    All attributes from LayerAttributes (including CommonEndpoints)
+  """
+  # TODO(kathywu): Add attributes `compile_losses` and `compile_metrics`, which
+  #  list all losses and metrics defined by `model.compile`.
+
+
+def serialize_all_attributes(layer, serialization_cache):
+  """Serialize all attributes in the layer."""
+  save_model_default_signature = False
+  if _KERAS_CACHE_KEY not in serialization_cache:
+    keras_cache = serialization_cache[_KERAS_CACHE_KEY] = {}
+    if isinstance(layer, training_lib.Model):
+      # Only trace default signature if the root object is a Model. Since the
+      # keras cache key is only created in this method, we know that the object
+      # is root if the key does not yet exist in the cache.
+      save_model_default_signature = True
+  else:
+    keras_cache = serialization_cache[_KERAS_CACHE_KEY]
+
+  if layer in keras_cache:
+    return keras_cache[layer]
+  serialized_attr = keras_cache[layer] = SerializedAttributes.new(layer)
+
+  if _should_skip_serialization(layer):
+    return serialized_attr
+
+  object_dict = _wrap_layer_objects(layer, serialization_cache)
+  try:
+    function_dict = _wrap_layer_functions(layer, serialization_cache,
+                                          save_model_default_signature)
+  except (ValueError, TypeError) as e:
+    logging.warning('Skipping full serialization of object {}, because an '
+                    'error occurred while tracing layer functions. Error '
+                    'message: {}'.format(layer, e.message))
+  else:
+    # Add checkpointable objects and functions to the SerializedAttribute object
+    # only if all functions are successfully traced.
+    # The `set_and_validate_*` function ensures that all required attributes are
+    # exported with the correct type.
+    serialized_attr.set_and_validate_objects(object_dict)
+    serialized_attr.set_and_validate_functions(function_dict)
+  return serialized_attr
+
+
+def _should_skip_serialization(layer):
+  """Skip serializing extra objects and functions if layer inputs aren't set."""
+  if isinstance(layer, training_lib.Model):
+    try:
+      # pylint:disable=pointless-statement
+      layer.inputs
+      layer.input_names
+      # pylint:enable=pointless-statement
+    except AttributeError:
+      # If the model does not have inputs set, because it was not called or its
+      # input shapes were not recorded, we won't have a signature so can't trace
+      # a function. But the user may still save an object with this Model
+      # attached; we won't fail the whole tf.saved_model.save.
+      logging.warning('Skipping full serialization of Keras model {}, because '
+                      'its inputs are not defined.'.format(layer))
+      return True
+    else:
+      return False
+  else:
+    if not layer.input_spec:
+      logging.warning('Skipping full serialization of Keras layer {}, because '
+                      'it does not have an input spec defined.'.format(layer))
+      return True
+    if not layer.built:
+      logging.warning('Skipping full serialization of Keras layer {}, because '
+                      'it is not built.'.format(layer))
+      return True
+    return False
+
+
+def _wrap_layer_objects(layer, serialization_cache):
+  """Returns extra trackable objects to attach to the serialized layer.
+
+  Args:
+    layer: Keras Layer object.
+    serialization_cache: Dictionary shared between all objects during
+      serialization.
+
+  Returns:
+    A dictionary containing all checkpointable objects from a
+    SerializedAttributes object. See LayerAttributes and ModelAttributes for
+    entire list of objects
+  """
+  # Wrap all regularization losses as tf.functions.
+  # First, generate list of all regularization losses in this layer and
+  # sublayers.
+  regularization_losses = layer._callable_losses[:]  # pylint: disable=protected-access
+  for child_layer in (
+      trackable_layer_utils.filter_empty_layer_containers(layer._layers)):  # pylint: disable=protected-access
+    regularization_losses.extend(child_layer._callable_losses)  # pylint: disable=protected-access
+  # Next, wrap all loss functions as tf.functions. Use the serialization cache
+  # to store already-wrapped functions.
+  keras_loss_cache = serialization_cache.setdefault('keras_losses', {})
+  wrapped_loss_functions = []
+  for loss_fn in regularization_losses:
+    if loss_fn in keras_loss_cache:
+      wrapped_loss_functions.append(keras_loss_cache[loss_fn])
+    else:
+      wrapped_loss = _wrap_unconditional_loss(loss_fn, len(keras_loss_cache))
+      keras_loss_cache[wrapped_loss] = wrapped_loss
+      wrapped_loss_functions.append(wrapped_loss)
+  return dict(
+      variables=data_structures.ListWrapper(layer.variables),
+      trainable_variables=data_structures.ListWrapper(
+          layer.trainable_variables),
+      non_trainable_variables=data_structures.ListWrapper(
+          layer.non_trainable_variables),
+      layers=data_structures.ListWrapper(
+          trackable_layer_utils.filter_empty_layer_containers(
+              layer._layers)),  # pylint: disable=protected-access
+      metrics=data_structures.ListWrapper(layer.metrics),
+      regularization_losses=data_structures.ListWrapper(
+          wrapped_loss_functions))
+
+
+def _wrap_layer_functions(layer, serialization_cache,
+                          save_model_default_signature=False):
+  """Returns dict of wrapped layer call function and losses in tf.functions.
+
+  Args:
+    layer: Keras Layer object.
+    serialization_cache: Dictionary shared between all objects during
+      serialization.
+    save_model_default_signature: Whether to save traced model call function.
+
+  Returns:
+    A dictionary containing all keras tf.functions to serialize. See
+    LayerAttributes and ModelAttributes for the list of all attributes.
+  """
+  # Reset the losses of the layer and its children. The call function in each
+  # child layer is replaced with tf.functions.
+  original_attrs = _replace_child_layer_functions(layer, serialization_cache)
+  original_layer_losses = layer._losses[:]  # pylint: disable=protected-access
+  with trackable.no_automatic_dependency_tracking_scope(layer):
+    layer._losses = []  # pylint: disable=protected-access
+    # Note that eager losses do not need to be saved since these functions
+    # create symbolic losses.
+
+  # Wrap all the layer call and activity regularizer functions.
+  call_fn_with_losses = _wrap_call_and_conditional_losses(layer)
+  fns = {'call_and_return_conditional_losses': call_fn_with_losses,
+         '__call__': _extract_outputs_from_fn(layer, call_fn_with_losses)}
+
+  if save_model_default_signature:
+    fns['_default_save_signature'] = saving_utils.trace_model_call(layer)
+  else:
+    fns['_default_save_signature'] = None
+
+  if layer.activity_regularizer is not None:
+    fns['activity_regularizer_fn'] = _wrap_activity_regularizer(layer)
+    fns['call_and_return_all_conditional_losses'] = (
+        _append_activity_regularizer_loss(
+            layer, call_fn_with_losses, fns['activity_regularizer_fn']))
+  else:
+    fns['activity_regularizer_fn'] = None
+    fns['call_and_return_all_conditional_losses'] = call_fn_with_losses
+
+  # Manually trigger traces before restoring the overwritten functions. The
+  # functions are traced within the layer call context to ensure that layer
+  # functions (e.g. add_loss) behave as though running in graph mode.
+  with base_layer_utils.call_context().enter(layer, None, build_graph=True):
+    for fn in fns.values():
+      if fn is not None and fn.input_signature is not None:
+        fn.get_concrete_function()
+
+  # Restore overwritten functions/losses
+  with trackable.no_automatic_dependency_tracking_scope(layer):
+    layer._losses = original_layer_losses  # pylint: disable=protected-access
+  _restore_child_layer_functions(original_attrs)
+
+  return fns
+
+
+def _replace_child_layer_functions(layer, serialization_cache):
+  """Replaces functions in the children layers with wrapped tf.functions.
+
+  This step allows functions from parent layers to reference the wrapped
+  functions from their children layers instead of retracing the ops.
+
+  This function also resets all losses stored in the layer. These are stored in
+  the returned dictionary. Use `_restore_child_layer_functions` to restore
+  the original attributes.
+
+  Args:
+    layer: Keras Layer object.
+    serialization_cache: Dictionary shared between all objects during
+      serialization.
+
+  Returns:
+    Dictionary mapping layer objects -> original functions and losses:
+      { Child layer 1: {
+          'losses': Original losses,
+          'call': Original call function
+          'activity_regularizer': Original activity regularizer},
+        Child layer 2: ...
+      }
+  """
+  original_attrs = {}
+  for child_layer in trackable_layer_utils.filter_empty_layer_containers(
+      layer._layers):  # pylint: disable=protected-access
+    # Save symbolic layer losses, which will be restored to maintain the same
+    # state.
+    original_attrs[child_layer] = {'losses': child_layer._losses[:]}  # pylint: disable=protected-access
+    if child_layer not in serialization_cache[_KERAS_CACHE_KEY]:
+      layer_fns = (serialize_all_attributes(child_layer, serialization_cache)
+                   .functions)
+    else:
+      layer_fns = serialization_cache[_KERAS_CACHE_KEY][child_layer].functions
+    if not layer_fns:
+      # This indicates either:
+      #   - circular dependency, which means the current layer's functions
+      #     should be wrapped first.
+      #   - Child layer's inputs are not defined, so its functions have not been
+      #     wrapped. In this case, no replacement is necessary so move on to the
+      #     next child.
+      continue
+
+    original_attrs[child_layer]['call'] = child_layer.call
+    original_attrs[child_layer]['activity_regularizer'] = (
+        child_layer.activity_regularizer)
+    with trackable.no_automatic_dependency_tracking_scope(child_layer):
+      child_layer.activity_regularizer = layer_fns.get(
+          'activity_regularizer_fn')
+      child_layer.call = _use_wrapped_call(
+          child_layer, layer_fns['call_and_return_conditional_losses'])
+      child_layer._losses = []  # pylint: disable=protected-access
+  return original_attrs
+
+
+def _restore_child_layer_functions(original_attrs):
+  """Restores attributes replaced with `_replace_child_layer_functions`."""
+  for child_layer, attrs in original_attrs.items():
+    with trackable.no_automatic_dependency_tracking_scope(child_layer):
+      child_layer._losses = attrs['losses']  # pylint: disable=protected-access
+      if 'call' in attrs:
+        child_layer.call = attrs['call']
+        child_layer.activity_regularizer = attrs['activity_regularizer']
+
+
+def _use_wrapped_call(layer, call_fn):
+  """Creates fn that adds the losses returned by call_fn & returns the outputs.
+
+  Args:
+    layer: A Keras layer object
+    call_fn: tf.function returned by _wrap_call_and_conditional_losses.
+
+  Returns:
+    function that calls call_fn and returns the outputs. Losses returned by
+    call_fn are added to the layer losses.
+  """
+  def wrapped_call(inputs, *args, **kwargs):
+    """Returns the outputs from the call_fn, and adds the losses."""
+    if layer._expects_training_arg:  # pylint: disable=protected-access
+      training = kwargs.pop('training', None)
+      if training is None:
+        training = K.learning_phase()
+      training = math_ops.cast(training, dtypes.bool)
+      outputs, losses = call_fn(inputs, training=training, *args, **kwargs)
+    else:
+      outputs, losses = call_fn(inputs)
+    layer.add_loss(losses, inputs)
+    return outputs
+  return wrapped_call
+
+
+def _wrap_call_and_conditional_losses(layer):
+  """Wraps call function that returns a tuple of (outputs, losses).
+
+  The losses returned are conditional on the inputs passed to the call function.
+  Unconditional losses (e.g. weight regularizeration) are wrapped separately.
+
+  Args:
+    layer: a Keras layer object
+
+  Returns:
+    call function that returns outputs and conditional losses -- excludes
+    activity regularizer
+  """
+  if isinstance(layer, RevivedLayer):
+    return layer.call_and_return_conditional_losses
+
+  if (isinstance(layer.call, def_function.Function) and
+      layer.call.input_signature is not None):
+    input_signature = layer.call.input_signature
+  else:
+    if (isinstance(layer, training_lib.Model) and
+        saving_utils.model_input_signature(layer) is not None):
+      input_signature = saving_utils.model_input_signature(layer)
+    else:
+      input_signature = [nest.map_structure(
+          lambda x: input_spec.to_tensor_spec(x, layer.dtype),
+          layer.input_spec)]
+      # If input spec is too general, then don't define an input signature.
+      for spec in nest.flatten(input_signature):
+        if spec.shape == tensor_shape.TensorShape(None):
+          input_signature = None
+          break
+
+    if input_signature is not None and layer._expects_training_arg:  # pylint: disable=protected-access
+      input_signature.append(
+          tensor_spec.TensorSpec(shape=[], dtype=dtypes.bool))
+
+  # Create function that generates both outputs and losses
+  layer_call = layer.call
+  if layer._expects_training_arg:  # pylint: disable=protected-access
+    def call_and_return_conditional_losses(inputs, training):
+      _set_symbolic_learning_phase(training)
+      return layer_call(inputs, training=training), layer.get_losses_for(inputs)
+  else:
+    def call_and_return_conditional_losses(inputs):
+      K.set_learning_phase(0)
+      return layer_call(inputs), layer.get_losses_for(inputs)
+  return def_function.Function(
+      call_and_return_conditional_losses,
+      '{}_layer_call_and_return_conditional_losses'.format(layer.name),
+      input_signature=input_signature,
+      # TODO(kathywu): Investigate autograph error.
+      autograph=False)
+
+
+def _extract_outputs_from_fn(layer, call_and_return_conditional_losses):
+  """Returns a function that returns only call function outputs."""
+  if isinstance(layer, RevivedLayer):
+    return layer._original_call  # pylint: disable=protected-access
+  if layer._expects_training_arg:  # pylint: disable=protected-access
+    def call(inputs, training):
+      return call_and_return_conditional_losses(inputs, training)[0]
+  else:
+    def call(inputs):
+      return call_and_return_conditional_losses(inputs)[0]
+  return def_function.Function(
+      call, '{}_layer_call_fn'.format(layer.name),
+      input_signature=call_and_return_conditional_losses.input_signature,
+      # TODO(kathywu): Investigate autograph error.
+      autograph=False)
+
+
+def _set_symbolic_learning_phase(value):
+  """Set learning phase to a tensor value (for internal use only).
+
+  This is used when wrapping call functions as tf.functions that have training
+  as a tensor input. Thus, when `learning_phase()` is called, the training
+  tensor is returned. This function is called when saving a model to SavedModel.
+
+  Args:
+    value: A Tensor object.
+
+  Raises:
+    ValueError: If the input value is not a graph tensor
+  """
+  graph = K.get_graph()
+  if not isinstance(value, ops.Tensor):
+    raise ValueError('Symbolic learning phase must be a graph tensor.')
+  K._GRAPH_LEARNING_PHASES[graph] = value  # pylint: disable=protected-access
+
+
+def _append_activity_regularizer_loss(
+    layer, call_fn_with_losses, activity_regularizer_fn):
+  """Appends activity regularizer loss to losses returned by the wrapped fn."""
+  def fn(*args):
+    outputs, losses = call_fn_with_losses(*args)
+    losses.append(activity_regularizer_fn(outputs))
+    return outputs, losses
+  return def_function.Function(
+      fn,
+      '{}_layer_call_and_return_all_conditional_losses'.format(layer.name),
+      input_signature=call_fn_with_losses.input_signature,
+      # TODO(kathywu): Investigate autograph error.
+      autograph=False)
+
+
+def _wrap_unconditional_loss(loss_fn, index):
+  """Wraps callable/unconditonal loss, returning a serializable function."""
+  # Extract original loss function from partial function
+  fn = loss_fn.args[0] if isinstance(loss_fn, functools.partial) else loss_fn
+  if isinstance(fn, def_function.Function):
+    return fn
+  else:
+    return def_function.Function(
+        fn, 'loss_fn_{}'.format(index), input_signature=[])
+
+
+def _wrap_activity_regularizer(layer):
+  """Wraps the activity regularizer."""
+  if isinstance(layer.activity_regularizer, def_function.Function):
+    return layer.activity_regularizer
+  return def_function.Function(
+      layer.activity_regularizer,
+      '{}_activity_regularizer'.format(layer.name),
+      input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
+
+
+def load_from_saved_model_v2(path):
+  """Loads Keras objects from a SavedModel.
+
+  Any Keras layer or model saved to the SavedModel will be loaded back
+  as Keras objects. Other objects are loaded as regular trackable objects (same
+  as `tf.saved_model.load`).
+
+  Currently, Keras saving/loading only retains the Keras object's weights,
+  losses, and call function.
+
+  The loaded model can be re-compiled, but the original optimizer, compiled loss
+  functions, and metrics are not retained. This is temporary, and `model.save`
+  will soon be able to serialize compiled models.
+
+  Args:
+    path: Path to SavedModel.
+
+  Returns:
+    Object loaded from SavedModel.
+  """
+  # TODO(kathywu): Add saving/loading of optimizer, compiled losses and metrics.
+  # TODO(kathywu): Add code to load from objects that contain all endpoints
+  return load.load_internal(path, loader_cls=KerasObjectLoader)
+
+
+class KerasObjectLoader(load.Loader):
+  """Loader that recreates Keras objects."""
+
+  def __init__(self, *args, **kwargs):
+    super(KerasObjectLoader, self).__init__(*args, **kwargs)
+    self._finalize()
+
+  def _finalize(self):
+    # pylint: disable=protected-access
+    for node in self._nodes:
+      if isinstance(node, RevivedLayer):
+        losses = node._serialized_attributes.get('regularization_losses', [])
+        for loss in losses:
+          node.add_loss(loss)
+
+        # Use wrapped activity regularizer function if the layer's activity
+        # regularizer wasn't created during initialization.
+        if node.activity_regularizer is None:
+          node.activity_regularizer = getattr(node.keras_api,
+                                              'activity_regularizer_fn', None)
+
+      if isinstance(node, RevivedModel):
+        # Since this revived object is technically a subclassed model (even if
+        # the original model is functional/sequential), inputs should be set.
+        input_signature = (
+            node.keras_api.call_and_return_conditional_losses.input_signature[0]
+            )
+        node._set_inputs(input_signature)
+    # pylint: enable=protected-access
+
+  def _recreate_base_user_object(self, proto):
+    revived_classes = {
+        '_tf_keras_layer': (RevivedLayer, base_layer.Layer),
+        '_tf_keras_network': (RevivedNetwork, network_lib.Network),
+        '_tf_keras_model': (RevivedModel, training_lib.Model)
+    }
+
+    parent_classes = revived_classes.get(proto.identifier, None)
+
+    if parent_classes is not None:
+      parent_classes = revived_classes[proto.identifier]
+      metadata = json.loads(proto.metadata)
+      revived_cls = type(
+          compat.as_str(metadata['class_name']),
+          parent_classes,
+          {'__setattr__': parent_classes[1].__setattr__})
+      obj = revived_cls._init_from_metadata(metadata)  # pylint: disable=protected-access
+      return obj, revived_cls._revive_setter  # pylint: disable=protected-access
+
+    return super(KerasObjectLoader, self)._recreate_base_user_object(proto)
+
+
+# TODO(kathywu): Centrally define keys and functions for both  serialization and
+# deserialization.
+class RevivedLayer(object):
+  """Keras layer loaded from a SavedModel."""
+
+  @classmethod
+  def _init_from_metadata(cls, metadata):
+    """Create revived layer from metadata stored in the SavedModel proto."""
+    init_args = dict(
+        name=metadata['name'],
+        trainable=metadata['trainable'])
+    if metadata.get('dtype') is not None:
+      init_args['dtype'] = metadata['dtype']
+    if metadata.get('batch_input_shape') is not None:
+      init_args['batch_input_shape'] = metadata['batch_input_shape']
+
+    revived_obj = cls(**init_args)
+
+    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+      # pylint:disable=protected-access
+      revived_obj._expects_training_arg = metadata['expects_training_arg']
+      if metadata.get('config') is not None:
+        revived_obj._config = metadata['config']
+      if metadata.get('input_spec') is not None:
+        revived_obj.input_spec = input_spec.InputSpec.from_config(
+            metadata['input_spec'])
+      if metadata.get('activity_regularizer') is not None:
+        revived_obj.activity_regularizer = regularizers.deserialize(
+            metadata['activity_regularizer'])
+
+      # Store attributes revived from SerializedAttributes in a un-tracked
+      # dictionary. The attributes are the ones listed in CommonEndpoints or
+      # "keras_api" for keras-specific attributes.
+      revived_obj._serialized_attributes = {}
+      # pylint:enable=protected-access
+
+    return revived_obj
+
+  def _revive_setter(self, name, value):
+    """Reattaches attributes from the SavedModel to the newly revived object."""
+    if (name in CommonEndpoints.all_functions or
+        name in CommonEndpoints.all_checkpointable_objects or
+        name == _KERAS_ATTR):
+      self._serialized_attributes[name] = value
+    else:
+      setattr(self, name, value)
+
+  @property
+  def keras_api(self):
+    return self._serialized_attributes[_KERAS_ATTR]
+
+  def get_config(self):
+    if hasattr(self, '_config'):
+      return self._config
+    else:
+      raise NotImplementedError
+
+  def call(self, inputs, *args, **kwargs):
+    """Calls the revived layer and add conditional losses."""
+    call_fn = _use_wrapped_call(
+        self, self.keras_api.call_and_return_conditional_losses)
+    return call_fn(inputs, *args, **kwargs)
+
+
+class RevivedNetwork(RevivedLayer):
+  """Keras network of layers loaded from a SavedModel."""
+
+  @classmethod
+  def _init_from_metadata(cls, metadata):
+    """Create revived network from metadata stored in the SavedModel proto."""
+    # TODO(kathywu): Refactor logic here so that RevivedNetwork uses the
+    revived_obj = cls(name=metadata['name'])
+
+    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+      # pylint:disable=protected-access
+      if metadata.get('dtype') is not None:
+        revived_obj._dtype = metadata['dtype']
+      revived_obj.trainable = metadata['trainable']
+
+      revived_obj._expects_training_arg = metadata['expects_training_arg']
+      if metadata.get('config') is not None:
+        revived_obj._config = metadata['config']
+
+      if metadata.get('activity_regularizer') is not None:
+        revived_obj.activity_regularizer = regularizers.deserialize(
+            metadata['activity_regularizer'])
+
+      # Store attributes revived from SerializedAttributes in a un-tracked
+      # dictionary. The attributes are the ones listed in CommonEndpoints or
+      # "keras_api" for keras-specific attributes.
+      revived_obj._serialized_attributes = {}
+      # pylint:enable=protected-access
+
+    return revived_obj
+
+
+class RevivedModel(RevivedNetwork):
+  """Keras model loaded from a SavedModel."""
+
+  @classmethod
+  def _init_from_metadata(cls, metadata):
+    """Create revived model from metadata stored in the SavedModel proto."""
+    revived_obj = super(RevivedModel, cls)._init_from_metadata(metadata)
+
+    with trackable.no_automatic_dependency_tracking_scope(revived_obj):
+      if 'training_config' in metadata:
+        revived_obj._training_config = metadata['training_config']  # pylint:disable=protected-access
+
+    return revived_obj

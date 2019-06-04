@@ -1711,5 +1711,26 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
 
 
+  def test_object_with_extra_dependencies(self):
+
+    class Extra(tracking.AutoTrackable):
+
+      def _list_extra_dependencies_for_serialization(self, cache):
+        if self not in cache:
+          cache[self] = {"a": variables.Variable(5.)}
+        return cache[self]
+    root = Extra()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    imported = load.load(path)
+    self.assertEqual(5, self.evaluate(imported.a))
+
+    root.a = variables.Variable(3.)
+    with self.assertRaisesRegexp(
+        ValueError,
+        "object has an attribute named a, which is reserved."):
+      save.save(root, path)
+
+
 if __name__ == "__main__":
   test.main()

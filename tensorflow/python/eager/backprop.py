@@ -21,9 +21,7 @@ from __future__ import print_function
 import functools
 import operator
 import sys
-import warnings
 
-import numpy as np
 import six
 
 from tensorflow.python import pywrap_tensorflow
@@ -35,7 +33,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_array_ops
@@ -544,60 +541,6 @@ def make_vjp(f, params=None, persistent=True):
     return result, vjp
 
   return decorated
-
-
-# Warn the user if we convert a sparse representation to dense with at
-# least this number of elements.
-_LARGE_SPARSE_NUM_ELEMENTS = 100000000
-
-
-def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
-  """Converts an IndexedSlices object `value` to a Tensor.
-
-  NOTE(mrry): This function is potentially expensive.
-
-  Args:
-    value: An ops.IndexedSlices object.
-    dtype: The dtype of the Tensor to be returned.
-    name: Optional name to use for the returned Tensor.
-    as_ref: True if a ref is requested.
-
-  Returns:
-    A dense Tensor representing the values in the given IndexedSlices.
-
-  Raises:
-    ValueError: If the IndexedSlices does not have the same dtype.
-  """
-  _ = as_ref
-  if dtype and not dtype.is_compatible_with(value.dtype):
-    raise ValueError(
-        "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %
-        (dtype.name, value.dtype.name))
-  if value.dense_shape is None:
-    raise ValueError(
-        "Tensor conversion requested for IndexedSlices without dense_shape: %s"
-        % str(value))
-  # TODO(mrry): Consider adding static shape information to
-  # IndexedSlices, to avoid using numpy here.
-  if not context.executing_eagerly():
-    dense_shape_value = tensor_util.constant_value(value.dense_shape)
-    if dense_shape_value is not None:
-      num_elements = np.prod(dense_shape_value)
-      if num_elements >= _LARGE_SPARSE_NUM_ELEMENTS:
-        warnings.warn(
-            "Converting sparse IndexedSlices to a dense Tensor with %d "
-            "elements. This may consume a large amount of memory." %
-            num_elements)
-    else:
-      warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-          "This may consume a large amount of memory.")
-  return math_ops.unsorted_segment_sum(
-      value.values, value.indices, value.dense_shape[0], name=name)
-
-
-ops.register_tensor_conversion_function(ops.IndexedSlices,
-                                        _indexed_slices_to_tensor)
 
 
 def flatten_nested_indexed_slices(grad):

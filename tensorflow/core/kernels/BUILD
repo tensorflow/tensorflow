@@ -1266,9 +1266,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     prefix = "unique_op",
-    deps = ARRAY_DEPS + [
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(

@@ -949,9 +949,12 @@ py_library(
         ":device",
         ":dtypes",
         ":error_interpolation",
+        ":indexed_slices",
         ":op_def_registry",
         ":platform",
         ":registry",
+        ":tensor_conversion_registry",
+        ":tensor_like",
         ":tensor_shape",
         ":tf2",
         ":traceable_stack",
@@ -963,6 +966,37 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:tape",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tensor_like",
+    srcs = ["framework/tensor_like.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
+    name = "indexed_slices",
+    srcs = ["framework/indexed_slices.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":composite_tensor",
+        ":dtypes",
+        ":tensor_conversion_registry",
+        ":tensor_shape",
+        ":type_spec",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "tensor_conversion_registry",
+    srcs = ["framework/tensor_conversion_registry.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -1102,6 +1136,7 @@ py_library(
         ":composite_tensor",
         ":dtypes",
         ":framework_ops",
+        ":tensor_like",
         ":tensor_util",
     ],
 )
@@ -1112,7 +1147,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":dtypes",
-        ":framework_ops",
         ":tensor_util",
     ],
 )
@@ -1244,6 +1278,7 @@ py_library(
     srcs = ["framework/tensor_util.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":tensor_like",
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",

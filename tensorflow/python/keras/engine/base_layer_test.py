@@ -713,6 +713,26 @@ class NestedTrackingTest(test.TestCase):
     self.assertEmpty(layer.variables)
     self.assertEmpty(layer.submodules)
 
+  def test_layer_call_fn_args(self):
+
+    class NonDefunLayer(keras.layers.Layer):
+
+      def call(self, inputs, a, mask, b=None, training=None):
+        return inputs
+
+    class DefunLayer(keras.layers.Layer):
+
+      @def_function.function
+      def call(self, x, mask, a, training=None, b=None):
+        return x
+
+    nondefun_layer = NonDefunLayer()
+    self.assertEqual(nondefun_layer._call_fn_args,
+                     ['inputs', 'a', 'mask', 'b', 'training'])
+    defun_layer = DefunLayer()
+    self.assertEqual(defun_layer._call_fn_args,
+                     ['x', 'mask', 'a', 'training', 'b'])
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NameScopingTest(keras_parameterized.TestCase):
