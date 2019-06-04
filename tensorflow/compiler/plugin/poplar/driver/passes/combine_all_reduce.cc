@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/combine_all_reduce.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -127,8 +129,9 @@ StatusOr<std::vector<HloInstruction*>> Replace(HloComputation* comp, Iter begin,
 
   return result;
 }
+}  // namespace
 
-StatusOr<HloInstructionSequence> CombineAllReduces(
+StatusOr<HloInstructionSequence> CombineAllReduce::CombineAllReduces(
     HloComputation* comp, const HloInstructionSequence& sequence) {
   auto instructions = sequence.instructions();
 
@@ -172,6 +175,9 @@ StatusOr<HloInstructionSequence> CombineAllReduces(
                                     replacements.back()));
 
         replacements.insert(replacements.end(), ops.begin(), ops.end());
+        // Make sure that the new GTEs are added as inplace instructions.
+        absl::c_copy(ops, std::inserter(inplace_instructions,
+                                        inplace_instructions.end()));
       }
 
       // Replace the previous all reduce instruction in the schedule
@@ -202,8 +208,9 @@ StatusOr<HloInstructionSequence> CombineAllReduces(
   // Return the new schedule
   return HloInstructionSequence(instructions);
 }
-}  // namespace
 
+CombineAllReduce::CombineAllReduce(CompilerAnnotations& annotations)
+    : inplace_instructions(annotations.inplace_instructions) {}
 StatusOr<bool> CombineAllReduce::Run(HloModule* module) {
   if (!module->has_schedule()) {
     return tensorflow::errors::FailedPrecondition(

@@ -949,14 +949,6 @@ StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
         return input_tensors[idx].flatten();
       });
       auto t = poplar::concat(flat_tensors);
-      if (tensorflow::GetPoplarXlaFlags().add_all_reduce_copies) {
-        // TODO T8856 - remove this flag.
-        auto t_cloned = res.replicated_graph->clone(
-            t, GetDebugName(inst) + "/Copy",
-            poplar::TensorCloneMethod::CREATE_NEW_ORDER);
-        seq.add(poplar::program::Copy(t, t_cloned));
-        t = t_cloned;
-      }
 
       // Replicated sum the concatenated tensor
       auto out = popops::replicatedAllReduce(

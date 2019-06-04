@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/combine_all_reduce.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/look_ahead_scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/schedulers/sync_list_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
@@ -68,8 +69,16 @@ add {
       CreateSyncListMemoryScheduler(64 * 1024));
   EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
 
-  CombineAllReduce combine_all_reduce;
+  CompilerAnnotations annotations(module);
+  CombineAllReduce combine_all_reduce(annotations);
   EXPECT_TRUE(combine_all_reduce.Run(module).ValueOrDie());
+
+  // Check the inplace instructions are all GTEs
+  EXPECT_EQ(annotations.inplace_instructions.size(), 3);
+  for (auto inplace_inst : annotations.inplace_instructions) {
+    EXPECT_EQ(inplace_inst->opcode(), HloOpcode::kGetTupleElement);
+    EXPECT_TRUE(inplace_inst->tuple_index() < 3);
+  }
 
   auto s = module->schedule().sequence(module->entry_computation());
   auto seq = s.instructions();
@@ -117,8 +126,16 @@ add {
       CreateLookAheadMemoryScheduler(64 * 1024));
   EXPECT_TRUE(scheduler.Run(module).ValueOrDie());
 
-  CombineAllReduce combine_all_reduce;
+  CompilerAnnotations annotations(module);
+  CombineAllReduce combine_all_reduce(annotations);
   EXPECT_TRUE(combine_all_reduce.Run(module).ValueOrDie());
+
+  // Check the inplace instructions are all GTEs
+  EXPECT_EQ(annotations.inplace_instructions.size(), 3);
+  for (auto inplace_inst : annotations.inplace_instructions) {
+    EXPECT_EQ(inplace_inst->opcode(), HloOpcode::kGetTupleElement);
+    EXPECT_TRUE(inplace_inst->tuple_index() < 3);
+  }
 
   auto s = module->schedule().sequence(module->entry_computation());
   auto seq = s.instructions();
