@@ -1231,7 +1231,7 @@ port::Status CheckAndFetchProjectionWeights(
         dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
     dnn::RnnDescriptor::ParamsRegion region = {
         reinterpret_cast<int64>(offset), size};
-    (*weights).push_back(region);
+    weights->push_back(region);
   }
 #endif // CUDNN_VERSION >= 7101
   return port::Status::OK();
