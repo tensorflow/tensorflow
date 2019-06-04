@@ -32,12 +32,12 @@ struct TestConstantFold : public FunctionPass<TestConstantFold> {
   // All constants in the function post folding.
   SmallVector<Operation *, 8> existingConstants;
 
-  void foldOperation(Operation *op, FoldHelper &helper);
+  void foldOperation(Operation *op, OperationFolder &helper);
   void runOnFunction() override;
 };
 } // end anonymous namespace
 
-void TestConstantFold::foldOperation(Operation *op, FoldHelper &helper) {
+void TestConstantFold::foldOperation(Operation *op, OperationFolder &helper) {
   // Attempt to fold the specified operation, including handling unused or
   // duplicated constants.
   if (succeeded(helper.tryToFold(op)))
@@ -56,7 +56,7 @@ void TestConstantFold::runOnFunction() {
   existingConstants.clear();
 
   auto &f = getFunction();
-  FoldHelper helper(&f);
+  OperationFolder helper(&f);
 
   // Collect and fold the operations within the function.
   SmallVector<Operation *, 8> ops;

@@ -31,14 +31,15 @@
 namespace mlir {
 class Function;
 class Operation;
+class Value;
 
-/// A helper class for folding operations, and unifying duplicated constants
+/// A utility class for folding operations, and unifying duplicated constants
 /// generated along the way.
 ///
 /// To make sure constants properly dominate all their uses, constants are
 /// moved to the beginning of the entry block of the function when tracked by
 /// this class.
-class FoldHelper {
+class OperationFolder {
 public:
   /// Constructs an instance for managing constants in the given function `f`.
   /// Constants tracked by this instance will be moved to the entry block of
@@ -47,7 +48,7 @@ public:
   /// This instance does not proactively walk the operations inside `f`;
   /// instead, users must invoke the following methods to manually handle each
   /// operation of interest.
-  FoldHelper(Function *f);
+  OperationFolder(Function *f) : function(f) {}
 
   /// Tries to perform folding on the given `op`, including unifying
   /// deduplicated constants. If successful, calls `preReplaceAction` (if
@@ -59,13 +60,17 @@ public:
             std::function<void(Operation *)> preReplaceAction = {});
 
   /// Notifies that the given constant `op` should be remove from this
-  /// FoldHelper's internal bookkeeping.
+  /// OperationFolder's internal bookkeeping.
   ///
   /// Note: this method must be called if a constant op is to be deleted
-  /// externally to this FoldHelper. `op` must be a constant op.
+  /// externally to this OperationFolder. `op` must be a constant op.
   void notifyRemoval(Operation *op);
 
 private:
+  /// Tries to perform folding on the given `op`. If successful, populates
+  /// `results` with the results of the foldin.
+  LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results);
+
   /// Tries to deduplicate the given constant and returns success if that can be
   /// done. This moves the given constant to the top of the entry block if it
   /// is first seen. If there is already an existing constant that is the same,

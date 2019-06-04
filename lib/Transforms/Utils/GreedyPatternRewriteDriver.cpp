@@ -143,7 +143,7 @@ private:
 /// Perform the rewrites.
 bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
   Function *fn = getFunction();
-  FoldHelper helper(fn);
+  OperationFolder helper(fn);
 
   bool changed = false;
   int i = 0;
@@ -166,8 +166,8 @@ bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
       // If the operation has no side effects, and no users, then it is
       // trivially dead - remove it.
       if (op->hasNoSideEffect() && op->use_empty()) {
-        // Be careful to update bookkeeping in FoldHelper to keep consistency if
-        // this is a constant op.
+        // Be careful to update bookkeeping in OperationFolder to keep
+        // consistency if this is a constant op.
         helper.notifyRemoval(op);
         op->erase();
         continue;

@@ -29,11 +29,13 @@
 
 using namespace mlir;
 
-FoldHelper::FoldHelper(Function *f) : function(f) {}
+//===----------------------------------------------------------------------===//
+// OperationFolder
+//===----------------------------------------------------------------------===//
 
 LogicalResult
-FoldHelper::tryToFold(Operation *op,
-                      std::function<void(Operation *)> preReplaceAction) {
+OperationFolder::tryToFold(Operation *op,
+                           std::function<void(Operation *)> preReplaceAction) {
   assert(op->getFunction() == function &&
          "cannot constant fold op from another function");
 
@@ -52,8 +54,37 @@ FoldHelper::tryToFold(Operation *op,
     return tryToUnify(op);
   }
 
+  // Try to fold the operation.
+  SmallVector<Value *, 8> results;
+  if (failed(tryToFold(op, results)))
+    return failure();
+
+  // Constant folding succeeded. We will start replacing this op's uses and
+  // eventually erase this op. Invoke the callback provided by the caller to
+  // perform any pre-replacement action.
+  if (preReplaceAction)
+    preReplaceAction(op);
+
+  // Check to see if the operation was just updated in place.
+  if (results.empty())
+    return success();
+
+  // Otherwise, replace all of the result values and erase the operation.
+  for (unsigned i = 0, e = results.size(); i != e; ++i)
+    op->getResult(i)->replaceAllUsesWith(results[i]);
+  op->erase();
+  return success();
+}
+
+/// Tries to perform folding on the given `op`. If successful, populates
+/// `results` with the results of the foldin.
+LogicalResult OperationFolder::tryToFold(Operation *op,
+                                         SmallVectorImpl<Value *> &results) {
+  assert(op->getFunction() == function &&
+         "cannot constant fold op from another function");
+
   SmallVector<Attribute, 8> operandConstants;
-  SmallVector<OpFoldResult, 8> results;
+  SmallVector<OpFoldResult, 8> foldResults;
 
   // Check to see if any operands to the operation is constant and whether
   // the operation knows how to constant fold itself.
@@ -70,38 +101,29 @@ FoldHelper::tryToFold(Operation *op,
   }
 
   // Attempt to constant fold the operation.
-  if (failed(op->fold(operandConstants, results)))
+  if (failed(op->fold(operandConstants, foldResults)))
     return failure();
 
-  // Constant folding succeeded. We will start replacing this op's uses and
-  // eventually erase this op. Invoke the callback provided by the caller to
-  // perform any pre-replacement action.
-  if (preReplaceAction)
-    preReplaceAction(op);
-
   // Check to see if the operation was just updated in place.
-  if (results.empty())
+  if (foldResults.empty())
     return success();
-  assert(results.size() == op->getNumResults());
+  assert(foldResults.size() == op->getNumResults());
 
   // Create the result constants and replace the results.
   FuncBuilder builder(op);
   for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
-    auto *res = op->getResult(i);
-    if (res->use_empty()) // Ignore dead uses.
-      continue;
-    assert(!results[i].isNull() && "expected valid OpFoldResult");
+    assert(!foldResults[i].isNull() && "expected valid OpFoldResult");
 
     // Check if the result was an SSA value.
-    if (auto *repl = results[i].dyn_cast<Value *>()) {
-      if (repl != res)
-        res->replaceAllUsesWith(repl);
+    if (auto *repl = foldResults[i].dyn_cast<Value *>()) {
+      results.emplace_back(repl);
       continue;
     }
 
     // If we already have a canonicalized version of this constant, just reuse
-    // it.  Otherwise create a new one.
-    Attribute attrRepl = results[i].get<Attribute>();
+    // it. Otherwise create a new one.
+    Attribute attrRepl = foldResults[i].get<Attribute>();
+    auto *res = op->getResult(i);
     auto &constInst =
         uniquedConstants[std::make_pair(attrRepl, res->getType())];
     if (!constInst) {
@@ -113,14 +135,13 @@ FoldHelper::tryToFold(Operation *op,
       constInst = newOp.getOperation();
       moveConstantToEntryBlock(constInst);
     }
-    res->replaceAllUsesWith(constInst->getResult(0));
+    results.push_back(constInst->getResult(0));
   }
-  op->erase();
 
   return success();
 }
 
-void FoldHelper::notifyRemoval(Operation *op) {
+void OperationFolder::notifyRemoval(Operation *op) {
   assert(op->getFunction() == function &&
          "cannot remove constant from another function");
 
@@ -134,7 +155,7 @@ void FoldHelper::notifyRemoval(Operation *op) {
     uniquedConstants.erase(it);
 }
 
-LogicalResult FoldHelper::tryToUnify(Operation *op) {
+LogicalResult OperationFolder::tryToUnify(Operation *op) {
   Attribute constValue;
   matchPattern(op, m_Constant(&constValue));
   assert(constValue);
@@ -163,7 +184,7 @@ LogicalResult FoldHelper::tryToUnify(Operation *op) {
   return failure();
 }
 
-void FoldHelper::moveConstantToEntryBlock(Operation *op) {
+void OperationFolder::moveConstantToEntryBlock(Operation *op) {
   // Insert at the very top of the entry block.
   auto &entryBB = function->front();
   op->moveBefore(&entryBB, entryBB.begin());
