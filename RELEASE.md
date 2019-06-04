@@ -4,6 +4,12 @@
 
 * This is the first 1.x release containing the compat.v2 module. This module is required to allow libraries to publish code which works in both 1.x and 2.x. After this release, no backwards incompatible changes are allowed in the 2.0 Python API.
 * Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically dispatches the best kernel implementation based on CPU vector architecture. To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
+* Our `.so` libraries are now versioned. This should be a no-op for most users as it affects only system package maintainers or those building extensions to TensorFlow:
+   * Our Python wheels (Pip packages) contain only `libtensorflow_framework.so.1` (`libtensorflow_framework.so` has been removed).
+   * Our `libtensorflow` tarball archives contain the `libtensorflow` library and two symlinks:
+       * `libtensorflow.so.1.14.0`, the main library
+       * `libtensorflow.so.1`, symlinked to the main library
+       * `libtensorflow.so`, symlinked to `.so.1`
 
 ## Behavioral changes
 
