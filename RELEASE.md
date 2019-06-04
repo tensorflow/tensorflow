@@ -1,3 +1,138 @@
+# Release 2.0.0-beta0
+
+## Major Features and Improvements
+
+TensorFlow 2.0 focuses on **simplicity** and **ease of use**, featuring updates like:
+
+* Easy model building with Keras and eager execution
+* Robust model deployment in production on any platform
+* Powerful experimentation for research
+* API simplification by reducing duplication and removing deprecated endpoints
+
+The feature improvements, fixes noted here are post TF 2.0 Alpha release. Please refer to [Alpha release notes](https://github.com/tensorflow/tensorflow/releases/tag/v2.0.0-alpha0) in case you missed it.
+
+For information on upgrading your existing TensorFlow 1.x models, please refer to our [Upgrade](https://medium.com/tensorflow/upgrading-your-code-to-tensorflow-2-0-f72c3a4d83b5) and [Migration](https://github.com/tensorflow/docs/blob/master/site/en/r2/guide/migration_guide.ipynb) guides.
+We have also released a collection of [tutorials and getting started guides](https://www.tensorflow.org/beta), and an [Effective Style Guide for TF 2.0](https://github.com/tensorflow/docs/blob/master/site/en/r2/guide/effective_tf2.md)
+For more information on these community-driven changes, be sure to check out the [RFCs](https://github.com/tensorflow/community/tree/master/rfcs) we have on Github. If you care about details, all of the RFCs are important.
+
+## Highlights
+
+* Distribution Strategy: TF 2.0 users will be able to use the new [`tf.distribute.Strategy`](https://www.tensorflow.org/beta/guide/distribute_strategy) API to distribute training with minimal code changes, yielding good out-of-the-box performance. We have more strategies supported in the beta release, as well as improved support for custom training loops and Keras subclassed models. Check out the [guide](https://www.tensorflow.org/beta/guide/distribute_strategy) to see what’s supported now.
+* API Freeze: Symbol renaming/deprecation and 2.0 API changes are complete. 2.0 API is final and is also available as part of the (TensorFlow 1.14 release)[https://github.com/tensorflow/tensorflow/releases/tag/v1.14.0-rc0] in compat.v2 module. A list of all symbol changes can be found [here](https://docs.google.com/spreadsheets/d/1FLFJLzg7WNP6JHODX5q8BDgptKafq_slHpnHVbJIteQ/edit#gid=0)
+
+## Breaking Changes
+
+* `tf.contrib` has been deprecated, and functionality has been either migrated to the core TensorFlow API, to [tensorflow/addons](https://www.github.com/tensorflow/addons), or removed entirely.
+* Premade estimators in the tf.estimator.DNN/Linear/DNNLinearCombined family have been updated to use `tf.keras.optimizers` instead of the `tf.compat.v1.train.Optimizer`s. If you do not pass in an `optimizer=` arg or if you use a string, the premade estimator will use the keras optimizer. This is checkpoint breaking, as the optimizers have separate variables. A checkpoint converter tool for converting optimizers is included with the release,  but if you want to avoid any change, switch to the v1 version of the estimator:  `tf.compat.v1.estimator.DNN/Linear/DNNLinearCombined*`.
+
+Refer to our [public project status tracker](https://github.com/orgs/tensorflow/projects/4) and [issues tagged with `2.0`](https://github.com/tensorflow/tensorflow/issues?q=is%3Aopen+is%3Aissue+label%3A2.0) on GitHub for insight into recent issues and development progress.
+
+If you experience any snags when using TF 2.0, please let us know at the [TF 2.0 Testing User Group](https://groups.google.com/a/tensorflow.org/forum/?utm_medium=email&utm_source=footer#!forum/testing). We have a support mailing list as well as weekly testing meetings, and would love to hear your migration feedback and questions.
+
+
+## Bug Fixes and Other Changes
+
+* `tf.data`:
+  * Adds option for introducing slack in the pipeline to reduce CPU contention, via `options =    `tf.data.Options()`; `options.experimental_slack = True; dataset = dataset.with_options(options)`
+  * Removing the `experimental_numa_aware` option from `tf.data.Options`.
+  * Add support for TensorArrays to `tf.data Dataset`.
+* `tf.keras`:
+  * Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
+  * `tf.keras.estimator.model_to_estimator` now supports exporting to `tf.train.Checkpoint format`, which allows the saved checkpoints to be compatible with `model.load_weights`.
+  * `tf.keras.model.save_model` and `model.save` now defaults to saving a TensorFlow SavedModel.
+  * `OMP_NUM_THREADS` is no longer used by the default Keras config.  To configure the number of threads, use `tf.config.threading` APIs.
+  * Mark Keras `set_session` as `compat.v1` only
+* `tf.estimator`:
+  * Replace `tf.contrib.estimator.add_metrics` with `tf.estimator.add_metrics`
+* `tf.lite`:
+  * "Update the TFLiteConverter API in 2.0. Changes from_concrete_function to from_concrete_functions."
+  * "Add support for tflite_convert in 2.0."
+* `tf.contrib`:
+  * Expose tf.contrib.proto.* ops in tf.io (they will exist in TF2)
+* Other:
+  * Eliminate race condition during XLA convolution autotuning.
+  * Bug fix for `tf.tile` gradient
+  * TF code now resides in `tensorflow_core` and `tensorflow` is just a virtual pip package. No code changes are needed for projects using TensorFlow, the change is transparent.
+  * Added gradient for SparseToDense op.
+  * Expose a flag that allows the number of threads to vary across Python benchmarks.
+  * ResourceVariable's gather op supports batch dimensions.
+  * `image.resize` in 2.0 now supports gradients for the new resize kernels.
+  * removed `tf.string_split` from v2 API.
+  * Variadic reduce is supported on CPU Variadic reduce is supported on CPU
+  * Added GPU implementation of `tf.linalg.tridiagonal_solve`.
+  * Delete unused lookup table code.
+  * Going forward we operate in TF 2.0, this change is part of the effort to slowly converting XYZDataset to DatasetV2 type which is the official version going to be used in TF 2.0 and motivated by some compatibility issue found, `_BigtableXYZDataset` (of type `DatasetV2`) does not implement the `_as_variant_tensor()` of DatasetV1, when moving `contrib.bigtable` to `tensorflow_io`. Converting into `DatasetV2` removes the overheads to maintain V1 while we are moving into TF 2.0.
+  * Remove unused `StringViewVariantWrapper`.
+  * Delete unused Fingerprint64Map op registration.
+  * Add broadcasting support to `tf.matmul`.
+  * Add ellipsis (...) support for `tf.einsum()`.
+  * ResourceVariable support for `gather_nd`.
+  * Add expand_composites argument to all nest.* methods.
+  * Standardize the LayerNormalization API by replacing the args `norm_axis` and `params_axis` with `axis`.
+  * Add a new "result_type" parameter to `tf.strings.split`.
+  * `add_update` can now be passed a zero-arg callable in order to support turning off the update when setting `trainable=False` on a Layer of a Model compiled with `run_eagerly=True`.
+  * Added `tf.random.binomial`.
+  * Extend `tf.function` with basic support for CompositeTensors arguments (such as SparseTensor and RaggedTensor).
+  * Add name argument to `tf.string_split` and `tf.strings_split`
+  * Added `strings.byte_split`
+  * Add num_parallel_reads and passing in a Dataset containing filenames into TextLineDataset and FixedLengthRecordDataset
+  * "Remove `lite.OpHint`, `lite.experimental`, and `lite.constant` from 2.0 API."
+  * CUDNN_INSTALL_PATH, TENSORRT_INSTALL_PATH, NCCL_INSTALL_PATH, NCCL_HDR_PATH are deprecated. Use TF_CUDA_PATHS instead which supports a comma-separated list of base paths that are searched to find CUDA libraries and headers.
+  * Add RaggedTensor.placeholder()
+  * Add pfor converter for Squeeze.
+  * Renamed `tf.image` functions to remove duplicate "image" where it is redundant.
+  * Add C++ Gradient for BatchMatMulV2.
+  * Set default loss reduction as `AUTO` for improving reliability of loss scaling with distribution strategy and custom training loops. `AUTO` indicates that the reduction option will be determined by the usage context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When used in distribution strategy scope, outside of built-in training loops such as `tf.keras` `compile` and `fit`, we expect reduction value to be 'None' or 'SUM'. Using other values will raise an error.
+  * `parallel_for.pfor`: add converters for Softmax, LogSoftmax, IsNaN, All, Any, and MatrixSetDiag.
+  * parallel_for: add converters for LowerTriangularSolve and Cholesky.
+  * Add ragged tensor support to `tf.squeeze`
+  * Allow `LinearOperator.solve` to take a `LinearOperator`.
+  * Allow all dtypes for `LinearOperatorCirculant`.
+  * Introduce MaxParallelism method
+  * parallel_for: add converter for `BroadcastTo`.
+  * Add LinearOperatorHouseholder.
+  * Added `key` and `skip` methods to `random.experimental.Generator`.
+  * Adds Philox support to new stateful RNG's XLA path.
+  * Update RaggedTensors to support int32 row_splits.
+  * Add TensorSpec support for CompositeTensors.
+  * Added partial_pivoting input parameter to tf.linalg.tridiagonal_solve.
+  * Extend `tf.strings.split` to support inputs with any rank
+  * Improve the performance of datasets using `from_tensors()`.
+  * Add `tf.linalg.tridiagonal_mul` op.
+  * Add `LinearOperatorToeplitz`.
+  * Added gradient to `tf.linalg.tridiagonal_solve`.
+  * Removed TensorFlow Lite Android example (moved to new examples repo).
+  * Updating TF 2.0 `keras.backend.name_scope` to use TF 2.0 `name_scope`.
+  * Upgraded LIBXSMM to version 1.11.
+  * parallel_for: add converters for `LogMatrixDeterminant` and `MatrixBandPart`.
+  * Promoting `tf.data.experimental.enumerate_dataset` to core as `tf.data.Dataset.enumerate`.
+  * Uniform processing of quantized embeddings by Gather and EmbeddingLookup Ops
+  * Integrate Ragged Tensors with `tf.data`.
+  * Correct a misstatement in the documentation of the sparse softmax cross entropy logit parameter.
+  * parallel_for: Add converters for `OneHot`, `LowerBound`, `UpperBound`.
+  * Added GPU implementation of `tf.linalg.tridiagonal_matmul`.
+  * Add gradient to `tf.linalg.tridiagonal_matmul`.
+  * Add `tf.ragged.boolean_mask`.
+  * `tf.switch_case` added, which selects a branch_fn based on a branch_index.
+  * The C++ kernel of gather op supports batch dimensions.
+  * Promoting `unbatch` from experimental to core API.
+  * Fixed default value and documentation for `trainable` arg of tf.Variable.
+  * Adds `tf.enable_control_flow_v2()` and `tf.disable_control_flow_v2()`
+  * EagerTensor now support buffer interface for tensors.
+  * This change bumps the version number of the FullyConnected Op to 5.
+  * tensorflow : crash when pointer become nullptr.
+  * Add support for defaulting the value of `cycle_length` argument of `tf.data.Dataset.interleave` to the number of schedulable CPU cores.
+  * Minor docs fix for `is_gpu_available`.
+  * Fix multiline magic.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4d55397500, a6802739, abenmao, Adam Richter, Ag Ramesh, Albin Joy, Alex, Aman Patel, Amit, Amit Kumar Jaiswal, Amit Srivastava, Andreas Eberle, Anthony Hsu, Anthony Platanios, Anuj Rawat, arp95, Arpit Shah, Astropeak, Augustina Ragwitz, Aurelien Geron, AuréLien Geron, avasid, aweers, Ayush Agrawal, Bairen Yi, Bayberry Z, Ben Barsdell, bhack, Bharat Raghunathan, Bhavani Subramanian, Bin Fan, blairhan, BléNesi Attila, Bodin-E, Bryan Cutler, Cao Zongyan, chenchc, Cheng Chang, chengchingwen, chie8842, Christian Hansen, Christian Sigg, Christoph Boeddeker, Christopher Yeh, Clayne Robison, crafet, ctiijima, Daniel Rasmussen, Daniel Salvadori, David Norman, delock, Deven Desai, Donovan Ong, Duncan Dean, Duncan Riach, Dustin Neighly, Edward Forgacs, EFanZh, Evgeniy Polyakov, FAIJUL, Fangjun Kuang, Federico Martinez, Fei Hu, Filip Matzner, FlashTek, Fred Reiss, Fredrik Knutsson, Geoffrey Irving, George Sterpu, Grzegorz Pawelczak, Guozhong Zhuang, Gu
+rpreet Singh, Gyoung-Yoon Ryoo, Hanton Yang, Haraldur TóMas HallgríMsson, Huan Li (李卓桓), I-Hong, Irene Dea, Jacky, Jason Zaman, Jason Zavaglia, Jeff Daily, Jeffrey Poznanovic, jer, Jeroen BéDorf, jerryyin, jhalakp, jiakai, Jonathan, Justin Dujardin, Justin Tunis, Kaixi Hou, Karthik Muthuraman, Kay Zhu, KDR, Keno Fischer, Kevin Mader, Kilaru Yasaswi Sri Chandra Gandhi, Koan-Sin Tan, Lakshay Tokas, leonard951, Letian Kang, Li, Guizi, Lukas Geiger, luxupu, lvli, Ma, Guokai, Mahmoud Abuzaina, Maksym Kysylov, Mandar Deshpande, Margaret Maynard-Reid, Mark Ryan, Matt Conley, Mihail Salnikov, Mikalai Drabovich, Mike Holcomb, monklof, Moses Marin, Mr. Metal, Mshr-H, nammbash, Nathan Luehr, Neeraj Pradhan, Nick, Nick Lewycky, Niels Ole Salscheider, Niklas SilfverströM, Niranjan Hasabnis, Nuka-137, omeir1, P Sudeepam, Pan Daoxin, Pariksheet Pinjari, Pasquale Minervini, Patrick J. Lopresti, Pavel Akhtyamov, PENGWA, PeterLee, Philipp Jund, Pooya Davoodi, Pranav Marathe, R S Nikhil Krishna, Rohit Gupta, Roland Zimmermann, Roman Soldatow, rthadur, Ruizhe, saishruthi, Sami Kama, Sana-Damani, sdamani, Sean Morgan, seanshpark, Sebastien Iooss, Sergii Khomenko, Serv-Inc, Shashank Gupta, shashvat, Shashvat Chand Shahi, Siju Samuel, smilu97, sremedios, srinivasan.narayanamoorthy, Subin, Sumesh Udayakumaran, sunway513, sxwang, Takeo Sawada, Taylor Jakobson, Ted Chang, ThisIsIsaac, Thomas Deegan, Thomas Hagebols, Tim Zaman, Tongxuan Liu, Trent Lo, Trevor Morris, TungJerry, Tyorden, v1incent, Vijay Ravichandran, Viktor Gal, Vincent, Vishnuvardhan Janapati, wangsiyu, wateryzephyr, Wen-Heng (Jack) Chung, wenxizhu, Will Battel, William D. Irons, wyzhao, Xiaoming (Jason) Cui, Xiaoquan Kong, Xin, Yann-Yy, Yasuhiro Matsumoto, ymodak, Yong Tang, Yuan (Terry) Tang, Zantares, 王振华 (Zhenhua Wang), 黄
+
+
 # Release 2.0.0-alpha0
 
 ## Major Features and Improvements
@@ -309,7 +444,7 @@ This release contains contributions from many people at Google, as well as:
         `tf.estimator.experimental.InMemoryEvaluatorHook` and
         `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`
     *   Migrate linear optimizer from contrib to core.
-=======
+
 * Documentation
   * Update the doc with the details about the rounding mode used in quantize_and_dequantize_v2.
   * Clarify that tensorflow::port::InitMain() _should_ be called before using the TensorFlow library.  Programs failing to do this are not portable to all platforms.
@@ -408,6 +543,15 @@ This release contains contributions from many people at Google, as well as:
 This release contains contributions from many people at Google, as well as:
 
 Abhinav Upadhyay, Ag Ramesh, akikaaa, Alexis Louis, Anders Huss, Andreas Madsen, Andrew Banchich, Andy Craze, Anton Dmitriev, Artem Malykh, Avijit-Nervana, Balint Cristian, Benjamin Tan Wei Hao, Bhavani Subramanian, Brendan Finan, Brian Nemsick, Bryan Cutler, By Shen, Cao Zongyan, Castiel, Chris Antaki, Christian Goll, Cibifang, Clayne Robison, Codrut Grosu, Cong Xu, Dalmo Cirne, Daniel Hunter, Dougal J. Sutherland, Edvard Fagerholm, EFanZh, Erik Smistad, Evgeniy Polyakov, Feiyang Chen, franklin5, Fred Reiss, Gautam, gehring, Geoffrey Irving, George Sterpu, Gitea, Grzegorz George Pawelczak, Guozhong Zhuang, himkt, Hoeseong Kim, Huan Li (李卓桓), HuiyangFei, hyunyoung, Isaac Burbank, jackonan, Jacky Ko, Jason Furmanek, Jason Zaman, Javier Luraschi, Jiang,Zhoulong, joaak, John Lin, Jonathan Wyatt Hoech, josephyearsley, Josh Gordon, Julian Niedermeier, Karl Lessard, Keno Fischer, lanhin, Leon Graser, leondgarse, Li, Guizi, Li, Yiqiang, lxl910915, Mahmoud Abuzaina, manhyuk, Marcela Morales Quispe, margaretmz, Matt Conley, Max Pumperla, mbhuiyan, mdfaijul, Meng, Peng, Michael, Michael Gielda, mrTsjolder, Muhammad Wildan, neargye, Nehal J Wani, NEWPLAN, Niranjan Hasabnis, Nutti, olicht, Pan Daoxin, Pedro Monreal, Peng Yu, pillarpond, Pooya Davoodi, qiezi, Rholais Lii, Richard Yu, Rin Arakaki, Roger Iyengar, sahilbadyal, Sami Kama, Sandip Giri, Scott Leishman, Serge Panev, Seunghoon Park, Shafi Dayatar, shengfuintel, Shimin Guo, Siju, silent567, Stefan Dyulgerov, steven, Tao Wei, Thor Johnsen, Tingbo Lu, tomguluson92, Tongxuan Liu, Trevor Morris, Ubuntu, Vadim Borisov, vanderliang, wangsiyu, Wen Yun, Wen-Heng (Jack) Chung, wenxizhu, William D. Irons, Xiaoming (Jason) Cui, Yan Facai (颜发才), Yanbo Liang, Yaniv Blumenfeld, Yash Gaurkar, Yicheng Fan, Yong Tang, Yongjoon Lee, Yuan (Terry) Tang, Yuxin Wu, zldrobit
+
+
+# Release 1.12.2
+
+## Bug Fixes and Other Changes
+
+*   Fixes a potential security vulnerability where carefully crafted GIF images
+    can produce a null pointer dereference during decoding.
+
 
 # Release 1.12.0
 
