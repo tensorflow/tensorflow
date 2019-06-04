@@ -89,6 +89,16 @@ StringRef tblgen::Operator::getExtraClassDeclaration() const {
 
 const llvm::Record &tblgen::Operator::getDef() const { return def; }
 
+auto tblgen::Operator::result_begin() -> value_iterator {
+  return results.begin();
+}
+
+auto tblgen::Operator::result_end() -> value_iterator { return results.end(); }
+
+auto tblgen::Operator::getResults() -> llvm::iterator_range<value_iterator> {
+  return {result_begin(), result_end()};
+}
+
 tblgen::TypeConstraint
 tblgen::Operator::getResultTypeConstraint(int index) const {
   DagInit *results = def.getValueAsDag("results");
@@ -189,13 +199,13 @@ auto tblgen::Operator::getAttributes() const
   return {attribute_begin(), attribute_end()};
 }
 
-auto tblgen::Operator::operand_begin() -> operand_iterator {
+auto tblgen::Operator::operand_begin() -> value_iterator {
   return operands.begin();
 }
-auto tblgen::Operator::operand_end() -> operand_iterator {
+auto tblgen::Operator::operand_end() -> value_iterator {
   return operands.end();
 }
-auto tblgen::Operator::getOperands() -> llvm::iterator_range<operand_iterator> {
+auto tblgen::Operator::getOperands() -> llvm::iterator_range<value_iterator> {
   return {operand_begin(), operand_end()};
 }
 

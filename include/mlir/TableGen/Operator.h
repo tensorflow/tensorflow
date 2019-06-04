@@ -68,6 +68,13 @@ public:
   // Returns this op's C++ class name prefixed with namespaces.
   std::string getQualCppClassName() const;
 
+  using value_iterator = NamedTypeConstraint *;
+
+  // Op result iterators.
+  value_iterator result_begin();
+  value_iterator result_end();
+  llvm::iterator_range<value_iterator> getResults();
+
   // Returns the number of results this op produces.
   int getNumResults() const;
 
@@ -101,10 +108,9 @@ public:
   const NamedAttribute &getAttribute(int index) const;
 
   // Op operand iterators.
-  using operand_iterator = NamedTypeConstraint *;
-  operand_iterator operand_begin();
-  operand_iterator operand_end();
-  llvm::iterator_range<operand_iterator> getOperands();
+  value_iterator operand_begin();
+  value_iterator operand_end();
+  llvm::iterator_range<value_iterator> getOperands();
 
   int getNumOperands() const { return operands.size(); }
   NamedTypeConstraint &getOperand(int index) { return operands[index]; }
