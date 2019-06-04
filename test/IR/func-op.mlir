@@ -27,3 +27,17 @@ func @func_attributes() {
   func @foo() attributes {foo: true}
   return
 }
+
+
+// CHECK-LABEL: func @func_arg_attributes
+func @func_arg_attributes() {
+  // CHECK-NEXT: func @external_func_arg_attrs(i32, i1 {dialect.attr: 10 : i64}, i32)
+  func @external_func_arg_attrs(i32, i1 {dialect.attr: 10 : i64}, i32)
+
+  // CHECK: func @func_arg_attrs(%i0: i1 {dialect.attr: 10 : i64})
+  func @func_arg_attrs(%i0: i1 {dialect.attr: 10 : i64}) {
+    return
+  }
+
+  return
+}

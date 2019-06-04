@@ -106,6 +106,15 @@ public:
     setAttr(Identifier::get(name, getContext()), value);
   }
 
+  /// Remove the attribute with the specified name if it exists.  The return
+  /// value indicates whether the attribute was present or not.
+  NamedAttributeList::RemoveResult removeAttr(Identifier name) {
+    return state->removeAttr(name);
+  }
+  NamedAttributeList::RemoveResult removeAttr(StringRef name) {
+    return state->removeAttr(Identifier::get(name, getContext()));
+  }
+
   /// Return true if there are no users of any results of this operation.
   bool use_empty() { return state->use_empty(); }
 

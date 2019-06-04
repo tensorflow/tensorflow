@@ -269,12 +269,11 @@ parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
     // Add the argument type.
     argTypes.push_back(argumentType);
 
-    // TODO(riverriddle) Parse argument attributes.
-    // Parse the attribute dict.
-    // SmallVector<NamedAttribute, 2> attrs;
-    // if (parser->parseOptionalAttributeDict(attrs))
-    //  return failure();
-    // argAttrs.push_back(attrs);
+    // Parse any argument attributes.
+    SmallVector<NamedAttribute, 2> attrs;
+    if (parser->parseOptionalAttributeDict(attrs))
+      return failure();
+    argAttrs.push_back(attrs);
     return success();
   };
 
@@ -331,12 +330,12 @@ ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
     if (parser->parseOptionalAttributeDict(result->attributes))
       return failure();
 
-  // TODO(riverriddle) Parse argument attributes.
   // Add the attributes to the function arguments.
-  // for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
-  //   if (!argAttrs[i].empty())
-  //     result->addAttribute(("arg" + Twine(i)).str(),
-  //                          builder.getDictionaryAttr(argAttrs[i]));
+  SmallString<8> argAttrName;
+  for (unsigned i = 0, e = type.getNumInputs(); i != e; ++i)
+    if (!argAttrs[i].empty())
+      result->addAttribute(getArgAttrName(i, argAttrName),
+                           builder.getDictionaryAttr(argAttrs[i]));
 
   // Parse the optional function body.
   auto *body = result->addRegion();
@@ -362,11 +361,9 @@ static void printFunctionSignature(OpAsmPrinter *p, FuncOp op) {
       *p << ": ";
     }
 
+    // Print the type followed by any argument attributes.
     p->printType(fnType.getInput(i));
-
-    // TODO(riverriddle) Print argument attributes.
-    // Print the attributes for this argument.
-    // p->printOptionalAttrDict(op.getArgAttrs(i));
+    p->printOptionalAttrDict(op.getArgAttrs(i));
   }
   *p << ')';
 
@@ -399,13 +396,20 @@ void FuncOp::print(OpAsmPrinter *p) {
   printFunctionSignature(p, *this);
 
   // Print out function attributes, if present.
-  auto attrs = getAttrs();
+  SmallVector<StringRef, 2> ignoredAttrs = {"name", "type"};
 
-  // We must have more attributes than <name, type>.
-  constexpr unsigned kNumHiddenAttrs = 2;
-  if (attrs.size() > kNumHiddenAttrs) {
+  // Ignore any argument attributes.
+  std::vector<SmallString<8>> argAttrStorage;
+  SmallString<8> argAttrName;
+  for (unsigned i = 0, e = getNumArguments(); i != e; ++i)
+    if (getAttr(getArgAttrName(i, argAttrName)))
+      argAttrStorage.emplace_back(argAttrName);
+  ignoredAttrs.append(argAttrStorage.begin(), argAttrStorage.end());
+
+  auto attrs = getAttrs();
+  if (attrs.size() > ignoredAttrs.size()) {
     *p << "\n  attributes ";
-    p->printOptionalAttrDict(attrs, {"name", "type"});
+    p->printOptionalAttrDict(attrs, ignoredAttrs);
   }
 
   // Print the body if this is not an external function.
@@ -415,4 +419,59 @@ void FuncOp::print(OpAsmPrinter *p) {
     *p << '\n';
   }
   *p << '\n';
+}
+
+//===----------------------------------------------------------------------===//
+// Function Argument Attribute.
+//===----------------------------------------------------------------------===//
+
+/// Set the attributes held by the argument at 'index'.
+void FuncOp::setArgAttrs(unsigned index, ArrayRef<NamedAttribute> attributes) {
+  assert(index < getNumArguments() && "invalid argument number");
+  SmallString<8> nameOut;
+  getArgAttrName(index, nameOut);
+
+  if (attributes.empty())
+    return (void)removeAttr(nameOut);
+  setAttr(nameOut, DictionaryAttr::get(attributes, getContext()));
+}
+
+void FuncOp::setArgAttrs(unsigned index, NamedAttributeList attributes) {
+  assert(index < getNumArguments() && "invalid argument number");
+  SmallString<8> nameOut;
+  if (auto newAttr = attributes.getDictionary())
+    return setAttr(getArgAttrName(index, nameOut), newAttr);
+  removeAttr(getArgAttrName(index, nameOut));
+}
+
+/// If the an attribute exists with the specified name, change it to the new
+/// value. Otherwise, add a new attribute with the specified name/value.
+void FuncOp::setArgAttr(unsigned index, Identifier name, Attribute value) {
+  auto curAttr = getArgAttrDict(index);
+  NamedAttributeList attrList(curAttr);
+  attrList.set(name, value);
+
+  // If the attribute changed, then set the new arg attribute list.
+  if (curAttr != attrList.getDictionary())
+    setArgAttrs(index, attrList);
+}
+
+/// Remove the attribute 'name' from the argument at 'index'.
+NamedAttributeList::RemoveResult FuncOp::removeArgAttr(unsigned index,
+                                                       Identifier name) {
+  // Build an attribute list and remove the attribute at 'name'.
+  NamedAttributeList attrList(getArgAttrDict(index));
+  auto result = attrList.remove(name);
+
+  // If the attribute was removed, then update the argument dictionary.
+  if (result == NamedAttributeList::RemoveResult::Removed)
+    setArgAttrs(index, attrList);
+  return result;
+}
+
+/// Returns the attribute entry name for the set of argument attributes at index
+/// 'arg'.
+StringRef FuncOp::getArgAttrName(unsigned arg, SmallVectorImpl<char> &out) {
+  out.clear();
+  return ("arg" + Twine(arg)).toStringRef(out);
 }

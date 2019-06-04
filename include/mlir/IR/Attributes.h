@@ -350,6 +350,7 @@ public:
   using iterator = llvm::ArrayRef<NamedAttribute>::iterator;
   iterator begin() const;
   iterator end() const;
+  bool empty() const { return size() == 0; }
   size_t size() const;
 
   /// Methods for supporting type inquiry through isa, cast, and dyn_cast.
@@ -802,8 +803,13 @@ inline ::llvm::hash_code hash_value(Attribute arg) {
 /// searches for everything.
 class NamedAttributeList {
 public:
-  NamedAttributeList(DictionaryAttr attrs = nullptr) : attrs(attrs) {}
+  NamedAttributeList(DictionaryAttr attrs = nullptr)
+      : attrs((attrs && !attrs.empty()) ? attrs : nullptr) {}
   NamedAttributeList(ArrayRef<NamedAttribute> attributes);
+
+  /// Return the underlying dictionary attribute. This may be null, if this list
+  /// has no attributes.
+  DictionaryAttr getDictionary() const { return attrs; }
 
   /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() const;
