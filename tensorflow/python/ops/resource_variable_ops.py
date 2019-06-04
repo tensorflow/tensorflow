@@ -1143,7 +1143,7 @@ class ResourceVariable(variables.VariableV1):
     with _handle_graph(self.handle):
       value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
       if not isinstance(self._shape, tensor_shape.TensorShape):
-         self._shape = tensor_shape.TensorShape(self._shape)
+        self._shape = tensor_shape.TensorShape(self._shape)
       self._shape.assert_is_compatible_with(value_tensor.shape)
       assign_op = gen_resource_variable_ops.assign_variable_op(
           self.handle, value_tensor, name=name)
