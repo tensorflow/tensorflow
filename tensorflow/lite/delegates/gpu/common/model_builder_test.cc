@@ -162,6 +162,7 @@ class InterpreterFp16 {
     // Set inputs to Dequantize node to the specified type.
     const std::vector<int> dims = {1};
     TfLiteQuantization quantization;
+    quantization.type = kTfLiteNoQuantization;
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             0, TfLiteType::kTfLiteFloat16, "t0", dims, quantization, false),
@@ -261,6 +262,7 @@ class InterpreterFp32 {
 
     const std::vector<int> dims = {1};
     TfLiteQuantization quantization;
+    quantization.type = kTfLiteNoQuantization;
     EXPECT_EQ(
         interpreter_.SetTensorParametersReadWrite(
             0, TfLiteType::kTfLiteFloat32, "t0", dims, quantization, false),
