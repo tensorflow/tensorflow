@@ -97,7 +97,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
-        "@FP16//FP16",
+        "@FP16",
     ],
 )
 
