@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -135,13 +135,13 @@ void PrintPlatformInfo(const se::Stream* stream) {
 //
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-StatusOr<bool> CheckRedzones(const RedzoneAllocator& allocator,
+StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
                              se::Stream* stream, absl::string_view name,
                              const HloInstruction* instr,
                              AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
-  using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
+  using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
 
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones(stream));
@@ -353,8 +353,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
-  RedzoneAllocator input_output_allocator(device_ordinal, allocator,
-                                          hlo_module_config);
+  se::cuda::RedzoneAllocator input_output_allocator(
+      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -393,8 +393,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                      AlgorithmToString(alg)),
         2);
 
-    RedzoneAllocator scratch_allocator(device_ordinal, allocator,
-                                       hlo_module_config);
+    se::cuda::RedzoneAllocator scratch_allocator(
+        device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
