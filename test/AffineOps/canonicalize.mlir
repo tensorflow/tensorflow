@@ -22,9 +22,6 @@
 // CHECK-DAG: [[MAP13A:#map[0-9]+]] = (d0) -> ((d0 + 6) ceildiv 8)
 // CHECK-DAG: [[MAP13B:#map[0-9]+]] = (d0) -> ((d0 * 4 - 4) floordiv 3)
 
-// Affine maps for test case: arg_used_as_dim_and_symbol
-// CHECK-DAG: [[MAP14:#map[0-9]+]] = (d0) -> (d0)
-
 // Affine maps for test case: partial_fold_map
 // CHECK-DAG: [[MAP15:#map[0-9]+]] = ()[s0, s1] -> (s0 - s1)
 
@@ -55,8 +52,7 @@ func @compose_affine_maps_1dto2d_no_symbols() {
     %x1_1 = affine.apply (d0, d1) -> (d1) (%x0, %x0)
 
     // CHECK: [[I0A:%[0-9]+]] = affine.apply [[MAP0]](%i0)
-    // CHECK-NEXT: [[I0B:%[0-9]+]] = affine.apply [[MAP0]](%i0)
-    // CHECK-NEXT: load %0{{\[}}[[I0A]], [[I0B]]{{\]}}
+    // CHECK-NEXT: load %0{{\[}}[[I0A]], [[I0A]]{{\]}}
     %v0 = load %0[%x1_0, %x1_1] : memref<4x4xf32>
 
     // Test load[%y, %y]
@@ -65,25 +61,20 @@ func @compose_affine_maps_1dto2d_no_symbols() {
     %y1_1 = affine.apply (d0, d1) -> (d1) (%y0, %y0)
 
     // CHECK-NEXT: [[I1A:%[0-9]+]] = affine.apply [[MAP1]](%i0)
-    // CHECK-NEXT: [[I1B:%[0-9]+]] = affine.apply [[MAP1]](%i0)
-    // CHECK-NEXT: load %0{{\[}}[[I1A]], [[I1B]]{{\]}}
+    // CHECK-NEXT: load %0{{\[}}[[I1A]], [[I1A]]{{\]}}
     %v1 = load %0[%y1_0, %y1_1] : memref<4x4xf32>
 
     // Test load[%x, %y]
     %xy_0 = affine.apply (d0, d1) -> (d0) (%x0, %y0)
     %xy_1 = affine.apply (d0, d1) -> (d1) (%x0, %y0)
 
-    // CHECK-NEXT: [[I2A:%[0-9]+]] = affine.apply [[MAP0]](%i0)
-    // CHECK-NEXT: [[I2B:%[0-9]+]] = affine.apply [[MAP1]](%i0)
-    // CHECK-NEXT: load %0{{\[}}[[I2A]], [[I2B]]{{\]}}
+    // CHECK-NEXT: load %0{{\[}}[[I0A]], [[I1A]]{{\]}}
     %v2 = load %0[%xy_0, %xy_1] : memref<4x4xf32>
 
     // Test load[%y, %x]
     %yx_0 = affine.apply (d0, d1) -> (d0) (%y0, %x0)
     %yx_1 = affine.apply (d0, d1) -> (d1) (%y0, %x0)
-    // CHECK-NEXT: [[I3A:%[0-9]+]] = affine.apply [[MAP1]](%i0)
-    // CHECK-NEXT: [[I3B:%[0-9]+]] = affine.apply [[MAP0]](%i0)
-    // CHECK-NEXT: load %0{{\[}}[[I3A]], [[I3B]]{{\]}}
+    // CHECK-NEXT: load %0{{\[}}[[I1A]], [[I0A]]{{\]}}
     %v3 = load %0[%yx_0, %yx_1] : memref<4x4xf32>
   }
   return
@@ -238,8 +229,7 @@ func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
         (%i0, %i1)[%arg1, %c9]
       %4 = affine.apply (d0, d1, d3) -> (d3 - (d0 + d1))
         (%arg1, %c9, %3)
-      // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP14]](%i1)
-      // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]], %arg1{{\]}}
+      // CHECK: load %{{[0-9]+}}{{\[}}%i1, %arg1{{\]}}
       %5 = load %1[%4, %arg1] : memref<100x100xf32, 1>
     }
   }

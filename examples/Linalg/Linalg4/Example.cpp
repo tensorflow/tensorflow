@@ -83,16 +83,13 @@ TEST_FUNC(matmul_tiled_loops) {
   //       CHECK:       affine.for %i3 = max (d0)[s0] -> (s0, d0)(%i0)[%{{.*}}] to min (d0)[s0] -> (s0, d0 + 8)(%i0)[%[[M]]] {
   //       CHECK:         affine.for %i4 = max (d0)[s0] -> (s0, d0)(%i1)[%{{.*}}] to min (d0)[s0] -> (s0, d0 + 9)(%i1)[%[[N]]] {
   //  CHECK-NEXT:           %{{.*}} = cmpi "eq", %i2, %{{.*}} : index
-  //  CHECK-NEXT:           %[[I3:.*]] = affine.apply (d0) -> (d0)(%i3)
-  //  CHECK-NEXT:           %[[I4:.*]] = affine.apply (d0) -> (d0)(%i4)
-  //  CHECK-NEXT:           %{{.*}} = load %arg2[%[[I3]], %[[I4]]] : memref<?x?xf32>
+  //  CHECK-NEXT:           %{{.*}} = load %arg2[%i3, %i4] : memref<?x?xf32>
   //  CHECK-NEXT:           %{{.*}} = select %{{.*}}, %{{.*}}, %{{.*}} : f32
-  //  CHECK-NEXT:           %[[I2:.*]] = affine.apply (d0) -> (d0)(%i2)
-  //  CHECK-NEXT:           %{{.*}} = load %arg1[%[[I2]], %[[I4]]] : memref<?x?xf32>
-  //  CHECK-NEXT:           %{{.*}} = load %arg0[%[[I3]], %[[I2]]] : memref<?x?xf32>
-  //  CHECK-NEXT:           %{{.*}} = mulf %10, %9 : f32
-  //  CHECK-NEXT:           %{{.*}} = addf %7, %11 : f32
-  //  CHECK-NEXT:           store %{{.*}}, %arg2[%[[I3]], %[[I4]]] : memref<?x?xf32>
+  //  CHECK-NEXT:           %{{.*}} = load %arg1[%i2, %i4] : memref<?x?xf32>
+  //  CHECK-NEXT:           %{{.*}} = load %arg0[%i3, %i2] : memref<?x?xf32>
+  //  CHECK-NEXT:           %{{.*}} = mulf %7, %6 : f32
+  //  CHECK-NEXT:           %{{.*}} = addf %5, %8 : f32
+  //  CHECK-NEXT:           store %{{.*}}, %arg2[%i3, %i4] : memref<?x?xf32>
   // clang-format on
 }
 
@@ -112,16 +109,14 @@ TEST_FUNC(matmul_tiled_views) {
   //       CHECK: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
   //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[M]]) step 8 {
   //  CHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) step 9 {
-  //  CHECK-NEXT:     %[[i0min:.*]] = affine.apply (d0) -> (d0)(%i0)
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%i0)
-  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg.range
+  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %i0:%[[i0max]]:{{.*}} : !linalg.range
   //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
   //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK:     %[[i1min:.*]] = affine.apply (d0) -> (d0)(%i1)
-  //  CHECK-NEXT:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
-  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg.range
-  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //       CHECK:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
+  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %i1:%[[i1max]]:%{{.*}} : !linalg.range
+  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%7, %9] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%4, %9] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
   //  CHECK-NEXT:     linalg.matmul(%[[vA]], %[[vB]], %[[vC]]) : !linalg.view<?x?xf32>
   // clang-format on
   cleanupAndPrintFunction(f);
@@ -148,16 +143,14 @@ TEST_FUNC(matmul_tiled_views_as_loops) {
   //       CHECK: %[[K:.*]] = dim %arg0, 1 : memref<?x?xf32>
   //       CHECK: affine.for %i0 = 0 to (d0) -> (d0)(%[[M]]) step 8 {
   //  CHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) step 9 {
-  //  CHECK-NEXT:     %[[i0min:.*]] = affine.apply (d0) -> (d0)(%i0)
   //  CHECK-NEXT:     %[[i0max:.*]] = affine.apply (d0) -> (d0 + 8)(%i0)
-  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %[[i0min]]:%[[i0max]]:{{.*}} : !linalg.range
+  //  CHECK-NEXT:     %[[ri0:.*]] = linalg.range %i0:%[[i0max]]:{{.*}} : !linalg.range
   //       CHECK:     %[[rK:.*]] = linalg.range %{{.*}}:%{{.*}}:%{{.*}} : !linalg.range
   //       CHECK:     %[[vA:.*]] = linalg.view %arg0[%[[ri0]], %[[rK]]] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //       CHECK:     %[[i1min:.*]] = affine.apply (d0) -> (d0)(%i1)
-  //  CHECK-NEXT:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
-  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %[[i1min]]:%[[i1max]]:%{{.*}} : !linalg.range
-  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%10, %13] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
-  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%5, %13] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //       CHECK:     %[[i1max:.*]] = affine.apply (d0) -> (d0 + 9)(%i1)
+  //  CHECK-NEXT:     %[[ri1:.*]] = linalg.range %i1:%[[i1max]]:%{{.*}} : !linalg.range
+  //  CHECK-NEXT:     %[[vB:.*]]  = linalg.view %arg1[%7, %9] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
+  //  CHECK-NEXT:     %[[vC:.*]]  = linalg.view %arg2[%4, %9] : memref<?x?xf32>, !linalg.range, !linalg.range, !linalg.view<?x?xf32>
   //  CHECK-NEXT:     affine.for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0)(%[[i0max]]) {
   //  CHECK-NEXT:       affine.for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0)(%[[i1max]]) {
   //  CHECK-NEXT:         affine.for %i4 = 0 to (d0) -> (d0)(%[[K]]) {

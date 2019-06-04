@@ -241,7 +241,10 @@ public:
     if (!result)
       return failure();
 
-    results.push_back(result);
+    // Check if the operation was folded in place. In this case, the operation
+    // returns itself.
+    if (result.template dyn_cast<Value *>() != op->getResult(0))
+      results.push_back(result);
     return success();
   }
 

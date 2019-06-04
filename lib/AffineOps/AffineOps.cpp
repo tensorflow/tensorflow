@@ -203,6 +203,15 @@ bool AffineApplyOp::isValidSymbol() {
 
 OpFoldResult AffineApplyOp::fold(ArrayRef<Attribute> operands) {
   auto map = getAffineMap();
+
+  // Fold dims and symbols to existing values.
+  auto expr = map.getResult(0);
+  if (auto dim = expr.dyn_cast<AffineDimExpr>())
+    return getOperand(dim.getPosition());
+  if (auto sym = expr.dyn_cast<AffineSymbolExpr>())
+    return getOperand(map.getNumDims() + sym.getPosition());
+
+  // Otherwise, default to folding the map.
   SmallVector<Attribute, 1> result;
   if (failed(map.constantFold(operands, result)))
     return {};

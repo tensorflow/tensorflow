@@ -185,16 +185,16 @@ TEST_FUNC(matmul_as_matvec_as_affine) {
   //   CHECK-NOT: {{.*}} = linalg.
   //       CHECK:   affine.for %i1 = 0 to (d0) -> (d0)(%[[M]]) {
   //       CHECK:     affine.for %i2 = 0 to (d0) -> (d0)(%[[K]]) {
-  //       CHECK:       %4 = cmpi "eq", %i2, %c0 : index
-  //       CHECK:       %6 = load %arg2[%5, %3] : memref<?x?xf32>
-  //       CHECK:       %7 = select %4, %cst, %6 : f32
+  //       CHECK:       %3 = cmpi "eq", %i2, %c0 : index
+  //       CHECK:       %4 = load %arg2[%i1, %i0] : memref<?x?xf32>
+  //       CHECK:       %5 = select %3, %cst, %4 : f32
   //   CHECK-NOT: {{.*}} = linalg.
-  //       CHECK:       %9 = load %arg1[%8, %3] : memref<?x?xf32>
-  //       CHECK:       %10 = load %arg0[%5, %8] : memref<?x?xf32>
-  //       CHECK:       %11 = mulf %10, %9 : f32
-  //       CHECK:       %12 = addf %7, %11 : f32
+  //       CHECK:       %6 = load %arg1[%i2, %i0] : memref<?x?xf32>
+  //       CHECK:       %7 = load %arg0[%i1, %i2] : memref<?x?xf32>
+  //       CHECK:       %8 = mulf %7, %6 : f32
+  //       CHECK:       %9 = addf %5, %8 : f32
   //   CHECK-NOT: {{.*}} = linalg.
-  //       CHECK:       store %12, %arg2[%5, %3] : memref<?x?xf32>
+  //       CHECK:       store %9, %arg2[%i1, %i0] : memref<?x?xf32>
   // clang-format on
 }
 
