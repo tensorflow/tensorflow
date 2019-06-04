@@ -1022,9 +1022,6 @@ class Context(object):
 
   def set_visible_devices(self, devices, device_type=None):
     """Set the list of visible devices."""
-    if self._context_handle is not None:
-      raise RuntimeError("Visible devices must be set at program startup")
-
     self._initialize_physical_devices()
 
     if not isinstance(devices, list):
@@ -1036,14 +1033,22 @@ class Context(object):
       if device_type is not None and d.device_type != device_type:
         raise ValueError("Unrecognized device: %s" % repr(d))
 
-    if device_type is None:
-      self._visible_device_list = []
-    else:
-      self._visible_device_list = [
+    visible_device_list = []
+    if device_type is not None:
+      visible_device_list = [
           d for d in self._visible_device_list if d.device_type != device_type
       ]
 
-    self._visible_device_list += devices
+    visible_device_list += devices
+
+    if self._visible_device_list == visible_device_list:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Visible devices cannot be modified after being initialized")
+
+    self._visible_device_list = visible_device_list
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
@@ -1056,9 +1061,6 @@ class Context(object):
 
   def set_memory_growth(self, dev, enable):
     """Set if memory growth should be enabled for a PhysicalDevice."""
-    if self._context_handle is not None:
-      raise RuntimeError("Memory growth must be set at program startup")
-
     self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
@@ -1070,6 +1072,13 @@ class Context(object):
 
     if dev.device_type != "GPU":
       raise ValueError("Cannot set memory growth on non-GPU devices")
+
+    if self._memory_growth_map.get(dev) == enable:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Physical devices cannot be modified after being initialized")
 
     self._memory_growth_map[dev] = enable
 
@@ -1084,9 +1093,6 @@ class Context(object):
 
   def set_virtual_device_configuration(self, dev, virtual_devices):
     """Set the virtual device configuration for a PhysicalDevice."""
-    if self._context_handle is not None:
-      raise RuntimeError("Virtual devices must be set at program startup")
-
     self._initialize_physical_devices()
 
     if dev not in self._physical_devices:
@@ -1105,6 +1111,13 @@ class Context(object):
     else:
       raise ValueError("Virtual devices are not supported for %s" %
                        dev.device_type())
+
+    if self._virtual_device_map.get(dev) == virtual_devices:
+      return
+
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Virtual devices cannot be modified after being initialized")
 
     self._virtual_device_map[dev] = virtual_devices
 
@@ -1174,9 +1187,12 @@ class Context(object):
 
   @intra_op_parallelism_threads.setter
   def intra_op_parallelism_threads(self, num_threads):
+    if self._intra_op_parallelism_threads == num_threads:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
-          "Intra op parallelism must be set at program startup")
+          "Intra op parallelism cannot be modified after initialization.")
 
     self._intra_op_parallelism_threads = num_threads
 
@@ -1186,9 +1202,12 @@ class Context(object):
 
   @inter_op_parallelism_threads.setter
   def inter_op_parallelism_threads(self, num_threads):
+    if self._inter_op_parallelism_threads == num_threads:
+      return
+
     if self._context_handle is not None:
       raise RuntimeError(
-          "Inter op parallelism must be set at program startup")
+          "Inter op parallelism cannot be modified after initialization.")
 
     self._inter_op_parallelism_threads = num_threads
 
