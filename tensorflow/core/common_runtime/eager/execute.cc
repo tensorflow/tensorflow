@@ -861,7 +861,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     std::function<void()> destructor =
         GetRemoteTensorDestructor(ctx, eager_client, context_id, id, i);
 
-    // The device_ and resource_device_ or this TensorHandle are not correct.
+    // The device_ and resource_device_ of this TensorHandle might be incorrect.
     // It is pretty hard to make it correct because for multi-device functions,
     // we don't know the output device until the function is instantiated.
     // Luckily, we don't need to know the correct remote device here. We just
