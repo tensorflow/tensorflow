@@ -749,6 +749,13 @@ class Op : public OpState,
                typelist_contains<OpTrait::OneResult<ConcreteType>, OpState,
                                  Traits<ConcreteType>...>::value> {
 public:
+  /// Return if this operation contains the provided trait.
+  template <template <typename T> class Trait>
+  static constexpr bool hasTrait() {
+    return typelist_contains<Trait<ConcreteType>, OpState,
+                             Traits<ConcreteType>...>::value;
+  }
+
   /// Return the operation that this refers to.
   Operation *getOperation() { return OpState::getOperation(); }
 
