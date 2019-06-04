@@ -313,9 +313,8 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    // Note that this implementation matches that of TensorFlow, and corresponds
-    // to the traditional LeakyRelu equation only for alpha <= 1.
-    output_data[i] = std::max(val, val * params.alpha);
+    // Note that alpha might be > 1 or < 0, so we don't use std::max here.
+    output_data[i] = val > 0 ? val : val * params.alpha;
   }
 }
 
