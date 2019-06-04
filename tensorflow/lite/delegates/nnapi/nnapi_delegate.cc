@@ -1354,8 +1354,11 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinMean:
         // NNAPI does not support generating a scalar as output for MEAN.
-        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI11 &&
-            context->tensors[node->inputs->data[0]].type == kTfLiteFloat32 &&
+        if (version == 1 &&
+            ((android_sdk_version >= kMinSdkVersionForNNAPI11 &&
+              context->tensors[node->inputs->data[0]].type == kTfLiteFloat32) ||
+             (android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+              context->tensors[node->inputs->data[0]].type == kTfLiteUInt8)) &&
             context->tensors[node->outputs->data[0]].dims->size > 0) {
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
