@@ -121,8 +121,8 @@ __device__ EIGEN_STRONG_INLINE void Flipped<true>(Box& box) {
 // x1<x2 and y1<y2.
 
 // Starting from highes scoring box, mark any box which has IoU>threshold with
-// given box each thread processes a kNmsBoxesPerThread boxes per stride, and
-// each box has bitmask of overlaps of bit_mask_len
+// given box. Each thread processes a kNmsBoxesPerThread boxes per stride, and
+// each box has bitmask of overlaps of length bit_mask_len.
 template <bool flip_box>
 __launch_bounds__(kNmsBlockDim* kNmsBlockDim, 4) __global__
     void NMSKernel(const Box* d_desc_sorted_boxes, const int num_boxes,
