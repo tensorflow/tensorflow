@@ -153,6 +153,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "dump_poplar_info",
+    size = "small",
+    srcs = ["python/tests/dump_poplar_info.py"],
+    additional_deps = [
+        ":ipu",
+        ":test_util",
+        "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
     name = "conditional_test",
     size = "small",
     srcs = ["python/tests/conditional_test.py"],
@@ -416,6 +434,7 @@ test_suite(
         "autoshard_cnn_test",
         "case_test",
         "conditional_test",
+        "dump_poplar_info",
         "infeed_outfeed_test",
         "mapping_test",
         "multi_ipu_test",

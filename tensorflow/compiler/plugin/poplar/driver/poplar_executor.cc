@@ -1575,6 +1575,16 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     }
 
     try {
+      if (!tensorflow::GetPoplarXlaFlags().save_interval_report.empty() &&
+          executable.ExecutionCount() == 0) {
+        auto filename = tensorflow::io::JoinPath(
+            tensorflow::GetPoplarXlaFlags().save_interval_report,
+            executable.module().name() + ".csv");
+        VLOG(1) << "Dumping interval report " << filename;
+        std::ofstream stream(filename);
+        current_engine_->reportIntervals(stream);
+      }
+
       if (current_config_.profiling().enable_ipu_trace_events()) {
         std::stringstream report_stream;
         if (current_config_.profiling().enable_execution_trace() > 0) {

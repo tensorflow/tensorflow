@@ -141,7 +141,10 @@ parameters.
 is allowed to use for compiling the executable.
 
 ``--save_vertex_graph`` dumps the Poplar vertex graph (DOT file) to the given
-location.
+directory.
+
+``--save_interval_report`` dumps the Poplar interval report to the given
+directory.
 
 ``--executable_cache_path`` enables the Poplar executable cache. See below.
 
