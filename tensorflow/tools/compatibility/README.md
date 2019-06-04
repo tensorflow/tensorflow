@@ -47,9 +47,9 @@ e.g.:
 Added keyword 'input' to reordered function 'tf.argmax'
 Renamed keyword argument from 'dimension' to 'axis'
 
-    Old:         tf.argmax([[1, 3, 2]], dimension=0))
+    Old:         tf.argmax([[1, 3, 2]], dimension=0)
                                         ~~~~~~~~~~
-    New:         tf.argmax(input=[[1, 3, 2]], axis=0))
+    New:         tf.argmax(input=[[1, 3, 2]], axis=0)
 
 ```
 
