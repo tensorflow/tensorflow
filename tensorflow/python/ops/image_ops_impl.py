@@ -1731,9 +1731,16 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
     >> x = tf.random.normal(shape=(256, 256, 3), dtype=tf.float32)
     >> tf.image.convert_image_dtype(x, dtype=tf.float16, saturate=False)
     ```
+    
+  Raises:
+    AttributeError: Raises an attribute error when dtype is neither float nor integer
   """
   image = ops.convert_to_tensor(image, name='image')
   dtype = tf.dtypes.as_dtype(dtype)
+  if dtype.is_floating or dtype.is_integer:
+    pass
+  else:
+    raise AttributeError("dtype must be either floating point or integer")
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
