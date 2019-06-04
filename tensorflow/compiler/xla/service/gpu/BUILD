@@ -497,7 +497,6 @@ cc_library(
         ":gpu_autotuning_proto",
         ":gpu_executable",
         ":ir_emission_utils",
-        ":redzone_allocator",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -512,6 +511,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor/cuda:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -529,52 +529,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:device_memory_allocator",
-    ],
-)
-
-cc_library(
-    name = "redzone_allocator",
-    srcs = ["redzone_allocator.cc"],
-    hdrs = ["redzone_allocator.h"],
-    deps = [
-        ":gpu_constants",
-        ":partition_assignment",
-        ":stream_executor_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-tf_cc_test(
-    name = "redzone_allocator_test",
-    srcs = ["redzone_allocator_test.cc"],
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":redzone_allocator",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:kernel",
-        "//tensorflow/stream_executor/cuda:cuda_activation",
-        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
     ],
 )
 

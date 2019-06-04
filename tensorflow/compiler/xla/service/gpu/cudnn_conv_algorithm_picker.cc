@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -135,13 +135,13 @@ void PrintPlatformInfo(const se::Stream* stream) {
 //
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-StatusOr<bool> CheckRedzones(const RedzoneAllocator& allocator,
+StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
                              se::Stream* stream, absl::string_view name,
                              const HloInstruction* instr,
                              AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
-  using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
+  using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
 
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones(stream));
@@ -255,7 +255,8 @@ UniformDistribution(T lhs, T rhs, Generator* gen) {
 }
 
 template <typename T>
-void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer) {
+void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
+                           int64* rng_state) {
   static_assert(
       std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
       "Unimplemented for integers yet.");
@@ -265,8 +266,8 @@ void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer) {
   static std::vector<T>* host_buffer = [] {
     // Use a large prime number to fragment the accesses.
     auto* ret = new std::vector<T>(10069);
-    std::random_device rd;
-    std::mt19937 gen(rd());
+    // Default-seeded random numbers.
+    std::mt19937 gen;
     for (auto& element : *ret) {
       using RandomType =
           typename std::conditional<std::is_same<T, Eigen::half>::value, float,
@@ -275,7 +276,8 @@ void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer) {
     }
     return ret;
   }();
-  static int64 host_index = 0;
+
+  int64& host_index = *rng_state;
 
   char* current_addr = static_cast<char*>(buffer.opaque());
   CHECK_EQ(0, buffer.size() % sizeof(T));
@@ -326,17 +328,22 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     allocator = &*se_allocator;
   }
 
-  const auto initialize_buffer = [&stream,
-                                  &result_shape](DeviceMemoryBase buffer) {
+  int64 rng_state = 0;
+
+  const auto initialize_buffer = [&stream, &result_shape,
+                                  &rng_state](DeviceMemoryBase buffer) {
     switch (result_shape.element_type()) {
       case xla::F16:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer));
+        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer),
+                              &rng_state);
         break;
       case xla::F32:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer));
+        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer),
+                              &rng_state);
         break;
       case xla::F64:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer));
+        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer),
+                              &rng_state);
         break;
       default:
         stream.ThenMemZero(&buffer, buffer.size());
@@ -346,8 +353,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
-  RedzoneAllocator input_output_allocator(device_ordinal, allocator,
-                                          hlo_module_config);
+  se::cuda::RedzoneAllocator input_output_allocator(
+      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -386,8 +393,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                      AlgorithmToString(alg)),
         2);
 
-    RedzoneAllocator scratch_allocator(device_ordinal, allocator,
-                                       hlo_module_config);
+    se::cuda::RedzoneAllocator scratch_allocator(
+        device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();

@@ -17,6 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
@@ -49,10 +51,12 @@ def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
           topology, core_assignment=device_assignment_lib.
           SINGLE_CORE_ASSIGNMENT)
 
-    strategy = tpu_lib.TPUStrategy(resolver, steps_per_run=steps_per_run,
-                                   device_assignment=device_assignment,
-                                   **kwargs)
-    return strategy
+    # Steps per run is only supported in TF 1.x
+    if tf2.enabled():
+      return tpu_lib.TPUStrategy(resolver, device_assignment, **kwargs)
+    else:
+      return tpu_lib.TPUStrategyV1(resolver, steps_per_run,
+                                   device_assignment, **kwargs)
   return _create_tpu_strategy
 
 

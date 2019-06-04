@@ -63,7 +63,6 @@ from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -208,8 +207,9 @@ class Layer(module.Module):
     self._inbound_nodes = []
     self._outbound_nodes = []
 
-    call_argspec = tf_inspect.getfullargspec(self.call)
-    self._expects_training_arg = 'training' in call_argspec.args
+    call_fn_args = self._call_fn_args
+    self._expects_training_arg = 'training' in call_fn_args
+    self._expects_mask_arg = 'mask' in call_fn_args
 
     # Whether the `call` method can be used to build a TF graph without issues.
     self._dynamic = dynamic
@@ -510,6 +510,7 @@ class Layer(module.Module):
     """
     raise NotImplementedError
 
+  @base_layer_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
@@ -557,17 +558,26 @@ class Layer(module.Module):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     input_list = nest.flatten(inputs)
-    # Accept NumPy inputs by converting to Tensors.
+
+    # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
-      # Don't call `ops.convert_to_tensor` on all `inputs` because
-      # `SparseTensors` can't be converted to `Tensor`.
       def _convert_non_tensor(x):
+        # Don't call `ops.convert_to_tensor` on all `inputs` because
+        # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np.ndarray, float, int)):
           return ops.convert_to_tensor(x)
         return x
-
       inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
+
+    # Handle `mask` propagation from previous layer to current layer. Masks can
+    # be propagated explicitly via the `mask` argument, or implicitly via
+    # setting the `_keras_mask` attribute on the inputs to a Layer. Masks passed
+    # explicitly take priority.
+    input_masks = self._collect_input_masks(inputs, args, kwargs)
+    if (self._expects_mask_arg and input_masks is not None and
+        not self._call_arg_was_passed('mask', args, kwargs)):
+      kwargs['mask'] = input_masks
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.
     # This is always the case in graph mode. It can also be the case in eager
@@ -575,22 +585,11 @@ class Layer(module.Module):
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
 
-    if build_graph:
-      # Only create Keras history if at least one tensor originates from a
-      # `keras.Input`. Otherwise this Layer may be being used outside the Keras
-      # framework.
-      if base_layer_utils.needs_keras_history(inputs):
-        base_layer_utils.create_keras_history(inputs)
-
-    # Handle Keras mask propagation from previous layer to current layer.
-    previous_mask = None
-    if self._should_compute_mask:
-      previous_mask = base_layer_utils.collect_previous_mask(inputs)
-      if ('mask' in self._call_fn_args and 'mask' not in kwargs and
-          not generic_utils.is_all_none(previous_mask)):
-        # The previous layer generated a mask, and mask was not explicitly
-        # pass to __call__, hence we set previous_mask as the default value.
-        kwargs['mask'] = previous_mask
+    # Only create Keras history if at least one tensor originates from a
+    # `keras.Input`. Otherwise this Layer may be being used outside the Keras
+    # framework.
+    if build_graph and base_layer_utils.needs_keras_history(inputs):
+      base_layer_utils.create_keras_history(inputs)
 
     # Clear eager losses on top level model call.
     # We are clearing the losses only on the top level model call and not on
@@ -637,12 +636,15 @@ class Layer(module.Module):
           # TODO(omalleyt): Reconcile this with new `trainable` behavior
           # when available.
           learning_phase_passed_by_framework = False
-          if (self._expects_training_arg and
-              not base_layer_utils.training_arg_passed_to_call(
-                  tf_inspect.getfullargspec(self.call), args, kwargs) and
-              base_layer_utils.is_in_keras_graph()):
-            learning_phase_passed_by_framework = True
-            kwargs['training'] = backend.learning_phase()
+          if (base_layer_utils.is_in_keras_graph() and
+              self._expects_training_arg):
+            training_arg = None
+            if self._call_arg_was_passed('training', args, kwargs):
+              training_arg = self._get_call_arg_value('training', args, kwargs)
+            if training_arg is None:
+              learning_phase_passed_by_framework = True
+              kwargs['training'] = backend.learning_phase()
+
           if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
@@ -689,7 +691,7 @@ class Layer(module.Module):
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
           self._handle_activity_regularization(inputs, outputs)
-          self._set_mask_metadata(inputs, outputs, previous_mask)
+          self._set_mask_metadata(inputs, outputs, input_masks)
           if hasattr(self, '_set_inputs') and not self.inputs:
             # Subclassed network: explicitly set metadata normally set by
             # a call to self._set_inputs().
@@ -705,7 +707,7 @@ class Layer(module.Module):
               input_list, self._mixed_precision_policy.should_cast_variables):
             outputs = self.call(inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
-          self._set_mask_metadata(inputs, outputs, previous_mask)
+          self._set_mask_metadata(inputs, outputs, input_masks)
 
     return outputs
 
@@ -1663,34 +1665,72 @@ class Layer(module.Module):
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
     flat_outputs = nest.flatten(outputs)
+
     mask_already_computed = (
         getattr(self, '_compute_output_and_mask_jointly', False) or
         all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs))
 
-    if not mask_already_computed:
-      if hasattr(self, 'compute_mask'):
-        output_masks = self.compute_mask(inputs, previous_mask)
-        # `compute_mask` can return a single `None` even when a Layer
-        # has multiple outputs.
-        if output_masks is None:
-          flat_masks = [None for _ in flat_outputs]
-        else:
-          flat_masks = nest.flatten(output_masks)
-      else:
-        flat_masks = [None for _ in flat_outputs]
+    # Only compute the mask if the Layer explicitly supports masking or has
+    # overridden `compute_mask`.
+    should_compute_mask = (
+        hasattr(self, 'compute_mask') and
+        (self.supports_masking or
+         not getattr(self.compute_mask, '_is_default', False)))
 
-      for output, mask in zip(flat_outputs, flat_masks):
-        try:
-          output._keras_mask = mask
-        except AttributeError:
-          # C Type such as np.ndarray.
-          pass
+    if mask_already_computed:
+      flat_masks = [getattr(x, '_keras_mask', None) for x in flat_outputs]
+    elif not should_compute_mask:
+      flat_masks = [None for _ in flat_outputs]
+    else:
+      output_masks = self.compute_mask(inputs, previous_mask)
+      # `compute_mask` can return a single `None` even when a Layer
+      # has multiple outputs.
+      if output_masks is None:
+        flat_masks = [None for _ in flat_outputs]
+      else:
+        flat_masks = nest.flatten(output_masks)
+
+    for output, mask in zip(flat_outputs, flat_masks):
+      try:
+        output._keras_mask = mask
+      except AttributeError:
+        # C Type such as np.ndarray.
+        pass
 
     if tf_utils.are_all_symbolic_tensors(flat_outputs):
       for output in flat_outputs:
         if getattr(output, '_keras_mask', None) is not None:
           # Do not track masks for `TensorFlowOpLayer` construction.
           output._keras_mask._keras_history_checked = True
+
+  def _collect_input_masks(self, inputs, args, kwargs):
+    """Checks if `mask` argument was passed, else gathers mask from inputs."""
+    if self._call_arg_was_passed('mask', args, kwargs):
+      return self._get_call_arg_value('mask', args, kwargs)
+
+    if not self._should_compute_mask:
+      return None
+
+    input_masks = nest.map_structure(lambda t: getattr(t, '_keras_mask', None),
+                                     inputs)
+    if generic_utils.is_all_none(input_masks):
+      return None
+    return input_masks
+
+  def _call_arg_was_passed(self, arg_name, args, kwargs):
+    if arg_name in kwargs:
+      return True
+    # Ignore `inputs` arg.
+    if arg_name in dict(zip(self._call_fn_args[1:], args)):
+      return True
+    return False
+
+  def _get_call_arg_value(self, arg_name, args, kwargs):
+    if arg_name in kwargs:
+      return kwargs[arg_name]
+    # Ignore `inputs` arg.
+    args_dict = dict(zip(self._call_fn_args[1:], args))
+    return args_dict[arg_name]
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(
@@ -2079,7 +2119,11 @@ class Layer(module.Module):
   @property
   @tracking.cached_per_instance
   def _call_fn_args(self):
-    return function_utils.fn_args(self.call)
+    all_args = tf_inspect.getfullargspec(self.call).args
+    # Scrub `self` that appears if a decorator was applied.
+    if all_args and all_args[0] == 'self':
+      return all_args[1:]
+    return all_args
 
   @property
   @tracking.cached_per_instance
@@ -2375,12 +2419,6 @@ class KerasHistory(
   # Added to maintain memory and performance characteristics of `namedtuple`
   # while subclassing.
   __slots__ = ()
-
-
-def default(method):
-  """Decorates a method to detect overrides in subclasses."""
-  method._is_default = True
-  return method
 
 
 # Avoid breaking users who directly import this symbol from this file.

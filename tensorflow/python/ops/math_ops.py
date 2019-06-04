@@ -640,7 +640,7 @@ def cast(x, dtype, name=None):
 
   ```python
   x = tf.constant([1.8, 2.2], dtype=tf.float32)
-  tf.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
+  tf.dtypes.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
   ```
 
   The operation supports data types (for `x` and `dtype`) of

@@ -24,13 +24,20 @@ import six
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+# Use LazyLoader to avoid circular dependencies.
+tensor_spec = LazyLoader(
+    "tensor_spec", globals(),
+    "tensorflow.python.framework.tensor_spec")
+ops = LazyLoader(
+    "ops", globals(),
+    "tensorflow.python.framework.ops")
 
 
 # TODO(b/133606651) Export this as "TypeSpec" (or experimental.TypeSpec?) and
@@ -81,7 +88,7 @@ class TypeSpec(object):
     # compatibility using their `is_comptaible_with` method; and all other
     # types are considered compatible if they are equal).
     if not isinstance(spec_or_value, TypeSpec):
-      spec_or_value = TypeSpec.from_value(spec_or_value)
+      spec_or_value = type_spec_from_value(spec_or_value)
     if type(self) is not type(spec_or_value):
       return False
     return self.__is_compatible(self._serialize(),
@@ -110,44 +117,6 @@ class TypeSpec(object):
     merged = self.__most_specific_compatible_type_serialization(
         self._serialize(), other._serialize())  # pylint: disable=protected-access
     return self._deserialize(merged)
-
-  @staticmethod
-  def from_value(value):
-    """Returns a `TypeSpec` that represents the given `value`.
-
-    Args:
-      value: A value that can be accepted or returned by TensorFlow APIs.
-
-    Returns:
-      A `TypeSpec` that is compatible with `value`.
-
-    Raises:
-      TypeError: If a TypeSpec cannot be built for `value`, because its type
-        is not supported.
-    """
-    if isinstance(value, ops.Tensor):
-      # Note: we do not include Tensor names when constructing TypeSpecs.
-      return tensor_spec.TensorSpec(value.shape, value.dtype)
-
-    # TODO(b/133606651) Uncomment the following two lines when CompositeTensor
-    # is updated to define a _type_spec field:
-    #
-    # if isinstance(value, composite_tensor.CompositeTensor):
-    #   return value._type_spec  # pylint: disable=protected-access
-
-    for entry in reversed(TypeSpec._TYPE_CONVERSION_FUNCTION_REGISTRY):
-      type_object, converter_fn, allow_subclass = entry
-      if ((type(value) is type_object) or  # pylint: disable=unidiomatic-typecheck
-          (allow_subclass and isinstance(value, type_object))):
-        return converter_fn(value)
-
-    # Fallback: try converting value to a tensor.
-    try:
-      tensor = ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError("Could not build a TypeSpec for %r with type %s" %
-                      (value, type(value).__name__))
-    return TypeSpec.from_value(tensor)
 
   # === Component encoding for values ===
 
@@ -331,7 +300,7 @@ class TypeSpec(object):
 
   def __check_tensor_list(self, tensor_list):
     expected = self._flat_tensor_specs
-    specs = [tensor_spec.TensorSpec.from_tensor(t) for t in tensor_list]
+    specs = [type_spec_from_value(t) for t in tensor_list]
     if len(specs) != len(expected):
       raise ValueError("Incompatible input: wrong number of tensors")
     for i, (s1, s2) in enumerate(zip(specs, expected)):
@@ -346,8 +315,7 @@ class TypeSpec(object):
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""
-    if isinstance(value, (int, float, bool, dtypes.DType, TypeSpec,
-                          tensor_spec.TensorSpec)):
+    if isinstance(value, (int, float, bool, dtypes.DType, TypeSpec)):
       return value
     elif isinstance(value, compat.bytes_or_text_types):
       return value
@@ -386,8 +354,7 @@ class TypeSpec(object):
     if isinstance(a, tuple):
       return (len(a) == len(b) and
               all(TypeSpec.__is_compatible(x, y) for (x, y) in zip(a, b)))
-    elif isinstance(a, (TypeSpec, tensor_shape.TensorShape, dtypes.DType,
-                        tensor_spec.TensorSpec)):
+    elif isinstance(a, (TypeSpec, tensor_shape.TensorShape, dtypes.DType)):
       return a.is_compatible_with(b)
     else:
       return a == b
@@ -428,12 +395,6 @@ class TypeSpec(object):
                    for (x, y) in zip(a, b))
     elif isinstance(a, tensor_shape.TensorShape):
       return a.most_specific_compatible_shape(b)
-    elif isinstance(a, tensor_spec.TensorSpec):
-      if a.dtype != b.dtype:
-        raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-      shape = a.shape.most_specific_compatible_shape(b.shape)
-      name = a.name if a.name == b.name else None
-      return tensor_spec.TensorSpec(shape, a.dtype, name)
     elif isinstance(a, list):
       raise AssertionError("_serialize() should not return list values.")
     elif isinstance(a, TypeSpec):
@@ -489,6 +450,55 @@ class BatchableTypeSpec(TypeSpec):
     if any(t.shape.ndims == 0 for t in tensor_list):
       raise ValueError("Value %s has insufficient rank for batching." % value)
     return tensor_list
+
+
+def type_spec_from_value(value):
+  """Returns a `TypeSpec` that represents the given `value`.
+
+  Args:
+    value: A value that can be accepted or returned by TensorFlow APIs.
+
+  Returns:
+    A `TypeSpec` that is compatible with `value`.
+
+  Raises:
+    TypeError: If a TypeSpec cannot be built for `value`, because its type
+      is not supported.
+  """
+  spec = _type_spec_from_value(value)
+  if spec is not None:
+    return spec
+
+  # Fallback: try converting value to a tensor.
+  try:
+    tensor = ops.convert_to_tensor(value)
+    spec = _type_spec_from_value(tensor)
+    if spec is not None:
+      return spec
+  except (ValueError, TypeError):
+    pass
+
+  raise TypeError("Could not build a TypeSpec for %r with type %s" %
+                  (value, type(value).__name__))
+
+
+def _type_spec_from_value(value):
+  """Returns a `TypeSpec` that represents the given `value`."""
+  if isinstance(value, ops.Tensor):
+    # Note: we do not include Tensor names when constructing TypeSpecs.
+    return tensor_spec.TensorSpec(value.shape, value.dtype)
+
+  # TODO(b/133606651) Uncomment the following two lines when CompositeTensor
+  # is updated to define a _type_spec field:
+  #
+  # if isinstance(value, composite_tensor.CompositeTensor):
+  #   return value._type_spec  # pylint: disable=protected-access
+
+  for entry in reversed(_TYPE_CONVERSION_FUNCTION_REGISTRY):
+    type_object, converter_fn, allow_subclass = entry
+    if ((type(value) is type_object) or  # pylint: disable=unidiomatic-typecheck
+        (allow_subclass and isinstance(value, type_object))):
+      return converter_fn(value)
 
 
 _TYPE_CONVERSION_FUNCTION_REGISTRY = []

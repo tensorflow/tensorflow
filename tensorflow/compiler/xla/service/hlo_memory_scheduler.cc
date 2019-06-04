@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 
+#include <limits>
 #include <map>
 #include <queue>
 #include <utility>
@@ -244,6 +245,13 @@ class ListScheduler {
 
   // Constructs the scheduling priority of the given instruction.
   Priority GetPriority(const ReadyListEntry& entry) {
+    // Try to cluster scalars as close together as possible so that if they are
+    // in unfused hlos, they can still live in machine registers without
+    // excessive spilling.
+    if (ShapeUtil::IsEffectiveScalar(entry.instruction->shape())) {
+      return {std::numeric_limits<int64>::max(),
+              std::numeric_limits<int64>::max()};
+    }
     return {BytesFreedIfScheduled(entry), entry.instruction->user_count()};
   }
 

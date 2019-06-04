@@ -2332,10 +2332,13 @@ class Model(network.Network):
            ):
           # TODO(b/132691975): Document subclass-model CT input handling.
           raise ValueError(
-              'All implicitly derived inputs to subclassed Models must be '
-              'tf.Tensors (found %s). To add non-tf.Tensor inputs, please call '
-              'self._add_inputs(tf.keras.Input/SparseInput/RaggedInput (etc)) '
-              'in your subclassed Model object.' % (input_tensor,))
+              'All SparseTensor and RaggedTensor inputs must be explicitly '
+              'declared using a keras.Input() with sparse=True or ragged=True. '
+              'We found an undeclared input %s. For Sequential models, please '
+              'add a keras.Input() as your first Layer. For subclassed models, '
+              'please call self._add_inputs() on your input set, which you can '
+              'create using keras.Input() for each input to your model.' %
+              (input_tensor,))
 
       # Build the model using the retrieved inputs (value or symbolic).
       # If values or generated from a dataset, then in symbolic-mode

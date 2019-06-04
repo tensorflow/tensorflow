@@ -2090,6 +2090,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def testRecomputeGrad(self):
+    text = "tf.contrib.layers.recompute_grad()"
+    expected = "tf.recompute_grad()"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_load_variable(self):
     text = "tf.contrib.framework.load_variable('a')"
     expected_text = (
@@ -2192,7 +2198,6 @@ def _log_prob(self, x):
       result_a, result_b = results[0], results[1]
       self.assertEqual(result_a[3], expected_text_a)
       self.assertEqual(result_b[3], expected_text_b)
-
   def test_model_to_estimator_checkpoint_warning(self):
     text = "tf.keras.estimator.model_to_estimator(model)"
     _, report, _, _ = self._upgrade(text)

@@ -197,7 +197,6 @@ class Network(base_layer.Layer):
     # API. Instead, `model.dynamic` is determined based on the internal layers.
     self._dynamic = kwargs.get('dynamic', False)
     self._is_compiled = False
-    self._expects_training_arg = False
     self._layers = []
 
     # This is True for Sequential networks and Functional networks.
@@ -278,6 +277,7 @@ class Network(base_layer.Layer):
     # `_expects_training_arg` is True since the `training` argument is always
     # present in the signature of the `call` method of a graph network.
     self._expects_training_arg = True
+    self._expects_mask_arg = True
 
     self._input_layers = []
     self._output_layers = []
@@ -372,11 +372,9 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None, **kwargs):
     self._base_init(name=name, **kwargs)
     self._is_graph_network = False
+    self._expects_training_arg = 'training' in self._call_fn_args
+    self._expects_mask_arg = 'mask' in self._call_fn_args
     call_argspec = tf_inspect.getfullargspec(self.call)
-    if 'training' in call_argspec.args:
-      self._expects_training_arg = True
-    else:
-      self._expects_training_arg = False
     self._call_convention = self._determine_call_convention(call_argspec)
     self.outputs = []
     self.inputs = []
@@ -633,7 +631,7 @@ class Network(base_layer.Layer):
       return specs[0]
     return specs
 
-  @base_layer.default
+  @base_layer_utils.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.
 

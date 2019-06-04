@@ -42,7 +42,7 @@ class FlatMapDatasetOpTest : public DatasetOpsTestBase {
     NodeDef node_def = test::function::NDef(
         kNodeName, name_utils::OpName(FlatMapDatasetOp::kDatasetType),
         {FlatMapDatasetOp::kInputDataset},
-        {{FlatMapDatasetOp::kF, func},
+        {{FlatMapDatasetOp::kFunc, func},
          {FlatMapDatasetOp::kTarguments, {}},
          {FlatMapDatasetOp::kOutputTypes, output_types},
          {FlatMapDatasetOp::kOutputShapes, output_shapes}});

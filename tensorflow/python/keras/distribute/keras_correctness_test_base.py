@@ -547,7 +547,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
       initial_weights = model.get_weights()
       update_freq = None
 
-      if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+      if (isinstance(distribution, tpu_strategy.TPUStrategyV1) and
           distribution.extended.steps_per_run > 1):
         # For TPUStrategy with steps_per_run > 1, the callback is not invoked
         # every step. So, to compare the CPU/TPU, we let the CPU to behave the
