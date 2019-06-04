@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
+from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import saved_model
 
 _DEFAULT_FUNCTION_KEY = 'serving_default'
@@ -37,19 +38,28 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
 
   def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
                           output_name):
-    dist_predict_dataset = distribution.experimental_distribute_dataset(
-        predict_dataset)
-    per_replica_predict_data = next(iter(dist_predict_dataset))
     func = saved_model.load(saved_dir)
-    result = distribution.experimental_run_v2(
-        func.signatures[_DEFAULT_FUNCTION_KEY], per_replica_predict_data)
-    return result[output_name]
+    if distribution:
+      dist_predict_dataset = distribution.experimental_distribute_dataset(
+          predict_dataset)
+      per_replica_predict_data = next(iter(dist_predict_dataset))
+      result = distribution.experimental_run_v2(
+          func.signatures[_DEFAULT_FUNCTION_KEY],
+          args=(per_replica_predict_data,))
+      result = result[output_name]
+
+      # Convert the per_replica value to a list, then concatenate them
+      reduced = distribution.experimental_local_results(result)
+      concat = array_ops.concat(reduced, 0)
+      return concat
+    else:
+      result = func.signatures[_DEFAULT_FUNCTION_KEY](
+          next(iter(predict_dataset)))
+      return result[output_name]
 
   @combinations.generate(test_base.simple_models_with_strategies())
   def test_save_no_strategy_restore_strategy(self, model_and_input,
                                              distribution):
-    self.skipTest(('Saving/loading model with tf.distribute.Strategy is not ',
-                   'supported.'))
     self.run_test_save_no_strategy_restore_strategy(model_and_input,
                                                     distribution)
 

@@ -1676,17 +1676,19 @@ def is_resource_variable(var):
 class UninitializedVariable(ResourceVariable):
   """A variable with no initializer."""
 
-  def __init__(self,  # pylint: disable=super-init-not-called
-               trainable=None,
-               caching_device=None,
-               name=None,
-               shape=None,
-               dtype=None,
-               constraint=None,
-               synchronization=None,
-               aggregation=None,
-               extra_handle_data=None,
-               **unused_kwargs):
+  def __init__(  # pylint: disable=super-init-not-called
+      self,
+      trainable=None,
+      caching_device=None,
+      name=None,
+      shape=None,
+      dtype=None,
+      constraint=None,
+      synchronization=None,
+      aggregation=None,
+      extra_handle_data=None,
+      distribute_strategy=None,
+      **unused_kwargs):
     """Creates the variable handle.
 
     Args:
@@ -1719,6 +1721,8 @@ class UninitializedVariable(ResourceVariable):
         `tf.VariableAggregation`.
       extra_handle_data: Optional, another resource handle or Tensor with handle
         data to merge with `shape` and `dtype`.
+      distribute_strategy: The tf.distribute.Strategy this variable is being
+        created inside of.
     """
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
@@ -1734,6 +1738,7 @@ class UninitializedVariable(ResourceVariable):
     self._is_initialized_op = None
     self._graph_element = None
     self._cached_value = None
+    self._distribute_strategy = distribute_strategy
     # Store the graph key so optimizers know how to only retrieve variables from
     # this graph. Guaranteed to be the same as the eager graph_key.
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
