@@ -118,9 +118,9 @@ class KerasOptimizersTest(test.TestCase):
   def test_adadelta(self):
     with self.cached_session():
       self._test_optimizer(keras.optimizers.Adadelta(), target=0.6)
-      # Accuracy seems dependent on the initialization. Even adding tf.Print
-      # nodes in the graph seemed to affect the initialization seed, and hence
-      # the accuracy.
+      # Accuracy seems dependent on the initialization. Even adding
+      # tf.compat.v1.Print nodes in the graph seemed to affect the
+      # initialization seed, and hence the accuracy.
       self._test_optimizer(keras.optimizers.Adadelta(decay=1e-3), target=0.4)
 
   def test_adam(self):

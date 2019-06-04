@@ -29,15 +29,14 @@ int WindowPopulateState(const struct WindowConfig* config,
   state->size = config->size_ms * sample_rate / 1000;
   state->step = config->step_size_ms * sample_rate / 1000;
 
-  state->coefficients = malloc(
-      state->size * sizeof(*state->coefficients));
+  state->coefficients = malloc(state->size * sizeof(*state->coefficients));
   if (state->coefficients == NULL) {
     fprintf(stderr, "Failed to allocate window coefficients\n");
     return 0;
   }
 
   // Populate the window values.
-  const float arg = M_PI * 2.0 / ((float) state->size);
+  const float arg = M_PI * 2.0 / ((float)state->size);
   int i;
   for (i = 0; i < state->size; ++i) {
     float float_value = 0.5 - (0.5 * cos(arg * (i + 0.5)));
@@ -47,15 +46,13 @@ int WindowPopulateState(const struct WindowConfig* config,
   }
 
   state->input_used = 0;
-  state->input = malloc(
-      state->size * sizeof(*state->input));
+  state->input = malloc(state->size * sizeof(*state->input));
   if (state->input == NULL) {
     fprintf(stderr, "Failed to allocate window input\n");
     return 0;
   }
 
-  state->output = malloc(
-      state->size * sizeof(*state->output));
+  state->output = malloc(state->size * sizeof(*state->output));
   if (state->output == NULL) {
     fprintf(stderr, "Failed to allocate window output\n");
     return 0;

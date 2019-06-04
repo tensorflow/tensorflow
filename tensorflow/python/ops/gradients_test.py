@@ -21,6 +21,7 @@ from __future__ import print_function
 import sys
 import warnings
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
@@ -45,7 +46,6 @@ from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
@@ -54,13 +54,14 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.nn_ops import bias_add
 from tensorflow.python.platform import googletest
 
 
-class GradientsTest(test_util.TensorFlowTestCase):
+class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testGradients(self):
     with ops.Graph().as_default():
@@ -267,6 +268,20 @@ class GradientsTest(test_util.TensorFlowTestCase):
       init = constant_op.constant(100.0)
       var = variables.Variable(init)
       gradient = gradients.gradients(var.read_value(), var)
+      self.assertIsNotNone(gradient)
+
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testVariableDefaultGrad(self, dtype):
+    with ops.Graph().as_default():
+      init = constant_op.constant(100.0, dtype=dtype)
+      var = variables.Variable(init)
+      dummy_const = constant_op.constant(0.0)
+      gradient = gradients.gradients(
+          dummy_const,
+          var,
+          unconnected_gradients=unconnected_gradients.UnconnectedGradients.ZERO
+      )[0]
+      self.assertEqual(gradient.dtype, dtype)
       self.assertIsNotNone(gradient)
 
   def testVariableAsGraphElementGradient(self):
@@ -1033,53 +1048,41 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(g.eval(), [2.0])
       self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
+  def testRecursiveCustomGradient(self):
+    @custom_gradient.custom_gradient
+    def F(x):
+      out = core_layers.dense(x, 3, use_bias=False)
 
-class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((4, 3))]
 
-  def _assert_indexed_slices_equal(self, left, right):
-    self.assertAllEqual(
-        self.evaluate(ops.convert_to_tensor(left)),
-        self.evaluate(ops.convert_to_tensor(right)))
+      return out, Grad
 
-  def testNoGradients(self):
-    self.assertIsNone(gradients_util._AggregateIndexedSlicesGradients([]))
+    @custom_gradient.custom_gradient
+    def DoubleF(x):
+      out = F(x)
 
-  def testOneGradient(self):
-    t = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    result = gradients_util._AggregateIndexedSlicesGradients([t])
-    self._assert_indexed_slices_equal(t, result)
+      def Grad(out_grad, variables=None):  # pylint: disable=redefined-outer-name
+        self.assertEqual(1, len(variables))
+        grads = gradients.gradients(out, [x, variables[0]], grad_ys=out_grad)
+        return grads[0], [array_ops.ones((4, 3))]
 
-  def testMultipleGradients(self):
-    t0 = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(constant_op.constant(
-        [[0., 0.], [5, 6], [7., 8.]]))
-    total = constant_op.constant(
-        [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1])
-    self._assert_indexed_slices_equal(total, result)
-
-  def testMultipleGradientsWithNones(self):
-    t0 = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(constant_op.constant(
-        [[0., 0.], [5, 6], [7., 8.]]))
-    t3 = None
-    total = constant_op.constant(
-        [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1, t3])
-    self._assert_indexed_slices_equal(total, result)
-
-  def testMixedTensorAndIndexedSlices(self):
-    t0 = math_ops._as_indexed_slices(constant_op.constant(
-        [[1., 2.], [0, 0], [3., 4.]]))
-    t1 = constant_op.constant(
-        [[0., 0.], [5, 6], [7., 8.]])
-    total = constant_op.constant(
-        [[1., 2.], [5, 6], [10., 12.]])
-    result = gradients_util._AggregateIndexedSlicesGradients([t0, t1])
-    self._assert_indexed_slices_equal(total, result)
+      return out, Grad
+    with ops.Graph().as_default():
+      x = array_ops.ones((2, 4))
+      with variable_scope.variable_scope("f", use_resource=True) as vs:
+        y = DoubleF(x)
+        all_vars = vs.global_variables()
+        assert len(all_vars) == 1
+      grads = gradients.gradients(y, [x, all_vars[0]])
+      for g in grads:
+        self.assertIsNotNone(g)
+      with session.Session() as sess:
+        self.evaluate(variables.global_variables_initializer())
+        dw = sess.run(math_ops.reduce_sum(grads[1]))
+        self.assertEqual(12., dw)
 
 
 class TensorListGradientsTest(test_util.TensorFlowTestCase):

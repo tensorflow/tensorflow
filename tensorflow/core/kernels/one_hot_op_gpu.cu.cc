@@ -15,7 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #define EIGEN_USE_GPU
 
@@ -46,4 +47,4 @@ TF_CALL_int64(DEFINE_GPU_SPEC);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

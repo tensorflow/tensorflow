@@ -92,25 +92,18 @@ class RunHandlerPool::Impl {
       handlers_.emplace_back(new RunHandler::Impl(this));
       free_handlers_.push_back(handlers_.back().get());
     }
-    // Set steal partitions to a fixed size steal domain of size 6 = 2 *
-    // kMinThreadsPerRequest.
+
     std::vector<std::pair<unsigned, unsigned>> steal_partitions(
         num_inter_op_threads);
-    int kStealDomainSize = std::min(6, num_inter_op_threads);
-    unsigned steal_start = 0, steal_end = kStealDomainSize;
+    std::vector<std::uint_fast32_t> start_vec(num_inter_op_threads);
+    std::vector<std::uint_fast32_t> end_vec(num_inter_op_threads);
+
+    ComputeInterOpStealingRanges(num_inter_op_threads, kMinThreadsPerDomain,
+                                 &start_vec, &end_vec);
     for (int i = 0; i < num_inter_op_threads; ++i) {
-      if (i > steal_start) {
-        if (steal_end + kStealDomainSize < num_inter_op_threads) {
-          steal_start = steal_end;
-          steal_end += kStealDomainSize;
-        } else {
-          steal_end = num_inter_op_threads;
-          steal_start = steal_end - kStealDomainSize;
-        }
-      }
-      steal_partitions[i] = std::make_pair(steal_start, steal_end);
-      VLOG(1) << "Steal partition i: " << i << " steal_start: " << steal_start
-              << " steal_end: " << steal_end;
+      steal_partitions[i] = std::make_pair(start_vec[i], end_vec[i]);
+      VLOG(1) << "Steal partition i: " << i << " steal_start: " << start_vec[i]
+              << " steal_end: " << end_vec[i];
     }
     inter_op_thread_pool_->SetStealPartitions(steal_partitions);
   }
@@ -183,6 +176,14 @@ class RunHandlerPool::Impl {
   // inference).
   const int max_handlers_;
 
+  // Minimum number of threads allocated to process a request.
+  const int kMinThreadsPerRequest = 3;
+
+  // Minmum number of threads in a steal domain. Each thread will first try
+  // to steal from threads in the same domain before stealing from threads
+  // in different domains.
+  const int kMinThreadsPerDomain = 2 * kMinThreadsPerRequest;
+
   // Thread safe part.
   const std::unique_ptr<thread::ThreadPool> inter_op_thread_pool_;
 
@@ -209,7 +210,6 @@ void RunHandlerPool::Impl::RecomputePoolStatsLocked() {
   inter_op_start_.resize(num_active_requests);
   inter_op_limit_.resize(num_active_requests);
 
-  const int kMinThreadsPerRequest = 3;
   ComputeInterOpSchedulingRanges(num_active_requests, num_threads,
                                  kMinThreadsPerRequest, &inter_op_start_,
                                  &inter_op_limit_);

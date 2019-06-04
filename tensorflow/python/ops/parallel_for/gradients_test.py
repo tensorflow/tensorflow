@@ -497,7 +497,7 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(pfor_jacobian, while_jacobian)
 
   @test_util.disable_xla("This test never passed for XLA")
-  def test_dynamic_lstm_batch_jacobian(self):
+  def DISABLED_test_dynamic_lstm_batch_jacobian(self):
     pfor_jacobian, while_gradients = create_dynamic_lstm_batch_jacobian(8, 4, 3)
     with session.Session() as sess:
       init = variables.global_variables_initializer()

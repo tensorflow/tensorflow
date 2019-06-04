@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -32,21 +34,13 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       const string& prefix)
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
-  void AddToHistogram(const string& name,
-                      gtl::ArraySlice<double> values) override {
-    if (!tag_.empty()) {
-      wrapped_->AddToHistogram(strings::StrCat(tag_, "_", name), values);
-    } else {
-      wrapped_->AddToHistogram(name, values);
-    }
+  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+                      int64 steps) override {
+    wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }
 
-  void AddScalar(const string& name, float value) override {
-    if (!tag_.empty()) {
-      wrapped_->AddScalar(strings::StrCat(tag_, "_", name), value);
-    } else {
-      wrapped_->AddScalar(name, value);
-    }
+  void AddScalar(const string& name, float value, int64 steps) override {
+    wrapped_->AddScalar(TaggedName(name), value, steps);
   }
 
   void EncodeToProto(Summary* out_summary) override {
@@ -56,15 +50,27 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   void IncrementCounter(const string& name, const string& label,
                         int64 val) override {
     if (!prefix_.empty()) {
-      wrapped_->IncrementCounter(strings::StrCat(prefix_, "/", name), label,
-                                 val);
+      wrapped_->IncrementCounter(
+          strings::StrCat(prefix_, "/", TaggedName(name)), label, val);
     } else {
-      wrapped_->IncrementCounter(strings::StrCat("/tensorflow/", name), label,
-                                 val);
+      wrapped_->IncrementCounter(
+          strings::StrCat("/tensorflow/", TaggedName(name)), label, val);
     }
   }
 
+  Status SetSummaryWriter(SummaryWriterInterface* summary_writer) override {
+    return wrapped_->SetSummaryWriter(summary_writer);
+  }
+
  private:
+  string TaggedName(const string& name) const {
+    if (!tag_.empty()) {
+      string tagged_name = strings::StrCat(tag_, stats_utils::kDelimiter, name);
+      return tagged_name;
+    }
+    return name;
+  }
+
   std::shared_ptr<StatsAggregator> wrapped_;
   string tag_;
   string prefix_;
@@ -78,17 +84,16 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    StatsAggregatorResource* stats_aggregator_resource;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
-                                       &stats_aggregator_resource));
-    core::ScopedUnref unref_stats_aggregator(stats_aggregator_resource);
+    core::RefCountPtr<StatsAggregatorResource> resource;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
     string tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     string prefix;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "counter_prefix", &prefix));
 
-    *output = new Dataset(ctx, input, ctx->input(1), stats_aggregator_resource,
-                          tag, prefix);
+    *output =
+        new Dataset(ctx, input, ctx->input(1), resource.get(), tag, prefix);
   }
 
  private:
@@ -96,12 +101,12 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
                      const Tensor& resource_handle,
-                     StatsAggregatorResource* stats_aggregator_resource,
-                     const string& tag, const string& prefix)
+                     StatsAggregatorResource* resource, const string& tag,
+                     const string& prefix)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           resource_handle_(resource_handle),
-          stats_aggregator_resource_(stats_aggregator_resource),
+          stats_aggregator_resource_(resource),
           tag_(tag),
           prefix_(prefix) {
       input_->Ref();
@@ -164,13 +169,13 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        StatsAggregatorResource* stats_aggregator_resource =
+        StatsAggregatorResource* resource =
             dataset()->stats_aggregator_resource_;
         IteratorContext::Params params(ctx);
         params.stats_aggregator = std::shared_ptr<StatsAggregator>(
-            new StatsAggregatorWithTagAndPrefix(
-                stats_aggregator_resource->stats_aggregator(), dataset()->tag_,
-                dataset()->prefix_));
+            new StatsAggregatorWithTagAndPrefix(resource->stats_aggregator(),
+                                                dataset()->tag_,
+                                                dataset()->prefix_));
         IteratorContext iter_ctx(std::move(params));
         return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
       }

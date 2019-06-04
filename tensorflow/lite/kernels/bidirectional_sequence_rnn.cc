@@ -31,17 +31,7 @@ namespace ops {
 namespace builtin {
 namespace bidirectional_sequence_rnn {
 
-namespace {
-
-int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
-  }
-}
-
-}  // namespace
+// LINT.IfChange
 
 constexpr int kInputTensor = 0;
 // Forward and backward cell tensors.
@@ -63,6 +53,8 @@ constexpr int kBwAuxWeightsTensor = 11;  // Optional.
 // Output tensors.
 constexpr int kFwOutputTensor = 0;
 constexpr int kBwOutputTensor = 1;  // Only if merge_outputs is false.
+
+// LINT.ThenChange(//tensorflow/lite/tools/optimize/quantize_weights.cc)
 
 // Temporary tensors.
 enum TemporaryTensor {
@@ -168,11 +160,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       bw_aux_input_weights->dims->data[1]);
   }
 
-  const bool is_hybrid_op = ((fw_input_weights->type == kTfLiteUInt8 ||
-                              fw_input_weights->type == kTfLiteInt8) &&
-                             input->type == kTfLiteFloat32);
-
-  if (is_hybrid_op) {
+  if (IsHybridOp(input, fw_input_weights)) {
     int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
 
     TfLiteIntArrayFree(node->temporaries);

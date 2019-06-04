@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental API for controlling threading in `tf.data` pipelines."""
+"""Experimental API for manually injecting delays into `tf.data` pipelines."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

@@ -30,6 +30,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -117,7 +121,7 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=array_ops.expand_dims(
               math_ops.range(i, dtype=dtypes.int64), 1),
-          values=array_ops.fill([math_ops.to_int32(i)], i),
+          values=array_ops.fill([math_ops.cast(i, dtypes.int32)], i),
           dense_shape=[i])
 
     dataset = dataset_ops.Dataset.range(10).map(_sparse).batch(5)
@@ -168,6 +172,40 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
             errors.InvalidArgumentError,
             r'Cannot batch tensors with different shapes in component 0. First '
             r'element had shape \[3\] and element 2 had shape \[4\].'))
+
+  # Ragged Tensors.
+  def testBatchRagged(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    dataset = dataset_ops.Dataset.range(10).map(_ragged).batch(5)
+    expected_output = [
+        ragged_factory_ops.constant([[[0]], [[1]], [[2]], [[3]], [[4]]]),
+        ragged_factory_ops.constant([[[5]], [[6]], [[7]], [[8]], [[9]]])
+    ]
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  def testBatchRaggedWithDifferentShapes(self):
+    dataset = dataset_ops.Dataset.range(10).map(ragged_math_ops.range).batch(5)
+    expected_output = [
+        ragged_concat_ops.stack([ragged_math_ops.range(i) for i in range(5)]),
+        ragged_concat_ops.stack(
+            [ragged_math_ops.range(i) for i in range(5, 10)])
+    ]
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  def testNestedBatchRagged(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    dataset = dataset_ops.Dataset.range(10).map(_ragged).batch(5).batch(2)
+    expected_output = [
+        ragged_factory_ops.constant([[[[0]], [[1]], [[2]], [[3]], [[4]]],
+                                     [[[5]], [[6]], [[7]], [[8]], [[9]]]])
+    ]
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
 
 if __name__ == '__main__':

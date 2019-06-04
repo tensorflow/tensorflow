@@ -42,14 +42,20 @@ _TF_ACTIVATIONS_V2 = {
 
 @keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
-  """Softmax activation function.
+  """The softmax activation function transforms the outputs so that all values are in
+
+  range (0, 1) and sum to 1. It is often used as the activation for the last
+  layer of a classification network because the result could be interpreted as
+  a probability distribution. The softmax of x is calculated by
+  exp(x)/tf.reduce_sum(exp(x)).
 
   Arguments:
       x : Input tensor.
       axis: Integer, axis along which the softmax normalization is applied.
 
   Returns:
-      Tensor, output of softmax transformation.
+      Tensor, output of softmax transformation (all values are non-negative
+        and sum to 1).
 
   Raises:
       ValueError: In case `dim(x) == 1`.
@@ -89,12 +95,38 @@ def elu(x, alpha=1.0):
 def selu(x):
   """Scaled Exponential Linear Unit (SELU).
 
-  SELU is equal to: `scale * elu(x, alpha)`, where alpha and scale
-  are pre-defined constants. The values of `alpha` and `scale` are
+  The Scaled Exponential Linear Unit (SELU) activation function is:
+  `scale * x` if `x > 0` and `scale * alpha * (exp(x) - 1)` if `x < 0`
+  where `alpha` and `scale` are pre-defined constants
+  (`alpha = 1.67326324`
+  and `scale = 1.05070098`).
+  The SELU activation function multiplies  `scale` > 1 with the
+  `[elu](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/keras/activations/elu)`
+  (Exponential Linear Unit (ELU)) to ensure a slope larger than one
+  for positive net inputs.
+
+  The values of `alpha` and `scale` are
   chosen so that the mean and variance of the inputs are preserved
   between two consecutive layers as long as the weights are initialized
-  correctly (see `lecun_normal` initialization) and the number of inputs
-  is "large enough" (see references for more information).
+  correctly (see [`lecun_normal` initialization]
+  (https://www.tensorflow.org/api_docs/python/tf/keras/initializers/lecun_normal))
+  and the number of inputs is "large enough"
+  (see references for more information).
+
+  ![](https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png)
+  (Courtesy: Blog on Towards DataScience at
+  https://towardsdatascience.com/selu-make-fnns-great-again-snn-8d61526802a9)
+
+  Example Usage:
+  ```python3
+  n_classes = 10 #10-class problem
+  model = models.Sequential()
+  model.add(Dense(64, kernel_initializer='lecun_normal', activation='selu',
+  input_shape=(28, 28, 1))))
+  model.add(Dense(32, kernel_initializer='lecun_normal', activation='selu'))
+  model.add(Dense(16, kernel_initializer='lecun_normal', activation='selu'))
+  model.add(Dense(n_classes, activation='softmax'))
+  ```
 
   Arguments:
       x: A tensor or variable to compute the activation function for.
@@ -103,11 +135,14 @@ def selu(x):
       The scaled exponential unit activation: `scale * elu(x, alpha)`.
 
   # Note
-      - To be used together with the initialization "lecun_normal".
-      - To be used together with the dropout variant "AlphaDropout".
+      - To be used together with the initialization "[lecun_normal]
+      (https://www.tensorflow.org/api_docs/python/tf/keras/initializers/lecun_normal)".
+      - To be used together with the dropout variant "[AlphaDropout]
+      (https://www.tensorflow.org/api_docs/python/tf/keras/layers/AlphaDropout)".
 
   References:
-      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+      [Self-Normalizing Neural Networks (Klambauer et al, 2017)]
+      (https://arxiv.org/abs/1706.02515)
   """
   alpha = 1.6732632423543772848170429916717
   scale = 1.0507009873554804934193349852946
@@ -165,16 +200,53 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
+  """Hyperbolic Tangent activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The tanh activation: `tanh(x) = sinh(x)/cosh(x) = ((exp(x) -
+      exp(-x))/(exp(x) + exp(-x)))`.
+  """
   return nn.tanh(x)
 
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
+  """Sigmoid.
+
+  Applies the sigmoid activation function. The sigmoid function is defined as
+  1 divided by (1 + exp(-x)). It's curve is like an "S" and is like a smoothed
+  version of the Heaviside (Unit Step Function) function. For small values
+  (<-5) the sigmoid returns a value close to zero and for larger values (>5)
+  the result of the function gets close to 1.
+  Arguments:
+      x: A tensor or variable.
+
+  Returns:
+      A tensor.
+  Sigmoid activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The sigmoid activation: `(1.0 / (1.0 + exp(-x)))`.
+  """
   return nn.sigmoid(x)
 
 
 @keras_export('keras.activations.exponential')
 def exponential(x):
+  """Exponential activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The exponential activation: `exp(x)`.
+  """
   return math_ops.exp(x)
 
 
@@ -198,6 +270,14 @@ def hard_sigmoid(x):
 
 @keras_export('keras.activations.linear')
 def linear(x):
+  """Linear activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The linear activation: `x`.
+  """
   return x
 
 
@@ -227,5 +307,6 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret '
-                     'activation function identifier:', identifier)
+    raise TypeError(
+        'Could not interpret activation function identifier: {}'.format(
+            repr(identifier)))

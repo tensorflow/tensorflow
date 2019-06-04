@@ -40,20 +40,20 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-REGISTER_OP("FakeNullary").Output("out: float");
+REGISTER_OP("FakeNullary").Output("out: int32");
 
 REGISTER_OP("FakeBinary")
-    .Input("host_in: float")
-    .Input("device_in: float")
-    .Output("host_out: float")
-    .Output("device_out: float");
+    .Input("host_in: int32")
+    .Input("device_in: int32")
+    .Output("host_out: int32")
+    .Output("device_out: int32");
 
 REGISTER_OP("FakeResourceVar").Output("out: resource");
 
 REGISTER_OP("FakeResourceUpdate")
     .Input("in: resource")
     .Output("out: resource")
-    .Output("something_else: float");
+    .Output("something_else: int32");
 
 class FakeBinaryOp : public OpKernel {
  public:
@@ -465,6 +465,62 @@ TEST(PartiallyDeclusterPassTest, EliminatedUnusedNodes) {
   TF_ASSERT_OK(PartiallyDecluster(&graph));
   EXPECT_EQ(FindNodeByName(*graph, kClusteredProducer0Name), nullptr);
   EXPECT_EQ(FindNodeByName(*graph, kClusteredProducer1Name), nullptr);
+}
+
+TEST(PartiallyDeclusterPassTest, MetadataOpsDontStartClusters) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
+
+  Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT);
+  Output b = ops::Shape(in_cluster_and.WithOpName("b"), a);
+  Output c = ops::Rank(in_cluster_and.WithOpName("c"), b);
+  Output d = ops::Size(in_cluster_and.WithOpName("d"), c);
+  (void)ops::Shape(in_cluster_and.WithOpName("e"), d);
+
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  Node* n_b = FindNodeByName(*graph, "b");
+  ASSERT_NE(n_b, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), absl::nullopt);
+
+  Node* n_c = FindNodeByName(*graph, "c");
+  ASSERT_NE(n_c, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), absl::nullopt);
+
+  Node* n_d = FindNodeByName(*graph, "d");
+  ASSERT_NE(n_d, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_d), absl::nullopt);
+
+  Node* n_e = FindNodeByName(*graph, "e");
+  ASSERT_NE(n_e, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_e), absl::nullopt);
+}
+
+TEST(PartiallyDeclusterPassTest, MetaConsumersArentDeclustered) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  tensorflow::Scope in_cluster_and = root.WithXlaCluster("cluster_0");
+  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
+  Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT);
+  Output b = ops::Add(in_cluster_and.WithOpName("b"), a, a);
+  Output c = ops::Rank(in_cluster_and.WithOpName("c"), b);
+
+  Output e;
+  TF_ASSERT_OK(
+      CreateOutputWithScope("FakeBinary", {c, c}, root.WithOpName("e"), &e));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+
+  Node* n_b = FindNodeByName(*graph, "b");
+  ASSERT_NE(n_b, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_b), "cluster_0");
+
+  Node* n_c = FindNodeByName(*graph, "c");
+  ASSERT_NE(n_c, nullptr);
+  EXPECT_EQ(GetXlaClusterForNode(*n_c), "cluster_0");
 }
 
 }  // namespace

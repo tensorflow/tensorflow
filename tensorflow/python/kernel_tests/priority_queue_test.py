@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
@@ -69,6 +70,9 @@ class PriorityQueueTest(test.TestCase):
       self.assertEqual(missed, set())
 
   def testRoundTripInsertMultiThreadedReadOnceSorts(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (dtypes.string, dtypes.string), (
           (), ()))
@@ -115,6 +119,9 @@ class PriorityQueueTest(test.TestCase):
       self.assertEqual(missed, set())
 
   def testRoundTripFillsCapacityMultiThreadedEnqueueAndDequeue(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(10, (dtypes.int64), (()))
 
@@ -165,6 +172,9 @@ class PriorityQueueTest(test.TestCase):
       self.assertAllEqual(sorted(dequeued), sorted(all_enqueued_values))
 
   def testRoundTripInsertManyMultiThreadedReadManyMultithreadedSorts(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (dtypes.int64), (()))
 
@@ -221,6 +231,9 @@ class PriorityQueueTest(test.TestCase):
       self.assertAllEqual(set(dequeued), set(all_enqueued_values))
 
   def testRoundTripInsertManyMultiThreadedReadOnceSorts(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (dtypes.string, dtypes.string), (
           (), ()))

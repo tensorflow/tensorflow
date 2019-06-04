@@ -128,7 +128,7 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
               StatusCallback copy_ready = [response, done, copy,
                                            is_dead](const Status& s) {
                 // The value is now ready to be returned on the wire.
-                grpc::EncodeTensorToByteBuffer(is_dead, *copy, response);
+                grpc::EncodeTensorToByteBuffer(is_dead, *copy, false, response);
                 done(s);
                 delete copy;
               };
@@ -136,7 +136,7 @@ void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
               send_dev_context->CopyDeviceTensorToCPU(
                   &val, request->rendezvous_key(), src_dev, copy, copy_ready);
             } else {
-              grpc::EncodeTensorToByteBuffer(is_dead, val, response);
+              grpc::EncodeTensorToByteBuffer(is_dead, val, false, response);
               done(Status::OK());
             }
           }

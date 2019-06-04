@@ -32,7 +32,7 @@ def unique():
   dataset = tf.data.Dataset.from_tensor_slices([1, 37, 2, 37, 2, 1])
 
   # Using `unique()` will drop the duplicate elements.
-  dataset = dataset.apply(tf.contrib.data.unique())  # ==> { 1, 37, 2 }
+  dataset = dataset.apply(tf.data.experimental.unique())  # ==> { 1, 37, 2 }
   ```
 
   Returns:

@@ -104,8 +104,8 @@ class _Mapping(collections.namedtuple(
 
   def _merge_dicts(self, old=None, new=None):
     """Helper to merge two dictionaries."""
-    old = dict() if old is None else old
-    new = dict() if new is None else new
+    old = {} if old is None else old
+    new = {} if new is None else new
     for k, v in six.iteritems(new):
       val = old.get(k, None)
       if val is not None and val != v:

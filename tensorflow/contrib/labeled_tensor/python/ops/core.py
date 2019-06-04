@@ -48,7 +48,7 @@ from tensorflow.python.ops import math_ops
 # We use this instead of collections.Sequence to exclude strings.
 LabelsLike = tc.Union(np.ndarray, range, list, tuple)
 
-# Types coercible to a tf.Dimension
+# Types coercible to a tf.compat.v1.Dimension
 DimensionLike = tc.Optional(tc.Union(tensor_shape.Dimension, int))
 
 # Types usable for axis values
@@ -63,7 +63,7 @@ Scalar = tc.Union(numbers.Number, bool, binary_type, text_type)
 class Axis(object):
   """Size and label information for an axis.
 
-  Axis contains either a tf.Dimension indicating the size of an axis,
+  Axis contains either a tf.compat.v1.Dimension indicating the size of an axis,
   or a tuple of tick labels for the axis.
 
   If tick labels are provided, they must be unique.
@@ -75,9 +75,9 @@ class Axis(object):
 
     Args:
       name: Name of the axis.
-      value: Either None, an int or tf.Dimension giving the size of the axis,
-        or a sequence that is not a string additionally providing coordinate
-        (tick) labels.
+      value: Either None, an int or tf.compat.v1.Dimension giving the size of
+        the axis, or a sequence that is not a string additionally providing
+        coordinate (tick) labels.
 
     Raises:
       ValueError: If the user provides labels with duplicate values.
@@ -99,8 +99,8 @@ class Axis(object):
     if labels is not None:
       index = dict(zip(labels, range(len(labels))))
       if len(index) != len(labels):
-        raise ValueError('Tick labels must be unique, but got {}'
-                         .format(labels))
+        raise ValueError(
+            'Tick labels must be unique, but got {}'.format(labels))
     else:
       index = None
 
@@ -152,7 +152,7 @@ class Axis(object):
   @property
   @tc.returns(tc.Union(tuple, tensor_shape.Dimension))
   def value(self):
-    """Returns the tf.Dimension or tuple specifying axis ticks."""
+    """Returns the tf.compat.v1.Dimension or tuple specifying axis ticks."""
     if self.labels is None:
       return self.dimension
     else:
@@ -313,8 +313,9 @@ class LabeledTensor(object):
 
     # First, the rank of the tensor must be equal to the number of axes.
     if len(shape) != len(unvalidated_axes):
-      raise ValueError('Tensor rank was not equal to the number of axes: %r, %r'
-                       % (shape, unvalidated_axes))
+      raise ValueError(
+          'Tensor rank was not equal to the number of axes: %r, %r' %
+          (shape, unvalidated_axes))
 
     # Second, the size of each tensor dimension must match the size of the
     # corresponding indices.
@@ -608,16 +609,14 @@ def identity(labeled_tensor, name=None):
   with ops.name_scope(name, 'lt_identity', [labeled_tensor]) as scope:
     labeled_tensor = convert_to_labeled_tensor(labeled_tensor)
     return LabeledTensor(
-        array_ops.identity(
-            labeled_tensor.tensor, name=scope),
+        array_ops.identity(labeled_tensor.tensor, name=scope),
         labeled_tensor.axes)
 
 
 # We don't call this slice because that shadows a built-in. Instead, we alias
 # this to lt.slice in __init__.py.
 @tc.returns(LabeledTensor)
-@tc.accepts(LabeledTensorLike,
-            tc.Mapping(string_types, tc.Union(int, slice)),
+@tc.accepts(LabeledTensorLike, tc.Mapping(string_types, tc.Union(int, slice)),
             tc.Optional(string_types))
 def slice_function(labeled_tensor, selection, name=None):
   """Slice out a subset of the tensor.
@@ -632,8 +631,8 @@ def slice_function(labeled_tensor, selection, name=None):
 
   Args:
     labeled_tensor: The input tensor.
-    selection: A dictionary of type str -> Union(int, slice of int) mapping
-      axis names to sub-selections.
+    selection: A dictionary of type str -> Union(int, slice of int) mapping axis
+      names to sub-selections.
     name: Optional op name.
 
   Returns:
@@ -669,13 +668,12 @@ def slice_function(labeled_tensor, selection, name=None):
         assert isinstance(s, int)
 
     return LabeledTensor(
-        array_ops.identity(
-            sliced_tensor, name=scope), sliced_axes)
+        array_ops.identity(sliced_tensor, name=scope), sliced_axes)
 
 
 @tc.returns(LabeledTensor)
-@tc.accepts(LabeledTensorLike,
-            tc.Optional(tc.Collection(string_types)), tc.Optional(string_types))
+@tc.accepts(LabeledTensorLike, tc.Optional(tc.Collection(string_types)),
+            tc.Optional(string_types))
 def transpose(labeled_tensor, axis_order=None, name=None):
   """Permute a tensor's axes.
 
@@ -718,11 +716,11 @@ def transpose(labeled_tensor, axis_order=None, name=None):
 
 
 @tc.returns(LabeledTensor)
-@tc.accepts(
-    LabeledTensorLike,
-    tc.Collection(
-        tc.Union(string_types, tc.Tuple(string_types, collections.Hashable))),
-    tc.Optional(string_types))
+@tc.accepts(LabeledTensorLike,
+            tc.Collection(
+                tc.Union(string_types,
+                         tc.Tuple(string_types, collections.Hashable))),
+            tc.Optional(string_types))
 def expand_dims(labeled_tensor, axes, name=None):
   """Insert dimensions of size 1.
 
@@ -730,10 +728,10 @@ def expand_dims(labeled_tensor, axes, name=None):
 
   Args:
     labeled_tensor: The input tensor.
-    axes: The desired axis names as strings or tuples of (name, label),
-      where `label` is the coordinate name for the new dimension `name`.
-      These must include the existing axis names, and the existing names must
-      appear in the same order in this list as they do in the input tensor.
+    axes: The desired axis names as strings or tuples of (name, label), where
+      `label` is the coordinate name for the new dimension `name`. These must
+      include the existing axis names, and the existing names must appear in the
+      same order in this list as they do in the input tensor.
     name: Optional op name.
 
   Returns:
@@ -886,8 +884,8 @@ def check_axis_order(labeled_tensor, axis_order=None):
 
 
 @tc.returns(LabeledTensor)
-@tc.accepts(LabeledTensorLike,
-            tc.Optional(tc.Collection(string_types)), tc.Optional(string_types))
+@tc.accepts(LabeledTensorLike, tc.Optional(tc.Collection(string_types)),
+            tc.Optional(string_types))
 def impose_axis_order(labeled_tensor, axis_order=None, name=None):
   """Impose desired axis order on a labeled tensor.
 
@@ -1065,7 +1063,7 @@ def define_unary_op(op_name, elementwise_function):
     op_name: string name of the TensorFlow op.
     elementwise_function: function to call to evaluate the op on a single
       tf.Tensor object. This function must accept two arguments: a tf.Tensor
-      object, and an optional `name`.
+        object, and an optional `name`.
 
   Returns:
     Function defining the given op that acts on LabeledTensors.
@@ -1134,7 +1132,7 @@ def define_binary_op(op_name, elementwise_function):
     op_name: string name of the TensorFlow op.
     elementwise_function: function to call to evaluate the op on tf.Tensor
       objects. This function must accept three arguments: two tf.Tensor objects,
-      and an optional `name`.
+        and an optional `name`.
 
   Returns:
     Function defining the given op that acts on LabeledTensors.

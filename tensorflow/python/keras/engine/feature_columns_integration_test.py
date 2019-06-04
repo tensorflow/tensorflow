@@ -238,6 +238,26 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     }, np.arange(10, 100))
     print(model.fit(*data_bloated_dict, epochs=1))
 
+  @keras_parameterized.run_all_keras_modes
+  def test_string_input(self):
+    x = {'age': np.random.random((1024, 1)),
+         'cabin': np.array(['a'] * 1024)}
+    y = np.random.randint(2, size=(1024, 1))
+    ds1 = dataset_ops.Dataset.from_tensor_slices(x)
+    ds2 = dataset_ops.Dataset.from_tensor_slices(y)
+    dataset = dataset_ops.Dataset.zip((ds1, ds2)).batch(4)
+    categorical_cols = [fc.categorical_column_with_hash_bucket('cabin', 10)]
+    feature_cols = ([fc.numeric_column('age')]
+                    + [fc.indicator_column(cc) for cc in categorical_cols])
+    layers = [fc.DenseFeatures(feature_cols),
+              keras.layers.Dense(128),
+              keras.layers.Dense(1)]
+
+    model = keras.models.Sequential(layers)
+    model.compile(keras.optimizers.SGD(0.1),
+                  loss=keras.losses.BinaryCrossentropy())
+    model.fit(dataset)
+
 
 if __name__ == '__main__':
   test.main()

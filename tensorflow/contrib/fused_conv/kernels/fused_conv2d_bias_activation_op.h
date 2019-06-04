@@ -22,8 +22,13 @@ limitations under the License.
 #include "tensorflow/core/util/activation_mode.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if GOOGLE_CUDA
+// FixedPoint header must be included after Tensor.
+// clang-format off
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
+// clang-format on
+
+#if GOOGLE_CUDA
 #include "tensorflow/contrib/fused_conv/kernels/fused_conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA

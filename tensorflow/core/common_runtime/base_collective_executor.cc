@@ -35,7 +35,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 #define VALUE_IN_DEBUG_STRING false
 
@@ -163,8 +165,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
     return t;
   }
 
-  Tensor Scalar(Allocator* a) const override {
-    Tensor t(a, dt_, TensorShape({}));
+  Tensor Scalar(Allocator* a, const AllocationAttributes& attr) const override {
+    Tensor t(a, dt_, TensorShape({}), attr);
     return t;
   }
 
@@ -264,7 +266,14 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // TODO(b/80529858): Instead of forking every per-device Collective
   // Op off into its own thread, consider queuing them on a
   // fixed-size thread-pool dedicated to running CollectiveOps.
-  SchedClosure([col_impl, col_ctx, done_safe]() {
+  SchedClosure([col_impl, col_ctx, done_safe, ctx]() {
+    profiler::TraceMe activity(
+        [&] {
+          return strings::StrCat(ctx->op_kernel().name(), ":",
+                                 ctx->op_kernel().type_string(),
+                                 "#id=", ctx->step_id(), "#");
+        },
+        profiler::TraceMeLevel::kInfo);
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       done_safe(s);
       delete col_ctx;

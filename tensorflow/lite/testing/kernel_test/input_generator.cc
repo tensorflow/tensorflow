@@ -47,8 +47,8 @@ template <typename T>
 std::vector<T> GenerateUniform(TfLiteIntArray* dims, float min, float max) {
   auto random_float = [](float min, float max) {
     // TODO(yunluli): Change seed for each invocation if needed.
-    static unsigned int seed;
-    return min + (max - min) * static_cast<float>(rand_r(&seed)) / RAND_MAX;
+    // Used rand() instead of rand_r() here to make it runnable on android.
+    return min + (max - min) * static_cast<float>(rand()) / RAND_MAX;
   };
 
   std::function<T(int)> random_t = [&](int) {

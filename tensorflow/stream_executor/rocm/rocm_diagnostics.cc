@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <dirent.h>
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
+#include <dirent.h>
 #include <limits.h>
 #include <link.h>
 #include <stddef.h>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <string.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
+
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -30,14 +32,13 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
 namespace stream_executor {
 namespace rocm {
@@ -56,7 +57,7 @@ string DriverVersionStatusToString(port::StatusOr<DriverVersion> version) {
 }
 
 port::StatusOr<DriverVersion> StringToDriverVersion(const string& value) {
-  std::vector<string> pieces = port::Split(value, '.');
+  std::vector<string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() != 2 && pieces.size() != 3) {
     return port::Status{port::error::INVALID_ARGUMENT,
                         absl::StrFormat("expected %%d.%%d or %%d.%%d.%%d form "
@@ -121,7 +122,7 @@ void Diagnostician::LogDiagnosticInformation() {
     string library_path = value == nullptr ? "" : value;
     VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
-    std::vector<string> pieces = port::Split(library_path, ':');
+    std::vector<string> pieces = absl::StrSplit(library_path, ':');
     for (const auto& piece : pieces) {
       if (piece.empty()) {
         continue;
@@ -179,9 +180,9 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       }
       string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
-      auto stripped_dso_version = port::StripSuffixString(dso_version, ".ld64");
+      auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
       auto result = static_cast<port::StatusOr<DriverVersion>*>(data);
-      *result = rocm::StringToDriverVersion(stripped_dso_version);
+      *result = rocm::StringToDriverVersion(string(stripped_dso_version));
       return 1;
     }
     return 0;
@@ -209,9 +210,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   size_t space_index = version_and_rest.find(" ");
   auto kernel_version = version_and_rest.substr(0, space_index);
   // TODO(b/22689637): Eliminate the explicit namespace if possible.
-  auto stripped_kernel_version =
-      port::StripSuffixString(kernel_version, ".ld64");
-  return rocm::StringToDriverVersion(stripped_kernel_version);
+  auto stripped_kernel_version = absl::StripSuffix(kernel_version, ".ld64");
+  return rocm::StringToDriverVersion(string(stripped_kernel_version));
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(

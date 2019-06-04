@@ -1,6 +1,7 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -26,7 +27,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
+        "//tensorflow/python/data/experimental/ops:distribute_options",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/experimental/ops:threading_options",
@@ -36,6 +37,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
+        "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
     ],
 )

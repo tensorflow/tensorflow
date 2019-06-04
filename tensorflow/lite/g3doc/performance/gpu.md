@@ -35,16 +35,16 @@ Note: This requires OpenGL ES 3.1 or higher.
 git clone https://github.com/tensorflow/tensorflow
 ```
 
-#### Step 2. Edit `app/build.gradle` to use the experimental GPU AAR
+#### Step 2. Edit `app/build.gradle` to use the nightly GPU AAR
 
-Replace the existing `tensorflow-lite` package in the existing `dependencies`
-block.
+Add the `tensorflow-lite-gpu` package alongside the existing `tensorflow-lite`
+package in the existing `dependencies` block.
 
 ```
 dependencies {
     ...
-    // implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-gpu-experimental'
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly'
 }
 ```
 
@@ -85,16 +85,8 @@ target 'YourProjectName'
 
 #### Step 3. Enable the GPU Delegate
 
-You will need to change two `#define` flags in `CameraExampleViewController.h`
-to enable the GPU delegate. First, change `TFLITE_USE_CONTRIB_LITE` from 1 to 0
-since TensorFlow Lite has moved from TensorFlow contrib into core.
-
-```c
-#define TFLITE_USE_CONTRIB_LITE 0
-```
-
-Next, change `TFLITE_USE_GPU_DELEGATE` from 0 to 1, to enable the code that will
-use the GPU delegate.
+To enable the code that will use the GPU delegate, you will need to change
+`TFLITE_USE_GPU_DELEGATE` from 0 to 1 in `CameraExampleViewController.h`.
 
 ```c
 #define TFLITE_USE_GPU_DELEGATE 1
@@ -131,14 +123,13 @@ Settings` set `Build Active Architecture Only > Release` to Yes.
 
 ### Android
 
-Look at the demo to see how to add the
-delegate. In your application, add the AAR as above, import
-`org.tensorflow.lite.experimental.GpuDelegate` module, and use the`addDelegate`
-function to register the GPU delegate to the interpreter:
+Look at the demo to see how to add the delegate. In your application, add the
+AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
+the`addDelegate` function to register the GPU delegate to the interpreter:
 
 ```java
 import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.experimental.GpuDelegate;
+import org.tensorflow.lite.gpu.GpuDelegate;
 
 // Initialize interpreter with GPU delegate
 GpuDelegate delegate = new GpuDelegate();

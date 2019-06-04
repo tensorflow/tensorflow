@@ -16,12 +16,13 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/experimental/c/c_api_internal.h"
+#include "tensorflow/lite/experimental/c/c_api_types.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/version.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,15 +50,17 @@ class CallbackErrorReporter : public tflite::ErrorReporter {
 
 // LINT.IfChange
 
+const char* TFL_Version() { return TFLITE_VERSION_STRING; }
+
 TFL_Model* TFL_NewModel(const void* model_data, size_t model_size) {
-  auto model = tflite::FlatBufferModel::BuildFromBuffer(
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
       static_cast<const char*>(model_data), model_size);
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
   return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }
 
 TFL_Model* TFL_NewModelFromFile(const char* model_path) {
-  auto model = tflite::FlatBufferModel::BuildFromFile(model_path);
+  auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(model_path);
   std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
   return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }
@@ -77,10 +80,11 @@ void TFL_InterpreterOptionsSetNumThreads(TFL_InterpreterOptions* options,
   options->num_threads = num_threads;
 }
 
-TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetErrorReporter(
-    TFL_InterpreterOptions* options,
-    void (*reporter)(void* user_data, const char* format, va_list args),
-    void* user_data) {
+void TFL_InterpreterOptionsSetErrorReporter(TFL_InterpreterOptions* options,
+                                            void (*reporter)(void* user_data,
+                                                             const char* format,
+                                                             va_list args),
+                                            void* user_data) {
   options->error_reporter = reporter;
   options->error_reporter_user_data = user_data;
 }

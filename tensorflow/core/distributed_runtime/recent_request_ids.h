@@ -59,9 +59,10 @@ class RecentRequestIds {
   // ShortDebugString are added to returned errors.
   Status TrackUnique(int64 request_id, const string& method_name,
                      const protobuf::Message& request);
-  // Overloaded versions of the above function for wrapped protos.
+  // Overloaded version of the above function for wrapped protos.
+  template <typename RequestWrapper>
   Status TrackUnique(int64 request_id, const string& method_name,
-                     const RunStepRequestWrapper* wrapper);
+                     const RequestWrapper* wrapper);
 
  private:
   bool Insert(int64 request_id);
@@ -74,6 +75,21 @@ class RecentRequestIds {
   std::vector<int64> circular_buffer_ GUARDED_BY(mu_);
   std::unordered_set<int64> set_ GUARDED_BY(mu_);
 };
+
+// Implementation details
+
+template <typename RequestWrapper>
+Status RecentRequestIds::TrackUnique(int64 request_id,
+                                     const string& method_name,
+                                     const RequestWrapper* wrapper) {
+  if (Insert(request_id)) {
+    return Status::OK();
+  } else {
+    return errors::Aborted("The same ", method_name,
+                           " request was received twice. ",
+                           wrapper->ToProto().ShortDebugString());
+  }
+}
 
 }  // namespace tensorflow
 

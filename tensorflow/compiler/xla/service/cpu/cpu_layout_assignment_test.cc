@@ -423,5 +423,45 @@ TEST_F(CpuLayoutAssignmentTest, DotOutputFusion_19x50x19_dot_idx_1) {
                                         layout_assignment_result,
                                         /*expect_col_major_dot_rhs=*/false);
 }
+
+TEST_F(CpuLayoutAssignmentTest, BatchDotLayoutMustBeRowMajor) {
+  const char* hlo_string = R"(
+HloModule BatchDotLayoutMustBeRowMajor
+
+ENTRY BatchDotLayoutMustBeRowMajor {
+  p0 = f32[10,1,10] parameter(0)
+  p1 = f32[10,10,1] parameter(1)
+  ROOT dot = f32[10,1,1] dot(p0, p1), lhs_batch_dims={0},
+                                      lhs_contracting_dims={2},
+                                      rhs_batch_dims={0},
+                                      rhs_contracting_dims={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  HloComputation* computation = module->entry_computation();
+
+  ComputationLayout computation_layout(computation->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 10}, {2, 1, 0}));
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {10, 10, 1}, {2, 1, 0}));
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 1}, {1, 2, 0}));
+  AssignLayouts(module.get(), &computation_layout);
+
+  Shape expected_shape =
+      ShapeUtil::MakeShapeWithLayout(F32, {10, 1, 1}, {2, 1, 0});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::ShapeWithLayout(expected_shape)));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Copy(op::Dot(
+          op::ShapeWithLayout(computation_layout.parameter_layout(0).shape()),
+          op::ShapeWithLayout(
+              computation_layout.parameter_layout(1).shape()))));
+}
 }  // namespace
 }  // namespace xla

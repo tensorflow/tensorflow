@@ -41,23 +41,25 @@ class ModelAverageCustomGetter(object):
   2. Generate global variables
     Notice that the class should be used with tf.replica_device_setter,
     so that the global center variables and global step variable can be placed
-    at ps device. Besides, use 'tf.get_variable' instead of 'tf.Variable' to
+    at ps device. Besides, use 'tf.compat.v1.get_variable' instead of
+    'tf.Variable' to
     use this custom getter.
 
   For example,
   ma_custom_getter = ModelAverageCustomGetter(worker_device)
   with tf.device(
-    tf.train.replica_device_setter(
+    tf.compat.v1.train.replica_device_setter(
       worker_device=worker_device,
       ps_device="/job:ps/cpu:0",
       cluster=cluster)),
-    tf.variable_scope('',custom_getter=ma_custom_getter):
-    hid_w = tf.get_variable(
-      initializer=tf.truncated_normal(
+    tf.compat.v1.variable_scope('',custom_getter=ma_custom_getter):
+    hid_w = tf.compat.v1.get_variable(
+      initializer=tf.random.truncated_normal(
           [IMAGE_PIXELS * IMAGE_PIXELS, FLAGS.hidden_units],
           stddev=1.0 / IMAGE_PIXELS),
       name="hid_w")
-    hid_b = tf.get_variable(initializer=tf.zeros([FLAGS.hidden_units]),
+    hid_b =
+    tf.compat.v1.get_variable(initializer=tf.zeros([FLAGS.hidden_units]),
                             name="hid_b")
   """
 
@@ -89,8 +91,8 @@ class ModelAverageCustomGetter(object):
       self._local_2_global[local_var] = global_variable
       return local_var
     else:
-      kwargs['trainable'] = trainable
-      kwargs['collections'] = collections
+      kwargs["trainable"] = trainable
+      kwargs["collections"] = collections
       if ops.GraphKeys.LOCAL_VARIABLES in collections:
         with ops.device(self._worker_device):
           return getter(name, *args, **kwargs)
@@ -191,10 +193,10 @@ class ModelAverageOptimizer(optimizer.Optimizer):
     Args:
       grads_and_vars: List of (gradient, variable) pairs as returned by
         compute_gradients().
-      global_step: Optional Variable to increment by one after the
-        variables have been updated.
-      name: Optional name for the returned operation.  Default to the
-        name passed to the Optimizer constructor.
+      global_step: Optional Variable to increment by one after the variables
+        have been updated.
+      name: Optional name for the returned operation.  Default to the name
+        passed to the Optimizer constructor.
 
     Returns:
       A conditional 'Operation' that update both local and global variables or
@@ -268,8 +270,9 @@ class ModelAverageOptimizer(optimizer.Optimizer):
     with ops.control_dependencies([local_update]):
       condition = math_ops.equal(
           math_ops.mod(self._local_step, self._interval_steps), 0)
-      conditional_update = control_flow_ops.cond(
-          condition, _update_global_variables, control_flow_ops.no_op)
+      conditional_update = control_flow_ops.cond(condition,
+                                                 _update_global_variables,
+                                                 control_flow_ops.no_op)
 
     chief_init_ops = []
     for accum, dev in self._accumulator_list:

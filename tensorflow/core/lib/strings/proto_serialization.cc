@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 
 #include <cstring>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -24,7 +25,35 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-static const int kInlinedBufferSize = 256;
+
+// Helper for deterministic serialization.
+class DeterministicSerializer {
+ public:
+  explicit DeterministicSerializer(const protobuf::MessageLite& msg)
+      : DeterministicSerializer(msg, msg.ByteSizeLong()) {}
+
+  DeterministicSerializer(const protobuf::MessageLite& msg, size_t size)
+      : size_(size) {
+    char* ptr = space_;
+    if (size_ > sizeof(space_)) {
+      ptr = new char[size_];
+      alloc_.reset(ptr);
+    }
+    bool ok = SerializeToBufferDeterministic(msg, ptr, size_);
+    DCHECK(ok);
+  }
+
+  size_t size() const { return size_; }
+  const char* data() const { return alloc_ == nullptr ? space_ : alloc_.get(); }
+
+ private:
+  // Avoid InlinedVector since it causes 2x slowdown in the compilation
+  // of graphs containing large tensors in debug mode.
+  static constexpr int kInlinedBufferSize = 256;
+  const size_t size_;
+  std::unique_ptr<char[]> alloc_;
+  char space_[kInlinedBufferSize];
+};
 }  // namespace
 
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
@@ -51,28 +80,20 @@ bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
   const size_t size = x.ByteSizeLong();
   if (size != y.ByteSizeLong()) return false;
   if (size == 0) return true;
-  gtl::InlinedVector<char, kInlinedBufferSize> x_serialized(size);
-  bool success_x = SerializeToBufferDeterministic(x, x_serialized.data(), size);
-  DCHECK(success_x);
-  gtl::InlinedVector<char, kInlinedBufferSize> y_serialized(size);
-  bool success_y = SerializeToBufferDeterministic(y, y_serialized.data(), size);
-  DCHECK(success_y);
+  DeterministicSerializer x_serialized(x, size);
+  DeterministicSerializer y_serialized(y, size);
   return memcmp(x_serialized.data(), y_serialized.data(), size) == 0;
 }
 
 uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto,
                                 uint64 seed) {
-  const size_t size = proto.ByteSizeLong();
-  gtl::InlinedVector<char, kInlinedBufferSize> serialized(size);
-  SerializeToBufferDeterministic(proto, serialized.data(), size);
-  return Hash64(serialized.data(), size, seed);
+  DeterministicSerializer serialized(proto);
+  return Hash64(serialized.data(), serialized.size(), seed);
 }
 
 uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto) {
-  const size_t size = proto.ByteSizeLong();
-  gtl::InlinedVector<char, kInlinedBufferSize> serialized(size);
-  SerializeToBufferDeterministic(proto, serialized.data(), size);
-  return Hash64(serialized.data(), size);
+  DeterministicSerializer serialized(proto);
+  return Hash64(serialized.data(), serialized.size());
 }
 
 }  // namespace tensorflow

@@ -14,14 +14,77 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/lib/core/status.h"
+
 #include <stdio.h>
+
+#include <deque>
 #include <map>
+
+#include "absl/base/call_once.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
+
+namespace {
+
+// Log sink is used to collect recent warning and error log messages to be
+// attached to the error status.
+class StatusLogSink : public TFLogSink {
+ public:
+  static StatusLogSink* GetInstance() {
+    static StatusLogSink* sink = new StatusLogSink();
+    return sink;
+  }
+
+  void enable() {
+    absl::call_once(flag_, [this] {
+      num_messages_ = 5;  // default to 5 messages
+
+      if (const char* num_msgs_str =
+              getenv("TF_WORKER_NUM_FORWARDED_LOG_MESSAGES")) {
+        if (!absl::SimpleAtoi(num_msgs_str, &num_messages_)) {
+          LOG(WARNING) << "Failed to parse env variable "
+                          "TF_WORKER_NUM_WARNING_ERROR_LOG_IN_STATUS="
+                       << num_msgs_str << " as int. Using the default value "
+                       << num_messages_ << ".";
+        }
+      }
+
+      if (num_messages_ > 0) {
+        TFAddLogSink(this);
+      }
+    });
+  }
+
+  void GetMessages(std::vector<std::string>* logs) LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+
+    for (auto& msg : messages_) {
+      logs->push_back(msg);
+    }
+  }
+
+  void Send(const TFLogEntry& entry) override LOCKS_EXCLUDED(mu_) {
+    if (entry.log_severity() < absl::LogSeverity::kWarning) return;
+
+    mutex_lock lock(mu_);
+    messages_.emplace_back(entry.ToString());
+    if (messages_.size() > num_messages_) messages_.pop_front();
+  }
+
+ private:
+  mutex mu_;
+  // for allowing repeated/concurrent calls to enable()
+  absl::once_flag flag_;
+  int num_messages_ = 0;
+  std::deque<std::string> messages_ GUARDED_BY(mu_);
+};
+
+}  // namespace
 
 Status::Status(tensorflow::error::Code code, StringPiece msg) {
   assert(code != tensorflow::error::OK);
@@ -140,6 +203,27 @@ string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
   return new string(r);
 }
 
+// kDerivedMarker is appended to the Status message string to indicate whether a
+// Status object is the root cause of an error or if it has been triggered by
+// cancelling/aborting a step.
+static const char* kDerivedMarker = "[_Derived_]";
+
+Status StatusGroup::MakeDerived(const Status& s) {
+  if (IsDerived(s)) {
+    return s;
+  } else {
+    return Status(s.code(), strings::StrCat(kDerivedMarker, s.error_message()));
+  }
+}
+
+bool StatusGroup::IsDerived(const Status& s) {
+  return s.error_message().find(kDerivedMarker) != std::string::npos;
+}
+
+void StatusGroup::ConfigureLogHistory() {
+  StatusLogSink::GetInstance()->enable();
+}
+
 void StatusGroup::Update(const Status& s) {
   if (s.ok()) {
     ++num_ok_;
@@ -149,91 +233,113 @@ void StatusGroup::Update(const Status& s) {
   }
 }
 
-const int kMaxChildMessageSize = 2048;
+static std::vector<Status> GetNonDerivedStatuses(
+    const std::vector<Status>& status) {
+  std::vector<Status> nonderived_statuses;
+  for (auto& s : status) {
+    if (!StatusGroup::IsDerived(s)) {
+      nonderived_statuses.push_back(s);
+    }
+  }
+  return nonderived_statuses;
+}
 
-Status StatusGroup::as_status() const {
+static constexpr int kMaxAggregatedStatusMessageSize = 8 * 1024;
+static constexpr int kMaxAttachedLogMessageSize = 512;
+
+// Summarize all the status objects in the StatusGroup. This is used when
+// individual Status objects in the StatusGroup are not already summarized.
+Status StatusGroup::as_summary_status() const {
   if (ok_) {
     return Status::OK();
   }
 
-  // Reduce verbosity when handling duplicate messages. If there is only a
-  // single message, or all messages have similar content, then return the
-  // longest status message.
-  std::vector<Status> sorted_children(children_);
-  std::sort(sorted_children.begin(), sorted_children.end(),
-            [](const Status& a, const Status& b) {
-              return a.error_message().length() > b.error_message().length();
-            });
-  bool single_status = true;
-  for (const auto& s : sorted_children) {
-    if (s.code() != sorted_children[0].code() ||
-        sorted_children[0].error_message().find(s.error_message()) ==
-            string::npos) {
-      single_status = false;
-      break;
+  // Gather recent logs as a string
+  auto get_recent_logs = [this]() -> std::string {
+    if (!recent_logs_.empty()) {
+      std::vector<std::string> fmt;
+      fmt.push_back("\nRecent warning and error logs:");
+      for (auto& log : recent_logs_) {
+        // Add an indentation to make it look nicer.
+        fmt.push_back("  " + log.substr(0, kMaxAttachedLogMessageSize));
+      }
+      return absl::StrJoin(fmt, "\n");
+    } else {
+      return "";
     }
+  };
+
+  std::vector<Status> nonderived_statuses = GetNonDerivedStatuses(children_);
+
+  // If only one root status is found, do not add summary header and footer.
+  if (nonderived_statuses.size() == 1) {
+    return Status(nonderived_statuses[0].code(),
+                  strings::StrCat(nonderived_statuses[0].error_message(),
+                                  get_recent_logs()));
   }
 
-  if (single_status) {
-    return sorted_children[0];
-  }
+  if (!nonderived_statuses.empty()) {
+    std::vector<std::string> fmt;
 
-  std::vector<string> fmt;
+    fmt.push_back(strings::Printf("%zu root error(s) found.",
+                                  nonderived_statuses.size()));
 
-  // Compute a final output string with status codes sorted by frequency in
-  // increasing order.  This prefers more "interesting" messages over child
-  // messages that may come from cancellation.
-  std::map<error::Code, std::vector<Status>> code_to_status;
-  for (const Status& s : children_) {
-    code_to_status[s.code()].push_back(s);
-  }
-
-  std::vector<std::pair<error::Code, int>> count_vec;
-  count_vec.reserve(code_to_status.size());
-  for (auto& p : code_to_status) {
-    count_vec.push_back(std::make_pair(p.first, p.second.size()));
-  }
-
-  std::sort(
-      count_vec.begin(), count_vec.end(),
-      [](const std::pair<error::Code, int>& a,
-         const std::pair<error::Code, int>& b) { return a.second < b.second; });
-
-  fmt.push_back(
-      strings::Printf("Combined status information from %zu operations:\n",
-                      num_ok_ + children_.size()));
-
-  for (const auto& p : count_vec) {
-    // Deduplicate error messages
-    std::map<string, int> child_errors;
-    for (const Status& s : code_to_status[p.first]) {
-      ++child_errors[s.error_message()];
+    int index = 0;
+    for (auto& s : nonderived_statuses) {
+      fmt.emplace_back(strings::StrCat("  (", index, ") ", s.ToString()));
+      ++index;
     }
 
-    string child_fmt;
-    for (auto& m : child_errors) {
-      child_fmt.append(strings::Printf(
-          "  %s [%dx]",
-          str_util::StringReplace(m.first, "\n", "\n  ", true).c_str(),
-          m.second));
-      child_fmt.append("\n");
-    }
-    // Strip last newline.
-    child_fmt = child_fmt.substr(0, child_fmt.size() - 1);
+    fmt.push_back(strings::Printf("%zu successful operations.", num_ok_));
+    fmt.push_back(
+        strings::Printf("%zu derived errors ignored.",
+                        children_.size() - nonderived_statuses.size()));
 
-    if (child_fmt.size() > kMaxChildMessageSize) {
-      child_fmt =
-          strings::StrCat(child_fmt.substr(0, kMaxChildMessageSize), "...");
-    }
-    fmt.push_back(strings::Printf("Status code: %s [%dx]\n%s",
-                                  error_name(p.first).c_str(), p.second,
-                                  child_fmt.c_str()));
+    std::string error_msg =
+        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize);
+
+    return Status(nonderived_statuses[0].code(),
+                  strings::StrCat(error_msg, get_recent_logs()));
+  } else {
+    // All statuses are derived. Pick the first available status to return.
+    return children_[0];
+  }
+}
+
+// Concatenate all the status objects in the StatusGroup. This is used when
+// individual Status objects in the StatusGroup are already summarized Status.
+Status StatusGroup::as_concatenated_status() const {
+  if (ok_) {
+    return Status::OK();
   }
 
-  fmt.push_back(strings::Printf("(%zd successful operations.)", num_ok_));
+  std::vector<Status> nonderived_statuses = GetNonDerivedStatuses(children_);
 
-  // TODO(power): use the least-frequently occurring status for the return code
-  return Status(children_[0].code(), str_util::Join(fmt, "\n"));
+  // If only one root status is found, return it directly.
+  if (nonderived_statuses.size() == 1) {
+    return nonderived_statuses[0];
+  }
+
+  if (!nonderived_statuses.empty()) {
+    std::vector<string> fmt;
+    fmt.emplace_back("\n=====================");
+    for (auto& s : nonderived_statuses) {
+      fmt.emplace_back(s.ToString());
+    }
+    fmt.emplace_back("=====================\n");
+    return Status(
+        nonderived_statuses[0].code(),
+        absl::StrJoin(fmt, "\n").substr(0, kMaxAggregatedStatusMessageSize));
+  } else {
+    // All statuses are derived. Pick the first available status to return.
+    // This should not happen in normal execution.
+    return children_[0];
+  }
+}
+
+void StatusGroup::AttachLogMessages() {
+  recent_logs_.clear();
+  StatusLogSink::GetInstance()->GetMessages(&recent_logs_);
 }
 
 }  // namespace tensorflow

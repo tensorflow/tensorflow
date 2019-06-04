@@ -54,7 +54,7 @@ class ConvolutionThunk : public Thunk {
 
   // Does the convolution for the thunk on "stream".
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

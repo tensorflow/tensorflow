@@ -36,10 +36,23 @@ class _Continue(object):
 
 
 class _Block(object):
+  """Tracks information about lexical blocks as they are visited in the AST.
+
+  Mainly, this object tracks the creation of block guards that replace
+  `continue` statements (e.g. `if not continue_:`).
+
+  Attributes:
+    create_guard_current: bool, whether to create a guard for the current
+      statement.
+    create_guard_next: bool, whether to create a guard for the next
+      statement.
+    is_loop_type: bool, whether this block is the body of a loop.
+  """
 
   def __init__(self):
-    self.guard_created = False
-    self.create_guard = False
+    self.is_loop_type = False
+    self.create_guard_current = False
+    self.create_guard_next = False
 
 
 class ContinueCanonicalizationTransformer(converter.Base):
@@ -47,6 +60,14 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def visit_Continue(self, node):
     self.state[_Continue].used = True
+    for block in reversed(self.state[_Block].stack):
+      # See ContinueCanonicalizationTest.test_multiple_continues for an example
+      # it's necessary to create guards for all enclosing affected blocks, not
+      # just that of the current block.
+      block.create_guard_next = True
+      if block.is_loop_type:
+        # continue only affects the innermost loop
+        break
     template = """
       var_name = True
     """
@@ -54,35 +75,13 @@ class ContinueCanonicalizationTransformer(converter.Base):
         template, var_name=self.state[_Continue].control_var_name)
 
   def _postprocess_statement(self, node):
-    # Example of how the state machine below works:
-    #
-    #   1| stmt           # State: Continue_.used = False
-    #    |                # Action: none
-    #   2| if cond:
-    #   3|   continue     # State: Continue_.used = True,
-    #    |                #        Continue_.guard_created = False,
-    #    |                #        Continue_.create_guard = False
-    #    |                # Action: Continue_.create_guard = True
-    #   4| stmt           # State: Continue_.used = True,
-    #    |                #        Continue_.guard_created = False,
-    #    |                #        Continue_.create_guard = True
-    #    |                # Action: create `if not continue_used`,
-    #    |                #         set Continue_.guard_created = True
-    #   5| stmt           # State: Continue_.used = True,
-    #    |                #        Continue_.guard_created = True
-    #    |                # Action: none (will be wrapped under previously
-    #    |                #         created if node)
-
     if self.state[_Continue].used:
-      if self.state[_Block].guard_created:
-        return node, None
-
-      elif not self.state[_Block].create_guard:
-        self.state[_Block].create_guard = True
-        return node, None
-
-      else:
-        self.state[_Block].guard_created = True
+      block = self.state[_Block]
+      should_wrap_current = block.create_guard_current
+      # After processing propagate whether to guard the next statement
+      block.create_guard_current = block.create_guard_next
+      block.create_guard_next = False
+      if should_wrap_current:
         template = """
           if ag__.not_(var_name):
             original_node
@@ -97,6 +96,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
   def _visit_loop_body(self, node, nodes):
     self.state[_Continue].enter()
     self.state[_Block].enter()
+    self.state[_Block].is_loop_type = True
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     continue_var = self.ctx.namer.new_symbol('continue_', scope.referenced)
     self.state[_Continue].control_var_name = continue_var
@@ -136,7 +136,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
     return node
 
   def visit_If(self, node):
-    node.body = self.visit_block(node.body)
+    node.body = self._visit_non_loop_body(node.body)
     node.orelse = self._visit_non_loop_body(node.orelse)
     return node
 

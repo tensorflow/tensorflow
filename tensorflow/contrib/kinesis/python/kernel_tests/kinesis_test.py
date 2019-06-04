@@ -110,7 +110,7 @@ class KinesisDatasetTest(test.TestCase):
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
-    data = list()
+    data = []
     with self.cached_session() as sess:
       # Basic test: read from shard 0 of stream 2.
       sess.run(

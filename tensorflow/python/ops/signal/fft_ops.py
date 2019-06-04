@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.ops import manip_ops
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -286,7 +287,8 @@ def _rfft_grad_helper(rank, irfft_fn):
     # The gradient of RFFT is the IRFFT of the incoming gradient times a scaling
     # factor, plus some additional terms to make up for the components dropped
     # due to Hermitian symmetry.
-    input_size = _math_ops.to_float(_fft_size_for_grad(op.inputs[0], rank))
+    input_size = _math_ops.cast(
+        _fft_size_for_grad(op.inputs[0], rank), _dtypes.float32)
     the_irfft = irfft_fn(grad, fft_length)
     return 0.5 * (the_irfft * input_size + _math_ops.real(extra_terms)), None
 
@@ -311,8 +313,8 @@ def _irfft_grad_helper(rank, rfft_fn):
         [[1.0], 2.0 * _array_ops.ones([input_last_dimension - 2 + is_odd]),
          _array_ops.ones([1 - is_odd])], 0)
 
-    rsize = _math_ops.reciprocal(_math_ops.to_float(
-        _fft_size_for_grad(grad, rank)))
+    rsize = _math_ops.reciprocal(_math_ops.cast(
+        _fft_size_for_grad(grad, rank), _dtypes.float32))
 
     # The gradient of IRFFT is the RFFT of the incoming gradient times a scaling
     # factor and a mask. The mask scales the gradient for the Hermitian
@@ -322,6 +324,88 @@ def _irfft_grad_helper(rank, rfft_fn):
     return the_rfft * _math_ops.cast(rsize * mask, _dtypes.complex64), None
 
   return _grad
+
+
+@tf_export("signal.fftshift")
+def fftshift(x, axes=None, name=None):
+  """Shift the zero-frequency component to the center of the spectrum.
+
+  This function swaps half-spaces for all axes listed (defaults to all).
+  Note that ``y[0]`` is the Nyquist component only if ``len(x)`` is even.
+
+  @compatibility(numpy)
+  Equivalent to numpy.fft.fftshift.
+  https://docs.scipy.org/doc/numpy/reference/generated/numpy.fft.fftshift.html
+  @end_compatibility
+
+  For example:
+
+  ```python
+  x = tf.signal.fftshift([ 0.,  1.,  2.,  3.,  4., -5., -4., -3., -2., -1.])
+  x.numpy() # array([-5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.])
+  ```
+
+  Args:
+    x: `Tensor`, input tensor.
+    axes: `int` or shape `tuple`, optional Axes over which to shift.  Default is
+      None, which shifts all axes.
+    name: An optional name for the operation.
+
+  Returns:
+    A `Tensor`, The shifted tensor.
+  """
+  with _ops.name_scope(name, "fftshift") as name:
+    x = _ops.convert_to_tensor(x)
+    if axes is None:
+      axes = tuple(range(x.shape.ndims))
+      shift = [int(dim // 2) for dim in x.shape]
+    elif isinstance(axes, int):
+      shift = int(x.shape[axes] // 2)
+    else:
+      shift = [int((x.shape[ax]) // 2) for ax in axes]
+
+    return manip_ops.roll(x, shift, axes, name)
+
+
+@tf_export("signal.ifftshift")
+def ifftshift(x, axes=None, name=None):
+  """The inverse of fftshift.
+
+  Although identical for even-length x,
+  the functions differ by one sample for odd-length x.
+
+  @compatibility(numpy)
+  Equivalent to numpy.fft.ifftshift.
+  https://docs.scipy.org/doc/numpy/reference/generated/numpy.fft.ifftshift.html
+  @end_compatibility
+
+  For example:
+
+  ```python
+  x = tf.signal.ifftshift([[ 0.,  1.,  2.],[ 3.,  4., -4.],[-3., -2., -1.]])
+  x.numpy() # array([[ 4., -4.,  3.],[-2., -1., -3.],[ 1.,  2.,  0.]])
+  ```
+
+  Args:
+    x: `Tensor`, input tensor.
+    axes: `int` or shape `tuple` Axes over which to calculate. Defaults to None,
+      which shifts all axes.
+    name: An optional name for the operation.
+
+  Returns:
+    A `Tensor`, The shifted tensor.
+  """
+  with _ops.name_scope(name, "ifftshift") as name:
+    x = _ops.convert_to_tensor(x)
+    if axes is None:
+      axes = tuple(range(x.shape.ndims))
+      shift = [-int(dim // 2) for dim in x.shape]
+    elif isinstance(axes, int):
+      shift = -int(x.shape[axes] // 2)
+    else:
+      shift = [-int(x.shape[ax] // 2) for ax in axes]
+
+    return manip_ops.roll(x, shift, axes, name)
 
 
 _ops.RegisterGradient("RFFT")(_rfft_grad_helper(1, irfft))

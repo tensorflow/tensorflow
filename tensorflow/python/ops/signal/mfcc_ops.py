@@ -47,7 +47,7 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   ```python
   sample_rate = 16000.0
   # A Tensor of [batch_size, num_samples] mono PCM samples in the range [-1, 1].
-  pcm = tf.placeholder(tf.float32, [None, None])
+  pcm = tf.compat.v1.placeholder(tf.float32, [None, None])
 
   # A 1024-point STFT with frames of 64 ms and 75% overlap.
   stfts = tf.signal.stft(pcm, frame_length=1024, frame_step=256,
@@ -66,7 +66,7 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
     linear_to_mel_weight_matrix.shape[-1:]))
 
   # Compute a stabilized log to get log-magnitude mel-scale spectrograms.
-  log_mel_spectrograms = tf.log(mel_spectrograms + 1e-6)
+  log_mel_spectrograms = tf.math.log(mel_spectrograms + 1e-6)
 
   # Compute MFCCs from log_mel_spectrograms and take the first 13.
   mfccs = tf.signal.mfccs_from_log_mel_spectrograms(
@@ -107,4 +107,5 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
       num_mel_bins = array_ops.shape(log_mel_spectrograms)[-1]
 
     dct2 = dct_ops.dct(log_mel_spectrograms, type=2)
-    return dct2 * math_ops.rsqrt(math_ops.to_float(num_mel_bins) * 2.0)
+    return dct2 * math_ops.rsqrt(
+        math_ops.cast(num_mel_bins, dtypes.float32) * 2.0)

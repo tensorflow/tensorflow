@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
@@ -70,6 +71,13 @@ class ParallelMapIterator : public DatasetBaseIterator {
     while (num_calls_ > 0) {
       cond_var_->wait(l);
     }
+  }
+
+  string BuildTraceMeName() override {
+    // NOTE: We do not synchronize the following access to num_parallel_calls_
+    // to minimize the tracing overhead.
+    int64 parallelism = num_parallel_calls_->value;
+    return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
   }
 
   Status Initialize(IteratorContext* ctx) override {
@@ -148,6 +156,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     int64 invocation_results_size;
     TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("invocation_results.size"),
                                           &invocation_results_size));
+    if (!invocation_results_.empty()) invocation_results_.clear();
     for (size_t i = 0; i < invocation_results_size; i++) {
       invocation_results_.push_back(std::make_shared<InvocationResult>());
       auto& result = *invocation_results_.back();
@@ -207,7 +216,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
       stats_aggregator->AddScalar(
           stats_utils::ThreadUtilizationScalarName(key_prefix_),
           static_cast<float>(num_calls_) /
-              static_cast<float>(num_parallel_calls_->value));
+              static_cast<float>(num_parallel_calls_->value),
+          num_elements());
     }
     RecordBufferEnqueue(ctx.get(), result->return_values);
     result->notification.Notify();
@@ -302,7 +312,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
           stats_aggregator->AddScalar(
               stats_utils::ThreadUtilizationScalarName(key_prefix_),
               static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value));
+                  static_cast<float>(num_parallel_calls_->value),
+              num_elements());
         }
         cond_var_->notify_all();
       }

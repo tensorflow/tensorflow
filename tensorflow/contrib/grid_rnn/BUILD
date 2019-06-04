@@ -2,11 +2,12 @@
 #   Contains classes to construct GridRNN cells
 #   APIs here are meant to evolve over time.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 

@@ -7,6 +7,7 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 
+// (== suppress_warning documentation-presence ==)
 // LINT.IfChange
 enum DataType {
   // Not a legal value for DataType.  Used to indicate a DataType field
@@ -66,7 +67,7 @@ enum DataType {
   DT_UINT64_REF = 123;
 }
 // LINT.ThenChange(
-//    https://www.tensorflow.org/code/tensorflow/c/c_api.h,
+//    https://www.tensorflow.org/code/tensorflow/c/tf_datatype.h,
 //    https://www.tensorflow.org/code/tensorflow/go/tensor.go,
 //    https://www.tensorflow.org/code/tensorflow/core/framework/tensor.cc,
 //    https://www.tensorflow.org/code/tensorflow/core/framework/types.h,

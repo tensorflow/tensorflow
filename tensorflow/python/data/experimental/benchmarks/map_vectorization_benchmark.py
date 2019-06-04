@@ -125,7 +125,7 @@ class MapVectorizationBenchmark(test.Benchmark):
         unoptimized_dataset).get_next()
 
     options = dataset_ops.Options()
-    options.experimental_optimization.map_vectorization = True
+    options.experimental_optimization.map_vectorization.enabled = True
     optimized_dataset = unoptimized_dataset.with_options(options)
     optimized_next = dataset_ops.make_one_shot_iterator(
         optimized_dataset).get_next()
@@ -144,32 +144,32 @@ class MapVectorizationBenchmark(test.Benchmark):
                                  (unoptimized_time / optimized_time)))
 
   # Known cheap functions
-  def benchmarkIdentity(self):
+  def benchmark_identity(self):
     self._benchmark_helper(lambda *args: [array_ops.identity(x) for x in args],
                            "identity")
 
-  def benchmarkAddConst(self):
+  def benchmark_add_const(self):
     self._benchmark_helper(lambda *args: [x + 1 for x in args], "add_const")
 
-  def benchmarkReturnConst(self):
+  def benchmark_return_const(self):
     self._benchmark_helper(lambda *args: [constant_op.constant(2)], "ret_const")
 
-  def benchmarkSelect(self):
+  def benchmark_select(self):
     self._benchmark_helper(lambda *args: args[0], "select")
 
-  def benchmarkCast(self):
+  def benchmark_cast(self):
     self._benchmark_helper(
         lambda *args: [math_ops.cast(x, dtypes.float32) for x in args], "cast")
 
-  def benchmarkReshape(self):
+  def benchmark_reshape(self):
     self._benchmark_helper(
         lambda *args: [array_ops.reshape(x, (-1, 30)) for x in args], "reshape")
 
-  def benchmarkDecodeCSV(self):
+  def benchmark_decode_csv(self):
     csv_fn, csv_factory = _generate_csv_test_case()
     self._benchmark_helper(csv_fn, "decode_csv", lambda: [csv_factory()])
 
-  def benchmarkParseSingleExample(self):
+  def benchmark_parse_single_example(self):
     # NOTE: Since we haven't implemented a vectorizer for "SerializeSparse",
     # this function is only naively vectorized.
     parse_fn, parse_factory = _generate_parse_single_example_test_case()

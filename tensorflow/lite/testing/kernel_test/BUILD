@@ -1,8 +1,9 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow:tensorflow.bzl",
@@ -78,7 +79,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "input_generator_test",
     size = "small",
     srcs = ["input_generator_test.cc"],

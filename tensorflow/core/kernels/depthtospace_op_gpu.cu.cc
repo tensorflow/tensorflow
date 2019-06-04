@@ -17,11 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/depthtospace_op.h"
-
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/depthtospace_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 namespace {
@@ -161,7 +160,7 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NHWC> {
     if (total_count == 0) {
       return;
     }
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(
         D2S_NHWC<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, batch_size,
@@ -195,7 +194,7 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       if (total_count == 0) {
         return;
       }
-      CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+      GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
       switch (block_size) {
         case 2:
           TF_CHECK_OK(CudaLaunchKernel(
@@ -226,7 +225,7 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     if (total_count == 0) {
       return;
     }
-    auto config = GetCudaLaunchConfig(total_count, d);
+    auto config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(CudaLaunchKernel(
         D2S_NCHW<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, input_width,

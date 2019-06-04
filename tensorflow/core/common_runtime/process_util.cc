@@ -35,14 +35,35 @@ namespace tensorflow {
 namespace {
 
 int32 DefaultNumInterOpThreads() {
+#ifndef __ANDROID__
   // Use environment setting if specified (init once)
   static int env_num_threads = NumInterOpThreadsFromEnvironment();
   if (env_num_threads > 0) {
     return env_num_threads;
   }
 
-  // Default to using the number of cores available in the process.
-  return port::NumSchedulableCPUs();
+  // Default to the maximum parallelism for the current process.
+  return port::MaxParallelism();
+#else
+  // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
+  // used (regardless of what was chosen here); instead, all work was done on
+  // the thread(s) calling Session::Run. That's no longer the case, but we'd
+  // like to avoid suddenly higher concurrency and peak resource usage (for the
+  // same device shape, graph, and options) versus prior versions - as best we
+  // can:
+  //
+  //   - Single Session::Run (none concurrent), and default options:
+  //     Behavior is mostly the same as before.
+  //
+  //   - Concurrent Session::Runs, and default options:
+  //     Reduced concurrency versus before.
+  //
+  //   - Thread-pool size set explicitly (>1):
+  //     Increased concurrency versus before.
+  //
+  // (We assume the first case is the most common)
+  return 1;
+#endif
 }
 
 static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
@@ -51,8 +72,10 @@ static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
   if (inter_op_parallelism_threads == 0) {
     inter_op_parallelism_threads = DefaultNumInterOpThreads();
   }
-  return new thread::ThreadPool(Env::Default(), "Compute",
-                                inter_op_parallelism_threads);
+  return new thread::ThreadPool(
+      Env::Default(), ThreadOptions(), "Compute", inter_op_parallelism_threads,
+      !options.config.experimental().disable_thread_spinning(),
+      /*allocator=*/nullptr);
 }
 
 }  // namespace
@@ -76,7 +99,7 @@ int32 NumIntraOpThreadsFromEnvironment() {
 
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
-  if (inter_op != 0) return inter_op;
+  if (inter_op > 0) return inter_op;
 #ifdef INTEL_MKL
   if (!DisableMKL()) {
     // MKL library executes ops in parallel using OMP threads
@@ -103,7 +126,10 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
     const SessionOptions& options) {
   const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
   VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
-  return new thread::ThreadPool(options.env, "Compute", num_threads);
+  return new thread::ThreadPool(
+      options.env, ThreadOptions(), "Compute", num_threads,
+      !options.config.experimental().disable_thread_spinning(),
+      /*allocator=*/nullptr);
 }
 
 void SchedClosure(std::function<void()> closure) {

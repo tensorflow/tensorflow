@@ -633,7 +633,9 @@ class MklDnnShape {
   /// also be Blocked format.
   inline void SetTfLayout(size_t dims, const memory::dims& sizes,
                           memory::format format) {
-    CHECK_EQ(dims, sizes.size());
+    DCHECK_EQ(dims, sizes.size())
+        << "SetTfLayout: Number of dimensions does not"
+           "match with dimension array";
     data_.dimension_ = dims;
     for (size_t ii = 0; ii < dims; ii++) {
       data_.sizes_[ii] = sizes[ii];
@@ -641,6 +643,22 @@ class MklDnnShape {
     data_.tf_data_format_ = format;
     if (format != memory::format::blocked) {
       SetTfDimOrder(dims, format);
+    }
+  }
+
+  inline void SetTfLayout2D(size_t dims, const memory::dims& sizes,
+                            memory::format format) {
+    DCHECK_EQ(dims, sizes.size())
+        << "SetTfLayout2D: Number of dimensions does not"
+           "match with dimension array";
+    data_.dimension_ = dims;
+    for (size_t ii = 0; ii < dims; ++ii) {
+      data_.sizes_[ii] = sizes[ii];
+    }
+    data_.tf_data_format_ = format;
+    if (format != memory::format::blocked) {
+      data_.map_[0] = MklDnnDims::Dim_N;
+      data_.map_[1] = MklDnnDims::Dim_C;
     }
   }
 
@@ -1442,6 +1460,12 @@ template <>
 memory::data_type MklDnnType<qint32>() {
   return memory::data_type::s32;
 }
+template <>
+memory::data_type MklDnnType<bfloat16>() {
+  // TODO(nhasabni): Enable MKL-DNN bfloat16 type later.
+  // Currently, falling back to f32 to get compilation working.
+  return memory::data_type::f32;
+}
 
 /// Map TensorFlow's data format into MKL-DNN 3D data format
 /// @input: TensorFlow data format
@@ -1581,7 +1605,7 @@ inline TensorShape MklDnnDimsToTFShape(const memory::dims& dims) {
 
 /// Function to calculate strides given tensor shape in Tensorflow order
 /// E.g., if dims_tf_order is {1, 2, 3, 4}, then as per Tensorflow convention,
-/// dimesion with size 1 is outermost dimension; while dimension with size 4 is
+/// dimension with size 1 is outermost dimension; while dimension with size 4 is
 /// innermost dimension. So strides for this tensor would be {4 * 3 * 2,
 /// 4 * 3, 4, 1}, i.e., {24, 12, 4, 1}.
 ///
