@@ -22,6 +22,7 @@ import collections
 import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
 import itertools
+import json
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -46,9 +47,11 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.saving import saved_model
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
+from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.module import module
@@ -64,6 +67,7 @@ from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -2130,6 +2134,109 @@ class Layer(module.Module):
   def _should_compute_mask(self):
     return ('mask' in self._call_fn_args or
             getattr(self, 'compute_mask', None) is not None)
+
+  @property
+  def _object_identifier(self):
+    """String stored in object identifier field in the SavedModel proto.
+
+    Returns:
+      A string with the object identifier, which is used at load time.
+    """
+    return '_tf_keras_layer'
+
+  @property
+  def _tracking_metadata(self):
+    """String stored in metadata field in the SavedModel proto.
+
+    Returns:
+      A serialized JSON storing information necessary for recreating this layer.
+    """
+    # TODO(kathywu): Add support for metrics serialization.
+    # TODO(kathywu): Synchronize with the keras spec (go/keras-json-spec) once
+    # the python config serialization has caught up.
+
+    # Create a dictionary containing python layer state attributes. Any new
+    # attribute that impacts the layer execution in some way should be added to
+    # this dict.
+    # Unlike a model's JSON configuration, which only
+    # contains class_name and each layer's get_config() object, this stores more
+    # information to accurately recreate the layer.
+    # For backwards compatibility, any changes to this list should be additive.
+    # Modifying or removing attributes may only be done with a sufficient
+    # explanation.
+
+    metadata = dict(
+        class_name=type(self).__name__,
+        name=self.name,
+        trainable=self.trainable,
+        expects_training_arg=self._expects_training_arg,
+        dtype=self.dtype,
+        batch_input_shape=getattr(self, '_batch_input_shape', None))
+
+    try:
+      # Store the config dictionary, which is only used by the revived object
+      # to return the original config when revived_obj.get_config() is called.
+      # It is not important for recreating the revived object.
+      metadata['config'] = self.get_config()
+    except NotImplementedError:
+      # in the case of a subclassed model, the get_config() method will throw
+      # a NotImplementedError.
+      pass
+    if self.input_spec is not None:
+      metadata['input_spec'] = nest.map_structure(
+          lambda x: x.get_config(), self.input_spec)
+    else:
+      metadata['input_spec'] = None
+    if (self.activity_regularizer is not None and
+        hasattr(self.activity_regularizer, 'get_config')):
+      metadata['activity_regularizer'] = serialize_keras_object(
+          self.activity_regularizer)
+    else:
+      metadata['activity_regularizer'] = None
+    return json.dumps(metadata, default=serialization.get_json_type)
+
+  def _list_extra_dependencies_for_serialization(self, serialization_cache):
+    """Lists extra dependencies to serialize to SavedModel.
+
+    By overriding this method, extra dependencies can be attached to the
+    serialized Layer. For example, this is used to save the list of `variables`
+    and `trainable_variables`, which are python properties in a Layer object,
+    but are represented as a static list in the SavedModel.
+
+    Args:
+      serialization_cache: A dictionary shared between all objects in the same
+        object graph. This object is passed to both
+        `_list_extra_dependencies_for_serialization` and
+        `_list_functions_for_serialization`.
+
+    Returns:
+      A dictionary mapping attribute names to trackable objects. The entire list
+      of attributes are listed in the `saved_model._LayerAttributes` class.
+    """
+    return (saved_model.serialize_all_attributes(self, serialization_cache)
+            .objects_to_serialize)
+
+  def _list_functions_for_serialization(self, serialization_cache):
+    """Lists the functions to include when serializing a Layer.
+
+    Args:
+      serialization_cache: Dictionary passed to all objects in the same object
+        graph during serialization.
+
+    Returns:
+        A dictionary mapping attribute names to `Function` or
+        `ConcreteFunction`. The entire list of attributes are listed in the
+        `saved_model._LayerAttributes` class.
+    """
+    # Create a dictionary containing the layer's call and loss functions.
+    fns = (saved_model.serialize_all_attributes(self, serialization_cache)
+           .functions_to_serialize)
+    # The parent Autotrackable class saves all user-defined tf.functions, and
+    # returns them in _list_functions_for_serialization(). Add these functions
+    # to the dict.
+    fns.update(super(Layer, self)._list_functions_for_serialization(
+        serialization_cache))
+    return fns
 
 
 class Node(object):

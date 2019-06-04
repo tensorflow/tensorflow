@@ -1010,7 +1010,7 @@ def _get_slot_key_from_var(var, slot_name):
   return name + "/" + slot_name
 
 
-class _RestoredOptimizer(OptimizerV2):
+class RestoredOptimizer(OptimizerV2):
   """A non-functional Optimizer implementation for checkpoint compatibility.
 
   Holds slot variables and hyperparameters when an optimizer is restored from a
@@ -1022,7 +1022,7 @@ class _RestoredOptimizer(OptimizerV2):
   # methods.
 
   def __init__(self):
-    super(_RestoredOptimizer, self).__init__("_RestoredOptimizer")
+    super(RestoredOptimizer, self).__init__("RestoredOptimizer")
     self._hypers_created = True
 
   def get_config(self):
@@ -1036,9 +1036,9 @@ revived_types.register_revived_type(
     "optimizer",
     lambda obj: isinstance(obj, OptimizerV2),
     versions=[revived_types.VersionedTypeRegistration(
-        object_factory=lambda proto: _RestoredOptimizer(),
+        object_factory=lambda proto: RestoredOptimizer(),
         version=1,
         min_producer_version=1,
         min_consumer_version=1,
-        setter=_RestoredOptimizer._set_hyper  # pylint: disable=protected-access
+        setter=RestoredOptimizer._set_hyper  # pylint: disable=protected-access
     )])

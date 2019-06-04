@@ -99,7 +99,7 @@ class _WrapperFunction(function.ConcreteFunction):
     return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
 
 
-class _Loader(object):
+class Loader(object):
   """Helper class to load an object-based SavedModel."""
 
   def __init__(self, object_graph_proto, saved_model_proto, export_dir):
@@ -249,7 +249,7 @@ class _Loader(object):
         # Note: if an object has an attribute `__call__` add a class method
         # that allows `obj()` syntax to work. This is done per-instance to
         # allow `callable` to be used to find out if an object is callable.
-        if reference.local_name == "__call__":
+        if reference.local_name == "__call__" and not callable(obj):
           setattr(type(obj), "__call__", _call_attribute)
 
   def _restore_checkpoint(self):
@@ -308,15 +308,19 @@ class _Loader(object):
     """Instantiates a SavedUserObject."""
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
-      # Note: each user object has its own class. This allows to make each one
-      # individually callable by adding a `__call__` method to the classes of
-      # the objects instances that have a `__call__` property.
-
-      class _UserObject(tracking.AutoTrackable):
-        pass
-
-      return _UserObject(), setattr
+      return self._recreate_base_user_object(proto)
     return looked_up
+
+  def _recreate_base_user_object(self, proto):
+    del proto
+    # Note: each user object has its own class. This allows to make each one
+    # individually callable by adding a `__call__` method to the classes of
+    # the objects instances that have a `__call__` property.
+
+    class _UserObject(tracking.AutoTrackable):
+      pass
+
+    return _UserObject(), setattr
 
   def _recreate_asset(self, proto):
     filename = os.path.join(
@@ -386,7 +390,7 @@ class _RestoredResource(tracking.TrackableResource):
   def _initialize(self):
     raise RuntimeError()
 
-  def _list_functions_for_serialization(self):
+  def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
     # base class to re-wrap the polymorphic functions into
     # another layer of `tf.function`.
@@ -426,6 +430,22 @@ def load(export_dir, tags=None):
   assert 6. == imported.f(x=tf.constant(2.)).numpy()
   ```
 
+  _Loading Keras models_
+
+  Keras models are trackable, so they can be saved to SavedModel. The object
+  returned by `tf.saved_model.load` is not a Keras object (i.e. doesn't have
+  `.fit`, `.predict`, etc. methods). A few attributes and functions are still
+  available: `.variables`, `.trainable_variables` and `.__call__`.
+
+  ```python
+  model = tf.keras.Model(...)
+  tf.saved_model.save(model, path)
+  imported = tf.saved_model.load(path)
+  outputs = imported(inputs)
+  ```
+
+  Use `tf.keras.models.load_model` to restore the Keras model.
+
   _Importing SavedModels from TensorFlow 1.x_
 
   SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
@@ -462,6 +482,11 @@ def load(export_dir, tags=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
+  return load_internal(export_dir, tags)
+
+
+def load_internal(export_dir, tags=None, loader_cls=Loader):
+  """Loader implementation."""
   if tags is not None and not isinstance(tags, set):
     # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
     # sequences for nest.flatten, so we put those through as-is.
@@ -479,9 +504,9 @@ def load(export_dir, tags=None):
           .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
     object_graph_proto = meta_graph_def.object_graph_def
     with ops.init_scope():
-      loader = _Loader(object_graph_proto,
-                       saved_model_proto,
-                       export_dir)
+      loader = loader_cls(object_graph_proto,
+                          saved_model_proto,
+                          export_dir)
       root = loader.get(0)
     root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
     root.tensorflow_git_version = (

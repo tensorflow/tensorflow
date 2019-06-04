@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import json
 import numpy as np
 
 from tensorflow.python import tf2
@@ -55,6 +56,7 @@ from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -1707,26 +1709,6 @@ class Model(network.Network):
       batch_size = 32
     return batch_size
 
-  def _list_functions_for_serialization(self):
-    """If available, saves a trace of call using self.inputs."""
-    all_functions = super(Model, self)._list_functions_for_serialization()
-    try:
-      # pylint:disable=pointless-statement
-      self.inputs
-      self.input_names
-      # pylint:enable=pointless-statement
-    except AttributeError:
-      # If the model does not have inputs set, because it was not called or its
-      # input shapes were not recorded, we won't have a signature so can't trace
-      # a function. But the user may still save an object with this Model
-      # attached; we won't fail the whole tf.saved_model.save.
-      pass
-    else:
-      if '_default_save_signature' not in all_functions:
-        all_functions['_default_save_signature'] = (
-            saving_utils.trace_model_call(self))
-    return all_functions
-
   def _prepare_sample_weights(self, sample_weights=None):
     """Sets sample weight attribute on the model."""
     # List with the same length as model outputs.
@@ -2716,6 +2698,17 @@ class Model(network.Network):
       return self._training_state.maybe_load_initial_epoch_from_ckpt(
           initial_epoch, mode)
     return initial_epoch
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_model'
+
+  @property
+  def _tracking_metadata(self):
+    metadata = json.loads(super(Model, self)._tracking_metadata)
+    metadata.update(saving_utils.model_metadata(
+        self, include_optimizer=True, require_config=False))
+    return json.dumps(metadata, default=serialization.get_json_type)
 
   def _assert_compile_was_called(self):
     # Checks whether `compile` has been called. If it has been called,
