@@ -1298,6 +1298,10 @@ class OpKernelContext {
                          Tensor* out_tensor, AllocatorAttributes allocator_attr,
                          const AllocationAttributes& allocation_attr);
 
+  // Initialize the allocated_scope_ids_ set the first time this method is
+  // called.
+  void maybe_initialize_scope_id_set();
+
   // This is called by PersistentTensor::AccessTensor whenever the
   // wrapped tensor is retrieved, to ensure the runtime knows that the
   // Tensor is being accessed within an Op. This is necessary for
@@ -1313,8 +1317,9 @@ class OpKernelContext {
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
 
-  // Keep track of calls to ScopeAllocator.
-  std::unordered_set<int32> allocated_scope_ids_;
+  // Keep track of calls to ScopedAllocator.
+  // TODO(ayushd): change to absl::flat_hash_set.
+  std::unique_ptr<std::unordered_set<int32>> allocated_scope_ids_;
 
   // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
