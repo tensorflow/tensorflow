@@ -757,7 +757,8 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
     tf_ans = tf_op(sp_t, reduction_axes, keep_dims)
     self.assertAllEqual(np_ans.shape, tf_ans.get_shape().as_list())
 
-  def testSparseReduceSumOrMaxShape(self):
+  # (TODO:b/133851381): Re-enable this test
+  def disabledtestSparseReduceSumOrMaxShape(self):
     sp_t = sparse_tensor.SparseTensor(self.ind, self.vals, self.dense_shape)
 
     with test_util.force_cpu():
