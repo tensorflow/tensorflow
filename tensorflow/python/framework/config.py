@@ -22,7 +22,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('config.threading.intra_op_parallelism_threads')
+@tf_export('config.threading.get_intra_op_parallelism_threads')
 def get_intra_op_parallelism_threads():
   """Get number of threads used within an individual op for parallelism.
 
@@ -50,7 +50,7 @@ def set_intra_op_parallelism_threads(num_threads):
   context.context().intra_op_parallelism_threads = num_threads
 
 
-@tf_export('config.threading.inter_op_parallelism_threads')
+@tf_export('config.threading.get_inter_op_parallelism_threads')
 def get_inter_op_parallelism_threads():
   """Get number of threads used for parallelism between independent operations.
 

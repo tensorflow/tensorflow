@@ -1,11 +1,11 @@
 path: "tensorflow.config.threading"
 tf_module {
   member_method {
-    name: "inter_op_parallelism_threads"
+    name: "get_inter_op_parallelism_threads"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "intra_op_parallelism_threads"
+    name: "get_intra_op_parallelism_threads"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
