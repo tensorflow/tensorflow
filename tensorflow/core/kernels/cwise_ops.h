@@ -366,6 +366,8 @@ struct google_floor_div {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
     if ((x < T(0)) != (y < T(0))) {
+// HIP does not have the device version of the abs routine defined
+// for all datatypes that T can resolve to
 #if defined(__HIP_DEVICE_COMPILE__)
       T abs_x = (x < T(0)) ? -x : x;
       T abs_y = (y < T(0)) ? -y : y;
