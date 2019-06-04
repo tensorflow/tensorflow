@@ -92,8 +92,11 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   try:
     model_metadata = saving_utils.model_metadata(model, include_optimizer)
     for k, v in model_metadata.items():
-      f.attrs[k] = json.dumps(
-          v, default=serialization.get_json_type).encode('utf8')
+      if isinstance(v, (dict, list, tuple)):
+        f.attrs[k] = json.dumps(
+            v, default=serialization.get_json_type).encode('utf8')
+      else:
+        f.attrs[k] = v
 
     model_weights_group = f.create_group('model_weights')
     model_layers = model.layers
