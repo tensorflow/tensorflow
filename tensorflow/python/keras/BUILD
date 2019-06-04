@@ -444,7 +444,7 @@ py_library(
 
 tf_py_test(
     name = "integration_test",
-    size = "medium",
+    size = "large",
     srcs = ["integration_test.py"],
     additional_deps = [
         ":keras",

@@ -158,7 +158,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_embedding_model_correctness_test",
-    size = "medium",
+    size = "large",
     srcs = ["keras_embedding_model_correctness_test.py"],
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
