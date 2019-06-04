@@ -279,32 +279,31 @@ class NormalizeTest(test_lib.TestCase):
   # pylint: disable=redefined-builtin
   @test_util.run_in_graph_and_eager_modes
   def testNormalize(self):
-      for use_static_shape in False, True:
-        for dtype in np.float32, np.float64, np.complex64, np.complex128:
-          for rows in 2, 5:
-            for cols in 2, 5:
-              for batch in [], [2], [2, 3]:
-                shape = batch + [rows, cols]
-                for ord in "euclidean", "fro", 0.5, 1, 2, np.inf:
-                  for axis in [
-                      None, (-2, -1), (-1, -2), -len(shape), 0, len(shape) - 1
-                  ]:
-                    is_matrix_norm = (isinstance(axis, tuple) or
-                          isinstance(axis, list)) and len(axis) == 2
-                    is_fancy_p_norm = np.isreal(ord) and np.floor(ord) != ord
-                    if ((not is_matrix_norm and ord == "fro") or
-                        (is_matrix_norm and is_fancy_p_norm)):
-                      # Not supported by neither numpy.linalg.norm nor tf.norm
-                      continue
-                    if ord == "euclidean" or (axis is None and len(shape) > 2):
-                      # Not supported by numpy.linalg.norm"
-                      continue
-                    matrix = np.random.randn(*shape).astype(dtype)
-                    if dtype in (np.complex64, np.complex128):
-                      matrix += 1j * np.random.randn(*shape).astype(dtype)
-                    tf_n = nn_impl.normalize(matrix, ord, axis)
-                    np_n = self._Normalize(matrix, ord, axis)
-                    self.assertAllClose(tf_n, np_n, rtol=1e-5, atol=1e-5)
+    for dtype in np.float32, np.float64, np.complex64, np.complex128:
+      for rows in 2, 5:
+        for cols in 2, 5:
+          for batch in [], [2], [2, 3]:
+            shape = batch + [rows, cols]
+            for ord in "euclidean", "fro", 0.5, 1, 2, np.inf:
+              for axis in [
+                  None, (-2, -1), (-1, -2), -len(shape), 0, len(shape) - 1
+              ]:
+                is_matrix_norm = (isinstance(axis, tuple) or
+                      isinstance(axis, list)) and len(axis) == 2
+                is_fancy_p_norm = np.isreal(ord) and np.floor(ord) != ord
+                if ((not is_matrix_norm and ord == "fro") or
+                    (is_matrix_norm and is_fancy_p_norm)):
+                  # Not supported by neither numpy.linalg.norm nor tf.norm
+                  continue
+                if ord == "euclidean" or (axis is None and len(shape) > 2):
+                  # Not supported by numpy.linalg.norm"
+                  continue
+                matrix = np.random.randn(*shape).astype(dtype)
+                if dtype in (np.complex64, np.complex128):
+                  matrix += 1j * np.random.randn(*shape).astype(dtype)
+                tf_n = nn_impl.normalize(matrix, ord, axis)
+                np_n = self._Normalize(matrix, ord, axis)
+                self.assertAllClose(tf_n, np_n, rtol=1e-5, atol=1e-5)
 
 
 class L2NormalizeTest(test_lib.TestCase):
