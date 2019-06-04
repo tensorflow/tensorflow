@@ -21,16 +21,11 @@ from __future__ import print_function
 import functools
 import os
 
-from google3.third_party.tensorflow.python.distribute import distribution_strategy_context as ds_context
-from google3.third_party.tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
-from google3.third_party.tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from google3.third_party.tensorflow.python.ops import array_ops
-from google3.third_party.tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -45,58 +40,6 @@ from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-
-
-def _unused_handle():
-  """Returns a placeholder as handle that is not supposed to be accessed."""
-  error_message = ("Trying to access a placeholder that is not supposed to be "
-                   "executed. This means you are executing a graph generated "
-                   "from cross-replica context in an in-replica context.")
-
-  assert_op = control_flow_ops.Assert(
-      array_ops.placeholder_with_default(False, shape=()),
-      [error_message])
-
-  with ops.control_dependencies([assert_op]):
-    return array_ops.placeholder(dtype=dtypes.resource)
-
-
-class _WrapperFunction(function.ConcreteFunction):
-  """A class wraps a concrete function to handle different distributed contexts.
-
-  The reason for wrapping a concrete function is because the _captured_inputs
-  fields used for in-replica context and cross-replica context are different.
-  When `load()` is called from within a tf.distribute.strategy scope, the
-  captured inputs are distributed variables. When using these distributed
-  variables during calling the function, we need different approaches when it is
-  in-replica and when it is not in-replica. When it is in replica, naturally we
-  should use the corresponding component of the distributed variable; when it is
-  not in-replica, calling the function should mean that it is constructing a
-  graph that is not actually going to be used. A typical use case is when
-  constructing a functional model. In this case, return a placeholder with a
-  control dependency to ensure that is is never accessed.
-  """
-
-  def __init__(self, concrete_function):
-    # Shallow copy the concrete_function
-    self.__dict__.update(vars(concrete_function))
-
-  def _call_flat(self, args, captured_inputs):
-    assert captured_inputs is self._captured_inputs
-    del captured_inputs
-
-    def get_in_replica_handle(x):
-      return x.handle if ds_values.is_distributed_variable(x) else x
-
-    def get_cross_replica_handle(x):
-      return _unused_handle() if ds_values.is_distributed_variable(x) else x
-
-    if ds_context.get_replica_context() is not None:  # in-replica context
-      captured_inputs = list(map(get_in_replica_handle, self._captured_inputs))
-    else:  # cross-replica context
-      captured_inputs = list(
-          map(get_cross_replica_handle, self._captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
 
 
 class Loader(object):
