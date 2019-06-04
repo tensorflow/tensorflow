@@ -160,7 +160,6 @@ py_library(
         "engine/__init__.py",
         "engine/base_layer.py",
         "engine/input_layer.py",
-        "engine/input_spec.py",
         "engine/network.py",
         "engine/partial_batch_padding_handler.py",
         "engine/saving.py",
@@ -185,6 +184,7 @@ py_library(
         ":constraints",
         ":engine_utils",
         ":initializers",
+        ":input_spec",
         ":losses",
         ":mode_keys",
         ":optimizers",
@@ -211,6 +211,20 @@ py_library(
 )
 
 py_library(
+    name = "input_spec",
+    srcs = ["engine/input_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "saving",
     srcs = [
         "saving/__init__.py",
@@ -224,12 +238,18 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        ":input_spec",
         ":mode_keys",
         ":optimizers",
+        ":regularizers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:saver",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model/model_utils",
+        "//tensorflow/python/training/tracking",
     ],
 )
 
@@ -1240,6 +1260,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "input_spec_test",
+    size = "small",
+    srcs = ["engine/input_spec_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "training_test",
     size = "medium",
     srcs = ["engine/training_test.py"],
@@ -1511,6 +1542,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/119349471): Re-enable
         "no_windows",
