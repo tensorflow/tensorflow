@@ -1178,9 +1178,9 @@ namespace {
 // (projection matrix) will be fetched to the 'weights'. Otherwise, nothing will
 // be done.
 port::Status CheckAndFetchProjectionWeights(
-    const CudnnHandle& cudnn, cudnnRNNDescriptor_t rnn_desc, int layer,
-    TensorDescriptor& input_desc, FilterDescriptor& filter_desc,
-    FilterDescriptor& region_desc_handle,
+    const CudnnHandle& cudnn, cudnnRNNDescriptor_t rnn_desc, const int layer,
+    const TensorDescriptor& input_desc, const FilterDescriptor& filter_desc,
+    const FilterDescriptor& region_desc_handle,
     dnn::RnnDescriptor::ParamsRegions* weights) {
 #if CUDNN_VERSION >= 7101
   int hidden_size_v;
