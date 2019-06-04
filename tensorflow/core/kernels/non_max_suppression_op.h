@@ -35,11 +35,15 @@ struct NonMaxSuppression {
 }  // namespace functor
 #if GOOGLE_CUDA
 extern const int kNmsBoxesPerTread;
+// Given descending sorted box list, apply non-maximal-suppression with given
+// threshold and select boxes to keep.
 // - d_sorted_boxes_float_ptr: is a pointer to device memory float array
-//   containing the box corners for N boxes sorted in descending order of scores.
+//   containing the box corners for N boxes sorted in descending order of
+//   scores.
 // - num_boxes: is number of boxes.
 // - threshold: is the intersection-over-union (iou) threshold for elimination.
-// - d_keep_sorted_list: is a device pointer to int array containing sorted indices
+// - d_keep_sorted_list: is a device pointer to int array containing sorted
+// indices
 //   of the boxes to keep.
 // - h_num_boxes_to_keep: is a host pointer for returning number of items
 //   to keep.
