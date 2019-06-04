@@ -170,6 +170,7 @@ py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_client",
