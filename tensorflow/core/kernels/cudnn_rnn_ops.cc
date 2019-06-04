@@ -1215,23 +1215,27 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     // Number of params applied on inputs. The rest are applied on recurrent
     // hidden states.
     const int num_params_input_state = num_params_weights_per_layer / 2;
-    CHECK(num_params_weights_ % (num_layers * num_dirs) == 0)
-        << "Number of params (weights) is not a multiple of num_layers * "
-           "num_dirs.";
-    CHECK(num_params_biases_ % (num_layers * num_dirs) == 0)
-        << "Number of params (bias) is not a multiple of num_layers * "
-           "num_dirs.";
+    OP_REQUIRES(context, num_params_weights_ % (num_layers * num_dirs) == 0,
+        errors::InvalidArgument("Number of params (weights) is not a multiple"
+            "of num_layers * num_dirs."));
+    OP_REQUIRES(context, num_params_biases_ % (num_layers * num_dirs) == 0,
+        errors::InvalidArgument("Number of params (biases) is not a multiple"
+            "of num_layers * num_dirs."));
     if (num_proj_ == 0) {
-      CHECK(num_params_weights_per_layer % 2 == 0)
-          << "Number of params per layer is not a even number w/o projection.";
+      OP_REQUIRES(context, num_params_weights_per_layer % 2 == 0,
+          errors::InvalidArgument("Number of params (weights) per layer is not"
+              "an even number with no projection."));
     } else {
-      CHECK(num_params_weights_per_layer % 2 != 0)
-          << "Number of params per layer is not a odd number w/ projection.";
+      OP_REQUIRES(context, num_params_weights_per_layer % 2 != 0,
+          errors::InvalidArgument("Number of params (weights) per layer is not"
+              "an odl number with projection."));
     }
 
-    CHECK(num_params_weights_ == rnn_desc->ParamsWeightRegions().size())
-        << "C Number of params mismatch. Expected " << num_params_weights_
-        << ", got " << rnn_desc->ParamsWeightRegions().size();
+    OP_REQUIRES(context,
+        num_params_weights_ == rnn_desc->ParamsWeightRegions().size(),
+        errors::InvalidArgument("C Number of params mismatch. Expected ",
+                                num_params_weights_, ", got ",
+                                rnn_desc->ParamsWeightRegions().size()));
     int h_num_units = (num_proj_ == 0 ? num_units : num_proj_);
     int c_num_units = (num_proj_ == 0 ? 0 : num_units);
     for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
