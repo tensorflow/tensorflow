@@ -53,4 +53,21 @@ def SPV_FMulOp : SPV_Op<"FMul", [NoSideEffect, SameOperandsAndResultType]> {
   let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
 }
 
+def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
+  let summary = "Return with no value from a function with void return type";
+
+  let description = [{
+    This instruction must be the last instruction in a block.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs);
+
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+
+  let verifier = [{ return verifyReturn(*this); }];
+}
+
 #endif // SPIRV_OPS

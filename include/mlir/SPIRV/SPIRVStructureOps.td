@@ -60,6 +60,9 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
 
     This op takes no operands and generates no results. This op should not
     implicitly capture values from the enclosing environment.
+
+    This op has only one region, which only contains one block. The block
+    must be terminated via the `spv._module_end` op.
   }];
 
   let arguments = (ins
@@ -72,11 +75,33 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
 
   let results = (outs);
 
-  let regions = (region AnyRegion:$body);
+  let regions = (region SizedRegion<1>:$body);
 
   // Custom parser and printer implemented by static functions in SPVOps.cpp
   let parser = [{ return parseModule(parser, result); }];
   let printer = [{ printModule(getOperation(), p); }];
+
+  let verifier = [{ return verifyModule(*this); }];
+}
+
+def SPV_ModuleEndOp : SPV_Op<"_module_end", [Terminator]> {
+  let summary = "The pseudo op that ends a SPIR-V module";
+
+  let description = [{
+    This op terminates the only block inside a `spv.module`'s only region.
+    This op does not have a corresponding SPIR-V instruction and thus will
+    not be serialized into the binary format; it is used solely to satisfy
+    the structual requirement that an block must be ended with a terminator.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs);
+
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+
+  let verifier = [{ return verifyModuleOnly(*this); }];
 }
 
 #endif // SPIRV_STRUCTURE_OPS

@@ -28,8 +28,49 @@
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
+// Common utility functions
+//===----------------------------------------------------------------------===//
+
+// Parses an op that has no inputs and no outputs.
+static ParseResult parseNoIOOp(OpAsmParser *parser, OperationState *state) {
+  if (parser->parseOptionalAttributeDict(state->attributes))
+    return failure();
+  return success();
+}
+
+// Prints an op that has no inputs and no outputs.
+static ParseResult printNoIOOp(Operation *op, OpAsmPrinter *printer) {
+  *printer << op->getName();
+  printer->printOptionalAttrDict(op->getAttrs(),
+                                 /*elidedAttrs=*/{});
+  return success();
+}
+
+// Verifies that the given op can only be placed in a `spv.module`.
+static LogicalResult verifyModuleOnly(Operation *op) {
+  if (!llvm::isa_and_nonnull<spirv::ModuleOp>(op->getParentOp()))
+    return op->emitOpError("can only be used in a 'spv.module' block");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // spv.module
 //===----------------------------------------------------------------------===//
+
+static void ensureModuleEnd(Region *region, Builder builder, Location loc) {
+  if (region->empty())
+    region->push_back(new Block);
+
+  Block &block = region->back();
+  if (!block.empty() && llvm::isa<spirv::ModuleEndOp>(block.back()))
+    return;
+
+  OperationState state(builder.getContext(), loc,
+                       spirv::ModuleEndOp::getOperationName());
+  spirv::ModuleEndOp::build(&builder, &state);
+  block.push_back(Operation::create(state));
+}
 
 static ParseResult parseModule(OpAsmParser *parser, OperationState *state) {
   Region *body = state->addRegion();
@@ -38,6 +79,8 @@ static ParseResult parseModule(OpAsmParser *parser, OperationState *state) {
       parser->parseKeyword("attributes") ||
       parser->parseOptionalAttributeDict(state->attributes))
     return failure();
+
+  ensureModuleEnd(body, parser->getBuilder(), state->location);
 
   return success();
 }
@@ -49,6 +92,57 @@ static ParseResult printModule(Operation *op, OpAsmPrinter *printer) {
   *printer << " attributes";
   printer->printOptionalAttrDict(op->getAttrs(),
                                  /*elidedAttrs=*/{});
+  return success();
+}
+
+static LogicalResult verifyModule(spirv::ModuleOp moduleOp) {
+  auto &op = *moduleOp.getOperation();
+  auto *dialect = op.getDialect();
+  auto &body = op.getRegion(0).front();
+
+  for (auto &op : body) {
+    if (op.getDialect() == dialect)
+      continue;
+
+    auto funcOp = llvm::dyn_cast<FuncOp>(op);
+    if (!funcOp)
+      return op.emitError("'spv.module' can only contain func and spv.* ops");
+
+    if (funcOp.isExternal())
+      return op.emitError("'spv.module' cannot contain external functions");
+
+    for (auto &block : funcOp)
+      for (auto &op : block) {
+        // TODO(antiagainst): verify that return ops have the same type as the
+        // enclosing function
+        if (op.getDialect() == dialect)
+          continue;
+
+        if (llvm::isa<FuncOp>(op))
+          return op.emitError("'spv.module' cannot contain nested functions");
+
+        return op.emitError(
+            "functions in 'spv.module' can only contain spv.* ops");
+      }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.Return
+//===----------------------------------------------------------------------===//
+
+static LogicalResult verifyReturn(spirv::ReturnOp returnOp) {
+  auto funcOp =
+      llvm::dyn_cast_or_null<FuncOp>(returnOp.getOperation()->getParentOp());
+  if (!funcOp)
+    return returnOp.emitOpError("must appear in a 'func' op");
+
+  auto numOutputs = funcOp.getType().getNumResults();
+  if (numOutputs != 0)
+    return returnOp.emitOpError("cannot be used in functions returning value")
+           << (numOutputs > 1 ? "s" : "");
+
   return success();
 }
 

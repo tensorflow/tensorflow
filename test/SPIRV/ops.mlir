@@ -32,3 +32,28 @@ func @fmul_tensor(%arg: tensor<4xf32>) -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.Return
+//===----------------------------------------------------------------------===//
+
+func @return_not_in_func() -> () {
+  // expected-error @+1 {{must appear in a 'func' op}}
+  spv.Return
+}
+
+// -----
+
+func @return_mismatch_func_signature() -> () {
+  spv.module {
+    func @work() -> (i32) {
+      // expected-error @+1 {{cannot be used in functions returning value}}
+      spv.Return
+    }
+  } attributes {
+    addressing_model: "Logical",
+    memory_model: "VulkanKHR"
+  }
+  return
+}
