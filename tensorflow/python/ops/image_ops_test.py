@@ -4271,7 +4271,8 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
 
     return a
 
-  def testTotalVariationNumpy(self):
+  # TODO(b/133851381): re-enable this test.
+  def disabledtestTotalVariationNumpy(self):
     """Test the TensorFlow implementation against a numpy implementation.
     The two implementations are very similar so it is possible that both
     have the same bug, which would not be detected by this test. It is

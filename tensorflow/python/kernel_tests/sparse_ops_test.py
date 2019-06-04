@@ -663,7 +663,8 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, ndims, True, False)
     self._compare(sp_t, reduction_axes, ndims, True, True)
 
-  def testSimpleAndRandomInputs(self):
+  # (TODO:b/133851381): Re-enable this test.
+  def disabledtestSimpleAndRandomInputs(self):
     if np.__version__ == "1.13.0":
       self.skipTest("numpy 1.13.0 bug")
 
