@@ -61,7 +61,7 @@ bool IsInputFusibleReduction(const HloInstruction& instr);
 // is either an unfused scatter op or a scatter input fusion.
 bool IsInputFusibleScatter(const HloInstruction& instr);
 
-// Determines whether the combination of `a` and `b` into a (possibly
+// Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion would be "too large" -- i.e., have more operands and
 // outputs than is allowed.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1, const HloInstruction& instr2);
@@ -82,8 +82,9 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
 bool IsProducerConsumerFusible(const HloInstruction& producer,
                                    const HloInstruction& consumer);
 
-// Whether the instructions are producer-consumer fusible and
-// multi-output fusible.
+// Whether the instructions are producer-consumer fusible with multiple outputs.
+// That is, the root tuple of the multi-output fusion will contain the results
+// of both, the producer and consumer.
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
                                               const HloInstruction& consumer);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in

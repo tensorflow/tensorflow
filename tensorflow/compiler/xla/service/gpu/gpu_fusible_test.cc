@@ -647,6 +647,22 @@ TEST_F(GpuFusibleTest, IsFusibleAsMultiOutputFusionRoot) {
   auto module = ParseHloString(R"(
     HloModule test_module
 
+    ENTRY add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    })")
+                    .ValueOrDie();
+
+  const HloInstruction* root =
+      module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsFusibleAsMultiOutputFusionRoot(*root));
+}
+
+TEST_F(GpuFusibleTest, ScatterIsNotFusibleAsMultiOutputFusionRoot) {
+  auto module = ParseHloString(R"(
+    HloModule test_module
+
     add {
       lhs = f32[] parameter(0)
       rhs = f32[] parameter(1)
@@ -688,7 +704,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  ASSERT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
@@ -712,7 +728,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  ASSERT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
@@ -751,7 +767,7 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  ASSERT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
@@ -783,7 +799,8 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  ASSERT_FALSE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  // Not fusible as multioutput fusion root
+  EXPECT_FALSE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest,
@@ -815,7 +832,7 @@ TEST_F(GpuFusibleTest,
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
-  ASSERT_FALSE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
+  EXPECT_FALSE(IsProducerConsumerMultiOutputFusible(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
@@ -837,14 +854,14 @@ TEST_F(GpuFusibleTest, NonscalarConstantsNotFused) {
       ROOT root = (f32[], f32[], f32[16,16,16,16], f32[16]) tuple(reduce, constant.1, broadcast, constant)
     })")
                     .ValueOrDie();
-  // Do not fuse if producer is a non-scalar constant or consumer is non-fusion node
+  // Do not fuse if producer is a non-scalar constant or consumer is non-fusion node.
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* consumer = root->operand(0);
   const HloInstruction* producer = root->operand(1);
   const HloInstruction* consumer2 = root->operand(2);
   const HloInstruction* producer2 = root->operand(3);
-  ASSERT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
-  ASSERT_FALSE(IsProducerConsumerFusible(*producer2, *consumer2));
+  EXPECT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
+  EXPECT_FALSE(IsProducerConsumerFusible(*producer2, *consumer2));
 }
 
 TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
@@ -867,7 +884,7 @@ TEST_F(GpuFusibleTest, DoNotFuseLayoutChangingOpWithReduce) {
 
   const HloInstruction* consumer = module->entry_computation()->root_instruction();
   const HloInstruction* producer = consumer->operand(0);
-  ASSERT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
+  EXPECT_FALSE(IsProducerConsumerFusible(*producer, *consumer));
 }
 
 TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
@@ -882,7 +899,7 @@ TEST_F(GpuFusibleTest, FuseLayoutChangingOpWithElementwise) {
 
   const HloInstruction* consumer = module->entry_computation()->root_instruction();
   const HloInstruction* producer = consumer->operand(0);
-  ASSERT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
+  EXPECT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
 }
 
 }  // namespace gpu
