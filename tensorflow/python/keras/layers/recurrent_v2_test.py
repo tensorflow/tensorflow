@@ -89,6 +89,16 @@ class RNNV2Test(keras_parameterized.TestCase):
                                self.evaluate(recurrent_dropout))
         previous_recurrent_dropout = recurrent_dropout
 
+  @parameterized.parameters([rnn_v2.LSTM, rnn_v2.GRU])
+  def test_recurrent_dropout_with_stateful_RNN(self, layer):
+    # See https://github.com/tensorflow/tensorflow/issues/27829 for details.
+    # The issue was caused by using inplace mul for a variable, which was a
+    # warning for RefVariable, but an error for ResourceVariable in 2.0
+    keras.models.Sequential([
+        layer(128, stateful=True, return_sequences=True, dropout=0.2,
+              batch_input_shape=[32, None, 5], recurrent_dropout=0.2)
+    ])
+
 
 if __name__ == '__main__':
   test.main()

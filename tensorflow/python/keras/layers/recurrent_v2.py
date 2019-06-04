@@ -367,7 +367,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.reset_dropout_mask()
     dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     if dropout_mask is not None:
-      inputs *= dropout_mask[0]
+      inputs = inputs * dropout_mask[0]
 
     cudnn_gru_kwargs = {
         'inputs': inputs,
@@ -844,7 +844,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self.reset_dropout_mask()
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
-        inputs *= dropout_mask[0]
+        inputs = inputs * dropout_mask[0]
       cudnn_lstm_kwargs = {
           'inputs': inputs,
           'init_h': initial_state[0],
