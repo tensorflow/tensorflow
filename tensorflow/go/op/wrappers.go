@@ -30569,6 +30569,33 @@ func Cumprod(scope *Scope, x tf.Output, axis tf.Output, optional ...CumprodAttr)
 }
 
 // Computes exponential of x element-wise.  \\(y = e^x\\).
+//
+//   This function computes the exponential of every element in the input tensor.
+//   i.e. `exp(x)` or `e^(x)`, where `x` is the input tensor.
+//   `e` denotes Euler's number and is approximately equal to 2.718281.
+//   Output is positive for any real input.
+//
+//   ```python
+//   x = tf.constant(2.0)
+//   tf.math.exp(x) ==> 7.389056
+//
+//   x = tf.constant([2.0, 8.0])
+//   tf.math.exp(x) ==> array([7.389056, 2980.958], dtype=float32)
+//   ```
+//
+//   For complex numbers, the exponential value is calculated as follows:
+//
+//   ```
+//   e^(x+iy) = e^x * e^iy = e^x * (cos y + i sin y)
+//   ```
+//
+//   Let's consider complex number 1+1j as an example.
+//   e^1 * (cos 1 + i sin 1) = 2.7182818284590 * (0.54030230586+0.8414709848j)
+//
+//   ```python
+//   x = tf.constant(1 + 1j)
+//   tf.math.exp(x) ==> 1.4686939399158851+2.2873552871788423j
+//   ```
 func Exp(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -30640,9 +30667,21 @@ func OrderedMapSize(scope *Scope, dtypes []tf.DataType, optional ...OrderedMapSi
 	return op.Output(0)
 }
 
-// Computes exponential of x - 1 element-wise.
+// Computes `exp(x) - 1` element-wise.
 //
-// I.e., \\(y = (\exp x) - 1\\).
+//   i.e. `exp(x) - 1` or `e^(x) - 1`, where `x` is the input tensor.
+//   `e` denotes Euler's number and is approximately equal to 2.718281.
+//
+//   ```python
+//   x = tf.constant(2.0)
+//   tf.math.expm1(x) ==> 6.389056
+//
+//   x = tf.constant([2.0, 8.0])
+//   tf.math.expm1(x) ==> array([6.389056, 2979.958], dtype=float32)
+//
+//   x = tf.constant(1 + 1j)
+//   tf.math.expm1(x) ==> (0.46869393991588515+2.2873552871788423j)
+//   ```
 func Expm1(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -32533,6 +32572,16 @@ func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id
 //
 // *NOTE*: `Equal` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+//
+// ```python
+// x = tf.constant([2, 4])
+// y = tf.constant(2)
+// tf.math.equal(x, y) ==> array([True, False])
+//
+// x = tf.constant([2, 4])
+// y = tf.constant([2, 4])
+// tf.math.equal(x, y) ==> array([True,  True])
+// ```
 func Equal(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
