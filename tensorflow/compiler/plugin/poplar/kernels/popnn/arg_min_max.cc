@@ -72,29 +72,25 @@ class ArgMaxMinOp : public XlaOpKernel, IpuOpKernel {
     xla::PrimitiveType index_xla_type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(index_type, &index_xla_type));
 
-    attribute_map_.AddAttribute("axis", axis);
-
-    // The output will be all the dims other than "axis".
-    input_shape.RemoveDim(dim);
-    xla::Shape xla_shape;
-
-    if (dim != 0) {
-      xla_shape = TensorShapeToXLAShape(index_xla_type, input_shape);
-    } else {
-      xla_shape = xla::ShapeUtil::MakeShape(index_xla_type, {1});
-    }
-
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp output;
     xla::XlaBuilder* b = ctx->builder();
 
-    //
-    xla::PrimitiveType input_primitive_type;
-    OP_REQUIRES_OK(
-        ctx, DataTypeToPrimitiveType(input_type(0), &input_primitive_type));
-
     if (input_type(0) == DataType::DT_HALF ||
         input_type(0) == DataType::DT_FLOAT) {
+      // Add the axis as an attribute.
+      attribute_map_.AddAttribute("axis", axis);
+      // The output will be all the dims other than "axis".
+      input_shape.RemoveDim(axis);
+
+      xla::Shape xla_shape;
+      if (input_shape.dims()) {
+        xla_shape = TensorShapeToXLAShape(index_xla_type, input_shape);
+      } else {
+        // Special case for vectors - the output shape is a scalar.
+        xla_shape = xla::ShapeUtil::MakeShape(index_xla_type, {1});
+      }
+
       // Call into either our ArgMin or ArgMax implementation depending on what
       // the user requested.
       if (is_min_) {

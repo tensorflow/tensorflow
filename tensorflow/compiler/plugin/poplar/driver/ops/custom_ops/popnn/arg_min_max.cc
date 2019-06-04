@@ -42,8 +42,8 @@ class ArgMinMaxOp : public PoplibsOpDef {
     poplar::program::Sequence seq;
 
     // Get the input.
-    poplar::Tensor input =
-        FindInstructionInputs(tensor_map, res, inst, 0, seq, false)[0];
+    TF_ASSIGN_OR_RETURN(poplar::Tensor input,
+                        FindInstructionInput(tensor_map, res, inst, 0, seq));
 
     bool is_max = DynCast<HloArgMax>(inst) != nullptr;
 
@@ -56,7 +56,7 @@ class ArgMinMaxOp : public PoplibsOpDef {
 
     std::vector<std::size_t> index_shape;
 
-    if (axis != 0) {
+    if (inst->shape().rank() > 1) {
       // Roll the axis dim to the end.
       input = input.dimRoll(axis, input.rank() - 1);
 
@@ -72,6 +72,7 @@ class ArgMinMaxOp : public PoplibsOpDef {
       // Flatten the remaining dims as popnn expects a 2d input.
       input = input.reshapePartial(0, input.rank() - 1, {sum});
     } else {
+      // Special case for vectors.
       input = input.reshape({1, input.numElements()});
       index_shape = {1};
     }
@@ -79,14 +80,13 @@ class ArgMinMaxOp : public PoplibsOpDef {
     // Call into the
     poplar::Tensor output;
     if (is_max) {
-      output = popnn::argMax(graph, input, seq, "ArgMax");
+      output = popnn::argMax(graph, input, seq, GetDebugName(inst) + "/ArgMax");
     } else {
-      output = popnn::argMin(graph, input, seq, "ArgMin");
+      output = popnn::argMin(graph, input, seq, GetDebugName(inst) + "/ArgMin");
     }
     output = output.reinterpret(poplar::INT);
 
-    // Reshape the output to be the actual arangement of the index, it will be a
-    // 1D vector.
+    // Reshape the output back.
     output = output.reshape(index_shape);
 
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, output));
