@@ -319,8 +319,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
     if not self.could_use_cudnn:
-      # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -816,6 +817,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     if not self.could_use_cudnn:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)
