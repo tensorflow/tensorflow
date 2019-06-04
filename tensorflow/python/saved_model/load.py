@@ -21,11 +21,16 @@ from __future__ import print_function
 import functools
 import os
 
+from google3.third_party.tensorflow.python.distribute import distribution_strategy_context as ds_context
+from google3.third_party.tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
+from google3.third_party.tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from google3.third_party.tensorflow.python.ops import array_ops
+from google3.third_party.tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -42,9 +47,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-<<<<<<< HEAD
-class _Loader(object):
-=======
 def _unused_handle():
   """Returns a placeholder as handle that is not supposed to be accessed."""
   error_message = ("Trying to access a placeholder that is not supposed to be "
@@ -98,7 +100,6 @@ class _WrapperFunction(function.ConcreteFunction):
 
 
 class Loader(object):
->>>>>>> eff4ae822a... Keras models and layers saving and reviving code. Implements go/tf-model-serialization.
   """Helper class to load an object-based SavedModel."""
 
   def __init__(self, object_graph_proto, saved_model_proto, export_dir):
