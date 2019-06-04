@@ -1412,7 +1412,9 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     optimizer.minimize(v1_save.read_value,
                        var_list=[v1_save])
     self.evaluate([v.initializer for v in save_template.variables])
-    self.evaluate([v.initializer for v in optimizer.variables()])
+    optimizer_variables = optimizer.variables() + list(
+        optimizer._hyper.values())
+    self.evaluate([v.initializer for v in optimizer_variables])
     self.evaluate(v1_save.assign([12.]))
     self.evaluate(v2_save.assign([14.]))
     checkpoint_directory = self.get_temp_dir()
