@@ -152,7 +152,7 @@ cc_library(
         ":object",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:tensor",
-        "@FP16",
+        "@FP16//FP16",
         "@com_google_absl//absl/types:variant",
     ],
 )

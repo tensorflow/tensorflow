@@ -13,7 +13,7 @@ cc_library(
         ":tensor",
         ":types",
         ":util",
-        "@FP16",
+        "@FP16//FP16",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -159,7 +159,7 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     deps = [
-        "@FP16",
+        "@FP16//FP16",
     ],
 )
 
