@@ -94,7 +94,7 @@ class AutoTrackable(base.Trackable):
     """Override to allow TrackableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
 
-  def _list_functions_for_serialization(self):
+  def _list_functions_for_serialization(self, unused_serialization_cache):
     """Return a dict of `Function`s of a trackable."""
     functions = {}
     for attribute_name in dir(self):
@@ -192,7 +192,7 @@ class CapturableResource(base.Trackable):
         self._resource_handle = self._create_resource()
     return self._resource_handle
 
-  def _list_functions_for_serialization(self):
+  def _list_functions_for_serialization(self, unused_functions):
     @def_function.function(input_signature=[], autograph=False)
     def _creator():
       resource = self._create_resource()

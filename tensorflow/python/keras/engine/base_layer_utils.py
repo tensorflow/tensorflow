@@ -289,6 +289,9 @@ def is_in_eager_or_tf_function():
 
 def is_in_tf_function():
   """Returns if inside of a tf.function."""
+  # Check if running in V1 graph mode.
+  if not ops.executing_eagerly_outside_functions():
+    return False
   if not ops.inside_function():
     return False
   # Check if inside Keras FuncGraph.
