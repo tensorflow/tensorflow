@@ -313,6 +313,9 @@ struct SubGraphT;
 struct Buffer;
 struct BufferT;
 
+struct Metadata;
+struct MetadataT;
+
 struct Model;
 struct ModelT;
 
@@ -366,7 +369,7 @@ inline const char * const *EnumNamesTensorType() {
 
 inline const char *EnumNameTensorType(TensorType e) {
   if (e < TensorType_FLOAT32 || e > TensorType_INT8) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesTensorType()[index];
 }
 
@@ -396,7 +399,7 @@ inline const char * const *EnumNamesQuantizationDetails() {
 
 inline const char *EnumNameQuantizationDetails(QuantizationDetails e) {
   if (e < QuantizationDetails_NONE || e > QuantizationDetails_CustomQuantization) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesQuantizationDetails()[index];
 }
 
@@ -428,10 +431,11 @@ struct QuantizationDetailsUnion {
 #ifndef FLATBUFFERS_CPP98_STL
   template <typename T>
   void Set(T&& val) {
+    using RT = typename std::remove_reference<T>::type;
     Reset();
-    type = QuantizationDetailsTraits<typename T::TableType>::enum_value;
+    type = QuantizationDetailsTraits<typename RT::TableType>::enum_value;
     if (type != QuantizationDetails_NONE) {
-      value = new T(std::forward<T>(val));
+      value = new RT(std::forward<T>(val));
     }
   }
 #endif  // FLATBUFFERS_CPP98_STL
@@ -820,8 +824,8 @@ inline const char * const *EnumNamesBuiltinOperator() {
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (e < BuiltinOperator_ADD || e > BuiltinOperator_MATRIX_SET_DIAG) return "";
-  const size_t index = static_cast<int>(e);
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_ROUND) return "";
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
 
@@ -1118,7 +1122,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
   if (e < BuiltinOptions_NONE || e > BuiltinOptions_MatrixSetDiagOptions) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
 
@@ -1506,10 +1510,11 @@ struct BuiltinOptionsUnion {
 #ifndef FLATBUFFERS_CPP98_STL
   template <typename T>
   void Set(T&& val) {
+    using RT = typename std::remove_reference<T>::type;
     Reset();
-    type = BuiltinOptionsTraits<typename T::TableType>::enum_value;
+    type = BuiltinOptionsTraits<typename RT::TableType>::enum_value;
     if (type != BuiltinOptions_NONE) {
-      value = new T(std::forward<T>(val));
+      value = new RT(std::forward<T>(val));
     }
   }
 #endif  // FLATBUFFERS_CPP98_STL
@@ -2268,7 +2273,7 @@ inline const char * const *EnumNamesPadding() {
 
 inline const char *EnumNamePadding(Padding e) {
   if (e < Padding_SAME || e > Padding_VALID) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesPadding()[index];
 }
 
@@ -2310,7 +2315,7 @@ inline const char * const *EnumNamesActivationFunctionType() {
 
 inline const char *EnumNameActivationFunctionType(ActivationFunctionType e) {
   if (e < ActivationFunctionType_NONE || e > ActivationFunctionType_SIGN_BIT) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesActivationFunctionType()[index];
 }
 
@@ -2343,7 +2348,7 @@ inline const char * const *EnumNamesLSHProjectionType() {
 
 inline const char *EnumNameLSHProjectionType(LSHProjectionType e) {
   if (e < LSHProjectionType_UNKNOWN || e > LSHProjectionType_DENSE) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesLSHProjectionType()[index];
 }
 
@@ -2373,7 +2378,7 @@ inline const char * const *EnumNamesFullyConnectedOptionsWeightsFormat() {
 
 inline const char *EnumNameFullyConnectedOptionsWeightsFormat(FullyConnectedOptionsWeightsFormat e) {
   if (e < FullyConnectedOptionsWeightsFormat_DEFAULT || e > FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesFullyConnectedOptionsWeightsFormat()[index];
 }
 
@@ -2403,7 +2408,7 @@ inline const char * const *EnumNamesLSTMKernelType() {
 
 inline const char *EnumNameLSTMKernelType(LSTMKernelType e) {
   if (e < LSTMKernelType_FULL || e > LSTMKernelType_BASIC) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesLSTMKernelType()[index];
 }
 
@@ -2436,7 +2441,7 @@ inline const char * const *EnumNamesCombinerType() {
 
 inline const char *EnumNameCombinerType(CombinerType e) {
   if (e < CombinerType_SUM || e > CombinerType_SQRTN) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesCombinerType()[index];
 }
 
@@ -2466,7 +2471,7 @@ inline const char * const *EnumNamesMirrorPadMode() {
 
 inline const char *EnumNameMirrorPadMode(MirrorPadMode e) {
   if (e < MirrorPadMode_REFLECT || e > MirrorPadMode_SYMMETRIC) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesMirrorPadMode()[index];
 }
 
@@ -2493,7 +2498,7 @@ inline const char * const *EnumNamesCustomOptionsFormat() {
 
 inline const char *EnumNameCustomOptionsFormat(CustomOptionsFormat e) {
   if (e < CustomOptionsFormat_FLEXBUFFERS || e > CustomOptionsFormat_FLEXBUFFERS) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesCustomOptionsFormat()[index];
 }
 
@@ -2552,9 +2557,10 @@ inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(
 inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantizationDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<uint8_t> *custom = nullptr) {
+  auto custom__ = custom ? _fbb.CreateVector<uint8_t>(*custom) : 0;
   return tflite::CreateCustomQuantization(
       _fbb,
-      custom ? _fbb.CreateVector<uint8_t>(*custom) : 0);
+      custom__);
 }
 
 flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(flatbuffers::FlatBufferBuilder &_fbb, const CustomQuantizationT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -2698,12 +2704,16 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParametersD
     QuantizationDetails details_type = QuantizationDetails_NONE,
     flatbuffers::Offset<void> details = 0,
     int32_t quantized_dimension = 0) {
+  auto min__ = min ? _fbb.CreateVector<float>(*min) : 0;
+  auto max__ = max ? _fbb.CreateVector<float>(*max) : 0;
+  auto scale__ = scale ? _fbb.CreateVector<float>(*scale) : 0;
+  auto zero_point__ = zero_point ? _fbb.CreateVector<int64_t>(*zero_point) : 0;
   return tflite::CreateQuantizationParameters(
       _fbb,
-      min ? _fbb.CreateVector<float>(*min) : 0,
-      max ? _fbb.CreateVector<float>(*max) : 0,
-      scale ? _fbb.CreateVector<float>(*scale) : 0,
-      zero_point ? _fbb.CreateVector<int64_t>(*zero_point) : 0,
+      min__,
+      max__,
+      scale__,
+      zero_point__,
       details_type,
       details,
       quantized_dimension);
@@ -2831,12 +2841,14 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
     const char *name = nullptr,
     flatbuffers::Offset<QuantizationParameters> quantization = 0,
     bool is_variable = false) {
+  auto shape__ = shape ? _fbb.CreateVector<int32_t>(*shape) : 0;
+  auto name__ = name ? _fbb.CreateString(name) : 0;
   return tflite::CreateTensor(
       _fbb,
-      shape ? _fbb.CreateVector<int32_t>(*shape) : 0,
+      shape__,
       type,
       buffer,
-      name ? _fbb.CreateString(name) : 0,
+      name__,
       quantization,
       is_variable);
 }
@@ -3278,11 +3290,13 @@ inline flatbuffers::Offset<ConcatEmbeddingsOptions> CreateConcatEmbeddingsOption
     int32_t num_channels = 0,
     const std::vector<int32_t> *num_columns_per_channel = nullptr,
     const std::vector<int32_t> *embedding_dim_per_channel = nullptr) {
+  auto num_columns_per_channel__ = num_columns_per_channel ? _fbb.CreateVector<int32_t>(*num_columns_per_channel) : 0;
+  auto embedding_dim_per_channel__ = embedding_dim_per_channel ? _fbb.CreateVector<int32_t>(*embedding_dim_per_channel) : 0;
   return tflite::CreateConcatEmbeddingsOptions(
       _fbb,
       num_channels,
-      num_columns_per_channel ? _fbb.CreateVector<int32_t>(*num_columns_per_channel) : 0,
-      embedding_dim_per_channel ? _fbb.CreateVector<int32_t>(*embedding_dim_per_channel) : 0);
+      num_columns_per_channel__,
+      embedding_dim_per_channel__);
 }
 
 flatbuffers::Offset<ConcatEmbeddingsOptions> CreateConcatEmbeddingsOptions(flatbuffers::FlatBufferBuilder &_fbb, const ConcatEmbeddingsOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4634,9 +4648,10 @@ inline flatbuffers::Offset<ReshapeOptions> CreateReshapeOptions(
 inline flatbuffers::Offset<ReshapeOptions> CreateReshapeOptionsDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<int32_t> *new_shape = nullptr) {
+  auto new_shape__ = new_shape ? _fbb.CreateVector<int32_t>(*new_shape) : 0;
   return tflite::CreateReshapeOptions(
       _fbb,
-      new_shape ? _fbb.CreateVector<int32_t>(*new_shape) : 0);
+      new_shape__);
 }
 
 flatbuffers::Offset<ReshapeOptions> CreateReshapeOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReshapeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -5338,9 +5353,10 @@ inline flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptions(
 inline flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptionsDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<int32_t> *squeeze_dims = nullptr) {
+  auto squeeze_dims__ = squeeze_dims ? _fbb.CreateVector<int32_t>(*squeeze_dims) : 0;
   return tflite::CreateSqueezeOptions(
       _fbb,
-      squeeze_dims ? _fbb.CreateVector<int32_t>(*squeeze_dims) : 0);
+      squeeze_dims__);
 }
 
 flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptions(flatbuffers::FlatBufferBuilder &_fbb, const SqueezeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -7860,10 +7876,11 @@ inline flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
     BuiltinOperator builtin_code = BuiltinOperator_ADD,
     const char *custom_code = nullptr,
     int32_t version = 1) {
+  auto custom_code__ = custom_code ? _fbb.CreateString(custom_code) : 0;
   return tflite::CreateOperatorCode(
       _fbb,
       builtin_code,
-      custom_code ? _fbb.CreateString(custom_code) : 0,
+      custom_code__,
       version);
 }
 
@@ -8644,16 +8661,20 @@ inline flatbuffers::Offset<Operator> CreateOperatorDirect(
     const std::vector<uint8_t> *custom_options = nullptr,
     CustomOptionsFormat custom_options_format = CustomOptionsFormat_FLEXBUFFERS,
     const std::vector<uint8_t> *mutating_variable_inputs = nullptr) {
+  auto inputs__ = inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0;
+  auto outputs__ = outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0;
+  auto custom_options__ = custom_options ? _fbb.CreateVector<uint8_t>(*custom_options) : 0;
+  auto mutating_variable_inputs__ = mutating_variable_inputs ? _fbb.CreateVector<uint8_t>(*mutating_variable_inputs) : 0;
   return tflite::CreateOperator(
       _fbb,
       opcode_index,
-      inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0,
-      outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0,
+      inputs__,
+      outputs__,
       builtin_options_type,
       builtin_options,
-      custom_options ? _fbb.CreateVector<uint8_t>(*custom_options) : 0,
+      custom_options__,
       custom_options_format,
-      mutating_variable_inputs ? _fbb.CreateVector<uint8_t>(*mutating_variable_inputs) : 0);
+      mutating_variable_inputs__);
 }
 
 flatbuffers::Offset<Operator> CreateOperator(flatbuffers::FlatBufferBuilder &_fbb, const OperatorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -8767,13 +8788,18 @@ inline flatbuffers::Offset<SubGraph> CreateSubGraphDirect(
     const std::vector<int32_t> *outputs = nullptr,
     const std::vector<flatbuffers::Offset<Operator>> *operators = nullptr,
     const char *name = nullptr) {
+  auto tensors__ = tensors ? _fbb.CreateVector<flatbuffers::Offset<Tensor>>(*tensors) : 0;
+  auto inputs__ = inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0;
+  auto outputs__ = outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0;
+  auto operators__ = operators ? _fbb.CreateVector<flatbuffers::Offset<Operator>>(*operators) : 0;
+  auto name__ = name ? _fbb.CreateString(name) : 0;
   return tflite::CreateSubGraph(
       _fbb,
-      tensors ? _fbb.CreateVector<flatbuffers::Offset<Tensor>>(*tensors) : 0,
-      inputs ? _fbb.CreateVector<int32_t>(*inputs) : 0,
-      outputs ? _fbb.CreateVector<int32_t>(*outputs) : 0,
-      operators ? _fbb.CreateVector<flatbuffers::Offset<Operator>>(*operators) : 0,
-      name ? _fbb.CreateString(name) : 0);
+      tensors__,
+      inputs__,
+      outputs__,
+      operators__,
+      name__);
 }
 
 flatbuffers::Offset<SubGraph> CreateSubGraph(flatbuffers::FlatBufferBuilder &_fbb, const SubGraphT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -8833,12 +8859,90 @@ inline flatbuffers::Offset<Buffer> CreateBuffer(
 inline flatbuffers::Offset<Buffer> CreateBufferDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<uint8_t> *data = nullptr) {
+  auto data__ = data ? _fbb.CreateVector<uint8_t>(*data) : 0;
   return tflite::CreateBuffer(
       _fbb,
-      data ? _fbb.CreateVector<uint8_t>(*data) : 0);
+      data__);
 }
 
 flatbuffers::Offset<Buffer> CreateBuffer(flatbuffers::FlatBufferBuilder &_fbb, const BufferT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct MetadataT : public flatbuffers::NativeTable {
+  typedef Metadata TableType;
+  std::string name;
+  uint32_t buffer;
+  MetadataT()
+      : buffer(0) {
+  }
+};
+
+struct Metadata FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef MetadataT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NAME = 4,
+    VT_BUFFER = 6
+  };
+  const flatbuffers::String *name() const {
+    return GetPointer<const flatbuffers::String *>(VT_NAME);
+  }
+  uint32_t buffer() const {
+    return GetField<uint32_t>(VT_BUFFER, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.VerifyString(name()) &&
+           VerifyField<uint32_t>(verifier, VT_BUFFER) &&
+           verifier.EndTable();
+  }
+  MetadataT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MetadataT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Metadata> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MetadataT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct MetadataBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_name(flatbuffers::Offset<flatbuffers::String> name) {
+    fbb_.AddOffset(Metadata::VT_NAME, name);
+  }
+  void add_buffer(uint32_t buffer) {
+    fbb_.AddElement<uint32_t>(Metadata::VT_BUFFER, buffer, 0);
+  }
+  explicit MetadataBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  MetadataBuilder &operator=(const MetadataBuilder &);
+  flatbuffers::Offset<Metadata> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Metadata>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Metadata> CreateMetadata(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::String> name = 0,
+    uint32_t buffer = 0) {
+  MetadataBuilder builder_(_fbb);
+  builder_.add_buffer(buffer);
+  builder_.add_name(name);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<Metadata> CreateMetadataDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *name = nullptr,
+    uint32_t buffer = 0) {
+  auto name__ = name ? _fbb.CreateString(name) : 0;
+  return tflite::CreateMetadata(
+      _fbb,
+      name__,
+      buffer);
+}
+
+flatbuffers::Offset<Metadata> CreateMetadata(flatbuffers::FlatBufferBuilder &_fbb, const MetadataT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct ModelT : public flatbuffers::NativeTable {
   typedef Model TableType;
@@ -8848,6 +8952,7 @@ struct ModelT : public flatbuffers::NativeTable {
   std::string description;
   std::vector<std::unique_ptr<BufferT>> buffers;
   std::vector<int32_t> metadata_buffer;
+  std::vector<std::unique_ptr<MetadataT>> metadata;
   ModelT()
       : version(0) {
   }
@@ -8861,7 +8966,8 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_SUBGRAPHS = 8,
     VT_DESCRIPTION = 10,
     VT_BUFFERS = 12,
-    VT_METADATA_BUFFER = 14
+    VT_METADATA_BUFFER = 14,
+    VT_METADATA = 16
   };
   uint32_t version() const {
     return GetField<uint32_t>(VT_VERSION, 0);
@@ -8881,6 +8987,9 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int32_t> *metadata_buffer() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_METADATA_BUFFER);
   }
+  const flatbuffers::Vector<flatbuffers::Offset<Metadata>> *metadata() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<Metadata>> *>(VT_METADATA);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_VERSION) &&
@@ -8897,6 +9006,9 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVectorOfTables(buffers()) &&
            VerifyOffset(verifier, VT_METADATA_BUFFER) &&
            verifier.VerifyVector(metadata_buffer()) &&
+           VerifyOffset(verifier, VT_METADATA) &&
+           verifier.VerifyVector(metadata()) &&
+           verifier.VerifyVectorOfTables(metadata()) &&
            verifier.EndTable();
   }
   ModelT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -8925,6 +9037,9 @@ struct ModelBuilder {
   void add_metadata_buffer(flatbuffers::Offset<flatbuffers::Vector<int32_t>> metadata_buffer) {
     fbb_.AddOffset(Model::VT_METADATA_BUFFER, metadata_buffer);
   }
+  void add_metadata(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Metadata>>> metadata) {
+    fbb_.AddOffset(Model::VT_METADATA, metadata);
+  }
   explicit ModelBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -8944,8 +9059,10 @@ inline flatbuffers::Offset<Model> CreateModel(
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<SubGraph>>> subgraphs = 0,
     flatbuffers::Offset<flatbuffers::String> description = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>> buffers = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> metadata_buffer = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> metadata_buffer = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Metadata>>> metadata = 0) {
   ModelBuilder builder_(_fbb);
+  builder_.add_metadata(metadata);
   builder_.add_metadata_buffer(metadata_buffer);
   builder_.add_buffers(buffers);
   builder_.add_description(description);
@@ -8962,15 +9079,23 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
     const std::vector<flatbuffers::Offset<SubGraph>> *subgraphs = nullptr,
     const char *description = nullptr,
     const std::vector<flatbuffers::Offset<Buffer>> *buffers = nullptr,
-    const std::vector<int32_t> *metadata_buffer = nullptr) {
+    const std::vector<int32_t> *metadata_buffer = nullptr,
+    const std::vector<flatbuffers::Offset<Metadata>> *metadata = nullptr) {
+  auto operator_codes__ = operator_codes ? _fbb.CreateVector<flatbuffers::Offset<OperatorCode>>(*operator_codes) : 0;
+  auto subgraphs__ = subgraphs ? _fbb.CreateVector<flatbuffers::Offset<SubGraph>>(*subgraphs) : 0;
+  auto description__ = description ? _fbb.CreateString(description) : 0;
+  auto buffers__ = buffers ? _fbb.CreateVector<flatbuffers::Offset<Buffer>>(*buffers) : 0;
+  auto metadata_buffer__ = metadata_buffer ? _fbb.CreateVector<int32_t>(*metadata_buffer) : 0;
+  auto metadata__ = metadata ? _fbb.CreateVector<flatbuffers::Offset<Metadata>>(*metadata) : 0;
   return tflite::CreateModel(
       _fbb,
       version,
-      operator_codes ? _fbb.CreateVector<flatbuffers::Offset<OperatorCode>>(*operator_codes) : 0,
-      subgraphs ? _fbb.CreateVector<flatbuffers::Offset<SubGraph>>(*subgraphs) : 0,
-      description ? _fbb.CreateString(description) : 0,
-      buffers ? _fbb.CreateVector<flatbuffers::Offset<Buffer>>(*buffers) : 0,
-      metadata_buffer ? _fbb.CreateVector<int32_t>(*metadata_buffer) : 0);
+      operator_codes__,
+      subgraphs__,
+      description__,
+      buffers__,
+      metadata_buffer__,
+      metadata__);
 }
 
 flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_fbb, const ModelT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -11602,6 +11727,35 @@ inline flatbuffers::Offset<Buffer> CreateBuffer(flatbuffers::FlatBufferBuilder &
       _data);
 }
 
+inline MetadataT *Metadata::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new MetadataT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Metadata::UnPackTo(MetadataT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = name(); if (_e) _o->name = _e->str(); };
+  { auto _e = buffer(); _o->buffer = _e; };
+}
+
+inline flatbuffers::Offset<Metadata> Metadata::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MetadataT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateMetadata(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Metadata> CreateMetadata(flatbuffers::FlatBufferBuilder &_fbb, const MetadataT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MetadataT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _name = _o->name.empty() ? 0 : _fbb.CreateString(_o->name);
+  auto _buffer = _o->buffer;
+  return tflite::CreateMetadata(
+      _fbb,
+      _name,
+      _buffer);
+}
+
 inline ModelT *Model::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new ModelT();
   UnPackTo(_o, _resolver);
@@ -11617,6 +11771,7 @@ inline void Model::UnPackTo(ModelT *_o, const flatbuffers::resolver_function_t *
   { auto _e = description(); if (_e) _o->description = _e->str(); };
   { auto _e = buffers(); if (_e) { _o->buffers.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->buffers[_i] = std::unique_ptr<BufferT>(_e->Get(_i)->UnPack(_resolver)); } } };
   { auto _e = metadata_buffer(); if (_e) { _o->metadata_buffer.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->metadata_buffer[_i] = _e->Get(_i); } } };
+  { auto _e = metadata(); if (_e) { _o->metadata.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->metadata[_i] = std::unique_ptr<MetadataT>(_e->Get(_i)->UnPack(_resolver)); } } };
 }
 
 inline flatbuffers::Offset<Model> Model::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ModelT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11633,6 +11788,7 @@ inline flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_f
   auto _description = _o->description.empty() ? 0 : _fbb.CreateString(_o->description);
   auto _buffers = _o->buffers.size() ? _fbb.CreateVector<flatbuffers::Offset<Buffer>> (_o->buffers.size(), [](size_t i, _VectorArgs *__va) { return CreateBuffer(*__va->__fbb, __va->__o->buffers[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _metadata_buffer = _o->metadata_buffer.size() ? _fbb.CreateVector(_o->metadata_buffer) : 0;
+  auto _metadata = _o->metadata.size() ? _fbb.CreateVector<flatbuffers::Offset<Metadata>> (_o->metadata.size(), [](size_t i, _VectorArgs *__va) { return CreateMetadata(*__va->__fbb, __va->__o->metadata[i].get(), __va->__rehasher); }, &_va ) : 0;
   return tflite::CreateModel(
       _fbb,
       _version,
@@ -11640,7 +11796,8 @@ inline flatbuffers::Offset<Model> CreateModel(flatbuffers::FlatBufferBuilder &_f
       _subgraphs,
       _description,
       _buffers,
-      _metadata_buffer);
+      _metadata_buffer,
+      _metadata);
 }
 
 inline bool VerifyQuantizationDetails(flatbuffers::Verifier &verifier, const void *obj, QuantizationDetails type) {
