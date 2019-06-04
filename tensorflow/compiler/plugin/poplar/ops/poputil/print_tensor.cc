@@ -20,8 +20,14 @@ namespace tensorflow {
 
 REGISTER_OP("IpuPrintTensor")
     .Input("input: dtype")
-    .Output("output: dtype")
     .Attr("dtype: {float16, float32, int32}")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Prints a tensor to the standard error.
+
+input: A tensor to be printed.
+
+)doc");
 
 }  // namespace tensorflow

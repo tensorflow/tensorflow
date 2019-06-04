@@ -41,13 +41,11 @@ class PrintTensorOp : public PoplibsOpDef {
     // Create the control program.
     poplar::program::Sequence seq;
 
-    // Get the input.
-    poplar::Tensor input =
-        FindInstructionInputs(tensor_map, res, inst, 0, seq, false)[0];
-
+    // Get the input - don't expand constants.
+    TF_ASSIGN_OR_RETURN(
+        poplar::Tensor input,
+        FindInstructionInput(tensor_map, res, inst, 0, seq, false));
     seq.add(poplar::program::PrintTensor(GetDebugName(inst), input));
-
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, input));
 
     return seq;
   }

@@ -31,6 +31,8 @@ limitations under the License.
 #include <popops/ElementWise.hpp>
 #include <poputil/TileMapping.hpp>
 
+namespace pe = popops::expr;
+
 namespace xla {
 namespace poplarplugin {
 namespace {
@@ -59,18 +61,21 @@ class ReplicationNormaliseOp : public PoplibsOpDef {
                                              TensorMap& tensor_map) override {
     poplar::program::Sequence seq;
 
-    TF_ASSIGN_OR_RETURN(poplar::Tensor in,
-                        FindInstructionInput(tensor_map, res, inst, 0, seq));
+    // Get the inplace input.
+    TF_ASSIGN_OR_RETURN(
+        ArgVectors inputs,
+        FindInplaceOutputTensors(tensor_map, res, inst, seq, false));
+    CHECK_EQ(inputs.size(), 1);
+    CHECK_EQ(inputs[0].size(), 1);
+    poplar::Tensor inout = inputs[0][0];
 
-    auto replication_factor =
-        graph.addConstant(in.elementType(), {}, res.replication_factor,
-                          GetDebugName(inst) + "/replication_factor");
-    graph.setTileMapping(replication_factor, 0);
+    if (res.replication_factor > 1) {
+      popops::mapInPlace(
+          graph, pe::Divide(pe::_1, pe::Const(res.replication_factor)), {inout},
+          seq, GetDebugName(inst) + "/replication_normalise");
+    }
 
-    auto output = popops::div(graph, in, replication_factor, seq,
-                              GetDebugName(inst) + "/div");
-
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, output));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, inout));
 
     return seq;
   }
