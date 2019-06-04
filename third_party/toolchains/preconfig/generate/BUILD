@@ -10,6 +10,24 @@ tensorflow_rbe_config(
 )
 
 tensorflow_rbe_config(
+    name = "centos6-py-gcc7",
+    build_bazel_src = True,
+    compiler = "gcc",
+    compiler_prefix = "/opt/rh/devtoolset-7/root/usr/bin",
+    os = "centos6",
+    python_version = "2",
+)
+
+tensorflow_rbe_config(
+    name = "centos6-py3-gcc7",
+    build_bazel_src = True,
+    compiler = "gcc",
+    compiler_prefix = "/opt/rh/devtoolset-7/root/usr/bin",
+    os = "centos6",
+    python_version = "3",
+)
+
+tensorflow_rbe_config(
     name = "centos6-py3-gcc7-cuda10.0-cudnn7-tensorrt5",
     compiler = "gcc",
     compiler_prefix = "/opt/rh/devtoolset-7/root/usr/bin",

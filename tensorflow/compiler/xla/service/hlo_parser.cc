@@ -686,6 +686,10 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   optional<string> backend_config;
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
+  optional<std::vector<int64>> outer_dimension_partitions;
+  attrs["outer_dimension_partitions"] = {/*required=*/false,
+                                         AttrTy::kBracedInt64List,
+                                         &outer_dimension_partitions};
 
   HloInstruction* instruction;
   switch (opcode) {
@@ -889,6 +893,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
+      break;
+    }
+    case HloOpcode::kPartitionId: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreatePartitionId());
       break;
     }
     case HloOpcode::kReshape: {
@@ -1459,6 +1472,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands)) {
         return false;
       }
+      if (!ShapeUtil::IsScalar(operands[0]->shape())) {
+        return Error(lexer_.GetLoc(), "The first operand must be a scalar");
+      }
       const bool branch_index_is_bool =
           operands[0]->shape().element_type() == PRED;
       if (branch_index_is_bool) {
@@ -1467,6 +1483,10 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         attrs["false_computation"] = {
             /*required=*/true, AttrTy::kHloComputation, &false_computation};
       } else {
+        if (operands[0]->shape().element_type() != S32) {
+          return Error(lexer_.GetLoc(),
+                       "The first operand must be a scalar of PRED or S32");
+        }
         attrs["branch_computations"] = {/*required=*/true,
                                         AttrTy::kBracedHloComputationList,
                                         &branch_computations};
@@ -1489,7 +1509,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCustomCall: {
       optional<string> custom_call_target;
-      optional<string> opaque;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
@@ -1497,7 +1516,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<Shape>> operand_layout_constraints;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
-      attrs["opaque"] = {/*required=*/false, AttrTy::kString, &opaque};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
@@ -1545,11 +1563,11 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         }
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target, *operand_layout_constraints,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       } else {
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       }
       if (window.has_value()) {
         instruction->set_window(*window);
@@ -1755,6 +1773,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(std::move(*backend_config));
+  }
+  if (outer_dimension_partitions) {
+    instruction->set_outer_dimension_partitions(*outer_dimension_partitions);
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
@@ -2671,7 +2692,7 @@ bool HloParser::ParseAttributeHelper(
   if (!ParseAttributeName(&name)) {
     return Error(loc, "error parsing attributes");
   }
-  VLOG(1) << "Parsing attribute " << name;
+  VLOG(3) << "Parsing attribute " << name;
   if (!seen_attrs->insert(name).second) {
     return Error(loc, StrFormat("attribute %s already exists", name));
   }
@@ -2943,7 +2964,7 @@ bool HloParser::ParseAttributeAsProtoMessageHelper(
   if (!ParseAttributeName(&name)) {
     return Error(loc, "error parsing attributes");
   }
-  VLOG(1) << "Parsing attribute " << name;
+  VLOG(3) << "Parsing attribute " << name;
   if (!seen_attrs->insert(name).second) {
     return Error(loc, StrFormat("attribute %s already exists", name));
   }
@@ -3650,7 +3671,7 @@ bool HloParser::CanBeShape() {
 }
 
 bool HloParser::ParseName(string* result) {
-  VLOG(1) << "ParseName";
+  VLOG(3) << "ParseName";
   if (lexer_.GetKind() != TokKind::kIdent &&
       lexer_.GetKind() != TokKind::kName) {
     return TokenError("expects name");
@@ -3670,7 +3691,7 @@ bool HloParser::ParseAttributeName(string* result) {
 }
 
 bool HloParser::ParseString(string* result) {
-  VLOG(1) << "ParseString";
+  VLOG(3) << "ParseString";
   if (lexer_.GetKind() != TokKind::kString) {
     return TokenError("expects string");
   }
@@ -3784,7 +3805,7 @@ bool HloParser::ParseMetadata(OpMetadata* metadata) {
 }
 
 bool HloParser::ParseOpcode(HloOpcode* result) {
-  VLOG(1) << "ParseOpcode";
+  VLOG(3) << "ParseOpcode";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");
   }
@@ -3800,7 +3821,7 @@ bool HloParser::ParseOpcode(HloOpcode* result) {
 }
 
 bool HloParser::ParseFftType(FftType* result) {
-  VLOG(1) << "ParseFftType";
+  VLOG(3) << "ParseFftType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fft type");
   }
@@ -3829,7 +3850,7 @@ bool HloParser::ParseComparisonDirection(ComparisonDirection* result) {
 }
 
 bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
-  VLOG(1) << "ParseFusionKind";
+  VLOG(3) << "ParseFusionKind";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fusion kind");
   }
@@ -3846,7 +3867,7 @@ bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
 }
 
 bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
-  VLOG(1) << "ParseRandomDistribution";
+  VLOG(3) << "ParseRandomDistribution";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
@@ -3863,7 +3884,7 @@ bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
 }
 
 bool HloParser::ParsePrecision(PrecisionConfig::Precision* result) {
-  VLOG(1) << "ParsePrecision";
+  VLOG(3) << "ParsePrecision";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
@@ -3880,7 +3901,7 @@ bool HloParser::ParsePrecision(PrecisionConfig::Precision* result) {
 }
 
 bool HloParser::ParseInt64(int64* result) {
-  VLOG(1) << "ParseInt64";
+  VLOG(3) << "ParseInt64";
   if (lexer_.GetKind() != TokKind::kInt) {
     return TokenError("expects integer");
   }
@@ -3969,7 +3990,7 @@ bool HloParser::ParseBool(bool* result) {
 }
 
 bool HloParser::ParseToken(TokKind kind, const string& msg) {
-  VLOG(1) << "ParseToken " << TokKindToString(kind) << " " << msg;
+  VLOG(3) << "ParseToken " << TokKindToString(kind) << " " << msg;
   if (lexer_.GetKind() != kind) {
     return TokenError(msg);
   }
@@ -4135,6 +4156,14 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     if (!ParseInstruction(&builder, &root_name)) {
       return false;
     }
+  }
+
+  if (lexer_.GetKind() != TokKind::kEof) {
+    Error(
+        lexer_.GetLoc(),
+        "Syntax error:\nExpected eof after parsing single instruction.  Did "
+        "you mean to write an HLO module and forget the \"HloModule\" header?");
+    return false;
   }
 
   module->AddEntryComputation(builder.Build());

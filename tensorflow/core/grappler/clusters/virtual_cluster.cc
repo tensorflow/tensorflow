@@ -67,14 +67,17 @@ Status VirtualCluster::Run(const GraphDef& graph,
                            const std::vector<std::pair<string, Tensor>>& feed,
                            const std::vector<string>& fetch,
                            RunMetadata* metadata) {
-  // Initializes an analytical cost estimator to estimate the graph cost. Makes
-  // sure to use static shape inference to prevent the virtual scheduler from
-  // calling the Run method on the cluster and creating an infinite loop.
   GrapplerItem item;
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
+  return Run(item, metadata);
+}
 
+Status VirtualCluster::Run(const GrapplerItem& item, RunMetadata* metadata) {
+  // Initializes an analytical cost estimator to estimate the graph cost. Makes
+  // sure to use static shape inference to prevent the virtual scheduler from
+  // calling the Run method on the cluster and creating an infinite loop.
   if (metadata) {
     metadata->clear_step_stats();
     metadata->clear_cost_graph();

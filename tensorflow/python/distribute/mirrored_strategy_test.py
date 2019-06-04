@@ -44,6 +44,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.layers import core
@@ -102,9 +104,66 @@ class MirroredTwoDeviceDistributionTest(
   def testReduceToCpu(self, distribution):
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(_replica_id)
-      reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result)
+      reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=None)
       expected = sum(range(distribution.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(reduced))
+
+  def reduce_axis_helper(self, distribution, replica_squared_fn):
+    with distribution.scope():
+      num_replicas = distribution.num_replicas_in_sync
+      result = distribution.extended.call_for_each_replica(replica_squared_fn)
+      # sum
+      reduced = distribution.reduce(reduce_util.ReduceOp.SUM, result, axis=0)
+      expected = sum(x * (x + 1) for x in range(num_replicas))
+      self.assertNear(expected, self.evaluate(reduced), 0.00001)
+
+      # mean
+      reduced = distribution.reduce(reduce_util.ReduceOp.MEAN, result, axis=0)
+      expected /= sum(x + 1 for x in range(num_replicas))
+      self.assertNear(expected, self.evaluate(reduced), 0.00001)
+
+  def testReduceAxisToCpu(self, distribution):
+    for dtype in (dtypes.float32, dtypes.int32):
+      def replica_squared_fn(dtype=dtype):
+        # Lists with different lengths on different replicas.
+        replica_id = _replica_id_as_int()
+        return math_ops.cast([replica_id] * (replica_id + 1), dtype)
+
+      self.reduce_axis_helper(distribution, replica_squared_fn)
+
+  def set_v2_tensorshape(self, v2):
+    if v2:
+      tensor_shape.enable_v2_tensorshape()
+    else:
+      tensor_shape.disable_v2_tensorshape()
+
+  def testReduceAxisToCpuUnknownShape(self, distribution):
+    original_v2 = tensor_shape._TENSORSHAPE_V2_OVERRIDE  # pylint: disable=protected-access
+    try:
+      for v2 in (False, True):
+        self.set_v2_tensorshape(v2)
+        for dtype in (dtypes.float32, dtypes.int32):
+          for shape in ((None,), None):  # Test both unknown size and rank.
+            def replica_squared_fn(dtype=dtype, shape=shape):
+              # Lists with different lengths on different replicas.
+              replica_id = _replica_id_as_int()
+              tensor = math_ops.cast([replica_id] * (replica_id + 1), dtype)
+              # Erase shape information
+              return array_ops.placeholder_with_default(tensor, shape=shape)
+
+            self.reduce_axis_helper(distribution, replica_squared_fn)
+    finally:
+      self.set_v2_tensorshape(original_v2)
+
+  def testReplicateDataset(self, distribution):
+    dataset_fn = lambda: dataset_ops.Dataset.range(10)
+    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+    input_fn = self._input_fn_to_test_input_context(
+        dataset_fn,
+        expected_num_replicas_in_sync=2,
+        expected_num_input_pipelines=1,
+        expected_input_pipeline_id=0)
+    self._test_input_fn_iterable(distribution, input_fn, expected_values)
 
   def testMakeInputFnIteratorWithDataset(self, distribution):
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
@@ -119,8 +178,7 @@ class MirroredTwoDeviceDistributionTest(
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
 
-  # TODO(b/124344198): Re-enable after fixing this flaky test.
-  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
+  def testMakeInputFnIteratorWithCallable(self, distribution):
     def fn():
       dataset = dataset_ops.Dataset.range(2).interleave(
           (lambda _: dataset_ops.Dataset.range(10)), cycle_length=2)
@@ -135,10 +193,11 @@ class MirroredTwoDeviceDistributionTest(
         expected_input_pipeline_id=0)
     iterator = distribution.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
-                                 expected_values, test_reinitialize=False)
+                                 expected_values, test_reinitialize=False,
+                                 ignore_order=True)
 
-  def testNumpyIterator(self, distribution):
-    self._test_numpy_iterator(distribution)
+  def testNumpyDataset(self, distribution):
+    self._test_numpy_dataset(distribution)
 
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
@@ -338,6 +397,25 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     self._test_mv_properties(v1, "foo:0", distribution)
     self._test_mv_properties(v2, "bar:0", distribution)
+
+  def testVariableWithTensorInitialValueInFunction(self, distribution):
+    if not context.executing_eagerly():
+      self.skipTest("`tf.function` is an eager-only feature")
+
+    v = [None]
+    def model_fn():
+      if v[0] is None:
+        init_val = array_ops.zeros([])
+        v[0] = variables.Variable(init_val)
+      ds_context.get_replica_context().merge_call(lambda _: _)
+      return v[0]
+
+    @def_function.function(autograph=False)
+    def make_v1():
+      return distribution.experimental_local_results(
+          distribution.extended.call_for_each_replica(model_fn))
+
+    self.assertAllEqual([0, 0], make_v1())
 
   def testSingleVariable(self, distribution):
     def model_fn():
@@ -993,7 +1071,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       with self.assertRaisesRegexp(
           ValueError, "You must specify an aggregation method to update a "
-                      "MirroredVariable in Replica Context."):
+                      "MirroredVariable in Replica Context. You can do so by"):
         self.evaluate(distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(model_fn)))
 
@@ -1464,8 +1542,11 @@ class MirroredStrategyDefunTest(test.TestCase):
             combinations.NamedDistribution(
                 "Mirrored",
                 # pylint: disable=g-long-lambda
-                lambda: mirrored_strategy.MirroredStrategy(mirrored_strategy.
-                                                           all_local_devices()),
+                lambda: mirrored_strategy.MirroredStrategy(
+                    devices=mirrored_strategy.all_local_devices(),
+                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
+                        "/job:worker/task:0", "/job:worker/task:1"
+                    ], context.num_gpus())),
                 required_gpus=1)
         ],
         mode=["graph"]))
@@ -1520,7 +1601,7 @@ class MultiWorkerMirroredStrategyTest(
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess)
 
-  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
+  def testMakeInputFnIteratorWithCallable(self, distribution):
     self._configure_distribution_strategy(distribution)
     def fn():
       dataset = dataset_ops.Dataset.range(100)
@@ -1544,7 +1625,7 @@ class MultiWorkerMirroredStrategyTest(
       iterator = distribution.make_input_fn_iterator(input_fn)
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess,
-          test_reinitialize=False)
+          test_reinitialize=False, ignore_order=True)
 
   def testUpdateConfigProto(self, distribution):
     distribution.configure(cluster_spec={"worker": ["fake1", "fake2"]})
@@ -1567,14 +1648,21 @@ class MultiWorkerMirroredStrategyTestWithChief(
         num_workers=2, num_ps=0, has_chief=True)
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
+  def _make_cross_device_ops(self):
+    return cross_device_ops_lib.MultiWorkerAllReduce(
+        ["/job:chief/task:0", "/job:worker/task:0", "/job:worker/task:1"],
+        context.num_gpus())
+
   def testMinimizeLossGraph(self):
-    strategy = mirrored_strategy.MirroredStrategy()
+    strategy = mirrored_strategy.MirroredStrategy(
+        cross_device_ops=self._make_cross_device_ops())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
   def testMinimizeLossGraphMirroredStrategy(self):
     strategy = mirrored_strategy.MirroredStrategy(
-        mirrored_strategy.all_local_devices())
+        mirrored_strategy.all_local_devices(),
+        cross_device_ops=self._make_cross_device_ops())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
@@ -1587,19 +1675,22 @@ class MultiWorkerMirroredStrategyTestWithChief(
       strategy = mirrored_strategy.MirroredStrategy()
       self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                             cross_device_ops_lib.NcclAllReduce)
+    self.skipTest('b/130551176, run the following once fixed.')
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
   def testInitializeFromTFConfig(self):
     tf_config = {"cluster": self._cluster_spec}
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(tf_config)}):
-      strategy = mirrored_strategy.MirroredStrategy()
+      strategy = mirrored_strategy.MirroredStrategy(
+          cross_device_ops=self._make_cross_device_ops())
       self.assertEqual(
           max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
 
   def testSummaryForReplicaZeroOnly(self):
     strategy = mirrored_strategy.MirroredStrategy(
-        mirrored_strategy.all_local_devices())
+        mirrored_strategy.all_local_devices(),
+        cross_device_ops=self._make_cross_device_ops())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_summary_for_replica_zero_only(strategy)
 
@@ -1608,6 +1699,13 @@ def _replica_id():
   replica_id = ds_context.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
+  return replica_id
+
+
+def _replica_id_as_int():
+  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  if isinstance(replica_id, ops.Tensor):
+    replica_id = tensor_util.constant_value(replica_id)
   return replica_id
 
 

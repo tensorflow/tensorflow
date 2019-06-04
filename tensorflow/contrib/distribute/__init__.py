@@ -41,6 +41,9 @@ from tensorflow.python.distribute.step_fn import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 
+DistributionStrategy = StrategyV1
+
+
 _allowed_symbols = [
     'AllReduceCrossDeviceOps',
     'CollectiveAllReduceStrategy',

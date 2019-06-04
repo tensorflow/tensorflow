@@ -3,7 +3,7 @@ recursive-include * *.py
 recursive-include * *.pyd
 recursive-include * *.pd
 recursive-include * *.so
-recursive-include * *.so.*
+recursive-include * *.so.[0-9]
 recursive-include * *.dylib
 recursive-include * *.dll
 recursive-include * *.lib

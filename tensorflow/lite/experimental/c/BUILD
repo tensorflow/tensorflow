@@ -1,4 +1,4 @@
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = [":experimental"])
 
 package_group(
     name = "experimental",

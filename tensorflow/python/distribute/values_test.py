@@ -23,10 +23,10 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
-from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
@@ -37,16 +37,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver as saver_lib
-
-
-# TODO(rchao): Merge parameter_server_strategy_with_two_gpus into
-# third_party/tensorflow/python/distribute/strategy_combinations.py
-# pylint: disable=g-long-lambda
-parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
-    "ParameterServer2GPUs",
-    lambda: parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2),
-    required_gpus=2)
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class DistributedValuesTest(test.TestCase):
@@ -85,9 +76,6 @@ class DistributedValuesTest(test.TestCase):
     self.assertEqual(canonical_cpu, v.devices)
     v = values.DistributedValues(values.SingleDeviceMap("/CPU:0"), (42,))
     self.assertEqual(canonical_cpu, v.devices)
-    with self.assertRaises(AssertionError):
-      v = values.DistributedValues(
-          values.SingleDeviceMap("/device:cpu:0"), (42,))
 
   def testIsTensorLike(self):
     with context.graph_mode(), \
@@ -274,6 +262,14 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                      values.select_device_mirrored(_device_str(0), result))
     self.assertEqual(_nested_value("2"),
                      values.select_device_mirrored(_device_str(1), result))
+
+  def testWrapAListOfTwoTuples(self):
+    device_map = values.ReplicaDeviceMap((_device_str(0), _device_str(1)))
+    result = values.regroup(device_map, [("1", "2"), ("3", "4")])
+    self.assertIsInstance(result, tuple)
+    self.assertEqual(2, len(result))
+    self._is_per_replica(result[0], ("1", "3"), values.PerReplica)
+    self._is_per_replica(result[1], ("2", "4"), values.PerReplica)
 
   def testMirroredContainer(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
@@ -563,7 +559,9 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[parameter_server_strategy_with_two_gpus],
+          distribution=[
+              strategy_combinations.central_storage_strategy_with_two_gpus
+          ],
           mode=["graph", "eager"]))
   def testAssignOutOfScope_aggregating(self, distribution):
     with distribution.scope():
@@ -572,6 +570,54 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.evaluate(aggregating.assign(3.))
     self.assertEqual(self.evaluate(aggregating.read_value()), 3.)
     self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testExtendsVariable(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(1.)
+    self.assertIsInstance(v, variables_lib.Variable)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph", "eager"]))
+  def testCheckpointing(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(constant_op.constant([1., 2., 3., 4]))
+
+    self.evaluate(v.initializer)
+    before_save = self.evaluate(v.read_value())
+
+    # Save random weights into checkpoint.
+    checkpoint = trackable_utils.Checkpoint(v=v)
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    with self.test_session():
+      save_path = checkpoint.save(prefix)
+
+    # Assign inverted value.
+    self.evaluate(v.assign(constant_op.constant([4., 3., 2., 1.])))
+    after_assign = self.evaluate(v.read_value())
+    self.assertNotAllClose(before_save, after_assign)
+
+    # Restore from the checkpoint.
+    with self.test_session():
+      checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    after_restore = self.evaluate(v)
+    self.assertAllClose(before_save, after_restore)
+
 
 _devices = ("/device:GPU:0", "/device:CPU:0")
 
@@ -815,6 +861,147 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_sum(save_path, distribution)
+
+
+class PerReplicaTest(test.TestCase):
+
+  def testToComponents(self):
+    device_map = values.SingleDeviceMap("CPU")
+    vals = (constant_op.constant(1.),)
+    per_replica = values.PerReplica(device_map, vals)
+    logical_device = 0
+    self.assertEqual(per_replica._to_components(), vals)
+    self.assertEqual(per_replica._component_metadata(), (device_map,
+                                                         logical_device))
+
+  def testFromComponents(self):
+    device_map = values.SingleDeviceMap("CPU")
+    vals = (constant_op.constant(1.),)
+    logical_device = 0
+    metadata = device_map, logical_device
+    per_replica = values.PerReplica._from_components(vals, metadata)
+    self.assertEqual(per_replica._device_map, device_map)
+    self.assertEqual(per_replica._values, vals)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIsGraphTensor(self):
+    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"),
+                                    (constant_op.constant(1.),))
+    self.assertEqual(per_replica._is_graph_tensor(),
+                     not context.executing_eagerly())
+
+  def testShapeInvariantToComponents(self):
+    v1 = constant_op.constant(1.)
+    v2 = constant_op.constant(2.)
+    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"), (v1, v2))
+    self.assertEqual(per_replica._shape_invariant_to_components(),
+                     (v1.shape, v2.shape))
+
+  def testShapeInvariantToComponentsExplicitShape(self):
+    v1 = constant_op.constant([1., 1., 1.])
+    v2 = constant_op.constant([2., 2., 2.])
+    per_replica = values.PerReplica(values.SingleDeviceMap("CPU"), (v1, v2))
+    shape = [None]
+    self.assertEqual(per_replica._shape_invariant_to_components(shape=shape),
+                     (shape, shape))
+
+  def testDoesNotTriggerFunctionTracing(self):
+    traces = []
+
+    @def_function.function
+    def f(x):
+      traces.append(None)  # Only happens on trace.
+      return x
+
+    per_replica = values.PerReplica(
+        values.SingleDeviceMap("CPU"), (constant_op.constant(1.),))
+
+    # Trace once.
+    f(per_replica)
+    self.assertNotEmpty(traces)
+    del traces[:]
+
+    metadata = per_replica._component_metadata()
+    for _ in range(5):
+      vals = per_replica._to_components()
+      vals = [v * 2 for v in vals]
+      per_replica = values.PerReplica._from_components(vals, metadata)
+
+      output = f(per_replica)
+      self.assertIsInstance(output, values.PerReplica)
+      self.assertAllEqual(output._values, per_replica._values)
+      self.assertAllEqual(output._device_map, per_replica._device_map)
+      self.assertAllEqual(output._logical_device, per_replica._logical_device)
+      self.assertEmpty(traces)  # Make sure we're not re-tracing `f`.
+
+  def testFunctionCanReturnPerReplica(self):
+    f = def_function.function(lambda x: x)
+    x = values.PerReplica(
+        values.SingleDeviceMap("CPU"), (constant_op.constant(1.),))
+    y = f(x)
+    self.assertIsNot(x, y)
+    for a, b in zip(x._to_components(), y._to_components()):
+      self.assertAllEqual(a, b)
+    self.assertEqual(x._component_metadata(), y._component_metadata())
+
+
+class WorkerDeviceMapTest(test.TestCase):
+
+  class ReplicaContext(object):
+
+    def __init__(self, replica_id_in_sync_group):
+      self.replica_id_in_sync_group = replica_id_in_sync_group
+
+  def testBasic(self):
+    devices = [
+        "/job:worker/replica:0/task:0/device:CPU:0",
+        "/job:worker/replica:0/task:2/device:CPU:0"
+    ]
+    device_map = values.WorkerDeviceMap(devices, 1)
+    self.assertAllEqual(devices, device_map.all_devices)
+
+    # pylint:disable=pointless-statement
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "`WorkerDeviceMap` is not indexed by replicas"):
+      device_map.devices_by_replica
+
+    self.assertEqual(1, device_map.num_logical_devices)
+
+    self.assertEqual(2, device_map.num_replicas_in_graph)
+
+    self.assertEqual(0, device_map.logical_device_from_values(["a", "b"]))
+
+    self.assertAllEqual(devices, device_map.logical_to_actual_devices(0))
+
+    replica_context = WorkerDeviceMapTest.ReplicaContext(1)
+    self.assertEqual(
+        "b", device_map.select_for_current_replica(["a", "b"], replica_context))
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "`WorkerDeviceMap` not indexed by replicas"):
+      device_map.replica_for_device(devices[1])
+
+    self.assertEqual("b", device_map.select_for_device(["a", "b"], devices[1]))
+
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, "WorkerDeviceMap not indexed by replicas"):
+      device_map.is_device_in_replica(devices[1], 1)
+
+    self.assertEqual(
+        "WorkerDeviceMap(('/job:worker/replica:0/task:0/device:CPU:0', "
+        "'/job:worker/replica:0/task:2/device:CPU:0'), "
+        "num_replicas_per_worker=1)", repr(device_map))
+
+  def testMultipleReplicasPerWorker(self):
+    devices = [
+        "/job:worker/replica:0/task:0/device:CPU:0",
+        "/job:worker/replica:0/task:2/device:CPU:0"
+    ]
+    device_map = values.WorkerDeviceMap(devices, 2)
+
+    replica_context = WorkerDeviceMapTest.ReplicaContext(3)
+    self.assertEqual(
+        "b", device_map.select_for_current_replica(["a", "b"], replica_context))
 
 
 if __name__ == "__main__":

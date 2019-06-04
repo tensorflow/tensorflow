@@ -414,7 +414,7 @@ REGISTER_OP("_MklAdd")
     .Output("mkl_z: uint8")
     .Attr(
         "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
-        "complex128, string}")
+        "complex128, string, bfloat16}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns `x` + `y` element-wise.
@@ -447,15 +447,14 @@ REGISTER_OP("MulNoNan")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {half, float, double, complex64, complex128}")
-    .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
+// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("_MklMul")
     .BINARY_MORE()
     .Input("mkl_x: uint8")
     .Input("mkl_y: uint8")
     .Output("mkl_z: uint8")
-    .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns x * y element-wise.
@@ -490,12 +489,12 @@ REGISTER_OP("SquaredDifference")
     .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
+// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("_MklSquaredDifference")
     .BINARY_FEWER()
     .Input("mkl_x: uint8")
     .Input("mkl_y: uint8")
     .Output("mkl_z: uint8")
-    .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns (x - y)(x - y) element-wise.
@@ -526,9 +525,9 @@ REGISTER_OP("Maximum")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {bfloat16, half, float, double, int32, int64}")
-    .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
+// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("_MklMaximum")
     .Input("x: T")
     .Input("y: T")
@@ -536,8 +535,7 @@ REGISTER_OP("_MklMaximum")
     .Input("mkl_y: uint8")
     .Output("z: T")
     .Output("mkl_z: uint8")
-    .Attr("T: {half, float, double, int32, int64}")
-    .SetIsCommutative()
+    .Attr("T: {half, float, double, int32, int64, bfloat16}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns the max of x and y (i.e. x > y ? x : y) element-wise.
@@ -551,7 +549,6 @@ REGISTER_OP("Minimum")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {bfloat16, half, float, double, int32, int64}")
-    .SetIsCommutative()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Mod")
@@ -831,6 +828,57 @@ REGISTER_OP("Select")
       return Status::OK();
     });
 
+REGISTER_OP("SelectV2")
+    .Input("condition: bool")
+    .Input("t: T")
+    .Input("e: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data_1 = c->input_handle_shapes_and_types(1);
+      auto* handle_data_2 = c->input_handle_shapes_and_types(2);
+      // Merge handle shape and dtype if applicable.
+      if (handle_data_1 != nullptr && handle_data_2 != nullptr) {
+        const auto size = handle_data_1->size();
+        std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
+        if (size != handle_data_2->size()) {
+          return errors::InvalidArgument(
+              "Trying to merge handles pointing to different numbers of "
+              "tensors.");
+        }
+
+        for (int i = 0; i < size; ++i) {
+          const shape_inference::ShapeAndType& s1 = (*handle_data_1)[i];
+          const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
+          if (s1.dtype != s2.dtype) {
+            // TODO(apassos) resolve this in the manner of b/32476923
+            return errors::InvalidArgument(
+                "Trying to merge handles pointing to different dtypes.");
+          }
+          merged_handle_data[i].dtype = s1.dtype;
+          TF_RETURN_IF_ERROR(
+              c->Merge(s1.shape, s2.shape, &merged_handle_data[i].shape));
+        }
+
+        c->set_output_handle_shapes_and_types(0, merged_handle_data);
+      }
+
+      // The inputs 'cond', 'then', and 'else' must be broadcastable.
+      // TODO (yongtang): Consolidate 3-ary broadcast instead of
+      // multiple 2-ary broadcast.
+      ShapeHandle cond = c->input(0);
+      ShapeHandle then = c->input(1);
+      ShapeHandle else_ = c->input(2);
+      ShapeHandle other;
+      TF_RETURN_IF_ERROR(
+          BroadcastBinaryOpOutputShapeFnHelper(c, then, else_, &other));
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(
+          BroadcastBinaryOpOutputShapeFnHelper(c, cond, other, &output));
+      c->set_output(0, output);
+      return Status::OK();
+    });
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("MatMul")
@@ -855,6 +903,25 @@ REGISTER_OP("SparseMatMul")
     .Attr("Ta: {float, bfloat16} = DT_FLOAT")
     .Attr("Tb: {float, bfloat16} = DT_FLOAT")
     .SetShapeFn(shape_inference::MatMulShape);
+
+REGISTER_OP("_FusedMatMul")
+    .Input("a: T")
+    .Input("b: T")
+    .Input("args: num_args * T")
+    .Output("product: T")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("T: {float}")
+    .Attr("num_args: int >= 0")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ----------- //
+    .Attr("epsilon: float = 0.0001")
+    // --------------------------------------------- //
+    .SetShapeFn(shape_inference::MatMulShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+)doc");
 
 // --------------------------------------------------------------------------
 
@@ -1600,6 +1667,7 @@ REGISTER_OP("QuantizedMatMul")
       return Status::OK();
     });
 
+// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("QuantizedMul")
     .Input("x: T1")
     .Input("y: T2")
@@ -1613,7 +1681,6 @@ REGISTER_OP("QuantizedMul")
     .Attr("T1: quantizedtype")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
-    .SetIsCommutative()
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
       c->set_output(1, c->Scalar());
@@ -1621,6 +1688,7 @@ REGISTER_OP("QuantizedMul")
       return Status::OK();
     });
 
+// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("QuantizedAdd")
     .Input("x: T1")
     .Input("y: T2")
@@ -1634,7 +1702,6 @@ REGISTER_OP("QuantizedAdd")
     .Attr("T1: quantizedtype")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
-    .SetIsCommutative()
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
       // min_x, max_x, min_y, max_y should be scalar.
@@ -1751,6 +1818,7 @@ REGISTER_OP("ClipByValue")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 #ifdef INTEL_MKL
+// Note: This op is not commutative w.r.t. to all its inputs.
 REGISTER_OP("_MklAddN")
     .Input("inputs: N * T")
     .Input("mkl_input: N * uint8")
@@ -1758,8 +1826,6 @@ REGISTER_OP("_MklAddN")
     .Output("mkl_sum: uint8")
     .Attr("N: int >= 1")
     .Attr("T: numbertype")
-    .SetIsCommutative()
-    .SetIsAggregate()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle cur = c->input(c->num_inputs() - 1);
       for (int i = c->num_inputs() - 2; i >= 0; --i) {

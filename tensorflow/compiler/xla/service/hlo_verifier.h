@@ -57,6 +57,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+  Status HandlePartitionId(HloInstruction* hlo) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;

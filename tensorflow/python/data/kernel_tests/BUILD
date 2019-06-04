@@ -2,9 +2,8 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -24,6 +23,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -104,6 +104,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "enumerate_test",
+    size = "small",
+    srcs = ["enumerate_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "filter_test",
     size = "small",
     srcs = ["filter_test.py"],
@@ -176,8 +191,10 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
     ],
     grpc_enabled = True,
 )
@@ -195,6 +212,7 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:session",
     ],
 )
@@ -261,6 +279,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -415,8 +434,10 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -440,7 +461,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
-        "no_oss",  # TODO(b/117920141): Investigate breakage and re-enable.
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
@@ -546,7 +566,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],
@@ -561,6 +581,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -688,6 +709,33 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
+    ],
+)
+
+tf_py_test(
+    name = "unbatch_test",
+    size = "medium",
+    srcs = ["unbatch_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 

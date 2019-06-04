@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -384,27 +385,11 @@ StatusOr<HloInstruction*> ExpandFirstDimIntoNDims(
 
 StatusOr<HloInstruction*> ElideDegenerateDims(
     HloInstruction* operand, absl::Span<const int64> dims_to_elide) {
-  CHECK(absl::c_is_sorted(dims_to_elide));
-
-  const Shape& input_shape = operand->shape();
-  // First accumulate in reverse
-  std::vector<int64> new_shape_dim_bounds;
-  new_shape_dim_bounds.reserve(input_shape.dimensions_size() -
-                               dims_to_elide.size());
-  int64 dims_to_elide_idx = dims_to_elide.size() - 1;
-  for (int64 i = input_shape.dimensions_size() - 1; i >= 0; i--) {
-    if (dims_to_elide_idx >= 0 && i == dims_to_elide[dims_to_elide_idx]) {
-      CHECK_EQ(input_shape.dimensions(i), 1);
-      dims_to_elide_idx--;
-    } else {
-      new_shape_dim_bounds.push_back(input_shape.dimensions(i));
-    }
-  }
-
-  absl::c_reverse(new_shape_dim_bounds);
-  Shape output_shape =
-      ShapeUtil::MakeShape(input_shape.element_type(), new_shape_dim_bounds);
-  return MakeReshapeHlo(output_shape, operand);
+  return MakeReshapeHlo(
+      ShapeUtil::FilterDimensions(
+          [&](int64 dim) { return !absl::c_linear_search(dims_to_elide, dim); },
+          operand->shape()),
+      operand);
 }
 
 StatusOr<HloInstruction*> InsertDegenerateDims(

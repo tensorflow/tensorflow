@@ -479,22 +479,18 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
       OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], builder));
     } else if (IsTensorListInput(ctx, input_num)) {
-      // If the list received as input is uninitialized but its shape was
-      // inferred in the first compilation pass we create a new list filled
-      // with zeros and used that as the input to the while op.
-      TensorShape input_list_shape;
-      OP_REQUIRES_OK(ctx, GetTensorListBufferShape(ctx->Input(input_num),
-                                                   &input_list_shape));
-      TensorShape body_arg_shape;
-      OP_REQUIRES_OK(ctx,
-                     GetTensorListBufferShape(body_input_shape.tuple_shapes(i),
-                                              &body_arg_shape));
-      // Shape of the input list may differ from the shape of the body/cond
-      // input if the list's shape was inferred after the first compilation and
-      // the body/cond was recompiled with the updated shape of the list.
-      if (input_list_shape != body_arg_shape) {
-        OP_REQUIRES_OK(ctx, InitializeTensorList(ctx->Input(input_num),
-                                                 body_arg_shape, &inputs[i]));
+      xla::XlaOp input = ctx->Input(input_num);
+      auto input_shape_or = ctx->builder()->GetShape(input);
+      OP_REQUIRES_OK(ctx, input_shape_or.status());
+      xla::Shape input_shape = input_shape_or.ValueOrDie();
+      const xla::Shape& list_shape = body_input_shape.tuple_shapes(i);
+      // Shape/datatype of the input list may differ from shape/datatype of the
+      // body/cond input if the list's shape/datatype was inferred after the
+      // first compilation and the body/cond was recompiled with the updated
+      // shape/datatype of the list.
+      if (input_shape != list_shape) {
+        OP_REQUIRES_OK(ctx, CreateZerosTensorListWithShape(
+                                ctx->builder(), list_shape, &inputs[i]));
       } else {
         inputs[i] = ctx->Input(input_num);
       }
@@ -529,7 +525,11 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   int resource_index = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
-      ctx->SetOutput(i, xla::GetTupleElement(while_result, i));
+      if (IsTensorListInput(ctx, i)) {
+        ctx->SetTensorListOutput(i, xla::GetTupleElement(while_result, i));
+      } else {
+        ctx->SetOutput(i, xla::GetTupleElement(while_result, i));
+      }
       ++resource_index;
     } else {
       break;

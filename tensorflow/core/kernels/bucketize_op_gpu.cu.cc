@@ -18,7 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_device_array.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -93,7 +92,7 @@ struct BucketizeFunctor<GPUDevice, T> {
     }
     TF_RETURN_IF_ERROR(boundaries_array.Finalize());
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
     int32 shared_mem_size = sizeof(float) * boundaries_vector.size();
     const int32 kMaxSharedMemBytes = 16384;
     if (shared_mem_size < d.sharedMemPerBlock() &&

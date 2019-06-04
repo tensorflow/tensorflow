@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Ops for softmax.
 
 #include "absl/strings/match.h"
+#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -145,22 +146,35 @@ class SoftmaxXentWithLogitsOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape logits_shape = ctx->InputShape(0);
-    const TensorShape labels_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, logits_shape.IsSameSize(labels_shape),
-                errors::InvalidArgument(
-                    "logits and labels must be same size: logits_size=",
-                    logits_shape.DebugString(),
-                    " labels_size=", labels_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
-                errors::InvalidArgument("logits must be 2-dimensional"));
-    // As we already tested that both inputs have the same shape no need to
-    // check that "labels" is a matrix too.
-
     const DataType type = input_type(0);
     const xla::PrimitiveType xla_type = ctx->input_xla_type(0);
     auto logits = ctx->Input(0);
     auto labels = ctx->Input(1);
+
+    const TensorShape logits_shape = ctx->InputShape(0);
+    const TensorShape labels_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
+                errors::InvalidArgument("logits must be 2-dimensional"));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels_shape),
+                errors::InvalidArgument("labels must be 2-dimensional"));
+
+    // Confirm that any necessary broadcasting to make the shapes the same will
+    // succeed.
+    for (int dim = 0; dim < 2; dim++) {
+      OP_REQUIRES(
+          ctx,
+          labels_shape.dim_size(dim) == 1 ||
+              logits_shape.dim_size(dim) == labels_shape.dim_size(dim),
+          errors::InvalidArgument("logits and labels must be same size after "
+                                  "broadcasting of labels: logits_size=",
+                                  logits_shape.DebugString(),
+                                  " labels_size=", labels_shape.DebugString()));
+    }
+    if (!logits_shape.IsSameSize(labels_shape)) {
+      auto labels_or = BroadcastTo(labels, logits_shape.dim_sizes());
+      OP_REQUIRES_OK(ctx, labels_or.status());
+      labels = labels_or.ConsumeValueOrDie();
+    }
 
     xla::XlaOp loss, backprop;
     std::tie(loss, backprop) =

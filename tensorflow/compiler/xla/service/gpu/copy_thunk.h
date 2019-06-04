@@ -41,7 +41,7 @@ class HostToDeviceCopyThunk : public Thunk {
   HostToDeviceCopyThunk& operator=(const HostToDeviceCopyThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:
@@ -65,7 +65,7 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

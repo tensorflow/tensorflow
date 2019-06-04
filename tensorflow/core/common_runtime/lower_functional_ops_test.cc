@@ -42,7 +42,7 @@ constexpr const char* const kLowerUsingSwitchMergeAttr =
     LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr;
 
 static void AssertHasSubstr(StringPiece s, StringPiece expected) {
-  ASSERT_TRUE(str_util::StrContains(s, expected))
+  ASSERT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 

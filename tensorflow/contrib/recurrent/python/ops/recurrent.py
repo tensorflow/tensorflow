@@ -100,7 +100,8 @@ def _Update(struct_acc, struct_x, t):
   to_skip_update = set()
   acc_lst = nest.flatten(struct_acc)
   x_lst = nest.flatten(struct_x)
-  t = math_ops.cast([t], dtypes.int32)  # tf.to_int32 casts on-device tensors.
+  t = math_ops.cast(
+      [t], dtypes.int32)  # tf.compat.v1.to_int32 casts on-device tensors.
   lst = []
   for acc, x in zip(acc_lst, x_lst):
     if acc in to_skip_update:

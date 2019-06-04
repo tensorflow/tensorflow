@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_CPU_CHECK_H_
 
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+
 namespace tflite {
 
 #ifdef __ANDROID__
@@ -43,6 +45,18 @@ inline bool TestCPUFeatureNeon() { return true; }
 inline bool TestCPUFeatureNeon() { return false; }
 
 #endif
+
+struct CpuFlags {
+  bool neon_dotprod = false;
+};
+
+inline void GetCpuFlags(CpuBackendContext* cpu_backend_context,
+                        CpuFlags* cpu_flags) {
+  ruy::Context* ruy_context = cpu_backend_context->ruy_context();
+  cpu_flags->neon_dotprod =
+      ruy_context != nullptr && (ruy_context->GetRuntimeEnabledPaths() &
+                                 ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+}
 
 }  // namespace tflite
 

@@ -201,8 +201,8 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
     HloModule m
 
     f1_computation {
-      f1_p0 = f32[10]{0} parameter(0)
-      ROOT f1_root = f32[10]{0} add(f1_p0, f1_p0)
+      f1_p0 = f32[32]{0} parameter(0)
+      ROOT f1_root = f32[32]{0} add(f1_p0, f1_p0)
     }
 
     add_computation {
@@ -212,16 +212,16 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
     }
 
     f2_computation {
-      f2_p0 = f32[10]{0} parameter(0)
-      f2_mul = f32[10]{0} multiply(f2_p0, f2_p0)
+      f2_p0 = f32[32]{0} parameter(0)
+      f2_mul = f32[32]{0} multiply(f2_p0, f2_p0)
       f2_zero = f32[] constant(0)
       ROOT f2_root = f32[] reduce(f2_mul, f2_zero), dimensions={0},
              to_apply=add_computation
     }
 
     ENTRY entry {
-      p0 = f32[10]{0} parameter(0)
-      f1 = f32[10]{0} fusion(p0), kind=kLoop, calls=f1_computation
+      p0 = f32[32]{0} parameter(0)
+      f1 = f32[32]{0} fusion(p0), kind=kLoop, calls=f1_computation
       ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
     })")
                     .ValueOrDie();

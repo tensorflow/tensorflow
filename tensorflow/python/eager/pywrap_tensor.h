@@ -27,7 +27,7 @@ tensorflow::int64 PyEagerTensor_NumElements(const PyObject* tensor);
 
 namespace tensorflow {
 bool IsCompatible(int desired_dtype, TF_DataType returned_dtype);
-TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype);
+TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, DataType dtype);
 
 // TODO(nareshmodi): Move EagerCast and ReadVariableOp (which use the C API to
 // execute TFE Ops) to a separate common library.

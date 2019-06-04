@@ -19,20 +19,50 @@ from __future__ import division
 from __future__ import print_function
 
 import ast
+import copy
 import functools
 import sys
 
 import pasta
 
+from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
-from tensorflow.tools.compatibility import renames_v2
+from tensorflow.tools.compatibility import module_deprecations_v2
 from tensorflow.tools.compatibility import reorders_v2
 
 # These pylint warnings are a mistake.
 # pylint: disable=g-explicit-bool-comparison,g-bool-id-comparison
 
 
-class TFAPIChangeSpec(ast_edits.APIChangeSpec):
+class UnaliasedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self):
+    self.log_level = ast_edits.ERROR
+    self.log_message = ("The tf_upgrade_v2 script detected an unaliased "
+                        "`import tensorflow`. The script can only run when "
+                        "importing with `import tensorflow as tf`.")
+
+
+class VersionedTFImport(ast_edits.AnalysisResult):
+
+  def __init__(self, version):
+    self.log_level = ast_edits.INFO
+    self.log_message = ("Not upgrading symbols because `tensorflow." + version
+                        + "` was directly imported as `tf`.")
+
+
+class TFAPIImportAnalysisSpec(ast_edits.APIAnalysisSpec):
+
+  def __init__(self):
+    self.symbols_to_detect = {}
+    self.imports_to_detect = {
+        ("tensorflow", None): UnaliasedTFImport(),
+        ("tensorflow.compat.v1", "tf"): VersionedTFImport("compat.v1"),
+        ("tensorflow.compat.v2", "tf"): VersionedTFImport("compat.v2"),
+    }
+
+
+class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
   """List of maps that describe what changed in the API."""
 
   def __init__(self):
@@ -42,11 +72,22 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Only keyword args are handled, so make sure to also put any function in
     # function_reorders to ensure that all args are made into keywords first.
     self.function_keyword_renames = {
-        "tf.string_split": {
-            "delimiter": "sep",
-        },
+        # TODO(b/129398290)
+        # "tf.string_split": {
+        #     "delimiter": "sep",
+        # },
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
+            "hash_table_shared_name": None,
+        },
+        "tf.autograph.to_code": {
+            "arg_types": None,
+            "arg_values": None,
+            "indentation": None,
+        },
+        "tf.autograph.to_graph": {
+            "arg_types": None,
+            "arg_values": None,
         },
         "tf.nn.embedding_lookup": {
             "validate_indices": None,
@@ -92,6 +133,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.crop_and_resize": {
             "box_ind": "box_indices",
         },
+        "tf.extract_image_patches": {
+            "ksizes": "sizes",
+        },
         "tf.image.extract_image_patches": {
             "ksizes": "sizes",
         },
@@ -100,9 +144,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.image.resize_images": {
             "align_corners": None,
-        },
-        "tf.extract_image_patches": {
-            "ksizes": "sizes",
         },
         "tf.expand_dims": {
             "dim": "axis",
@@ -429,6 +470,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tensor": "data",
             "family": None,
         },
+        "tf.contrib.summary.create_file_writer": {
+            "name": None,
+        },
+        "tf.contrib.summary.generic": {
+            "name": "tag",
+            "tensor": "data",
+            "family": None,
+        },
         "tf.contrib.summary.histogram": {
             "tensor": "data",
             "family": None,
@@ -446,460 +495,22 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.weighted_cross_entropy_with_logits": {
             "targets": "labels",
         },
+        "tf.decode_raw": {
+            "bytes": "input_bytes",
+        },
+        "tf.io.decode_raw": {
+            "bytes": "input_bytes",
+        },
+        "tf.contrib.framework.load_variable": {
+            "checkpoint_dir": "ckpt_dir_or_file",
+        }
     }
-
-    # pylint: disable=line-too-long
-    # Add additional renames not in renames_v2.py here.
-    # IMPORTANT: For the renames in here, if you also need to add to
-    # function_reorders or function_keyword_renames, use the OLD function name.
-    # These renames happen after the arguments have been processed.
-    self.manual_symbol_renames = {
-        "tf.batch_to_space_nd":
-            "tf.batch_to_space",
-        "tf.batch_gather":
-            "tf.compat.v1.batch_gather",
-        "tf.space_to_batch_nd":
-            "tf.space_to_batch",
-        "tf.nn.space_to_batch":
-            "tf.space_to_batch",
-        "tf.estimator.inputs":
-            "tf.compat.v1.estimator.inputs",
-        "tf.extract_image_patches":
-            "tf.image.extract_image_patches",
-        "tf.gfile.Copy":
-            "tf.io.gfile.copy",
-        "tf.gfile.DeleteRecursively":
-            "tf.io.gfile.rmtree",
-        "tf.gfile.Exists":
-            "tf.io.gfile.exists",
-        "tf.gfile.Glob":
-            "tf.io.gfile.glob",
-        "tf.gfile.GFile":
-            "tf.io.gfile.GFile",
-        "tf.gfile.IsDirectory":
-            "tf.io.gfile.isdir",
-        "tf.gfile.ListDirectory":
-            "tf.io.gfile.listdir",
-        "tf.gfile.MakeDirs":
-            "tf.io.gfile.makedirs",
-        "tf.gfile.MkDir":
-            "tf.io.gfile.mkdir",
-        "tf.gfile.Open":
-            "tf.io.gfile.GFile",
-        "tf.gfile.Remove":
-            "tf.io.gfile.remove",
-        "tf.gfile.Rename":
-            "tf.io.gfile.rename",
-        "tf.gfile.Stat":
-            "tf.io.gfile.stat",
-        "tf.gfile.Walk":
-            "tf.io.gfile.walk",
-        "tf.contrib.data.AUTOTUNE":
-            "tf.data.experimental.AUTOTUNE",
-        "tf.contrib.data.Counter":
-            "tf.data.experimental.Counter",
-        "tf.contrib.data.CheckpointInputPipelineHook":
-            "tf.data.experimental.CheckpointInputPipelineHook",
-        "tf.contrib.data.CsvDataset":
-            "tf.data.experimental.CsvDataset",
-        "tf.contrib.data.Optional":
-            "tf.data.experimental.Optional",
-        "tf.contrib.data.RandomDataset":
-            "tf.data.experimental.RandomDataset",
-        "tf.contrib.data.Reducer":
-            "tf.data.experimental.Reducer",
-        "tf.contrib.data.SqlDataset":
-            "tf.data.experimental.SqlDataset",
-        "tf.contrib.data.StatsAggregator":
-            "tf.data.experimental.StatsAggregator",
-        "tf.contrib.data.TFRecordWriter":
-            "tf.data.experimental.TFRecordWriter",
-        "tf.contrib.data.assert_element_shape":
-            "tf.data.experimental.assert_element_shape",
-        "tf.contrib.data.batch_and_drop_remainder":
-            "tf.compat.v1.contrib.data.batch_and_drop_remainder",
-        "tf.contrib.data.bucket_by_sequence_length":
-            "tf.data.experimental.bucket_by_sequence_length",
-        "tf.contrib.data.choose_from_datasets":
-            "tf.data.experimental.choose_from_datasets",
-        "tf.contrib.data.copy_to_device":
-            "tf.data.experimental.copy_to_device",
-        "tf.contrib.data.dense_to_sparse_batch":
-            "tf.data.experimental.dense_to_sparse_batch",
-        "tf.contrib.data.enumerate_dataset":
-            "tf.data.experimental.enumerate_dataset",
-        "tf.contrib.data.get_next_as_optional":
-            "tf.data.experimental.get_next_as_optional",
-        "tf.contrib.data.get_single_element":
-            "tf.data.experimental.get_single_element",
-        "tf.contrib.data.group_by_reducer":
-            "tf.data.experimental.group_by_reducer",
-        "tf.contrib.data.group_by_window":
-            "tf.data.experimental.group_by_window",
-        "tf.contrib.data.ignore_errors":
-            "tf.data.experimental.ignore_errors",
-        "tf.contrib.data.latency_stats":
-            "tf.data.experimental.latency_stats",
-        "tf.contrib.data.make_batched_features_dataset":
-            "tf.data.experimental.make_batched_features_dataset",
-        "tf.contrib.data.make_csv_dataset":
-            "tf.data.experimental.make_csv_dataset",
-        "tf.contrib.data.make_saveable_from_iterator":
-            "tf.data.experimental.make_saveable_from_iterator",
-        "tf.contrib.data.map_and_batch":
-            "tf.data.experimental.map_and_batch",
-        "tf.contrib.data.padded_batch_and_drop_remainder":
-            "tf.compat.v1.contrib.data.padded_batch_and_drop_remainder",
-        "tf.contrib.data.parallel_interleave":
-            "tf.data.experimental.parallel_interleave",
-        "tf.contrib.data.parse_example_dataset":
-            "tf.data.experimental.parse_example_dataset",
-        "tf.contrib.data.prefetch_to_device":
-            "tf.data.experimental.prefetch_to_device",
-        "tf.contrib.data.read_batch_features":
-            "tf.compat.v1.contrib.data.read_batch_features",
-        "tf.contrib.data.reduce_dataset":
-            "tf.compat.v1.contrib.data.reduce_dataset",
-        "tf.contrib.data.rejection_resample":
-            "tf.data.experimental.rejection_resample",
-        "tf.contrib.data.sample_from_datasets":
-            "tf.data.experimental.sample_from_datasets",
-        "tf.contrib.data.scan":
-            "tf.data.experimental.scan",
-        "tf.contrib.data.set_stats_aggregator":
-            "tf.data.experimental.set_stats_aggregator",
-        "tf.contrib.data.shuffle_and_repeat":
-            "tf.data.experimental.shuffle_and_repeat",
-        "tf.contrib.data.sliding_window_batch":
-            "tf.compat.v1.contrib.data.sliding_window_batch",
-        "tf.contrib.data.sloppy_interleave":
-            "tf.compat.v1.contrib.data.sloppy_interleave",
-        "tf.contrib.data.unbatch":
-            "tf.data.experimental.unbatch",
-        "tf.contrib.data.unique":
-            "tf.data.experimental.unique",
-        "tf.contrib.estimator.make_early_stopping_hook":
-            "tf.estimator.experimental.make_early_stopping_hook",
-        "tf.contrib.estimator.stop_if_higher_hook":
-            "tf.estimator.experimental.stop_if_higher_hook",
-        "tf.contrib.estimator.stop_if_lower_hook":
-            "tf.estimator.experimental.stop_if_lower_hook",
-        "tf.contrib.estimator.stop_if_no_decrease_hook":
-            "tf.estimator.experimental.stop_if_no_decrease_hook",
-        "tf.contrib.estimator.stop_if_no_increase_hook":
-            "tf.estimator.experimental.stop_if_no_increase_hook",
-        "tf.contrib.framework.CriticalSection":
-            "tf.CriticalSection",
-        "tf.contrib.framework.is_tensor":
-            "tf.is_tensor",
-        "tf.contrib.framework.nest.assert_same_structure":
-            "tf.nest.assert_same_structure",
-        "tf.contrib.framework.nest.flatten":
-            "tf.nest.flatten",
-        "tf.contrib.framework.nest.is_sequence":
-            "tf.nest.is_nested",
-        "tf.contrib.framework.nest.map_structure":
-            "tf.nest.map_structure",
-        "tf.contrib.framework.nest.pack_sequence_as":
-            "tf.nest.pack_sequence_as",
-        "tf.contrib.util.constant_value":
-            "tf.get_static_value",
-        "tf.contrib.saved_model.load_keras_model":
-            "tf.keras.experimental.load_from_saved_model",
-        "tf.contrib.saved_model.save_keras_model":
-            "tf.keras.experimental.export_saved_model",
-        "tf.contrib.rnn.RNNCell":
-            "tf.compat.v1.nn.rnn_cell.RNNCell",
-        "tf.contrib.rnn.LSTMStateTuple":
-            "tf.nn.rnn_cell.LSTMStateTuple",
-        "tf.contrib.rnn.BasicLSTMCell":
-            "tf.compat.v1.nn.rnn_cell.BasicLSTMCell",
-        "tf.contrib.rnn.BasicRNNCell":
-            "tf.compat.v1.nn.rnn_cell.BasicRNNCell",
-        "tf.contrib.rnn.GRUCell":
-            "tf.compat.v1.nn.rnn_cell.GRUCell",
-        "tf.contrib.rnn.LSTMCell":
-            "tf.compat.v1.nn.rnn_cell.LSTMCell",
-        "tf.contrib.rnn.MultiRNNCell":
-            "tf.compat.v1.nn.rnn_cell.MultiRNNCell",
-        "tf.contrib.framework.sort":
-            "tf.sort",
-        "tf.contrib.framework.argsort":
-            "tf.argsort",
-        "tf.contrib.summary.audio":
-            "tf.compat.v2.summary.audio",
-        "tf.contrib.summary.histogram":
-            "tf.compat.v2.summary.histogram",
-        "tf.contrib.summary.image":
-            "tf.compat.v2.summary.image",
-        "tf.contrib.summary.initialize":
-            "tf.compat.v1.summary.initialize",
-        "tf.contrib.summary.scalar":
-            "tf.compat.v2.summary.scalar",
-        "tf.count_nonzero":
-            "tf.math.count_nonzero",
-        "tf.manip.batch_to_space_nd":
-            "tf.batch_to_space",
-        "tf.quantize_v2":
-            "tf.quantization.quantize",
-        "tf.sparse_add":
-            "tf.sparse.add",
-        "tf.sparse_concat":
-            "tf.sparse.concat",
-        "tf.sparse_split":
-            "tf.sparse.split",
-        "tf.sparse_matmul":
-            "tf.linalg.matmul",
-        "tf.sparse_reduce_sum":
-            "tf.sparse.reduce_sum",
-        "tf.sparse_reduce_max":
-            "tf.sparse.reduce_max",
-        "tf.random.stateless_multinomial":
-            "tf.random.stateless_categorical",
-        "tf.substr":
-            "tf.strings.substr",
-        "tf.string_split":
-            "tf.strings.split",
-        "tf.string_to_hash_bucket":
-            "tf.strings.to_hash_bucket",
-        "tf.string_to_number":
-            "tf.strings.to_number",
-        "tf.multinomial":
-            "tf.random.categorical",
-        "tf.random.multinomial":
-            "tf.random.categorical",
-        "tf.reduce_join":
-            "tf.strings.reduce_join",
-        "tf.load_file_system_library":
-            "tf.load_library",
-        "tf.pywrap_tensorflow":
-            "tf.compat.v1.pywrap_tensorflow",
-        "tf.bincount":
-            "tf.math.bincount",
-        "tf.confusion_matrix":
-            "tf.math.confusion_matrix",
-        "tf.train.confusion_matrix":
-            "tf.math.confusion_matrix",
-        "tf.train.sdca_fprint":
-            "tf.raw_ops.SdcaFprint",
-        "tf.train.sdca_optimizer":
-            "tf.raw_ops.SdcaOptimizer",
-        "tf.train.sdca_shrink_l1":
-            "tf.raw_ops.SdcaShrinkL1",
-        "tf.decode_csv":
-            "tf.io.decode_csv",
-        "tf.data.Iterator":
-            "tf.compat.v1.data.Iterator",
-        "tf.parse_example":
-            "tf.io.parse_example",
-        "tf.parse_single_example":
-            "tf.io.parse_single_example",
-        "tf.nn.fused_batch_norm":
-            "tf.compat.v1.nn.fused_batch_norm",
-        "tf.nn.softmax_cross_entropy_with_logits_v2":
-            "tf.nn.softmax_cross_entropy_with_logits",
-        "tf.nn.sigmoid_cross_entropy_with_logits":
-            "tf.nn.sigmoid_cross_entropy_with_logits",
-        "tf.losses.Reduction.MEAN":
-            "tf.compat.v1.losses.Reduction.MEAN",
-        "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
-            "tf.compat.v1.losses.Reduction.SUM_BY_NONZERO_WEIGHTS",
-        "tf.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS":
-            "tf.compat.v1.losses.Reduction.SUM_OVER_NONZERO_WEIGHTS",
-        "tf.lite.constants.FLOAT":
-            "tf.float32",
-        "tf.lite.constants.INT32":
-            "tf.int32",
-        "tf.lite.constants.INT64":
-            "tf.int64",
-        "tf.lite.constants.STRING":
-            "tf.string",
-        "tf.lite.constants.QUANTIZED_UINT8":
-            "tf.uint8",
-        "tf.arg_max":
-            "tf.argmax",
-        "tf.arg_min":
-            "tf.argmin",
-        # tf.nn.ctc_loss is still available in 2.0 but behavior
-        # changed significantly.
-        "tf.nn.ctc_loss":
-            "tf.compat.v1.nn.ctc_loss",
-        # tf.saved_model.load in 1.x has no equivalent in 2.x, but there is a
-        # symbol with the same name.
-        "tf.saved_model.load":
-            "tf.compat.v1.saved_model.load",
-        "tf.saved_model.load_v2":
-            "tf.compat.v2.saved_model.load",
-        "tf.image.resize_images":
-            "tf.image.resize",
-        "tf.random_poisson":
-            "tf.random.poisson",
-        "tf.debugging.assert_greater":
-            "tf.compat.v1.debugging.assert_greater",
-        "tf.debugging.assert_greater_equal":
-            "tf.compat.v1.debugging.assert_greater_equal",
-        "tf.debugging.assert_integer":
-            "tf.compat.v1.debugging.assert_integer",
-        "tf.debugging.assert_less":
-            "tf.compat.v1.debugging.assert_less",
-        "tf.debugging.assert_less_equal":
-            "tf.compat.v1.debugging.assert_less_equal",
-        "tf.debugging.assert_near":
-            "tf.compat.v1.debugging.assert_near",
-        "tf.debugging.assert_negative":
-            "tf.compat.v1.debugging.assert_negative",
-        "tf.debugging.assert_non_negative":
-            "tf.compat.v1.debugging.assert_non_negative",
-        "tf.debugging.assert_non_positive":
-            "tf.compat.v1.debugging.assert_non_positive",
-        "tf.debugging.assert_none_equal":
-            "tf.compat.v1.debugging.assert_none_equal",
-        "tf.debugging.assert_type":
-            "tf.compat.v1.debugging.assert_type",
-        "tf.debugging.assert_positive":
-            "tf.compat.v1.debugging.assert_positive",
-        "tf.debugging.assert_equal":
-            "tf.compat.v1.debugging.assert_equal",
-        "tf.debugging.assert_scalar":
-            "tf.compat.v1.debugging.assert_scalar",
-        "tf.assert_equal":
-            "tf.compat.v1.assert_equal",
-        "tf.assert_less":
-            "tf.compat.v1.assert_less",
-        "tf.assert_greater":
-            "tf.compat.v1.assert_greater",
-        "tf.debugging.assert_rank":
-            "tf.compat.v1.debugging.assert_rank",
-        "tf.debugging.assert_rank_at_least":
-            "tf.compat.v1.debugging.assert_rank_at_least",
-        "tf.debugging.assert_rank_in":
-            "tf.compat.v1.debugging.assert_rank_in",
-        "tf.assert_rank":
-            "tf.compat.v1.assert_rank",
-        "tf.nn.max_pool":
-            "tf.nn.max_pool2d",
-        "tf.nn.avg_pool":
-            "tf.nn.avg_pool2d",
-        "tf.keras.initializers.zeros":
-            "tf.compat.v1.keras.initializers.zeros",
-        "tf.keras.initializers.Zeros":
-            "tf.compat.v1.keras.initializers.Zeros",
-        "tf.keras.initializers.ones":
-            "tf.compat.v1.keras.initializers.ones",
-        "tf.keras.initializers.Ones":
-            "tf.compat.v1.keras.initializers.Ones",
-        "tf.keras.initializers.constant":
-            "tf.compat.v1.keras.initializers.constant",
-        "tf.keras.initializers.Constant":
-            "tf.compat.v1.keras.initializers.Constant",
-        "tf.keras.initializers.VarianceScaling":
-            "tf.compat.v1.keras.initializers.VarianceScaling",
-        "tf.keras.initializers.Orthogonal":
-            "tf.compat.v1.keras.initializers.Orthogonal",
-        "tf.keras.initializers.orthogonal":
-            "tf.compat.v1.keras.initializers.orthogonal",
-        "tf.keras.initializers.Identity":
-            "tf.compat.v1.keras.initializers.Identity",
-        "tf.keras.initializers.identity":
-            "tf.compat.v1.keras.initializers.identity",
-        "tf.keras.initializers.glorot_uniform":
-            "tf.compat.v1.keras.initializers.glorot_uniform",
-        "tf.keras.initializers.glorot_normal":
-            "tf.compat.v1.keras.initializers.glorot_normal",
-        "tf.keras.initializers.lecun_normal":
-            "tf.compat.v1.keras.initializers.lecun_normal",
-        "tf.keras.initializers.lecun_uniform":
-            "tf.compat.v1.keras.initializers.lecun_uniform",
-        "tf.keras.initializers.he_normal":
-            "tf.compat.v1.keras.initializers.he_normal",
-        "tf.keras.initializers.he_uniform":
-            "tf.compat.v1.keras.initializers.he_uniform",
-        "tf.keras.initializers.TruncatedNormal":
-            "tf.compat.v1.keras.initializers.TruncatedNormal",
-        "tf.keras.initializers.truncated_normal":
-            "tf.compat.v1.keras.initializers.truncated_normal",
-        "tf.keras.initializers.RandomUniform":
-            "tf.compat.v1.keras.initializers.RandomUniform",
-        "tf.keras.initializers.uniform":
-            "tf.compat.v1.keras.initializers.uniform",
-        "tf.keras.initializers.random_uniform":
-            "tf.compat.v1.keras.initializers.random_uniform",
-        "tf.keras.initializers.RandomNormal":
-            "tf.compat.v1.keras.initializers.RandomNormal",
-        "tf.keras.initializers.normal":
-            "tf.compat.v1.keras.initializers.normal",
-        "tf.keras.initializers.random_normal":
-            "tf.compat.v1.keras.initializers.random_normal",
-        "tf.zeros_initializer":
-            "tf.compat.v1.zeros_initializer",
-        "tf.initializers.zeros":
-            "tf.compat.v1.initializers.zeros",
-        "tf.ones_initializer":
-            "tf.compat.v1.ones_initializer",
-        "tf.initializers.ones":
-            "tf.compat.v1.initializers.ones",
-        "tf.constant_initializer":
-            "tf.compat.v1.constant_initializer",
-        "tf.initializers.constant":
-            "tf.compat.v1.initializers.constant",
-        "tf.random_uniform_initializer":
-            "tf.compat.v1.random_uniform_initializer",
-        "tf.initializers.random_uniform":
-            "tf.compat.v1.initializers.random_uniform",
-        "tf.random_normal_initializer":
-            "tf.compat.v1.random_normal_initializer",
-        "tf.initializers.random_normal":
-            "tf.compat.v1.initializers.random_normal",
-        "tf.truncated_normal_initializer":
-            "tf.compat.v1.truncated_normal_initializer",
-        "tf.initializers.truncated_normal":
-            "tf.compat.v1.initializers.truncated_normal",
-        "tf.variance_scaling_initializer":
-            "tf.compat.v1.variance_scaling_initializer",
-        "tf.initializers.variance_scaling":
-            "tf.compat.v1.initializers.variance_scaling",
-        "tf.orthogonal_initializer":
-            "tf.compat.v1.orthogonal_initializer",
-        "tf.initializers.orthogonal":
-            "tf.compat.v1.initializers.orthogonal",
-        "tf.glorot_uniform_initializer":
-            "tf.compat.v1.glorot_uniform_initializer",
-        "tf.initializers.glorot_uniform":
-            "tf.compat.v1.initializers.glorot_uniform",
-        "tf.glorot_normal_initializer":
-            "tf.compat.v1.glorot_normal_initializer",
-        "tf.initializers.glorot_normal":
-            "tf.compat.v1.initializers.glorot_normal",
-        "tf.initializers.identity":
-            "tf.compat.v1.initializers.identity",
-        "tf.initializers.lecun_normal":
-            "tf.compat.v1.initializers.lecun_normal",
-        "tf.initializers.lecun_uniform":
-            "tf.compat.v1.initializers.lecun_uniform",
-        "tf.initializers.he_normal":
-            "tf.compat.v1.initializers.he_normal",
-        "tf.initializers.he_uniform":
-            "tf.compat.v1.initializers.he_uniform",
-        "tf.data.experimental.map_and_batch_with_legacy_function":
-            "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
-        "tf.nn.conv2d_backprop_input":
-            "tf.nn.conv2d_transpose",
-        "tf.test.compute_gradient":
-            "tf.compat.v1.test.compute_gradient",
-        "tf.xla.experimental.compile":
-            "tf.xla.experimental.compile",
-        "tf.xla.experimental.jit_scope":
-            "tf.xla.experimental.jit_scope",
-    }
-    # pylint: enable=line-too-long
 
     # Mapping from function to the new name of the function
-    self.symbol_renames = renames_v2.renames
-    self.symbol_renames.update(self.manual_symbol_renames)
-    self.symbol_renames = {
-        name: new_name
-        for name, new_name in self.symbol_renames.items()
-    }
+    # Add additional renames not in renames_v2.py to all_renames_v2.py.
+    self.symbol_renames = all_renames_v2.symbol_renames
+
+    self.import_renames = {}
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -939,7 +550,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.feature_column.categorical_column_with_vocabulary_file",
         "tf.shape",
         "tf.size",
-        "tf.string_split",
+        # TODO(b/129398290)
+        # "tf.string_split",
         "tf.random.poisson",
         "tf.sparse.add",
         "tf.sparse_add",
@@ -1025,6 +637,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_function_reorders = {
         "tf.contrib.summary.audio": [
             "name", "tensor", "sample_rate", "max_outputs", "family", "step"],
+        "tf.contrib.summary.create_file_writer": [
+            "logdir", "max_queue", "flush_millis", "filename_suffix", "name"],
+        "tf.contrib.summary.generic": [
+            "name", "tensor", "metadata", "family", "step"],
         "tf.contrib.summary.histogram": [
             "name", "tensor", "family", "step"],
         "tf.contrib.summary.image": [
@@ -1037,19 +653,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = dict(reorders_v2.reorders)
     self.function_reorders.update(self.manual_function_reorders)
-
-    contrib_warning = (
-        ast_edits.ERROR,
-        "<function name> cannot be converted automatically. tf.contrib will not"
-        " be distributed with TensorFlow 2.0, please consider an alternative in"
-        " non-contrib TensorFlow, a community-maintained repository, or fork "
-        "the required code."
-    )
-
-    flags_warning = (
-        ast_edits.ERROR,
-        "tf.flags has been removed, please use the argparse or absl"
-        " modules if you need command line parsing.")
 
     decay_function_comment = (
         ast_edits.INFO,
@@ -1073,11 +676,20 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         " they may already have been correct)."
     )
 
+    contrib_layers_layer_norm_comment = (
+        ast_edits.WARNING,
+        "(Manual edit required) `tf.contrib.layers.layer_norm` has been "
+        "deprecated, and its implementation has been integrated with "
+        "`tf.keras.layers.LayerNormalization` in TensorFlow 2.0. "
+        "Note that, the default value of `epsilon` is changed to `1e-3` in the "
+        "new API from `1e-12`, and this may introduce numerical differences. "
+        "Please check the new API and use that instead."
+    )
+
     initializers_no_dtype_comment = (
-        ast_edits.INFO,
-        "Initializers no longer have the "
+        ast_edits.INFO, "Initializers no longer have the "
         "dtype argument in the constructor or partition_info argument in the "
-        "__call__ method.\nThe calls have been converted to compat.v1 for"
+        "__call__ method.\nThe calls have been converted to compat.v1 for "
         "safety (even though they may already have been correct).")
 
     metrics_comment = (
@@ -1118,13 +730,122 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
 
-    # TODO(b/124529441): if possible eliminate need for manual checking.
+    summary_api_comment = (
+        ast_edits.INFO,
+        "The TF 1.x summary API cannot be automatically migrated to TF 2.0, so "
+        "symbols have been converted to tf.compat.v1.summary.* and must be "
+        "migrated manually. Typical usage will only require changes to the "
+        "summary writing logic, not to individual calls like scalar(). "
+        "For examples of the new summary API, see the Effective TF 2.0 "
+        "migration document or check the TF 2.0 TensorBoard tutorials.")
+
     contrib_summary_comment = (
         ast_edits.WARNING,
-        "(Manual check required) tf.contrib.summary.* functions have been "
-        "migrated best-effort to tf.compat.v2.summary.* equivalents where "
-        "possible, but the resulting code may not always work. Please check "
-        "manually; you can report migration failures on b/124529441.")
+        "tf.contrib.summary.* functions have been migrated best-effort to "
+        "tf.compat.v2.summary.* equivalents where possible, but the resulting "
+        "code is not guaranteed to work, so please check carefully. For more "
+        "information about the new summary API, see the Effective TF 2.0 "
+        "migration document or check the updated TensorBoard tutorials.")
+
+    contrib_summary_family_arg_comment = (
+        ast_edits.WARNING,
+        "<function name> replacement does not accept a 'family' argument; "
+        "instead regular name scoping should be used. This call site specifies "
+        "a family argument that has been removed on conversion, so the emitted "
+        "tag names may be incorrect without manual editing.")
+
+    contrib_create_file_writer_comment = (
+        ast_edits.WARNING,
+        "tf.contrib.summary.create_file_writer() has been ported to the new "
+        "tf.compat.v2.summary.create_file_writer(), which no longer re-uses "
+        "existing event files for the same logdir; instead it always opens a "
+        "new writer/file. The python writer objects must be re-used explicitly "
+        "if the reusing behavior is desired.")
+
+    contrib_summary_record_every_n_comment = (
+        ast_edits.ERROR,
+        "(Manual edit required) "
+        "tf.contrib.summary.record_summaries_every_n_global_steps(n, step) "
+        "should be replaced by a call to tf.compat.v2.summary.record_if() with "
+        "the argument `lambda: tf.math.equal(0, global_step % n)` (or in graph "
+        "mode, the lambda body can be used directly). If no global step was "
+        "passed, instead use tf.compat.v1.train.get_or_create_global_step().")
+
+    contrib_summary_graph_comment = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.summary.graph() has no direct "
+        "equivalent in TF 2.0 because manual graph construction has been "
+        "superseded by use of tf.function. To log tf.function execution graphs "
+        "to the summary writer, use the new tf.compat.v2.summary.trace_* "
+        "functions instead.")
+
+    contrib_summary_import_event_comment = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.summary.import_event() has no "
+        "direct equivalent in TF 2.0. For a similar experimental feature, try "
+        "tf.compat.v2.summary.experimental.write_raw_pb() which also accepts "
+        "serialized summary protocol buffer input, but for tf.Summary "
+        "protobufs rather than tf.Events.")
+
+    keras_default_save_format_comment = (
+        ast_edits.WARNING,
+        "(This warning is only applicable if the code saves a tf.Keras model) "
+        "Keras model.save now saves to the Tensorflow SavedModel format by "
+        "default, instead of HDF5. To continue saving to HDF5, add the "
+        "argument save_format='h5' to the save() function.")
+
+    distribute_strategy_api_changes = (
+        "If you're using the strategy with a "
+        "custom training loop, note the following changes in methods: "
+        "make_dataset_iterator->experimental_distribute_dataset, "
+        "experimental_make_numpy_iterator->experimental_make_numpy_dataset, "
+        "extended.call_for_each_replica->experimental_run_v2, "
+        "reduce requires an axis argument, "
+        "unwrap->experimental_local_results "
+        "experimental_initialize and experimental_finalize no longer needed ")
+
+    contrib_mirrored_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.distribute.MirroredStrategy has "
+        "been migrated to tf.distribute.MirroredStrategy. Things to note: "
+        "Constructor arguments have changed. If you are using "
+        "MirroredStrategy with Keras training framework, the input provided to "
+        "`model.fit` will be assumed to have global batch size and split "
+        "across the replicas. " + distribute_strategy_api_changes)
+
+    core_mirrored_strategy_warning = (
+        ast_edits.WARNING,
+        "(Manual edit may be required) tf.distribute.MirroredStrategy API has "
+        "changed. " + distribute_strategy_api_changes)
+
+    contrib_one_device_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.distribute.OneDeviceStrategy has "
+        "been migrated to tf.distribute.OneDeviceStrategy. " +
+        distribute_strategy_api_changes)
+
+    contrib_tpu_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) tf.contrib.distribute.TPUStrategy has "
+        "been migrated to tf.distribute.experimental.TPUStrategy. Note the "
+        "slight changes in constructor. " + distribute_strategy_api_changes)
+
+    contrib_collective_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) "
+        "tf.contrib.distribute.CollectiveAllReduceStrategy has "
+        "been migrated to "
+        "tf.distribute.experimental.MultiWorkerMirroredStrategy. Note the "
+        "changes in constructor. " + distribute_strategy_api_changes)
+
+    contrib_ps_strategy_warning = (
+        ast_edits.ERROR,
+        "(Manual edit required) "
+        "tf.contrib.distribute.ParameterServerStrategy has "
+        "been migrated to "
+        "tf.distribute.experimental.ParameterServerStrategy (multi machine) "
+        " and tf.distribute.experimental.CentralStorageStrategy (one machine). "
+        "Note the changes in constructors. " + distribute_strategy_api_changes)
 
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
@@ -1133,6 +854,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_warnings = {
         "*.export_savedmodel":
             export_saved_model_renamed,
+        "*.save":
+            keras_default_save_format_comment,
         "tf.assert_equal":
             assert_return_type_comment,
         "tf.assert_none_equal":
@@ -1167,12 +890,26 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.assert_rank_in":
             assert_rank_comment,
+        "tf.contrib.layers.layer_norm":
+            contrib_layers_layer_norm_comment,
+        "tf.contrib.summary.all_summary_ops":
+            contrib_summary_comment,
         "tf.contrib.summary.audio":
             contrib_summary_comment,
+        "tf.contrib.summary.create_file_writer":
+            contrib_create_file_writer_comment,
+        "tf.contrib.summary.generic":
+            contrib_summary_comment,
+        "tf.contrib.summary.graph":
+            contrib_summary_graph_comment,
         "tf.contrib.summary.histogram":
             contrib_summary_comment,
+        "tf.contrib.summary.import_event":
+            contrib_summary_import_event_comment,
         "tf.contrib.summary.image":
             contrib_summary_comment,
+        "tf.contrib.summary.record_summaries_every_n_global_steps":
+            contrib_summary_record_every_n_comment,
         "tf.contrib.summary.scalar":
             contrib_summary_comment,
         "tf.debugging.assert_equal":
@@ -1237,6 +974,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             deprecate_partition_strategy_comment,
         "tf.nn.sampled_softmax_loss":
             deprecate_partition_strategy_comment,
+        "tf.keras.estimator.model_to_estimator":
+            (ast_edits.WARNING,
+             "Estimators from <function name> will save object-based "
+             "checkpoints (format used by `keras_model.save_weights` and "
+             "`keras_model.load_weights`) by default in 2.0. To continue "
+             "saving name-based checkpoints, set `checkpoint_format='saver'`."),
         "tf.keras.initializers.Zeros":
             initializers_no_dtype_comment,
         "tf.keras.initializers.zeros":
@@ -1408,7 +1151,36 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
              "<function name> returns ResourceVariables by default in 2.0, "
              "which have well-defined semantics and are stricter about shapes. "
              "You can disable this behavior by passing use_resource=False, or "
-             "by calling tf.compat.v1.disable_resource_variables().")
+             "by calling tf.compat.v1.disable_resource_variables()."),
+        "tf.pywrap_tensorflow":
+            (ast_edits.ERROR,
+             "<function name> cannot be converted automatically. "
+             "`tf.pywrap_tensorflow` will not be distributed with "
+             "TensorFlow 2.0, please consider an alternative in public "
+             "TensorFlow APIs."),
+        "tf.contrib.distribute.MirroredStrategy":
+            contrib_mirrored_strategy_warning,
+        "tf.distribute.MirroredStrategy":
+            core_mirrored_strategy_warning,
+        "tf.contrib.distribute.OneDeviceStrategy":
+            contrib_one_device_strategy_warning,
+        "tf.contrib.distribute.TPUStrategy":
+            contrib_tpu_strategy_warning,
+        "tf.contrib.distribute.CollectiveAllReduceStrategy":
+            contrib_collective_strategy_warning,
+        "tf.contrib.distribute.ParameterServerStrategy":
+            contrib_ps_strategy_warning,
+        "tf.summary.FileWriter": summary_api_comment,
+        "tf.summary.FileWriterCache": summary_api_comment,
+        "tf.summary.Summary": summary_api_comment,
+        "tf.summary.audio": summary_api_comment,
+        "tf.summary.histogram": summary_api_comment,
+        "tf.summary.image": summary_api_comment,
+        "tf.summary.merge": summary_api_comment,
+        "tf.summary.merge_all": summary_api_comment,
+        "tf.summary.scalar": summary_api_comment,
+        "tf.summary.tensor_summary": summary_api_comment,
+        "tf.summary.text": summary_api_comment,
     }
 
     # Warnings that are emitted only if a specific arg is found.
@@ -1465,18 +1237,33 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "if was set to True.")
         },
         "tf.contrib.summary.audio": {
-            ("family", 4): (
+            ("family", 4): contrib_summary_family_arg_comment,
+        },
+        "tf.contrib.summary.create_file_writer": {
+            ("name", 4): (
                 ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+                "tf.contrib.summary.create_file_writer() no longer supports "
+                "implicit writer re-use based on shared logdirs or resource "
+                "names; this call site passed a 'name' argument that has been "
+                "removed. The new tf.compat.v2.summary.create_file_writer() "
+                "replacement has a 'name' parameter but the semantics are "
+                "the usual ones to name the op itself and do not control "
+                "writer re-use; writers must be manually re-used if desired.")
+        },
+        "tf.contrib.summary.generic": {
+            ("name", 0): (
+                ast_edits.WARNING,
+                "tf.contrib.summary.generic() takes a 'name' argument for the "
+                "op name that also determines the emitted tag (prefixed by any "
+                "active name scopes), but tf.compat.v2.summary.write(), which "
+                "replaces it, separates these into 'tag' and 'name' arguments. "
+                "The 'name' argument here has been converted to 'tag' to "
+                "preserve a meaningful tag, but any name scopes will not be "
+                "reflected in the tag without manual editing."),
+            ("family", 3): contrib_summary_family_arg_comment,
         },
         "tf.contrib.summary.histogram": {
-            ("family", 2): (
-                ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+            ("family", 2): contrib_summary_family_arg_comment,
         },
         "tf.contrib.summary.image": {
             ("bad_color", 2): (
@@ -1485,18 +1272,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "argument; caller must now preprocess if needed. This call "
                 "site specifies a bad_color argument so it cannot be converted "
                 "safely."),
-            ("family", 4): (
-                ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+            ("family", 4): contrib_summary_family_arg_comment,
         },
         "tf.contrib.summary.scalar": {
-            ("family", 2): (
-                ast_edits.WARNING,
-                "tf.contrib.summary.* functions no longer take the 'family' "
-                "argument; instead name scoping should be used. This call site "
-                "specifies a family argument so it cannot be converted safely.")
+            ("family", 2): contrib_summary_family_arg_comment,
         },
         "tf.image.resize": {
             ("align_corners",
@@ -1555,6 +1334,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     #   may get messy)
     # - a replacement for node, if the whole call node was replaced. The caller
     #   will take care of changing parent.
+    canned_estimator_msg_optimizer = (
+        "tf.keras.optimizers.* only, so the call was converted to compat.v1. "
+        "Please note that tf.train.Optimizers have one-to-one correspondents "
+        "in tf.keras.optimizers, so you may be able to convert to the new "
+        "optimizers directly (See https://www.tensorflow.org/api_docs/python"
+        "/tf/keras/optimizers). Checkpoint compatibility is not guaranteed, "
+        "but there is a checkpoint converter tool that you can use.")
+    canned_estimator_msg = (
+        "no longer takes `input_layer_partitioner` arg, and it supports "
+        + canned_estimator_msg_optimizer)
     self.function_transformers = {
         "*.make_initializable_iterator": _iterator_transformer,
         "*.make_one_shot_iterator": _iterator_transformer,
@@ -1576,10 +1365,34 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.fractional_avg_pool": _pool_seed_transformer,
         "tf.nn.fractional_max_pool": _pool_seed_transformer,
         "tf.name_scope": _name_scope_transformer,
-        "tf.estimator.DNNEstimator":
+        # TODO(b/129398290)
+        # "tf.string_split": _string_split_transformer,
+        "tf.strings.split": _string_split_rtype_transformer,
+        "tf.estimator.BaselineEstimator":
             functools.partial(
                 _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
+                arg_name="optimizer",
+                message=("tf.estimator.BaselineEstimator supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.BaselineClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_names=["optimizer"],
+                message=("tf.estimator.BaselineClassifier supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.BaselineRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message=("tf.estimator.BaselineRegressor supports "
+                         + canned_estimator_msg_optimizer),
+            ),
+        "tf.estimator.DNNEstimator":
+            functools.partial(
+                _rename_if_any_arg_found_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
                 message="tf.estimator.DNNEstimator no longer takes "
                 "input_layer_partitioner, so the call was converted to "
                 "compat.v1."
@@ -1587,73 +1400,63 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.estimator.DNNClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNClassifier no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.DNNClassifier " + canned_estimator_msg,
             ),
         "tf.estimator.DNNRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNRegressor no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.DNNRegressor " + canned_estimator_msg,
             ),
         "tf.estimator.LinearEstimator":
             functools.partial(
-                _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearEstimator no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                _rename_if_any_arg_found_transformer,
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearEstimator " + canned_estimator_msg,
             ),
         "tf.estimator.LinearClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearClassifier no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearClassifier " + canned_estimator_msg,
             ),
         "tf.estimator.LinearRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.LinearRegressor no longer takes "
-                "input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=["input_layer_partitioner", "optimizer"],
+                message="tf.estimator.LinearRegressor " + canned_estimator_msg,
             ),
         "tf.estimator.DNNLinearCombinedEstimator":
             functools.partial(
-                _rename_if_arg_found_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedEstimator no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                _rename_if_any_arg_found_transformer,
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedEstimator "
+                         + canned_estimator_msg),
             ),
         "tf.estimator.DNNLinearCombinedClassifier":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedClassifier no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedClassifier "
+                         + canned_estimator_msg),
             ),
         "tf.estimator.DNNLinearCombinedRegressor":
             functools.partial(
                 _rename_if_arg_found_and_add_loss_reduction_transformer,
-                arg_name="input_layer_partitioner",
-                message="tf.estimator.DNNLinearCombinedRegressor no longer "
-                "takes input_layer_partitioner, so the call was converted to "
-                "compat.v1."
+                arg_names=[
+                    "input_layer_partitioner", "dnn_optimizer",
+                    "linear_optimizer"
+                ],
+                message=("tf.estimator.DNNLinearCombinedRegressor "
+                         + canned_estimator_msg),
             ),
-        "tf.string_split": functools.partial(
-            _rename_if_arg_found_transformer, arg_name="skip_empty",
-            arg_ok_predicate=_is_ast_false, remove_if_ok=True,
-            message="tf.string_split's replacement no longer takes the "
-            "skip_empty argument. Since the argument was present, the call was "
-            "converted to compat.v1."),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,
@@ -1692,22 +1495,68 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _add_argument_transformer,
             arg_name="data_format",
             arg_value_ast=ast.Str("NHWC")),
+        "tf.contrib.summary.always_record_summaries": functools.partial(
+            _add_summary_recording_cond_transformer, cond="True"),
         "tf.contrib.summary.audio": _add_summary_step_transformer,
+        "tf.contrib.summary.generic": _add_summary_step_transformer,
         "tf.contrib.summary.histogram": _add_summary_step_transformer,
         "tf.contrib.summary.image": _add_summary_step_transformer,
+        "tf.contrib.summary.never_record_summaries": functools.partial(
+            _add_summary_recording_cond_transformer, cond="False"),
         "tf.contrib.summary.scalar": _add_summary_step_transformer,
-        "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
-        "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
+        "tf.contrib.layers.l1_regularizer":
+            _contrib_layers_l1_regularizer_transformer,
+        "tf.contrib.layers.l2_regularizer":
+            _contrib_layers_l2_regularizer_transformer,
+        "tf.contrib.layers.xavier_initializer":
+            _contrib_layers_xavier_initializer_transformer,
+        "tf.contrib.layers.xavier_initializer_conv2d":
+            _contrib_layers_xavier_initializer_transformer,
+        "tf.contrib.layers.variance_scaling_initializer":
+            _contrib_layers_variance_scaling_initializer_transformer,
         "tf.initializers.uniform_unit_scaling":
             _add_uniform_scaling_initializer_transformer,
         "tf.uniform_unit_scaling_initializer":
             _add_uniform_scaling_initializer_transformer,
+        "slim.l1_regularizer":
+            _contrib_layers_l1_regularizer_transformer,
+        "slim.l2_regularizer":
+            _contrib_layers_l2_regularizer_transformer,
+        "slim.xavier_initializer":
+            _contrib_layers_xavier_initializer_transformer,
+        "slim.xavier_initializer_conv2d":
+            _contrib_layers_xavier_initializer_transformer,
+        "slim.variance_scaling_initializer":
+            _contrib_layers_variance_scaling_initializer_transformer,
+        "tf.keras.models.save_model": functools.partial(
+            _add_argument_transformer,
+            arg_name="save_format",
+            arg_value_ast=ast.Str("h5")),
     }
 
-    self.module_deprecations = {
-        "tf.contrib": contrib_warning,
-        "tf.flags": flags_warning,
-    }
+    self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+
+  def preprocess(self, root_node):
+    visitor = ast_edits.PastaAnalyzeVisitor(TFAPIImportAnalysisSpec())
+    visitor.visit(root_node)
+    detections = set(visitor.results)
+    # If we have detected the presence of imports of specific TF versions,
+    # We want to modify the update spec to check only module deprecations
+    # and skip all other conversions.
+    if detections:
+      self.function_handle = {}
+      self.function_reorders = {}
+      self.function_keyword_renames = {}
+      self.symbol_renames = {}
+      self.function_warnings = {}
+      self.change_to_function = {}
+      self.module_deprecations = module_deprecations_v2.MODULE_DEPRECATIONS
+      self.function_transformers = {}
+      self.import_renames = {}
+    return visitor.log, visitor.warnings_and_errors
+
+  def clear_preprocessing(self):
+    self.__init__()
 
 
 def _is_ast_str(node):
@@ -1815,8 +1664,8 @@ def _add_argument_transformer(parent, node, full_name, name, logs,
   node.keywords.append(ast.keyword(arg=arg_name, value=arg_value_ast))
   logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
-      "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1],
-                                                          full_name or name))
+      "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1]),
+                                               full_name or name)
   ))
   return node
 
@@ -2101,7 +1950,6 @@ def _extract_glimpse_transformer(parent, node, full_name, name, logs):
                  "noise, and recomputing value.\n"))
     return node
 
-
 def _add_summary_step_transformer(parent, node, full_name, name, logs):
   """Adds a step argument to the summary API call if not specified.
 
@@ -2118,6 +1966,21 @@ def _add_summary_step_transformer(parent, node, full_name, name, logs):
       ast_edits.WARNING, node.lineno, node.col_offset,
       "Summary API writing function %s now requires a 'step' argument; "
       "inserting default of %s." % (full_name or name, default_value)))
+  return node
+
+
+def _add_summary_recording_cond_transformer(parent, node, full_name, name, logs,
+                                            cond):
+  """Adds cond argument to tf.contrib.summary.xxx_record_summaries().
+
+  This is in anticipation of them being renamed to tf.summary.record_if(), which
+  requires the cond argument.
+  """
+  node.args.append(pasta.parse(cond))
+  logs.append((
+      ast_edits.INFO, node.lineno, node.col_offset,
+      "Adding `%s` argument to %s in anticipation of it being renamed to "
+      "tf.compat.v2.summary.record_if()" % (cond, full_name or name)))
   return node
 
 
@@ -2148,13 +2011,52 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
   return node
 
 
+def _rename_if_any_arg_found_transformer(
+    parent,
+    node,
+    full_name,
+    name,
+    logs,
+    arg_names=None,
+    arg_ok_predicate=None,
+    remove_if_ok=False,
+    message=None):
+  """Replaces the given call with tf.compat.v1 if any of the arg_names is found.
+
+  Args:
+    parent: Parent of node.
+    node: ast.Call node to modify.
+    full_name: full name of function to modify.
+    name: name of function to modify.
+    logs: list of logs to append to.
+    arg_names: list of names of the argument to look for.
+    arg_ok_predicate: predicate callable with the ast of the argument value,
+      returns whether the argument value is allowed.
+    remove_if_ok: remove the argument if present and ok as determined by
+      arg_ok_predicate.
+    message: message to print if a non-ok arg is found (and hence, the function
+      is renamed to its compat.v1 version).
+
+  Returns:
+    node, if it was modified, else None.
+  """
+  for arg_name in arg_names:
+    rename_node = _rename_if_arg_found_transformer(parent, node,
+                                                   full_name, name, logs,
+                                                   arg_name, arg_ok_predicate,
+                                                   remove_if_ok, message)
+    node = rename_node if rename_node else node
+
+  return node
+
+
 def _rename_if_arg_found_and_add_loss_reduction_transformer(
     parent,
     node,
     full_name,
     name,
     logs,
-    arg_name=None,
+    arg_names=None,
     arg_ok_predicate=None,
     remove_if_ok=False,
     message=None):
@@ -2166,7 +2068,7 @@ def _rename_if_arg_found_and_add_loss_reduction_transformer(
     full_name: full name of function to modify
     name: name of function to modify
     logs: list of logs to append to
-    arg_name: name of the argument to look for
+    arg_names: list of names of the argument to look for
     arg_ok_predicate: predicate callable with the ast of the argument value,
       returns whether the argument value is allowed.
     remove_if_ok: remove the argument if present and ok as determined by
@@ -2178,13 +2080,15 @@ def _rename_if_arg_found_and_add_loss_reduction_transformer(
     node, if it was modified, else None.
   """
 
-  add_loss_node = _add_loss_reduction_transformer(parent, node, full_name, name,
-                                                  logs)
-  rename_node = _rename_if_arg_found_transformer(
-      parent, add_loss_node, full_name, name, logs, arg_name, arg_ok_predicate,
-      remove_if_ok, message)
+  node = _add_loss_reduction_transformer(parent, node, full_name, name, logs)
+  for arg_name in arg_names:
+    rename_node = _rename_if_arg_found_transformer(parent, node, full_name,
+                                                   name, logs, arg_name,
+                                                   arg_ok_predicate,
+                                                   remove_if_ok, message)
+    node = rename_node if rename_node else node
 
-  return rename_node
+  return node
 
 
 def _add_uniform_scaling_initializer_transformer(
@@ -2214,6 +2118,269 @@ def _add_uniform_scaling_initializer_transformer(
   node.func.value.lineno = lineno
   node.func.value.col_offset = col_offset
   node.func.attr = "VarianceScaling"
+  return node
+
+
+def _contrib_layers_xavier_initializer_transformer(
+    parent, node, full_name, name, logs):
+  """Updates references to contrib.layers.xavier_initializer.
+
+  Transforms:
+  tf.contrib.layers.xavier_initializer(uniform, seed, dtype) to
+  tf.compat.v1.keras.initializers.VarianceScaling(
+      scale=1.0, mode="fan_avg",
+      distribution=("uniform" if uniform else "truncated_normal"),
+      seed=seed, dtype=dtype)
+
+  Returns: The new node
+  """
+  def _get_distribution(old_value):
+    """Returns an AST matching the following:
+    ("uniform" if (old_value) else "truncated_normal")
+    """
+    dist = pasta.parse("\"uniform\" if old_value else \"truncated_normal\"")
+    ifexpr = dist.body[0].value
+    pasta.ast_utils.replace_child(ifexpr, ifexpr.test, old_value)
+
+    pasta.base.formatting.set(dist, "prefix", "(")
+    pasta.base.formatting.set(dist, "suffix", ")")
+
+    return dist
+
+  found_distribution = False
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "uniform":
+      found_distribution = True
+      keyword_arg.arg = "distribution"
+
+      old_value = keyword_arg.value
+      new_value = _get_distribution(keyword_arg.value)
+
+      pasta.ast_utils.replace_child(keyword_arg, old_value, new_value)
+
+      pasta.base.formatting.set(keyword_arg.value, "prefix", "(")
+      pasta.base.formatting.set(keyword_arg.value, "suffix", ")")
+
+  new_keywords = []
+  scale = pasta.parse("1.0")
+  new_keywords.append(ast.keyword(arg="scale", value=scale))
+
+  mode = pasta.parse("\"fan_avg\"")
+  new_keywords.append(ast.keyword(arg="mode", value=mode))
+
+  if len(node.args) >= 1:
+    found_distribution = True
+    dist = _get_distribution(node.args[0])
+    new_keywords.append(ast.keyword(arg="distribution", value=dist))
+  if not found_distribution:
+    # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+    uniform_dist = pasta.parse("\"uniform\"")
+    new_keywords.append(ast.keyword(arg="distribution", value=uniform_dist))
+  if len(node.args) >= 2:
+    new_keywords.append(ast.keyword(arg="seed", value=node.args[1]))
+  if len(node.args) >= 3:
+    new_keywords.append(ast.keyword(arg="dtype", value=node.args[2]))
+  node.args = []
+
+  node.keywords = new_keywords + node.keywords
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.compat.v1.keras.initializers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "VarianceScaling"
+
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Changing tf.contrib.layers xavier initializer"
+               " to a tf.compat.v1.keras.initializers.VarianceScaling and"
+               " converting arguments.\n"))
+
+  return node
+
+
+def _contrib_layers_variance_scaling_initializer_transformer(
+    parent, node, full_name, name, logs):
+  """Updates references to contrib.layers.variance_scaling_initializer.
+
+  Transforms:
+  tf.contrib.layers.variance_scaling_initializer(
+    factor, mode, uniform, seed, dtype
+  ) to
+  tf.compat.v1.keras.initializers.VarianceScaling(
+      scale=factor, mode=mode.lower(),
+      distribution=("uniform" if uniform else "truncated_normal"),
+      seed=seed, dtype=dtype)
+
+  And handles the case where no factor is provided and scale needs to be
+  set to 2.0 to match contrib's default instead of tf.keras.initializer's
+  default of 1.0
+  """
+  def _replace_distribution(parent, old_value):
+    """Replaces old_value: ("uniform" if (old_value) else "truncated_normal")"""
+    new_value = pasta.parse(
+        "\"uniform\" if old_value else \"truncated_normal\"")
+    ifexpr = new_value.body[0].value
+    pasta.ast_utils.replace_child(ifexpr, ifexpr.test, old_value)
+
+    pasta.ast_utils.replace_child(parent, old_value, new_value)
+
+    pasta.base.formatting.set(new_value, "prefix", "(")
+    pasta.base.formatting.set(new_value, "suffix", ")")
+
+  def _replace_mode(parent, old_value):
+    """Replaces old_value with (old_value).lower()."""
+    new_value = pasta.parse("mode.lower()")
+    mode = new_value.body[0].value.func
+    pasta.ast_utils.replace_child(mode, mode.value, old_value)
+
+    # This copies the prefix and suffix on old_value to new_value.
+    pasta.ast_utils.replace_child(parent, old_value, new_value)
+
+    # Put parentheses around keep_prob.value (and remove the old prefix/
+    # suffix, they should only be around new_value).
+    pasta.base.formatting.set(old_value, "prefix", "(")
+    pasta.base.formatting.set(old_value, "suffix", ")")
+
+  # Need to keep track of scale because slim & keras
+  # have different defaults
+  found_scale = False
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "factor":
+      keyword_arg.arg = "scale"
+      found_scale = True
+    if keyword_arg.arg == "mode":
+      _replace_mode(keyword_arg, keyword_arg.value)
+    if keyword_arg.arg == "uniform":
+      keyword_arg.arg = "distribution"
+      _replace_distribution(keyword_arg, keyword_arg.value)
+
+  # Handle any detected positional arguments
+  if len(node.args) >= 1:
+    found_scale = True
+  if len(node.args) >= 2:
+    _replace_mode(node, node.args[1])
+  if len(node.args) >= 3:
+    _replace_distribution(node, node.args[2])
+
+  # If no scale was provided, make tf 2.0 use slim's default factor
+  if not found_scale:
+    # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+    scale_value = pasta.parse("2.0")
+    node.keywords = ([ast.keyword(arg="scale", value=scale_value)]
+                     + node.keywords)
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.compat.v1.keras.initializers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "VarianceScaling"
+
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Changing tf.contrib.layers.variance_scaling_initializer"
+               " to a tf.compat.v1.keras.initializers.VarianceScaling and"
+               " converting arguments.\n"))
+
+  return node
+
+
+def _contrib_layers_l1_regularizer_transformer(
+    parent, node, full_name, name, logs):
+  """Replace slim l1 regularizer with Keras one.
+
+  This entails renaming the 'scale' arg to 'l' and dropping any
+  provided scope arg.
+  """
+  # Check if we have a scale or scope keyword arg
+  scope_keyword = None
+  for keyword in node.keywords:
+    if keyword.arg == "scale":
+      logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                   "Renaming scale arg of regularizer\n"))
+      keyword.arg = "l"
+    if keyword.arg == "scope":
+      scope_keyword = keyword
+
+  # Remove the scope keyword or arg if it is present
+  if scope_keyword:
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l1_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l1\n"))
+    node.keywords.remove(scope_keyword)
+  if len(node.args) > 1:
+    node.args = node.args[:1]
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l1_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l1\n"))
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.keras.regularizers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "l1"
+
+  return node
+
+
+def _contrib_layers_l2_regularizer_transformer(
+    parent, node, full_name, name, logs):
+  """Replace slim l2 regularizer with Keras one, with l=0.5*scale.
+
+  Also drops the scope argument.
+  """
+  def _replace_scale_node(parent, old_value):
+    """Replaces old_value with 0.5*(old_value)."""
+    half = ast.Num(n=0.5)
+    half.lineno = 0
+    half.col_offset = 0
+    new_value = ast.BinOp(left=half, op=ast.Mult(),
+                          right=old_value)
+    # This copies the prefix and suffix on old_value to new_value.
+    pasta.ast_utils.replace_child(parent, old_value, new_value)
+
+    # Put parentheses around scale.value (and remove the old prefix/
+    # suffix, they should only be around new_value).
+    pasta.base.formatting.set(old_value, "prefix", "(")
+    pasta.base.formatting.set(old_value, "suffix", ")")
+
+  # Check if we have a scale or scope keyword arg
+  scope_keyword = None
+  for keyword in node.keywords:
+    if keyword.arg == "scale":
+      keyword.arg = "l"
+      _replace_scale_node(keyword, keyword.value)
+    if keyword.arg == "scope":
+      scope_keyword = keyword
+
+  # Maybe it was a positional arg
+  if len(node.args) >= 1:
+    _replace_scale_node(node, node.args[0])
+
+  # Remove the scope keyword or arg if it is present
+  if scope_keyword:
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l2_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l2\n"))
+    node.keywords.remove(scope_keyword)
+  if len(node.args) > 1:
+    node.args = node.args[:1]
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Dropping scope arg from tf.contrib.layers.l2_regularizer,"
+                 " because it is unsupported in tf.keras.regularizers.l2\n"))
+
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Multiplying scale arg of tf.contrib.layers.l2_regularizer"
+               " by half to what tf.keras.regularizers.l2 expects.\n"))
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.keras.regularizers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "l2"
+
   return node
 
 
@@ -2253,3 +2420,102 @@ def _name_scope_transformer(parent, node, full_name, name, logs):
   logs.append((ast_edits.ERROR, node.lineno, node.col_offset,
                "name_scope call with neither name nor default_name cannot be "
                "converted properly."))
+
+
+def _rename_to_compat_v1(node, full_name, logs, reason):
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
+  return _rename_func(node, full_name, new_name, logs, reason)
+
+
+def _rename_func(node, full_name, new_name, logs, reason):
+  logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+               "Renamed %r to %r: %s" % (full_name, new_name, reason)))
+  new_name_node = ast_edits.full_name_node(new_name, node.func.ctx)
+  ast.copy_location(new_name_node, node.func)
+  pasta.ast_utils.replace_child(node, node.func, new_name_node)
+  return node
+
+
+def _string_split_transformer(parent, node, full_name, name, logs):
+  """Update tf.string_split arguments: skip_empty, sep, result_type, source."""
+  # Check the skip_empty parameter: if not false, then use compat.v1.
+  for i, kw in enumerate(node.keywords):
+    if kw.arg == "skip_empty":
+      if _is_ast_false(kw.value):
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "removed argument skip_empty for tf.string_split."))
+        node.keywords.pop(i)
+        break
+      else:
+        return _rename_to_compat_v1(
+            node, full_name, logs, "tf.string_split's replacement no longer "
+            "takes the skip_empty argument.")
+
+  # Check the sep parameter: if it's definitely an empty string, use
+  # tf.strings.bytes_split().  If we can't tell, then use compat.v1.
+  found_sep = False
+  for i, kw in enumerate(node.keywords):
+    if kw.arg == "sep":
+      found_sep = True
+      if isinstance(kw.value, ast.Str):
+        if kw.value.s == "":
+          node = _rename_func(
+              node, full_name, "tf.strings.bytes_split", logs,
+              "Splitting bytes is not handled by tf.strings.bytes_split().")
+          node.keywords.pop(i)
+      else:
+        return _rename_to_compat_v1(
+            node, full_name, logs,
+            "The semantics for tf.string_split's sep parameter have changed "
+            "when sep is the empty string; but sep is not a string literal, "
+            "so we can't tell if it's an empty string.")
+  if not found_sep:
+    return _rename_to_compat_v1(
+        node, full_name, logs,
+        "The semantics for tf.string_split's sep parameter have changed "
+        "when sep unspecified: it now splits on all whitespace, not just "
+        "the space character.")
+  # Check the result_type parameter
+  return _string_split_rtype_transformer(parent, node, full_name, name, logs)
+
+
+def _string_split_rtype_transformer(parent, node, full_name, name, logs):
+  """Update tf.strings.split arguments: result_type, source."""
+  # Remove the "result_type" argument.
+  need_to_sparse = True
+  for i, kw in enumerate(node.keywords):
+    if kw.arg == "result_type":
+      if (isinstance(kw.value, ast.Str) and
+          kw.value.s in ("RaggedTensor", "SparseTensor")):
+        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                     "Removed argument result_type=%r for function %s" %
+                     (kw.value.s, full_name or name)))
+        node.keywords.pop(i)
+        if kw.value.s == "RaggedTensor":
+          need_to_sparse = False
+      else:
+        return _rename_to_compat_v1(
+            node, full_name, logs,
+            "%s no longer takes the result_type parameter." % full_name)
+      break
+
+  for i, kw in enumerate(node.keywords):
+    if kw.arg == "source":
+      kw.arg = "input"
+
+  # If necessary, add a call to .to_sparse() to convert the output of
+  # strings.split from a RaggedTensor to a SparseTensor.
+  if need_to_sparse:
+    if (isinstance(parent, ast.Attribute) and parent.attr == "to_sparse"):
+      return  # Prevent infinite recursion (since child nodes are transformed)
+    logs.append(
+        (ast_edits.INFO, node.lineno, node.col_offset,
+         "Adding call to RaggedTensor.to_sparse() to result of strings.split, "
+         "since it now returns a RaggedTensor."))
+    node = ast.Attribute(value=copy.deepcopy(node), attr="to_sparse")
+    try:
+      node = ast.Call(node, [], [])
+    except TypeError:
+      node = ast.Call(node, [], [], None, None)
+
+  return node

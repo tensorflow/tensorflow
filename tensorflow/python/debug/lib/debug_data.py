@@ -947,7 +947,8 @@ class DebugDumpDir(object):
       3) The parallel_iteration attribute of while-loop Enter ops are set to 1.
 
     Returns:
-      A dict mapping device names (`str`s) to reconstructed `tf.GraphDef`s.
+      A dict mapping device names (`str`s) to reconstructed
+      `tf.compat.v1.GraphDef`s.
     """
     non_debug_graphs = {}
     for key in self._debug_graphs:

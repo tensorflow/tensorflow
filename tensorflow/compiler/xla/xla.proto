@@ -184,6 +184,9 @@ message DebugOptions {
   // among different algorithms.
   bool xla_gpu_crash_on_verification_failures = 101;
 
+  // Disable GEMM and Convolution auto-tuning.
+  bool xla_gpu_disable_autotune = 123;
+
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
   // to 1.
@@ -212,6 +215,9 @@ message DebugOptions {
     // Generate a step marker at each iteration of the top level while loop,
     // which is assumed to be a training loop.
     STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
+    // Generate a step marker at each iteration of the second level while loops,
+    // which is assumed to be a training or eval loop.
+    STEP_MARK_AT_SECOND_LEVEL_WHILE_LOOP = 3;
     // No step marker generated.
     STEP_MARK_NONE = 2;
   }
@@ -265,7 +271,7 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
-  // Next id: 123
+  // Next id: 124
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

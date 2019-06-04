@@ -354,17 +354,14 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     leading_term = l.matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
     if adjoint:
-      uh_x = linear_operator_util.matmul_with_broadcast(
-          u, x, adjoint_a=True, adjoint_b=adjoint_arg)
+      uh_x = math_ops.matmul(u, x, adjoint_a=True, adjoint_b=adjoint_arg)
       d_uh_x = d.matmul(uh_x, adjoint=adjoint)
-      v_d_uh_x = linear_operator_util.matmul_with_broadcast(
-          v, d_uh_x)
+      v_d_uh_x = math_ops.matmul(v, d_uh_x)
       return leading_term + v_d_uh_x
     else:
-      vh_x = linear_operator_util.matmul_with_broadcast(
-          v, x, adjoint_a=True, adjoint_b=adjoint_arg)
+      vh_x = math_ops.matmul(v, x, adjoint_a=True, adjoint_b=adjoint_arg)
       d_vh_x = d.matmul(vh_x, adjoint=adjoint)
-      u_d_vh_x = linear_operator_util.matmul_with_broadcast(u, d_vh_x)
+      u_d_vh_x = math_ops.matmul(u, d_vh_x)
       return leading_term + u_d_vh_x
 
   def _determinant(self):
@@ -425,8 +422,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     # L^{-1} rhs
     linv_rhs = l.solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
     # V^H L^{-1} rhs
-    vh_linv_rhs = linear_operator_util.matmul_with_broadcast(
-        v, linv_rhs, adjoint_a=True)
+    vh_linv_rhs = math_ops.matmul(v, linv_rhs, adjoint_a=True)
     # C^{-1} V^H L^{-1} rhs
     if self._use_cholesky:
       capinv_vh_linv_rhs = linear_operator_util.cholesky_solve_with_broadcast(
@@ -435,8 +431,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
       capinv_vh_linv_rhs = linear_operator_util.matrix_solve_with_broadcast(
           self._capacitance, vh_linv_rhs, adjoint=adjoint)
     # U C^{-1} V^H M^{-1} rhs
-    u_capinv_vh_linv_rhs = linear_operator_util.matmul_with_broadcast(
-        u, capinv_vh_linv_rhs)
+    u_capinv_vh_linv_rhs = math_ops.matmul(u, capinv_vh_linv_rhs)
     # L^{-1} U C^{-1} V^H L^{-1} rhs
     linv_u_capinv_vh_linv_rhs = l.solve(u_capinv_vh_linv_rhs, adjoint=adjoint)
 
@@ -450,8 +445,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     # L^{-1} U
     linv_u = self.base_operator.solve(self.u)
     # V^H L^{-1} U
-    vh_linv_u = linear_operator_util.matmul_with_broadcast(
-        self.v, linv_u, adjoint_a=True)
+    vh_linv_u = math_ops.matmul(self.v, linv_u, adjoint_a=True)
 
     # D^{-1} + V^H L^{-1} V
     capacitance = self._diag_inv_operator.add_to_tensor(vh_linv_u)

@@ -1,8 +1,10 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # Platform specific build config
 load(
@@ -150,8 +152,8 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_topology_view",
+        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:functions",
@@ -269,6 +271,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:canonicalizer",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
@@ -314,6 +317,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -526,6 +530,51 @@ tf_cuda_cc_test(
 )
 
 cc_library(
+    name = "auto_mixed_precision",
+    srcs = ["auto_mixed_precision.cc"],
+    hdrs = [
+        "auto_mixed_precision.h",
+        "auto_mixed_precision_lists.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer_registry",
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:virtual_placer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "auto_mixed_precision_test",
+    srcs = ["auto_mixed_precision_test.cc"],
+    deps = [
+        ":auto_mixed_precision",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
     name = "meta_optimizer",
     srcs = ["meta_optimizer.cc"],
     hdrs = [
@@ -534,6 +583,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",
+        ":auto_mixed_precision",
         ":auto_parallel",
         ":constant_folding",
         ":custom_graph_optimizer_registry",
@@ -557,6 +607,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/utils:canonicalizer",
         "//tensorflow/core/grappler/utils:colocation",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
@@ -698,12 +749,14 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "shape_optimizer_test",
     srcs = ["shape_optimizer_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":shape_optimizer",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -739,6 +792,29 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "remapper_test",
     srcs = ["remapper_test.cc"],
+    deps = [
+        ":remapper",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_remapper_test",
+    srcs = ["mkl_remapper_test.cc"],
+    tags = [
+        "no_mac",
+        "no_oss",
+    ],
     deps = [
         ":remapper",
         "//tensorflow/cc:cc_ops",

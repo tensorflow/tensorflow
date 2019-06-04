@@ -40,6 +40,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )
 
@@ -50,6 +51,8 @@ py_library(
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
         "//tensorflow/compiler/jit/ops:xla_ops_grad",
+        # Do not remove: required to run xla ops on Cloud.
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
@@ -58,6 +61,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -83,5 +87,6 @@ cuda_py_test(
         "no_mac",
         "no_windows",
     ],
+    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )

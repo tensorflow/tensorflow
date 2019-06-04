@@ -38,6 +38,7 @@ from tensorflow.python.keras.layers.noise import *
 from tensorflow.python.keras.layers.normalization import *
 from tensorflow.python.keras.layers.pooling import *
 from tensorflow.python.keras.layers.recurrent import *
+from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import *
 from tensorflow.python.keras.layers.wrappers import *
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.util.tf_export import keras_export
@@ -48,7 +49,7 @@ if tf2.enabled():
 
 # This deserialization table is added for backward compatibility, as in TF 1.13,
 # BatchNormalizationV1 and BatchNormalizationV2 are used as class name for v1
-# and v2 version of BatchNormalization, respectively. Here we explictly convert
+# and v2 version of BatchNormalization, respectively. Here we explicitly convert
 # them to the canonical name in the config of deserialization.
 _DESERIALIZATION_TABLE = {
     'BatchNormalizationV1': 'BatchNormalization',

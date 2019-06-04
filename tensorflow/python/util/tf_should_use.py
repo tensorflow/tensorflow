@@ -141,7 +141,7 @@ def _add_should_use_warning(x, fatal_error=False):
 
   Args:
     x: Python object.
-    fatal_error: Python bool.  If `True`, tf.logging.fatal is raised
+    fatal_error: Python bool.  If `True`, tf.compat.v1.logging.fatal is raised
       if the returned value is never used.
 
   Returns:
@@ -169,7 +169,7 @@ def _add_should_use_warning(x, fatal_error=False):
 def should_use_result(fn):
   """Function wrapper that ensures the function's output is used.
 
-  If the output is not used, a `tf.logging.error` is logged.
+  If the output is not used, a `tf.compat.v1.logging.error` is logged.
 
   An output is marked as used if any of its attributes are read, modified, or
   updated.  Examples when the output is a `Tensor` include:
@@ -203,7 +203,7 @@ def should_use_result(fn):
 def must_use_result_or_fatal(fn):
   """Function wrapper that ensures the function's output is used.
 
-  If the output is not used, a `tf.logging.fatal` error is raised.
+  If the output is not used, a `tf.compat.v1.logging.fatal` error is raised.
 
   An output is marked as used if any of its attributes are read, modified, or
   updated.  Examples when the output is a `Tensor` include:

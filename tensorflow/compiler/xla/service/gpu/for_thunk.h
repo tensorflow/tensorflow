@@ -40,7 +40,7 @@ class ForThunk : public Thunk {
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

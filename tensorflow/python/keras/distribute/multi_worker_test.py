@@ -29,83 +29,40 @@ from absl.testing import parameterized
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
-from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import parameter_server_strategy
-from tensorflow.python.framework import dtypes
+from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
-def _mnist_synthetic_dataset(batch_size, steps_per_epoch):
-  # train dataset
-  x_train = array_ops.ones([batch_size * steps_per_epoch, 28, 28, 1],
-                           dtype=dtypes.float32)
-  y_train = array_ops.ones([batch_size * steps_per_epoch, 1],
-                           dtype=dtypes.int32)
-  train_ds = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
-  train_ds = train_ds.repeat()
-  # train_ds = train_ds.shuffle(100)
-  train_ds = train_ds.batch(64, drop_remainder=True)
+# TODO(b/130375202): remove this class which is a temporary solution before we
+# get rid of configure method.
+class ParameterServerStrategy(distribute_lib.Strategy):
+  """Temporarily mock the original strategy to bypass cluster_spec check."""
 
-  # eval dataset
-  x_test = random_ops.random_uniform([10000, 28, 28, 1], dtype=dtypes.float32)
-  y_test = random_ops.random_uniform([10000, 1],
-                                     minval=0,
-                                     maxval=9,
-                                     dtype=dtypes.int32)
-  eval_ds = dataset_ops.Dataset.from_tensor_slices((x_test, y_test))
-  eval_ds = eval_ds.repeat()
-  eval_ds = eval_ds.batch(64, drop_remainder=True)
-
-  return train_ds, eval_ds
-
-
-def _get_model(input_shape):
-  # Define a deterministically-initialized CNN model to recognize MNIST digits,
-  # commented out several layers to simplify it.
-  model = keras.models.Sequential()
-  model.add(
-      keras.layers.Conv2D(
-          32,
-          kernel_size=(3, 3),
-          activation='relu',
-          input_shape=input_shape,
-          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-  # model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
-  # model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
-  # model.add(keras.layers.Dropout(0.25))
-  model.add(keras.layers.Flatten())
-  # model.add(keras.layers.Dense(128, activation='relu'))
-  # model.add(keras.layers.Dropout(0.5))
-  model.add(
-      keras.layers.Dense(
-          10,
-          activation='softmax',
-          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-
-  # TODO(yuefengz): optimizer with slot variables doesn't work because of
-  # optimizer's bug.
-  # TODO(yuefengz): we should not allow non-v2 optimizer.
-  model.compile(
-      loss=keras.losses.sparse_categorical_crossentropy,
-      optimizer=gradient_descent.SGD(learning_rate=0.001),
-      metrics=['accuracy'])
-  return model
+  def __init__(self, cluster_resolver=None):
+    """Initializes this strategy."""
+    # The `cluster_resolver` must be set so that
+    # `ParameterServerStrategyExtended` will keep num_gpus for `configure`
+    # method.
+    if cluster_resolver is None:
+      cluster_resolver = TFConfigClusterResolver()
+    extended = parameter_server_strategy.ParameterServerStrategyExtended(
+        self, cluster_resolver=cluster_resolver)
+    super(ParameterServerStrategy, self).__init__(extended)
 
 
 def _clone_and_build_model(model, strategy):
@@ -249,15 +206,16 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
 def _run_standalone_client(test_obj, strategy, cluster_spec):
   input_shape = (28, 28, 1)
   with strategy.scope():
-    orig_model = _get_model(input_shape)
+    orig_model = multi_worker_testing_utils.get_mnist_model(input_shape)
 
   def worker_fn(strategy):
     with ops.Graph().as_default():
       batch_size = 64
-      steps = 10
+      steps = 2
 
       with strategy.scope():
-        train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
+        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+            batch_size, steps)
         model = _clone_and_build_model(orig_model, strategy)
 
         orig_loss, orig_acc = model.evaluate(train_ds, steps=steps)
@@ -282,14 +240,6 @@ def _run_standalone_client(test_obj, strategy, cluster_spec):
       cluster_spec=cluster_spec)
 
 
-def get_strategy_object(strategy_cls):
-  if strategy_cls == mirrored_strategy.MirroredStrategy:
-    return strategy_cls(mirrored_strategy.all_local_devices())
-  else:
-    # CollectiveAllReduceStrategy and ParameterServerStrategy.
-    return strategy_cls()
-
-
 class KerasMultiWorkerTestStandaloneClient(test.TestCase,
                                            parameterized.TestCase):
 
@@ -304,8 +254,7 @@ class KerasMultiWorkerTestStandaloneClient(test.TestCase,
       combinations.combine(
           mode=['graph'],
           strategy_cls=[
-              mirrored_strategy.MirroredStrategy,
-              parameter_server_strategy.ParameterServerStrategy,
+              ParameterServerStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
@@ -318,7 +267,7 @@ class KerasMultiWorkerTestStandaloneClient(test.TestCase,
     # multi-worker training.
     # The logic should be much clearer once standalone client is merged into
     # core Keras as well.
-    strategy = get_strategy_object(strategy_cls)
+    strategy = strategy_cls()
 
     _run_standalone_client(self, strategy, self._cluster_spec)
 
@@ -330,7 +279,6 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       combinations.combine(
           mode=['graph'],
           strategy_cls=[
-              mirrored_strategy.MirroredStrategy,
               collective_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
@@ -349,14 +297,15 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       """Simulates an Independent Worker inside of a thread."""
       with test.mock.patch.object(dc, '_run_std_server',
                                   self._make_mock_run_std_server()):
-        strategy = get_strategy_object(strategy_cls)
+        strategy = strategy_cls()
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph
         batch_size = 64
-        steps = 10
-        train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
+        steps = 2
+        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+            batch_size, steps)
         with strategy.scope():
-          model = _get_model((28, 28, 1))
+          model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
         orig_loss, _ = model.evaluate(train_ds, steps=steps)
         callbacks_for_fit = nest.flatten(
             kwargs.get('verification_callback', []))
@@ -375,7 +324,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
         verification_callback=verification_callback)
 
     threads_to_join = []
-    strategy = get_strategy_object(strategy_cls)
+    strategy = strategy_cls()
     if strategy.extended.experimental_between_graph:
       for ts in threads.values():
         threads_to_join.extend(ts)
@@ -387,7 +336,7 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
   @combinations.generate(
       combinations.combine(
           mode=['graph'],
-          strategy_cls=[parameter_server_strategy.ParameterServerStrategy],
+          strategy_cls=[ParameterServerStrategy],
           required_gpus=[0, 1]))
   def testSimpleModelIndependentWorkerAsync(self, strategy_cls):
     num_workers = 2
@@ -408,15 +357,17 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
       with test.mock.patch.object(dc, '_run_std_server',
                                   self._make_mock_run_std_server()):
         batch_size = 64
-        steps = 10
+        steps = 2
         strategy = strategy_cls()
         verification_callback.is_between_graph = \
             strategy.extended.experimental_between_graph
 
-        train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
-        val_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
+        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+            batch_size, steps)
+        val_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+            batch_size, steps)
         with strategy.scope():
-          model = _get_model((28, 28, 1))
+          model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
 
           # TODO(b/123868066): Verify callback for model.evaluate().
           callbacks_for_fit = nest.flatten(

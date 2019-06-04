@@ -15,13 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <mutex>  // NOLINT
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <cstdlib>
-#include <cstring>
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -102,10 +101,10 @@ OpKernel::OpKernel(OpKernelConstruction* context,
                     context->output_types().end()),
       output_memory_types_(context->output_memory_types().begin(),
                            context->output_memory_types().end()),
-      graph_def_version_(context->graph_def_version()),
-      is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
+      graph_def_version_(context->graph_def_version()),
+      is_internal_(absl::StartsWith(type_string(), "_")),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
@@ -376,11 +375,7 @@ Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
                                    "expected");
   }
   const TensorValue& value((*params_->inputs)[start]);
-  if (value.is_ref()) {
-    *dtype = MakeRefType(value->dtype());
-  } else {
-    *dtype = value->dtype();
-  }
+  *dtype = value.dtype();
   return Status::OK();
 }
 
@@ -703,9 +698,10 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  AllocationAttributes logged_attr(allocation_attr);
-  logged_attr.allocation_will_be_logged = true;
-  Tensor new_tensor(a, type, shape, logged_attr);
+  Tensor new_tensor(a, type, shape,
+                    AllocationAttributes(allocation_attr.no_retry_on_failure,
+                                         /* allocation_will_be_logged= */ true,
+                                         allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -730,6 +726,15 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   const DataType type = params_->op_kernel->output_type(index);
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
+  if (attr.scope_id > 0) {
+    if (!allocated_scope_ids_.insert(attr.scope_id).second) {
+      return errors::Internal(
+          "OpKernel ", params_->op_kernel->name(),
+          " called allocate_output at index ", index, " with scope_id ",
+          attr.scope_id,
+          " more than once.  Try turning off the ScopedAllocator optimizer.");
+    }
+  }
   auto output_tensor = MakeUnique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
@@ -743,6 +748,22 @@ Status OpKernelContext::allocate_temp(
     DataType type, const TensorShape& shape, Tensor* out_temp,
     AllocatorAttributes allocator_attr,
     const AllocationAttributes& allocation_attr) {
+  if (allocator_attr.scope_id > 0) {
+    // We do not allow ScopedAllocator calls from allocate_temp.  Unlike
+    // allocate_persistent where we return an error if a kernel provides a
+    // meaningful scope_id, here we clear the scope_id and return a temporary
+    // buffer.  This is because it is legal for a kernel to call allocate_temp
+    // and then set_output with the temp tensor.
+    //
+    // We achieve memory correctness by forcing an allocation in set_output and
+    // copying over the tensor from the temp buffer.  Kernels which would like
+    // to avoid this performance penalty should switch to calling
+    // allocate_output.
+    VLOG(2) << "Warning: OpKernel " << params_->op_kernel->name()
+            << " called allocate_temp with scope_id " << allocator_attr.scope_id
+            << ".  Switch to allocate_output to avoid performance penalty.";
+    allocator_attr.scope_id = -1;
+  }
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
@@ -751,6 +772,9 @@ Status OpKernelContext::allocate_temp(
       int64 alloc_size = a->AllocatedSize(out_temp->tensor_data().data());
       record_temp_memory_allocation(alloc_size, *out_temp);
     }
+  } else if (record_memory_consumption_) {
+    mutex_lock l(stats_mu_);
+    temp_memory_allocated_ += out_temp->TotalBytes();
   }
   return s;
 }
@@ -760,6 +784,13 @@ Status OpKernelContext::allocate_persistent(DataType type,
                                             PersistentTensor* out_persistent,
                                             Tensor** out_tensor,
                                             AllocatorAttributes attr) {
+  if (attr.scope_id > 0) {
+    // ScopedAllocator cannot be used for persistent tensors, because these
+    // tensors may persist across kernel invocations/steps, whereas the backing
+    // tensor for the scoped allocator will be reallocated every step.
+    return errors::Internal(
+        "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
+  }
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
@@ -775,6 +806,10 @@ Status OpKernelContext::allocate_persistent(DataType type,
         int64 alloc_id = a->AllocationId(t->tensor_data().data());
         record_persistent_memory_allocation(alloc_size, alloc_id);
       }
+    } else if (record_memory_consumption_) {
+      mutex_lock l(stats_mu_);
+      persistent_memory_allocated_ +=
+          out_persistent->AccessTensor(this)->TotalBytes();
     }
   }
   return s;
@@ -796,24 +831,67 @@ Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
 void OpKernelContext::set_output(int index, const Tensor& tensor) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, outputs_.size());
-  DCHECK(!IsRefType(params_->op_kernel->output_type(index)));
+  const DataType type = params_->op_kernel->output_type(index);
+  DCHECK(!IsRefType(type));
   DCHECK_EQ(mutable_output(index), nullptr);
-  record_tensor_reference(tensor);
-  outputs_[index] = TensorValue(new Tensor(tensor));
-  if (track_allocations() && tensor.TotalBytes() > 0) {
-    mutex_lock l(stats_mu_);
-    if (!temp_tensor_buffer_and_size_) {
-      return;
+
+  bool allocate_and_copy = false;
+  const bool never_forward =
+      (params_->forward_from_array != nullptr &&
+       params_->forward_from_array[index] == Params::kNeverForward);
+  if (never_forward) {
+    if (allocated_scope_ids_.find(output_alloc_attr(index).scope_id) ==
+        allocated_scope_ids_.end()) {
+      allocate_and_copy = true;
+    } else {
+      // The output at `index` must have been previously allocated via a call to
+      // `allocate_output(index, ...)`.  That call would ensure that we return
+      // the correct slice of the ScopedAllocated buffer, so we do not
+      // re-allocate and copy here.
+      LOG(WARNING)
+          << "OpKernel " << params_->op_kernel->name()
+          << " called both allocate_output and set_output with scope_id "
+          << output_alloc_attr(index).scope_id;
     }
-    auto it = std::find_if(temp_tensor_buffer_and_size_->begin(),
-                           temp_tensor_buffer_and_size_->end(),
-                           [&tensor](const std::pair<const void*, int64>& e) {
-                             return e.first == static_cast<const void*>(
-                                                   tensor.tensor_data().data());
-                           });
-    if (it != temp_tensor_buffer_and_size_->end()) {
-      temp_memory_allocated_ -= it->second;
-      temp_tensor_buffer_and_size_->erase(it);
+  }
+
+  if (allocate_and_copy) {
+    // This output was marked to not be forwarded either during graph
+    // construction or grappler passes.  Force an allocation and copy input to
+    // output.
+    VLOG(1) << "OpKernelContext set_output index " << index << " tensor "
+            << tensor.DebugString() << " never_forward " << never_forward
+            << " params_->forward_from_array[index] "
+            << params_->forward_from_array[index] << " alloc_attr.scope_id "
+            << output_alloc_attr(index).scope_id;
+    auto new_tensor = MakeUnique<Tensor>();
+    Status s = allocate_tensor(type, tensor.shape(), new_tensor.get(),
+                               output_alloc_attr(index));
+    TF_DCHECK_OK(s);
+    device()->CopyTensorInSameDevice(&tensor, new_tensor.get(),
+                                     op_device_context(), [](const Status&) {});
+    outputs_[index] = TensorValue(new_tensor.release());
+  } else {
+    // Input can be forwarded to output; incref on `tensor` and set output at
+    // `index` to this tensor.
+    record_tensor_reference(tensor);
+    outputs_[index] = TensorValue(new Tensor(tensor));
+    if (track_allocations() && tensor.TotalBytes() > 0) {
+      mutex_lock l(stats_mu_);
+      if (!temp_tensor_buffer_and_size_) {
+        return;
+      }
+      const auto it = std::find_if(
+          temp_tensor_buffer_and_size_->begin(),
+          temp_tensor_buffer_and_size_->end(),
+          [&tensor](const std::pair<const void*, int64>& e) {
+            return e.first ==
+                   static_cast<const void*>(tensor.tensor_data().data());
+          });
+      if (it != temp_tensor_buffer_and_size_->end()) {
+        temp_memory_allocated_ -= it->second;
+        temp_tensor_buffer_and_size_->erase(it);
+      }
     }
   }
 }
@@ -873,7 +951,7 @@ Status OpKernelContext::MatchSignature(const DataTypeSlice expected_inputs,
                                        const DataTypeSlice expected_outputs) {
   DataTypeVector inputs;
   for (const TensorValue& t : *params_->inputs) {
-    inputs.push_back(t.is_ref() ? MakeRefType(t->dtype()) : t->dtype());
+    inputs.push_back(t.dtype());
   }
   DataTypeVector outputs = params_->op_kernel->output_types();
   return MatchSignatureHelper(expected_inputs, expected_outputs, inputs,
@@ -951,7 +1029,10 @@ struct KernelRegistration {
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
 // factory functions for instantiating the OpKernel that matches the
 // KernelDef.
-typedef std::unordered_multimap<string, KernelRegistration> KernelRegistry;
+struct KernelRegistry {
+  mutex mu;
+  std::unordered_multimap<string, KernelRegistration> registry GUARDED_BY(mu);
+};
 
 #if defined(_WIN32)
 static const char kKernelLibPattern[] = "libtfkernel*.dll";
@@ -993,7 +1074,7 @@ static Status IsProbablySafeToLoad(const string& path) {
   }
   if (!missing_features.empty()) {
     string errmsg = "Missing CPU features: ";
-    errmsg.append(str_util::Join(missing_features, ", "));
+    errmsg.append(absl::StrJoin(missing_features, ", "));
     return Status(errors::Code::FAILED_PRECONDITION, errmsg);
   }
   return Status::OK();
@@ -1007,10 +1088,8 @@ void LoadDynamicKernelsInternal() {
   bool override_abi_check =
       strcmp(getenv("TF_REALLY_LOAD_UNSAFE_PACKAGES"), "1") == 0;
 
-  string bazel_kernel_dir = io::JoinPath(env->GetRunfilesDir(),
-                                         "tensorflow",
-                                         "core",
-                                         "kernels");
+  string bazel_kernel_dir =
+      io::JoinPath(env->GetRunfilesDir(), "tensorflow", "core", "kernels");
   std::vector<string> files;
   Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
   if (s_kernel_dir.ok()) {
@@ -1081,9 +1160,12 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
     // before some file libraries can initialize, which in turn crashes the
     // program flakily. Until we get rid of static initializers in kernel
     // registration mechanism, we have this workaround here.
-    reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry())
-        ->emplace(key, KernelRegistration(*kernel_def, kernel_class_name,
-                                          std::move(factory)));
+    auto global_registry =
+        reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
+    mutex_lock l(global_registry->mu);
+    global_registry->registry.emplace(
+        key,
+        KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
   }
   delete kernel_def;
 }
@@ -1100,28 +1182,33 @@ namespace {
 static const StringPiece kKernelAttr("_kernel");
 
 // TODO(irving): Replace with const Node& version below.
-Status FindKernelRegistration(const DeviceType& device_type,
-                              const NodeDef& node_def,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
+Status FindKernelRegistration(
+    const DeviceType& device_type, StringPiece node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    StringPiece node_op, AttrSlice node_attrs, const KernelRegistration** reg,
+    bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
   // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_def, kKernelAttr);
+  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
 
-  const string key = Key(node_def.op(), device_type, label);
-  auto regs = GlobalKernelRegistryTyped()->equal_range(key);
+  const string key = Key(node_op, device_type, label);
+  auto typed_registry = GlobalKernelRegistryTyped();
+  tf_shared_lock lock(typed_registry->mu);
+  auto regs = typed_registry->registry.equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
     bool match;
-    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_def, &match));
+    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_attrs, &match));
     if (match) {
       if (*reg != nullptr) {
         return errors::InvalidArgument(
             "Multiple OpKernel registrations match NodeDef '",
-            FormatNodeDefForError(node_def), "': '",
-            ProtoShortDebugString((*reg)->def), "' and '",
+            FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                  experimental_debug_info),
+            "': '", ProtoShortDebugString((*reg)->def), "' and '",
             ProtoShortDebugString(iter->second.def), "'");
       }
       *reg = &iter->second;
@@ -1130,6 +1217,16 @@ Status FindKernelRegistration(const DeviceType& device_type,
     }
   }
   return Status::OK();
+}
+
+Status FindKernelRegistration(const DeviceType& device_type,
+                              const NodeDef& node_def,
+                              const KernelRegistration** reg,
+                              bool* was_attr_mismatch) {
+  return FindKernelRegistration(
+      device_type, node_def.name(), node_def.has_experimental_debug_info(),
+      node_def.experimental_debug_info(), node_def.op(),
+      AttrSlice(&node_def.attr()), reg, was_attr_mismatch);
 }
 
 }  // namespace
@@ -1144,29 +1241,44 @@ bool KernelDefAvailable(const DeviceType& device_type,
 }
 
 // TODO(irving): Change const NodeDef& to const Node&
-Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
-                     const KernelDef** def, string* kernel_class_name) {
+Status FindKernelDef(
+    const DeviceType& device_type, StringPiece node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
+    const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;
   bool was_attr_mismatch;
-  TF_RETURN_IF_ERROR(
-      FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch));
+  TF_RETURN_IF_ERROR(FindKernelRegistration(
+      device_type, node_name, has_experimental_debug_info,
+      experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
     Status s = errors::NotFound(
-        "No registered '", node_def.op(), "' OpKernel for ",
+        "No registered '", node_op, "' OpKernel for ",
         DeviceTypeString(device_type), " devices compatible with node ",
-        FormatNodeDefForError(node_def));
+        FormatNodeDefForError(node_name, has_experimental_debug_info,
+                              experimental_debug_info));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match) ",
-          "Requested Attributes: ", SummarizeAttrs(node_def));
+          "Requested Attributes: ",
+          SummarizeAttrsHelper(node_attrs, node_device));
     }
-    errors::AppendToMessage(
-        &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
+    errors::AppendToMessage(&s,
+                            ".  Registered:", KernelsRegisteredForOp(node_op));
     return s;
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
   return Status::OK();
+}
+
+Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
+                     const KernelDef** def, string* kernel_class_name) {
+  return FindKernelDef(
+      device_type, node_def.name(), node_def.has_experimental_debug_info(),
+      node_def.experimental_debug_info(), node_def.op(), node_def.device(),
+      AttrSlice(&node_def.attr()), def, kernel_class_name);
 }
 
 Status SupportedDeviceTypesForNode(
@@ -1217,10 +1329,11 @@ KernelList GetAllRegisteredKernels() {
 
 KernelList GetFilteredRegisteredKernels(
     const std::function<bool(const KernelDef&)>& predicate) {
-  const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
+  KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
   KernelList kernel_list;
-  kernel_list.mutable_kernel()->Reserve(typed_registry->size());
-  for (const auto& p : *typed_registry) {
+  tf_shared_lock lock(typed_registry->mu);
+  kernel_list.mutable_kernel()->Reserve(typed_registry->registry.size());
+  for (const auto& p : typed_registry->registry) {
     const KernelDef& kernel_def = p.second.def;
     if (predicate(kernel_def)) {
       *kernel_list.add_kernel() = kernel_def;
@@ -1346,7 +1459,9 @@ bool FindArgInOp(StringPiece arg_name,
 }  // namespace
 
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
-  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
+  auto typed_registry = GlobalKernelRegistryTyped();
+  tf_shared_lock lock(typed_registry->mu);
+  for (const auto& key_registration : typed_registry->registry) {
     const KernelDef& kernel_def(key_registration.second.def);
     const OpRegistrationData* op_reg_data;
     const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);

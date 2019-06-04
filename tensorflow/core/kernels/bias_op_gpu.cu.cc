@@ -20,17 +20,15 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/bias_op.h"
-#include "tensorflow/core/kernels/bias_op_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
-
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/types.h"
-
+#include "tensorflow/core/kernels/bias_op.h"
+#include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -83,7 +81,7 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   if (total_count == 0) {
     return;
   }
-  CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
   if (data_format == FORMAT_NHWC) {
     TF_CHECK_OK(CudaLaunchKernel(BiasNHWCKernel<T>, config.block_count,
                                  config.thread_per_block, 0, d.stream(),
@@ -205,7 +203,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
     return;
   }
   static constexpr int32 kWarpSize = 32;
-  CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
 
   const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
   int32 shared_memory_size = 0;

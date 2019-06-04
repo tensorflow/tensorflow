@@ -8,9 +8,10 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -77,6 +78,7 @@ py_library(
 py_test(
     name = "periodic_resample_op_test",
     srcs = ["python/kernel_tests/periodic_resample_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "notap",

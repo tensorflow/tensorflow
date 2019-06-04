@@ -74,6 +74,15 @@ class DirectivesTest(converter_testing.TestCase):
     self.assertEqual(d['back_prop'].id, 'a')
     self.assertNotIn('swap_memory', d)
 
+  def test_loop_target_with_no_loop(self):
+
+    def test_fn():
+      directives.set_loop_options()
+
+    node, ctx = self.prepare(test_fn, {'directives': directives})
+    with self.assertRaisesRegexp(ValueError, 'must be used inside a statement'):
+      node = directives_converter.transform(node, ctx)
+
   def test_invalid_default(self):
 
     def invalid_directive(valid_arg, invalid_default=object()):
@@ -89,6 +98,23 @@ class DirectivesTest(converter_testing.TestCase):
     node = node.body[0].value
     with self.assertRaisesRegexp(ValueError, 'Unexpected keyword.*'):
       directives_converter._map_args(node, invalid_directive)
+
+  def test_value_verification_does_not_trigger_properties(self):
+
+    class TestClass(object):
+
+      @property
+      def b(self):
+        raise ValueError('This should never be evaluated')
+
+    tc = TestClass()
+
+    def test_fn():
+      return tc.b + 1
+
+    node, ctx = self.prepare(test_fn, {'tc': tc})
+    node = directives_converter.transform(node, ctx)
+    self.assertIsNotNone(node)
 
 
 if __name__ == '__main__':

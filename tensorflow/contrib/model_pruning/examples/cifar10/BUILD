@@ -19,9 +19,8 @@ package(
     default_visibility = [
         "//tensorflow:internal",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 py_library(
     name = "cifar10_input",
@@ -48,6 +47,7 @@ py_binary(
     srcs = [
         "cifar10_eval.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":cifar10_pruning",
@@ -61,6 +61,7 @@ py_binary(
     srcs = [
         "cifar10_train.py",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":cifar10_pruning",

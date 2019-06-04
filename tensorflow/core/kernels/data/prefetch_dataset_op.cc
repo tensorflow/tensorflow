@@ -20,10 +20,12 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -31,14 +33,29 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-constexpr char kDatasetName[] = "Prefetch";
+/* static */ constexpr const char* const PrefetchDatasetOp::kDatasetType;
+/* static */ constexpr const char* const PrefetchDatasetOp::kInputDataset;
+/* static */ constexpr const char* const PrefetchDatasetOp::kBufferSize;
+/* static */ constexpr const char* const PrefetchDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const PrefetchDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const PrefetchDatasetOp::kSlackPeriod;
+
+// Determines the fraction of slack time by which to delay prefetching of data.
+constexpr double kSleepFactor = 0.2;
+constexpr char kBuffer[] = "buffer";
+constexpr char kStatus[] = "status";
+constexpr char kSizeSuffix[] = ".size";
+constexpr char kCodeSuffix[] = ".code";
+constexpr char kErrorMessageSuffix[] = ".error_message";
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size)
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
+          int64 slack_period)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
-        buffer_size_(buffer_size) {
+        buffer_size_(buffer_size),
+        slack_period_(slack_period) {
     input_->Ref();
   }
 
@@ -46,8 +63,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::", kDatasetName)});
+    return absl::make_unique<Iterator>(Iterator::Params{
+        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -58,7 +75,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override { return "PrefetchDatasetOp::Dataset"; }
+  string DebugString() const override {
+    return name_utils::DatasetDebugString(kDatasetType);
+  }
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
@@ -70,8 +89,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* buffer_size = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
-    TF_RETURN_IF_ERROR(
-        b->AddDataset(this, {input_graph_node, buffer_size}, output));
+    AttrValue slack_period_attr;
+    b->BuildAttrValue(slack_period_, &slack_period_attr);
+    TF_RETURN_IF_ERROR(b->AddDataset(
+        this, {input_graph_node, buffer_size},
+        {std::make_pair(kSlackPeriod, slack_period_attr)}, output));
     return Status::OK();
   }
 
@@ -80,7 +102,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          auto_tuner_(params.dataset->buffer_size_) {}
+          auto_tuner_(params.dataset->buffer_size_) {
+      slack_us_ = 0;
+    }
 
     ~Iterator() override {
       // Signal the prefetch thread to terminate it. We will then
@@ -96,6 +120,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         cancelled_ = true;
         cond_var_.notify_all();
       }
+    }
+
+    string BuildTraceMeName() override {
+      int64 buffer_limit;
+      {
+        tf_shared_lock l(mu_);
+        buffer_limit = auto_tuner_.buffer_limit();
+      }
+      return strings::StrCat(prefix(), "#buffer_limit=", buffer_limit, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -164,17 +197,17 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name("buffer_size"), buffer_.size()));
+          writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
         auto& buffer_element = buffer_[i];
         TF_RETURN_IF_ERROR(WriteStatus(writer, i, buffer_element.status));
         if (buffer_element.status.ok()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat("buffer[", i, "].size")),
+              full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
               buffer_element.value.size()));
           for (size_t j = 0; j < buffer_element.value.size(); j++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat("buffer[", i, "][", j, "]")),
+                full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
                 buffer_element.value[j]));
           }
         }
@@ -191,7 +224,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       size_t buffer_size;
       {
         int64 temp;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("buffer_size"), &temp));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBufferSize), &temp));
         buffer_size = static_cast<size_t>(temp);
       }
       for (size_t i = 0; i < buffer_size; i++) {
@@ -203,14 +236,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           {
             int64 temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("buffer[", i, "].size")), &temp));
+                full_name(strings::StrCat(kBuffer, "[", i, "]", kSizeSuffix)),
+                &temp));
             value_size = static_cast<size_t>(temp);
           }
           buffer_element.value.reserve(value_size);
           for (size_t j = 0; j < value_size; j++) {
             buffer_element.value.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                full_name(strings::StrCat("buffer[", i, "][", j, "]")),
+                full_name(strings::StrCat(kBuffer, "[", i, "][", j, "]")),
                 &buffer_element.value.back()));
           }
         }
@@ -226,6 +260,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       Status status;
       // The buffered data element.
       std::vector<Tensor> value;
+      int64 created_us;
     };
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -248,6 +283,20 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       Status s = buffer_.front().status;
       if (s.ok()) {
+        if (dataset()->slack_period_ > 0 &&
+            (num_elements() + 1) % dataset()->slack_period_ == 0) {
+          // TODO(rachelim): Consider doing something more sophisticated
+          // to decide how long to sleep for; e.g. using a kalman filter.
+          int64 slack_us =
+              Env::Default()->NowMicros() - buffer_.front().created_us;
+          // Every slack_period_-th element, update the most recent slack time,
+          // measured by the duration between when the element is prefetched
+          // and when it is consumed. We add kSleepFactor * slack_us_ to the
+          // measurement because we slept for that duration before prefetching
+          // the element.
+          slack_us_ = kSleepFactor * slack_us_ + slack_us;
+          VLOG(2) << "Setting slack_us_: " << slack_us_;
+        }
         *out_tensors = std::move(buffer_.front().value);
         RecordBufferDequeue(ctx, *out_tensors);
       }
@@ -282,6 +331,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
+      // Keep track of where we are in an iteration "burst"
+      int num_produced = 0;
       while (true) {
         // 1. Wait for a slot in the buffer.
         {
@@ -295,6 +346,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           if (cancelled_) {
             return;
           }
+        }
+
+        if (dataset()->slack_period_ > 0 &&
+            num_produced % dataset()->slack_period_ == 0) {
+          // For the first element in the "burst", sleep for a bit if there is
+          // slack.
+          VLOG(2) << "Sleeping for: " << slack_us_ * kSleepFactor;
+          ctx->env()->SleepForMicroseconds(slack_us_ * kSleepFactor);
         }
 
         // 2. Read the next element.
@@ -319,9 +378,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
+          buffer_element.created_us = ctx->env()->NowMicros();
           buffer_.push_back(std::move(buffer_element));
           cond_var_.notify_all();
         }
+        ++num_produced;
       }
     }
 
@@ -354,11 +415,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     string CodeKey(size_t index) {
-      return full_name(strings::StrCat("status[", index, "].code"));
+      return full_name(strings::StrCat(kStatus, "[", index, "]", kCodeSuffix));
     }
 
     string ErrorMessageKey(size_t index) {
-      return full_name(strings::StrCat("status[", index, "].error_message"));
+      return full_name(
+          strings::StrCat(kStatus, "[", index, "]", kErrorMessageSuffix));
     }
 
     // This mutex is used to ensure exclusivity between multiple threads
@@ -375,16 +437,29 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(mu_);
     bool cancelled_ GUARDED_BY(mu_) = false;
     bool prefetch_thread_finished_ GUARDED_BY(mu_) = false;
+
+    std::atomic<int64> slack_us_;
   };
   const DatasetBase* const input_;
   const int64 buffer_size_;
+
+  // If non-zero, determines the period between injecting "slack" into the
+  // execution.
+  const int64 slack_period_;
 };
+
+PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  if (ctx->HasAttr(kSlackPeriod)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kSlackPeriod, &slack_period_));
+  }
+}
 
 void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
-  int64 buffer_size;
+  int64 buffer_size = 0;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
+                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(ctx,
               buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
               errors::InvalidArgument("buffer_size must be >= 0 or set "
@@ -393,10 +468,10 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                       " for auto-tuning"));
 
   if (buffer_size == PrefetchAutotuner::kAutoTune) {
-    metrics::RecordTFDataAutotune(kDatasetName);
+    metrics::RecordTFDataAutotune(kDatasetType);
   }
 
-  *output = new Dataset(ctx, input, buffer_size);
+  *output = new Dataset(ctx, input, buffer_size, slack_period_);
 }
 
 namespace {

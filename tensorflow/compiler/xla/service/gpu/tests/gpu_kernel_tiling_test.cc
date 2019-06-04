@@ -485,9 +485,9 @@ TEST_F(GpuKernelTilingTest,
     }
 
     ENTRY kernel_entry {
-      arg0 = f32[8,64,4]{2,1,0}  parameter(0)
+      arg0 = f32[8,64,32]{2,1,0}  parameter(0)
       constant0 = f32[] constant(0)
-      ROOT reduce0 = f32[8,4]{0,1} reduce(arg0, constant0), dimensions={1},
+      ROOT reduce0 = f32[8,32]{0,1} reduce(arg0, constant0), dimensions={1},
         to_apply=reduction0
     })";
 
@@ -498,6 +498,37 @@ TEST_F(GpuKernelTilingTest,
                      R"(
 ; CHECK-LABEL: define void @reduce
 ; CHECK: call float @llvm.nvvm.atomic.load.add.f32.p0f32
+; CHECK: }
+)",
+                     /*match_optimized_ir=*/true);
+
+  // Check that the kernel runs correctly.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
+TEST_F(GpuKernelTilingTest, RowReductionWithSmallDimensionNotTiled) {
+  const char *const kHloString = R"(
+    HloModule reduction
+    reduction0 {
+      x0 = f32[] parameter(0)
+      y0 = f32[] parameter(1)
+      ROOT add0 = f32[] add(x0, y0)
+    }
+
+    ENTRY kernel_entry {
+      arg0 = f32[8,6,16]{2,1,0}  parameter(0)
+      constant0 = f32[] constant(0)
+      ROOT reduce0 = f32[8,6]{1,0} reduce(arg0, constant0), dimensions={2},
+        to_apply=reduction0
+    })";
+
+  // Check that the kernel is not tiled by looking for llvm.nvvm.shfl.sync.down.
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+; CHECK-LABEL: define void @reduce
+; CHECK-NOT: call float @llvm.nvvm.shfl.sync.down.f32
 ; CHECK: }
 )",
                      /*match_optimized_ir=*/true);

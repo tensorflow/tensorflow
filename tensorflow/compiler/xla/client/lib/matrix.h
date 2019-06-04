@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATRIX_H_
 
 #include <array>
+
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -29,6 +30,10 @@ namespace xla {
 // Returns an m x n matrix with 1s on the diagonal elements, zeros everywhere
 // else.
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
+
+// Returns a mask where the 'diagonal'-th diagonal is true and everything else
+// is false.
+XlaOp GetDiagonalMask(XlaOp x, int diagonal = 0);
 
 // Get the diagonals of the last two dimensions. Use k>0 for diagonals above the
 // main diagonal, and k<0 for diagonals below the main diagonal.
@@ -72,6 +77,9 @@ XlaOp LowerTriangle(XlaOp x);
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 xla::XlaOp BatchDot(
     xla::XlaOp x, xla::XlaOp y,
+    xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
+xla::XlaOp BatchDot(
+    xla::XlaOp x, bool transpose_x, xla::XlaOp y, bool transpose_y,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::DEFAULT);
 
 // Parse an einsum string into dimension numbers:

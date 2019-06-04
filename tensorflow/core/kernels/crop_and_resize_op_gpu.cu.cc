@@ -19,12 +19,11 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/crop_and_resize_op.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/crop_and_resize_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -370,7 +369,7 @@ struct CropAndResize<GPUDevice, T> {
     }
 
     if (total_count > 0) {
-      CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
+      GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
       TF_CHECK_OK(CudaLaunchKernel(
           CropAndResizeKernel<T>, config.block_count, config.thread_per_block,
           0, d.stream(), config.virtual_thread_count, image.data(),
@@ -401,12 +400,12 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     int total_count;
-    CudaLaunchConfig config;
+    GpuLaunchConfig config;
 
     // Initialize grads_image with all zeros.
     total_count = batch * image_height * image_width * depth;
     if (total_count > 0) {
-      config = GetCudaLaunchConfig(total_count, d);
+      config = GetGpuLaunchConfig(total_count, d);
       TF_CHECK_OK(CudaLaunchKernel(
           SetZero<T>, config.block_count, config.thread_per_block, 0,
           d.stream(), config.virtual_thread_count, grads_image.data()));
@@ -421,7 +420,7 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     // Accumulate.
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
-      config = GetCudaLaunchConfig(total_count, d);
+      config = GetGpuLaunchConfig(total_count, d);
       TF_CHECK_OK(CudaLaunchKernel(
           CropAndResizeBackpropImageKernel<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
@@ -451,12 +450,12 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     const int depth = grads.dimension(3);
 
     int total_count;
-    CudaLaunchConfig config;
+    GpuLaunchConfig config;
 
     // Initialize grads_boxes with all zeros.
     total_count = num_boxes * 4;
     if (total_count > 0) {
-      config = GetCudaLaunchConfig(total_count, d);
+      config = GetGpuLaunchConfig(total_count, d);
       TF_CHECK_OK(CudaLaunchKernel(
           SetZero<float>, config.block_count, config.thread_per_block, 0,
           d.stream(), config.virtual_thread_count, grads_boxes.data()));
@@ -465,7 +464,7 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     // Accumulate.
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
-      config = GetCudaLaunchConfig(total_count, d);
+      config = GetGpuLaunchConfig(total_count, d);
       TF_CHECK_OK(CudaLaunchKernel(
           CropAndResizeBackpropBoxesKernel<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,

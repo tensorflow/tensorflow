@@ -23,6 +23,7 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
@@ -31,6 +32,7 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -206,8 +208,10 @@ class TimeDistributed(Wrapper):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     child_input_shape = tensor_shape.TensorShape([input_shape[0]] +
                                                  input_shape[2:])
-    child_output_shape = self.layer.compute_output_shape(
-        child_input_shape).as_list()
+    child_output_shape = self.layer.compute_output_shape(child_input_shape)
+    if not isinstance(child_output_shape, tensor_shape.TensorShape):
+      child_output_shape = tensor_shape.TensorShape(child_output_shape)
+    child_output_shape = child_output_shape.as_list()
     timesteps = input_shape[1]
     return tensor_shape.TensorShape([child_output_shape[0], timesteps] +
                                     child_output_shape[1:])
@@ -259,6 +263,8 @@ class TimeDistributed(Wrapper):
     if (hasattr(self.layer, 'activity_regularizer') and
         self.layer.activity_regularizer is not None):
       regularization_loss = self.layer.activity_regularizer(y)
+      base_layer_utils.check_graph_consistency(
+          regularization_loss, method='activity_regularizer')
       self.add_loss(regularization_loss, inputs)
     return y
 
@@ -348,47 +354,94 @@ class Bidirectional(Wrapper):
       One of {'sum', 'mul', 'concat', 'ave', None}.
       If None, the outputs will not be combined,
       they will be returned as a list.
+    backward_layer: Optional `Recurrent` instance to be used to handle
+      backwards input processing. If `backward_layer` is not provided,
+      the layer instance passed as the `layer` argument will be used to
+      generate the backward layer automatically.
+      Note that the provided `backward_layer` layer should have properties
+      matching those of the `layer` argument, in particular it should have the
+      same values for `stateful`, `return_states`, `return_sequence`, etc.
+      In addition, `backward_layer` and `layer` should have
+      different `go_backwards` argument values.
+      A `ValueError` will be raised if these requirements are not met.
 
   Call arguments:
     The call arguments for this layer are the same as those of the wrapped RNN
       layer.
 
   Raises:
-    ValueError: If not initialized with a `Layer` instance or
-      In case of invalid `merge_mode` argument.
+    ValueError:
+      1. If `layer` or `backward_layer` is not a `Layer` instance.
+      2. In case of invalid `merge_mode` argument.
+      3. If `backward_layer` has mismatched properties compared to `layer`.
 
   Examples:
 
   ```python
   model = Sequential()
-  model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5,
-  10)))
+  model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5, 10)))
   model.add(Bidirectional(LSTM(10)))
   model.add(Dense(5))
   model.add(Activation('softmax'))
   model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+
+   # With custom backward layer
+   model = Sequential()
+   forward_layer = LSTM(10, return_sequences=True)
+   backard_layer = LSTM(10, activation='relu', return_sequences=True,
+                        go_backwards=True)
+   model.add(Bidirectional(forward_layer, backward_layer=backward_layer,
+                           input_shape=(5, 10)))
+   model.add(Dense(5))
+   model.add(Activation('softmax'))
+   model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
   ```
   """
 
-  def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
+  def __init__(self,
+               layer,
+               merge_mode='concat',
+               weights=None,
+               backward_layer=None,
+               **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
           'Please initialize `Bidirectional` layer with a '
           '`Layer` instance. You passed: {input}'.format(input=layer))
+    if backward_layer is not None and not isinstance(backward_layer, Layer):
+      raise ValueError('`backward_layer` need to be a `Layer` instance. '
+                       'You passed: {input}'.format(input=backward_layer))
     if merge_mode not in ['sum', 'mul', 'ave', 'concat', None]:
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
-    if getattr(layer, 'zero_output_for_mask', None) is not None:
-      # Force the zero_output_for_mask to be True if returning sequences.
-      layer.zero_output_for_mask = layer.return_sequences
+    # Recreate the forward layer from the original layer config, so that it will
+    # not carry over any state from the layer.
+    self.forward_layer = self._recreate_layer_from_config(layer)
 
-    self.forward_layer = copy.copy(layer)
-    config = layer.get_config()
-    config['go_backwards'] = not config['go_backwards']
-    self.backward_layer = layer.__class__.from_config(config)
+    if backward_layer is None:
+      self.backward_layer = self._recreate_layer_from_config(
+          layer, go_backwards=True)
+    else:
+      self.backward_layer = backward_layer
+      # Keep the custom backward layer config, so that we can save it later. The
+      # layer's name might be updated below with prefix 'backward_', and we want
+      # to preserve the original config.
+      self._backward_layer_config = backward_layer.get_config()
+
     self.forward_layer._name = 'forward_' + self.forward_layer.name
     self.backward_layer._name = 'backward_' + self.backward_layer.name
+
+    self._verify_layer_config()
+
+    def force_zero_output_for_mask(layer):
+      # Force the zero_output_for_mask to be True if returning sequences.
+      if getattr(layer, 'zero_output_for_mask', None) is not None:
+        layer.zero_output_for_mask = layer.return_sequences
+
+    force_zero_output_for_mask(self.forward_layer)
+    force_zero_output_for_mask(self.backward_layer)
+
     self.merge_mode = merge_mode
     if weights:
       nw = len(weights)
@@ -399,7 +452,7 @@ class Bidirectional(Wrapper):
     self.return_state = layer.return_state
     self.supports_masking = True
     self._trainable = True
-    self._num_constants = None
+    self._num_constants = 0
     # We don't want to track `layer` since we're already tracking the two copies
     # of it we actually run.
     self._setattr_tracking = False
@@ -407,10 +460,51 @@ class Bidirectional(Wrapper):
     self._setattr_tracking = True
     self.input_spec = layer.input_spec
 
+  def _verify_layer_config(self):
+    """Ensure the forward and backward layers have valid common property."""
+    if self.forward_layer.go_backwards == self.backward_layer.go_backwards:
+      raise ValueError('Forward layer and backward layer should have different '
+                       '`go_backwards` value.')
+
+    common_attributes = ('stateful', 'return_sequences', 'return_state')
+    for a in common_attributes:
+      forward_value = getattr(self.forward_layer, a)
+      backward_value = getattr(self.backward_layer, a)
+      if forward_value != backward_value:
+        raise ValueError(
+            'Forward layer and backward layer are expected to have the same '
+            'value for attribute {attr}, got {forward} and {backward}'.format(
+                attr=a, forward=forward_value, backward=backward_value))
+
+  def _recreate_layer_from_config(self, layer, go_backwards=False):
+    # When recreating the layer from its config, it is possible that the layer
+    # is a RNN layer that contains custom cells. In this case we inspect the
+    # layer and pass the custom cell class as part of the `custom_objects`
+    # argument when calling `from_config`.
+    # See https://github.com/tensorflow/tensorflow/issues/26581 for more detail.
+    config = layer.get_config()
+    if go_backwards:
+      config['go_backwards'] = not config['go_backwards']
+    if 'custom_objects' in tf_inspect.getfullargspec(
+        layer.__class__.from_config).args:
+      custom_objects = {}
+      cell = getattr(layer, 'cell', None)
+      if cell is not None:
+        custom_objects[cell.__class__.__name__] = cell.__class__
+        # For StackedRNNCells
+        stacked_cells = getattr(cell, 'cells', [])
+        for c in stacked_cells:
+          custom_objects[c.__class__.__name__] = c.__class__
+      return layer.__class__.from_config(config, custom_objects=custom_objects)
+    else:
+      return layer.__class__.from_config(config)
+
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    output_shape = tuple(self.forward_layer.compute_output_shape(
-        input_shape).as_list())
+    output_shape = self.forward_layer.compute_output_shape(input_shape)
+    if not isinstance(output_shape, tensor_shape.TensorShape):
+      output_shape = tensor_shape.TensorShape(output_shape)
+    output_shape = tuple(output_shape.as_list())
     if self.return_state:
       state_shape = output_shape[1:]
       output_shape = output_shape[0]
@@ -490,6 +584,9 @@ class Bidirectional(Wrapper):
       # input. Update the input_spec to match the inputs.
       full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
                         ] + additional_specs
+      # Removing kwargs since the value are passed with input list.
+      kwargs['initial_state'] = None
+      kwargs['constants'] = None
 
       # Perform the call with temporarily replaced input_spec
       original_input_spec = self.input_spec
@@ -515,25 +612,40 @@ class Bidirectional(Wrapper):
     if generic_utils.has_arg(self.layer.call, 'constants'):
       kwargs['constants'] = constants
 
-    if initial_state is not None and generic_utils.has_arg(
-        self.layer.call, 'initial_state'):
-      forward_inputs = [inputs[0]]
-      backward_inputs = [inputs[0]]
-      pivot = len(initial_state) // 2 + 1
-      # add forward initial state
-      forward_state = inputs[1:pivot]
-      forward_inputs += forward_state
-      if self._num_constants is None:
-        # add backward initial state
-        backward_state = inputs[pivot:]
-        backward_inputs += backward_state
+    if generic_utils.has_arg(self.layer.call, 'initial_state'):
+      if isinstance(inputs, list) and len(inputs) > 1:
+        # initial_states are keras tensors, which means they are passed in
+        # together with inputs as list. The initial_states need to be split into
+        # forward and backward section, and be feed to layers accordingly.
+        forward_inputs = [inputs[0]]
+        backward_inputs = [inputs[0]]
+        pivot = (len(inputs) - self._num_constants) // 2 + 1
+        # add forward initial state
+        forward_inputs += inputs[1:pivot]
+        if not self._num_constants:
+          # add backward initial state
+          backward_inputs += inputs[pivot:]
+        else:
+          # add backward initial state
+          backward_inputs += inputs[pivot:-self._num_constants]
+          # add constants for forward and backward layers
+          forward_inputs += inputs[-self._num_constants:]
+          backward_inputs += inputs[-self._num_constants:]
+        forward_state, backward_state = None, None
+        if 'constants' in kwargs:
+          kwargs['constants'] = None
+      elif initial_state is not None:
+        # initial_states are not keras tensors, eg eager tensor from np array.
+        # They are only passed in from kwarg initial_state, and should be passed
+        # to forward/backward layer via kwarg initial_state as well.
+        forward_inputs, backward_inputs = inputs, inputs
+        half = len(initial_state) // 2
+        forward_state = initial_state[:half]
+        backward_state = initial_state[half:]
       else:
-        # add backward initial state
-        backward_state = inputs[pivot:-self._num_constants]
-        backward_inputs += backward_state
-        # add constants for forward and backward layers
-        forward_inputs += inputs[-self._num_constants:]
-        backward_inputs += inputs[-self._num_constants:]
+        forward_inputs, backward_inputs = inputs, inputs
+        forward_state, backward_state = None, None
+
       y = self.forward_layer.call(forward_inputs,
                                   initial_state=forward_state, **kwargs)
       y_rev = self.backward_layer.call(backward_inputs,
@@ -609,14 +721,29 @@ class Bidirectional(Wrapper):
 
   def get_config(self):
     config = {'merge_mode': self.merge_mode}
-    if self._num_constants is not None:
+    if self._num_constants:
       config['num_constants'] = self._num_constants
+
+    if hasattr(self, '_backward_layer_config'):
+      config['backward_layer'] = {
+          'class_name': self.backward_layer.__class__.__name__,
+          'config': self._backward_layer_config,
+      }
     base_config = super(Bidirectional, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
-    num_constants = config.pop('num_constants', None)
+    # Instead of updating the input, create a copy and use that.
+    config = config.copy()
+    num_constants = config.pop('num_constants', 0)
+    backward_layer_config = config.pop('backward_layer', None)
+    if backward_layer_config is not None:
+      from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+      backward_layer = deserialize_layer(
+          backward_layer_config, custom_objects=custom_objects)
+      config['backward_layer'] = backward_layer
+
     layer = super(Bidirectional, cls).from_config(config,
                                                   custom_objects=custom_objects)
     layer._num_constants = num_constants

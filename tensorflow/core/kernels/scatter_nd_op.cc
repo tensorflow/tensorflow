@@ -243,10 +243,9 @@ class ScatterNdUpdateOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
-      Var* v;
+      core::RefCountPtr<Var> v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-      core::ScopedUnref scoped_unref(v);
-      OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+      OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
       DoCompute(c);
     } else if (use_exclusive_lock_) {
@@ -271,7 +270,7 @@ class ScatterNdUpdateOp : public OpKernel {
     TensorShape params_shape;
 
     if (dtype_ == DT_RESOURCE) {
-      Var* v;
+      core::RefCountPtr<Var> v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
       Tensor* t = v->tensor();
       params = *t;
@@ -727,7 +726,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
     slice_shape.RemoveLastDims(1);
     return errors::InvalidArgument(
         "indices", SliceDebugString(slice_shape, bad_i), " = [",
-        str_util::Join(
+        absl::StrJoin(
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }

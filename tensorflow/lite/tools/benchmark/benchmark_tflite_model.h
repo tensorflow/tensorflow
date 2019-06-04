@@ -16,46 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 namespace tflite {
 namespace benchmark {
-
-// Dumps profiling events if profiling is enabled.
-class ProfilingListener : public BenchmarkListener {
- public:
-  explicit ProfilingListener() : interpreter_(nullptr), has_profiles_(false) {}
-
-  void SetInterpreter(Interpreter* interpreter);
-
-  void OnSingleRunStart(RunType run_type) override;
-
-  void OnSingleRunEnd() override;
-
-  void OnBenchmarkEnd(const BenchmarkResults& results) override;
-
- private:
-  Interpreter* interpreter_;
-  profiling::Profiler profiler_;
-  profiling::ProfileSummarizer summarizer_;
-  bool has_profiles_;
-};
-
-// Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
-class GemmlowpProfilingListener : public BenchmarkListener {
- public:
-  virtual ~GemmlowpProfilingListener() {}
-
-  void OnBenchmarkStart(const BenchmarkParams& params) override;
-
-  void OnBenchmarkEnd(const BenchmarkResults& results) override;
-};
 
 // Benchmarks a TFLite model by running tflite interpreter.
 class BenchmarkTfLiteModel : public BenchmarkModel {
@@ -75,18 +46,18 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   uint64_t ComputeInputBytes() override;
   void Init() override;
   void RunImpl() override;
-  void SetDelegates(std::vector<std::unique_ptr<TfLiteDelegate>> delegates) {
-    delegates_ = std::move(delegates);
-  }
 
  protected:
   static BenchmarkParams DefaultParams();
   void PrepareInputData() override;
   void ResetInputsAndOutputs() override;
-  void CleanUp();
 
-  // Allows installation of custom delegates during initialization
-  virtual void ApplyDelegates();
+  // Allow subclasses to create custom delegates to be applied during init.
+  using TfLiteDelegatePtr = tflite::Interpreter::TfLiteDelegatePtr;
+  using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
+  virtual TfLiteDelegatePtrMap GetDelegates() const;
+
+  void CleanUp();
 
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
@@ -98,9 +69,9 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   };
   std::vector<InputLayerInfo> inputs;
   std::vector<InputTensorData> inputs_data_;
-  ProfilingListener profiling_listener_;
-  GemmlowpProfilingListener gemmlowp_profiling_listener_;
-  std::vector<std::unique_ptr<TfLiteDelegate>> delegates_;
+  std::unique_ptr<BenchmarkListener> profiling_listener_;
+  std::unique_ptr<BenchmarkListener> gemmlowp_profiling_listener_;
+  TfLiteDelegatePtrMap delegates_;
 };
 
 }  // namespace benchmark

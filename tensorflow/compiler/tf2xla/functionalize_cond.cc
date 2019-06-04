@@ -598,6 +598,14 @@ Status Conditional::ExtractBodies(Graph* graph) {
       // as they could be mutated during iteration.
       std::vector<const Edge*> in_edges(n->in_edges().begin(),
                                         n->in_edges().end());
+      // Sort in_edges to make sure nodes are copied in a deterministic order.
+      std::sort(
+          in_edges.begin(), in_edges.end(), [](const Edge* a, const Edge* b) {
+            int a_src_output = a->src_output(), b_src_output = b->src_output();
+            StringPiece a_name(a->src()->name()), b_name(b->src()->name());
+            return std::tie(a_src_output, a_name) <
+                   std::tie(b_src_output, b_name);
+          });
       for (const Edge* e : in_edges) {
         Node* src = e->src();
         // Skip src/dst node.
@@ -918,10 +926,16 @@ string Conditional::name() const {
 
 Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
                                           int port) {
+  NodeBuilder id_builder(replacee->name(), "Identity");
+  id_builder.Input(if_node, port);
+  string outside_compilation;
+  if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    id_builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   Node* id;
-  TF_RETURN_IF_ERROR(NodeBuilder(replacee->name(), "Identity")
-                         .Input(if_node, port)
-                         .Finalize(graph_, &id));
+  TF_RETURN_IF_ERROR(id_builder.Finalize(graph_, &id));
   state_map_.ResetCondId(id, state_map_.LookupCondId(if_node));
   state_map_.ResetAncestorId(id, state_map_.LookupAncestorId(if_node));
   return Status::OK();

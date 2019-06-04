@@ -293,6 +293,11 @@ static void AllocateFlags() {
           "Crashes the program on extra verification failures, e.g. cuDNN "
           "cross checking failures"),
       tensorflow::Flag(
+          "xla_gpu_disable_autotune",
+          bool_setter_for(&DebugOptions::set_xla_gpu_disable_autotune),
+          flag_values->xla_gpu_disable_autotune(),
+          "Disable GEMM and Convolution auto-tuning."),
+      tensorflow::Flag(
           "xla_force_host_platform_device_count",
           int32_setter_for(
               &DebugOptions::set_xla_force_host_platform_device_count),

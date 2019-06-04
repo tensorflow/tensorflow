@@ -55,12 +55,10 @@ class BackpropTest(test.TestCase):
       ind1 = constant_op.constant(np.array([0, 1]))
       ind2 = constant_op.constant(np.array([2, 3]))
       ind3 = constant_op.constant(np.array([1, 3]))
-      # A mixture of IndexedSlices and dense tensor to aggregate.
       g1 = embedding_ops.embedding_lookup(x, ind1)
       g2 = embedding_ops.embedding_lookup(x, ind2)
       g3 = embedding_ops.embedding_lookup(x, ind3)
-      g4 = math_ops.reduce_sum(x * constant_op.constant(2.0))
-      return g1 * g2 * g3 * g4
+      return g1 * g2 * g3
 
     var_np = np.random.rand(4, 2).astype(np.float32)
     var = constant_op.constant(var_np)
@@ -75,14 +73,38 @@ class BackpropTest(test.TestCase):
       tf_g1 = embedding_ops.embedding_lookup(tf_var, tf_ind1)
       tf_g2 = embedding_ops.embedding_lookup(tf_var, tf_ind2)
       tf_g3 = embedding_ops.embedding_lookup(tf_var, tf_ind3)
-      tf_g4 = math_ops.reduce_sum(tf_var * 2.0, axis=(0, 1))
-      tf_y = tf_g1 * tf_g2 * tf_g3 * tf_g4
+      tf_y = tf_g1 * tf_g2 * tf_g3
       tf_grad = gradients.gradients(tf_y, [tf_var])[0]
 
       tf_dense_grad = math_ops.unsorted_segment_sum(
           tf_grad.values, tf_grad.indices, tf_grad.dense_shape[0])
 
       self.assertAllClose(grad, self.evaluate(tf_dense_grad))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAggregateGradientsWithTensor(self):
+
+    def fn(x):
+      ind1 = constant_op.constant(np.array([0, 1]))
+      # A mixture of IndexedSlices and dense tensor to aggregate.
+      g1 = embedding_ops.embedding_lookup(x, ind1)
+      g2 = math_ops.reduce_sum(x * constant_op.constant(2.0))
+      return g1 * g2
+
+    var_np = np.random.rand(4, 2).astype(np.float32)
+    var = constant_op.constant(var_np)
+    grad = backprop.gradients_function(fn, [0])(var)[0]
+    grad = self.evaluate(ops.convert_to_tensor(grad))
+
+    if not context.executing_eagerly():
+      tf_var = array_ops.constant(var_np, dtypes.float32)
+      tf_ind1 = array_ops.constant([0, 1])
+      tf_g1 = embedding_ops.embedding_lookup(tf_var, tf_ind1)
+      tf_g2 = math_ops.reduce_sum(tf_var * 2.0, axis=(0, 1))
+      tf_y = tf_g1 * tf_g2
+      tf_grad = gradients.gradients(tf_y, [tf_var])[0]
+
+      self.assertAllClose(grad, tf_grad)
 
   def testImplicitGradWithResourceVariable(self):
     x = resource_variable_ops.ResourceVariable(
@@ -538,11 +560,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(argmax)
     self.assertAllEqual(grad([0.0])[0], None)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def fn(x):
       with context.device('/gpu:0'):
         b = constant_op.constant(2.0)
@@ -554,10 +574,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testGPUImplicitGrad(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPU found')
     with context.device('gpu:0'):
       v = resource_variable_ops.ResourceVariable(
           constant_op.constant(1.0), name='v')
@@ -580,11 +599,9 @@ class BackpropTest(test.TestCase):
     grad = backprop.gradients_function(fn, [0])(constant_op.constant(1.0))[0]
     self.assertAllEqual(grad, 1.0)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyGPU2CPU2GPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     def f(a, b):
       return a.cpu() + b.cpu()
 
@@ -928,11 +945,9 @@ class BackpropTest(test.TestCase):
     self.assertEqual(1, len(grads))
     self.assertAllEqual(grads[0], x)
 
+  @test_util.run_gpu_only
   @test_util.assert_no_new_tensors
   def testTensorCopyCPU2GPU2CPU(self):
-    if not context.context().num_gpus():
-      self.skipTest('No GPUs found')
-
     # forward: a (cpu->gpu) -> add (gpu) -> c (gpu->cpu) -> add (cpu) -> e (cpu)
     # back: e (cpu) -> add (cpu) -> c (cpu->gpu) -> add (gpu) -> grad (gpu->cpu)
     def f(a, b):
@@ -1547,6 +1562,51 @@ class BatchJacobianTest(test.TestCase):
       y = math_ops.matmul(x, w)
     self.assertAllClose(g.batch_jacobian(y, x, parallel_iterations=2),
                         g.batch_jacobian(y, x, parallel_iterations=3))
+
+
+class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
+
+  def _assert_indexed_slices_equal(self, left, right):
+    self.assertAllEqual(
+        self.evaluate(ops.convert_to_tensor(left)),
+        self.evaluate(ops.convert_to_tensor(right)))
+
+  def testNoGradients(self):
+    self.assertIsNone(backprop.aggregate_indexed_slices_gradients([]))
+
+  def testOneGradient(self):
+    t = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    result = backprop.aggregate_indexed_slices_gradients([t])
+    self._assert_indexed_slices_equal(t, result)
+
+  def testMultipleGradients(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(
+        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMultipleGradientsWithNones(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = math_ops._as_indexed_slices(
+        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
+    t3 = None
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1, t3])
+    self._assert_indexed_slices_equal(total, result)
+
+  def testMixedTensorAndIndexedSlices(self):
+    t0 = math_ops._as_indexed_slices(
+        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
+    t1 = constant_op.constant([[0., 0.], [5, 6], [7., 8.]])
+    total = constant_op.constant([[1., 2.], [5, 6], [10., 12.]])
+    result = backprop.aggregate_indexed_slices_gradients([t0, t1])
+    self._assert_indexed_slices_equal(total, result)
+
 
 if __name__ == '__main__':
   test.main()

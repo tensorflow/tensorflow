@@ -173,6 +173,7 @@ cc_library(
     srcs = ["pooling.cc"],
     hdrs = ["pooling.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -219,6 +220,7 @@ cc_library(
     srcs = ["reshape.cc"],
     hdrs = ["reshape.h"],
     deps = [
+        ":util",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -289,5 +291,14 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )

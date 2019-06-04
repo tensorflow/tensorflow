@@ -145,6 +145,8 @@ TfLiteStatus ImagePreprocessingStage::Run() {
   // This isn't always obvious in unit tests, but makes a difference during
   // accuracy testing with ILSVRC dataset.
   flags.dct_method = JDCT_ISLOW;
+  // We necessarily require a 3-channel image as the output.
+  flags.components = kNumChannels;
   original_image.reset(Uncompress(temp, fsize, flags, &original_width,
                                   &original_height, &original_channels,
                                   nullptr));
@@ -159,6 +161,7 @@ TfLiteStatus ImagePreprocessingStage::Run() {
   const int crop_height =
       static_cast<int>(std::round(original_height * cropping_fraction_));
   std::vector<float> cropped_image;
+  cropped_image.reserve(crop_height * crop_width * kNumChannels);
   Crop(original_height, original_width, top, left, crop_height, crop_width,
        original_image.get(), &cropped_image);
 

@@ -607,15 +607,18 @@ class FusedConv2DOpTest : public OpsTestBase {
   }
 
   void RunConv2DWithBias(const Tensor& input_data, const Tensor& filter_data,
-                         const Tensor& bias_data, Tensor* output,
-                         bool allow_gpu_device = false, int stride = 1) {
+                         const Tensor& bias_data, const std::string& padding,
+                         const std::vector<int>& explicit_paddings,
+                         Tensor* output, bool allow_gpu_device = false,
+                         int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
-        {1, stride, stride, 1}, "SAME");
+        {1, stride, stride, 1}, padding,
+        ops::Conv2D::Attrs().ExplicitPaddings(explicit_paddings));
 
     ops::BiasAdd with_bias = ops::BiasAdd(
         root.WithOpName("with_bias"), conv,
@@ -626,15 +629,17 @@ class FusedConv2DOpTest : public OpsTestBase {
 
   void RunConv2DWithBiasAndActivation(
       const Tensor& input_data, const Tensor& filter_data,
-      const Tensor& bias_data, const string& activation_type, Tensor* output,
-      bool allow_gpu_device = false, int stride = 1) {
+      const Tensor& bias_data, const string& activation_type,
+      const std::string& padding, const std::vector<int>& explicit_paddings,
+      Tensor* output, bool allow_gpu_device = false, int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
-        {1, stride, stride, 1}, "SAME");
+        {1, stride, stride, 1}, padding,
+        ops::Conv2D::Attrs().ExplicitPaddings(explicit_paddings));
 
     ops::BiasAdd with_bias = ops::BiasAdd(
         root.WithOpName("with_bias"), conv,
@@ -653,20 +658,20 @@ class FusedConv2DOpTest : public OpsTestBase {
     RunAndFetch(root, "with_activation", output, allow_gpu_device);
   }
 
-  void RunConv2DWithBatchNorm(const Tensor& input_data,
-                              const Tensor& filter_data,
-                              const Tensor& scale_data,
-                              const Tensor& offset_data,
-                              const Tensor& mean_data,
-                              const Tensor& variance_data, Tensor* output,
-                              bool allow_gpu_device = false, int stride = 1) {
+  void RunConv2DWithBatchNorm(
+      const Tensor& input_data, const Tensor& filter_data,
+      const Tensor& scale_data, const Tensor& offset_data,
+      const Tensor& mean_data, const Tensor& variance_data,
+      const std::string& padding, const std::vector<int>& explicit_paddings,
+      Tensor* output, bool allow_gpu_device = false, int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     ops::Conv2D conv = ops::Conv2D(
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
-        {1, stride, stride, 1}, "SAME");
+        {1, stride, stride, 1}, padding,
+        ops::Conv2D::Attrs().ExplicitPaddings(explicit_paddings));
 
     ops::FusedBatchNorm::Attrs attr;
     attr = attr.IsTraining(false);
@@ -686,7 +691,8 @@ class FusedConv2DOpTest : public OpsTestBase {
       const Tensor& input_data, const Tensor& filter_data,
       const Tensor& scale_data, const Tensor& offset_data,
       const Tensor& mean_data, const Tensor& variance_data,
-      const string& activation_type, Tensor* output,
+      const string& activation_type, const std::string& padding,
+      const std::vector<int>& explicit_paddings, Tensor* output,
       bool allow_gpu_device = false, int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
 
@@ -694,7 +700,8 @@ class FusedConv2DOpTest : public OpsTestBase {
         root.WithOpName("conv"),
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
-        {1, stride, stride, 1}, "SAME");
+        {1, stride, stride, 1}, padding,
+        ops::Conv2D::Attrs().ExplicitPaddings(explicit_paddings));
 
     ops::FusedBatchNorm::Attrs attr;
     attr = attr.IsTraining(false);
@@ -723,8 +730,11 @@ class FusedConv2DOpTest : public OpsTestBase {
 
   void RunFusedConv2DOp(const Tensor& input_data, const Tensor& filter_data,
                         const std::vector<Tensor>& args_data,
-                        const std::vector<string>& fused_ops, Tensor* output,
-                        bool allow_gpu_device = false, int stride = 1) {
+                        const std::vector<string>& fused_ops,
+                        const std::string& padding,
+                        const std::vector<int>& explicit_paddings,
+                        Tensor* output, bool allow_gpu_device = false,
+                        int stride = 1) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     DataType dtype = DataTypeToEnum<T>::v();
@@ -750,7 +760,8 @@ class FusedConv2DOpTest : public OpsTestBase {
                      .Attr("num_args", num_args)
                      .Attr("T", dtype)
                      .Attr("strides", {1, stride, stride, 1})
-                     .Attr("padding", "SAME")
+                     .Attr("padding", padding)
+                     .Attr("explicit_paddings", explicit_paddings)
                      .Attr("fused_ops", fused_ops)
                      .Finalize(&fused_conv2d));
 
@@ -794,7 +805,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     if (image_width == filter_size && image_height == filter_size) {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-5);
     }
   }
 
@@ -844,28 +855,33 @@ class FusedConv2DOpTest : public OpsTestBase {
     if (image_width == filter_size && image_height == filter_size) {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
-      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-5);
     }
   }
 
   // Verifies that computing Conv2D+BiasAdd in a graph is identical to
   // FusedConv2D.
   void VerifyConv2DWithBias(int filter_size, int filter_count,
+                            const std::vector<int>& explicit_paddings = {},
                             int depth = kDepth, int image_width = kImageWidth,
                             int image_height = kImageHeight,
                             int image_batch_count = kImageBatchCount) {
+    std::string padding = explicit_paddings.empty() ? "SAME" : "EXPLICIT";
     const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBias(input_data, filter_data, bias_data, out);
+        [this, &explicit_paddings, padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& bias_data, Tensor* out) {
+          RunConv2DWithBias(input_data, filter_data, bias_data, padding,
+                            explicit_paddings, out);
         };
 
-    const BiasAddGraphRunner run_fused = [this](const Tensor& input_data,
-                                                const Tensor& filter_data,
-                                                const Tensor& bias_data,
-                                                Tensor* out) {
-      RunFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"}, out);
-    };
+    const BiasAddGraphRunner run_fused =
+        [this, explicit_paddings, padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& bias_data, Tensor* out) {
+          RunFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
+                           padding, explicit_paddings, out);
+        };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
@@ -876,24 +892,29 @@ class FusedConv2DOpTest : public OpsTestBase {
   // to FusedConv2D.
   void VerifyConv2DWithBiasAndActivation(
       const string& activation, int filter_size, int filter_count,
-      int depth = kDepth, int image_width = kImageWidth,
-      int image_height = kImageHeight,
+      const std::vector<int>& explicit_paddings = {}, int depth = kDepth,
+      int image_width = kImageWidth, int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
+    std::string padding = explicit_paddings.empty() ? "SAME" : "EXPLICIT";
     const BiasAddGraphRunner run_default =
-        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
-                            const Tensor& bias_data, Tensor* out) {
+        [this, &activation, &explicit_paddings, &padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& bias_data, Tensor* out) {
           RunConv2DWithBiasAndActivation(
-              input_data, filter_data, bias_data, activation, out,
+              input_data, filter_data, bias_data, activation, padding,
+              explicit_paddings, out,
               /*allow_gpu_device=*/activation == "Relu");
         };
 
-    const BiasAddGraphRunner run_fused =
-        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
-                            const Tensor& bias_data, Tensor* out) {
-          RunFusedConv2DOp(input_data, filter_data, {bias_data},
-                           {"BiasAdd", activation}, out,
-                           /*allow_gpu_device=*/activation == "Relu");
-        };
+    const BiasAddGraphRunner run_fused = [this, &activation, &explicit_paddings,
+                                          padding](const Tensor& input_data,
+                                                   const Tensor& filter_data,
+                                                   const Tensor& bias_data,
+                                                   Tensor* out) {
+      RunFusedConv2DOp(input_data, filter_data, {bias_data},
+                       {"BiasAdd", activation}, padding, explicit_paddings, out,
+                       /*allow_gpu_device=*/activation == "Relu");
+    };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
@@ -903,27 +924,30 @@ class FusedConv2DOpTest : public OpsTestBase {
   // Verifies that computing Conv2D+FusedBatchNorm in a graph is identical to
   // FusedConv2D.
   void VerifyConv2DWithBatchNorm(int filter_size, int filter_count,
+                                 const std::vector<int>& explicit_paddings = {},
                                  int depth = kDepth,
                                  int image_width = kImageWidth,
                                  int image_height = kImageHeight,
                                  int image_batch_count = kImageBatchCount) {
+    std::string padding = explicit_paddings.empty() ? "SAME" : "EXPLICIT";
     const BatchNormGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
+        [this, explicit_paddings, padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& scale_data, const Tensor& offset_data,
+            const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
           RunConv2DWithBatchNorm(input_data, filter_data, scale_data,
-                                 offset_data, mean_data, variance_data, out);
+                                 offset_data, mean_data, variance_data, padding,
+                                 explicit_paddings, out);
         };
 
     const BatchNormGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
+        [this, explicit_paddings, padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& scale_data, const Tensor& offset_data,
+            const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
           RunFusedConv2DOp(input_data, filter_data,
                            {scale_data, offset_data, mean_data, variance_data},
-                           {"FusedBatchNorm"}, out);
+                           {"FusedBatchNorm"}, padding, explicit_paddings, out);
         };
 
     VerifyFusedBatchNormTensorsNear(depth, image_width, image_height,
@@ -935,27 +959,29 @@ class FusedConv2DOpTest : public OpsTestBase {
   // identical to FusedConv2D.
   void VerifyConv2DWithBatchNormAndActivation(
       const string& activation, int filter_size, int filter_count,
-      int depth = kDepth, int image_width = kImageWidth,
-      int image_height = kImageHeight,
+      const std::vector<int>& explicit_paddings = {}, int depth = kDepth,
+      int image_width = kImageWidth, int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
+    std::string padding = explicit_paddings.empty() ? "SAME" : "EXPLICIT";
     const BatchNormGraphRunner run_default =
-        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
-                            const Tensor& scale_data, const Tensor& offset_data,
-                            const Tensor& mean_data,
-                            const Tensor& variance_data, Tensor* out) {
+        [this, &activation, explicit_paddings, padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& scale_data, const Tensor& offset_data,
+            const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
           RunConv2DWithBatchNormAndActivation(
               input_data, filter_data, scale_data, offset_data, mean_data,
-              variance_data, activation, out);
+              variance_data, activation, padding, explicit_paddings, out);
         };
 
     const BatchNormGraphRunner run_fused =
-        [this, &activation](const Tensor& input_data, const Tensor& filter_data,
-                            const Tensor& scale_data, const Tensor& offset_data,
-                            const Tensor& mean_data,
-                            const Tensor& variance_data, Tensor* out) {
+        [this, &activation, explicit_paddings, padding](
+            const Tensor& input_data, const Tensor& filter_data,
+            const Tensor& scale_data, const Tensor& offset_data,
+            const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
           RunFusedConv2DOp(input_data, filter_data,
                            {scale_data, offset_data, mean_data, variance_data},
-                           {"FusedBatchNorm", activation}, out);
+                           {"FusedBatchNorm", activation}, padding,
+                           explicit_paddings, out);
         };
 
     VerifyFusedBatchNormTensorsNear(depth, image_width, image_height,
@@ -997,7 +1023,12 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolution) {
   this->VerifyConv2DWithBias(filter_size, filter_count);
 }
 
-// Relu --------------------------------------------------------------------- //
+TYPED_TEST_P(FusedConv2DWithBiasOpTest, ExplicitPaddingConvolution) {
+  const int filter_size = 3;
+  const int filter_count = 12;
+  this->VerifyConv2DWithBias(filter_size, filter_count,
+                             /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
+}
 
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
@@ -1026,6 +1057,17 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolutionAndActivation) {
   }
 }
 
+TYPED_TEST_P(FusedConv2DWithBiasOpTest,
+             ExplicitPaddingConvolutionAndActivation) {
+  const int filter_size = 3;
+  const int filter_count = 12;
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBiasAndActivation(
+        activation, filter_size, filter_count,
+        /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
+  }
+}
+
 // -------------------------------------------------------------------------- //
 // Conv2D + FusedBatchNorm + {Activation}                                     //
 // -------------------------------------------------------------------------- //
@@ -1046,6 +1088,14 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolution) {
   const int filter_size = 3;
   const int filter_count = 12;
   this->VerifyConv2DWithBatchNorm(filter_size, filter_count);
+}
+
+TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, ExplicitPaddingConvolution) {
+  const int filter_size = 3;
+  const int filter_count = 12;
+  this->VerifyConv2DWithBatchNorm(
+      filter_size, filter_count,
+      /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
 }
 
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, OneByOneConvolutionAndActivation) {
@@ -1076,21 +1126,36 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndActivation) {
   }
 }
 
+TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
+             ExplicitPaddingConvolutionAndActivation) {
+  const int filter_size = 3;
+  const int filter_count = 12;
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    this->VerifyConv2DWithBatchNormAndActivation(
+        activation, filter_size, filter_count,
+        /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
+  }
+}
+
 REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,          //
                             OneByOneConvolution,                //
                             ImageSizeConvolution,               //
                             SpatialConvolution,                 //
+                            ExplicitPaddingConvolution,         //
                             OneByOneConvolutionAndActivation,   //
                             ImageSizeConvolutionAndActivation,  //
-                            SpatialConvolutionAndActivation);
+                            SpatialConvolutionAndActivation,    //
+                            ExplicitPaddingConvolutionAndActivation);
 
 REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,     //
                             OneByOneConvolution,                //
                             ImageSizeConvolution,               //
                             SpatialConvolution,                 //
+                            ExplicitPaddingConvolution,         //
                             OneByOneConvolutionAndActivation,   //
                             ImageSizeConvolutionAndActivation,  //
-                            SpatialConvolutionAndActivation);
+                            SpatialConvolutionAndActivation,    //
+                            ExplicitPaddingConvolutionAndActivation);
 
 using FusedBiasAddDataTypes = ::testing::Types<float, double>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBiasOpTest,

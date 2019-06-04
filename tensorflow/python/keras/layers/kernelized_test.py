@@ -27,7 +27,6 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -122,10 +121,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     self.assertListEqual([3, 10], outputs.shape.as_list())
     num_trainable_vars = 1 if trainable else 0
     self.assertLen(rff_layer.non_trainable_variables, 3 - num_trainable_vars)
-    if not context.executing_eagerly():
-      self.assertLen(
-          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES),
-          num_trainable_vars)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def test_no_eager_Leak(self):
@@ -258,10 +253,6 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
       self.assertEqual('random_fourier_features/random_features_scale:0',
                        rff_layer.trainable_variables[0].name)
     self.assertLen(rff_layer.non_trainable_variables, 3 - num_trainable_vars)
-    if not context.executing_eagerly():
-      self.assertLen(
-          ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES),
-          num_trainable_vars)
 
   @parameterized.named_parameters(
       ('gaussian', 10, 'gaussian', 3.0, True),

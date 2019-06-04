@@ -29,12 +29,14 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -443,12 +445,14 @@ struct ProtoHelper<Eigen::half> {
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n)
-    : BufferBase(a, a->Allocate<T>(n)), elem_(n) {}
+    : BufferBase(a, TypedAllocator::Allocate<T>(a, n, AllocationAttributes())),
+      elem_(n) {}
 
 template <typename T>
 Buffer<T>::Buffer(Allocator* a, int64 n,
                   const AllocationAttributes& allocation_attr)
-    : BufferBase(a, a->Allocate<T>(n, allocation_attr)), elem_(n) {}
+    : BufferBase(a, TypedAllocator::Allocate<T>(a, n, allocation_attr)),
+      elem_(n) {}
 
 template <typename T>
 Buffer<T>::~Buffer() {
@@ -456,7 +460,7 @@ Buffer<T>::~Buffer() {
     if (LogMemory::IsEnabled()) {
       RecordDeallocation();
     }
-    alloc_->Deallocate<T>(static_cast<T*>(data()), elem_);
+    TypedAllocator::Deallocate<T>(alloc_, static_cast<T*>(data()), elem_);
   }
 }
 
@@ -734,7 +738,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
   set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
+  if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
   if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
@@ -748,7 +752,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
     : shape_(shape), buf_(nullptr) {
   set_dtype(type);
   CHECK_NOTNULL(a);
-  if (shape_.num_elements() > 0 || a->ShouldAllocateEmptyTensors()) {
+  if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
   if (!allocation_attr.allocation_will_be_logged && buf_ != nullptr &&
@@ -758,8 +762,22 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
   }
 }
 
+// NOTE(mrry): The default allocator for a Tensor (when none is specified) is
+// the default CPU allocator for NUMA zone 0. Accessing that currently involves
+// acquiring a lock, which guards initialization of the per-NUMA zone
+// allocators, and becomes highly contended.
+//
+// Note also that it would be better if all Tensor allocations required the user
+// to specify an allocator, for purposes of accounting, etc. However, the
+// default allocator is widely used throughout the codebase and in client code.
+static Allocator* get_default_cpu_allocator() {
+  static Allocator* default_cpu_allocator =
+      cpu_allocator(port::kNUMANoAffinity);
+  return default_cpu_allocator;
+}
+
 Tensor::Tensor(DataType type, const TensorShape& shape)
-    : Tensor(cpu_allocator(), type, shape) {}
+    : Tensor(get_default_cpu_allocator(), type, shape) {}
 
 void Tensor::HostScalarTensorBufferBase::FillAllocationDescription(
     AllocationDescription* proto) const {
@@ -852,7 +870,7 @@ Tensor Tensor::SubSlice(int64 index) const {
 }
 
 bool Tensor::FromProto(const TensorProto& proto) {
-  return FromProto(cpu_allocator(), proto);
+  return FromProto(get_default_cpu_allocator(), proto);
 }
 
 bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
@@ -947,9 +965,9 @@ inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
 }
 inline string PrintOneElement(const string& a, bool print_v2) {
   if (print_v2) {
-    return "\"" + str_util::CEscape(a) + "\"";
+    return "\"" + absl::CEscape(a) + "\"";
   } else {
-    return str_util::CEscape(a);
+    return absl::CEscape(a);
   }
 }
 inline float PrintOneElement(const Eigen::half& h, bool print_v2) {

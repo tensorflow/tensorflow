@@ -468,7 +468,7 @@ class RMSpropOptimizerTest(test.TestCase):
         learning_rate = lambda: 2.0
         rho = lambda: 0.9
         momentum = lambda: 0.0
-        epsilon = lambda: 1.0
+        epsilon = 1.0
         opt = rmsprop.RMSprop(learning_rate, rho, momentum, epsilon)
 
         # Fetch params to validate initial values
@@ -545,24 +545,13 @@ class RMSpropOptimizerTest(test.TestCase):
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
-  def testConstructRMSpropWithEpsilonValues(self):
-    opt = rmsprop.RMSprop(epsilon=None)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-7)
-
-    opt = rmsprop.RMSprop(epsilon=1e-8)
-    config = opt.get_config()
-    self.assertEqual(config["epsilon"], 1e-8)
-
 
 class SlotColocationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
+  @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
-    if not context.context().num_gpus():
-      self.skipTest("No GPUs found")
-
     with ops.device("/device:CPU:0"):
       if use_resource:
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],

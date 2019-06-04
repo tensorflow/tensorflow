@@ -30,13 +30,14 @@ Example:
     output, = custom.add_outputs(output)
     return output
 
-  image = tf.placeholder(tf.float32, (1, 16, 16, 1))
+  image = tf.compat.v1.placeholder(tf.float32, (1, 16, 16, 1))
   output = tf.identity(tflite_cool_activation(image))
 
-  session = tf.Session()
+  session = tf.compat.v1.Session()
 
   graphdef_to_convert = tf.lite.convert_op_hints_to_stubs(session)
-  tflite_graph = tf.lite.toco_convert(graphdef_to_convert, [image], [output])
+  tflite_graph = tf.compat.v1.lite.toco_convert(
+      graphdef_to_convert, [image], [output])
   with open("/tmp/graph.fb", "wb") as fp:
     fp.write(tflite_graph)
 
@@ -88,7 +89,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-@_tf_export("lite.OpHint")
+@_tf_export(v1=["lite.OpHint"])
 class OpHint(object):
   """A class that helps build tflite function invocations.
 
@@ -593,7 +594,10 @@ class _LiteAggregateOperand(_LiteOperand):
       The name of a pack that aggregates this node.
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       return _tensor_name_base(flattened[0].name)
     else:
       new_node = _node_def_pb2.NodeDef()
@@ -624,7 +628,10 @@ class _LiteAggregateOperand(_LiteOperand):
       op).
     """
     flattened = self.flatten_nodes()
-    if len(flattened) == 1:
+    if (self.aggregation == OpHint.AGGREGATE_FIRST) or (
+        self.aggregation == OpHint.AGGREGATE_LAST):
+      assert len(flattened) == 1
+    if len(flattened) == 1 and self.aggregation != OpHint.AGGREGATE_STACK:
       temp_op = _LiteSingleOperand(flattened[0])
       return temp_op.aggregate_and_return_name_for_output(
           fused_op_name, output_index, out_graphdef)
@@ -855,8 +862,8 @@ def _find_children_hints(call, graph_def):
               function_inputs = function_def.signature.input_arg
               assert len(inputs_outside_loop) == len(function_inputs)
               nodes_mapping = {}
-              for i, _ in enumerate(function_inputs):
-                nodes_mapping[function_inputs[i].name] = inputs_outside_loop[i]
+              for i, function_input in enumerate(function_inputs):
+                nodes_mapping[function_input.name] = inputs_outside_loop[i]
               # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
                new_nodes) = _find_children_hints_in_while_loop(
@@ -1175,8 +1182,7 @@ def _convert_op_hints_to_stubs_helper(
       # Re-wire the children hints inputs/outputs, so latter child's inputs
       # connect to previous child node's outputs.
       children_inputs_mappings = hints[hint_uuid].children_inputs_mappings
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         if j == 0:
           for mapping in children_inputs_mappings["parent_first_child_input"]:
             parent_input_index = _get_correct_mapping(
@@ -1203,8 +1209,7 @@ def _convert_op_hints_to_stubs_helper(
             child_hint.outputs[child_output_index] = hints[hint_uuid].outputs[
                 parent_output_index]
 
-      for j in range(len(children_hints)):
-        child_hint = children_hints[j]
+      for j, child_hint in enumerate(children_hints):
         curr_graph_def = _convert_single_op_hint_to_stub(
             child_hint, curr_graph_def, function_def_nodes,
             j == len(children_hints) - 1)
@@ -1253,7 +1258,7 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   return hinted_outputs_nodes
 
 
-@_tf_export("lite.experimental.convert_op_hints_to_stubs")
+@_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
                               write_callback=lambda graph_def, comments: None):
