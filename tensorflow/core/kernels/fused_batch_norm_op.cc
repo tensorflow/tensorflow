@@ -426,7 +426,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
 
     // We have reserve_space_3 output only in FusedBatchNormV3 op, and in this
     // case we pass non-nullptr allocators.
-    bool has_reserve_space_3 =
+    const bool has_reserve_space_3 =
         reserve_space_allocator != nullptr && workspace_allocator != nullptr;
 
     // Check if cuDNN batch normalization has a fast NHWC implementation:
@@ -455,11 +455,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
 
     // If input is empty, return NaN mean/variance
     if (x.shape().num_elements() == 0) {
-      if (has_reserve_space_3) {
-        Tensor* dummy_reserve_space = nullptr;
-        OP_REQUIRES_OK(context,
-                       context->allocate_output(5, {}, &dummy_reserve_space));
-      }
       functor::SetNanFunctor<U> f;
       f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
       f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
