@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace {
 class AutoClusteringTestImpl : public AutoClusteringTest {
  protected:
-  // Test auto-clustering with ${key}.pbtxt
+  // Test auto-clustering with a proto text file ${key}.pbtxt.
   Status RunAutoClusteringTestWithPbtxt(absl::string_view key) {
     string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
@@ -31,8 +31,7 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
         absl::StrCat(file_name_without_extension, ".golden_summary"));
   }
 
-  // Decompress file ${key}.pbtxt.gz into ${key}.pbtxt
-  // and test auto-clustering with the .pbtxt.
+  // Test auto-clustering with a gzipped proto text file ${key}.pbtxt.gz.
   Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key) {
     string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
