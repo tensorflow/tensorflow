@@ -1735,6 +1735,7 @@ tf_py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/testing:parameterized",
     ],
     main = "framework/tensor_shape_test.py",
 )
