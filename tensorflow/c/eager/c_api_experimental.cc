@@ -85,10 +85,10 @@ void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
 }
 
 bool TFE_ProfilerClientStartTracing(const char* service_addr,
-                                    const char* logdir, TF_Status* status,
-                                    const char* worker_list,
+                                    const char* logdir, const char* worker_list,
                                     bool include_dataset_ops, int duration_ms,
-                                    int num_tracing_attempts) {
+                                    int num_tracing_attempts,
+                                    TF_Status* status) {
   tensorflow::Status s =
       tensorflow::profiler::client::ValidateHostPortPair(service_addr);
   if (!s.ok()) {
