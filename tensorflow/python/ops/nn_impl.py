@@ -436,6 +436,7 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
+# pylint: disable=redefined-builtin
 @tf_export("linalg.normalize")
 def normalize(tensor,
               ord='euclidean',

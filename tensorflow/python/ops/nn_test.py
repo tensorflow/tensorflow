@@ -255,7 +255,8 @@ class L2LossTest(test_lib.TestCase):
 
 class NormalizeTest(test_lib.TestCase):
 
-  def _Normalize(x, ord, axis):
+  # pylint: disable=redefined-builtin
+  def _Normalize(self, x, ord, axis):
     if isinstance(axis, (list, tuple)):
       norm = np.linalg.norm(x, ord, tuple(axis))
       if axis[0] < axis[1]:
@@ -275,6 +276,7 @@ class NormalizeTest(test_lib.TestCase):
       norm = np.apply_along_axis(np.linalg.norm, axis, x, ord)
       return x / np.expand_dims(norm, axis)
 
+  # pylint: disable=redefined-builtin
   @test_util.run_in_graph_and_eager_modes
   def testNormalize(self):
       for use_static_shape in False, True:
@@ -301,7 +303,7 @@ class NormalizeTest(test_lib.TestCase):
                     if dtype in (np.complex64, np.complex128):
                       matrix += 1j * np.random.randn(*shape).astype(dtype)
                     tf_n = nn_impl.normalize(matrix, ord, axis)
-                    np_n = _Normalize(matrix, ord, axis)
+                    np_n = self._Normalize(matrix, ord, axis)
                     self.assertAllClose(tf_n, np_n, rtol=1e-5, atol=1e-5)
 
 
