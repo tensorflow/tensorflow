@@ -249,6 +249,14 @@ public:
   /// each operation.
   void walk(const std::function<void(Operation *)> &callback);
 
+  /// Specialization of walk to only visit operations of 'OpTy'.
+  template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
+    walk([&](Operation *opInst) {
+      if (auto op = dyn_cast<OpTy>(opInst))
+        callback(op);
+    });
+  }
+
   /// Walk the operations in the specified [begin, end) range of this block in
   /// postorder, calling the callback for each operation.
   void walk(Block::iterator begin, Block::iterator end,

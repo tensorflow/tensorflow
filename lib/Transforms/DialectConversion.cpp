@@ -642,8 +642,26 @@ LogicalResult
 mlir::applyConversionPatterns(Module &module, ConversionTarget &target,
                               TypeConverter &converter,
                               OwningRewritePatternList &&patterns) {
+  std::vector<Function *> allFunctions;
+  allFunctions.reserve(module.getFunctions().size());
+  for (auto &func : module)
+    allFunctions.push_back(&func);
+  return applyConversionPatterns(allFunctions, target, converter,
+                                 std::move(patterns));
+}
+
+/// Convert the given functions with the provided conversion patterns. This will
+/// convert as many of the operations within each function as possible given the
+/// set of patterns. If conversion fails for specific functions, those functions
+// remains unmodified.
+LogicalResult mlir::applyConversionPatterns(
+    ArrayRef<Function *> fns, ConversionTarget &target,
+    TypeConverter &converter, OwningRewritePatternList &&patterns) {
+  if (fns.empty())
+    return success();
+
   // Build the function converter.
-  FunctionConverter funcConverter(module.getContext(), target, patterns,
+  FunctionConverter funcConverter(fns.front()->getContext(), target, patterns,
                                   &converter);
 
   // Try to convert each of the functions within the module. Defer updating the
@@ -652,21 +670,21 @@ mlir::applyConversionPatterns(Module &module, ConversionTarget &target,
   // public signatures of the functions within the module before they are
   // updated.
   std::vector<ConvertedFunction> toConvert;
-  toConvert.reserve(module.getFunctions().size());
-  for (auto &func : module) {
+  toConvert.reserve(fns.size());
+  for (auto *func : fns) {
     // Convert the function type using the dialect converter.
     SmallVector<NamedAttributeList, 4> newFunctionArgAttrs;
     FunctionType newType = converter.convertFunctionSignatureType(
-        func.getType(), func.getAllArgAttrs(), newFunctionArgAttrs);
+        func->getType(), func->getAllArgAttrs(), newFunctionArgAttrs);
     if (!newType || !newType.isa<FunctionType>())
-      return func.emitError("could not convert function type");
+      return func->emitError("could not convert function type");
 
     // Convert the body of this function.
-    if (failed(funcConverter.convertFunction(&func)))
+    if (failed(funcConverter.convertFunction(func)))
       return failure();
 
     // Add function signature to be updated.
-    toConvert.emplace_back(&func, newType.cast<FunctionType>(),
+    toConvert.emplace_back(func, newType.cast<FunctionType>(),
                            newFunctionArgAttrs);
   }
 

@@ -163,16 +163,22 @@ public:
   /// Parse a `:` token.
   virtual ParseResult parseColon() = 0;
 
+  /// Parse a `:` token if present.
+  virtual ParseResult parseOptionalColon() = 0;
+
   /// Parse a '(' token.
   virtual ParseResult parseLParen() = 0;
+
+  /// Parse a '(' token if present.
+  virtual ParseResult parseOptionalLParen() = 0;
 
   /// Parse a ')' token.
   virtual ParseResult parseRParen() = 0;
 
-  /// Parses a ')' if present.
+  /// Parse a ')' token if present.
   virtual ParseResult parseOptionalRParen() = 0;
 
-  /// This parses an equal(=) token!
+  /// Parse a '=' token.
   virtual ParseResult parseEqual() = 0;
 
   /// Parse a type.

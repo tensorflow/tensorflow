@@ -234,6 +234,16 @@ LLVM_NODISCARD LogicalResult applyConversionPatterns(
     Module &module, ConversionTarget &target, TypeConverter &converter,
     OwningRewritePatternList &&patterns);
 
+/// Convert the given functions with the provided conversion patterns. This will
+/// convert as many of the operations within each function as possible given the
+/// set of patterns. If conversion fails for specific functions, those functions
+/// remains unmodified.
+LLVM_NODISCARD
+LogicalResult applyConversionPatterns(ArrayRef<Function *> fns,
+                                      ConversionTarget &target,
+                                      TypeConverter &converter,
+                                      OwningRewritePatternList &&patterns);
+
 /// Convert the given function with the provided conversion patterns. This will
 /// convert as many of the operations within 'fn' as possible given the set of
 /// patterns.

@@ -3197,12 +3197,23 @@ public:
     *loc = parser.getToken().getLoc();
     return success();
   }
+
   ParseResult parseComma() override {
     return parser.parseToken(Token::comma, "expected ','");
   }
+
+  ParseResult parseOptionalComma() override {
+    return success(parser.consumeIf(Token::comma));
+  }
+
   ParseResult parseColon() override {
     return parser.parseToken(Token::colon, "expected ':'");
   }
+
+  ParseResult parseOptionalColon() override {
+    return success(parser.consumeIf(Token::colon));
+  }
+
   ParseResult parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
   }
@@ -3240,10 +3251,6 @@ public:
       return emitError(parser.getToken().getLoc(), "expected ")
              << requiredOperandCount << " operands";
     return success();
-  }
-
-  ParseResult parseOptionalComma() override {
-    return success(parser.consumeIf(Token::comma));
   }
 
   /// Parse an optional keyword.
@@ -3306,6 +3313,11 @@ public:
 
   ParseResult parseLParen() override {
     return parser.parseToken(Token::l_paren, "expected '('");
+  }
+
+  /// Parses a '(' if present.
+  ParseResult parseOptionalLParen() override {
+    return success(parser.consumeIf(Token::l_paren));
   }
 
   ParseResult parseRParen() override {
