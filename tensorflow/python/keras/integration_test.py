@@ -36,7 +36,8 @@ from tensorflow.python.platform import test
 class KerasIntegrationTest(keras_parameterized.TestCase):
 
   def _save_and_reload_model(self, model):
-    fpath = os.path.join(self.create_tempdir().full_path,
+    self.temp_dir = self.get_temp_dir()
+    fpath = os.path.join(self.temp_dir,
                          'test_model_%s' % (random.randint(0, 1e7),))
     if context.executing_eagerly():
       keras.saving.save._KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = False
