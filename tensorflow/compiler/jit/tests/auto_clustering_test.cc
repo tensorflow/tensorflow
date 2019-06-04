@@ -16,58 +16,32 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
 namespace {
 class AutoClusteringTestImpl : public AutoClusteringTest {
  protected:
-  Status RunAutoClusteringTest(absl::string_view key) {
+  // Test auto-clustering with ${key}.pbtxt
+  Status RunAutoClusteringTestWithPbtxt(absl::string_view key) {
     string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
-    return AutoClusteringTest::RunAutoClusteringTest(
+    return AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
         absl::StrCat(file_name_without_extension, ".pbtxt"),
         absl::StrCat(file_name_without_extension, ".golden_summary"));
   }
 
   // Decompress file ${key}.pbtxt.gz into ${key}.pbtxt
-  // and test auto clustering with the .pbtxt.
-  Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key);
-};
+  // and test auto-clustering with the .pbtxt.
+  Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key) {
+    string file_name_without_extension =
+        absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
-Status AutoClusteringTestImpl::RunAutoClusteringTestWithGzippedPbtxt(
-    absl::string_view key) {
-  string file_name_without_extension =
-      absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
-  string input_fname = absl::StrCat(file_name_without_extension, ".pbtxt.gz");
-  string pbtxt_fname = absl::StrCat(file_name_without_extension, ".pbtxt");
-  string summary_fname =
-      absl::StrCat(file_name_without_extension, ".golden_summary");
-
-  Env* env = Env::Default();
-  std::unique_ptr<RandomAccessFile> file_reader;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(input_fname, &file_reader));
-  std::unique_ptr<io::RandomAccessInputStream> input_stream(
-      new io::RandomAccessInputStream(file_reader.get()));
-  constexpr int k_buffer_size = 256 << 10;  // 256kb
-  io::ZlibInputStream in(input_stream.get(),
-                         /*input_buffer_bytes=*/k_buffer_size,
-                         /*output_buffer_bytes=*/k_buffer_size,
-                         io::ZlibCompressionOptions::GZIP());
-  string decompressed_data;
-  Status s = in.ReadNBytes(INT_MAX, &decompressed_data);
-  if (!s.ok() && !errors::IsOutOfRange(s)) {
-    // OutOfRange is fine since we set the number of read bytes to INT_MAX.
-    // Only return other kinds of errors.
-    return s;
+    return AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
+        absl::StrCat(file_name_without_extension, ".pbtxt.gz"),
+        absl::StrCat(file_name_without_extension, ".golden_summary"));
   }
-  TF_RETURN_IF_ERROR(WriteStringToFile(env, pbtxt_fname, decompressed_data));
-
-  return AutoClusteringTest::RunAutoClusteringTest(pbtxt_fname, summary_fname);
-}
+};
 
 TEST_F(AutoClusteringTestImpl, KerasImagenetMain) {
   // Generated from
@@ -78,7 +52,7 @@ TEST_F(AutoClusteringTestImpl, KerasImagenetMain) {
   //    --train_steps=210 --enable_xla --enable_eager=true
   //
   // At CL 245846452
-  TF_ASSERT_OK(RunAutoClusteringTest("keras_imagenet_main"));
+  TF_ASSERT_OK(RunAutoClusteringTestWithPbtxt("keras_imagenet_main"));
 }
 
 TEST_F(AutoClusteringTestImpl, KerasImagenetMainGraphMode) {
@@ -88,7 +62,8 @@ TEST_F(AutoClusteringTestImpl, KerasImagenetMainGraphMode) {
   //   tensorflow_models/official/resnet/keras:keras_imagenet_main             \
   //   -- --use_synthetic_data --num_gpus=1 --batch_size=117 --train_steps=600 \
   //   --skip_eval=True --logtostderr --enable_xla
-  TF_ASSERT_OK(RunAutoClusteringTest("keras_imagenet_main_graph_mode"));
+  TF_ASSERT_OK(
+      RunAutoClusteringTestWithPbtxt("keras_imagenet_main_graph_mode"));
 }
 
 TEST_F(AutoClusteringTestImpl, OpenSeq2SeqGNMT) {
