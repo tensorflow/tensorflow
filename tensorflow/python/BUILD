@@ -3232,6 +3232,7 @@ py_library(
         ":random_ops",
         ":tensor_shape",
         ":tensor_util",
+        "//tensorflow/python/eager:monitoring",
         "//third_party/py/numpy",
     ],
 )
