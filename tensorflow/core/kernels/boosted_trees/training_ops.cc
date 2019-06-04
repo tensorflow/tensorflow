@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/boosted_trees/resources.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 
@@ -55,10 +56,9 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    BoostedTreesEnsembleResource* ensemble_resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
-    core::ScopedUnref unref_me(ensemble_resource);
     mutex_lock l(*ensemble_resource->get_mutex());
     // Increase the ensemble stamp.
     ensemble_resource->set_stamp(ensemble_resource->stamp() + 1);
@@ -176,19 +176,19 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
 
  private:
   int32 UpdateGlobalAttemptsAndRetrieveGrowableTree(
-      BoostedTreesEnsembleResource* const ensemble_resource) {
-    int32 num_trees = ensemble_resource->num_trees();
+      const core::RefCountPtr<BoostedTreesEnsembleResource>& resource) {
+    int32 num_trees = resource->num_trees();
     int32 current_tree = num_trees - 1;
 
     // Increment global attempt stats.
-    ensemble_resource->UpdateGrowingMetadata();
+    resource->UpdateGrowingMetadata();
 
     // Note we don't set tree weight to be equal to learning rate, since we
     // apply learning rate to leaf weights instead, when doing layer-by-layer
     // boosting.
     if (num_trees <= 0) {
       // Create a new tree with a no-op leaf.
-      current_tree = ensemble_resource->AddNewTree(kLayerByLayerTreeWeight);
+      current_tree = resource->AddNewTree(kLayerByLayerTreeWeight);
     }
     return current_tree;
   }
@@ -250,10 +250,9 @@ class BoostedTreesCenterBiasOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    BoostedTreesEnsembleResource* ensemble_resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &ensemble_resource));
-    core::ScopedUnref unref_me(ensemble_resource);
     mutex_lock l(*ensemble_resource->get_mutex());
     // Increase the ensemble stamp.
     ensemble_resource->set_stamp(ensemble_resource->stamp() + 1);

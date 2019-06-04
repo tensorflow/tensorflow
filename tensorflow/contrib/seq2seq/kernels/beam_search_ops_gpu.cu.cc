@@ -90,7 +90,7 @@ struct GatherTree<GPUDevice, T> {
     // First kernel launch to "zero" things out
     beams.device(d) = beams.constant(end_token);
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * beam_width, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(batch_size * beam_width, d);
     TF_CHECK_OK(CudaLaunchKernel(
         GatherTreeOpKernel<T>, config.block_count, config.thread_per_block, 0,
         d.stream(), batch_size, max_time, beam_width, step_ids.data(),

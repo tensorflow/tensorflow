@@ -1559,7 +1559,17 @@ ENTRY BitcastConvertUsage {
 }
 
 )"
+},
+{
+"OuterDimensionPartitions",
+R"(HloModule OuterDimensionPartitions
+
+ENTRY Test {
+  ROOT foo = f32[100]{0} parameter(0), outer_dimension_partitions={0,10,20}
 }
+
+)"
+},
 });
   // clang-format on
 }

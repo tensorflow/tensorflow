@@ -111,6 +111,7 @@ $(wildcard tensorflow/lite/experimental/ruy/pack.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/pmu.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/thread_pool.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/trace.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/trmul.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/tune.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
@@ -133,6 +134,7 @@ $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
+$(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util.cc) \
 $(MINIMAL_SRCS)
 

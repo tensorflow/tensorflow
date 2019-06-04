@@ -46,7 +46,7 @@ class TupleThunk : public Thunk {
   TupleThunk& operator=(const TupleThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

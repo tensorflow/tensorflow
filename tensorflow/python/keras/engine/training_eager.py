@@ -31,6 +31,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -143,10 +144,10 @@ def _model_loss(model,
           else:
             # Update dimensions of weights to match with mask if possible.
             mask, _, weights = (
-                losses_utils.squeeze_or_expand_dimensions(mask, None, weights))
+                tf_losses_utils.squeeze_or_expand_dimensions(
+                    mask, sample_weight=weights))
             weights *= mask
 
-        weighted_losses = None
         if hasattr(loss_fn, 'reduction'):
           per_sample_losses = loss_fn.call(targets[i], outs[i])
           weighted_losses = losses_utils.compute_weighted_loss(
@@ -163,8 +164,6 @@ def _model_loss(model,
           # Compute the stateless loss value.
           output_loss = losses_utils.reduce_weighted_loss(
               weighted_losses, reduction=loss_reduction)
-          if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
-            output_loss = losses_utils.scale_loss_for_distribution(output_loss)
         else:
           # Compute the stateless loss value for a custom loss class.
           # Here we assume that the class takes care of loss reduction
@@ -172,8 +171,6 @@ def _model_loss(model,
           # differentiate between use case where a custom optimizer
           # expects a vector loss value vs unreduced per-sample loss value.
           output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
-          # For custom losses we assume reduction was mean.
-          output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
@@ -183,6 +180,12 @@ def _model_loss(model,
         # Keep track of the stateful output loss result.
         output_losses.append(output_loss_metrics[i](output_loss))
 
+      # Scale output loss for distribution. For custom losses we assume
+      # reduction was mean.
+      if (getattr(loss_fn, 'reduction',
+                  losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
+          losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+        output_loss = losses_utils.scale_loss_for_distribution(output_loss)
       total_loss += model._loss_weights_list[i] * output_loss
 
     # Add regularization losses

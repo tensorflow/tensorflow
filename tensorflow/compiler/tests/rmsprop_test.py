@@ -55,7 +55,7 @@ class RmspropTest(xla_test.XLATestCase):
   def testBasic(self):
     for dtype in self.float_types:
       for centered in [False, True]:
-        with self.cached_session(), self.test_scope():
+        with self.session(), self.test_scope():
           # Initialize variables for numpy implementation.
           var0_np = np.array([1.0, 2.0], dtype=dtype)
           grads0_np = np.array([0.1, 0.1], dtype=dtype)

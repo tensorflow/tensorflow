@@ -39,6 +39,15 @@ TfLiteModelInfo GetTfliteModelInfo(const Interpreter& interpreter) {
 
 }  // namespace
 
+TfLiteStatus TfliteInferenceStage::ApplyCustomDelegate(
+    TfLiteDelegate* delegate) {
+  if (!interpreter_) {
+    LOG(ERROR) << "Stage not initialized before calling ApplyCustomDelegate";
+    return kTfLiteError;
+  }
+  return interpreter_->ModifyGraphWithDelegate(delegate);
+}
+
 TfLiteStatus TfliteInferenceStage::Init() {
   if (!config_.specification().has_tflite_inference_params()) {
     LOG(ERROR) << "TfliteInferenceParams not provided";
@@ -109,7 +118,7 @@ TfLiteStatus TfliteInferenceStage::Run() {
   // Copy input data.
   for (int i = 0; i < interpreter_->inputs().size(); ++i) {
     TfLiteTensor* tensor = interpreter_->tensor(interpreter_->inputs()[i]);
-    std::memcpy(tensor->data.raw, (*inputs_)[i], tensor->bytes);
+    tensor->data.raw = static_cast<char*>(inputs_->at(i));
   }
 
   // Invoke.

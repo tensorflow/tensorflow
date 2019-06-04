@@ -335,6 +335,9 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
+  // Enables NNAPI delegate application during interpreter creation.
+  static void SetForceUseNnapi(bool use_nnapi);
+
  protected:
   int32_t GetTensorSize(int index) const;
 

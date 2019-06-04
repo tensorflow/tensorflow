@@ -60,6 +60,9 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
+  void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+               FunctionLibraryRuntime::DoneCallback done) override {}
+
   DeviceMgr* remote_device_mgr() const override { return device_mgr_; }
 
  private:
@@ -217,7 +220,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                    });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
-    EXPECT_TRUE(str_util::StrContains(status.error_message(), "not found."));
+    EXPECT_TRUE(absl::StrContains(status.error_message(), "not found."));
 
     return Status::OK();
   }
@@ -479,7 +482,7 @@ void TestTwoDeviceMult(
   if (!error.empty()) {
     EXPECT_TRUE(errors::IsInvalidArgument(status))
         << "Actual status: " << status;
-    EXPECT_TRUE(str_util::StrContains(status.error_message(), error))
+    EXPECT_TRUE(absl::StrContains(status.error_message(), error))
         << "Actual error message: " << status.error_message();
     return;
   }
@@ -505,11 +508,11 @@ void TestTwoDeviceInputOutput(
   FunctionLibraryRuntime::Options opts;
   opts.rendezvous = fixture->rendezvous_;
   Tensor x1 = test::AsTensor<float>({1, 2});
-  if (str_util::StrContains(inst_opts.input_devices[0], "GPU")) {
+  if (absl::StrContains(inst_opts.input_devices[0], "GPU")) {
     x1 = fixture->CPUToGPU(x1);
   }
   Tensor x2 = test::AsTensor<float>({10, 20});
-  if (str_util::StrContains(inst_opts.input_devices[1], "GPU")) {
+  if (absl::StrContains(inst_opts.input_devices[1], "GPU")) {
     x2 = fixture->CPUToGPU(x2);
   }
   Tensor y1;
@@ -517,7 +520,7 @@ void TestTwoDeviceInputOutput(
   TF_CHECK_OK(fixture->Run("TwoDeviceInputOutput", opts, {{"T", DT_FLOAT}},
                            inst_opts, {x1, x2}, {&y1, &y2}));
 
-  if (str_util::StrContains(inst_opts.output_devices[0], "GPU")) {
+  if (absl::StrContains(inst_opts.output_devices[0], "GPU")) {
     EXPECT_TRUE(IsCUDATensor(y1));
     y1 = fixture->GPUToCPU(y1);
   } else {
@@ -525,7 +528,7 @@ void TestTwoDeviceInputOutput(
   }
   test::ExpectTensorEqual<float>(y1, test::AsTensor<float>({2, 4}));
 
-  if (str_util::StrContains(inst_opts.output_devices[1], "GPU")) {
+  if (absl::StrContains(inst_opts.output_devices[1], "GPU")) {
     EXPECT_TRUE(IsCUDATensor(y2));
     y2 = fixture->GPUToCPU(y2);
   } else {
@@ -607,7 +610,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListInput) {
       "FuncWithListInput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  ASSERT_TRUE(str_util::StrContains(
+  ASSERT_TRUE(absl::StrContains(
       status.error_message(),
       "FuncWithListInput has an input named \"x1\" that is a list of tensors"))
       << "Actual error message: " << status.error_message();
@@ -621,7 +624,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {
       "FuncWithListOutput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {}, {"CPU:0"}), &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  ASSERT_TRUE(str_util::StrContains(
+  ASSERT_TRUE(absl::StrContains(
       status.error_message(),
       "FuncWithListOutput has an output named \"y\" that is a list of tensors"))
       << "Actual error message: " << status.error_message();
@@ -747,7 +750,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_PlacerError) {
       "ResourceOutput", test::function::Attrs({{"T", DT_FLOAT}}), inst_opts,
       &handle);
   ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
-  ASSERT_TRUE(str_util::StrContains(status.error_message(), "Cannot place"));
+  ASSERT_TRUE(absl::StrContains(status.error_message(), "Cannot place"));
 }
 
 REGISTER_OP("BrokenOp")

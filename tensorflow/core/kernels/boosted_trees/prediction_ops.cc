@@ -51,12 +51,10 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    BoostedTreesEnsembleResource* resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> resource;
     // Get the resource.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &resource));
-    // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(resource);
 
     // Get the inputs.
     OpInputList bucketized_features_list;
@@ -198,12 +196,10 @@ class BoostedTreesPredictOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    BoostedTreesEnsembleResource* resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> resource;
     // Get the resource.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &resource));
-    // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(resource);
 
     // Get the inputs.
     OpInputList bucketized_features_list;
@@ -302,12 +298,10 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* const context) override {
-    BoostedTreesEnsembleResource* resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> resource;
     // Get the resource.
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &resource));
-    // Release the reference to the resource once we're done using it.
-    core::ScopedUnref unref_me(resource);
 
     // Get the inputs.
     OpInputList bucketized_features_list;

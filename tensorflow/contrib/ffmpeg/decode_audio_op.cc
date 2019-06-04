@@ -137,18 +137,17 @@ class DecodeAudioOpV2 : public OpKernel {
 
     const tensorflow::StringPiece contents = contents_tensor.scalar<string>()();
     const string file_format =
-        str_util::Lowercase(file_format_tensor.scalar<string>()());
+        absl::AsciiStrToLower(file_format_tensor.scalar<string>()());
     const int32 samples_per_second =
         samples_per_second_tensor.scalar<int32>()();
     const int32 channel_count = channel_count_tensor.scalar<int32>()();
 
     const std::set<string> valid_file_formats(
         kValidFileFormats, kValidFileFormats + TF_ARRAYSIZE(kValidFileFormats));
-    OP_REQUIRES(
-        context, valid_file_formats.count(file_format) == 1,
-        errors::InvalidArgument("file_format must be one of {",
-                                str_util::Join(valid_file_formats, ", "),
-                                "}, but was: \"", file_format, "\""));
+    OP_REQUIRES(context, valid_file_formats.count(file_format) == 1,
+                errors::InvalidArgument("file_format must be one of {",
+                                        absl::StrJoin(valid_file_formats, ", "),
+                                        "}, but was: \"", file_format, "\""));
     OP_REQUIRES(context, samples_per_second > 0,
                 errors::InvalidArgument(
                     "samples_per_second must be positive, but got: ",
@@ -220,14 +219,13 @@ class DecodeAudioOp : public OpKernel {
  public:
   explicit DecodeAudioOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("file_format", &file_format_));
-    file_format_ = str_util::Lowercase(file_format_);
+    file_format_ = absl::AsciiStrToLower(file_format_);
     const std::set<string> valid_file_formats(
         kValidFileFormats, kValidFileFormats + TF_ARRAYSIZE(kValidFileFormats));
-    OP_REQUIRES(
-        context, valid_file_formats.count(file_format_) == 1,
-        errors::InvalidArgument("file_format must be one of {",
-                                str_util::Join(valid_file_formats, ", "),
-                                "}, but was: \"", file_format_, "\""));
+    OP_REQUIRES(context, valid_file_formats.count(file_format_) == 1,
+                errors::InvalidArgument("file_format must be one of {",
+                                        absl::StrJoin(valid_file_formats, ", "),
+                                        "}, but was: \"", file_format_, "\""));
 
     OP_REQUIRES_OK(context, context->GetAttr("channel_count", &channel_count_));
     OP_REQUIRES(context, channel_count_ > 0,

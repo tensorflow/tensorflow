@@ -250,8 +250,8 @@ class BufferAllocation {
   // for this allocation. The point of peak memory usage is the point at which
   // the total size of all live logical buffers is maximal. If peak memory is
   // reached at multiple points, the set of logical buffers live at the earliest
-  // maximal point is returned. The vector is stabily sorted by
-  // LogicalBuffer::Index.
+  // maximal point is returned. The vector is stably sorted by
+  // BufferValue::Index.
   const std::vector<const BufferValue*>& PeakMemoryLogicalBuffers() const {
     return peak_buffers_;
   }
@@ -566,10 +566,8 @@ class BufferAssigner {
 
   static Colorer DefaultColorer() {
     return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
-      for (HloValue::Id id = 0;
-           id < alias_analysis->dataflow_analysis().values().size(); id++) {
-        auto& value = alias_analysis->dataflow_analysis().GetValue(id);
-        value.set_color(BufferValue::Color(0));
+      for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
+        value->set_color(BufferValue::Color(0));
       }
       return Status::OK();
     };

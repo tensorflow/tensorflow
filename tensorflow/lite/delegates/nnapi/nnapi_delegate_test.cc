@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
+#include <sys/mman.h>
+
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 namespace tflite {
 namespace {
@@ -58,6 +63,12 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims) {
     return interpreter_->ResizeInputTensor(tensor_index, dims);
+  }
+
+  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
+
+  void SetBufferHandle(int index, TfLiteBufferHandle handle) {
+    interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
   }
 
  protected:
@@ -215,6 +226,112 @@ TEST(NNAPIDelegate, StatefulDelegate) {
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate with accelerator_name
+// specified.
+TEST(NNAPIDelegate, StatefulDelegateWithAcceleratorName) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference =
+      StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
+  options.accelerator_name = "nnapi-reference";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate with compilation caching
+// enabled.
+TEST(NNAPIDelegate, StatefulDelegateWithCompilationCaching) {
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference =
+      StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
+  options.cache_dir = "/data/local/tmp";
+  options.model_token = "NNAPIDelegate.StatefulDelegateWithCompilationCaching";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate using TfLiteBufferHandle.
+TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
+  // Skip the test if Android specific functions could not be found.
+  if (!NnApiImplementation()->ASharedMemory_create ||
+      !NnApiImplementation()->ANeuralNetworksMemory_createFromFd) {
+    GTEST_SKIP();
+  }
+  StatefulNnApiDelegate::Options options;
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  auto* delegate = m.GetDelegate();
+  // Create ASharedMemory and copy data into it.
+  constexpr auto kInput1ByteSize = 4 * sizeof(float);
+  ANeuralNetworksMemory* input1_memory = nullptr;
+  int fd =
+      NnApiImplementation()->ASharedMemory_create("input1", kInput1ByteSize);
+  EXPECT_GE(fd, 0);
+  void* input1_memory_data =
+      mmap(nullptr, kInput1ByteSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  EXPECT_TRUE(input1_memory_data != nullptr);
+  float input1_data[] = {-2.0, 0.2, 0.7, 0.8};
+  memcpy(input1_memory_data, input1_data, kInput1ByteSize);
+  int result = NnApiImplementation()->ANeuralNetworksMemory_createFromFd(
+      kInput1ByteSize, PROT_READ, fd, 0, &input1_memory);
+  EXPECT_EQ(result, ANEURALNETWORKS_NO_ERROR);
+  ASSERT_NE(input1_memory, nullptr);
+
+  struct DummyMemoryContext {
+    ANeuralNetworksMemory* memory_handle;
+    void* memory_data;
+    size_t byte_size;
+  };
+  DummyMemoryContext memory_context = {input1_memory, input1_memory_data,
+                                       kInput1ByteSize};
+  static StatefulNnApiDelegate::CopyToHostTensorFnPtr memory_callback =
+      [](TfLiteTensor* tensor, ANeuralNetworksMemory* memory,
+         size_t memory_offset, size_t byte_size,
+         void* callback_context) -> TfLiteStatus {
+    auto memory_context =
+        reinterpret_cast<DummyMemoryContext*>(callback_context);
+    if (memory != memory_context->memory_handle ||
+        memory_offset + byte_size > memory_context->byte_size) {
+      return kTfLiteError;
+    }
+    memcpy(
+        tensor->data.raw,
+        reinterpret_cast<uint8_t*>(memory_context->memory_data) + memory_offset,
+        byte_size);
+    return kTfLiteOk;
+  };
+  auto input1_handle = delegate->RegisterNnapiMemory(
+      input1_memory, memory_callback, &memory_context);
+  m.SetBufferHandle(m.input1(), input1_handle);
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+  // Run the inference multiple times and each time register a buffer.
+  for (int i = 0; i < 10; i++) {
+    // Change the value a little bit.
+    input1_data[0] = -2.0 + i;
+    memcpy(input1_memory_data, input1_data, kInput1ByteSize);
+    auto input1_handle = delegate->RegisterNnapiMemory(
+        input1_memory, memory_callback, &memory_context);
+    m.SetBufferHandle(m.input1(), input1_handle);
+    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9 + i, 0.4, 1.0, 1.3}));
+  }
 }
 
 class FloatMulOpModel : public SingleOpModelWithNNAPI {
@@ -531,6 +648,150 @@ TEST(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
 
   EXPECT_THAT(quant_op.GetOutput(),
               ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
+}
+
+TEST(ConvolutionOpTest, SimpleTestFloatWithDilation) {
+  const int depth = 1;
+  const int image_width = 9;
+  const int image_height = 9;
+  const int image_batch_count = 1;
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const int dilation_width_factor = 3;
+  const int dilation_height_factor = 3;
+  const Padding padding = Padding_VALID;
+  ConvolutionOpModel m(
+      {TensorType_FLOAT32,
+       {image_batch_count, image_height, image_width, depth}},
+      {TensorType_FLOAT32, {depth, filter_size, filter_size, filter_count}},
+      {TensorType_FLOAT32, {}}, stride_width, stride_height, padding,
+      ActivationFunctionType_NONE, dilation_width_factor,
+      dilation_height_factor);
+
+  // The image matrix is:
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // clang-format on
+  // The filter matrix is:
+  // | 1 | 2 | 3 |
+  // | 4 | 5 | 6 |
+  // | 7 | 8 | 9 |
+  m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // Zero bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Since the dilation rate is 3 this will reduce the size of the output from
+  // 10x10 to 3x3 of all 5s. Specifically:
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
+}
+
+class QuantizedConvolutionOpModel : public ConvolutionOpModel {
+ public:
+  using ConvolutionOpModel::ConvolutionOpModel;
+
+  void SetInput(std::initializer_list<float> data) {
+    QuantizeAndPopulate<uint8_t>(input_, data);
+  }
+
+  void SetFilter(std::initializer_list<float> data) {
+    QuantizeAndPopulate<uint8_t>(filter_, data);
+  }
+
+  void SetBias(std::initializer_list<float> data) {
+    QuantizeAndPopulate<int32_t>(bias_, data);
+  }
+
+  std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
+};
+
+TEST(ConvolutionOpTest, SimpleTestQuantizedWithDilation) {
+  const int depth = 1;
+  const int image_width = 9;
+  const int image_height = 9;
+  const int image_batch_count = 1;
+  const int filter_size = 3;
+  const int filter_count = 1;
+  const int stride_width = 1;
+  const int stride_height = 1;
+  const int dilation_width_factor = 3;
+  const int dilation_height_factor = 3;
+  const Padding padding = Padding_VALID;
+  ConvolutionOpModel m({TensorType_UINT8,
+                        {image_batch_count, image_height, image_width, depth},
+                        0,
+                        127.5},
+                       {TensorType_UINT8,
+                        {depth, filter_size, filter_size, filter_count},
+                        0,
+                        127.5},
+                       {TensorType_UINT8, {}, 0, 255}, stride_width,
+                       stride_height, padding, ActivationFunctionType_NONE,
+                       dilation_width_factor, dilation_height_factor);
+
+  // The image matrix is:
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // clang-format on
+  // The filter matrix is:
+  // | 1 | 2 | 3 |
+  // | 4 | 5 | 6 |
+  // | 7 | 8 | 9 |
+  m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
+  // Zero bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Since the dilation rate is 3 this will reduce the size of the output from
+  // 10x10 to 3x3 of all 5s. Specifically:
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  // | 5 | 5 | 5 |
+  EXPECT_THAT(m.GetQuantizedOutput(),
+              ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
 
 class DepthwiseConvolutionOpModel : public SingleOpModelWithNNAPI {
@@ -1849,12 +2110,14 @@ class PadOpModel : public SingleOpModelWithNNAPI {
     PopulateTensor<T>(input_, data);
   }
 
+  template <typename QuantizedInputOutput>
   void SetQuantizedInput(std::initializer_list<float> data) {
-    QuantizeAndPopulate<uint8_t>(input_, data);
+    QuantizeAndPopulate<QuantizedInputOutput>(input_, data);
   }
 
+  template <typename QuantizedInputOutput>
   void SetQuantizedPadValue(float data) {
-    QuantizeAndPopulate<uint8_t>(constant_values_, {data});
+    QuantizeAndPopulate<QuantizedInputOutput>(constant_values_, {data});
   }
 
   void SetPaddings(std::initializer_list<int> paddings) {
@@ -1864,9 +2127,11 @@ class PadOpModel : public SingleOpModelWithNNAPI {
   std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
+  template <typename QuantizedInputOutput>
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<QuantizedInputOutput>(
+        ExtractVector<QuantizedInputOutput>(output_), GetScale(output_),
+        GetZeroPoint(output_));
   }
 
  protected:
@@ -4448,6 +4713,357 @@ TEST(NNAPIDelegate, PReluQuantized) {
                                      0.0f, -0.125f, 0.125f,  // Row 1, Column 2
                                  },
                                  kQuantizedTolerance)));
+}
+
+// Tests case where paddings is a const tensor. Type T is the dtype.
+template <typename T1>
+class PadV2OpConstModel : public PadOpModel<T1> {
+ public:
+  PadV2OpConstModel(const TensorData& input,
+                    std::initializer_list<int> paddings_shape,
+                    std::initializer_list<int> paddings, T1 constant_values,
+                    const TensorData& output) {
+    this->input_ = this->AddInput(input);
+    this->paddings_ =
+        this->AddConstInput(TensorType_INT32, paddings, paddings_shape);
+    this->constant_values_ =
+        this->AddConstInput(GetTensorType<T1>(), {constant_values}, {1});
+
+    this->output_ = this->AddOutput(output);
+
+    this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
+                       CreatePadV2Options(this->builder_).Union());
+    this->BuildInterpreter({input.shape});
+  }
+
+  PadV2OpConstModel(const TensorData& input,
+                    std::initializer_list<int> paddings_shape,
+                    std::initializer_list<int> paddings,
+                    const TensorData& constant_values,
+                    const TensorData& output) {
+    this->input_ = this->AddInput(input);
+    this->paddings_ =
+        this->AddConstInput(TensorType_INT32, paddings, paddings_shape);
+    this->constant_values_ = this->AddInput(constant_values);
+
+    this->output_ = this->AddOutput(output);
+
+    this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
+                       CreatePadV2Options(this->builder_).Union());
+    this->BuildInterpreter({input.shape});
+  }
+};
+
+// Test case where paddings is a non-const tensor.
+template <typename RegularInputOuput>
+class PadV2OpDynamicModel : public PadOpModel<RegularInputOuput> {
+ public:
+  PadV2OpDynamicModel(const TensorData& input,
+                      std::initializer_list<int> paddings_shape,
+                      RegularInputOuput constant_values,
+                      const TensorData& output) {
+    this->input_ = this->AddInput(input);
+    this->paddings_ = this->AddInput(TensorType_INT32);
+    this->constant_values_ = this->AddConstInput(
+        GetTensorType<RegularInputOuput>(), {constant_values}, {1});
+    this->output_ = this->AddOutput(output);
+
+    this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
+                       CreatePadV2Options(this->builder_).Union());
+    this->BuildInterpreter({input.shape, paddings_shape});
+  }
+  PadV2OpDynamicModel(const TensorData& input,
+                      std::initializer_list<int> paddings_shape,
+                      const TensorData& constant_values,
+                      const TensorData& output) {
+    this->input_ = this->AddInput(input);
+    this->paddings_ = this->AddInput(TensorType_INT32);
+    this->constant_values_ = this->AddInput(constant_values);
+    this->output_ = this->AddOutput(output);
+
+    this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
+                       CreatePadV2Options(this->builder_).Union());
+    this->BuildInterpreter({input.shape, paddings_shape});
+  }
+};
+
+TEST(PadV2OpTest, SimpleConstTest) {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
+                             {0, 0, 1, 1, 1, 1, 0, 0}, 0.0,
+                             {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
+                                               0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, SimpleConstFloat32ValuedTestUint8) {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
+                             {0, 0, 1, 1, 1, 1, 0, 0}, 5, {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
+                                               5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, Simple4DConstFloat32ValuedTest) {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 1, 2, 1}}, {4, 2},
+                             {0, 1, 0, 0, 0, 0, 0, 1}, 5, {TensorType_FLOAT32});
+  m.SetInput({3, 3});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 5, 3, 5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 2}));
+}
+
+TEST(PadV2OpTest, SimpleDynamicTest) {
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2}, 0.0,
+                               {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
+                                               0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, SimpleDynamicValuedTest) {
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2}, 5,
+                               {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
+                                               5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, AdvancedConstTest) {
+  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
+                             {0, 0, 0, 2, 1, 3, 0, 0}, 0, {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+TEST(PadV2OpTest, AdvancedDynamicTest) {
+  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2}, 0,
+                               {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4, 5, 6});
+  m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 1, 2, 3, 0, 0, 0, 0, 4, 5, 6, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+std::vector<testing::Matcher<float>> DequantizedArrayNear(
+    const std::vector<float>& values, const float min, const float max) {
+  const float quantization_tolerance = (max - min) / 255.0;
+  return ArrayFloatNear(values, quantization_tolerance);
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void SimpleConstTestV2() {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadV2OpConstModel<integer_type> m(
+      {tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
+      {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
+  m.template SetQuantizedPadValue<integer_type>(0);
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8SimpleConstTest) {
+  SimpleConstTestV2<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8SimpleConstTest) {
+  SimpleConstTestV2<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void SimpleDynamicTestV2() {
+  PadV2OpDynamicModel<integer_type> m({tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0},
+                                      {4, 2}, {tensor_dtype, {1}, -1.0, 1.0},
+                                      {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
+  m.template SetQuantizedPadValue<integer_type>(0);
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {0, 0, 0, 0, 0, -0.8, 0.2, 0, 0, 0.9, 0.7, 0, 0, 0, 0, 0},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8SimpleDynamicTest) {
+  SimpleDynamicTestV2<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8SimpleDynamicTest) {
+  SimpleDynamicTestV2<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void AdvancedConstTestV2() {
+  PadV2OpConstModel<integer_type> m(
+      {tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2}, {0, 0, 0, 2, 1, 3, 0, 0},
+      {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
+  m.template SetQuantizedPadValue<integer_type>(0);
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
+                   0, 0,    0,   0,   0, 0, 0, 0, 0,   0,   0,    0, 0, 0},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8AdvancedConstTest) {
+  AdvancedConstTestV2<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8AdvancedConstTest) {
+  AdvancedConstTestV2<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void AdvancedDynamicTestV2() {
+  PadV2OpDynamicModel<integer_type> m({tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0},
+                                      {4, 2}, {tensor_dtype, {1}, -1.0, 1.0},
+                                      {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
+  m.template SetQuantizedPadValue<integer_type>(0);
+  m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {0, -0.8, 0.2, 0.9, 0, 0, 0, 0, 0.7, 0.1, -0.3, 0, 0, 0,
+                   0, 0,    0,   0,   0, 0, 0, 0, 0,   0,   0,    0, 0, 0},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8AdvancedDynamicTest) {
+  AdvancedDynamicTestV2<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8AdvancedDynamicTest) {
+  AdvancedDynamicTestV2<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void SimpleConstValuedTest() {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadV2OpConstModel<integer_type> m(
+      {tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
+      {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
+  m.template SetQuantizedPadValue<integer_type>(-0.5);
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {-0.5, -0.5, -0.5, -0.5, -0.5, -0.8, 0.2, -0.5, -0.5, 0.9,
+                   0.7, -0.5, -0.5, -0.5, -0.5, -0.5},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8SimpleConstValuedTest) {
+  SimpleConstValuedTest<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8SimpleConstValuedTest) {
+  SimpleConstValuedTest<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void SimpleDynamicValuedTest() {
+  PadV2OpDynamicModel<integer_type> m({tensor_dtype, {1, 2, 2, 1}, -1.0, 1.0},
+                                      {4, 2}, {tensor_dtype, {1}, -1.0, 1.0},
+                                      {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7});
+  m.template SetQuantizedPadValue<integer_type>(-0.5);
+  m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {-0.5, -0.5, -0.5, -0.5, -0.5, -0.8, 0.2, -0.5, -0.5, 0.9,
+                   0.7, -0.5, -0.5, -0.5, -0.5, -0.5},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8SimpleDynamicValuedTest) {
+  SimpleDynamicValuedTest<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8SimpleDynamicValuedTest) {
+  SimpleDynamicValuedTest<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void AdvancedConstValuedTest() {
+  PadV2OpConstModel<integer_type> m(
+      {tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2}, {0, 0, 0, 2, 1, 3, 0, 0},
+      {tensor_dtype, {1}, -1.0, 1.0}, {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
+  m.template SetQuantizedPadValue<integer_type>(-0.5);
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {-0.5, -0.8, 0.2,  0.9,  -0.5, -0.5, -0.5, -0.5, 0.7,  0.1,
+                   -0.3, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5,
+                   -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8AdvancedConstValuedTest) {
+  AdvancedConstValuedTest<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8AdvancedConstValuedTest) {
+  AdvancedConstValuedTest<int8_t, TensorType_INT8>();
+}
+
+template <typename integer_type, TensorType tensor_dtype>
+void AdvancedDynamicValuedTest() {
+  PadV2OpDynamicModel<integer_type> m({tensor_dtype, {1, 2, 3, 1}, -1.0, 1.0},
+                                      {4, 2}, {tensor_dtype, {1}, -1.0, 1.0},
+                                      {tensor_dtype, {}, -1.0, 1.0});
+  m.template SetQuantizedInput<integer_type>({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
+  m.template SetQuantizedPadValue<integer_type>(-0.5);
+  m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
+  m.Invoke();
+  EXPECT_THAT(m.template GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(DequantizedArrayNear(
+                  {-0.5, -0.8, 0.2,  0.9,  -0.5, -0.5, -0.5, -0.5, 0.7,  0.1,
+                   -0.3, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5,
+                   -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5, -0.5},
+                  -1.0, 1.0)));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 7, 1}));
+}
+
+TEST(QuantizedPadV2OpTest, UInt8AdvancedDynamicValuedTest) {
+  AdvancedDynamicValuedTest<uint8_t, TensorType_UINT8>();
+}
+TEST(QuantizedPadV2OpTest, Int8AdvancedDynamicValuedTest) {
+  AdvancedDynamicValuedTest<int8_t, TensorType_INT8>();
 }
 
 }  // namespace

@@ -35,7 +35,6 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -50,6 +49,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
@@ -197,7 +197,6 @@ class Network(base_layer.Layer):
     # API. Instead, `model.dynamic` is determined based on the internal layers.
     self._dynamic = kwargs.get('dynamic', False)
     self._is_compiled = False
-    self._expects_training_arg = False
     self._layers = []
 
     # This is True for Sequential networks and Functional networks.
@@ -278,6 +277,7 @@ class Network(base_layer.Layer):
     # `_expects_training_arg` is True since the `training` argument is always
     # present in the signature of the `call` method of a graph network.
     self._expects_training_arg = True
+    self._expects_mask_arg = True
 
     self._input_layers = []
     self._output_layers = []
@@ -341,7 +341,12 @@ class Network(base_layer.Layer):
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
-        self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
+        # Use batch_input_shape here because non-eager composite tensors may not
+        # have a shape attribute that's meaningful (sparse, for instance, has
+        # a tensor that's non-constant and needs to be fed). This means that
+        # input layers that create placeholders will need to have the
+        # batch_input_shape attr to allow for input shape validation.
+        self._feed_input_shapes.append(layer._batch_input_shape)
         self._feed_inputs.append(layer.input)
 
   def _set_output_names(self):
@@ -367,11 +372,9 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None, **kwargs):
     self._base_init(name=name, **kwargs)
     self._is_graph_network = False
+    self._expects_training_arg = 'training' in self._call_fn_args
+    self._expects_mask_arg = 'mask' in self._call_fn_args
     call_argspec = tf_inspect.getfullargspec(self.call)
-    if 'training' in call_argspec.args:
-      self._expects_training_arg = True
-    else:
-      self._expects_training_arg = False
     self._call_convention = self._determine_call_convention(call_argspec)
     self.outputs = []
     self.inputs = []
@@ -513,6 +516,7 @@ class Network(base_layer.Layer):
     return weights
 
   @property
+  @tracking.cached_per_instance
   def _should_compute_mask(self):
     return self._is_graph_network and super(Network, self)._should_compute_mask
 
@@ -627,7 +631,7 @@ class Network(base_layer.Layer):
       return specs[0]
     return specs
 
-  @base_layer.default
+  @base_layer_utils.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.
 
@@ -1306,11 +1310,6 @@ class Network(base_layer.Layer):
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
         saving.save_weights_to_hdf5_group(f, self.layers)
-        # TODO(rchao): Save this attribute in a decoupled checkpoint file
-        # that is solely for the purpose of fault tolerance.
-        if self._ckpt_saved_epoch is not None:
-          f.attrs[callbacks.CKPT_SAVED_EPOCH] = str(
-              self._ckpt_saved_epoch).encode('utf8')
     else:
       if context.executing_eagerly():
         session = None
@@ -1410,12 +1409,6 @@ class Network(base_layer.Layer):
     with h5py.File(filepath, 'r') as f:
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
-      # TODO(rchao): Load this attribute from a decoupled metadata+checkpoint
-      # file that is solely for the purpose of fault tolerance. Decide if we
-      # should use TF or HDF5 format for the metadata.
-      if callbacks.CKPT_SAVED_EPOCH in f.attrs:
-        self._ckpt_saved_epoch = f.attrs[callbacks.CKPT_SAVED_EPOCH].decode(
-            'utf8')
       if by_name:
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
@@ -1528,7 +1521,7 @@ class Network(base_layer.Layer):
                          ' (missing previous layer metadata).')
       # Check that x is an input tensor.
       # pylint: disable=protected-access
-      layer, _, _ = x._keras_history
+      layer = x._keras_history.layer
       if len(layer._inbound_nodes) > 1 or (
           layer._inbound_nodes and layer._inbound_nodes[0].inbound_layers):
         cls_name = self.__class__.__name__
@@ -1545,7 +1538,7 @@ class Network(base_layer.Layer):
 
     # Check compatibility of batch sizes of Input Layers.
     input_batch_sizes = [
-        training_utils.get_static_batch_size(x._keras_history[0])
+        training_utils.get_static_batch_size(x._keras_history.layer)
         for x in self.inputs
     ]
     consistent_batch_size = None
@@ -1669,6 +1662,10 @@ class Network(base_layer.Layer):
                        'Weights are created when the Model is first called on '
                        'inputs or `build()` is called with an `input_shape`.' %
                        self.name)
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_network'
 
 
 def _is_hdf5_filepath(filepath):

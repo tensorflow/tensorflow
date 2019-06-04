@@ -233,10 +233,6 @@ class MapDefunTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(r, feed_dict={p: 0})
 
-  def _assert_op_cancelled(self, sess, map_defun_op):
-    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
-      self.evaluate(map_defun_op)
-
   def testMapDefunWithParentCancellation(self):
     # Checks that a cancellation of the parent graph is threaded through to
     # MapDefunOp correctly.
@@ -252,7 +248,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       thread = self.checkedThread(
-          self._assert_op_cancelled, args=(sess, map_defun_op))
+          self.assert_op_cancelled, args=(map_defun_op,))
       thread.start()
       time.sleep(0.2)
       sess.close()

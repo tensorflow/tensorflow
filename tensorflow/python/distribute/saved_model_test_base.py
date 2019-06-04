@@ -33,6 +33,8 @@ _RANDOM_SEED = 1337
 _IN_SCOPE_SAVE_DIR = 'in_scope/'
 _OUT_OF_SCOPE_SAVE_DIR = 'out_of_scope/'
 
+_TOLERANCE = 1e-30
+
 PREDICT_STEPS = 1
 
 simple_models = [
@@ -153,7 +155,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           predict_dataset=predict_dataset,
           output_name=output_name)
 
-    self.assertAllEqual(result_before_save, result_after_save)
+    self.assertAllClose(result_before_save, result_after_save, atol=_TOLERANCE)
 
   def run_test_save_strategy_restore_no_strategy(self, model_and_input,
                                                  distribution):
@@ -188,8 +190,10 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
         predict_dataset=predict_dataset,
         output_name=output_name)
 
-    self.assertAllEqual(result_before_save, result_load_from_save_in_scope)
-    self.assertAllEqual(result_before_save, result_load_from_save_out_of_scope)
+    self.assertAllClose(
+        result_before_save, result_load_from_save_in_scope, atol=_TOLERANCE)
+    self.assertAllClose(
+        result_before_save, result_load_from_save_out_of_scope, atol=_TOLERANCE)
 
   def run_test_save_strategy_restore_strategy(self, model_and_input,
                                               distribution_pair):
@@ -232,5 +236,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           predict_dataset=predict_dataset,
           output_name=output_name)
 
-    self.assertAllEqual(result_before_save, result_load_from_save_in_scope)
-    self.assertAllEqual(result_before_save, result_load_from_save_out_of_scope)
+    self.assertAllClose(
+        result_before_save, result_load_from_save_in_scope, atol=_TOLERANCE)
+    self.assertAllClose(
+        result_before_save, result_load_from_save_out_of_scope, atol=_TOLERANCE)

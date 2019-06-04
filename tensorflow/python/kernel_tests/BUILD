@@ -2,9 +2,8 @@
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -237,7 +236,7 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_windows_gpu",
+        "no_gpu",  # TODO(b/131773093): Re-enable.
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
     xla_enable_strict_auto_jit = True,
@@ -546,6 +545,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:nn_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -599,7 +599,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "logging_ops_test",
     size = "small",
     srcs = ["logging_ops_test.py"],
@@ -612,6 +612,7 @@ tf_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -662,6 +663,7 @@ tf_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 16,
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -1270,6 +1272,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1418,6 +1421,7 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
     ],
+    tags = ["no_windows"],  # b/133869052
 )
 
 cuda_py_test(
@@ -1451,6 +1455,7 @@ cuda_py_test(
         "noasan",
         "noguitar",
         "notap",
+        "optonly",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -1725,6 +1730,7 @@ cuda_py_test(
     size = "small",
     srcs = ["control_flow_ops_py_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -2533,7 +2539,10 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_windows",
+        "no_windows_gpu",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3823,4 +3832,5 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 10,
+    xla_enable_strict_auto_jit = True,
 )

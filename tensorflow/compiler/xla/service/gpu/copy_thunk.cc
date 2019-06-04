@@ -32,7 +32,7 @@ HostToDeviceCopyThunk::HostToDeviceCopyThunk(
 
 Status HostToDeviceCopyThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase destination_data =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
@@ -51,7 +51,7 @@ DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
 
 Status DeviceToDeviceCopyThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase destination_data =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
   se::DeviceMemoryBase source_data =

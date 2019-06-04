@@ -144,6 +144,11 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
+  return ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest());
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           const HloModuleConfig& config) {
   auto module = absl::make_unique<VerifiedHloModule>(

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <sstream>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -131,10 +132,9 @@ inline string FormatNodeNameForError(const string& name) {
 // LINT.ThenChange(//tensorflow/python/client/session.py)
 template <typename T>
 string FormatNodeNamesForError(const T& names) {
-  return ::tensorflow::str_util::Join(
-      names, ", ", [](string* output, const string& s) {
-        ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
-      });
+  return absl::StrJoin(names, ", ", [](string* output, const string& s) {
+    ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
+  });
 }
 // LINT.IfChange
 inline string FormatColocationNodeForError(const string& name) {
@@ -143,11 +143,9 @@ inline string FormatColocationNodeForError(const string& name) {
 // LINT.ThenChange(//tensorflow/python/framework/error_interpolation.py)
 template <typename T>
 string FormatColocationNodeForError(const T& names) {
-  return ::tensorflow::str_util::Join(
-      names, ", ", [](string* output, const string& s) {
-        ::tensorflow::strings::StrAppend(output,
-                                         FormatColocationNodeForError(s));
-      });
+  return absl::StrJoin(names, ", ", [](string* output, const string& s) {
+    ::tensorflow::strings::StrAppend(output, FormatColocationNodeForError(s));
+  });
 }
 
 inline string FormatFunctionForError(const string& name) {

@@ -105,18 +105,19 @@ int main(int argc, char** argv) {
               << FLAGS_service_addr << " for " << duration_ms
               << "ms and show metrics for " << num_queries << " time(s)."
               << std::endl;
-    tensorflow::profiler::client::StartMonitoring(
+    status = tensorflow::profiler::client::StartMonitoring(
         FLAGS_service_addr, duration_ms, FLAGS_monitoring_level,
         FLAGS_timestamp, num_queries);
   } else {
     status = tensorflow::profiler::client::StartTracing(
         FLAGS_service_addr, FLAGS_logdir, FLAGS_workers_list,
         FLAGS_include_dataset_ops, duration_ms, num_tracing_attempts);
-    if (!status.ok() && status.code() != tensorflow::error::Code::UNAVAILABLE) {
-      std::cout << status.error_message() << std::endl;
-      std::cout << usage.c_str() << std::endl;
-      return 2;
-    }
+  }
+
+  if (!status.ok() && status.code() != tensorflow::error::Code::UNAVAILABLE) {
+    std::cout << status.error_message() << std::endl;
+    std::cout << usage.c_str() << std::endl;
+    return 2;
   }
   return 0;
 }

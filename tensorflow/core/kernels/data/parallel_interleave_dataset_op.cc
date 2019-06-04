@@ -68,6 +68,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
+    if (cycle_length == model::kAutoTune) {
+      cycle_length = port::NumSchedulableCPUs();
+    }
     OP_REQUIRES(ctx, cycle_length > 0,
                 errors::InvalidArgument("`cycle_length` must be > 0"));
 
@@ -213,11 +216,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       }
 
       string BuildTraceMeName() override {
-        int64 parallelism;
-        {
-          tf_shared_lock l(*mu_);
-          parallelism = num_parallel_calls_->value;
-        }
+        // NOTE: We do not synchronize the following access to
+        // num_parallel_calls_ to minimize the tracing overhead.
+        int64 parallelism = num_parallel_calls_->value;
         return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
       }
 

@@ -376,6 +376,13 @@ class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
   def __getattr__(self, name):
+    # The '_use_resource_variables' and the attrs starts with '_self' are used
+    # for restoring the saved_model proto. At the point these attrs are queried,
+    # the variable has not been initialized. Thus it should not query those of
+    # the underlying components.
+    if name.startswith("_self_") or name == "_use_resource_variables":
+      return super(DistributedDelegate, self).__getattr__(name)
+
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
     # __getattr__ and @property. See b/120402273.
     return getattr(self.get(), name)
@@ -896,6 +903,12 @@ def _enclosing_tpu_context():
   return tpu_context
 
 
+def is_distributed_variable(v):
+  """Determine if a variable is ds variable or TPU mirrored variable."""
+  return (isinstance(v, DistributedVariable)
+          or isinstance(v, TPUMirroredVariable))
+
+
 # TODO(jhseu): Deduplicate code. We copy code because we don't want to
 # inherit from DistributedDelegate. DistributedDelegate will not work in a
 # tpu.replicate() because it assumes that you're in a device context where you
@@ -956,7 +969,6 @@ class TPUMirroredVariable(variables_lib.Variable):
     raise NotImplementedError(
         "numpy() is only available when eager execution is enabled.")
 
-  @property
   def initialized_value(self):
     return self.primary.initialized_value()
 
@@ -1678,7 +1690,6 @@ class AggregatingVariable(variables_lib.Variable):
   def initializer(self):
     return self._v.initializer
 
-  @property
   def initialized_value(self):
     return self._v.initialized_value()
 

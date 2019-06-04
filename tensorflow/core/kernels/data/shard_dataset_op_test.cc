@@ -278,8 +278,9 @@ TEST_P(ParameterizedShardDatasetOpTest, GetNext) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -332,8 +333,9 @@ TEST_F(ShardDatasetOpTest, DatasetNodeName) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -367,8 +369,9 @@ TEST_F(ShardDatasetOpTest, DatasetTypeString) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -402,8 +405,9 @@ TEST_P(ParameterizedShardDatasetOpTest, DatasetOutputDtypes) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -438,8 +442,9 @@ TEST_P(ParameterizedShardDatasetOpTest, DatasetOutputShapes) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -474,8 +479,9 @@ TEST_P(ParameterizedShardDatasetOpTest, Cardinality) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -509,8 +515,9 @@ TEST_P(ParameterizedShardDatasetOpTest, DatasetSave) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -549,8 +556,9 @@ TEST_P(ParameterizedShardDatasetOpTest, IteratorOutputDtypes) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -592,8 +600,9 @@ TEST_P(ParameterizedShardDatasetOpTest, IteratorOutputShapes) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -635,8 +644,9 @@ TEST_F(ShardDatasetOpTest, IteratorOutputPrefix) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -677,8 +687,9 @@ TEST_P(ParameterizedShardDatasetOpTest, Roundtrip) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));
@@ -755,7 +766,8 @@ TEST_F(ShardDatasetOpTest, InvalidArguments) {
     Tensor num_shards = test_case.num_shards;
     Tensor index = test_case.index;
     gtl::InlinedVector<TensorValue, 4> inputs(
-        {&range_dataset_tensor, &num_shards, &index});
+        {TensorValue(&range_dataset_tensor), TensorValue(&num_shards),
+         TensorValue(&index)});
     std::unique_ptr<OpKernelContext> shard_dataset_context;
     TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                            &shard_dataset_context));
@@ -789,8 +801,9 @@ TEST_F(ShardDatasetOpTest, NoElemForEachShard) {
 
   Tensor num_shards = test_case.num_shards;
   Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &num_shards, &index});
+  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
+                                             TensorValue(&num_shards),
+                                             TensorValue(&index)});
   std::unique_ptr<OpKernelContext> shard_dataset_context;
   TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
                                          &shard_dataset_context));

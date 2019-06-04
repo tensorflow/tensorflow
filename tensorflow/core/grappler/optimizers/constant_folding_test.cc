@@ -2390,12 +2390,11 @@ TEST_F(ConstantFoldingTest, MergeConcat_PartialFolding) {
   TF_EXPECT_OK(status);
 
   GraphDef want;
-  AddNode("ConstantFolding/concat2_partial_split_0_0", "Const", {}, {}, &want);
+  AddNode("ConstantFolding/concat2_partial_split_0", "Const", {}, {}, &want);
   AddNode("axis", "Const", {}, {}, &want);
   AddNode("ph", "Placeholder", {}, {}, &want);
   AddNode("concat2", "ConcatV2",
-          {"ConstantFolding/concat2_partial_split_0_0", "ph", "axis"}, {},
-          &want);
+          {"ConstantFolding/concat2_partial_split_0", "ph", "axis"}, {}, &want);
 
   CompareGraphs(want, got);
 }
@@ -3233,7 +3232,7 @@ TEST_F(ConstantFoldingTest, PartialFolding_AssociativeAndCommutative) {
         EXPECT_EQ("ConstantFolding/acc6_partial_split_2", node.input(1));
         EXPECT_EQ("y", node.input(2));
       }
-      if (str_util::StartsWith(node.name(), "ConstantFolding/")) {
+      if (absl::StartsWith(node.name(), "ConstantFolding/")) {
         EXPECT_EQ("Const", node.op());
       }
     }
@@ -3318,7 +3317,7 @@ TEST_F(ConstantFoldingTest, PartialFolding_Concat) {
       EXPECT_EQ("x", node.input(1));
       EXPECT_EQ("y", node.input(2));
       EXPECT_EQ("axis", node.input(3));
-    } else if (str_util::StartsWith(node.name(), "ConstantFolding/")) {
+    } else if (absl::StartsWith(node.name(), "ConstantFolding/")) {
       EXPECT_EQ("Const", node.op());
     } else {
       EXPECT_EQ(item.graph.node(i).DebugString(), node.DebugString());
