@@ -518,6 +518,35 @@ def rename_v2(src, dst, overwrite=False):
   pywrap_tensorflow.RenameFile(
       compat.as_bytes(src), compat.as_bytes(dst), overwrite)
 
+@tf_export(v1=["gfile.NeedsTempLocation"])
+def needs_temp_location(path):
+  """ Returns whether or not writing to the given path needs to use
+      a temporary location for safety
+  Args:
+    path: string, path to a file
+  Returns:
+    True, if the path is on a file system that needs to use a temporary
+          location to write safely. In such cases it is recommended to write to
+          a temporary location and then do (atomic) move to the final location.
+    False, if it is safe to write to the path without a temp location
+  """
+  return needs_temp_location_v2(path)
+
+@tf_export("io.gfile.needstemp")
+def needs_temp_location_v2(path):
+  """ Returns whether or not writing to the given path needs to use
+      a temporary location for safety
+  Args:
+    path: string, path to a file
+    
+  Returns:
+    True, if the path is on a file system that needs to use a temporary
+          location to write safely. In such cases it is recommended to write to
+          a temporary location and then do (atomic) move to the final location.
+    False, if it is safe to write to the path without a temp location
+  """
+  status = c_api_util.ScopedTFStatus()
+  return pywrap_tensorflow.NeedsTempLocation(compat.as_bytes(path), status)
 
 def atomic_write_string_to_file(filename, contents, overwrite=True):
   """Writes to `filename` atomically.
@@ -534,14 +563,16 @@ def atomic_write_string_to_file(filename, contents, overwrite=True):
     overwrite: boolean, if false it's an error for `filename` to be occupied by
       an existing file.
   """
-  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
-  write_string_to_file(temp_pathname, contents)
-  try:
-    rename(temp_pathname, filename, overwrite)
-  except errors.OpError:
-    delete_file(temp_pathname)
-    raise
-
+  if not needs_temp_location(filename):
+    write_string_to_file(filename, contents)
+  else:
+    temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+    write_string_to_file(temp_pathname, contents)
+    try:
+      rename(temp_pathname, filename, overwrite)
+    except errors.OpError:
+      delete_file(temp_pathname)
+      raise
 
 @tf_export(v1=["gfile.DeleteRecursively"])
 def delete_recursively(dirname):

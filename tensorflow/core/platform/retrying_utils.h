@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -25,10 +26,14 @@ namespace tensorflow {
 struct RetryConfig {
   RetryConfig(int64 init_delay_time_us = 100 * 1000,
               int64 max_delay_time_us = 32 * 1000 * 1000,
-              int max_retries = 10) {
+              int max_retries = 10,
+              std::set<error::Code> retriable_errors = {error::UNAVAILABLE, 
+                error::DEADLINE_EXCEEDED,
+                error::UNKNOWN}) {
     this->init_delay_time_us = init_delay_time_us;
     this->max_delay_time_us = max_delay_time_us;
     this->max_retries = max_retries;
+    this->retriable_errors = retriable_errors;
   }
 
   // In case of failure, every call will be retried max_retries times.
@@ -39,6 +44,9 @@ struct RetryConfig {
 
   // Maximum backoff time in microseconds.
   int64 max_delay_time_us;
+
+  // Set of errors which need to be retried
+  std::set<error::Code> retriable_errors;
 };
 
 class RetryingUtils {

@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_
 
 #include <aws/s3/S3Client.h>
+#include <aws/transfer/TransferManager.h>
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/retrying_file_system.h"
 
 namespace tensorflow {
 
@@ -59,6 +61,8 @@ class S3FileSystem : public FileSystem {
 
   Status RenameFile(const string& src, const string& target) override;
 
+  virtual Status NeedsTempLocation(const string& path) override;
+
  private:
   // Returns the member S3 client, initializing as-needed.
   // When the client tries to access the object in S3, e.g.,
@@ -76,8 +80,30 @@ class S3FileSystem : public FileSystem {
   std::shared_ptr<Aws::S3::S3Client> GetS3Client();
 
   std::shared_ptr<Aws::S3::S3Client> s3_client_;
-  // Lock held when checking for s3_client_ initialization.
-  mutex client_lock_;
+  
+  // Returns the member transfer manager, initializing as-needed.
+  std::shared_ptr<Aws::Transfer::TransferManager> GetTransferManager();
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager_;
+
+  // Returns the member executor for transfer manager, initializing as-needed.
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> GetExecutor();
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor_;
+
+  // Lock held when checking for s3_client_ and transfer_manager_ initialization
+  mutex initialization_lock_;
+};
+
+/// S3 implementation of a file system with retry on failures.
+class RetryingS3FileSystem : public RetryingFileSystem<S3FileSystem> {
+ public:
+  RetryingS3FileSystem()
+      : RetryingFileSystem(
+            std::unique_ptr<S3FileSystem>(new S3FileSystem),
+            RetryConfig(
+                100000 /* init_delay_time_us */,
+                32000000 /* max_delay_time_us */, 10 /* max_retries */,
+                {error::UNAVAILABLE, error::DEADLINE_EXCEEDED, error::UNKNOWN,
+                 error::FAILED_PRECONDITION, error::INTERNAL})) {}
 };
 
 }  // namespace tensorflow

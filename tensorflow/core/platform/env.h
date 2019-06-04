@@ -221,6 +221,15 @@ class Env {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   Status IsDirectory(const string& fname);
 
+  /// \brief Returns whether the given path needs a temp location
+  /// to safely write objects.
+  /// Typical return codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a file system that should use a temp location
+  ///         to safely write objects
+  ///  * FAILED_PRECONDITION - The path is on a file system that does not
+  ///            need a temp location
+  Status NeedsTempLocation(const string& path);
+
   /// Stores the size of `fname` in `*file_size`.
   Status GetFileSize(const string& fname, uint64* file_size);
 

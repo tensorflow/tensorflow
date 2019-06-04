@@ -231,5 +231,11 @@ TEST_F(S3FileSystemTest, StatFile) {
   EXPECT_FALSE(stat.is_directory);
 }
 
+TEST_F(S3FileSystemTest, NeedsTempLocation) {
+  const string fname = TmpDir("NeedsTempLocation");
+  TF_ASSERT_OK(WriteString(fname, "test"));
+  EXPECT_EQ(error::Code::FAILED_PRECONDITION, s3fs.NeedsTempLocation(fname).code());
+}
+
 }  // namespace
 }  // namespace tensorflow

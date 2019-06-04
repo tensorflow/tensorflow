@@ -60,4 +60,8 @@ tf_module {
     name: "Walk"
     argspec: "args=[\'top\', \'in_order\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
+  member_method {
+    name: "NeedsTempLocation"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
 }

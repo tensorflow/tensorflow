@@ -163,6 +163,19 @@ bool IsDirectory(const string& dirname, TF_Status* out_status) {
   return false;
 }
 
+bool NeedsTempLocation(const string& path, TF_Status* out_status) {
+  tensorflow::Status status = tensorflow::Env::Default()->NeedsTempLocation(path);
+  if (status.ok()) {
+    return true;
+  }
+  // FAILED_PRECONDITION Status response means that writing to the path
+  // does not need a temp location
+  if (status.code() != tensorflow::error::FAILED_PRECONDITION) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+  return false;
+}
+
 using tensorflow::FileStatistics;
 
 void Stat(const string& filename, FileStatistics* stats, TF_Status* status) {
@@ -261,6 +274,7 @@ void RenameFile(const string& oldname, const string& newname, bool overwrite,
                 TF_Status* status);
 void DeleteRecursively(const string& dirname, TF_Status* status);
 bool IsDirectory(const string& dirname, TF_Status* out_status);
+bool NeedsTempLocation(const string& path, TF_Status* out_status);
 void Stat(const string& filename, tensorflow::FileStatistics* stats,
           TF_Status* status);
 tensorflow::io::BufferedInputStream* CreateBufferedInputStream(

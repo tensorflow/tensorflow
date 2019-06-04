@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
+#include "tensorflow/core/platform/retrying_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
@@ -23,16 +23,9 @@ namespace tensorflow {
 
 namespace {
 
-bool IsRetriable(error::Code code) {
-  switch (code) {
-    case error::UNAVAILABLE:
-    case error::DEADLINE_EXCEEDED:
-    case error::UNKNOWN:
-      return true;
-    default:
-      // OK also falls here.
-      return false;
-  }
+bool IsRetriable(const std::set<error::Code> retriable_errors,
+                 const error::Code code) {
+  return retriable_errors.find(code) != retriable_errors.end();
 }
 
 }  // namespace
@@ -51,7 +44,7 @@ Status RetryingUtils::CallWithRetries(
   int retries = 0;
   while (true) {
     auto status = f();
-    if (!IsRetriable(status.code())) {
+    if (!IsRetriable(config.retriable_errors, status.code())) {
       return status;
     }
     if (retries >= config.max_retries) {

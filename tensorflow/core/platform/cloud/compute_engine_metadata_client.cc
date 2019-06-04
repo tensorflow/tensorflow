@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
+#include "tensorflow/core/platform/retrying_utils.h"
 
 namespace tensorflow {
 
