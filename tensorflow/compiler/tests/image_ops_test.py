@@ -560,6 +560,8 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
       ("72x72To456x456", 72, 72, 456, 456),
       ("86x86To456x456", 86, 86, 456, 456),
       ("100x100To456x456", 100, 100, 456, 456),
+      ("64x64To224x224", 64, 64, 224, 224),
+      ("224x224To224x224", 224, 224, 224, 224),
       # This test is disabled because it is very slow. It is slow because
       # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
       # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
