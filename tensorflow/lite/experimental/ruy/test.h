@@ -1165,7 +1165,9 @@ bool Agree(const Matrix<Scalar>& matrix1, const Matrix<Scalar>& matrix2,
       double diff = elem1 - elem2;
 
       sum_diff += diff;
-      if (std::abs(diff) > tolerated_max_diff) {
+      // Test (std::abs(diff) > tolerated_max_diff), but also true if diff is
+      // NaN.
+      if (!(std::abs(diff) <= tolerated_max_diff)) {
         return false;
       }
     }
