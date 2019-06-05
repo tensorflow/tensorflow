@@ -2298,15 +2298,8 @@ namespace {
 /// functions, notably for dealing with operations and SSA values.
 class FunctionParser : public Parser {
 public:
-  /// This builder intentionally shadows the builder in the base class, with a
-  /// more specific builder type.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshadow-field"
-  OpBuilder builder;
-#pragma clang diagnostic pop
-
   FunctionParser(ParserState &state, Function *function)
-      : Parser(state), builder(function->getBody()), function(function) {}
+      : Parser(state), function(function), opBuilder(function->getBody()) {}
 
   ~FunctionParser();
 
@@ -2466,6 +2459,9 @@ private:
   /// These are all of the placeholders we've made along with the location of
   /// their first reference, to allow checking for use of undefined values.
   DenseMap<Value *, SMLoc> forwardRefPlaceholders;
+
+  /// The builder used when creating parsed operation instances.
+  OpBuilder opBuilder;
 };
 } // end anonymous namespace
 
@@ -2978,7 +2974,7 @@ Operation *FunctionParser::parseGenericOperation() {
     result.addSuccessor(successor, operands);
   }
 
-  return builder.createOperation(result);
+  return opBuilder.createOperation(result);
 }
 
 namespace {
@@ -3354,7 +3350,7 @@ Operation *FunctionParser::parseCustomOperation() {
     return nullptr;
 
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
-  return builder.createOperation(opState);
+  return opBuilder.createOperation(opState);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3375,7 +3371,7 @@ ParseResult FunctionParser::parseRegion(
   // Check for an empty region.
   if (entryArguments.empty() && consumeIf(Token::r_brace))
     return success();
-  auto currentPt = builder.saveInsertionPoint();
+  auto currentPt = opBuilder.saveInsertionPoint();
 
   // Push a new named value scope.
   pushSSANameScope();
@@ -3419,7 +3415,7 @@ ParseResult FunctionParser::parseRegion(
     return failure();
 
   // Reset the original insertion point.
-  builder.restoreInsertionPoint(currentPt);
+  opBuilder.restoreInsertionPoint(currentPt);
   return success();
 }
 
@@ -3482,7 +3478,7 @@ ParseResult FunctionParser::parseBlock(Block *&block) {
 
 ParseResult FunctionParser::parseBlockBody(Block *block) {
   // Set the insertion point to the end of the block to parse.
-  builder.setInsertionPointToEnd(block);
+  opBuilder.setInsertionPointToEnd(block);
 
   // Parse the list of operations that make up the body of the block.
   while (getToken().isNot(Token::caret_identifier, Token::r_brace))
