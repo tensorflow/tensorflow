@@ -453,8 +453,9 @@ class Layer(module.Module):
   def compute_output_shape(self, input_shape):
     """Computes the output shape of the layer.
 
-    Assumes that the layer will be built
-    to match that input shape provided.
+    If the layer has not been built, this method will call `build` on the
+    layer. This assumes that the layer will later be used with inputs that
+    match the input shape provided here.
 
     Arguments:
         input_shape: Shape tuple (tuple of integers)
@@ -470,9 +471,10 @@ class Layer(module.Module):
       # This is acceptable because the framework only calls
       # `compute_output_shape` on shape values that the layer would later be
       # built for. It would however cause issues in case a user attempts to
-      # use `compute_output_shape` manually (these users will have to
+      # use `compute_output_shape` manually with shapes that are incompatible
+      # with the shape the Layer will be called on (these users will have to
       # implement `compute_output_shape` themselves).
-      self.build(input_shape)
+      self._maybe_build(input_shape)
       with context.graph_mode():
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():

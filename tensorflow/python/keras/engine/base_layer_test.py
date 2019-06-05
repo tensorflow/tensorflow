@@ -104,6 +104,27 @@ class BaseLayerTest(keras_parameterized.TestCase):
           ValueError, 'You must enable eager execution'):
         model.compile(rmsprop.RMSprop(0.001), loss='mse')
 
+  def test_manual_compute_output_shape(self):
+    class BuildCounter(keras.layers.Layer):
+
+      def __init__(self, *args, **kwargs):  # pylint: disable=redefined-outer-name
+        super(BuildCounter, self).__init__(*args, **kwargs)
+        self.build_counter = 0
+
+      def build(self, input_shape):
+        self.build_counter += 1
+
+      def call(self, inputs):
+        return inputs
+
+    with context.eager_mode():
+      layer = BuildCounter()
+      output_shape = layer.compute_output_shape((None, 10))
+      self.assertEqual(layer.build_counter, 1)
+      self.assertEqual(output_shape.as_list(), [None, 10])
+      layer(np.ones((5, 10)))
+      self.assertEqual(layer.build_counter, 1)
+
   def test_dynamic_layer_with_deferred_sequential_model(self):
     model = keras.Sequential(
         [DynamicLayer(dynamic=True),
