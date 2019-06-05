@@ -111,6 +111,8 @@ TEST(CudnnRNNOpsTest, ForwardV3Lstm_ShapeFn) {
   std::vector<int> input_shape = {max_seq_length, batch_size, num_units};
   std::vector<int> input_h_shape = {num_layers * dir_count, batch_size,
                                     num_units};
+  std::vector<int> input_c_shape = {num_layers * dir_count, batch_size,
+                                    num_units};
   std::vector<int> output_shape = {max_seq_length, batch_size,
                                    num_units * dir_count};
   std::vector<int> seq_lengths_shape = {batch_size};
