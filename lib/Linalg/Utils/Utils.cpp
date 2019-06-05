@@ -93,31 +93,15 @@ SmallVector<Value *, 8> mlir::linalg::getViewSizes(LinalgOp &linalgOp) {
   return res;
 }
 
-// Folding eagerly is necessary to abide by affine.for static step requirement.
-// We must propagate constants on the steps as aggressively as possible.
-// Returns nullptr if folding is not trivially feasible.
-static Value *tryFold(AffineMap map, ArrayRef<Value *> operands,
-                      FunctionConstants &state) {
-  assert(map.getNumResults() == 1 && "single result map expected");
-  auto expr = map.getResult(0);
-  if (auto dim = expr.dyn_cast<AffineDimExpr>())
-    return operands[dim.getPosition()];
-  if (auto sym = expr.dyn_cast<AffineSymbolExpr>())
-    return operands[map.getNumDims() + sym.getPosition()];
-  if (auto cst = expr.dyn_cast<AffineConstantExpr>())
-    return state.getOrCreateIndex(cst.getValue());
-  return nullptr;
-}
-
 static Value *emitOrFoldComposedAffineApply(OpBuilder *b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operandsRef,
                                             FunctionConstants &state) {
   SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
-  if (auto *v = tryFold(map, operands, state))
-    return v;
-  return b->create<AffineApplyOp>(loc, map, operands);
+  if (auto cst = map.getResult(0).dyn_cast<AffineConstantExpr>())
+    return state.getOrCreateIndex(cst.getValue());
+  return b->createOrFold<AffineApplyOp>(loc, map, operands);
 }
 
 SmallVector<Value *, 4>

@@ -194,7 +194,7 @@ public:
 
   /// This hook implements a generalized folder for this operation.  Operations
   /// can implement this to provide simplifications rules that are applied by
-  /// the Builder::foldOrCreate API and the canonicalization pass.
+  /// the Builder::createOrFold API and the canonicalization pass.
   ///
   /// This is an intentionally limited interface - implementations of this hook
   /// can only perform the following changes to the operation:
@@ -250,7 +250,7 @@ public:
 
   /// This hook implements a generalized folder for this operation.  Operations
   /// can implement this to provide simplifications rules that are applied by
-  /// the Builder::foldOrCreate API and the canonicalization pass.
+  /// the Builder::createOrFold API and the canonicalization pass.
   ///
   /// This is an intentionally limited interface - implementations of this hook
   /// can only perform the following changes to the operation:

@@ -362,3 +362,29 @@ Operation *OpBuilder::createOperation(const OperationState &state) {
   block->getOperations().insert(insertPoint, op);
   return op;
 }
+
+/// Attempts to fold the given operation and places new results within
+/// 'results'.
+void OpBuilder::tryFold(Operation *op, SmallVectorImpl<Value *> &results) {
+  results.reserve(op->getNumResults());
+  SmallVector<OpFoldResult, 4> foldResults;
+
+  // Returns if the given fold result corresponds to a valid existing value.
+  auto isValidValue = [](OpFoldResult result) {
+    return result.dyn_cast<Value *>();
+  };
+
+  // Check if the fold failed, or did not result in only existing values.
+  SmallVector<Attribute, 4> constOperands(op->getNumOperands());
+  if (failed(op->fold(constOperands, foldResults)) || foldResults.empty() ||
+      !llvm::all_of(foldResults, isValidValue)) {
+    // Simply return the existing operation results.
+    results.assign(op->result_begin(), op->result_end());
+    return;
+  }
+
+  // Populate the results with the folded results and remove the original op.
+  llvm::transform(foldResults, std::back_inserter(results),
+                  [](OpFoldResult result) { return result.get<Value *>(); });
+  op->erase();
+}

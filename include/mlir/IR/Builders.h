@@ -19,7 +19,7 @@
 #define MLIR_IR_BUILDERS_H
 
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Operation.h"
+#include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
 
@@ -297,7 +297,7 @@ public:
   /// Creates an operation given the fields represented as an OperationState.
   virtual Operation *createOperation(const OperationState &state);
 
-  /// Create operation of specific op type at the current insertion point.
+  /// Create an operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
@@ -306,6 +306,40 @@ public:
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");
     return result;
+  }
+
+  /// Create an operation of specific op type at the current insertion point,
+  /// and immediately try to fold it. This functions populates 'results' with
+  /// the results after folding the operation.
+  template <typename OpTy, typename... Args>
+  void createOrFold(SmallVectorImpl<Value *> &results, Location location,
+                    Args &&... args) {
+    auto op = create<OpTy>(location, std::forward<Args>(args)...);
+    tryFold(op.getOperation(), results);
+  }
+
+  /// Overload to create or fold a single result operation.
+  template <typename OpTy, typename... Args>
+  typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
+                          Value *>::type
+  createOrFold(Location location, Args &&... args) {
+    SmallVector<Value *, 1> results;
+    createOrFold<OpTy>(results, location, std::forward<Args>(args)...);
+    return results.front();
+  }
+
+  /// Overload to create or fold a zero result operation.
+  template <typename OpTy, typename... Args>
+  typename std::enable_if<OpTy::template hasTrait<OpTrait::ZeroResult>(),
+                          OpTy>::type
+  createOrFold(Location location, Args &&... args) {
+    auto op = create<OpTy>(location, std::forward<Args>(args)...);
+    SmallVector<Value *, 0> unused;
+    tryFold(op.getOperation(), unused);
+
+    // Folding cannot remove a zero-result operation, so for convenience we
+    // continue to return it.
+    return op;
   }
 
   /// Creates a deep copy of the specified operation, remapping any operands
@@ -339,6 +373,10 @@ public:
   }
 
 private:
+  /// Attempts to fold the given operation and places new results within
+  /// 'results'.
+  void tryFold(Operation *op, SmallVectorImpl<Value *> &results);
+
   Region *region;
   Block *block = nullptr;
   Block::iterator insertPoint;
