@@ -78,10 +78,10 @@ cc_library(
     hdrs = ["frame.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -93,6 +93,8 @@ tf_cc_test(
     srcs = ["frame_test.cc"],
     deps = [
         ":frame",
+        ":graph_view",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
