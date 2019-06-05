@@ -158,7 +158,9 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   }
 }
 
-void SingleOpModel::Invoke() { CHECK(interpreter_->Invoke() == kTfLiteOk); }
+void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
+
+TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
 
 // static
 void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
