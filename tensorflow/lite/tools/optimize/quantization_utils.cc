@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -304,8 +305,8 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
 
   for (int32_t i = 0; i < float_data_size; i++) {
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
-    const int32_t quantized_value =
-        static_cast<int32_t>(TfLiteRound(float_data[i] * scaling_factor_inv));
+    const int32_t quantized_value = tflite::SafeCast<int32_t>(
+        TfLiteRound(float_data[i] * scaling_factor_inv));
     final_buffer[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
 
@@ -341,7 +342,7 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
        channel_idx++) {
     float scaling_factor = scales[channel_idx];
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
-    const int32_t quantized_value = static_cast<int32_t>(
+    const int32_t quantized_value = tflite::SafeCast<int32_t>(
         TfLiteRound(float_data[channel_idx] * scaling_factor_inv));
     final_buffer[channel_idx] =
         std::min(kScale, std::max(-kScale, quantized_value));
