@@ -2310,18 +2310,13 @@ public:
 
   ~FunctionParser();
 
-  /// Parse a single operation successor and it's operand list.
-  ParseResult parseSuccessorAndUseList(Block *&dest,
-                                       SmallVectorImpl<Value *> &operands);
+  /// After parsing is finished, this function must be called to see if there
+  /// are any remaining issues.
+  ParseResult finalize(SMLoc loc);
 
-  /// Parse a comma-separated list of operation successors in brackets.
-  ParseResult
-  parseSuccessors(SmallVectorImpl<Block *> &destinations,
-                  SmallVectorImpl<SmallVector<Value *, 4>> &operands);
-
-  /// After the function is finished parsing, this function checks to see if
-  /// there are any remaining issues.
-  ParseResult finalizeFunction(SMLoc loc);
+  //===--------------------------------------------------------------------===//
+  // SSA Value Handling
+  //===--------------------------------------------------------------------===//
 
   /// This represents a use of an SSA value in the program.  The first two
   /// entries in the tuple are the name and result number of a reference.  The
@@ -2333,73 +2328,29 @@ public:
     SMLoc loc;       // Location of first definition or use.
   };
 
-  /// Given a reference to an SSA value and its type, return a reference. This
-  /// returns null on failure.
-  Value *resolveSSAUse(SSAUseInfo useInfo, Type type);
-
-  /// Register a definition of a value with the symbol table.
-  ParseResult addDefinition(SSAUseInfo useInfo, Value *value);
-
-  // SSA parsing productions.
-  ParseResult parseSSAUse(SSAUseInfo &result);
-  ParseResult parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results);
-
-  template <typename ResultType>
-  ResultType parseSSADefOrUseAndType(
-      const std::function<ResultType(SSAUseInfo, Type)> &action);
-
-  Value *parseSSAUseAndType() {
-    return parseSSADefOrUseAndType<Value *>(
-        [&](SSAUseInfo useInfo, Type type) -> Value * {
-          return resolveSSAUse(useInfo, type);
-        });
-  }
-
-  template <typename ValueTy>
-  ParseResult
-  parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValueTy *> &results);
-
   /// Push a new SSA name scope to the parser.
   void pushSSANameScope();
 
   /// Pop the last SSA name scope from the parser.
   ParseResult popSSANameScope();
 
-  // Block references.
+  /// Register a definition of a value with the symbol table.
+  ParseResult addDefinition(SSAUseInfo useInfo, Value *value);
 
-  ParseResult parseRegion(Region &region,
-                          ArrayRef<std::pair<SSAUseInfo, Type>> entryArguments);
-  ParseResult parseRegionBody(Region &region);
-  ParseResult parseBlock(Block *&block);
-  ParseResult parseBlockBody(Block *block);
+  /// Parse an optional list of SSA uses into 'results'.
+  ParseResult parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results);
 
-  ParseResult
-  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
-                            Block *owner);
+  /// Parse a single SSA use into 'result'.
+  ParseResult parseSSAUse(SSAUseInfo &result);
 
-  /// Cleans up the memory for allocated blocks when a parser error occurs.
-  void cleanupInvalidBlocks(ArrayRef<Block *> invalidBlocks) {
-    // Add the referenced blocks to the function so that they can be properly
-    // cleaned up when the function is destroyed.
-    for (auto *block : invalidBlocks)
-      function->push_back(block);
-  }
+  /// Given a reference to an SSA value and its type, return a reference. This
+  /// returns null on failure.
+  Value *resolveSSAUse(SSAUseInfo useInfo, Type type);
 
-  /// Get the block with the specified name, creating it if it doesn't
-  /// already exist.  The location specified is the point of use, which allows
-  /// us to diagnose references to blocks that are not defined precisely.
-  Block *getBlockNamed(StringRef name, SMLoc loc);
+  ParseResult parseSSADefOrUseAndType(
+      const std::function<ParseResult(SSAUseInfo, Type)> &action);
 
-  // Define the block with the specified name. Returns the Block* or
-  // nullptr in the case of redefinition.
-  Block *defineBlockNamed(StringRef name, SMLoc loc, Block *existing);
-
-  // Operations
-  ParseResult parseOperation();
-  Operation *parseGenericOperation();
-  Operation *parseCustomOperation();
-
-  ParseResult parseOperations(Block *block);
+  ParseResult parseOptionalSSAUseAndTypeList(SmallVectorImpl<Value *> &results);
 
   /// Return the location of the value identified by its name and number if it
   /// has been already defined.  Placeholder values are considered undefined.
@@ -2407,10 +2358,67 @@ public:
     if (!values.count(name) || number >= values[name].size())
       return {};
     Value *value = values[name][number].first;
-    if (value && !isForwardReferencePlaceholder(value))
+    if (value && !isForwardRefPlaceholder(value))
       return values[name][number].second;
     return {};
   }
+
+  //===--------------------------------------------------------------------===//
+  // Operation Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse an operation instance.
+  ParseResult parseOperation();
+
+  /// Parse a single operation successor and it's operand list.
+  ParseResult parseSuccessorAndUseList(Block *&dest,
+                                       SmallVectorImpl<Value *> &operands);
+
+  /// Parse a comma-separated list of operation successors in brackets.
+  ParseResult
+  parseSuccessors(SmallVectorImpl<Block *> &destinations,
+                  SmallVectorImpl<SmallVector<Value *, 4>> &operands);
+
+  /// Parse an operation instance that is in the generic form.
+  Operation *parseGenericOperation();
+
+  /// Parse an operation instance that is in the op-defined custom form.
+  Operation *parseCustomOperation();
+
+  //===--------------------------------------------------------------------===//
+  // Region Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse a region into 'region' with the provided entry block arguments.
+  ParseResult parseRegion(Region &region,
+                          ArrayRef<std::pair<SSAUseInfo, Type>> entryArguments);
+
+  /// Parse a region body into 'region'.
+  ParseResult parseRegionBody(Region &region);
+
+  //===--------------------------------------------------------------------===//
+  // Block Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse a new block into 'block'.
+  ParseResult parseBlock(Block *&block);
+
+  /// Parse a list of operations into 'block'.
+  ParseResult parseBlockBody(Block *block);
+
+  /// Parse a (possibly empty) list of block arguments.
+  ParseResult
+  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
+                            Block *owner);
+
+  /// Get the block with the specified name, creating it if it doesn't
+  /// already exist.  The location specified is the point of use, which allows
+  /// us to diagnose references to blocks that are not defined precisely.
+  Block *getBlockNamed(StringRef name, SMLoc loc);
+
+  /// Define the block with the specified name. Returns the Block* or nullptr in
+  /// the case of redefinition.
+  Block *defineBlockNamed(StringRef name, SMLoc loc, Block *existing);
 
 private:
   Function *function;
@@ -2433,9 +2441,18 @@ private:
     definitionsPerScope.back().insert(def);
   }
 
-  // This keeps track of the block names as well as the location of the first
-  // reference for each nested name scope. This is used to diagnose invalid
-  // block references and memoize them.
+  /// Create a forward reference placeholder value with the given location and
+  /// result type.
+  Value *createForwardRefPlaceholder(SMLoc loc, Type type);
+
+  /// Return true if this is a forward reference.
+  bool isForwardRefPlaceholder(Value *value) {
+    return forwardRefPlaceholders.count(value);
+  }
+
+  /// This keeps track of the block names as well as the location of the first
+  /// reference for each nested name scope. This is used to diagnose invalid
+  /// block references and memoize them.
   SmallVector<DenseMap<StringRef, std::pair<Block *, SMLoc>>, 2> blocksByName;
   SmallVector<DenseMap<Block *, SMLoc>, 2> forwardRef;
 
@@ -2448,16 +2465,44 @@ private:
 
   /// These are all of the placeholders we've made along with the location of
   /// their first reference, to allow checking for use of undefined values.
-  DenseMap<Value *, SMLoc> forwardReferencePlaceholders;
-
-  Value *createForwardReferencePlaceholder(SMLoc loc, Type type);
-
-  /// Return true if this is a forward reference.
-  bool isForwardReferencePlaceholder(Value *value) {
-    return forwardReferencePlaceholders.count(value);
-  }
+  DenseMap<Value *, SMLoc> forwardRefPlaceholders;
 };
 } // end anonymous namespace
+
+FunctionParser::~FunctionParser() {
+  for (auto &fwd : forwardRefPlaceholders) {
+    // Drop all uses of undefined forward declared reference and destroy
+    // defining operation.
+    fwd.first->dropAllUses();
+    fwd.first->getDefiningOp()->destroy();
+  }
+}
+
+/// After the function is finished parsing, this function checks to see if
+/// there are any remaining issues.
+ParseResult FunctionParser::finalize(SMLoc loc) {
+  // Check for any forward references that are left.  If we find any, error
+  // out.
+  if (!forwardRefPlaceholders.empty()) {
+    SmallVector<std::pair<const char *, Value *>, 4> errors;
+    // Iteration over the map isn't deterministic, so sort by source location.
+    for (auto entry : forwardRefPlaceholders)
+      errors.push_back({entry.second.getPointer(), entry.first});
+    llvm::array_pod_sort(errors.begin(), errors.end());
+
+    for (auto entry : errors) {
+      auto loc = SMLoc::getFromPointer(entry.first);
+      emitError(loc, "use of undeclared SSA value name");
+    }
+    return failure();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SSA Value Handling
+//===----------------------------------------------------------------------===//
 
 void FunctionParser::pushSSANameScope() {
   blocksByName.push_back(DenseMap<StringRef, std::pair<Block *, SMLoc>>());
@@ -2474,7 +2519,8 @@ ParseResult FunctionParser::popSSANameScope() {
     // Iteration over the map isn't deterministic, so sort by source location.
     for (auto entry : forwardRefInCurrentScope) {
       errors.push_back({entry.second.getPointer(), entry.first});
-      cleanupInvalidBlocks(entry.first);
+      // Add this block to the top-level region to allow for automatic cleanup.
+      function->push_back(entry.first);
     }
     llvm::array_pod_sort(errors.begin(), errors.end());
 
@@ -2493,152 +2539,78 @@ ParseResult FunctionParser::popSSANameScope() {
   return success();
 }
 
-/// Block list.
-///
-///   block-list ::= '{' block-list-body
-///
-ParseResult FunctionParser::parseRegion(
-    Region &region,
-    ArrayRef<std::pair<FunctionParser::SSAUseInfo, Type>> entryArguments) {
-  // Parse the '{'.
-  if (parseToken(Token::l_brace, "expected '{' to begin a region"))
-    return failure();
+/// Register a definition of a value with the symbol table.
+ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
+  auto &entries = values[useInfo.name];
 
-  // Check for an empty region.
-  if (entryArguments.empty() && consumeIf(Token::r_brace))
+  // Make sure there is a slot for this value.
+  if (entries.size() <= useInfo.number)
+    entries.resize(useInfo.number + 1);
+
+  // If we already have an entry for this, check to see if it was a definition
+  // or a forward reference.
+  if (auto *existing = entries[useInfo.number].first) {
+    if (!isForwardRefPlaceholder(existing)) {
+      emitError(useInfo.loc)
+          .append("redefinition of SSA value '", useInfo.name, "'")
+          .attachNote(getEncodedSourceLocation(entries[useInfo.number].second))
+          .append("previously defined here");
+      return failure();
+    }
+
+    // If it was a forward reference, update everything that used it to use
+    // the actual definition instead, delete the forward ref, and remove it
+    // from our set of forward references we track.
+    existing->replaceAllUsesWith(value);
+    existing->getDefiningOp()->destroy();
+    forwardRefPlaceholders.erase(existing);
+  }
+
+  /// Record this definition for the current scope.
+  entries[useInfo.number] = {value, useInfo.loc};
+  recordDefinition(useInfo.name);
+  return success();
+}
+
+/// Parse a (possibly empty) list of SSA operands.
+///
+///   ssa-use-list ::= ssa-use (`,` ssa-use)*
+///   ssa-use-list-opt ::= ssa-use-list?
+///
+ParseResult
+FunctionParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
+  if (getToken().isNot(Token::percent_identifier))
     return success();
-  auto currentPt = builder.saveInsertionPoint();
-
-  // Push a new named value scope.
-  pushSSANameScope();
-
-  // Parse the first block directly to allow for it to be unnamed.
-  Block *block = new Block();
-
-  // Add arguments to the entry block.
-  if (!entryArguments.empty()) {
-    for (auto &placeholderArgPair : entryArguments)
-      if (addDefinition(placeholderArgPair.first,
-                        block->addArgument(placeholderArgPair.second))) {
-        delete block;
-        return failure();
-      }
-
-    // If we had named arguments, then don't allow a block name.
-    if (getToken().is(Token::caret_identifier))
-      return emitError("invalid block name in region with named arguments");
-  }
-
-  if (parseBlock(block)) {
-    delete block;
-    return failure();
-  }
-
-  // Verify that no other arguments were parsed.
-  if (!entryArguments.empty() &&
-      block->getNumArguments() > entryArguments.size()) {
-    delete block;
-    return emitError("entry block arguments were already defined");
-  }
-
-  // Parse the rest of the region.
-  region.push_back(block);
-  if (parseRegionBody(region))
-    return failure();
-
-  // Pop the SSA value scope.
-  if (popSSANameScope())
-    return failure();
-
-  // Reset the original insertion point.
-  builder.restoreInsertionPoint(currentPt);
-  return success();
+  return parseCommaSeparatedList([&]() -> ParseResult {
+    SSAUseInfo result;
+    if (parseSSAUse(result))
+      return failure();
+    results.push_back(result);
+    return success();
+  });
 }
 
-/// Region.
+/// Parse a SSA operand for an operation.
 ///
-///   region-body ::= block* '}'
+///   ssa-use ::= ssa-id
 ///
-ParseResult FunctionParser::parseRegionBody(Region &region) {
-  // Parse the list of blocks.
-  while (!consumeIf(Token::r_brace)) {
-    Block *newBlock = nullptr;
-    if (parseBlock(newBlock))
-      return failure();
-    region.push_back(newBlock);
-  }
-  return success();
-}
-
-/// Block declaration.
-///
-///   block ::= block-label? operation* terminator-op
-///   block-label    ::= block-id block-arg-list? `:`
-///   block-id       ::= caret-id
-///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
-///
-ParseResult FunctionParser::parseBlock(Block *&block) {
-  // The first block for a function is already created.
-  if (block) {
-    // The name for a first block is optional.
-    if (getToken().isNot(Token::caret_identifier))
-      return parseBlockBody(block);
-  }
-
-  SMLoc nameLoc = getToken().getLoc();
-  auto name = getTokenSpelling();
-  if (parseToken(Token::caret_identifier, "expected block name"))
+ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
+  result.name = getTokenSpelling();
+  result.number = 0;
+  result.loc = getToken().getLoc();
+  if (parseToken(Token::percent_identifier, "expected SSA operand"))
     return failure();
 
-  block = defineBlockNamed(name, nameLoc, block);
-
-  // Fail if redefinition.
-  if (!block)
-    return emitError(nameLoc, "redefinition of block '" + name.str() + "'");
-
-  // If an argument list is present, parse it.
-  if (consumeIf(Token::l_paren)) {
-    SmallVector<BlockArgument *, 8> bbArgs;
-    if (parseOptionalBlockArgList(bbArgs, block) ||
-        parseToken(Token::r_paren, "expected ')' to end argument list"))
-      return failure();
+  // If we have an attribute ID, it is a result number.
+  if (getToken().is(Token::hash_identifier)) {
+    if (auto value = getToken().getHashIdentifierNumber())
+      result.number = value.getValue();
+    else
+      return emitError("invalid SSA value result number");
+    consumeToken(Token::hash_identifier);
   }
-
-  if (parseToken(Token::colon, "expected ':' after block name"))
-    return failure();
-
-  return parseBlockBody(block);
-}
-
-ParseResult FunctionParser::parseBlockBody(Block *block) {
-
-  // Set the insertion point to the block we want to insert new operations
-  // into.
-  builder.setInsertionPointToEnd(block);
-
-  // Parse the list of operations that make up the body of the block.
-  while (getToken().isNot(Token::caret_identifier, Token::r_brace))
-    if (parseOperation())
-      return failure();
 
   return success();
-}
-
-/// Create and remember a new placeholder for a forward reference.
-Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
-  // Forward references are always created as operations, even in ML
-  // functions, because we just need something with a def/use chain.
-  //
-  // We create these placeholders as having an empty name, which we know
-  // cannot be created through normal user input, allowing us to distinguish
-  // them.
-  auto name = OperationName("placeholder", getContext());
-  auto *op = Operation::create(
-      getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
-      /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0,
-      /*resizableOperandList=*/false, getContext());
-  forwardReferencePlaceholders[op->getResult(0)] = loc;
-  return op->getResult(0);
 }
 
 /// Given an unbound reference to an SSA value and its type, return the value
@@ -2666,137 +2638,31 @@ Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
 
   // If the value has already been defined and this is an overly large result
   // number, diagnose that.
-  if (entries[0].first && !isForwardReferencePlaceholder(entries[0].first))
+  if (entries[0].first && !isForwardRefPlaceholder(entries[0].first))
     return (emitError(useInfo.loc, "reference to invalid result number"),
             nullptr);
 
   // Otherwise, this is a forward reference.  Create a placeholder and remember
   // that we did so.
-  auto *result = createForwardReferencePlaceholder(useInfo.loc, type);
+  auto *result = createForwardRefPlaceholder(useInfo.loc, type);
   entries[useInfo.number].first = result;
   entries[useInfo.number].second = useInfo.loc;
   return result;
 }
 
-/// After the function is finished parsing, this function checks to see if
-/// there are any remaining issues.
-ParseResult FunctionParser::finalizeFunction(SMLoc loc) {
-  // Check for any forward references that are left.  If we find any, error
-  // out.
-  if (!forwardReferencePlaceholders.empty()) {
-    SmallVector<std::pair<const char *, Value *>, 4> errors;
-    // Iteration over the map isn't deterministic, so sort by source location.
-    for (auto entry : forwardReferencePlaceholders)
-      errors.push_back({entry.second.getPointer(), entry.first});
-    llvm::array_pod_sort(errors.begin(), errors.end());
-
-    for (auto entry : errors) {
-      auto loc = SMLoc::getFromPointer(entry.first);
-      emitError(loc, "use of undeclared SSA value name");
-    }
-    return failure();
-  }
-
-  return success();
-}
-
-FunctionParser::~FunctionParser() {
-  for (auto &fwd : forwardReferencePlaceholders) {
-    // Drop all uses of undefined forward declared reference and destroy
-    // defining operation.
-    fwd.first->dropAllUses();
-    fwd.first->getDefiningOp()->destroy();
-  }
-}
-
-/// Register a definition of a value with the symbol table.
-ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
-  auto &entries = values[useInfo.name];
-
-  // Make sure there is a slot for this value.
-  if (entries.size() <= useInfo.number)
-    entries.resize(useInfo.number + 1);
-
-  // If we already have an entry for this, check to see if it was a definition
-  // or a forward reference.
-  if (auto *existing = entries[useInfo.number].first) {
-    if (!isForwardReferencePlaceholder(existing)) {
-      emitError(useInfo.loc)
-          .append("redefinition of SSA value '", useInfo.name, "'")
-          .attachNote(getEncodedSourceLocation(entries[useInfo.number].second))
-          .append("previously defined here");
-      return failure();
-    }
-
-    // If it was a forward reference, update everything that used it to use
-    // the actual definition instead, delete the forward ref, and remove it
-    // from our set of forward references we track.
-    existing->replaceAllUsesWith(value);
-    existing->getDefiningOp()->destroy();
-    forwardReferencePlaceholders.erase(existing);
-  }
-
-  /// Record this definition for the current scope.
-  entries[useInfo.number] = {value, useInfo.loc};
-  recordDefinition(useInfo.name);
-  return success();
-}
-
-/// Parse a SSA operand for an operation.
-///
-///   ssa-use ::= ssa-id
-///
-ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
-  result.name = getTokenSpelling();
-  result.number = 0;
-  result.loc = getToken().getLoc();
-  if (parseToken(Token::percent_identifier, "expected SSA operand"))
-    return failure();
-
-  // If we have an attribute ID, it is a result number.
-  if (getToken().is(Token::hash_identifier)) {
-    if (auto value = getToken().getHashIdentifierNumber())
-      result.number = value.getValue();
-    else
-      return emitError("invalid SSA value result number");
-    consumeToken(Token::hash_identifier);
-  }
-
-  return success();
-}
-
-/// Parse a (possibly empty) list of SSA operands.
-///
-///   ssa-use-list ::= ssa-use (`,` ssa-use)*
-///   ssa-use-list-opt ::= ssa-use-list?
-///
-ParseResult
-FunctionParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
-  if (getToken().isNot(Token::percent_identifier))
-    return success();
-  return parseCommaSeparatedList([&]() -> ParseResult {
-    SSAUseInfo result;
-    if (parseSSAUse(result))
-      return failure();
-    results.push_back(result);
-    return success();
-  });
-}
-
 /// Parse an SSA use with an associated type.
 ///
 ///   ssa-use-and-type ::= ssa-use `:` type
-template <typename ResultType>
-ResultType FunctionParser::parseSSADefOrUseAndType(
-    const std::function<ResultType(SSAUseInfo, Type)> &action) {
+ParseResult FunctionParser::parseSSADefOrUseAndType(
+    const std::function<ParseResult(SSAUseInfo, Type)> &action) {
   SSAUseInfo useInfo;
   if (parseSSAUse(useInfo) ||
       parseToken(Token::colon, "expected ':' and type for SSA operand"))
-    return nullptr;
+    return failure();
 
   auto type = parseType();
   if (!type)
-    return nullptr;
+    return failure();
 
   return action(useInfo, type);
 }
@@ -2807,9 +2673,8 @@ ResultType FunctionParser::parseSSADefOrUseAndType(
 ///   ssa-use-and-type-list
 ///     ::= ssa-use-list ':' type-list-no-parens
 ///
-template <typename ValueTy>
 ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
-    SmallVectorImpl<ValueTy *> &results) {
+    SmallVectorImpl<Value *> &results) {
   SmallVector<SSAUseInfo, 4> valueIDs;
   if (parseOptionalSSAUseList(valueIDs))
     return failure();
@@ -2830,7 +2695,7 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
   results.reserve(valueIDs.size());
   for (unsigned i = 0, e = valueIDs.size(); i != e; ++i) {
     if (auto *value = resolveSSAUse(valueIDs[i], types[i]))
-      results.push_back(cast<ValueTy>(value));
+      results.push_back(value);
     else
       return failure();
   }
@@ -2838,125 +2703,26 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
   return success();
 }
 
-/// Get the block with the specified name, creating it if it doesn't already
-/// exist.  The location specified is the point of use, which allows
-/// us to diagnose references to blocks that are not defined precisely.
-Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
-  auto &blockAndLoc = getBlockInfoByName(name);
-  if (!blockAndLoc.first) {
-    blockAndLoc = {new Block(), loc};
-    insertForwardRef(blockAndLoc.first, loc);
-  }
-
-  return blockAndLoc.first;
+/// Create and remember a new placeholder for a forward reference.
+Value *FunctionParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
+  // Forward references are always created as operations, because we just need
+  // something with a def/use chain.
+  //
+  // We create these placeholders as having an empty name, which we know
+  // cannot be created through normal user input, allowing us to distinguish
+  // them.
+  auto name = OperationName("placeholder", getContext());
+  auto *op = Operation::create(
+      getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
+      /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0,
+      /*resizableOperandList=*/false, getContext());
+  forwardRefPlaceholders[op->getResult(0)] = loc;
+  return op->getResult(0);
 }
 
-/// Define the block with the specified name. Returns the Block* or nullptr in
-/// the case of redefinition.
-Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
-                                        Block *existing) {
-  auto &blockAndLoc = getBlockInfoByName(name);
-  if (!blockAndLoc.first) {
-    // If the caller provided a block, use it.  Otherwise create a new one.
-    if (!existing)
-      existing = new Block();
-    blockAndLoc.first = existing;
-    blockAndLoc.second = loc;
-    return blockAndLoc.first;
-  }
-
-  // Forward declarations are removed once defined, so if we are defining a
-  // existing block and it is not a forward declaration, then it is a
-  // redeclaration.
-  if (!eraseForwardRef(blockAndLoc.first))
-    return nullptr;
-  return blockAndLoc.first;
-}
-
-/// Parse a single operation successor and it's operand list.
-///
-///   successor ::= block-id branch-use-list?
-///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
-///
-ParseResult
-FunctionParser::parseSuccessorAndUseList(Block *&dest,
-                                         SmallVectorImpl<Value *> &operands) {
-  // Verify branch is identifier and get the matching block.
-  if (!getToken().is(Token::caret_identifier))
-    return emitError("expected block name");
-  dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
-  consumeToken();
-
-  // Handle optional arguments.
-  if (consumeIf(Token::l_paren) &&
-      (parseOptionalSSAUseAndTypeList(operands) ||
-       parseToken(Token::r_paren, "expected ')' to close argument list"))) {
-    return failure();
-  }
-
-  return success();
-}
-
-/// Parse a comma-separated list of operation successors in brackets.
-///
-///   successor-list ::= `[` successor (`,` successor )* `]`
-///
-ParseResult FunctionParser::parseSuccessors(
-    SmallVectorImpl<Block *> &destinations,
-    SmallVectorImpl<SmallVector<Value *, 4>> &operands) {
-  if (parseToken(Token::l_square, "expected '['"))
-    return failure();
-
-  auto parseElt = [this, &destinations, &operands]() {
-    Block *dest;
-    SmallVector<Value *, 4> destOperands;
-    auto res = parseSuccessorAndUseList(dest, destOperands);
-    destinations.push_back(dest);
-    operands.push_back(destOperands);
-    return res;
-  };
-  return parseCommaSeparatedListUntil(Token::r_square, parseElt,
-                                      /*allowEmptyList=*/false);
-}
-
-/// Parse a (possibly empty) list of SSA operands with types as block arguments.
-///
-///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
-///
-ParseResult FunctionParser::parseOptionalBlockArgList(
-    SmallVectorImpl<BlockArgument *> &results, Block *owner) {
-  if (getToken().is(Token::r_brace))
-    return success();
-
-  // If the block already has arguments, then we're handling the entry block.
-  // Parse and register the names for the arguments, but do not add them.
-  bool definingExistingArgs = owner->getNumArguments() != 0;
-  unsigned nextArgument = 0;
-
-  return parseCommaSeparatedList([&]() -> ParseResult {
-    auto type = parseSSADefOrUseAndType<Type>(
-        [&](SSAUseInfo useInfo, Type type) -> Type {
-          BlockArgument *arg;
-          if (!definingExistingArgs) {
-            arg = owner->addArgument(type);
-          } else if (nextArgument >= owner->getNumArguments()) {
-            emitError("too many arguments specified in argument list");
-            return {};
-          } else {
-            arg = owner->getArgument(nextArgument++);
-            if (arg->getType() != type) {
-              emitError("argument and block argument type mismatch");
-              return {};
-            }
-          }
-
-          if (addDefinition(useInfo, arg))
-            return {};
-          return type;
-        });
-    return type ? success() : failure();
-  });
-}
+//===----------------------------------------------------------------------===//
+// Operation Parsing
+//===----------------------------------------------------------------------===//
 
 /// Parse an operation.
 ///
@@ -3051,6 +2817,52 @@ ParseResult FunctionParser::parseOperation() {
     return failure();
 
   return success();
+}
+
+/// Parse a single operation successor and it's operand list.
+///
+///   successor ::= block-id branch-use-list?
+///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
+///
+ParseResult
+FunctionParser::parseSuccessorAndUseList(Block *&dest,
+                                         SmallVectorImpl<Value *> &operands) {
+  // Verify branch is identifier and get the matching block.
+  if (!getToken().is(Token::caret_identifier))
+    return emitError("expected block name");
+  dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
+  consumeToken();
+
+  // Handle optional arguments.
+  if (consumeIf(Token::l_paren) &&
+      (parseOptionalSSAUseAndTypeList(operands) ||
+       parseToken(Token::r_paren, "expected ')' to close argument list"))) {
+    return failure();
+  }
+
+  return success();
+}
+
+/// Parse a comma-separated list of operation successors in brackets.
+///
+///   successor-list ::= `[` successor (`,` successor )* `]`
+///
+ParseResult FunctionParser::parseSuccessors(
+    SmallVectorImpl<Block *> &destinations,
+    SmallVectorImpl<SmallVector<Value *, 4>> &operands) {
+  if (parseToken(Token::l_square, "expected '['"))
+    return failure();
+
+  auto parseElt = [this, &destinations, &operands]() {
+    Block *dest;
+    SmallVector<Value *, 4> destOperands;
+    auto res = parseSuccessorAndUseList(dest, destOperands);
+    destinations.push_back(dest);
+    operands.push_back(destOperands);
+    return res;
+  };
+  return parseCommaSeparatedListUntil(Token::r_square, parseElt,
+                                      /*allowEmptyList=*/false);
 }
 
 namespace {
@@ -3546,6 +3358,210 @@ Operation *FunctionParser::parseCustomOperation() {
 }
 
 //===----------------------------------------------------------------------===//
+// Region Parsing
+//===----------------------------------------------------------------------===//
+
+/// Region.
+///
+///   region ::= '{' region-body
+///
+ParseResult FunctionParser::parseRegion(
+    Region &region,
+    ArrayRef<std::pair<FunctionParser::SSAUseInfo, Type>> entryArguments) {
+  // Parse the '{'.
+  if (parseToken(Token::l_brace, "expected '{' to begin a region"))
+    return failure();
+
+  // Check for an empty region.
+  if (entryArguments.empty() && consumeIf(Token::r_brace))
+    return success();
+  auto currentPt = builder.saveInsertionPoint();
+
+  // Push a new named value scope.
+  pushSSANameScope();
+
+  // Parse the first block directly to allow for it to be unnamed.
+  Block *block = new Block();
+
+  // Add arguments to the entry block.
+  if (!entryArguments.empty()) {
+    for (auto &placeholderArgPair : entryArguments)
+      if (addDefinition(placeholderArgPair.first,
+                        block->addArgument(placeholderArgPair.second))) {
+        delete block;
+        return failure();
+      }
+
+    // If we had named arguments, then don't allow a block name.
+    if (getToken().is(Token::caret_identifier))
+      return emitError("invalid block name in region with named arguments");
+  }
+
+  if (parseBlock(block)) {
+    delete block;
+    return failure();
+  }
+
+  // Verify that no other arguments were parsed.
+  if (!entryArguments.empty() &&
+      block->getNumArguments() > entryArguments.size()) {
+    delete block;
+    return emitError("entry block arguments were already defined");
+  }
+
+  // Parse the rest of the region.
+  region.push_back(block);
+  if (parseRegionBody(region))
+    return failure();
+
+  // Pop the SSA value scope for this region.
+  if (popSSANameScope())
+    return failure();
+
+  // Reset the original insertion point.
+  builder.restoreInsertionPoint(currentPt);
+  return success();
+}
+
+/// Region.
+///
+///   region-body ::= block* '}'
+///
+ParseResult FunctionParser::parseRegionBody(Region &region) {
+  // Parse the list of blocks.
+  while (!consumeIf(Token::r_brace)) {
+    Block *newBlock = nullptr;
+    if (parseBlock(newBlock))
+      return failure();
+    region.push_back(newBlock);
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Block Parsing
+//===----------------------------------------------------------------------===//
+
+/// Block declaration.
+///
+///   block ::= block-label? operation*
+///   block-label    ::= block-id block-arg-list? `:`
+///   block-id       ::= caret-id
+///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
+///
+ParseResult FunctionParser::parseBlock(Block *&block) {
+  // The first block of a region may already exist, if it does the caret
+  // identifier is optional.
+  if (block && getToken().isNot(Token::caret_identifier))
+    return parseBlockBody(block);
+
+  SMLoc nameLoc = getToken().getLoc();
+  auto name = getTokenSpelling();
+  if (parseToken(Token::caret_identifier, "expected block name"))
+    return failure();
+
+  block = defineBlockNamed(name, nameLoc, block);
+
+  // Fail if the block was already defined.
+  if (!block)
+    return emitError(nameLoc, "redefinition of block '") << name << "'";
+
+  // If an argument list is present, parse it.
+  if (consumeIf(Token::l_paren)) {
+    SmallVector<BlockArgument *, 8> bbArgs;
+    if (parseOptionalBlockArgList(bbArgs, block) ||
+        parseToken(Token::r_paren, "expected ')' to end argument list"))
+      return failure();
+  }
+
+  if (parseToken(Token::colon, "expected ':' after block name"))
+    return failure();
+
+  return parseBlockBody(block);
+}
+
+ParseResult FunctionParser::parseBlockBody(Block *block) {
+  // Set the insertion point to the end of the block to parse.
+  builder.setInsertionPointToEnd(block);
+
+  // Parse the list of operations that make up the body of the block.
+  while (getToken().isNot(Token::caret_identifier, Token::r_brace))
+    if (parseOperation())
+      return failure();
+
+  return success();
+}
+
+/// Get the block with the specified name, creating it if it doesn't already
+/// exist.  The location specified is the point of use, which allows
+/// us to diagnose references to blocks that are not defined precisely.
+Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
+  auto &blockAndLoc = getBlockInfoByName(name);
+  if (!blockAndLoc.first) {
+    blockAndLoc = {new Block(), loc};
+    insertForwardRef(blockAndLoc.first, loc);
+  }
+
+  return blockAndLoc.first;
+}
+
+/// Define the block with the specified name. Returns the Block* or nullptr in
+/// the case of redefinition.
+Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
+                                        Block *existing) {
+  auto &blockAndLoc = getBlockInfoByName(name);
+  if (!blockAndLoc.first) {
+    // If the caller provided a block, use it.  Otherwise create a new one.
+    if (!existing)
+      existing = new Block();
+    blockAndLoc.first = existing;
+    blockAndLoc.second = loc;
+    return blockAndLoc.first;
+  }
+
+  // Forward declarations are removed once defined, so if we are defining a
+  // existing block and it is not a forward declaration, then it is a
+  // redeclaration.
+  if (!eraseForwardRef(blockAndLoc.first))
+    return nullptr;
+  return blockAndLoc.first;
+}
+
+/// Parse a (possibly empty) list of SSA operands with types as block arguments.
+///
+///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
+///
+ParseResult FunctionParser::parseOptionalBlockArgList(
+    SmallVectorImpl<BlockArgument *> &results, Block *owner) {
+  if (getToken().is(Token::r_brace))
+    return success();
+
+  // If the block already has arguments, then we're handling the entry block.
+  // Parse and register the names for the arguments, but do not add them.
+  bool definingExistingArgs = owner->getNumArguments() != 0;
+  unsigned nextArgument = 0;
+
+  return parseCommaSeparatedList([&]() -> ParseResult {
+    return parseSSADefOrUseAndType(
+        [&](SSAUseInfo useInfo, Type type) -> ParseResult {
+          // If this block did not have existing arguments, define a new one.
+          if (!definingExistingArgs)
+            return addDefinition(useInfo, owner->addArgument(type));
+
+          // Otherwise, ensure that this argument has already been created.
+          if (nextArgument >= owner->getNumArguments())
+            return emitError("too many arguments specified in argument list");
+
+          // Finally, make sure the existing argument has the correct type.
+          auto *arg = owner->getArgument(nextArgument++);
+          if (arg->getType() != type)
+            return emitError("argument and block argument type mismatch");
+          return addDefinition(useInfo, arg);
+        });
+  });
+}
+
+//===----------------------------------------------------------------------===//
 // Top-level entity parsing.
 //===----------------------------------------------------------------------===//
 
@@ -3796,7 +3812,7 @@ ParseResult ModuleParser::parseFunc() {
   if (function->empty())
     return emitError(braceLoc, "function must have a body");
 
-  return parser.finalizeFunction(braceLoc);
+  return parser.finalize(braceLoc);
 }
 
 /// This is the top-level module parser.
