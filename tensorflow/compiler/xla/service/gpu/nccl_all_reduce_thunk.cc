@@ -573,23 +573,22 @@ NcclAllReduceThunk::NcclAllReduceThunk(
       destination_buffer_(destination_buffer),
       aux_data_(absl::make_unique<AuxData>()) {}
 
-Status NcclAllReduceThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    const RunId& run_id, HloExecutionProfiler* profiler) {
+Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Find or create the rendezvous for this collective operation.
   RendezvousKey rendezvous_key(
-      run_id, Cast<HloAllReduceInstruction>(hlo_instruction()));
+      params.run_id, Cast<HloAllReduceInstruction>(hlo_instruction()));
   std::shared_ptr<Rendezvous> rendezvous =
       GlobalRendezvousMap()[rendezvous_key];
 
   ParticipantData participant(rendezvous_key);
   participant.replica_count = replica_count_;
   participant.element_count = element_count_;
-  participant.device_ordinal = stream->parent()->device_ordinal();
-  participant.source_data = buffer_allocations.GetDeviceAddress(source_buffer_);
+  participant.device_ordinal = params.stream->parent()->device_ordinal();
+  participant.source_data =
+      params.buffer_allocations->GetDeviceAddress(source_buffer_);
   participant.destination_data =
-      buffer_allocations.GetDeviceAddress(destination_buffer_);
-  participant.stream = stream;
+      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
+  participant.stream = params.stream;
 
   // Do the operation.
   StatusOr<std::pair<std::shared_ptr<NcclClique>,
@@ -631,9 +630,7 @@ NcclAllReduceThunk::~NcclAllReduceThunk() {}
 
 #else
 
-Status NcclAllReduceThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    const RunId& run_id, HloExecutionProfiler* profiler) {
+Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
       "compiler, which is necessary to build the NCCL source library.");

@@ -41,9 +41,9 @@ ConvolutionThunk::ConvolutionThunk(
       scratch_buffer_(scratch_slice),
       tuple_result_buffer_(tuple_result_slice) {}
 
-Status ConvolutionThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
+Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
+  const auto& buffer_allocations = *params.buffer_allocations;
+
   std::vector<se::DeviceMemoryBase> operand_se_buffers;
   for (const auto& buffer : operand_buffers_) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
@@ -55,17 +55,18 @@ Status ConvolutionThunk::ExecuteOnStream(
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   TF_RETURN_IF_ERROR(RunCudnnConv(cudnn_call_,
                                   absl::MakeSpan(operand_se_buffers),
-                                  result_buffer, scratch, stream));
+                                  result_buffer, scratch, params.stream));
 
   void* ptrs[] = {result_buffer.opaque(), scratch.opaque()};
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(tuple_result_buffer_));
-  stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
+  params.stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
 
-  if (!stream->ok()) {
+  if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
   }
   return Status::OK();

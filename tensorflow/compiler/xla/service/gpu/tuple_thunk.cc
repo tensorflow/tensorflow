@@ -22,9 +22,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                   se::Stream* stream, const RunId& /*run_id*/,
-                                   HloExecutionProfiler* profiler) {
+Status TupleThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   auto size = tuple_element_buffers_.size();
   auto tuple_element_buffer_addresses = absl::make_unique<void*[]>(size);
   for (int i = 0; i != size; ++i) {
@@ -35,10 +36,11 @@ Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       buffer_allocations.GetDeviceAddress(dest_buffer_));
 
   auto host_size = size * sizeof(void*);
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   if (!stream
-           ->ThenMemcpy(&dest_buffer_address,
-                        tuple_element_buffer_addresses.get(), host_size)
+           .ThenMemcpy(&dest_buffer_address,
+                       tuple_element_buffer_addresses.get(), host_size)
            .ok()) {
     return InternalError(
         "Unable to launch MemcpyH2D from %p to %p with size %lu",
@@ -47,7 +49,7 @@ Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   }
   // Free the tuple address buffer when memcpy is done.
   auto* buffers_raw = tuple_element_buffer_addresses.release();
-  if (!stream->ThenDoHostCallback([buffers_raw] { delete[] buffers_raw; })
+  if (!stream.ThenDoHostCallback([buffers_raw] { delete[] buffers_raw; })
            .ok()) {
     delete[] buffers_raw;
     return InternalError("Unable to enqueue host callback!");

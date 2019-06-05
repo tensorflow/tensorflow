@@ -87,14 +87,21 @@ class Thunk {
     return Status::OK();
   }
 
+  // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that
+  // when we add something we don't have to change every subclass of Thunk.
+  struct ExecuteParams {
+    const BufferAllocations* buffer_allocations;  // never null
+    se::Stream* stream;
+    RunId run_id;
+    HloExecutionProfiler* profiler;  // never null
+  };
+
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's
-  // lifetime. 'stream' and 'profiler' must be non-null.
+  // lifetime.
   //
   // Precondition: Initialize(stream->parent()) has been called.
-  virtual Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                 se::Stream* stream, const RunId& run_id,
-                                 HloExecutionProfiler* profiler) = 0;
+  virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
  protected:
   const HloModuleConfig& GetModuleConfig() const {

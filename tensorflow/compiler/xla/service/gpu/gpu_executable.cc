@@ -136,9 +136,10 @@ Status GpuExecutable::ExecuteThunks(
     VLOG(2) << "Executing the thunk for "
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
-    TF_RETURN_IF_ERROR(
-        thunk->ExecuteOnStream(buffer_allocations, stream,
-                               run_options->run_options().run_id(), &profiler));
+    Thunk::ExecuteParams thunk_params{&buffer_allocations, stream,
+                                      run_options->run_options().run_id(),
+                                      &profiler};
+    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
       finish_event->Init();

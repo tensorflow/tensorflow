@@ -445,9 +445,7 @@ GemmThunk::GemmThunk(const BufferAllocation::Slice& lhs_buffer,
       beta_(beta),
       implements_whole_instruction_(implements_whole_instruction) {}
 
-Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                  se::Stream* stream, const RunId& /*run_id*/,
-                                  HloExecutionProfiler* profiler) {
+Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto fn = [&]() {
     switch (output_shape_.element_type()) {
       case F16:
@@ -465,9 +463,10 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     }
   }();
 
-  return fn(buffer_allocations, stream, profiler, lhs_buffer_, rhs_buffer_,
-            output_buffer_, lhs_shape_, rhs_shape_, output_shape_,
-            implements_whole_instruction_, hlo_instruction(), alpha_, beta_,
+  return fn(*params.buffer_allocations, params.stream, params.profiler,
+            lhs_buffer_, rhs_buffer_, output_buffer_, lhs_shape_, rhs_shape_,
+            output_shape_, implements_whole_instruction_, hlo_instruction(),
+            alpha_, beta_,
             GetModuleConfig().debug_options().xla_gpu_disable_autotune());
 }
 
