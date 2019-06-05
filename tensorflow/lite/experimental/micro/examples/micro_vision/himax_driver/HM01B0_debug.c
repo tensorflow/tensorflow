@@ -13,13 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h"
+#include "HM01B0_debug.h"
+#include "am_util.h" // NOLINT
 
-TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
-                      int image_height, int channels, uint8_t* image_data) {
-  for (int i = 0; i < image_width * image_height * channels; ++i) {
-    image_data[i] = 0;
+void hm01b0_framebuffer_dump(uint8_t* frame, uint32_t length) {
+  am_util_stdio_printf("+++ frame +++");
+
+  for (uint32_t i = 0; i < length; i++) {
+    if ((i & 0xF) == 0x00) {
+      am_util_stdio_printf("\n0x%08LX ", i);
+      // this delay is to let itm have time to flush out data.
+      am_util_delay_ms(1);
+    }
+
+    am_util_stdio_printf("%02X ", frame[i]);
   }
-  return kTfLiteOk;
+
+  am_util_stdio_printf("\n--- frame ---\n");
+  am_util_delay_ms(1);
 }
+
