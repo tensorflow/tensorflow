@@ -1331,7 +1331,7 @@ REGISTER_OP("_MklTranspose")
     .Attr("T: type")
     .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(TransposeShapeFn);
-#endif // INTEL_MKL
+#endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ConjugateTranspose")
@@ -1350,7 +1350,7 @@ REGISTER_OP("_MklConjugateTranspose")
     .Attr("T: type")
     .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(TransposeShapeFn);
-#endif // INTEL_MKL
+#endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Unique")
@@ -2760,6 +2760,7 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr(
         "round_mode: {'HALF_TO_EVEN', 'HALF_UP'} = "
         "'HALF_TO_EVEN'")
+    .Attr("narrow_range: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -2777,6 +2778,7 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     .Attr("range_given: bool = true")
     .Output("output: T")
     .Attr("T: {bfloat16, half, float, double}")
+    .Attr("narrow_range: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));

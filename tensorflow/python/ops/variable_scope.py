@@ -32,6 +32,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -51,6 +52,10 @@ __all__ = [
     "get_local_variable", "variable_scope", "variable_op_scope",
     "no_regularizer", "VariableSynchronization", "VariableAggregation"
 ]
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/resource_variables",
+    "Whether variable_scope.enable_resource_variables() is called.")
 
 
 class _PartitionInfo(object):
@@ -226,6 +231,7 @@ def enable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = True
+  _api_usage_gauge.get_cell().set(True)
 
 
 @tf_export(v1=["resource_variables_enabled"])
@@ -259,6 +265,7 @@ def disable_resource_variables():
   """
   global _DEFAULT_USE_RESOURCE
   _DEFAULT_USE_RESOURCE = False
+  _api_usage_gauge.get_cell().set(False)
 
 
 class _VariableStore(object):

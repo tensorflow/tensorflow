@@ -25,6 +25,7 @@ filegroup(
     ]),
 )
 
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -220,5 +221,22 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+xla_test(
+    name = "gpu_convolution_regression_test",
+    srcs = ["gpu_convolution_regression_test.cc"],
+    backend_args = {"gpu": ["--xla_gpu_crash_on_verification_failures"]},
+    backends = ["gpu"],
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )

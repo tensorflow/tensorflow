@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -224,7 +223,7 @@ def make_tf_record_dataset(file_pattern,
                            shuffle=True,
                            shuffle_buffer_size=None,
                            shuffle_seed=None,
-                           prefetch_buffer_size=optimization.AUTOTUNE,
+                           prefetch_buffer_size=dataset_ops.AUTOTUNE,
                            num_parallel_reads=None,
                            num_parallel_parser_calls=None,
                            drop_final_batch=False):
@@ -324,7 +323,7 @@ def make_csv_dataset_v2(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -532,7 +531,7 @@ def make_csv_dataset_v1(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=optimization.AUTOTUNE,
+    prefetch_buffer_size=dataset_ops.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -716,7 +715,7 @@ def make_batched_features_dataset_v2(file_pattern,
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                      reader_num_threads=1,
                                      parser_num_threads=2,
                                      sloppy_ordering=False,
@@ -878,7 +877,7 @@ def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-do
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=optimization.AUTOTUNE,
+                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
                                      reader_num_threads=1,
                                      parser_num_threads=2,
                                      sloppy_ordering=False,

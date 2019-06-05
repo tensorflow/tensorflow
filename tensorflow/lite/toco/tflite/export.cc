@@ -416,12 +416,10 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
     const Model& model, const std::vector<const Array*>& buffers_to_write,
     FlatBufferBuilder* builder) {
   std::vector<Offset<Buffer>> buffer_vector;
-  size_t index = 0;
   for (const Array* array_ptr : buffers_to_write) {
     const Array& array = *array_ptr;
     Offset<Vector<uint8_t>> data_buffer = DataBuffer::Serialize(array, builder);
     buffer_vector.push_back(CreateBuffer(*builder, data_buffer));
-    index++;
   }
   return builder->CreateVector(buffer_vector);
 }

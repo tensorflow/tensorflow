@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import uuid
 import six
 
 from tensorflow.python.compat import compat as fwd_compat
@@ -272,6 +273,12 @@ class StaticHashTable(InitializableLookupTableBase):
     self._initializer = initializer
     self._default_value = default_value
     self._shared_name = self._initializer._shared_name  # pylint: disable=protected-access
+    if not self._shared_name:
+      # Force using a shared name so that StaticHashTable resources can be
+      # shared across different kernels. If no "shared_name" is set and
+      # "use_node_name_sharing" is False, then each kernel gets its own local
+      # resource.
+      self._shared_name = "hash_table_%s" % (str(uuid.uuid4()),)
     self._name = name or "hash_table"
     self._table_name = None
     super(StaticHashTable, self).__init__(default_value, initializer)
@@ -1749,7 +1756,11 @@ class MutableHashTable(LookupInterface):
 
   def _gather_saveables_for_checkpoint(self):
     """For object-based checkpointing."""
-    return {"table": functools.partial(MutableHashTable._Saveable, table=self)}
+    return {
+        "table":
+            functools.partial(
+                MutableHashTable._Saveable, table=self, name=self._name)
+    }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for MutableHashTable."""
@@ -2041,7 +2052,11 @@ class DenseHashTable(LookupInterface):
 
   def _gather_saveables_for_checkpoint(self):
     """For object-based checkpointing."""
-    return {"table": functools.partial(DenseHashTable._Saveable, table=self)}
+    return {
+        "table":
+            functools.partial(
+                DenseHashTable._Saveable, table=self, name=self._name)
+    }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""

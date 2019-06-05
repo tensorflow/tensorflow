@@ -387,6 +387,34 @@ class TFETensorTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           constant_op.constant(t.min, dtype=t).numpy(), t.min)
 
+  def test_numpyIsView(self):
+    t = constant_op.constant([0.0])
+    t._numpy()[0] = 42.0
+    self.assertAllClose(t, constant_op.constant([42.0]))
+
+  def testMemoryviewIsReadonly(self):
+    t = constant_op.constant([0.0])
+    self.assertTrue(memoryview(t).readonly)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testMemoryviewScalar(self):
+    t = constant_op.constant(42.0)
+    self.assertAllEqual(
+        np.array(memoryview(t)), np.array(42.0, dtype=np.float32))
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testMemoryviewEmpty(self):
+    t = constant_op.constant([], dtype=np.float32)
+    self.assertAllEqual(np.array(memoryview(t)), np.array([]))
+
+  @test_util.run_gpu_only
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testMemoryviewCopyToCPU(self):
+    with ops.device("/device:GPU:0"):
+      t = constant_op.constant([0.0])
+    self.assertAllEqual(
+        np.array(memoryview(t)), np.array([0.0], dtype=np.float32))
+
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
@@ -498,11 +526,6 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
-
-  def test_numpyIsView(self):
-    t = constant_op.constant([0.0])
-    t._numpy()[0] = 42.0
-    self.assertAllClose(t, constant_op.constant([42.0]))
 
 
 if __name__ == "__main__":

@@ -43,15 +43,6 @@ class Policy(object):
   model. See https://arxiv.org/abs/1710.03740 for more information on mixed
   precision training.
 
-  Note: We currently recommend using mixed precision through an alternative
-  function: `tf.train.experimental.enable_mixed_precision_graph_rewrite`. This
-  alternative function enables mixed precision under the hood, by rewriting the
-  graph to use float16 for certain ops. This alternative function is currently
-  more complete and easy to use than using a Policy. However, compared to
-  `enable_mixed_precision_graph_rewrite`, using a Policy supports Eager mode
-  outside `tf.function`s/`tf.keras.Model`s, and a Policy gives you more control
-  over what parts of the model are done in what dtype.
-
   Policies are constructed by passing a string to the `name` constructor
   argument. `name` determines the behavior of the policy. Currently, `name` can
   be one of the following values.
@@ -160,6 +151,7 @@ def global_policy():
 
 
 def _check_if_mixed_precision_graph_rewrite_is_enabled():
+  # TODO(reedwm): Update this comment once the Keras API is complete.
   if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
     raise ValueError(
         'The mixed precision policy cannot be set, because the mixed '
@@ -170,11 +162,10 @@ def _check_if_mixed_precision_graph_rewrite_is_enabled():
         '  2. tf.keras.mixed_precision.experimental.set_policy() (You called '
         'this second)\n\n'
         'You called both functions, which is an error, because both functions '
-        'enable you to use mixed precision. If in doubt which function to use, '
-        'use the first, as it is currently more complete and easy to use. The '
-        'first function enables mixed precision in the graph with a graph '
-        'rewrite. However it is currently not very customizable, and does not '
-        'support eager.')
+        'enable you to use mixed precision. The first function enables mixed '
+        'precision in the graph with a graph rewrite. However it is currently '
+        'not very customizable, and does not support eager. The second '
+        'function is for Keras layers, but is not yet fully complete.')
 
 
 @keras_export('keras.mixed_precision.experimental.set_policy')

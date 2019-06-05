@@ -355,6 +355,8 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:values",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",

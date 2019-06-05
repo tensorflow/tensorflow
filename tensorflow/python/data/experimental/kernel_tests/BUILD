@@ -450,6 +450,23 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+py_test(
+    name = "prefetch_with_slack_test",
+    size = "small",
+    srcs = ["prefetch_with_slack_test.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "reader_dataset_ops_test_base",
     srcs = [
@@ -665,7 +682,6 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:batching",
-        "//tensorflow/python/data/experimental/ops:optimization",
         "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
         "//tensorflow/python/data/experimental/ops:stats_options",

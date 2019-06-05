@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/model.h"
+
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -24,7 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -201,16 +203,43 @@ InterpreterBuilder::~InterpreterBuilder() {}
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
+  // Reset state.
+  flatbuffer_op_index_to_registration_.clear();
+  unresolved_custom_ops_.clear();
+
   auto opcodes = model_->operator_codes();
   if (!opcodes) {
     return status;
   }
+  int num_custom_ops = 0;
+  for (const OperatorCode* opcode : *opcodes) {
+    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+      num_custom_ops++;
+    }
+  }
+  unresolved_custom_ops_.reserve(num_custom_ops);
   for (const OperatorCode* opcode : *opcodes) {
     const TfLiteRegistration* registration = nullptr;
     status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
                                        &registration);
     if (status != kTfLiteOk) {
-      return status;
+      if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
+        return status;
+      }
+      // If it's an unresolved custom op, allow it for now. It might be resolved
+      // by a delegate later.
+      TfLiteRegistration unresolved_op{nullptr,
+                                       nullptr,
+                                       nullptr,
+                                       /*invoke*/ &UnresolvedOpInvoke,
+                                       nullptr,
+                                       BuiltinOperator_CUSTOM,
+                                       opcode->custom_code()->c_str(),
+                                       1};
+      unresolved_custom_ops_.push_back(unresolved_op);
+      registration = &unresolved_custom_ops_.back();
+      has_flex_op_ |= IsFlexOp(registration->custom_name);
+      status = kTfLiteOk;
     }
     flatbuffer_op_index_to_registration_.push_back(registration);
   }
@@ -437,25 +466,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 }
 
 TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
-  // TODO(b/117561550): Move flex delegate application to the OpResolver.
-  if (AcquireFlexDelegate == nullptr) {
+  // Apply Flex delegate if applicable.
+  if (!has_flex_op_ || AcquireFlexDelegate == nullptr) {
     return kTfLiteOk;
-  }
-
-  bool has_flex_op = false;
-  for (const auto* registration : flatbuffer_op_index_to_registration_) {
-    if ((registration->builtin_code == BuiltinOperator_CUSTOM) &&
-        IsFlexOp(registration->custom_name)) {
-      has_flex_op = true;
-      break;
-    }
-  }
-
-  if (!has_flex_op) {
-    return kTfLiteOk;
-  }
-
-  if (auto flex_delegate = AcquireFlexDelegate()) {
+  } else if (auto flex_delegate = AcquireFlexDelegate()) {
     return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
   }
 

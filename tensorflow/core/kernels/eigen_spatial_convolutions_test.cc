@@ -1755,7 +1755,6 @@ static void PackLhsHelper(int iters,
 // Number of input channel (input depth) it equal to the number of patch
 // channels (patch depth).
 
-using qint8 = Eigen::QInt8;
 
 // NOTE: This is the most common case in Tensorflow models.
 // Fast path: input channel dimension is the multiple of the packet size.
@@ -1834,6 +1833,8 @@ BM_PackRhs(/*type*/ float,      //
            /*stride*/ 2, 2,     //
            /*block*/ 36, 432);
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+using qint8 = Eigen::QInt8;
 BM_PackRhs(/*type*/ qint8,      //
            /*batch*/ 32,        //
            /*image*/ 64, 64,    //
@@ -1842,6 +1843,7 @@ BM_PackRhs(/*type*/ qint8,      //
            /*filter*/ 5, 5,     //
            /*stride*/ 1, 1,     //
            /*block*/ 256, 56);
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 // -------------------------------------------------------------------------- //
 // Pack LHS

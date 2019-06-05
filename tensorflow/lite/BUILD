@@ -244,6 +244,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",

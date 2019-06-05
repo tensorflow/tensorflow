@@ -65,7 +65,7 @@ def _call_concrete_function(function, inputs):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
-  result = function._call_flat(tensor_inputs)  # pylint: disable=protected-access
+  result = function._call_flat(tensor_inputs, function._captured_inputs)  # pylint: disable=protected-access
   if isinstance(result, ops.Operation):
     return None
   return result

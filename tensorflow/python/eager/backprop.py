@@ -543,6 +543,46 @@ def make_vjp(f, params=None, persistent=True):
   return decorated
 
 
+def flatten_nested_indexed_slices(grad):
+  assert isinstance(grad, ops.IndexedSlices)
+  if isinstance(grad.values, ops.Tensor):
+    return grad
+  else:
+    assert isinstance(grad.values, ops.IndexedSlices)
+    g = flatten_nested_indexed_slices(grad.values)
+    return ops.IndexedSlices(g.values, array_ops.gather(grad.indices,
+                                                        g.indices),
+                             g.dense_shape)
+
+
+def aggregate_indexed_slices_gradients(grads):
+  """Aggregates gradients containing `IndexedSlices`s."""
+  if len(grads) < 1:
+    return None
+  elif len(grads) == 1:
+    return grads[0]
+  else:
+    grads = [g for g in grads if g is not None]
+    # If any gradient is a `Tensor`, sum them up and return a dense tensor
+    # object.
+    if any(isinstance(g, ops.Tensor) for g in grads):
+      return math_ops.add_n(grads)
+
+    # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
+    # int64. It is to make sure the inputs of `concat` all have same the data
+    # type.
+    grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
+
+    grads = [flatten_nested_indexed_slices(x) for x in grads]
+    # Form IndexedSlices out of the concatenated values and indices.
+    concat_grad = ops.IndexedSlices(
+        array_ops.concat([x.values for x in grads], axis=0),
+        array_ops.concat([x.indices for x in grads], axis=0),
+        grads[0].dense_shape)
+
+    return concat_grad
+
+
 def _aggregate_grads(gradients):
   """Aggregate gradients from multiple sources.
 
@@ -562,25 +602,7 @@ def _aggregate_grads(gradients):
   else:
     assert all(isinstance(g, (ops.Tensor, ops.IndexedSlices))
                for g in gradients)
-    indexed_slices_list = []
-    for grad in gradients:
-      # TODO(xpan): Support nested IndexedSlices and core IndexedSlices
-      if isinstance(grad, ops.Tensor):
-        indexed_slices = ops.IndexedSlices(
-            grad,
-            math_ops.range(array_ops.shape(grad)[0]),
-            array_ops.shape(grad))
-        indexed_slices_list.append(indexed_slices)
-      else:
-        indexed_slices_list.append(grad)
-
-    # Dense shapes from all gradients should be the same.
-    dense_shape = indexed_slices_list[0].dense_shape
-    # For simplicity now, always cast to int64.
-    indices = array_ops.concat([math_ops.cast(x.indices, dtypes.int64)
-                                for x in indexed_slices_list], 0)
-    values = array_ops.concat([x.values for x in indexed_slices_list], 0)
-    return ops.IndexedSlices(values, indices, dense_shape)
+    return aggregate_indexed_slices_gradients(gradients)
 
 
 def _num_elements(grad):

@@ -694,7 +694,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       self.assertEqual(text, new_text)
     text = "tf.estimator.BaselineClassifier(m, c, w, v, o, c, lr)"
     expected_text = (
-        "tf.estimator.BaselineClassifier(" +
+        "tf.compat.v1.estimator.BaselineClassifier("
         "model_dir=m, n_classes=c, weight_column=w, label_vocabulary=v, "
         "optimizer=o, config=c, loss_reduction=lr)")
     _, report, errors, new_text = self._upgrade(text)
@@ -728,6 +728,111 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(input_layer_partitioner=TEST)"
       text = ns + suffix
       suffix = ("(input_layer_partitioner=TEST, "
+                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testBaseEstimatorOptimizer(self):
+    classes = ["BaselineEstimator", "LinearEstimator", "DNNEstimator"]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(optimizer=TEST)"
+      text = ns + suffix
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testDNNLinearCombinedEstimatorOptimizer(self):
+    classes = ["DNNLinearCombinedEstimator"]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(dnn_optimizer=TEST, linear_optimizer=Test)"
+      text = ns + suffix
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testCannedEstimatorOptimizer(self):
+    classes = [
+        "BaselineClassifier", "BaselineRegressor", "LinearClassifier",
+        "LinearRegressor", "DNNRegressor", "DNNClassifier"
+    ]
+
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(optimizer=TEST)"
+      text = ns + suffix
+      suffix = ("(optimizer=TEST, "
+                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testDNNLinearCombinedOptimizer(self):
+    classes = [
+        "DNNLinearCombinedClassifier",
+        "DNNLinearCombinedRegressor",
+    ]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(dnn_optimizer=TEST, linear_optimizer=Test)"
+      text = ns + suffix
+      suffix = ("(dnn_optimizer=TEST, linear_optimizer=Test, "
+                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testBaseEstimatorPartitionerAndOptimizer(self):
+    classes = ["LinearEstimator", "DNNEstimator"]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST, optimizer=TEST)"
+      text = ns + suffix
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testDNNLinearCombinedEstimatorPartitionerAndOptimizer(self):
+    classes = ["DNNLinearCombinedEstimator"]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
+                "linear_optimizer=TEST)")
+      text = ns + suffix
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testCannedEstimatorPartitionerAndOptimizer(self):
+    classes = [
+        "LinearClassifier", "LinearRegressor", "DNNRegressor", "DNNClassifier"
+    ]
+
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST, optimizer=TEST)"
+      text = ns + suffix
+      suffix = ("(input_layer_partitioner=TEST, optimizer=TEST, "
+                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testDNNLinearCombinedPartitionerAndOptimizer(self):
+    classes = [
+        "DNNLinearCombinedClassifier",
+        "DNNLinearCombinedRegressor",
+    ]
+
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
+                "linear_optimizer=TEST)")
+      text = ns + suffix
+      suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
+                "linear_optimizer=TEST, "
                 "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
@@ -1494,7 +1599,8 @@ def _log_prob(self, x):
       self.assertIn("%s has been" % name, report)
 
   def test_assert_equal_graph_def(self):
-    text = "tf.test.assert_equal_graph_def(a, b, checkpoint_v2=x)"
+    text = ("tf.test.assert_equal_graph_def(a, b, checkpoint_v2=x, "
+            "hash_table_shared_name=y)")
     expected = "tf.test.assert_equal_graph_def(actual=a, expected=b)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
@@ -1984,6 +2090,12 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def testRecomputeGrad(self):
+    text = "tf.contrib.layers.recompute_grad()"
+    expected = "tf.recompute_grad()"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_load_variable(self):
     text = "tf.contrib.framework.load_variable('a')"
     expected_text = (
@@ -2086,7 +2198,11 @@ def _log_prob(self, x):
       result_a, result_b = results[0], results[1]
       self.assertEqual(result_a[3], expected_text_a)
       self.assertEqual(result_b[3], expected_text_b)
-
+  def test_model_to_estimator_checkpoint_warning(self):
+    text = "tf.keras.estimator.model_to_estimator(model)"
+    _, report, _, _ = self._upgrade(text)
+    expected_info = "will save object-based checkpoints"
+    self.assertIn(expected_info, report)
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

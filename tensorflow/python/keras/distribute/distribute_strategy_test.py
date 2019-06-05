@@ -215,6 +215,14 @@ def get_model():
   return model
 
 
+def get_sample_weights_model():
+  x = keras.layers.Input(shape=(1,), name='input')
+  y = keras.layers.Dense(
+      1, kernel_initializer='ones', bias_initializer='zeros', name='dense')(x)
+  model = keras.Model(x, y)
+  return model
+
+
 def get_dataset(distribution):
   inputs = np.zeros((10, 3), dtype=np.float32)
   targets = np.zeros((10, 4), dtype=np.float32)
@@ -262,8 +270,13 @@ def multi_input_output_model():
   return model
 
 
-# TODO(josh11b): Add combinations.one_device_strategy_gpu once it works with
-# TestDistributionStrategyWithCallbacks.test_callbacks_in_predict.
+strategies_minus_default_minus_tpu = [
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.one_device_strategy_gpu,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.mirrored_strategy_with_two_gpus
+]
+
 strategies_minus_tpu = [
     strategy_combinations.default_strategy,
     strategy_combinations.one_device_strategy,
@@ -285,6 +298,11 @@ def strategy_minus_tpu_combinations():
 
 def tpu_strategy_combinations():
   return combinations.combine(distribution=tpu_strategies,
+                              mode=['graph', 'eager'])
+
+
+def tpu_strategy_combinations_graph_only():
+  return combinations.combine(distribution=tpu_strategies,
                               mode=['graph'])
 
 
@@ -300,8 +318,8 @@ def all_strategy_combinations_plus_cloning():
           cloning=[True, False]) +
       combinations.combine(
           distribution=tpu_strategies,
-          mode=['graph'],
-          cloning=[True, False]))
+          mode=['graph', 'eager'],
+          cloning=[False]))
 
 
 def all_strategy_minus_default_and_tpu_combinations():
@@ -321,8 +339,8 @@ def all_strategy_combinations_minus_default():
 
 
 def strategy_and_optimizer_combinations():
-  return combinations.times(
-      all_strategy_combinations(),
+  non_tpu_strategies = combinations.times(
+      strategy_minus_tpu_combinations(),
       # TODO(b/130808953):  Simplify when optimizers v1 work with cloning=False.
       combinations.combine(
           optimizer=[
@@ -340,6 +358,32 @@ def strategy_and_optimizer_combinations():
               strategy_combinations.rmsprop_optimizer_keras_v2_fn
           ],
           cloning=[True, False]))
+  # TODO(b/130808953):  Simplify when optimizers v1 work with cloning=False.
+  tpu_strategies_graph = combinations.combine(
+      distribution=tpu_strategies,
+      mode=['graph'],
+      cloning=[True],
+      optimizer=[
+          strategy_combinations.adagrad_optimizer_v1_fn,
+          strategy_combinations.adam_optimizer_v1_fn,
+          strategy_combinations.gradient_descent_optimizer_v1_fn,
+          strategy_combinations.rmsprop_optimizer_v1_fn,
+          strategy_combinations.adagrad_optimizer_keras_v2_fn,
+          strategy_combinations.adam_optimizer_keras_v2_fn,
+          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
+          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+      ])
+  tpu_strategies_eager = combinations.combine(
+      distribution=tpu_strategies,
+      mode=['eager'],
+      cloning=[False],
+      optimizer=[
+          strategy_combinations.adagrad_optimizer_keras_v2_fn,
+          strategy_combinations.adam_optimizer_keras_v2_fn,
+          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
+          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+      ])
+  return non_tpu_strategies + tpu_strategies_eager + tpu_strategies_graph
 
 
 class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
@@ -673,29 +717,58 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       model.predict(inputs, batch_size=8)
 
   @combinations.generate(
-      combinations.combine(
-          distribution=strategies_minus_tpu,
-          mode=['graph'],
-          cloning=[True, False]))
-  def test_numpy_with_sample_weights(self, distribution, cloning):
-    with self.cached_session():
-      with distribution.scope():
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            rmsprop.RMSPropOptimizer
-            if cloning else gradient_descent_keras.SGD)
-        optimizer = optimizer_fn(learning_rate=0.001)
-        model = get_model()
-        loss = 'mse'
-        model.compile(optimizer, loss, cloning=cloning)
+      combinations.combine(distribution=strategies_minus_tpu,
+                           mode=['graph', 'eager']))
+  def test_numpy_with_sample_weights(self, distribution):
+    with self.cached_session(), distribution.scope():
+      model = get_sample_weights_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
 
-      inputs = np.zeros((20, 3), np.float32)
-      targets = np.zeros((20, 4), np.float32)
-      sample_weights = np.ones((20), np.float32)
+      inputs = np.array([[0], [1], [2], [3]], np.float32)
+      targets = np.array([[2], [4], [6], [8]], np.float32)
+      sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
 
-      model.fit(inputs, targets, sample_weight=sample_weights, epochs=1,
-                steps_per_epoch=2, verbose=1)
+      result = model.evaluate(inputs, targets, batch_size=2,
+                              sample_weight=sample_weights, verbose=1)
+      # The per sample loss is multipled by the corresponding sample weight. The
+      # average of these weighted losses is the return value of the `evaluate`
+      # call. For example, in the test above the average weighted loss is
+      # calculated in the following manner:
+      # batch_1 = (((2-0)^2) * 0.25 + ((4-1)^2) * 0.5) / 2 = 5.5 / 2 = 2.75
+      # batch_2 = (((6-2)^2 * 0.75) + ((8-3)^2 * 1)) / 2 = 37 / 2 = 18.5
+      # final result = (batch_1 + batch_2) / 2 = 10.625.
+      # The first time we divide by number of input samples and the second time
+      # we divide by number of steps/batches that the loss is aggregated over.
+      self.assertAllClose(result, 10.625)
+
+      # We now test without passing sample_weights:
+      # batch_1 = ((2-0)^2) + ((4-1)^2) / 2 = 13 / 2 = 6.5
+      # batch_2 = ((6-2)^2) + ((8-3)^2) / 2 = 41 / 2 = 20.5
+      # final result = (batch_1 + batch_2) / 2 =  27 / 2 = 13.5
+      result = model.evaluate(inputs, targets, batch_size=2, verbose=1)
+      self.assertAllClose(result, 13.5)
+
+  @combinations.generate(
+      combinations.combine(distribution=strategies_minus_default_minus_tpu,
+                           mode=['eager']))
+  def test_numpy_with_sample_weights_eager_with_cloning(self, distribution):
+    with self.cached_session(), distribution.scope():
+      model = get_sample_weights_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss, cloning=True)
+
+      inputs = np.array([[0], [1], [2], [3]], np.float32)
+      targets = np.array([[2], [4], [6], [8]], np.float32)
+      sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
+
+      with self.assertRaisesRegexp(NotImplementedError,
+                                   '`sample_weight` is not supported when '
+                                   'using tf.distribute.Strategy in '):
+        model.evaluate(inputs, targets, batch_size=2,
+                       sample_weight=sample_weights, verbose=1)
 
   @combinations.generate(all_strategy_combinations_plus_cloning())
   def test_flatten_predict_outputs(self, distribution, cloning):
@@ -727,7 +800,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertAllEqual([6, 7], outs[1].shape)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(batch_size=[4, 6])))
   def test_evaluate_with_partial_batch(self, distribution, batch_size):
     with self.cached_session():
@@ -770,7 +843,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           rtol=1e-5)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
@@ -804,7 +877,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           atol=1e-5,
           rtol=1e-5)
 
-  @combinations.generate(tpu_strategy_combinations())
+  @combinations.generate(tpu_strategy_combinations_graph_only())
   def test_no_target_model(self, distribution):
     with self.cached_session():
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
@@ -830,7 +903,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         model.evaluate(inputs, steps=1)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_multi_output_model_with_partial_batch(
       self, distribution, cloning):
@@ -1150,6 +1223,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   def test_fit_eval_and_predict_with_optimizer(self, distribution, optimizer,
                                                cloning):
     with self.cached_session():
+
       with distribution.scope():
 
         model = get_model()
@@ -1161,34 +1235,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
       model.evaluate(dataset, steps=2, verbose=1)
       model.predict(get_predict_dataset(distribution), steps=2)
-
-  @combinations.generate(
-      combinations.times(strategy_minus_tpu_combinations(),
-                         combinations.combine(cloning=[True, False])))
-  def test_dataset_with_sample_weights(self, distribution, cloning):
-    with self.cached_session():
-      with distribution.scope():
-        model = get_model()
-        # TODO(b/130808953): Re-enable the V1 optimizer after iterations is
-        # mirrored.
-        optimizer_fn = (
-            rmsprop.RMSPropOptimizer
-            if cloning else gradient_descent_keras.SGD)
-        optimizer = optimizer_fn(learning_rate=0.001)
-        loss = 'mse'
-        model.compile(optimizer, loss, cloning=cloning)
-
-      inputs = np.zeros((10, 3), np.float32)
-      targets = np.zeros((10, 4), np.float32)
-      sample_weights = np.ones((10), np.float32)
-      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
-                                                        sample_weights))
-      dataset = dataset.repeat()
-      dataset = dataset.batch(10)
-
-      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
-      model.evaluate(dataset, steps=2, verbose=1)
-      model.predict(dataset, steps=2)
 
   @combinations.generate(
       combinations.combine(
@@ -1327,7 +1373,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(0.001, keras.backend.get_value(model.optimizer.lr))
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(batch_size=[4, 6])))
   def test_evaluate_with_dataset_with_partial_batch(self, distribution,
                                                     batch_size):
@@ -1368,7 +1414,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           rtol=1e-5)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_with_dataset_with_partial_batch(self, distribution, cloning):
     with self.cached_session():
@@ -1397,7 +1443,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           rtol=1e-5)
 
   @combinations.generate(
-      combinations.times(tpu_strategy_combinations(),
+      combinations.times(tpu_strategy_combinations_graph_only(),
                          combinations.combine(cloning=[True, False])))
   def test_predict_multi_output_model_with_dataset_with_partial_batch(
       self, distribution, cloning):
@@ -1483,6 +1529,61 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
             atol=1e-4,
             rtol=1e-4)
 
+  @combinations.generate(
+      combinations.combine(distribution=strategies_minus_tpu,
+                           mode=['graph', 'eager']))
+  def test_dataset_with_sample_weights(self, distribution):
+    with self.cached_session(), distribution.scope():
+      model = get_sample_weights_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      inputs = np.array([[0], [1], [2], [3]], np.float32)
+      targets = np.array([[2], [4], [6], [8]], np.float32)
+      sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
+      ds = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
+                                                   sample_weights)).batch(2)
+      result = model.evaluate(ds, verbose=1)
+      # The per sample loss is multipled by the corresponding sample weight. The
+      # average of these weighted losses is the return value of the `evaluate`
+      # call. For example, in the test above the average weighted loss is
+      # calculated in the following manner:
+      # batch_1 = (((2-0)^2) * 0.25 + ((4-1)^2) * 0.5) / 2 = 5.5 / 2 = 2.75
+      # batch_2 = (((6-2)^2 * 0.75) + ((8-3)^2 * 1)) / 2 = 37 / 2 = 18.5
+      # final result = (batch_1 + batch_2) / 2 = 10.625.
+      # The first time we divide by number of input samples and the second time
+      # we divide by number of steps/batches that the loss is aggregated over.
+      self.assertAllClose(result, 10.625)
+
+      # We now test without passing sample_weights:
+      # batch_1 = ((2-0)^2) + ((4-1)^2) / 2 = 13 / 2 = 6.5
+      # batch_2 = ((6-2)^2) + ((8-3)^2) / 2 = 41 / 2 = 20.5
+      # final result = (batch_1 + batch_2) / 2 =  27 / 2 = 13.5
+      ds = dataset_ops.Dataset.from_tensor_slices((inputs, targets)).batch(2)
+      result = model.evaluate(ds, verbose=1)
+      self.assertAllClose(result, 13.5)
+
+  @combinations.generate(
+      combinations.combine(distribution=strategies_minus_default_minus_tpu,
+                           mode=['eager']))
+  def test_dataset_with_sample_weights_eager_with_cloning(self, distribution):
+    with self.cached_session(), distribution.scope():
+      model = get_sample_weights_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss, cloning=True)
+
+      inputs = np.array([[0], [1], [2], [3]], np.float32)
+      targets = np.array([[2], [4], [6], [8]], np.float32)
+      sample_weights = np.array([0.25, 0.5, 0.75, 1], np.float32)
+      ds = dataset_ops.Dataset.from_tensor_slices((inputs, targets,
+                                                   sample_weights)).batch(2)
+
+      with self.assertRaisesRegexp(NotImplementedError,
+                                   '`sample_weight` is not supported when '
+                                   'using tf.distribute.Strategy in '):
+        model.evaluate(ds, verbose=1)
 
 class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
   class IdentityRegularizer(keras.regularizers.Regularizer):
@@ -1747,6 +1848,67 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
     with distribution.scope():
       ds_model = _make_model_with_add_metric()
+      self.assertLen(ds_model.metrics, 1)
+      ds_model.compile('sgd', 'mse', cloning=cloning)
+      ds_history = ds_model.fit(
+          x,
+          y,
+          steps_per_epoch=2,
+          validation_data=(x, y),
+          validation_steps=2,
+          epochs=2)
+      self.assertLen(ds_model.metrics, 1)
+
+    self.assertAllClose(history.history, ds_history.history)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.one_device_strategy_gpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+          ],
+          mode=['eager'],
+          cloning=[False]))
+  def test_distribution_strategy_with_add_metric_object(self, distribution,
+                                                        cloning):
+
+    class Bias(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_weight(name='bias', initializer='zeros', shape=())
+        self.mean = keras.metrics.Mean(name='mean')
+
+      def call(self, inputs):
+        self.add_metric(self.mean(inputs))
+        return inputs + self.bias
+
+    def _make_model_with_add_metric_object():
+      inputs = keras.Input((10,))
+      x1 = keras.layers.Dense(10, kernel_initializer='zeros')(inputs)
+      x2 = Bias()(x1)
+      outputs = keras.layers.Dense(1, kernel_initializer='zeros')(x2)
+      model = keras.Model(inputs, outputs)
+      return model
+
+    x = np.ones((64, 10)).astype('float32')
+    y = np.ones((64, 1)).astype('float32')
+
+    model = _make_model_with_add_metric_object()
+    self.assertLen(model.metrics, 1)
+
+    model.compile('sgd', 'mse')
+    history = model.fit(
+        x,
+        y,
+        steps_per_epoch=2,
+        validation_data=(x, y),
+        validation_steps=2,
+        epochs=2)
+
+    with distribution.scope():
+      ds_model = _make_model_with_add_metric_object()
       self.assertLen(ds_model.metrics, 1)
       ds_model.compile('sgd', 'mse', cloning=cloning)
       ds_history = ds_model.fit(

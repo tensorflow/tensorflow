@@ -60,6 +60,14 @@ def save_model(model,
   the exact same state, without any of the code
   used for model definition or training.
 
+  _SavedModel serialization_ (not yet added)
+
+  The SavedModel serialization path uses `tf.saved_model.save` to save the model
+  and all trackable objects attached to the model (e.g. layers and variables).
+  `@tf.function`-decorated methods are also saved. Additional trackable objects
+  and functions are added to the SavedModel to allow the model to be
+  loaded back as a Keras Model object.
+
   Arguments:
       model: Keras model instance to be saved.
       filepath: One of the following:
@@ -147,7 +155,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   if isinstance(filepath, six.string_types):
     loader_impl.parse_saved_model(filepath)
-    return saved_model.load_from_saved_model(filepath)
+    return saved_model.load_from_saved_model_v2(filepath)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

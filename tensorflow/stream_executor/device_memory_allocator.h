@@ -214,8 +214,8 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   //
   // Precondition: all stream_executors have different device ordinals.
   StreamExecutorMemoryAllocator(
-      const Platform* platform,
-      absl::Span<StreamExecutor* const> stream_executors);
+      const Platform *platform,
+      absl::Span<StreamExecutor *const> stream_executors);
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
                                               bool retry_on_failure) override;
@@ -230,11 +230,9 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  private:
   port::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal);
 
-  // A mapping from device ordinals to StreamExecutors, for each device of
-  // the allocator's platform type. If an element does not exist in the
-  // mapping, the device with the respective device ordinal is not supported
-  // by this allocator.
-  std::map<int, StreamExecutor *> stream_executors_;
+  // Available stream executors. Each stream executor has a different device
+  // ordinal.
+  std::vector<StreamExecutor *> stream_executors_;
 };
 
 template <typename ElemT>

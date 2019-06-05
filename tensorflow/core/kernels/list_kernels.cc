@@ -17,9 +17,9 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 
 #define EIGEN_USE_THREADS
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/list_kernels.h"
 
@@ -253,7 +253,7 @@ const char TensorList::kTypeName[] = "tensorflow::TensorList";
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorList").Device(DEVICE_CPU),
                         EmptyTensorList);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorList")
                             .Device(DEVICE_GPU)
@@ -261,7 +261,7 @@ REGISTER_KERNEL_BUILDER(Name("EmptyTensorList")
                             .HostMemory("max_num_elements"),
                         EmptyTensorList);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListPushBack : public OpKernel {
  public:
@@ -313,12 +313,12 @@ class TensorListPushBack : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_CPU),
                         TensorListPushBack);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("TensorListPushBack").Device(DEVICE_GPU),
                         TensorListPushBack);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListLength : public OpKernel {
  public:
@@ -337,13 +337,13 @@ class TensorListLength : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListLength").Device(DEVICE_CPU),
                         TensorListLength);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("TensorListLength").Device(DEVICE_GPU).HostMemory("length"),
     TensorListLength);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListElementShape : public OpKernel {
  public:
@@ -405,7 +405,7 @@ class TensorListReserve : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListReserve").Device(DEVICE_CPU),
                         TensorListReserve);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("TensorListReserve")
                             .Device(DEVICE_GPU)
@@ -413,7 +413,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorListReserve")
                             .HostMemory("num_elements"),
                         TensorListReserve);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 class TensorListResize : public OpKernel {
  public:
   explicit TensorListResize(OpKernelConstruction* c) : OpKernel(c) {}
@@ -463,13 +463,13 @@ class TensorListResize : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListResize").Device(DEVICE_CPU),
                         TensorListResize);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("TensorListResize").Device(DEVICE_GPU).HostMemory("size"),
     TensorListResize);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListSetItem : public OpKernel {
  public:
@@ -509,7 +509,7 @@ class TensorListSetItem : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
                         TensorListSetItem);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_TENSOR_LIST_SET_ITEM_GPU(T)                      \
   REGISTER_KERNEL_BUILDER(Name("TensorListSetItem")               \
@@ -526,7 +526,7 @@ TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
 REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
 #undef REGISTER_TENSOR_LIST_SET_ITEM_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class TensorListConcatLists : public OpKernel {
  public:
@@ -614,12 +614,12 @@ class TensorListConcatLists : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_CPU),
                         TensorListConcatLists);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
                         TensorListConcatLists);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_TENSOR_LIST_OPS_CPU(T)                                    \
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \

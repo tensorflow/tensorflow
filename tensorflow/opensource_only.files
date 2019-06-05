@@ -6,6 +6,7 @@ tensorflow/contrib/tpu/profiler/pip_package/cloud_tpu_profiler/main.py
 tensorflow/contrib/tpu/profiler/pip_package/cloud_tpu_profiler/__init__.py
 tensorflow/contrib/mpi/BUILD
 tensorflow/stream_executor/build_defs.bzl
+tensorflow/python/autograph/core/config.py
 tensorflow/tools/ci_build/remote/BUILD
 tensorflow/tools/pip_package/README
 tensorflow/tools/pip_package/MANIFEST.in
@@ -41,7 +42,6 @@ tensorflow/third_party/toolchains/clang6/clang.BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/py3/BUILD
-tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda10.0-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/cuda10.0-cudnn7/cuda/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc-cuda10.0/BUILD

@@ -846,24 +846,42 @@ Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
   const Edge* pred_edge;
   TF_RETURN_IF_ERROR(n->input_edge(1, &pred_edge));
 
-  Predicate* true_switch;
-  TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
-      pred_edge->src(), pred_edge->src_output(),
-      /*must_be_true=*/true, &true_switch));
+  if (n->num_outputs() == 2) {
+    Predicate* true_switch;
+    TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
+        pred_edge->src(), pred_edge->src_output(),
+        /*must_be_true=*/true, &true_switch));
 
-  Predicate* false_switch = predicate_factory_.MakeNotPredicate(true_switch);
+    Predicate* false_switch = predicate_factory_.MakeNotPredicate(true_switch);
 
-  // Output 0 is alive iff all inputs are alive and the condition is false.
-  input_preds.push_back(false_switch);
-  SetPredicate(n, 0, predicate_factory_.MakeAndPredicate(input_preds),
-               should_revisit);
-  input_preds.pop_back();
+    // Output 0 is alive iff all inputs are alive and the condition is false.
+    input_preds.push_back(false_switch);
+    SetPredicate(n, 0, predicate_factory_.MakeAndPredicate(input_preds),
+                 should_revisit);
+    input_preds.pop_back();
 
-  // Output 1 is alive iff all inputs are alive and the condition is true.
-  input_preds.push_back(true_switch);
-  SetPredicate(n, 1, predicate_factory_.MakeAndPredicate(input_preds),
-               should_revisit);
-  input_preds.pop_back();
+    // Output 1 is alive iff all inputs are alive and the condition is true.
+    input_preds.push_back(true_switch);
+    SetPredicate(n, 1, predicate_factory_.MakeAndPredicate(input_preds),
+                 should_revisit);
+    input_preds.pop_back();
+  } else {  // N-way switch case. Exactly one of N branches is alive.
+    Predicate* branch_pred;
+    for (int i = 0; i < n->num_outputs() - 1; i++) {
+      TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
+          n, i, /*must_be_true=*/false, &branch_pred));
+      input_preds.push_back(branch_pred);
+      SetPredicate(n, i, predicate_factory_.MakeAndPredicate(input_preds),
+                   should_revisit);
+      input_preds.pop_back();
+      input_preds.push_back(predicate_factory_.MakeNotPredicate(branch_pred));
+    }
+    // The default (last) branch does not need its own symbol, is simply the
+    // nor of all other branches.
+    SetPredicate(n, n->num_outputs() - 1,
+                 predicate_factory_.MakeAndPredicate(input_preds),
+                 should_revisit);
+  }
 
   // Control is alive iff all inputs are alive.
   SetPredicate(n, Graph::kControlSlot,

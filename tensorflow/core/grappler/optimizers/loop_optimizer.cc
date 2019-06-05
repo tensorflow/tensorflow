@@ -460,7 +460,7 @@ std::vector<int> GetStackPushNodesToConvert(
 
   const std::unordered_set<string> op_types_to_traverse(
       {"Stack", "StackV2", "Enter", "RefEnter", "Switch", "RefSwitch",
-       "Identity", "RefIdentity"});
+       "_SwitchN", "Identity", "RefIdentity"});
   const auto is_op_to_traverse = [&](const NodeDef* node) -> bool {
     return op_types_to_traverse.find(node->op()) != op_types_to_traverse.end();
   };
@@ -753,6 +753,9 @@ Status LoopOptimizer::RemoveDeadBranches(
     if (!IsSwitch(node)) {
       continue;
     }
+    if (node.op() == "_SwitchN") {  // _SwitchN not used in loop control flow.
+      continue;
+    }
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
@@ -798,8 +801,8 @@ Status LoopOptimizer::RemoveDeadBranches(
       if (IsMerge(*dead.node)) {
         const int num_data_inputs = dead.node->attr().at("N").i();
         if (num_data_inputs > 2) {
-          // This never happens in practice, so we'll just skip these to
-          // simplify the code for now.
+          // This can happen with _SwitchN/Merge (Case lowering). We skip these
+          // to simplify the code for now.
           found_node_to_preserve = true;
           break;
         }
@@ -877,11 +880,15 @@ Status LoopOptimizer::RemoveDeadBranches(
     }
     // Remove dead data input.
     const std::set<int>& dead_inputs = itr.second;
+    CHECK_LE(dead_inputs.size(), 1);
+    // (This loop would delete >1 items possibly in the wrong order.)
     for (int index : dead_inputs) {
       dead_node->mutable_input()->DeleteSubrange(index, 1);
     }
-    // Turn Merge into Identity only if we deleted data inputs.
+    // Turn Merge into Identity only if we deleted the other data input.
     if (!dead_inputs.empty()) {
+      const int num_data_inputs = dead_node->attr().at("N").i();
+      CHECK_EQ(num_data_inputs, dead_inputs.size() + 1);
       dead_node->set_op("Identity");
       dead_node->mutable_attr()->erase("N");
     }

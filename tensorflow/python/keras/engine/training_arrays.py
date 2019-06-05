@@ -141,9 +141,6 @@ def model_iteration(model,
           inputs, steps_per_epoch, epochs=epochs, steps_name=steps_name)
     input_iterator = _get_iterator(inputs, model._distribution_strategy)
 
-  if mode == ModeKeys.TRAIN:
-    _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
-
   # Enter tf.distribute.Strategy scope.
   if model._distribution_strategy:
     scope = distributed_training_utils.distributed_scope(
@@ -151,10 +148,6 @@ def model_iteration(model,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
 
-  model._update_sample_weight_modes(sample_weights=sample_weights)
-
-  # Get step function and loop type.
-  f = _make_execution_function(model, mode)
   use_steps = is_dataset or steps_per_epoch is not None
   do_validation = val_inputs is not None
 
@@ -175,11 +168,23 @@ def model_iteration(model,
     # `ins` is a function when a distribute strategy is used in Eager mode.  In
     # that case `is_dataset` is True.  The code branches that have requirements
     # about the type of `ins` do not trigger in the distributed case.
+
   if not is_dataset:
     num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                      steps_per_epoch)
   else:
     num_samples_or_steps = steps_per_epoch
+
+  # Update sample_weight_mode of the model if sample_weights is specified by the
+  # user. We need to call this function after we have a handle on the inputs
+  # (both numpy arrays and datasets) in order to determine if the user has
+  # specified sample_weights.
+  _update_sample_weight_mode(model, mode, ins)
+
+  # Get step function and loop type. As part of building the execution
+  # function we recompile the metrics based on the updated
+  # sample_weight_mode value.
+  f = _make_execution_function(model, mode)
 
   # Prepare validation data. Hold references to the iterator and the input list
   # to properly reinitialize and reuse in multiple validation passes.
@@ -198,6 +203,14 @@ def model_iteration(model,
     val_iterator = _get_iterator(val_inputs, model._distribution_strategy)
     val_inputs = _prepare_feed_values(
         model, val_iterator, val_targets, val_sample_weights, ModeKeys.TEST)
+    # Get num steps for printing.
+    val_samples_or_steps = validation_steps
+  else:
+    # Get num samples for printing.
+    val_samples_or_steps = val_inputs and val_inputs[0].shape[0] or None
+
+  if mode == ModeKeys.TRAIN and verbose:
+    _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
 
   # Configure callbacks.
   count_mode = 'steps' if use_steps else 'samples'
@@ -270,7 +283,14 @@ def model_iteration(model,
         # Get outputs.
         try:
           # `ins` can be callable in tf.distribute.Strategy + eager case.
-          actual_inputs = ins() if callable(ins) else ins
+          # TODO(b/134179782):  Simplify this condition when cloning never
+          # happens.
+          if not callable(ins) or (
+              model._distribution_strategy and
+              not distributed_training_utils.is_distributing_by_cloning(model)):
+            actual_inputs = ins
+          else:
+            actual_inputs = ins()
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
           if is_dataset:
@@ -445,11 +465,14 @@ def _get_model_feed(model, mode):
   return feed
 
 
-def _print_train_info(inputs, val_inputs, steps_per_epoch, verbose):
-  if (val_inputs and steps_per_epoch is None and verbose and inputs and
-      hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
-    print('Train on %d samples, validate on %d samples' %
-          (inputs[0].shape[0], val_inputs[0].shape[0]))
+def _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset):
+  increment = 'steps' if is_dataset else 'samples'
+  msg = 'Train on {0} {increment}'.format(
+      num_samples_or_steps, increment=increment)
+  if val_samples_or_steps:
+    msg += ', validate on {0} {increment}'.format(
+        val_samples_or_steps, increment=increment)
+  print(msg)
 
 
 def _get_num_samples_or_steps(ins, batch_size, steps_per_epoch):
@@ -531,6 +554,32 @@ def _make_execution_function(model, mode):
     return distributed_training_utils._make_execution_function(model, mode)
   return model._make_execution_function(mode)
 
+
+def _update_sample_weight_mode(model, mode, inputs):
+  """Updates the sample_weight_mode of a given model."""
+  # Add a quick return to prevent us from calling model._feed_targets that
+  # accesses certain model properties that may not be set in the `PREDICT` mode.
+  if mode == ModeKeys.PREDICT:
+    return
+
+  sample_weights = None
+  # `inputs` is the model's inputs + targets + sample_weights +
+  # learning phase placeholder if specified. To update the sample_weight_mode
+  # we need to determine if the user has passed sample weights as part of the
+  # input.
+  if not callable(inputs):
+    sample_weights = inputs[len(model._feed_inputs) + len(model._feed_targets):]
+    has_learning_phase_pl = (mode == ModeKeys.TRAIN and
+                             not isinstance(K.symbolic_learning_phase(), int))
+    if has_learning_phase_pl:
+      sample_weights = sample_weights[:-1]
+    model._update_sample_weight_modes(sample_weights=sample_weights)
+
+  # Call the DistributionStrategy specific function to update the
+  # sample_weight_mode on the model.
+  if model._distribution_strategy:
+    distributed_training_utils._update_sample_weight_modes(model, mode,
+                                                           sample_weights)
 
 # For backwards compatibility for internal users of these loops.
 fit_loop = functools.partial(model_iteration, mode=ModeKeys.TRAIN)

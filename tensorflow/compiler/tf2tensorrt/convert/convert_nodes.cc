@@ -30,8 +30,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -3102,6 +3102,7 @@ Status ConvertBinary(OpConverterParams* params) {
 
   static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
       {"Add", nvinfer1::ElementWiseOperation::kSUM},
+      {"AddV2", nvinfer1::ElementWiseOperation::kSUM},
       {"Mul", nvinfer1::ElementWiseOperation::kPROD},
       {"Sub", nvinfer1::ElementWiseOperation::kSUB},
       {"Div", nvinfer1::ElementWiseOperation::kDIV},
@@ -3951,8 +3952,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
         params, input_a.tensor(), input_b.weights(), transpose_b, node_name);
   }
 
-  constexpr auto get_matrix_op =
-      [](nvinfer1::ITensor* in, bool transpose) -> nvinfer1::MatrixOperation {
+  const auto get_matrix_op = [](nvinfer1::ITensor* in,
+                                bool transpose) -> nvinfer1::MatrixOperation {
     return (in->getDimensions().nbDims < 2)
                ? nvinfer1::MatrixOperation::kVECTOR
                : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
@@ -4606,8 +4607,8 @@ static void RegisterValidatableOpConverters(
         "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxArgs"}) {
     (*registration)[quantization_op_type] = ConvertQuantize;
   }
-  for (auto binary_op_type :
-       {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum", "Pow"}) {
+  for (auto binary_op_type : {"Add", "AddV2", "Mul", "Sub", "Div", "RealDiv",
+                              "Maximum", "Minimum", "Pow"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
   for (auto activation_op_pair : *ActivationTypeMap()) {

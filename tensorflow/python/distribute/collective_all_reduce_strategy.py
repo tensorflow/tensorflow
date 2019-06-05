@@ -170,8 +170,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
-    logging.info("CollectiveAllReduceStrategy with local_devices = %r",
-                 local_devices)
+    logging.info("Single-worker CollectiveAllReduceStrategy with local_devices "
+                 "= %r, communication = %s", local_devices, self._communication)
 
   def _initialize_multi_worker(self, cluster_resolver):
     """Initializes the object for multi-worker training."""
@@ -313,7 +313,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
               with ops.device(device):
                 initial_value = initial_value_fn()
                 assert not callable(initial_value)
-                initial_value = ops.convert_to_tensor(initial_value)
+                initial_value = ops.convert_to_tensor(
+                    initial_value, dtype=kwargs.get("dtype", None))
 
                 assert index == 0, index
                 if self._num_workers > 1:

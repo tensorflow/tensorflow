@@ -239,7 +239,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__repr__", &ProgramShape::ToString);
 
   // Literals
-  py::class_<Literal>(m, "Literal").def("__repr__", &Literal::ToString);
+  py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
+      .def("__repr__", &Literal::ToString);
   py::class_<LiteralSlice>(m, "LiteralSlice");
   py::implicitly_convertible<Literal, LiteralSlice>();
   py::implicitly_convertible<BorrowingLiteral, LiteralSlice>();
@@ -296,6 +297,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
       .def("block_host_until_ready", &PyLocalBuffer::BlockHostUntilReady)
+      .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
       .def("to_py", &PyLocalBuffer::ToPython)
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)

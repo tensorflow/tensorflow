@@ -81,6 +81,10 @@ class _ConvertedEntityFactoryInfo(
     source_map: Dict.
   """
 
+  def __str__(self):
+    return '_ConvertedEntityFactoryInfo({} in {})'.format(
+        self.converted_name, self.module_name)
+
   def get_module(self):
     return sys.modules[self.module_name]
 
@@ -333,16 +337,16 @@ def is_whitelisted_for_graph(o, check_call_override=True):
   else:
     m = tf_inspect.getmodule(o)
 
+  # Examples of callables that lack a __module__ property include builtins.
   if hasattr(m, '__name__'):
-    # Builtins typically have unnamed modules.
-    for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
-      if m.__name__.startswith(prefix + '.') or m.__name__ == prefix:
-        logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
+    for rule in config.CONVERSION_RULES:
+      action = rule.get_action(m)
+      if action == config.Action.CONVERT:
+        logging.log(2, 'Not whitelisted: %s: %s', o, rule)
+        return False
+      elif action == config.Action.DO_NOT_CONVERT:
+        logging.log(2, 'Whitelisted: %s: %s', o, rule)
         return True
-
-  if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
-    logging.log(2, 'Whitelisted: %s: already converted', o)
-    return True
 
   if tf_inspect.isgeneratorfunction(o):
     logging.warn(

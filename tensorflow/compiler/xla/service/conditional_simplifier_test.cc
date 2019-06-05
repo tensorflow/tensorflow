@@ -41,10 +41,11 @@ namespace op = xla::testing::opcode_matchers;
 class ConditionalSimplifierTest : public HloTestBase {
  public:
   // Makes a computation that contains a conditional with constant predicate.
-  HloComputation* MakeConditional(HloModule* module);
+  HloComputation* MakeConditional(HloModule* module, bool is_constant = true);
 };
 
-HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
+HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module,
+                                                           bool is_constant) {
   HloComputation::Builder builder(TestName());
 
   // true_computation returns param+1.
@@ -83,7 +84,10 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
   }
 
   auto false_instrn = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      is_constant
+          ? HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false))
+          : HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(PRED, {}),
+                                            "cond"));
   auto false_param = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {}), "false_param"));
   auto one = builder.AddInstruction(
@@ -102,6 +106,16 @@ TEST_F(ConditionalSimplifierTest, ConditionalGetsInlined) {
   ASSERT_TRUE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Parameter(), op::Constant()));
+}
+
+TEST_F(ConditionalSimplifierTest, BranchGetsInlined) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get(), /*is_constant=*/false);
+  ASSERT_TRUE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Select(op::Parameter(1), op::Add(op::Constant(), op::Constant()),
+                 op::Add(op::Parameter(0), op::Constant())));
 }
 
 TEST_F(ConditionalSimplifierTest, ConditionalWithControlDependency) {

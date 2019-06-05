@@ -132,24 +132,18 @@ class TPUStrategy(distribute_lib.Strategy):
 
   def __init__(self,
                tpu_cluster_resolver=None,
-               steps_per_run=None,
                device_assignment=None):
     """Initializes the TPUStrategy object.
 
     Args:
       tpu_cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
           which provides information about the TPU cluster.
-      steps_per_run: Number of steps to run on device before returning to the
-          host. Note that this can have side-effects on performance, hooks,
-          metrics, summaries etc.
-          This parameter is only used when Distribution Strategy is used with
-          estimator or keras.
       device_assignment: Optional `tf.contrib.tpu.DeviceAssignment` to specify
           the placement of replicas on the TPU cluster. Currently only supports
           the usecase of using a single core within a TPU cluster.
     """
     super(TPUStrategy, self).__init__(TPUExtended(
-        self, tpu_cluster_resolver, steps_per_run, device_assignment))
+        self, tpu_cluster_resolver, device_assignment=device_assignment))
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -673,6 +667,15 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       """TF Function used to replicate the user computation."""
       if kwargs is None:
         kwargs = {}
+
+      # Remove None at the end of args as they are not replicatable
+      # If there are None in the middle we can't do anything about it
+      # so let those cases fail.
+      # For example when Keras model predict is used they pass the targets as
+      # None. We want to handle it here so all client libraries don't have to
+      # do this as other strategies can handle None values better.
+      while args and args[-1] is None:
+        args = args[:-1]
 
       # Used to re-structure flattened output tensors from `tpu.replicate()`
       # into a structured format.

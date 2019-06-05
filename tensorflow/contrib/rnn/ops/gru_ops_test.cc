@@ -23,7 +23,7 @@ namespace tensorflow {
 
 class GruOpsTest : public ::testing::Test {
  public:
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     TF_Status* status = TF_NewStatus();
     auto* lib = TF_LoadLibrary(
         "tensorflow/contrib/rnn/python/ops/_gru_ops.so", status);

@@ -17,7 +17,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
+#include <iterator>
+
 #include "google/protobuf/any.pb.h"
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
@@ -113,18 +116,23 @@ void LogFusedConvForwardAutotuneResults(
 
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo) {
-  // TODO(jlebar): Exclude conv ops with failures, once we have failure checking
-  // and have confidence that it's correct.
+  std::vector<AutotuneResult> filtered_results;
+  absl::c_copy_if(
+      results, std::back_inserter(filtered_results),
+      [](const AutotuneResult& result) { return !result.has_failure(); });
+  if (filtered_results.empty()) {
+    return errors::NotFound("No algorithm worked!");
+  }
 
-  const AutotuneResult* best_result = std::min_element(
-      results.begin(), results.end(),
+  const auto best_result = absl::c_min_element(
+      filtered_results,
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
         return proto_utils::FromDurationProto(lhs.run_time()) <
                proto_utils::FromDurationProto(rhs.run_time());
       });
 
-  const AutotuneResult* best_result_no_scratch = std::min_element(
-      results.begin(), results.end(),
+  const auto best_result_no_scratch = absl::c_min_element(
+      filtered_results,
       [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
         return std::make_tuple(lhs.scratch_bytes(),
                                proto_utils::FromDurationProto(lhs.run_time())) <
@@ -132,12 +140,9 @@ Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                                proto_utils::FromDurationProto(rhs.run_time()));
       });
 
-  if (best_result == results.end()) {
-    return errors::NotFound("No algorithm worked!");
-  }
   algo->set_algorithm({best_result->conv().algorithm(),
                        best_result->conv().tensor_ops_enabled()});
-  if (best_result_no_scratch != results.end() &&
+  if (best_result_no_scratch != filtered_results.end() &&
       best_result_no_scratch->scratch_bytes() == 0) {
     algo->set_algorithm_no_scratch(
         {best_result_no_scratch->conv().algorithm(),

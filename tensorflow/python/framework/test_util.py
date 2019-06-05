@@ -49,7 +49,6 @@ from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
@@ -152,11 +151,13 @@ def assert_equal_graph_def_v2(expected, actual):
     AssertionError: If the `GraphDef`s do not match.
     TypeError: If either argument is not a `GraphDef`.
   """
-  assert_equal_graph_def(actual, expected, checkpoint_v2=True)
+  assert_equal_graph_def(actual, expected, checkpoint_v2=True,
+                         hash_table_shared_name=True)
 
 
 @tf_export(v1=["test.assert_equal_graph_def"])
-def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
+def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False,
+                              hash_table_shared_name=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -168,15 +169,19 @@ def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
     expected: The `GraphDef` we expected.
     checkpoint_v2: boolean determining whether to ignore randomized attribute
       values that appear in V2 checkpoints.
+    hash_table_shared_name: boolean determining whether to ignore randomized
+      shared_names that appear in HashTableV2 op defs.
 
   Raises:
     AssertionError: If the `GraphDef`s do not match.
     TypeError: If either argument is not a `GraphDef`.
   """
-  assert_equal_graph_def(actual, expected, checkpoint_v2)
+  assert_equal_graph_def(actual, expected, checkpoint_v2,
+                         hash_table_shared_name)
 
 
-def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
+def assert_equal_graph_def(actual, expected, checkpoint_v2=False,
+                           hash_table_shared_name=False):
   if not isinstance(actual, graph_pb2.GraphDef):
     raise TypeError("Expected tf.GraphDef for actual, got %s" %
                     type(actual).__name__)
@@ -187,6 +192,10 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   if checkpoint_v2:
     _strip_checkpoint_v2_randomized(actual)
     _strip_checkpoint_v2_randomized(expected)
+
+  if hash_table_shared_name:
+    _strip_hash_table_shared_name(actual)
+    _strip_hash_table_shared_name(expected)
 
   diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
                                                 expected.SerializeToString())
@@ -248,6 +257,19 @@ def _strip_checkpoint_v2_randomized(graph_def):
         if (attr_tensor_string_value and
             re.match(_SHARDED_SAVE_OP_PATTERN, str(attr_tensor_string_value))):
           delete_keys.append(attr_key)
+    for attr_key in delete_keys:
+      del node.attr[attr_key]
+
+
+_TABLE_SHARED_NAME_PATTERN = r"hash_table_[0-9a-z\-]+"
+
+
+def _strip_hash_table_shared_name(graph_def):
+  for node in graph_def.node:
+    delete_keys = []
+    if node.op == "HashTableV2" and "shared_name" in node.attr:
+      if re.match(_TABLE_SHARED_NAME_PATTERN, str(node.attr["shared_name"].s)):
+        delete_keys.append("shared_name")
     for attr_key in delete_keys:
       del node.attr[attr_key]
 
@@ -2718,12 +2740,10 @@ class TensorFlowTestCase(googletest.TestCase):
       # will be used even when a specific device is supposed to be used.
       allow_soft_placement = not force_gpu
       if config is None:
-        config = config_pb2.ConfigProto()
+        config = context.context().config
         config.allow_soft_placement = allow_soft_placement
-        config.gpu_options.per_process_gpu_memory_fraction = 0.3
       elif not allow_soft_placement and config.allow_soft_placement:
-        config_copy = config_pb2.ConfigProto()
-        config_copy.CopyFrom(config)
+        config_copy = context.context().config
         config = config_copy
         config.allow_soft_placement = False
       # Don't perform optimizations for tests so we don't inadvertently run

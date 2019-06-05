@@ -160,7 +160,6 @@ py_library(
         "engine/__init__.py",
         "engine/base_layer.py",
         "engine/input_layer.py",
-        "engine/input_spec.py",
         "engine/network.py",
         "engine/partial_batch_padding_handler.py",
         "engine/saving.py",
@@ -185,6 +184,7 @@ py_library(
         ":constraints",
         ":engine_utils",
         ":initializers",
+        ":input_spec",
         ":losses",
         ":mode_keys",
         ":optimizers",
@@ -202,8 +202,24 @@ py_library(
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:ragged_util",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "input_spec",
+    srcs = ["engine/input_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
         "@six_archive//:six",
     ],
 )
@@ -222,12 +238,18 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        ":input_spec",
         ":mode_keys",
         ":optimizers",
+        ":regularizers",
         "//tensorflow/python:lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:saver",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model/model_utils",
+        "//tensorflow/python/training/tracking",
     ],
 )
 
@@ -253,6 +275,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/keras/distribute:multi_worker_training_state",
     ],
 )
 
@@ -384,6 +407,7 @@ py_library(
         "layers/pooling.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
+        "layers/rnn_cell_wrapper_v2.py",
         "layers/serialization.py",
         "layers/wrappers.py",
         "utils/kernelized_utils.py",
@@ -959,6 +983,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "rnn_cell_wrapper_v2_test",
+    size = "medium",
+    srcs = ["layers/rnn_cell_wrapper_v2_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+    tags = [
+        "notsan",
+    ],
+)
+
+tf_py_test(
     name = "time_distributed_learning_phase_test",
     size = "small",
     srcs = ["layers/time_distributed_learning_phase_test.py"],
@@ -1220,6 +1260,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "input_spec_test",
+    size = "small",
+    srcs = ["engine/input_spec_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "training_test",
     size = "medium",
     srcs = ["engine/training_test.py"],
@@ -1248,13 +1299,14 @@ tf_py_test(
 
 tf_py_test(
     name = "training_arrays_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/training_arrays_test.py"],
     additional_deps = [
         ":keras",
         ":layers",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
     ],
@@ -1441,7 +1493,6 @@ tf_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 4,
-    tags = ["no_oss"],
 )
 
 tf_py_test(
@@ -1491,6 +1542,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 4,
     tags = [
         "no_oss",  # TODO(b/119349471): Re-enable
         "no_windows",
@@ -1508,4 +1560,20 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = ["notsan"],
+)
+
+tf_py_test(
+    name = "metrics_utils_test",
+    size = "small",
+    srcs = ["utils/metrics_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
+    ],
 )

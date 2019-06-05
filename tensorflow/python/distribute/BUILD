@@ -540,6 +540,7 @@ py_library(
         ":distribute_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
@@ -562,6 +563,17 @@ py_library(
     ],
 )
 
+py_test(
+    name = "combinations_test",
+    srcs = ["combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
+    ],
+)
+
 py_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
@@ -573,12 +585,27 @@ py_library(
         ":mirrored_strategy",
         ":one_device_strategy",
         ":tpu_strategy",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "strategy_combinations_test",
+    srcs = ["strategy_combinations_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":combinations",
+        ":reduce_util",
+        ":strategy_combinations",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -589,17 +616,6 @@ py_library(
     deps = [
         ":combinations",
         ":simple_models",
-    ],
-)
-
-py_test(
-    name = "combinations_test",
-    srcs = ["combinations_test.py"],
-    python_version = "PY2",
-    deps = [
-        ":combinations",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:backend",
     ],
 )
 
@@ -1017,6 +1033,7 @@ distribute_py_test(
     main = "saved_model_save_load_test.py",
     deps = [
         ":saved_model_test_base",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python/saved_model",
     ],
 )
