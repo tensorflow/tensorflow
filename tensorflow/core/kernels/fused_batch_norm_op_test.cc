@@ -157,7 +157,7 @@ static Graph* FusedBatchNormInference(int n, int h, int w, int c,
   Node* empty = test::graph::Constant(g, empty_t, "empty");
 
   Node* fused_batch_norm;
-  TF_CHECK_OK(NodeBuilder(g->NewName("fused_batch_norm"), "FusedBatchNormV2")
+  TF_CHECK_OK(NodeBuilder(g->NewName("fused_batch_norm"), "FusedBatchNormV3")
                   .Input(x)
                   .Input(other)                        // scale
                   .Input(other)                        // offset
