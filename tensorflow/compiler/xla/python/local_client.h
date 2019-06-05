@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/worker_thread.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -42,54 +43,6 @@ namespace xla {
 // "xla._CPU_CUSTOM_CALL_TARGET".
 Status RegisterCpuCustomCallTarget(const std::string& fn_name,
                                    pybind11::capsule capsule);
-
-// Class that manages destruction of Python objects.
-//
-// We must not destroy Python objects without holding the GIL. However, we
-// frequently want to hold references to Python objects for the duration of
-// an asynchronous transfer on a Stream, and release our reference when the
-// transfer completes.
-//
-// This class holds references to Python objects outside a GIL scope, that can
-// be collected later when the GIL is held by calling CollectGarbage().
-class PythonRefManager {
- public:
-  PythonRefManager() = default;
-
-  // Holds references to a set of pybind11::objects, adding the references to
-  // the PythonRefManager on destruction.
-  class ManagedPyObjects {
-   public:
-    ManagedPyObjects() = default;
-    ManagedPyObjects(PythonRefManager* manager,
-                     absl::Span<pybind11::object> objects);
-
-    ~ManagedPyObjects();
-
-    ManagedPyObjects(const ManagedPyObjects& other) = default;
-    ManagedPyObjects(ManagedPyObjects&& other) = default;
-    ManagedPyObjects& operator=(const ManagedPyObjects& other) = default;
-    ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
-
-   private:
-    PythonRefManager* manager_ = nullptr;
-    absl::InlinedVector<pybind11::object, 1> objects_;
-  };
-
-  // Creates a managed std::shared_ptr to an object. When the shared_ptr is
-  // destroyed, the reference to 'object' will be added to python_garbage_,
-  // and collected next time CollectGarbage() is called.
-  ManagedPyObjects ManageReferences(absl::Span<pybind11::object> objects);
-
-  // Releases the contents of python_garbage_. Requires that the GIL is held.
-  // The client calls this method during API entry points where the GIL is held
-  // to free any garbage that has accumulated.
-  void CollectGarbage();
-
- private:
-  absl::Mutex mu_;
-  std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
-};
 
 // Class that encapsulates state relating to a device (e.g., a GPU) on which we
 // can perform computation and transfers.
