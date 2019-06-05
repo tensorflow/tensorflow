@@ -45,6 +45,9 @@ WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 
 ROOT_CONTAINER=${ROOT_CONTAINER:-tensorflow/tensorflow}
 TF_ROOT_CONTAINER_TAG=${ROOT_CONTAINER_TAG:-devel}
+
+# TF_BUILD_VERSION can be either a tag, branch, commit ID or PR number.
+# For a PR, set TF_BUILD_VERSION_IS_PR="yes"
 TF_BUILD_VERSION=${TF_DOCKER_BUILD_DEVEL_BRANCH:-master}
 TF_BUILD_VERSION_IS_PR=${TF_DOCKER_BUILD_DEVEL_BRANCH_IS_PR:-no}
 TF_REPO=${TF_REPO:-https://github.com/tensorflow/tensorflow}
@@ -164,7 +167,7 @@ function test_container()
 function checkout_tensorflow()
 {
   if [[ "$#" != "3" ]]; then
-    die "Usage: ${FUNCNAME} <REPO_URL> <BRANCH/TAG/COMMIT-ID> <TF_BUILD_VERSION_IS_PR>"
+    die "Usage: ${FUNCNAME} <REPO_URL> <BRANCH/TAG/COMMIT-ID/PR-ID> <TF_BUILD_VERSION_IS_PR>"
   fi
 
   TF_REPO="${1}"
@@ -177,10 +180,10 @@ function checkout_tensorflow()
   # Clean any existing tensorflow sources
   rm -rf "${TENSORFLOW_DIR}"
 
-  # Let's make this simeple for now; we can be more fancy later
   git clone ${TF_REPO} ${TENSORFLOW_DIR}
   cd ${TENSORFLOW_DIR}
   if [[ "${TF_BUILD_VERSION_IS_PR}" == "yes" ]]; then
+    # If TF_BUILD_VERSION is a PR number, then fetch first
     git fetch origin pull/${TF_BUILD_VERSION}/head:pr-${TF_BUILD_VERSION}
     git checkout pr-${TF_BUILD_VERSION}
   else
