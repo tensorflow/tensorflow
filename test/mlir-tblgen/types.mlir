@@ -89,12 +89,11 @@ func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
 
 // -----
 
-// TODO(jpienaar): re-enable post supporting attributes again.
-// DISABLED_CHECK-LABEL: @fixed_element_types
-//func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
-//  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr: splat<tensor<2xi8>, 1>}: (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
-//  return
-//}
+// CHECK-LABEL: @fixed_element_types
+func @fixed_element_types(%arg0: tensor<* x i32>, %arg1: tensor<* x f32>) {
+  %0 = "test.arg_and_res_have_fixed_element_types"(%arg0, %arg1) {attr: splat<tensor<2xi8>, 1>}: (tensor<* x i32>, tensor<* x f32>) -> tensor<* x i32>
+  return
+}
 
 // -----
 

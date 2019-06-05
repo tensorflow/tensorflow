@@ -985,7 +985,9 @@ void OpEmitter::genVerifier() {
   auto &body = method.body();
 
   // Populate substitutions for attributes and named operands and results.
-  // TODO(jpienaar): Add attributes back.
+  for (const auto &namedAttr : op.getAttributes())
+    verifyCtx.addSubst(namedAttr.name,
+                       formatv("this->getAttr(\"{0}\")", namedAttr.name));
   for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
     auto &value = op.getOperand(i);
     // Skip from from first variadic operands for now. Else getOperand index
@@ -993,8 +995,8 @@ void OpEmitter::genVerifier() {
     if (value.isVariadic())
       break;
     if (!value.name.empty())
-      verifyCtx.addSubst(value.name,
-                         formatv("this->getOperation()->getOperand({0})", i));
+      verifyCtx.addSubst(
+          value.name, formatv("(*this->getOperation()->getOperand({0}))", i));
   }
   for (int i = 0, e = op.getNumResults(); i < e; ++i) {
     auto &value = op.getResult(i);
@@ -1004,7 +1006,7 @@ void OpEmitter::genVerifier() {
       break;
     if (!value.name.empty())
       verifyCtx.addSubst(value.name,
-                         formatv("this->getOperation()->getResult({0})", i));
+                         formatv("(*this->getOperation()->getResult({0}))", i));
   }
 
   // Verify the attributes have the correct type.
