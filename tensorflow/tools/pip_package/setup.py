@@ -63,7 +63,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tb-nightly >= 1.14.0a20190603, < 1.14.0a20190604',
-    'tf-estimator-nightly >= 1.14.0.dev2019060401, < 1.14.0.dev2019060402',
+    'tf-estimator-nightly >= 1.14.0.dev2019060501, < 1.14.0.dev2019060502',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
 ]
