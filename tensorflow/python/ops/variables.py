@@ -656,10 +656,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
     raise NotImplementedError
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    """Subtracts `IndexedSlices` from this variable.
+    """Subtracts `tf.IndexedSlices` from this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      sparse_delta: `tf.IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -668,15 +668,15 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Adds `IndexedSlices` to this variable.
+    """Adds `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be added to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -685,15 +685,85 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered addition has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of max
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered maximization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of min
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Multiply this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to multiply this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Divide this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to divide this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable.
+    """Assigns `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -702,12 +772,12 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable batch-wise.
+    """Assigns `tf.IndexedSlices` to this variable batch-wise.
 
     Analogous to `batch_gather`. This assumes that this variable and the
     sparse_delta IndexedSlices have a series of leading dimensions that are the
@@ -740,7 +810,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     efficient than this implementation.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -749,7 +819,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -798,9 +868,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -849,9 +916,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered addition has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -900,9 +964,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered assignment has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     raise NotImplementedError
 
@@ -2000,10 +2061,10 @@ class RefVariable(VariableV1):
     return assign.op
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    """Subtracts `IndexedSlices` from this variable.
+    """Subtracts `tf.IndexedSlices` from this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      sparse_delta: `tf.IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2012,10 +2073,10 @@ class RefVariable(VariableV1):
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_sub(
         self._variable,
         sparse_delta.indices,
@@ -2024,10 +2085,10 @@ class RefVariable(VariableV1):
         name=name)
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Adds `IndexedSlices` from this variable.
+    """Adds `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be added to this variable.
+      sparse_delta: `tf.IndexedSlices` to be added to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2036,10 +2097,10 @@ class RefVariable(VariableV1):
       the scattered addition has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_add(
         self._variable,
         sparse_delta.indices,
@@ -2047,11 +2108,109 @@ class RefVariable(VariableV1):
         use_locking=use_locking,
         name=name)
 
-  def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable.
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to use as an argument of max
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered maximization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_max(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of min
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_min(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Multiply this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to multiply this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_mul(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Divide this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to divide this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return gen_state_ops.scatter_div(
+        self._variable,
+        sparse_delta.indices,
+        sparse_delta.values,
+        use_locking=use_locking,
+        name=name)
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `tf.IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2060,10 +2219,10 @@ class RefVariable(VariableV1):
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return gen_state_ops.scatter_update(
         self._variable,
         sparse_delta.indices,
@@ -2072,7 +2231,7 @@ class RefVariable(VariableV1):
         name=name)
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable batch-wise.
+    """Assigns `tf.IndexedSlices` to this variable batch-wise.
 
     Analogous to `batch_gather`. This assumes that this variable and the
     sparse_delta IndexedSlices have a series of leading dimensions that are the
@@ -2105,7 +2264,7 @@ class RefVariable(VariableV1):
     efficient than this implementation.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -2114,7 +2273,7 @@ class RefVariable(VariableV1):
       the scattered assignment has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return state_ops.batch_scatter_update(
         self, sparse_delta.indices, sparse_delta.values,
@@ -2165,9 +2324,6 @@ class RefVariable(VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return gen_state_ops.scatter_nd_sub(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2217,9 +2373,6 @@ class RefVariable(VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered addition has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return gen_state_ops.scatter_nd_add(
         self._variable, indices, updates, use_locking=True, name=name)
@@ -2269,9 +2422,6 @@ class RefVariable(VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered assignment has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return gen_state_ops.scatter_nd_update(
         self._variable, indices, updates, use_locking=True, name=name)

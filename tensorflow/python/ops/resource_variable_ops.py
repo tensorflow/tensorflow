@@ -1161,10 +1161,10 @@ class ResourceVariable(variables.VariableV1):
         distribute_strategy=self._distribute_strategy), ()
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    """Subtracts `IndexedSlices` from this variable.
+    """Subtracts `tf.IndexedSlices` from this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be subtracted from this variable.
+      sparse_delta: `tf.IndexedSlices` to be subtracted from this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -1173,40 +1173,126 @@ class ResourceVariable(variables.VariableV1):
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return self._lazy_read(gen_resource_variable_ops.resource_scatter_sub(
         self.handle, sparse_delta.indices,
         ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    """Adds `IndexedSlices` from this variable.
+    """Adds `tf.IndexedSlices` to this variable.
 
     Args:
-      sparse_delta: `IndexedSlices` to be added to this variable.
+      sparse_delta: `tf.IndexedSlices` to be added to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
     Returns:
       A `Tensor` that will hold the new value of this variable after
-      the scattered subtraction has completed.
+      the scattered addition has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return self._lazy_read(gen_resource_variable_ops.resource_scatter_add(
         self.handle, sparse_delta.indices,
         ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
 
-  def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable.
+  def scatter_max(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the max of `tf.IndexedSlices` and itself.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to use as an argument of max
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered maximization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_max(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_min(self, sparse_delta, use_locking=False, name=None):
+    """Updates this variable with the min of `tf.IndexedSlices` and itself.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to use as an argument of min
+        with this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered minimization has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_min(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_mul(self, sparse_delta, use_locking=False, name=None):
+    """Multiply this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to multiply this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered multiplication has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_mul(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_div(self, sparse_delta, use_locking=False, name=None):
+    """Divide this variable by `tf.IndexedSlices`.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to divide this variable by.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered division has completed.
+
+    Raises:
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+    return self._lazy_read(gen_resource_variable_ops.resource_scatter_div(
+        self.handle, sparse_delta.indices,
+        ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
+
+  def scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `tf.IndexedSlices` to this variable.
+
+    Args:
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -1215,16 +1301,16 @@ class ResourceVariable(variables.VariableV1):
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
     if not isinstance(sparse_delta, ops.IndexedSlices):
-      raise ValueError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return self._lazy_read(gen_resource_variable_ops.resource_scatter_update(
         self.handle, sparse_delta.indices,
         ops.convert_to_tensor(sparse_delta.values, self.dtype), name=name))
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    """Assigns `IndexedSlices` to this variable batch-wise.
+    """Assigns `tf.IndexedSlices` to this variable batch-wise.
 
     Analogous to `batch_gather`. This assumes that this variable and the
     sparse_delta IndexedSlices have a series of leading dimensions that are the
@@ -1257,7 +1343,7 @@ class ResourceVariable(variables.VariableV1):
     efficient than this implementation.
 
     Args:
-      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      sparse_delta: `tf.IndexedSlices` to be assigned to this variable.
       use_locking: If `True`, use locking during the operation.
       name: the name of the operation.
 
@@ -1266,8 +1352,10 @@ class ResourceVariable(variables.VariableV1):
       the scattered subtraction has completed.
 
     Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+      TypeError: if `sparse_delta` is not an `IndexedSlices`.
     """
+    if not isinstance(sparse_delta, ops.IndexedSlices):
+      raise TypeError("sparse_delta is not IndexedSlices: %s" % sparse_delta)
     return self._lazy_read(state_ops.batch_scatter_update(
         self, sparse_delta.indices, sparse_delta.values,
         use_locking=use_locking, name=name))
@@ -1317,9 +1405,6 @@ class ResourceVariable(variables.VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return self._lazy_read(gen_state_ops.resource_scatter_nd_sub(
         self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
@@ -1370,9 +1455,6 @@ class ResourceVariable(variables.VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return self._lazy_read(gen_state_ops.resource_scatter_nd_add(
         self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
@@ -1423,9 +1505,6 @@ class ResourceVariable(variables.VariableV1):
     Returns:
       A `Tensor` that will hold the new value of this variable after
       the scattered subtraction has completed.
-
-    Raises:
-      ValueError: if `sparse_delta` is not an `IndexedSlices`.
     """
     return self._lazy_read(gen_state_ops.resource_scatter_nd_update(
         self.handle, indices, ops.convert_to_tensor(updates, self.dtype),
