@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
@@ -403,7 +404,9 @@ class Model(network.Network):
                        'is enabled.')
     if not self.dynamic:
       if self._run_eagerly is None:
-        return False
+        # Respect `tf.config.experimental_run_functions_eagerly` unless
+        # `run_eagerly` was explicitly passed to `compile`.
+        return def_function.RUN_FUNCTIONS_EAGERLY
       else:
         return self._run_eagerly
     else:
