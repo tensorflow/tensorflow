@@ -119,9 +119,9 @@ TEST(CudnnRNNOpsTest, ForwardV3Lstm_ShapeFn) {
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
-      shape_to_str(input_h_shape), ";", "[?]", ";",
+      shape_to_str(input_c_shape), ";", "[?]", ";",
       shape_to_str(seq_lengths_shape));
-  string output_shapes_desc = "[d0_0,d0_1,d1_2];in1;in1;?;?";
+  string output_shapes_desc = "[d0_0,d0_1,d1_2];in1;in2;?;?";
 
   ShapeInferenceTestOp op("CudnnRNNV3");
   TF_ASSERT_OK(NodeDefBuilder("test", "CudnnRNNV3")
