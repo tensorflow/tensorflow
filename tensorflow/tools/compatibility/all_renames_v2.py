@@ -530,6 +530,12 @@ manual_symbol_renames = {
         "tf.nn.conv2d_transpose",
     "tf.test.compute_gradient":
         "tf.compat.v1.test.compute_gradient",
+    "tf.floor_div":
+        "tf.math.floordiv",
+    "tf.where":
+        "tf.compat.v1.where",
+    "tf.where_v2":
+        "tf.compat.v2.where",
 }
 # pylint: enable=line-too-long
 

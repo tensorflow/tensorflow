@@ -510,7 +510,7 @@ def _scratch_graph(graph=None):
     _CURRENT_SCRATCH_GRAPH = None
 
 
-@keras_export('keras.backend.set_session')
+@keras_export(v1=['keras.backend.set_session'])
 def set_session(session):
   """Sets the global TensorFlow session.
 
