@@ -22,6 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/port.h"
@@ -94,11 +98,18 @@ Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
 
   return Status::OK();
 }
+
+Status ReadTextProtoFromString(Env* env, const string& data,
+                               ::tensorflow::protobuf::Message* proto) {
+  if (!::tensorflow::protobuf::TextFormat::ParseFromString(data, proto)) {
+    return errors::DataLoss("Can't parse input data as text proto");
+  }
+  return Status::OK();
+}
 }  // namespace
 
-Status AutoClusteringTest::RunAutoClusteringTest(
-    absl::string_view graph_def_file_path,
-    absl::string_view golden_summary_file_path) {
+Status AutoClusteringTest::RunAutoClusteringTestImpl(
+    GraphDef graphdef, absl::string_view golden_summary_file_path) {
   if (!IsGoogleCudaEnabled()) {
     // There is some slight change in the clustering decisions under
     // --config=cuda.  I have not looked closely at why that is happening, but
@@ -113,10 +124,6 @@ Status AutoClusteringTest::RunAutoClusteringTest(
               << " since test was not built with --config=cuda";
     return Status::OK();
   }
-
-  GraphDef graphdef;
-  TF_RETURN_IF_ERROR(
-      ReadTextProto(Env::Default(), string(graph_def_file_path), &graphdef));
 
   TF_RETURN_IF_ERROR(AssertGraphDefIsUnclustered(graphdef));
 
@@ -157,6 +164,46 @@ Status AutoClusteringTest::RunAutoClusteringTest(
   return Status::OK();
 }
 
+Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
+    absl::string_view pbtxt_file_path,
+    absl::string_view golden_summary_file_path) {
+  GraphDef graphdef;
+  TF_RETURN_IF_ERROR(
+      ReadTextProto(Env::Default(), string(pbtxt_file_path), &graphdef));
+  return RunAutoClusteringTestImpl(std::move(graphdef),
+                                   golden_summary_file_path);
+}
+
+Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
+    absl::string_view gzipped_pbtxt_file_path,
+    absl::string_view golden_summary_file_path) {
+  Env* env = Env::Default();
+  std::unique_ptr<RandomAccessFile> file_reader;
+  TF_RETURN_IF_ERROR(
+      env->NewRandomAccessFile(string(gzipped_pbtxt_file_path), &file_reader));
+  std::unique_ptr<io::RandomAccessInputStream> input_stream(
+      new io::RandomAccessInputStream(file_reader.get()));
+  constexpr int k_buffer_size = 256 << 10;  // 256kb
+  io::ZlibInputStream in(input_stream.get(),
+                         /*input_buffer_bytes=*/k_buffer_size,
+                         /*output_buffer_bytes=*/k_buffer_size,
+                         io::ZlibCompressionOptions::GZIP());
+  string decompressed_pbtxt_string;
+  Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
+  if (!s.ok() && !errors::IsOutOfRange(s)) {
+    // OutOfRange is fine since we set the number of read bytes to INT_MAX.
+    // Only return other kinds of errors.
+    return s;
+  }
+
+  GraphDef graphdef;
+  TF_RETURN_IF_ERROR(ReadTextProtoFromString(
+      Env::Default(), decompressed_pbtxt_string, &graphdef));
+  return RunAutoClusteringTestImpl(std::move(graphdef),
+                                   golden_summary_file_path);
+}
+
+#if defined(PLATFORM_GOOGLE)
 Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
                                    benchmark::State& state) {
   GraphDef graph_def;
@@ -181,4 +228,6 @@ Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
 
   return Status::OK();
 }
+#endif  // PLATFORM_GOOGLE
+
 }  // namespace tensorflow

@@ -24,6 +24,7 @@ import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
@@ -51,6 +52,10 @@ from tensorflow.python.util.tf_export import tf_export
 local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
+
+_ops_counter = monitoring.Counter("/tensorflow/api/ops/nn",
+                                  "number of neural net ops in the graph.",
+                                  "op_name")
 
 
 def _get_sequence(value, n, channel_index, name):
@@ -960,6 +965,7 @@ def convolution_internal(
     if all(i == 1 for i in dilations):
       # fast path if no dilation as gradient only supported on GPU for dilations
       op = conv_ops[n]
+      _ops_counter.get_cell("conv{}d".format(n)).increase_by(1)
       return op(
           input,
           filters,

@@ -566,6 +566,7 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   }
 
   node.delegate = nullptr;
+  // Copying of registration is required to support unresolved custom ops.
   node_and_reg.second = *registration;
   execution_plan_.push_back(new_node_index);
   return kTfLiteOk;
@@ -597,6 +598,28 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
 
   state_ = kStateUninvokable;
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
+}
+
+TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
+                                 TfLiteNode* node) {
+  if (op_reg.prepare == nullptr) {
+    // Check if it's an unresolved custom op.
+    if (op_reg.builtin_code == BuiltinOperator_CUSTOM &&
+        op_reg.custom_name != nullptr && op_reg.invoke == &UnresolvedOpInvoke) {
+      if (IsFlexOp(op_reg.custom_name)) {
+        ReportError(
+            "Regular TensorFlow ops are not supported by this interpreter. "
+            "Make sure you invoke the Flex delegate before inference.");
+      } else {
+        ReportError("Encountered unresolved custom op: %s.",
+                    op_reg.custom_name);
+      }
+      return kTfLiteError;
+    }
+    // Resolved ops can have a null Prepare function.
+    return kTfLiteOk;
+  }
+  return op_reg.prepare(context_, node);
 }
 
 TfLiteStatus Subgraph::PrepareOpsStartingAt(

@@ -649,6 +649,12 @@ Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
   return Status::OK();
 }
 
+void OpKernelContext::maybe_initialize_scope_id_set() {
+  if (allocated_scope_ids_ == nullptr) {
+    allocated_scope_ids_ = absl::make_unique<std::unordered_set<int32>>();
+  }
+}
+
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
                                         Tensor** tensor) {
   DCHECK_GE(index, 0);
@@ -727,7 +733,8 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
   if (attr.scope_id > 0) {
-    if (!allocated_scope_ids_.insert(attr.scope_id).second) {
+    maybe_initialize_scope_id_set();
+    if (!allocated_scope_ids_->insert(attr.scope_id).second) {
       return errors::Internal(
           "OpKernel ", params_->op_kernel->name(),
           " called allocate_output at index ", index, " with scope_id ",
@@ -840,8 +847,9 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
       (params_->forward_from_array != nullptr &&
        params_->forward_from_array[index] == Params::kNeverForward);
   if (never_forward) {
-    if (allocated_scope_ids_.find(output_alloc_attr(index).scope_id) ==
-        allocated_scope_ids_.end()) {
+    maybe_initialize_scope_id_set();
+    if (allocated_scope_ids_->find(output_alloc_attr(index).scope_id) ==
+        allocated_scope_ids_->end()) {
       allocate_and_copy = true;
     } else {
       // The output at `index` must have been previously allocated via a call to

@@ -793,6 +793,19 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
+  def test_primitive_attrs_contain_no_extraneous_strings(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_shape=[2]))
+    fname = os.path.join(self.get_temp_dir(), 'model.h5')
+    model.save(fname)
+
+    h5file = h5py.File(fname, 'r')
+    self.assertRegexpMatches(
+        h5file.attrs['keras_version'], r'^[\d]+\.[\d]+\.[\S]+$')
+
 
 class SubclassedModel(training.Model):
 

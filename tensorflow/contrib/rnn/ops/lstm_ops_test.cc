@@ -25,7 +25,7 @@ namespace tensorflow {
 
 class LSTMOpsTest : public ::testing::Test {
  public:
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     TF_Status* status = TF_NewStatus();
     auto* lib = TF_LoadLibrary(
         "tensorflow/contrib/rnn/python/ops/_lstm_ops.so", status);

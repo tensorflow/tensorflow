@@ -1663,6 +1663,10 @@ class Network(base_layer.Layer):
                        'inputs or `build()` is called with an `input_shape`.' %
                        self.name)
 
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_network'
+
 
 def _is_hdf5_filepath(filepath):
   return (filepath.endswith('.h5') or filepath.endswith('.keras') or

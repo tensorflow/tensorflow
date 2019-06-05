@@ -594,13 +594,22 @@ mutex AnonymousIteratorHandleOp::static_resource_lookup_mutex_{
     LINKER_INITIALIZED};
 int64 AnonymousIteratorHandleOp::current_id_(0);
 
-void MakeIteratorOp::Compute(OpKernelContext* ctx) {
+void MakeIteratorOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
-  core::RefCountPtr<IteratorResource> iterator_resource;
+  IteratorResource* iterator_resource;
   OP_REQUIRES_OK(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &iterator_resource));
-  OP_REQUIRES_OK(ctx, iterator_resource->SetIteratorFromDataset(ctx, dataset));
+  background_worker_.Schedule(std::bind(
+      [ctx, iterator_resource, dataset](DoneCallback done) {
+        Status s = iterator_resource->SetIteratorFromDataset(ctx, dataset);
+        iterator_resource->Unref();
+        if (!s.ok()) {
+          ctx->SetStatus(s);
+        }
+        done();
+      },
+      std::move(done)));
 }
 
 void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
