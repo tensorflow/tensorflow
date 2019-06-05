@@ -23,7 +23,10 @@ ios_unit_test(
     name = "Tests",
     size = "small",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
+        # TODO(b/134599868): Re-enable this test on tap.
+        "notap",
+    ],
     deps = [
         ":TestsLibrary",
     ],
