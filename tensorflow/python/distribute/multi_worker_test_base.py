@@ -23,6 +23,7 @@ import contextlib
 import copy
 import json
 import os
+import six
 import subprocess
 import sys
 import threading
@@ -524,19 +525,41 @@ class MultiWorkerMultiProcessTest(test.TestCase):
     for return_code in return_codes:
       self.assertEqual(return_code, 0)
 
-  def stream_stderr(self, process):
-    # TODO(yuefengz): calling stream_stderr on a single process will probably
-    # make all processes hang if they have too much output e.g. adding
-    # --vmodule=execute=2 to cmd_args. But this method is useful for debugging
-    # purposes. We should figure out the hanging problem, probably by consuming
-    # outputs of all processes at the same time.
-    while True:
-      output = process.stderr.readline()
-      if not output and process.poll() is not None:
-        break
-      if output:
-        print(output.strip())
-        sys.stdout.flush()
+  def stream_stderr(self, processes, print_only_first=False):
+    """Consume stderr of all processes and print to stdout.
+
+    To reduce the amount of logging, caller can set print_only_first to True.
+    In that case, this function only prints stderr from the first process of
+    each type.
+
+    Arguments:
+      processes: A dictionary from process type string -> list of processes.
+      print_only_first: If true, only print output from first process of each
+        type.
+    """
+
+    def _stream_stderr_single_process(process, type_string, index,
+                                      print_to_stdout):
+      """Consume a single process's stderr and optionally print to stdout."""
+      while True:
+        output = process.stderr.readline()
+        if not output and process.poll() is not None:
+          break
+        if output and print_to_stdout:
+          print('{}{} {}'.format(type_string, index, output.strip()))
+          sys.stdout.flush()
+
+    stream_threads = []
+    for process_type, process_list in six.iteritems(processes):
+      for i in range(len(process_list)):
+        print_to_stdout = (not print_only_first) or (i == 0)
+        thread = threading.Thread(
+            target=_stream_stderr_single_process,
+            args=(process_list[i], process_type, i, print_to_stdout))
+        thread.start()
+        stream_threads.append(thread)
+    for thread in stream_threads:
+      thread.join()
 
 
 def get_tf_config_task():
