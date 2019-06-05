@@ -33,12 +33,12 @@ def make_saveable_from_iterator(iterator):
 
   Args:
     iterator: Iterator.
-        
-	  Returns:
-	    A SaveableObject for saving/restore iterator state using Saver.
+    
+  Returns:
+    A SaveableObject for saving/restore iterator state using Saver.
 	    
-	  Raises:
-	    ValueError: If iterators does not support checkpointing.
+  Raises:
+    ValueError: If iterators does not support checkpointing.
 
   For example:
 
