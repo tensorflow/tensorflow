@@ -913,6 +913,7 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
+    # TODO(rchao): Replace dc_context reference with  
     if K.in_multi_worker_mode():
       # pylint: disable=protected-access
       # MultiWorkerTrainingState is used to manage the training state needed
