@@ -19,11 +19,13 @@ cc_library(
     srcs = ["broadcast.cc"],
     hdrs = ["broadcast.h"],
     deps = [
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
