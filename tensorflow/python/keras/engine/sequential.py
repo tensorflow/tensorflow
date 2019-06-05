@@ -366,3 +366,7 @@ class Sequential(training.Model):
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_sequential'
