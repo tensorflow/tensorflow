@@ -57,7 +57,8 @@ TranslateFromMLIRRegistration::TranslateFromMLIRRegistration(
       translationFromMLIRRegistry.end())
     llvm::report_fatal_error(
         "Attempting to overwrite an existing <from> function");
-  assert(function && "Attempting to register an empty translate <to> function");
+  assert(function &&
+         "Attempting to register an empty translate <from> function");
   translationFromMLIRRegistry[name] = function;
 }
 
