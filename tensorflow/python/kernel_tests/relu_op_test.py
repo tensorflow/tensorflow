@@ -437,7 +437,7 @@ class EluTest(test.TestCase):
   def _testElu(self, np_features):
     np_elu = self._npElu(np_features)
     tf_elu = nn_ops.elu(np_features)
-    self.assertAllClose(np_elu, tf_elu)
+    self.assertAllCloseAccordingToType(np_elu, tf_elu)
     self.assertShapeEqual(np_elu, tf_elu)
 
   def testNumbersCPU(self):
@@ -447,7 +447,6 @@ class EluTest(test.TestCase):
         self._testElu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
-  @test_util.disable_xla("Too much precision required for halfs")
   def testNumbersGPU(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")
@@ -546,10 +545,9 @@ class SeluTest(test.TestCase):
   def _testSelu(self, np_features):
     np_selu = self._npSelu(np_features)
     tf_selu = nn_ops.selu(np_features)
-    self.assertAllClose(np_selu, tf_selu)
+    self.assertAllCloseAccordingToType(np_selu, tf_selu)
     self.assertShapeEqual(np_selu, tf_selu)
 
-  @test_util.disable_xla("Too much precision required for halfs")
   def testNumbers(self):
     for t in [np.float16, np.float32, np.float64]:
       self._testSelu(
