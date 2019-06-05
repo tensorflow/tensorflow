@@ -3201,34 +3201,35 @@ Status TfTensorToTrtWeights(const Tensor& tensor, TrtWeightStore* weight_store,
     return Status::OK();
   }
 
+  Status status = Status::OK();
   // Copy tensor elements after casting them to the converted DataType.
   int32* dst = static_cast<int32*>(weights->GetValues());
   switch (dtype) {
     case DT_INT8:
-      CopyToTrtInt32Array<DT_INT8>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_INT8>(tensor, dst);
       break;
     case DT_UINT8:
-      CopyToTrtInt32Array<DT_UINT8>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT8>(tensor, dst);
       break;
     case DT_INT16:
-      CopyToTrtInt32Array<DT_INT16>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_INT16>(tensor, dst);
       break;
     case DT_UINT16:
-      CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT16>(tensor, dst);
       break;
     case DT_UINT32:
-      CopyToTrtInt32Array<DT_UINT32>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT32>(tensor, dst);
       break;
     case DT_INT64:
-      CopyToTrtInt32Array<DT_INT64>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_INT64>(tensor, dst);
       break;
     case DT_UINT64:
-      CopyToTrtInt32Array<DT_UINT64>(tensor, dst);
+      status = CopyToTrtInt32Array<DT_UINT64>(tensor, dst);
       break;
     default:
       return errors::Internal("Unexpected DataType: ", DataTypeString(dtype));
   }
-  return Status::OK();
+  return status;
 }
 
 // Convert a Const NodeDef to TRT_ShapedWeights. This is a special converter, it
