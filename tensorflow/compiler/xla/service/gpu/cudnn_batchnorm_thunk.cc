@@ -208,13 +208,15 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       /*reserve_space_allocator=*/nullptr,   //
       /*workspace_allocator=*/nullptr);
 
-  // Write the tuple.
-  void* ptrs[] = {output_data.opaque(), output_mean.opaque(),
-                  output_inv_stddev.opaque()};
+  // Write the output tuple.
+  const int kNumOutputs = 3;
+  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
+  ptrs[0] = output_data.opaque();
+  ptrs[1] = output_mean.opaque();
+  ptrs[2] = output_inv_stddev.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  stream.ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
-
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream);
   if (!stream.ok()) {
     return InternalError("BatchNormalizationTraining call failed.");
   }
@@ -288,11 +290,14 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
       &output_grad_scale, &output_grad_offset, nullptr, nullptr);
 
   // Write the output tuple.
-  void* ptrs[] = {output_grad_data.opaque(), output_grad_scale.opaque(),
-                  output_grad_offset.opaque()};
+  const int kNumOutputs = 3;
+  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
+  ptrs[0] = output_grad_data.opaque();
+  ptrs[1] = output_grad_scale.opaque();
+  ptrs[2] = output_grad_offset.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  stream.ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream);
 
   if (!stream.ok()) {
     return InternalError("BatchNormalizationBackward call failed.");

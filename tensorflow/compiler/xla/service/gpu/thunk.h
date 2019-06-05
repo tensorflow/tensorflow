@@ -108,6 +108,16 @@ class Thunk {
     return hlo_instruction()->GetModule()->config();
   }
 
+  // Safely copies the given buffer to the GPU, deleting it on the host only
+  // after the copy has completed.
+  template <typename T>
+  void SafeH2DMemcpy(se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf,
+                     int64 count, se::Stream* stream) {
+    stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));
+    auto* buf_raw = buf.release();
+    stream->ThenRunAfterNextBlockHostUntilDone([buf_raw] { delete[] buf_raw; });
+  }
+
  private:
   Kind kind_;
   const HloInstruction* hlo_instruction_;

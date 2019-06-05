@@ -61,10 +61,14 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
                                   absl::MakeSpan(operand_se_buffers),
                                   result_buffer, scratch, params.stream));
 
-  void* ptrs[] = {result_buffer.opaque(), scratch.opaque()};
+  // Write the output tuple.
+  const int kNumOutputs = 2;
+  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
+  ptrs[0] = result_buffer.opaque();
+  ptrs[1] = scratch.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(tuple_result_buffer_));
-  params.stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, params.stream);
 
   if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
