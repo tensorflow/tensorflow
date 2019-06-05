@@ -480,7 +480,7 @@ class MklSliceOp : public OpKernel {
           .TypeConstraint<type>("T")                           \
           .HostMemory("begin")                                 \
           .HostMemory("size")                                  \
-          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklSliceOp<CPUDevice, type>);
 
 TF_CALL_float(REGISTER_MKL_SLICE);

@@ -57,7 +57,7 @@ class MklIdentityOp : public OpKernel {
       Name("_MklIdentity")                                          \
            .Device(DEVICE_CPU)                                      \
            .TypeConstraint<T>("T")                                  \
-           .Label(mkl_op_registry::kMklLayoutDependantOpLabel),     \
+           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),     \
            MklIdentityOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);

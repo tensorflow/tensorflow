@@ -1124,7 +1124,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       Name("_MklFusedBatchNorm")                                    \
            .Device(DEVICE_CPU)                                      \
            .TypeConstraint<T>("T")                                  \
-           .Label(mkl_op_registry::kMklLayoutDependantOpLabel),     \
+           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),     \
            MklFusedBatchNormOp<CPUDevice, T, T>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_CPU);
@@ -1137,7 +1137,7 @@ TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
            .Device(DEVICE_CPU)                                      \
            .TypeConstraint<T>("T")                                  \
            .TypeConstraint<U>("U")                                  \
-           .Label(mkl_op_registry::kMklLayoutDependantOpLabel),     \
+           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),     \
            MklFusedBatchNormOp<CPUDevice, T, U>);
 
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
@@ -1149,7 +1149,7 @@ REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(bfloat16, float);
       Name("_MklFusedBatchNormGrad")                                \
            .Device(DEVICE_CPU)                                      \
            .TypeConstraint<T>("T")                                  \
-           .Label(mkl_op_registry::kMklLayoutDependantOpLabel),     \
+           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),     \
            MklFusedBatchNormGradOp<CPUDevice, T, T>);
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
@@ -1162,7 +1162,7 @@ TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
            .Device(DEVICE_CPU)                                      \
            .TypeConstraint<T>("T")                                  \
            .TypeConstraint<U>("U")                                  \
-           .Label(mkl_op_registry::kMklLayoutDependantOpLabel),     \
+           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),     \
            MklFusedBatchNormGradOp<CPUDevice, T, U>);
 
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(float, float);

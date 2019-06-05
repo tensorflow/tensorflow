@@ -1331,7 +1331,7 @@ REGISTER_OP("_MklTranspose")
     .Attr("T: type")
     .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(TransposeShapeFn);
-#endif
+#endif // INTEL_MKL
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ConjugateTranspose")
@@ -1350,7 +1350,7 @@ REGISTER_OP("_MklConjugateTranspose")
     .Attr("T: type")
     .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn(TransposeShapeFn);
-#endif
+#endif // INTEL_MKL
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Unique")

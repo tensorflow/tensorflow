@@ -295,11 +295,11 @@ Status BatchMatMulShape(shape_inference::InferenceContext* c) {
   // Assert inner dims match.
   DimensionHandle unused;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(a_shape, adj_x ? -2 : -1),
-                             c->Dim(b_shape, adj_y ? -1 : -2), &unused));
+                              c->Dim(b_shape, adj_y ? -1 : -2), &unused));
 
   ShapeHandle out;
-  TF_RETURN_IF_ERROR(c->Concatenate(
-      batch_dims, c->Matrix(output_rows, output_cols), &out));
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(batch_dims, c->Matrix(output_rows, output_cols), &out));
   c->set_output(0, out);
   return Status::OK();
 }

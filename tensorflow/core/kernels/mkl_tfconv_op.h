@@ -138,7 +138,7 @@ class MklToTfOp : public OpKernel {
       Name("_MklToTf")                                         \
           .Device(DEVICE_CPU)                                  \
           .TypeConstraint<T>("T")                              \
-          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklToTfOp<CPUDevice, T>);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU);

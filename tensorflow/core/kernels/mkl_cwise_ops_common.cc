@@ -65,7 +65,7 @@ class MklBinaryOp : public BinaryOp<Device, Functor> {
       Name(N)                                                       \
            .Device(DEVICE_##D)                                      \
            .TypeConstraint<T>("T")                                  \
-           .Label(mkl_op_registry::kMklLayoutDependantOpLabel),     \
+           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),     \
            OP<D##Device, F<T>>);
 
 REGISTER6(MklBinaryOp, CPU, "_MklAdd", functor::add, float, Eigen::half, double,

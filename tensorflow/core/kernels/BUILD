@@ -3523,9 +3523,7 @@ tf_mkl_kernel_library(
     name = "mkl_batch_matmul_op",
     hdrs = ["batch_matmul_op_impl.h"],
     srcs = ["mkl_batch_matmul_op.cc"],
-    deps = MATH_DEPS + if_mkl_ml([
-        "//third_party/mkl:intel_binary_blob",
-    ]),
+    deps = MATH_DEPS + mkl_deps(),
 )
 
 tf_kernel_library(

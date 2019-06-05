@@ -300,7 +300,7 @@ class MklInputConversionOp : public OpKernel {
       Name("_MklInputConversion")                                   \
            .Device(DEVICE_CPU)                                      \
            .TypeConstraint<T>("T")                                  \
-           .Label(mkl_op_registry::kMklLayoutDependantOpLabel),     \
+           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),     \
            MklInputConversionOp<CPUDevice, T>);
 
 // TODO(nhasabni): We cannot support all number types since MklDnn does

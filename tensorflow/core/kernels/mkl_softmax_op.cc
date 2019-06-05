@@ -187,7 +187,7 @@ class MklSoftmaxOp : public OpKernel {
       Name("_MklSoftmax")                                      \
           .Device(DEVICE_CPU)                                  \
           .TypeConstraint<type>("T")                           \
-          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklSoftmaxOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 

@@ -267,6 +267,7 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
 
 TF_CALL_ALL_TYPES(REGISTER)
 #undef REGISTER
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

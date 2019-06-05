@@ -636,6 +636,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.requantize),
                       CopyAttrsRequantize, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
+    // Disable these two MKL operators for now due to some test failures caused
+    // by these two ops
     /*
     rinfo_.push_back({csinfo_.tanh,
                       mkl_op_registry::GetMklOpName(csinfo_.tanh),
@@ -1330,7 +1332,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     DataType T;
     TF_CHECK_OK(GetNodeAttr(node->def(), "T", &T));
-    return mkl_op_registry::IsMklLayoutDependantOp(
+    return mkl_op_registry::IsMklLayoutDependentOp(
         mkl_op_registry::GetMklOpName(node->type_string()), T);
   }
 
@@ -1508,7 +1510,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // it includes those we support.
     DataType T;
     if (!GetNodeAttr(n->def(), "T", &T).ok() ||
-        !mkl_op_registry::IsMklLayoutDependantOp(csinfo_.mkl_fused_conv2d, T)) {
+        !mkl_op_registry::IsMklLayoutDependentOp(csinfo_.mkl_fused_conv2d, T)) {
       return false;
     }
 
@@ -1537,12 +1539,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   //         Otherwise, it is not updated.
   Status RewriteNode(std::unique_ptr<Graph>* g, Node* n, const RewriteInfo* ri);
 
-  // Rewrites input node to just change its operator name. Otherwise, number of
-  // inputs to the node and the number of outputs remain same. Attributes of the
-  // new node could be copied from attributes of the old node or modified.
-  // copy_attrs field of RewriteInfo controls this.
+  // Rewrites input node to just change its operator name. The number of
+  // inputs to the node and the number of outputs remain the same. Attributes
+  // of the new node could be copied from attributes of the old node or
+  // modified. copy_attrs field of RewriteInfo controls this.
   //
-  // Conceptually, it allows to rewrite:
+  // Conceptually, it allows us to rewrite:
   //
   //        f[a=v1,b=v2](x,y) -> g[a'=v3,b'=v4](x,y)
   //
@@ -1554,14 +1556,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @output new_node - points to newly created node
   // @return Status::OK(), if the input node is rewritten;
   //         Returns appropriate Status error code otherwise.
-  //         Graph is updated in case the input node is rewritten.
-  //         Otherwise, it is not updated.
+  //         Graph is only updated when the input node is rewritten.
   Status RewriteNodeForJustOpNameChange(std::unique_ptr<Graph>* g,
                                         const Node* orig_node, Node** new_node,
                                         const RewriteInfo* ri);
 
-   // Rewrites input node to enable Mkl layout propagation. Pls refer to doc for
-  // the file above to understand what it means.
+  // Rewrites input node to enable MKL layout propagation. Please also refer to
+  // documentation for the function RewriteNodeForJustOpNameChange() to
+  // understand what it means.
   //
   // @input  g - input graph, orig_node - Node to be rewritten,
   //         ri - matching rewriteinfo
@@ -1933,7 +1935,7 @@ void MklLayoutRewritePass::GetNodeProducingMklTensor(
   // If this is an MKL op, then it will create extra output for MKL layout.
   DataType T;
   if (GetNodeAttr(n->def(), "T", &T).ok() &&
-      mkl_op_registry::IsMklLayoutDependantOp(n->type_string(), T)) {
+      mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
     // If this is an MKL op, then it will generate an edge that will receive
     // Mkl tensor from a node.
     // output slot number for Mkl tensor would be N+slot number of TensorFlow
@@ -2226,7 +2228,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
   for (auto ws : wsinfo_) {
     if (orig_node->type_string() == ws.fwd_op &&
-        mkl_op_registry::IsMklLayoutDependantOp(
+        mkl_op_registry::IsMklLayoutDependentOp(
             mkl_op_registry::GetMklOpName(orig_node->type_string()), T)) {
       // If this op is a fwd op, then we need to check if there is an
       // edge from this node's fwd_slot to bwdop's bwd_slot. If there is
@@ -2253,7 +2255,7 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
         nb->Attr("workspace_enabled", false);
       }
     } else if (orig_node->type_string() == ws.bwd_op &&
-               mkl_op_registry::IsMklLayoutDependantOp(
+               mkl_op_registry::IsMklLayoutDependentOp(
                    mkl_op_registry::GetMklOpName(orig_node->type_string()),
                    T)) {
       // If this op is a bwd op, then we need to add workspace edge and
@@ -3559,7 +3561,7 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
       DataTypeIsQuantized(orig_node->output_type(0))) {
     nb.Attr("_kernel", mkl_op_registry::kMklQuantizedOpLabel);
   } else {
-    nb.Attr("_kernel", mkl_op_registry::kMklLayoutDependantOpLabel);
+    nb.Attr("_kernel", mkl_op_registry::kMklLayoutDependentOpLabel);
   }
   // Finalize graph and get new node.
   s = nb.Finalize(&**g, new_node);
@@ -3702,7 +3704,7 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
         GetNodeAttr(n->def(), "Tfilter", &Tfilter).ok())) {
     return nullptr;
   }
-  if (mkl_op_registry::IsMklLayoutDependantOp(
+  if (mkl_op_registry::IsMklLayoutDependentOp(
         mkl_op_registry::GetMklOpName(n->type_string()),
                                Tinput, Tfilter)) {
     for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
@@ -3774,7 +3776,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
     bool incoming_mkl_edge = false;
     int num_parent = 0;
     for (auto parent : n->in_edges()) {
-      if (mkl_op_registry::IsMklLayoutDependantOp(parent->src()->type_string(), T)) {
+      if (mkl_op_registry::IsMklLayoutDependentOp(parent->src()->type_string(), T)) {
         VLOG(1) << "ELEMENTWISE: parent " << num_parent++
                 << " is MKL op: " << parent->src()->type_string();
         incoming_mkl_edge = true;
@@ -3983,7 +3985,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
   // If graph node is not Mkl node, then return.
   DataType T = DT_INVALID;
   if (!GetNodeAttr(n->def(), "T", &T).ok() ||
-      !mkl_op_registry::IsMklLayoutDependantOp(n->type_string(), T)) {
+      !mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
     return result;
   }
 
@@ -4008,7 +4010,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
     // node, then we don't need to do anything.
     Node* e_src = e->src();
     if (GetNodeAttr(e_src->def(), "T", &T).ok() &&
-        mkl_op_registry::IsMklLayoutDependantOp(e_src->type_string(), T)) {
+        mkl_op_registry::IsMklLayoutDependentOp(e_src->type_string(), T)) {
       // Source node for edge 'e' is Mkl node.
       // Destination node and destination input slot of e is node 'n' and 'idx'
       // resp.

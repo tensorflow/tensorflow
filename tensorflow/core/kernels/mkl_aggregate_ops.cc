@@ -244,7 +244,7 @@ class MklAddNOp : public OpKernel {
 #define REGISTER_MKL_CPU(T)                                             \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("_MklAddN").Device(DEVICE_CPU).TypeConstraint<T>("T").Label( \
-          mkl_op_registry::kMklLayoutDependantOpLabel),                 \
+          mkl_op_registry::kMklLayoutDependentOpLabel),                 \
       MklAddNOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);

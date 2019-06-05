@@ -662,7 +662,7 @@ class MklConcatOp : public OpKernel {
           .Device(DEVICE_CPU)                                  \
           .TypeConstraint<type>("T")                           \
           .HostMemory("concat_dim")                            \
-          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklConcatOp<CPUDevice, type, NAME_IS_CONCAT_DIM>)        \
   REGISTER_KERNEL_BUILDER(                                     \
       Name("_MklConcatV2")                                     \
@@ -670,7 +670,7 @@ class MklConcatOp : public OpKernel {
           .TypeConstraint<type>("T")                           \
           .TypeConstraint<int32>("Tidx")                       \
           .HostMemory("axis")                                  \
-          .Label(mkl_op_registry::kMklLayoutDependantOpLabel), \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklConcatOp<CPUDevice, type, NAME_IS_AXIS>)
 
 TF_CALL_float(REGISTER_MKL_CPU);
