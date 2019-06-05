@@ -215,20 +215,17 @@ def RunLSTM(sess,
       (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
        cu_bgrad, cu_pwgrad) = sess.run([
            cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
-           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op, cu_pwgrad_op
-       ],
-       feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
+           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op, cu_pwgrad_op],
+           feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
     else:
       outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad = sess.run([
           outputs_op, state_tuple_op, inp_grad_op,
-          (hgrad_op, cgrad_op), wgrad_op, bgrad_op
-      ])
+          (hgrad_op, cgrad_op), wgrad_op, bgrad_op])
       (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
        cu_bgrad) = sess.run([
            cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
-           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op
-       ],
-       feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
+           (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op],
+           feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
     
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)
@@ -405,8 +402,9 @@ class CudnnLSTMTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       else:
         (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad,
          cu_inp_grad, state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad,
-         cu_bgrad) = RunLSTM(sess, num_units, input_size, batch_size, time,
-             num_layers, variable_seq_lengths=variable_seq_lengths,
+         cu_bgrad) = RunLSTM(
+             sess, num_units, input_size, batch_size, time, num_layers,
+             variable_seq_lengths=variable_seq_lengths,
              dynamic_shape_input=dynamic_shape_input, num_proj=num_proj)
 
       self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
