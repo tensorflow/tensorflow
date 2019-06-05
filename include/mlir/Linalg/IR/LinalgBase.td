@@ -19,7 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifdef OP_BASE
+#else
 include "mlir/IR/OpBase.td"
+#endif // OP_BASE
 
 #ifdef LINALG_BASE
 #else
