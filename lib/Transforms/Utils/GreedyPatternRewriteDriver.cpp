@@ -46,7 +46,7 @@ class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(Function &fn,
                                       OwningRewritePatternList &&patterns)
-      : PatternRewriter(&fn), matcher(std::move(patterns)) {
+      : PatternRewriter(fn.getBody()), matcher(std::move(patterns)) {
     worklist.reserve(64);
   }
 
@@ -88,7 +88,7 @@ protected:
   // Implement the hook for creating operations, and make sure that newly
   // created ops are added to the worklist for processing.
   Operation *createOperation(const OperationState &state) override {
-    auto *result = FuncBuilder::createOperation(state);
+    auto *result = OpBuilder::createOperation(state);
     addToWorklist(result);
     return result;
   }
@@ -142,14 +142,16 @@ private:
 
 /// Perform the rewrites.
 bool GreedyPatternRewriteDriver::simplifyFunction(int maxIterations) {
-  Function *fn = getFunction();
-  OperationFolder helper(fn);
+  Region *region = getRegion();
+
+  // TODO(riverriddle) OperationFolder should take a region to insert into.
+  OperationFolder helper(region->getContainingFunction());
 
   bool changed = false;
   int i = 0;
   do {
     // Add all operations to the worklist.
-    fn->walk([&](Operation *op) { addToWorklist(op); });
+    region->walk([&](Operation *op) { addToWorklist(op); });
 
     // These are scratch vectors used in the folding loop below.
     SmallVector<Value *, 8> originalOperands, resultValues;

@@ -181,40 +181,37 @@ protected:
   MLIRContext *context;
 };
 
-/// This class helps build a Function.  Operations that are created are
-/// automatically inserted at an insertion point.  The builder is copyable.
-class FuncBuilder : public Builder {
+/// This class helps build Operations. Operations that are created are
+/// automatically inserted at an insertion point. The builder is copyable.
+class OpBuilder : public Builder {
 public:
-  /// Create a function builder and set the insertion point to the start of
-  /// the function.
-  explicit FuncBuilder(Function *func)
-      : Builder(func->getContext()), function(func) {
-    if (!func->empty())
-      setInsertionPoint(&func->front(), func->front().begin());
+  /// Create a builder and set the insertion point to the start of the region.
+  explicit OpBuilder(Region *region)
+      : Builder(region->getContext()), region(region) {
+    if (!region->empty())
+      setInsertionPoint(&region->front(), region->front().begin());
     else
       clearInsertionPoint();
   }
+  explicit OpBuilder(Region &region) : OpBuilder(&region) {}
 
-  explicit FuncBuilder(Function &func) : FuncBuilder(&func) {}
-  virtual ~FuncBuilder();
+  virtual ~OpBuilder();
 
-  /// Create a function builder and set insertion point to the given
-  /// operation, which will cause subsequent insertions to go right before it.
-  FuncBuilder(Operation *op) : FuncBuilder(op->getFunction()) {
+  /// Create a builder and set insertion point to the given operation, which
+  /// will cause subsequent insertions to go right before it.
+  OpBuilder(Operation *op) : OpBuilder(op->getContainingRegion()) {
     setInsertionPoint(op);
   }
 
-  FuncBuilder(Block *block) : FuncBuilder(block->getFunction()) {
-    setInsertionPoint(block, block->end());
-  }
+  OpBuilder(Block *block) : OpBuilder(block, block->end()) {}
 
-  FuncBuilder(Block *block, Block::iterator insertPoint)
-      : FuncBuilder(block->getFunction()) {
+  OpBuilder(Block *block, Block::iterator insertPoint)
+      : OpBuilder(block->getParent()) {
     setInsertionPoint(block, insertPoint);
   }
 
-  /// Return the function this builder is referring to.
-  Function *getFunction() const { return function; }
+  /// Return the region this builder is referring to.
+  Region *getRegion() const { return region; }
 
   /// This class represents a saved insertion point.
   class InsertPoint {
@@ -291,7 +288,7 @@ public:
   /// Add new block and set the insertion point to the end of it.  If an
   /// 'insertBefore' block is passed, the block will be placed before the
   /// specified block.  If not, the block will be appended to the end of the
-  /// current function.
+  /// current region.
   Block *createBlock(Block *insertBefore = nullptr);
 
   /// Returns the current block of the builder.
@@ -342,7 +339,7 @@ public:
   }
 
 private:
-  Function *function;
+  Region *region;
   Block *block = nullptr;
   Block::iterator insertPoint;
 };

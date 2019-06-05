@@ -773,7 +773,7 @@ void mlir::linalg::emitScalarImplementation(
   using edsc::intrinsics::select;
 
   // account for affine.terminator in loop.
-  FuncBuilder b(body, std::prev(body->end(), 1));
+  OpBuilder b(body, std::prev(body->end(), 1));
   ScopedContext scope(b, innermostLoop.getLoc());
   auto *op = linalgOp.getOperation();
   if (isa<DotOp>(op)) {

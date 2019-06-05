@@ -266,7 +266,7 @@ template <typename SourceOp> struct OpRewritePattern : public RewritePattern {
 ///     to apply patterns and observe their effects (e.g. to keep worklists or
 ///     other data structures up to date).
 ///
-class PatternRewriter : public FuncBuilder {
+class PatternRewriter : public OpBuilder {
 public:
   /// Create operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
@@ -342,7 +342,7 @@ public:
                           ArrayRef<Value *> valuesToRemoveIfDead = {});
 
 protected:
-  PatternRewriter(Function *fn) : FuncBuilder(fn) {}
+  PatternRewriter(Region &region) : OpBuilder(region) {}
   virtual ~PatternRewriter();
 
   // These are the callback methods that subclasses can choose to implement if

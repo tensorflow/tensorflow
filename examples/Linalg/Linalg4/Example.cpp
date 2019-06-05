@@ -41,7 +41,7 @@ Function *makeFunctionWithAMatmulOp(Module &module, StringRef name) {
       module, name,
       {dynamic2DMemRefType, dynamic2DMemRefType, dynamic2DMemRefType}, {});
 
-  FuncBuilder builder(f);
+  OpBuilder builder(f->getBody());
   ScopedContext scope(builder, f->getLoc());
 
   // clang-format off
@@ -97,7 +97,7 @@ TEST_FUNC(matmul_tiled_views) {
   MLIRContext context;
   Module module(&context);
   mlir::Function *f = makeFunctionWithAMatmulOp(module, "matmul_tiled_views");
-  FuncBuilder b(f);
+  OpBuilder b(f->getBody());
   lowerToTiledViews(f, {b.create<ConstantIndexOp>(f->getLoc(), 8),
                         b.create<ConstantIndexOp>(f->getLoc(), 9)});
   composeSliceOps(f);
@@ -127,7 +127,7 @@ TEST_FUNC(matmul_tiled_views_as_loops) {
   Module module(&context);
   mlir::Function *f =
       makeFunctionWithAMatmulOp(module, "matmul_tiled_views_as_loops");
-  FuncBuilder b(f);
+  OpBuilder b(f->getBody());
   lowerToTiledViews(f, {b.create<ConstantIndexOp>(f->getLoc(), 8),
                         b.create<ConstantIndexOp>(f->getLoc(), 9)});
   composeSliceOps(f);

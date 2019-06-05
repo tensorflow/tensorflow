@@ -161,7 +161,7 @@ linalg::makeGenericLoopRanges(AffineMap operandRangesToLoopMaps,
 template <class ContractionOp>
 static SmallVector<mlir::AffineForOp, 4>
 writeContractionAsLoops(ContractionOp contraction) {
-  FuncBuilder builder(contraction.getOperation());
+  OpBuilder builder(contraction.getOperation());
   ScopedContext scope(builder, contraction.getLoc());
   auto allRanges = getRanges(contraction);
   auto loopRanges =
@@ -274,7 +274,7 @@ Rewriter<linalg::LoadOp>::matchAndRewrite(linalg::LoadOp load,
   SliceOp slice = dyn_cast<SliceOp>(load.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
                       : cast<ViewOp>(load.getView()->getDefiningOp());
-  FuncBuilder builder(load);
+  OpBuilder builder(load);
   ScopedContext scope(builder, load.getLoc());
   auto *memRef = view.getSupportingMemRef();
   auto operands = emitAndReturnLoadStoreOperands(load, view);
@@ -289,7 +289,7 @@ Rewriter<linalg::StoreOp>::matchAndRewrite(linalg::StoreOp store,
   SliceOp slice = dyn_cast<SliceOp>(store.getView()->getDefiningOp());
   ViewOp view = slice ? emitAndReturnFullyComposedView(slice.getResult())
                       : cast<ViewOp>(store.getView()->getDefiningOp());
-  FuncBuilder builder(store);
+  OpBuilder builder(store);
   ScopedContext scope(builder, store.getLoc());
   auto *valueToStore = store.getValueToStore();
   auto *memRef = view.getSupportingMemRef();

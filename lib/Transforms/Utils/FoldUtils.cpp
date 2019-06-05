@@ -110,7 +110,7 @@ LogicalResult OperationFolder::tryToFold(Operation *op,
   assert(foldResults.size() == op->getNumResults());
 
   // Create the result constants and replace the results.
-  FuncBuilder builder(op);
+  OpBuilder builder(op);
   for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
     assert(!foldResults[i].isNull() && "expected valid OpFoldResult");
 

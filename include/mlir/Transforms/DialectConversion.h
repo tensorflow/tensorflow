@@ -31,7 +31,6 @@ namespace mlir {
 
 // Forward declarations.
 class Block;
-class FuncBuilder;
 class MLIRContext;
 class Operation;
 class Type;

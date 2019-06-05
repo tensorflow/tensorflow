@@ -57,7 +57,7 @@ namespace {
 /// time both side of the cast (producer and consumer) will be lowered to a
 /// dialect like LLVM and end up with the same LLVM representation, at which
 /// point this becomes a no-op and is eliminated.
-Value *typeCast(FuncBuilder &builder, Value *val, Type destTy) {
+Value *typeCast(PatternRewriter &builder, Value *val, Type destTy) {
   if (val->getType() == destTy)
     return val;
   return builder.create<toy::TypeCastOp>(val->getLoc(), val, destTy)
@@ -67,7 +67,7 @@ Value *typeCast(FuncBuilder &builder, Value *val, Type destTy) {
 /// Create a type cast to turn a toy.array into a memref. The Toy Array will be
 /// lowered to a memref during buffer allocation, at which point the type cast
 /// becomes useless.
-Value *memRefTypeCast(FuncBuilder &builder, Value *val) {
+Value *memRefTypeCast(PatternRewriter &builder, Value *val) {
   if (val->getType().isa<MemRefType>())
     return val;
   auto toyArrayTy = val->getType().dyn_cast<toy::ToyArrayType>();
@@ -183,7 +183,7 @@ public:
 private:
   // Turn a string into a toy.alloc (malloc/free abstraction) and a sequence
   // of stores into the buffer, and return a MemRef into the buffer.
-  Value *getConstantCharBuffer(FuncBuilder &builder, Location loc,
+  Value *getConstantCharBuffer(PatternRewriter &builder, Location loc,
                                StringRef data) const {
     auto retTy =
         builder.getMemRefType(data.size() + 1, builder.getIntegerType(8));
@@ -405,7 +405,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
   /// operating in a brand new function: we don't have the return to hook the
   /// dealloc operations.
   Value *allocTensor(toy::AllocOp alloc) {
-    FuncBuilder builder(alloc);
+    OpBuilder builder(alloc);
     auto retTy = alloc.getResult()->getType();
 
     auto memRefTy = retTy.dyn_cast<MemRefType>();
@@ -420,7 +420,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
 
     // Insert a `dealloc` operation right before the `return` operations, unless
     // it is returned itself in which case the caller is responsible for it.
-    builder.getFunction()->walk([&](Operation *op) {
+    builder.getRegion()->walk([&](Operation *op) {
       auto returnOp = dyn_cast<ReturnOp>(op);
       if (!returnOp)
         return;

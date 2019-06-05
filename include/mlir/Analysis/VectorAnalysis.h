@@ -27,9 +27,9 @@ namespace mlir {
 class AffineApplyOp;
 class AffineForOp;
 class AffineMap;
-class FuncBuilder;
 class Location;
 class MemRefType;
+class OpBuilder;
 class Operation;
 class Value;
 class VectorType;

@@ -332,31 +332,31 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 }
 
 //===----------------------------------------------------------------------===//
-// Operations.
+// OpBuilder.
 //===----------------------------------------------------------------------===//
 
-FuncBuilder::~FuncBuilder() {}
+OpBuilder::~OpBuilder() {}
 
 /// Add new block and set the insertion point to the end of it.  If an
 /// 'insertBefore' block is passed, the block will be placed before the
 /// specified block.  If not, the block will be appended to the end of the
 /// current function.
-Block *FuncBuilder::createBlock(Block *insertBefore) {
+Block *OpBuilder::createBlock(Block *insertBefore) {
   Block *b = new Block();
 
   // If we are supposed to insert before a specific block, do so, otherwise add
   // the block to the end of the function.
   if (insertBefore)
-    function->getBlocks().insert(Function::iterator(insertBefore), b);
+    region->getBlocks().insert(Function::iterator(insertBefore), b);
   else
-    function->push_back(b);
+    region->push_back(b);
 
   setInsertionPointToEnd(b);
   return b;
 }
 
 /// Create an operation given the fields represented as an OperationState.
-Operation *FuncBuilder::createOperation(const OperationState &state) {
+Operation *OpBuilder::createOperation(const OperationState &state) {
   assert(block && "createOperation() called without setting builder's block");
   auto *op = Operation::create(state);
   block->getOperations().insert(insertPoint, op);

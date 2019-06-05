@@ -41,8 +41,7 @@ using namespace mlir;
 
 // Create an array attribute containing integer attributes with values provided
 // in `position`.
-static ArrayAttr makePositionAttr(FuncBuilder &builder,
-                                  ArrayRef<int> position) {
+static ArrayAttr makePositionAttr(Builder &builder, ArrayRef<int> position) {
   SmallVector<Attribute, 4> attrs;
   attrs.reserve(position.size());
   for (auto p : position)
@@ -64,7 +63,7 @@ public:
   // descriptor to emit IR iteratively computing the actual offset, followed by
   // a getelementptr.
   Value *obtainDataPtr(Operation *op, Value *viewDescriptor,
-                       ArrayRef<Value *> indices, FuncBuilder &rewriter) const {
+                       ArrayRef<Value *> indices, Builder &rewriter) const {
     auto loadOp = cast<Op>(op);
     auto elementType =
         loadOp.getViewType().template cast<linalg::ViewType>().getElementType();

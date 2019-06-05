@@ -104,7 +104,7 @@ private:
   /// convenience for emitting individual operations.
   /// The builder is stateful, in particular it keeeps an "insertion point":
   /// this is where the next operations will be introduced.
-  std::unique_ptr<mlir::FuncBuilder> builder;
+  std::unique_ptr<mlir::OpBuilder> builder;
 
   /// The symbol table maps a variable name to a value in the current scope.
   /// Entering a function creates a new scope, and the function arguments are
@@ -174,7 +174,7 @@ private:
 
     // Create a builder for the function, it will be used throughout the codegen
     // to create operations in this function.
-    builder = llvm::make_unique<mlir::FuncBuilder>(function.get());
+    builder = llvm::make_unique<mlir::OpBuilder>(function->getBody());
 
     // Emit the body of the function.
     if (!mlirGen(*funcAST.getBody()))

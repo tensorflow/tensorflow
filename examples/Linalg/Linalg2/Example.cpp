@@ -39,7 +39,7 @@ TEST_FUNC(linalg_ops) {
   mlir::Function *f =
       makeFunction(module, "linalg_ops", {indexType, indexType, indexType}, {});
 
-  FuncBuilder builder(f);
+  OpBuilder builder(f->getBody());
   ScopedContext scope(builder, f->getLoc());
 
   // clang-format off
@@ -78,7 +78,7 @@ TEST_FUNC(linalg_ops_folded_slices) {
   mlir::Function *f = makeFunction(module, "linalg_ops_folded_slices",
                                    {indexType, indexType, indexType}, {});
 
-  FuncBuilder builder(f);
+  OpBuilder builder(f->getBody());
   ScopedContext scope(builder, f->getLoc());
 
   // clang-format off

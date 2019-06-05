@@ -73,7 +73,7 @@ static unsigned getTagMemRefPos(Operation &dmaInst) {
 /// modulo 2. Returns false if such a replacement cannot be performed.
 static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto *forBody = forOp.getBody();
-  FuncBuilder bInner(forBody, forBody->begin());
+  OpBuilder bInner(forBody, forBody->begin());
   bInner.setInsertionPoint(forBody, forBody->begin());
 
   // Doubles the shape with a leading dimension extent of 2.
@@ -94,7 +94,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
 
   // The double buffer is allocated right before 'forInst'.
   auto *forInst = forOp.getOperation();
-  FuncBuilder bOuter(forInst);
+  OpBuilder bOuter(forInst);
   // Put together alloc operands for any dynamic dimensions of the memref.
   SmallVector<Value *, 4> allocOperands;
   unsigned dynamicDimCount = 0;
@@ -360,7 +360,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
 
     // Tagging operations with shifts for debugging purposes.
     LLVM_DEBUG({
-      FuncBuilder b(&op);
+      OpBuilder b(&op);
       op.setAttr("shift", b.getI64IntegerAttr(shifts[s - 1]));
     });
   }

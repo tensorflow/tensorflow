@@ -749,7 +749,7 @@ mlir::insertBackwardComputationSlice(Operation *srcOpInst, Operation *dstOpInst,
   // Clone src loop nest and insert it a the beginning of the operation block
   // of the loop at 'dstLoopDepth' in 'dstLoopIVs'.
   auto dstAffineForOp = dstLoopIVs[dstLoopDepth - 1];
-  FuncBuilder b(dstAffineForOp.getBody(), dstAffineForOp.getBody()->begin());
+  OpBuilder b(dstAffineForOp.getBody(), dstAffineForOp.getBody()->begin());
   auto sliceLoopNest =
       cast<AffineForOp>(b.clone(*srcLoopIVs[0].getOperation()));
 

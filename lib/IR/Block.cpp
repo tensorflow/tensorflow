@@ -282,6 +282,24 @@ Region::~Region() {
     bb.dropAllReferences();
 }
 
+/// Return the context this region is inserted in. The region must have a valid
+/// parent container.
+MLIRContext *Region::getContext() {
+  assert(!container.isNull() && "region is not attached to a container");
+  if (auto *inst = getContainingOp())
+    return inst->getContext();
+  return getContainingFunction()->getContext();
+}
+
+/// Return a location for this region. This is the location attached to the
+/// parent container. The region must have a valid parent container.
+Location Region::getLoc() {
+  assert(!container.isNull() && "region is not attached to a container");
+  if (auto *inst = getContainingOp())
+    return inst->getLoc();
+  return getContainingFunction()->getLoc();
+}
+
 Region *Region::getContainingRegion() {
   if (auto *inst = getContainingOp())
     return inst->getContainingRegion();

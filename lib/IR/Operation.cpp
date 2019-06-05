@@ -312,8 +312,7 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
 void Operation::walk(const std::function<void(Operation *)> &callback) {
   // Visit any internal operations.
   for (auto &region : getRegions())
-    for (auto &block : region)
-      block.walk(callback);
+    region.walk(callback);
 
   // Visit the current operation.
   callback(this);

@@ -80,7 +80,7 @@ public:
   /// The results created by the new IR with the builder are returned, and their
   /// number must match the number of result of `op`.
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override {
+                                  OpBuilder &rewriter) const override {
     ...
 
     // Return the newly allocated buffer, it will be used as an operand when

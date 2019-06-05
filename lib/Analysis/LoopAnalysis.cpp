@@ -54,7 +54,7 @@ void mlir::buildTripCountMapAndOperands(
   int64_t loopSpan;
 
   int64_t step = forOp.getStep();
-  FuncBuilder b(forOp.getOperation());
+  OpBuilder b(forOp.getOperation());
 
   if (forOp.hasConstantBounds()) {
     int64_t lb = forOp.getConstantLowerBound();

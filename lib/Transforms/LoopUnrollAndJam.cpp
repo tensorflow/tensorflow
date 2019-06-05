@@ -185,8 +185,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   // unrollJamFactor.
   if (getLargestDivisorOfTripCount(forOp) % unrollJamFactor != 0) {
     // Insert the cleanup loop right after 'forOp'.
-    FuncBuilder builder(forInst->getBlock(),
-                        std::next(Block::iterator(forInst)));
+    OpBuilder builder(forInst->getBlock(), std::next(Block::iterator(forInst)));
     auto cleanupAffineForOp = cast<AffineForOp>(builder.clone(*forInst));
     // Adjust the lower bound of the cleanup loop; its upper bound is the same
     // as the original loop's upper bound.
@@ -212,7 +211,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   for (auto &subBlock : subBlocks) {
     // Builder to insert unroll-jammed bodies. Insert right at the end of
     // sub-block.
-    FuncBuilder builder(subBlock.first->getBlock(), std::next(subBlock.second));
+    OpBuilder builder(subBlock.first->getBlock(), std::next(subBlock.second));
 
     // Unroll and jam (appends unrollJamFactor-1 additional copies).
     for (unsigned i = 1; i < unrollJamFactor; i++) {

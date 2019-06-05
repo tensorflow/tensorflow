@@ -24,8 +24,7 @@
 using namespace mlir;
 using namespace mlir::edsc;
 
-mlir::edsc::ScopedContext::ScopedContext(FuncBuilder &builder,
-                                         Location location)
+mlir::edsc::ScopedContext::ScopedContext(OpBuilder &builder, Location location)
     : builder(builder), location(location),
       enclosingScopedContext(ScopedContext::getCurrentScopedContext()),
       nestedBuilder(nullptr) {
@@ -35,8 +34,8 @@ mlir::edsc::ScopedContext::ScopedContext(FuncBuilder &builder,
 /// Sets the insertion point of the builder to 'newInsertPt' for the duration
 /// of the scope. The existing insertion point of the builder is restored on
 /// destruction.
-mlir::edsc::ScopedContext::ScopedContext(FuncBuilder &builder,
-                                         FuncBuilder::InsertPoint newInsertPt,
+mlir::edsc::ScopedContext::ScopedContext(OpBuilder &builder,
+                                         OpBuilder::InsertPoint newInsertPt,
                                          Location location)
     : builder(builder), prevBuilderInsertPoint(builder.saveInsertionPoint()),
       location(location),
@@ -59,7 +58,7 @@ ScopedContext *&mlir::edsc::ScopedContext::getCurrentScopedContext() {
   return context;
 }
 
-FuncBuilder *mlir::edsc::ScopedContext::getBuilder() {
+OpBuilder *mlir::edsc::ScopedContext::getBuilder() {
   assert(ScopedContext::getCurrentScopedContext() &&
          "Unexpected Null ScopedContext");
   return &ScopedContext::getCurrentScopedContext()->builder;

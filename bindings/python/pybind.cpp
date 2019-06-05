@@ -248,7 +248,7 @@ struct PythonFunctionContext {
   PythonFunction enter() {
     assert(function.function && "function is not set up");
     auto *mlirFunc = static_cast<mlir::Function *>(function.function);
-    contextBuilder.emplace(mlirFunc);
+    contextBuilder.emplace(mlirFunc->getBody());
     context =
         new mlir::edsc::ScopedContext(*contextBuilder, mlirFunc->getLoc());
     return function;
@@ -262,7 +262,7 @@ struct PythonFunctionContext {
 
   PythonFunction function;
   mlir::edsc::ScopedContext *context;
-  llvm::Optional<FuncBuilder> contextBuilder;
+  llvm::Optional<OpBuilder> contextBuilder;
 };
 
 PythonFunctionContext PythonMLIRModule::makeFunctionContext(

@@ -202,11 +202,11 @@ class GenericCallOp
   bool verify();
 
   /// Interface to the builder to allow:
-  ///   mlir::FuncBuilder::create<GenericCallOp>(...)
+  ///   mlir::OpBuilder::create<GenericCallOp>(...)
   /// This method populate the `state` that MLIR use to create operations.
   /// The `toy.generic_call` operation accepts a callee name and a list of
   /// arguments for the call.
-  static void build(mlir::FuncBuilder *builder, mlir::OperationState *state,
+  static void build(mlir::OpBuilder *builder, mlir::OperationState *state,
                     llvm::StringRef callee,
                     llvm::ArrayRef<mlir::Value *> arguments);
 

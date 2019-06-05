@@ -41,7 +41,7 @@ class AffineApplyExpander
 public:
   // This internal class expects arguments to be non-null, checks must be
   // performed at the call site.
-  AffineApplyExpander(FuncBuilder *builder, ArrayRef<Value *> dimValues,
+  AffineApplyExpander(OpBuilder *builder, ArrayRef<Value *> dimValues,
                       ArrayRef<Value *> symbolValues, Location loc)
       : builder(*builder), dimValues(dimValues), symbolValues(symbolValues),
         loc(loc) {}
@@ -206,7 +206,7 @@ public:
   }
 
 private:
-  FuncBuilder &builder;
+  OpBuilder &builder;
   ArrayRef<Value *> dimValues;
   ArrayRef<Value *> symbolValues;
 
@@ -216,7 +216,7 @@ private:
 
 // Create a sequence of operations that implement the `expr` applied to the
 // given dimension and symbol values.
-static mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
+static mlir::Value *expandAffineExpr(OpBuilder *builder, Location loc,
                                      AffineExpr expr,
                                      ArrayRef<Value *> dimValues,
                                      ArrayRef<Value *> symbolValues) {
@@ -226,7 +226,7 @@ static mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
 // Create a sequence of operations that implement the `affineMap` applied to
 // the given `operands` (as it it were an AffineApplyOp).
 Optional<SmallVector<Value *, 8>> static expandAffineMap(
-    FuncBuilder *builder, Location loc, AffineMap affineMap,
+    OpBuilder *builder, Location loc, AffineMap affineMap,
     ArrayRef<Value *> operands) {
   auto numDims = affineMap.getNumDims();
   auto expanded = functional::map(
@@ -260,7 +260,7 @@ struct LowerAffinePass : public FunctionPass<LowerAffinePass> {
 // recognize as a reduction by the subsequent passes.
 static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
                                       ArrayRef<Value *> values,
-                                      FuncBuilder &builder) {
+                                      OpBuilder &builder) {
   assert(!llvm::empty(values) && "empty min/max chain");
 
   auto valueIt = values.begin();
@@ -348,7 +348,7 @@ static LogicalResult lowerAffineFor(AffineForOp forOp) {
   // Append the induction variable stepping logic and branch back to the exit
   // condition block.  Construct an affine expression f : (x -> x+step) and
   // apply this expression to the induction variable.
-  FuncBuilder builder(bodyBlock);
+  OpBuilder builder(bodyBlock);
   auto affStep = builder.getAffineConstantExpr(forOp.getStep());
   auto affDim = builder.getAffineDimExpr(0);
   auto stepped = expandAffineExpr(&builder, loc, affDim + affStep, iv, {});
@@ -482,7 +482,7 @@ static LogicalResult lowerAffineIf(AffineIfOp ifOp) {
         std::prev(oldThen->end()));
   }
 
-  FuncBuilder builder(thenBlock);
+  OpBuilder builder(thenBlock);
   builder.create<BranchOp>(loc, continueBlock);
 
   // Handle the 'else' block the same way, but we skip it if we have no else
@@ -569,7 +569,7 @@ static LogicalResult lowerAffineIf(AffineIfOp ifOp) {
 // Convert an "affine.apply" operation into a sequence of arithmetic
 // operations using the StandardOps dialect.  Return true on error.
 static LogicalResult lowerAffineApply(AffineApplyOp op) {
-  FuncBuilder builder(op.getOperation());
+  OpBuilder builder(op.getOperation());
   auto maybeExpandedMap =
       expandAffineMap(&builder, op.getLoc(), op.getAffineMap(),
                       llvm::to_vector<8>(op.getOperands()));

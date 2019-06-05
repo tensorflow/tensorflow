@@ -58,7 +58,7 @@ static bool isZero(Value *v) {
 // The returned ranges correspond to the loop ranges, in the proper order, that
 // are tiled and for which new loops will be created.
 static SmallVector<Value *, 4>
-makeTiledLoopRanges(FuncBuilder *b, Location loc, AffineMap map,
+makeTiledLoopRanges(OpBuilder *b, Location loc, AffineMap map,
                     ArrayRef<Value *> allViewSizes,
                     ArrayRef<Value *> allTileSizes, FunctionConstants &state) {
   assert(allTileSizes.size() == map.getNumResults());
@@ -127,7 +127,7 @@ static Value *foldRange(Value *view, unsigned dim) {
   return nullptr;
 }
 
-static SmallVector<Value *, 4> makeTiledViews(FuncBuilder *b, Location loc,
+static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
                                               LinalgOp &linalgOp,
                                               ArrayRef<Value *> ivs,
                                               ArrayRef<Value *> tileSizes,
@@ -210,7 +210,7 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
              tileSizes.size() &&
          "expected matching number of tile sizes and loops");
 
-  FuncBuilder builder(op.getOperation());
+  OpBuilder builder(op.getOperation());
   ScopedContext scope(builder, op.getLoc());
   auto loopRanges = makeTiledLoopRanges(
       scope.getBuilder(), scope.getLocation(),

@@ -112,7 +112,7 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
   assert(!origLoops.empty());
   assert(origLoops.size() == tileSizes.size());
 
-  FuncBuilder b(origLoops[0].getOperation());
+  OpBuilder b(origLoops[0].getOperation());
   unsigned width = origLoops.size();
 
   // Bounds for tile space loops.
@@ -207,7 +207,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Add intra-tile (or point) loops.
   for (unsigned i = 0; i < width; i++) {
-    FuncBuilder b(topLoop);
+    OpBuilder b(topLoop);
     // Loop bounds will be set later.
     auto pointLoop = b.create<AffineForOp>(loc, 0, 0);
     pointLoop.getBody()->getOperations().splice(
@@ -221,7 +221,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Add tile space loops;
   for (unsigned i = width; i < 2 * width; i++) {
-    FuncBuilder b(topLoop);
+    OpBuilder b(topLoop);
     // Loop bounds will be set later.
     auto tileSpaceLoop = b.create<AffineForOp>(loc, 0, 0);
     tileSpaceLoop.getBody()->getOperations().splice(

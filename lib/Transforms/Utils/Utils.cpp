@@ -123,7 +123,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                           opInst->operand_begin() + memRefOperandPos);
     state.operands.push_back(newMemRef);
 
-    FuncBuilder builder(opInst);
+    OpBuilder builder(opInst);
     for (auto *extraIndex : extraIndices) {
       assert(extraIndex->getDefiningOp()->getNumResults() == 1 &&
              "single result op's expected to generate these indices");
@@ -249,7 +249,7 @@ void mlir::createAffineComputationSlice(
   if (localized)
     return;
 
-  FuncBuilder builder(opInst);
+  OpBuilder builder(opInst);
   SmallVector<Value *, 4> composedOpOperands(subOperands);
   auto composedMap = builder.getMultiDimIdentityMap(composedOpOperands.size());
   fullyComposeAffineMapAndOperands(&composedMap, &composedOpOperands);

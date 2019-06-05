@@ -319,7 +319,7 @@ public:
         // Found a specialized callee! Let's turn this into a normal call
         // operation.
         SmallVector<mlir::Value *, 8> operands(op->getOperands());
-        mlir::FuncBuilder builder(f);
+        mlir::OpBuilder builder(f->getBody());
         builder.setInsertionPoint(op);
         auto newCall =
             builder.create<mlir::CallOp>(op->getLoc(), mangledCallee, operands);

@@ -344,6 +344,14 @@ public:
   explicit Region(Operation *container);
   ~Region();
 
+  /// Return the context this region is inserted in.  The region must have a
+  /// valid parent container.
+  MLIRContext *getContext();
+
+  /// Return a location for this region. This is the location attached to the
+  /// parent container. The region must have a valid parent container.
+  Location getLoc();
+
   using RegionType = llvm::iplist<Block>;
   RegionType &getBlocks() { return blocks; }
 
@@ -408,6 +416,13 @@ public:
   /// to the operation containing the region, the actual error is reported at
   /// the operation with an offending use.
   bool isIsolatedAbove(llvm::Optional<Location> noteLoc = llvm::None);
+
+  /// Walk the operations in this block in postorder, calling the callback for
+  /// each operation.
+  void walk(const std::function<void(Operation *)> &callback) {
+    for (auto &block : *this)
+      block.walk(callback);
+  }
 
 private:
   RegionType blocks;

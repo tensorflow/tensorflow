@@ -50,17 +50,17 @@ class ValueHandle;
 /// setting and restoring of insertion points.
 class ScopedContext {
 public:
-  ScopedContext(FuncBuilder &builder, Location location);
+  ScopedContext(OpBuilder &builder, Location location);
 
   /// Sets the insertion point of the builder to 'newInsertPt' for the duration
   /// of the scope. The existing insertion point of the builder is restored on
   /// destruction.
-  ScopedContext(FuncBuilder &builder, FuncBuilder::InsertPoint newInsertPt,
+  ScopedContext(OpBuilder &builder, OpBuilder::InsertPoint newInsertPt,
                 Location location);
   ~ScopedContext();
 
   static MLIRContext *getContext();
-  static FuncBuilder *getBuilder();
+  static OpBuilder *getBuilder();
   static Location getLocation();
 
 private:
@@ -74,10 +74,10 @@ private:
 
   static ScopedContext *&getCurrentScopedContext();
 
-  /// Top level FuncBuilder.
-  FuncBuilder &builder;
+  /// Top level OpBuilder.
+  OpBuilder &builder;
   /// The previous insertion point of the builder.
-  llvm::Optional<FuncBuilder::InsertPoint> prevBuilderInsertPoint;
+  llvm::Optional<OpBuilder::InsertPoint> prevBuilderInsertPoint;
   /// Current location.
   Location location;
   /// Parent context we return into.
@@ -116,20 +116,20 @@ protected:
   /// Enter an mlir::Block and setup a ScopedContext to insert operations at
   /// the end of it. Since we cannot use c++ language-level scoping to implement
   /// scoping itself, we use enter/exit pairs of operations.
-  /// As a consequence we must allocate a new FuncBuilder + ScopedContext and
+  /// As a consequence we must allocate a new OpBuilder + ScopedContext and
   /// let the escape.
   /// Step back "prev" times from the end of the block to set up the insertion
   /// point, which is useful for non-empty blocks.
   void enter(mlir::Block *block, int prev = 0) {
     bodyScope = new ScopedContext(
         *ScopedContext::getBuilder(),
-        FuncBuilder::InsertPoint(block, std::prev(block->end(), prev)),
+        OpBuilder::InsertPoint(block, std::prev(block->end(), prev)),
         ScopedContext::getLocation());
     bodyScope->nestedBuilder = this;
   }
 
   /// Exit the current mlir::Block by explicitly deleting the dynamically
-  /// allocated FuncBuilder and ScopedContext.
+  /// allocated OpBuilder and ScopedContext.
   void exit() {
     // Reclaim now to exit the scope.
     bodyScope->nestedBuilder = nullptr;

@@ -109,7 +109,7 @@ static Value *tryFold(AffineMap map, ArrayRef<Value *> operands,
   return nullptr;
 }
 
-static Value *emitOrFoldComposedAffineApply(FuncBuilder *b, Location loc,
+static Value *emitOrFoldComposedAffineApply(OpBuilder *b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operandsRef,
                                             FunctionConstants &state) {
@@ -121,7 +121,7 @@ static Value *emitOrFoldComposedAffineApply(FuncBuilder *b, Location loc,
 }
 
 SmallVector<Value *, 4>
-mlir::linalg::applyMapToValues(FuncBuilder *b, Location loc, AffineMap map,
+mlir::linalg::applyMapToValues(OpBuilder *b, Location loc, AffineMap map,
                                ArrayRef<Value *> values,
                                FunctionConstants &state) {
   SmallVector<Value *, 4> res;
@@ -141,7 +141,7 @@ Value *FunctionConstants::getOrCreateIndex(int64_t v) {
   auto it = map.find(v);
   if (it != map.end())
     return it->second;
-  FuncBuilder builder(f);
+  OpBuilder builder(f.getBody());
   edsc::ScopedContext s(builder, f.getLoc());
   return map.insert(std::make_pair(v, edsc::intrinsics::constant_index(v)))
       .first->getSecond();

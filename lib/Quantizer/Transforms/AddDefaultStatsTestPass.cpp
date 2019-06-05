@@ -77,7 +77,7 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
   for (auto *arg : func.getArguments()) {
     if (!config.isHandledType(arg->getType()))
       continue;
-    FuncBuilder b(func);
+    OpBuilder b(func.getBody());
     APFloat minValue(-1.0f);
     APFloat maxValue(1.0f);
     ElementsAttr layerStats = DenseFPElementsAttr::get(
@@ -102,7 +102,7 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
     if (!config.isHandledType(originalResult->getType()))
       return;
 
-    FuncBuilder b(op->getBlock(), ++op->getIterator());
+    OpBuilder b(op->getBlock(), ++op->getIterator());
 
     APFloat minValue(-1.0f);
     APFloat maxValue(1.0f);

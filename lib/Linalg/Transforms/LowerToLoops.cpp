@@ -35,7 +35,7 @@ using namespace mlir::linalg;
 // Creates a number of ranges equal to the number of results in `map`.
 // The returned ranges correspond to the loop ranges, in the proper order, for
 // which new loops will be created.
-static SmallVector<Value *, 4> emitLoopRanges(FuncBuilder *b, Location loc,
+static SmallVector<Value *, 4> emitLoopRanges(OpBuilder *b, Location loc,
                                               AffineMap map,
                                               ArrayRef<Value *> allViewSizes,
                                               FunctionConstants &state) {
@@ -51,7 +51,7 @@ static SmallVector<Value *, 4> emitLoopRanges(FuncBuilder *b, Location loc,
 }
 
 static void emitLinalgOpAsLoops(LinalgOp &linalgOp, FunctionConstants &state) {
-  FuncBuilder b(linalgOp.getOperation());
+  OpBuilder b(linalgOp.getOperation());
   ScopedContext scope(b, linalgOp.getOperation()->getLoc());
   auto loopRanges = emitLoopRanges(
       scope.getBuilder(), scope.getLocation(),

@@ -121,8 +121,7 @@ Type linalg::convertLinalgType(Type t) {
 
 // Create an array attribute containing integer attributes with values provided
 // in `position`.
-static ArrayAttr makePositionAttr(FuncBuilder &builder,
-                                  ArrayRef<int> position) {
+static ArrayAttr makePositionAttr(OpBuilder &builder, ArrayRef<int> position) {
   SmallVector<Attribute, 4> attrs;
   attrs.reserve(position.size());
   for (auto p : position)

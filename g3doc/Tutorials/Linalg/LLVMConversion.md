@@ -233,7 +233,7 @@ public:
   // needs to define as many value as the original operation, but their types
   // may be different.
   SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
-                                  FuncBuilder &rewriter) const override;
+                                  OpBuilder &rewriter) const override;
 }
 ```
 
@@ -296,7 +296,7 @@ operates.
 ```c++
 SmallVector<Value *, 4> ViewOpConversion::rewrite(
     Operation *op, ArrayRef<Value *> operands,
-    FuncBuilder &rewriter) const override {
+    OpBuilder &rewriter) const override {
   // Obtain the typed operation (we know we matched only one type).
   auto viewOp = op->cast<linalg::ViewOp>();
 
@@ -437,7 +437,7 @@ struct ViewDescriptor {
   }
 
   // The builder into which we emit code.
-  FuncBuilder &builder;
+  OpBuilder &builder;
 
   // The actual descriptor.
   Value *d;
@@ -450,7 +450,7 @@ rules described above:
 ```c++
 SmallVector<Value *, 4> SliceOpConversion::rewrite(
     Operation *op, ArrayRef<Value *> operands,
-    FuncBuilder &rewriter) const override {
+    OpBuilder &rewriter) const override {
   // Obtain the typed operation (we know we matched only one type).
   auto sliceOp = op->cast<linalg::SliceOp>();
 
@@ -528,7 +528,7 @@ for the view descriptor:
 
 ```c++
 Value *obtainDataPtr(Location loc, int rank, Value *viewDescriptorVal,
-                     ArrayRef<Value *> indices, FuncBuilder &rewriter) {
+                     ArrayRef<Value *> indices, OpBuilder &rewriter) {
   // Create the context object (RAII) in which we can use declarative builders.
   // Bring all the builders into the namespace.
   using namespace intrinsics;
@@ -560,7 +560,7 @@ conversions for load and store operations.
 // Load Operation Conversion.
 SmallVector<Value *, 4> LoadOpConversion::rewrite(
     Operation *op, ArrayRef<Value *> operands,
-    FuncBuilder &rewriter) const override {
+    OpBuilder &rewriter) const override {
   // Obtain the typed operation (we know we matched only one type).
   auto loadOp = op->cast<linalg::LoadOp>();
 
@@ -582,7 +582,7 @@ SmallVector<Value *, 4> LoadOpConversion::rewrite(
 // Store Operation Conversion
 SmallVector<Value *, 4> StoreOpConversion::rewrite(
     Operation *op, ArrayRef<Value *> operands,
-    FuncBuilder &rewriter) const override {
+    OpBuilder &rewriter) const override {
   // Obtain the typed operation (we know we matched only one type).
   auto loadOp = op->cast<linalg::StoreOp>();
 

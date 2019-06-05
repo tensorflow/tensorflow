@@ -44,7 +44,7 @@ Function *makeFunctionWithAMatmulOp(Module &module, StringRef name) {
       module, name,
       {dynamic2DMemRefType, dynamic2DMemRefType, dynamic2DMemRefType}, {});
 
-  FuncBuilder builder(f);
+  OpBuilder builder(f->getBody());
   ScopedContext scope(builder, f->getLoc());
   // clang-format off
   ValueHandle

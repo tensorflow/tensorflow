@@ -32,7 +32,7 @@ namespace mlir {
 class AffineBound;
 class AffineValueMap;
 class FlatAffineConstraints;
-class FuncBuilder;
+class OpBuilder;
 
 /// A utility function to check if a value is defined at the top level of a
 /// function. A value defined at the top level is always a valid symbol.
@@ -143,7 +143,7 @@ public:
 
   /// Return a Builder set up to insert operations immediately before the
   /// terminator.
-  FuncBuilder getBodyBuilder();
+  OpBuilder getBodyBuilder();
 
   /// Get the body of the AffineForOp.
   Block *getBody() { return &getRegion().front(); }
@@ -361,8 +361,7 @@ void canonicalizeMapAndOperands(AffineMap *map,
 /// Returns a composed AffineApplyOp by composing `map` and `operands` with
 /// other AffineApplyOps supplying those operands. The operands of the resulting
 /// AffineApplyOp do not change the length of  AffineApplyOp chains.
-AffineApplyOp makeComposedAffineApply(FuncBuilder *b, Location loc,
-                                      AffineMap map,
+AffineApplyOp makeComposedAffineApply(OpBuilder *b, Location loc, AffineMap map,
                                       llvm::ArrayRef<Value *> operands);
 
 /// Given an affine map `map` and its input `operands`, this method composes

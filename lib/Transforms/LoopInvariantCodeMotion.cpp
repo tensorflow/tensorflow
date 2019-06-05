@@ -203,7 +203,7 @@ void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
 
   SmallPtrSet<Operation *, 8> definedOps;
   // This is the place where hoisted instructions would reside.
-  FuncBuilder b(forOp.getOperation());
+  OpBuilder b(forOp.getOperation());
 
   SmallPtrSet<Operation *, 8> opsToHoist;
   SmallVector<Operation *, 8> opsToMove;

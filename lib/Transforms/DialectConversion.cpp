@@ -108,8 +108,8 @@ struct DialectConversionRewriter final : public PatternRewriter {
     SmallVector<Value *, 2> newValues;
   };
 
-  DialectConversionRewriter(Function *fn)
-      : PatternRewriter(fn), argConverter(fn->getContext()) {}
+  DialectConversionRewriter(Region &region)
+      : PatternRewriter(region), argConverter(region.getContext()) {}
   ~DialectConversionRewriter() = default;
 
   /// Cleanup and destroy any generated rewrite operations. This method is
@@ -151,7 +151,7 @@ struct DialectConversionRewriter final : public PatternRewriter {
 
   /// PatternRewriter hook for creating a new operation.
   Operation *createOperation(const OperationState &state) override {
-    auto *result = FuncBuilder::createOperation(state);
+    auto *result = OpBuilder::createOperation(state);
     createdOps.push_back(result);
     return result;
   }
@@ -572,7 +572,7 @@ LogicalResult FunctionConverter::convertFunction(Function *f) {
     return success();
 
   // Rewrite the function body.
-  DialectConversionRewriter rewriter(f);
+  DialectConversionRewriter rewriter(f->getBody());
   if (failed(convertRegion(rewriter, f->getBody(), f->getLoc()))) {
     // Reset any of the generated rewrites.
     rewriter.discardRewrites();

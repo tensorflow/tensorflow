@@ -240,14 +240,14 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     return true;
 
   // DMAs for read regions are going to be inserted just before the for loop.
-  FuncBuilder prologue(block, begin);
+  OpBuilder prologue(block, begin);
   // DMAs for write regions are going to be inserted just after the for loop.
-  FuncBuilder epilogue(block, end);
-  FuncBuilder *b = region.isWrite() ? &epilogue : &prologue;
+  OpBuilder epilogue(block, end);
+  OpBuilder *b = region.isWrite() ? &epilogue : &prologue;
 
   // Builder to create constants at the top level.
   auto *func = block->getFunction();
-  FuncBuilder top(func);
+  OpBuilder top(func->getBody());
 
   auto loc = region.loc;
   auto *memref = region.memref;
@@ -759,7 +759,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 
 void DmaGeneration::runOnFunction() {
   Function &f = getFunction();
-  FuncBuilder topBuilder(f);
+  OpBuilder topBuilder(f.getBody());
   zeroIndex = topBuilder.create<ConstantIndexOp>(f.getLoc(), 0);
 
   // Override default is a command line option is provided.

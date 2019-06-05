@@ -31,8 +31,8 @@ using llvm::ArrayRef;
 using llvm::cast;
 using llvm::isa;
 using llvm::SmallVector;
-using mlir::FuncBuilder;
 using mlir::MemRefType;
+using mlir::OpBuilder;
 using mlir::Value;
 using mlir::edsc::ScopedContext;
 using mlir::edsc::ValueHandle;
@@ -101,7 +101,7 @@ static mlir::Value *createFullyComposedIndexing(unsigned dim,
 }
 
 ViewOp linalg::emitAndReturnFullyComposedView(Value *v) {
-  FuncBuilder builder(v->getDefiningOp());
+  OpBuilder builder(v->getDefiningOp());
   ScopedContext scope(builder, v->getDefiningOp()->getLoc());
   assert(v->getType().isa<ViewType>() && "must be a ViewType");
   auto *memRef = getViewSupportingMemRef(v);

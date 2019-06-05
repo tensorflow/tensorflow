@@ -621,7 +621,7 @@ static void lowerLinalgForToCFG(Function &f) {
     auto *op = forOp.getOperation();
     auto loc = op->getLoc();
     using namespace edsc::op;
-    FuncBuilder builder(op);
+    OpBuilder builder(op);
     ScopedContext scope(builder, loc);
     ValueHandle lb(forOp.getLowerBound()), ub(forOp.getUpperBound()),
         step(forOp.getStep());

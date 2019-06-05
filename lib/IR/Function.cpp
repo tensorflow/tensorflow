@@ -214,9 +214,7 @@ void Function::addEntryBlock() {
 }
 
 void Function::walk(const std::function<void(Operation *)> &callback) {
-  // Walk each of the blocks within the function.
-  for (auto &block : getBlocks())
-    block.walk(callback);
+  getBody().walk(callback);
 }
 
 //===----------------------------------------------------------------------===//

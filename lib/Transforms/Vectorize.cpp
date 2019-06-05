@@ -805,7 +805,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
       return LogicalResult::Failure;
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
-    FuncBuilder b(opInst);
+    OpBuilder b(opInst);
     auto transfer = b.create<VectorTransferReadOp>(
         opInst->getLoc(), vectorType, memoryOp.getMemRef(),
         map(makePtrDynCaster<Value>(), memoryOp.getIndices()), permutationMap);
@@ -920,7 +920,7 @@ static Value *vectorizeConstant(Operation *op, ConstantOp constant, Type type) {
       !VectorType::isValidElementType(constant.getType())) {
     return nullptr;
   }
-  FuncBuilder b(op);
+  OpBuilder b(op);
   Location loc = op->getLoc();
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
@@ -1015,7 +1015,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
     auto indices = map(makePtrDynCaster<Value>(), store.getIndices());
-    FuncBuilder b(opInst);
+    OpBuilder b(opInst);
     auto permutationMap =
         makePermutationMap(opInst, state->strategy->loopToVectorDim);
     if (!permutationMap)
@@ -1054,7 +1054,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
   // name that works both in scalar mode and vector mode.
   // TODO(ntv): Is it worth considering an Operation.clone operation which
   // changes the type so we can promote an Operation with less boilerplate?
-  FuncBuilder b(opInst);
+  OpBuilder b(opInst);
   OperationState newOp(b.getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), vectorOperands,
                        vectorTypes, opInst->getAttrs(), /*successors=*/{},
@@ -1136,7 +1136,7 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   /// maintains a clone for handling failure and restores the proper state via
   /// RAII.
   auto *loopInst = loop.getOperation();
-  FuncBuilder builder(loopInst);
+  OpBuilder builder(loopInst);
   auto clonedLoop = cast<AffineForOp>(builder.clone(*loopInst));
   struct Guard {
     LogicalResult failure() {

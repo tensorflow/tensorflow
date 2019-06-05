@@ -64,7 +64,7 @@ void linalg::DotOp::emitScalarImplementation(
   using edsc::intrinsics::select;
 
   // Account for affine.terminator in loop.
-  FuncBuilder builder(body, std::prev(body->end(), 1));
+  OpBuilder builder(body, std::prev(body->end(), 1));
   ScopedContext scope(builder, innermostLoop.getLoc());
   FloatType fTy = getOperand(0)
                       ->getType()
@@ -107,7 +107,7 @@ void linalg::MatvecOp::writeAsFinerGrainTensorContraction() {
   assert(
       llvm::isa_and_nonnull<RangeOp>(indexingPosPair.first->getDefiningOp()));
   // clang-format off
-  FuncBuilder builder(op);
+  OpBuilder builder(op);
   ScopedContext scope(builder, op->getLoc());
   IndexHandle i;
   using linalg::common::LoopNestRangeBuilder;
@@ -132,7 +132,7 @@ void linalg::MatvecOp::emitScalarImplementation(
   using edsc::op::operator==;
   using edsc::intrinsics::select;
   // Account for affine.terminator in loop.
-  FuncBuilder builder(body, std::prev(body->end(), 1));
+  OpBuilder builder(body, std::prev(body->end(), 1));
   ScopedContext scope(builder, innermostLoop.getLoc());
   FloatType fTy = getOperand(0)
                       ->getType()
@@ -181,7 +181,7 @@ void linalg::MatmulOp::writeAsFinerGrainTensorContraction() {
       llvm::isa_and_nonnull<RangeOp>(indexingPosPair.first->getDefiningOp()));
   using linalg::common::LoopNestRangeBuilder;
   // clang-format off
-  FuncBuilder builder(op);
+  OpBuilder builder(op);
   ScopedContext scope(builder, op->getLoc());
   IndexHandle j;
   LoopNestRangeBuilder(&j, ValueHandle(indexingPosPair.first))(
@@ -205,7 +205,7 @@ void linalg::MatmulOp::emitScalarImplementation(
   using edsc::op::operator==;
   using edsc::intrinsics::select;
   // Account for affine.terminator in loop.
-  FuncBuilder builder(body, std::prev(body->end(), 1));
+  OpBuilder builder(body, std::prev(body->end(), 1));
   ScopedContext scope(builder, innermostLoop.getLoc());
   FloatType fTy = getOperand(0)
                       ->getType()

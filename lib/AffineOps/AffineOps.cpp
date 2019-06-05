@@ -544,7 +544,7 @@ void mlir::fullyComposeAffineMapAndOperands(
   }
 }
 
-AffineApplyOp mlir::makeComposedAffineApply(FuncBuilder *b, Location loc,
+AffineApplyOp mlir::makeComposedAffineApply(OpBuilder *b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operands) {
   AffineMap normalizedMap = map;
@@ -1069,9 +1069,9 @@ void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.push_back(llvm::make_unique<AffineForLoopBoundFolder>(context));
 }
 
-FuncBuilder AffineForOp::getBodyBuilder() {
+OpBuilder AffineForOp::getBodyBuilder() {
   Block *body = getBody();
-  return FuncBuilder(body, std::prev(body->end()));
+  return OpBuilder(body, std::prev(body->end()));
 }
 
 AffineBound AffineForOp::getLowerBound() {

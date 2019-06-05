@@ -30,7 +30,7 @@ using namespace mlir;
 namespace {
 
 template <typename OpTy>
-void createForAllDimensions(FuncBuilder &builder, Location loc,
+void createForAllDimensions(OpBuilder &builder, Location loc,
                             SmallVectorImpl<Value *> &values) {
   for (StringRef dim : {"x", "y", "z"}) {
     Value *v = builder.create<OpTy>(loc, builder.getIndexType(),
@@ -42,12 +42,12 @@ void createForAllDimensions(FuncBuilder &builder, Location loc,
 // Add operations generating block/thread ids and gird/block dimensions at the
 // beginning of `kernelFunc` and replace uses of the respective function args.
 void injectGpuIndexOperations(Location loc, Function &kernelFunc) {
-  FuncBuilder funcBuilder(kernelFunc);
+  OpBuilder OpBuilder(kernelFunc.getBody());
   SmallVector<Value *, 12> indexOps;
-  createForAllDimensions<gpu::BlockId>(funcBuilder, loc, indexOps);
-  createForAllDimensions<gpu::ThreadId>(funcBuilder, loc, indexOps);
-  createForAllDimensions<gpu::GridDim>(funcBuilder, loc, indexOps);
-  createForAllDimensions<gpu::BlockDim>(funcBuilder, loc, indexOps);
+  createForAllDimensions<gpu::BlockId>(OpBuilder, loc, indexOps);
+  createForAllDimensions<gpu::ThreadId>(OpBuilder, loc, indexOps);
+  createForAllDimensions<gpu::GridDim>(OpBuilder, loc, indexOps);
+  createForAllDimensions<gpu::BlockDim>(OpBuilder, loc, indexOps);
   // Replace the leading 12 function args with the respective thread/block index
   // operations. Iterate backwards since args are erased and indices change.
   for (int i = 11; i >= 0; --i) {
@@ -78,10 +78,10 @@ Function *outlineKernelFunc(Module &module, gpu::LaunchOp &launchOp) {
 // Replace `gpu.launch` operations with an `gpu.launch_func` operation launching
 // `kernelFunc`.
 void convertToLaunchFuncOp(gpu::LaunchOp &launchOp, Function &kernelFunc) {
-  FuncBuilder funcBuilder(launchOp);
+  OpBuilder OpBuilder(launchOp);
   SmallVector<Value *, 4> kernelOperandValues(
       launchOp.getKernelOperandValues());
-  funcBuilder.create<gpu::LaunchFuncOp>(
+  OpBuilder.create<gpu::LaunchFuncOp>(
       launchOp.getLoc(), &kernelFunc, launchOp.getGridSizeOperandValues(),
       launchOp.getBlockSizeOperandValues(), kernelOperandValues);
   launchOp.erase();

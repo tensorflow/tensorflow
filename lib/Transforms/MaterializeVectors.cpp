@@ -238,7 +238,7 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
   return res;
 }
 
-static Operation *instantiate(FuncBuilder *b, Operation *opInst,
+static Operation *instantiate(OpBuilder *b, Operation *opInst,
                               VectorType hwVectorType,
                               DenseMap<Value *, Value *> *substitutionsMap);
 
@@ -257,7 +257,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
   if (it == substitutionsMap->end()) {
     auto *opInst = v->getDefiningOp();
     if (isa<ConstantOp>(opInst)) {
-      FuncBuilder b(opInst);
+      OpBuilder b(opInst);
       auto *op = instantiate(&b, opInst, hwVectorType, substitutionsMap);
       auto res = substitutionsMap->insert(std::make_pair(v, op->getResult(0)));
       assert(res.second && "Insertion failed");
@@ -331,7 +331,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// TODO(ntv): these implementation details should be captured in a
 /// vectorization trait at the op level directly.
 static SmallVector<mlir::Value *, 8>
-reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
+reindexAffineIndices(OpBuilder *b, VectorType hwVectorType,
                      ArrayRef<unsigned> hwVectorInstance,
                      ArrayRef<Value *> memrefIndices) {
   auto vectorShape = hwVectorType.getShape();
@@ -404,7 +404,7 @@ materializeAttributes(Operation *opInst, VectorType hwVectorType) {
 /// substitutionsMap.
 ///
 /// If the underlying substitution fails, this fails too and returns nullptr.
-static Operation *instantiate(FuncBuilder *b, Operation *opInst,
+static Operation *instantiate(OpBuilder *b, Operation *opInst,
                               VectorType hwVectorType,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   assert(!isa<VectorTransferReadOp>(opInst) &&
@@ -481,7 +481,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
 /// `hwVectorType` int the covering of the super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Operation *instantiate(FuncBuilder *b, VectorTransferReadOp read,
+static Operation *instantiate(OpBuilder *b, VectorTransferReadOp read,
                               VectorType hwVectorType,
                               ArrayRef<unsigned> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
@@ -505,7 +505,7 @@ static Operation *instantiate(FuncBuilder *b, VectorTransferReadOp read,
 /// `hwVectorType` int the covering of th3e super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Operation *instantiate(FuncBuilder *b, VectorTransferWriteOp write,
+static Operation *instantiate(OpBuilder *b, VectorTransferWriteOp write,
                               VectorType hwVectorType,
                               ArrayRef<unsigned> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
@@ -547,7 +547,7 @@ static bool instantiateMaterialization(Operation *op,
   LLVM_DEBUG(dbgs() << "\ninstantiate: " << *op);
 
   // Create a builder here for unroll-and-jam effects.
-  FuncBuilder b(op);
+  OpBuilder b(op);
   // AffineApplyOp are ignored: instantiating the proper vector op will take
   // care of AffineApplyOps by composing them properly.
   if (isa<AffineApplyOp>(op)) {

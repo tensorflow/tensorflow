@@ -31,7 +31,7 @@ namespace mlir {
 class AffineMap;
 class AffineForOp;
 class Function;
-class FuncBuilder;
+class OpBuilder;
 class Value;
 
 /// Unrolls this for operation completely if the trip count is known to be
@@ -80,7 +80,7 @@ void promoteSingleIterationLoops(Function *f);
 void getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
                               AffineMap *map,
                               SmallVectorImpl<Value *> *operands,
-                              FuncBuilder *builder);
+                              OpBuilder *builder);
 
 /// Skew the operations in the body of a 'affine.for' operation with the
 /// specified operation-wise shifts. The shifts are with respect to the

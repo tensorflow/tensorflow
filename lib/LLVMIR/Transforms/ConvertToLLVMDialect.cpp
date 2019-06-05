@@ -889,7 +889,7 @@ static void ensureDistinctSuccessors(Block &bb) {
          position != end; ++position) {
       auto *dummyBlock = new Block();
       bb.getParent()->push_back(dummyBlock);
-      auto builder = FuncBuilder(dummyBlock);
+      auto builder = OpBuilder(dummyBlock);
       SmallVector<Value *, 8> operands(
           terminator->getSuccessorOperands(*position));
       builder.create<BranchOp>(terminator->getLoc(), successor.first, operands);

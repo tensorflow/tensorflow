@@ -113,9 +113,9 @@ public:
 
   /// Return a Builder set up to insert operations immediately before the
   /// terminator.
-  FuncBuilder getBodyBuilder() {
+  OpBuilder getBodyBuilder() {
     Block *body = getBody();
-    return FuncBuilder(body, std::prev(body->end()));
+    return OpBuilder(body, std::prev(body->end()));
   }
 
   /// Get the body of the ForOp.
@@ -408,7 +408,7 @@ public:
   unsigned getNumInputsAndOutputs() {
     return impl->getNumInputsAndOutputs(getOperation());
   }
-  Operation *create(FuncBuilder &builder, Location loc,
+  Operation *create(OpBuilder &builder, Location loc,
                     ArrayRef<Value *> operands) {
     return impl->create(builder, loc, operands);
   }
@@ -425,7 +425,7 @@ private:
     virtual unsigned getNumReductionLoops(Operation *op) = 0;
     virtual unsigned getNumWindowLoops(Operation *op) = 0;
     virtual unsigned getNumLoops(Operation *op) = 0;
-    virtual Operation *create(FuncBuilder &builder, Location loc,
+    virtual Operation *create(OpBuilder &builder, Location loc,
                               ArrayRef<Value *> operands) = 0;
   };
 
@@ -458,7 +458,7 @@ private:
     unsigned getNumLoops(Operation *op) override {
       return cast<ConcreteOp>(op).getNumLoops();
     }
-    Operation *create(FuncBuilder &builder, Location loc,
+    Operation *create(OpBuilder &builder, Location loc,
                       ArrayRef<Value *> operands) override {
       return builder.create<ConcreteOp>(loc, operands);
     }

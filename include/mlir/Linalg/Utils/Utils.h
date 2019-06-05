@@ -88,7 +88,7 @@ SmallVector<Value *, 8> getViewSizes(LinalgOp &linalgOp);
 
 /// Returns the values obtained by applying `map` to the list of values.
 /// Performs simplifications and foldings where possible.
-SmallVector<Value *, 4> applyMapToValues(FuncBuilder *b, Location loc,
+SmallVector<Value *, 4> applyMapToValues(OpBuilder *b, Location loc,
                                          AffineMap map,
                                          ArrayRef<Value *> values,
                                          FunctionConstants &state);

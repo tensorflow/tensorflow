@@ -2302,11 +2302,11 @@ public:
   /// more specific builder type.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wshadow-field"
-  FuncBuilder builder;
+  OpBuilder builder;
 #pragma clang diagnostic pop
 
   FunctionParser(ParserState &state, Function *function)
-      : Parser(state), builder(function), function(function) {}
+      : Parser(state), builder(function->getBody()), function(function) {}
 
   ~FunctionParser();
 

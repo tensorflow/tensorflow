@@ -184,7 +184,7 @@ void InferQuantizedTypesPass::transformOperandType(CAGOperandAnchor *anchor,
                                                    Type newType) {
   Value *inputValue = anchor->getValue();
   Operation *op = anchor->getOp();
-  FuncBuilder b(op->getBlock(), Block::iterator(op));
+  OpBuilder b(op->getBlock(), Block::iterator(op));
 
   SmallVector<Value *, 1> removeValuesIfDead;
 
@@ -240,7 +240,7 @@ void InferQuantizedTypesPass::transformResultType(CAGResultAnchor *anchor,
                                                   Type newType) {
   Value *origResultValue = anchor->getValue();
   Operation *op = origResultValue->getDefiningOp();
-  FuncBuilder b(op->getBlock(), ++Block::iterator(op));
+  OpBuilder b(op->getBlock(), ++Block::iterator(op));
 
   Value *replacedResultValue = nullptr;
   Value *newResultValue = nullptr;

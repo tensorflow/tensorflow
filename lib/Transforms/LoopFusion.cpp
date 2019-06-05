@@ -1006,9 +1006,9 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   auto *forInst = forOp.getOperation();
 
   // Create builder to insert alloc op just before 'forOp'.
-  FuncBuilder b(forInst);
+  OpBuilder b(forInst);
   // Builder to create constants at the top level.
-  FuncBuilder top(forInst->getFunction());
+  OpBuilder top(forInst->getFunction()->getBody());
   // Create new memref type based on slice bounds.
   auto *oldMemRef = cast<StoreOp>(srcStoreOpInst).getMemRef();
   auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
