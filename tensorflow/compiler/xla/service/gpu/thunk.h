@@ -93,7 +93,8 @@ class Thunk {
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
     RunId run_id;
-    HloExecutionProfiler* profiler;  // never null
+    HloExecutionProfiler* profiler;       // never null
+    const DeviceAssignment* device_assn;  // never null
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be
