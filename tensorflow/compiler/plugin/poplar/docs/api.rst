@@ -39,6 +39,10 @@ Python API
   :members:
   :noindex:
 
+.. automodule:: tensorflow.contrib.ipu.python.poprand
+  :members:
+  :noindex:
+
 .. automodule:: tensorflow.contrib.ipu.python.popops_cross_replica_sum
   :members:
   :noindex:
