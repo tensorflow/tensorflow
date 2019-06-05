@@ -44,8 +44,8 @@ def ExtractBitsFromFloat16(x):
 
 
 def SlowAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
-  tensor_proto.half_val.extend(
-      [ExtractBitsFromFloat16(x) for x in proto_values])
+  tensor_proto.half_val.extend(np.asarray(proto_values, dtype=np.float16).view(np.uint16))
+
 
 
 def _MediumAppendFloat16ArrayToTensorProto(tensor_proto, proto_values):
