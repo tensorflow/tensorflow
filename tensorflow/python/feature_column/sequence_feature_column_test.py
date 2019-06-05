@@ -1553,6 +1553,8 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(column.shape, (2,))
     self.assertEqual(column.default_value, 3)
     self.assertEqual(column.normalizer_fn(3), 45)
+    with self.assertRaises(ValueError):
+      serialization.serialize_feature_column(int())
 
   def test_parents(self):
     """Tests parents attribute of column."""
