@@ -499,7 +499,6 @@ tf_cuda_library(
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/util/proto:proto_utils",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -4070,14 +4069,12 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":eigen_contraction_kernel",
-        ":gpu_utils",
         ":image_resizer_state",
         ":fill_functor",
         ":fused_eigen_output_kernels",
         ":ops_util",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -4091,11 +4088,6 @@ tf_kernel_library(
     }) + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-        "//tensorflow/stream_executor:tf_allocator_adapter",
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/core:stream_executor",
     ]),
 )
 
