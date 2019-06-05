@@ -244,29 +244,20 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                        "of the factory methods instead (e.g., "
                        "RaggedTensor.from_row_lengths())")
 
-    # TODO(b/133606651) Remove is_tensor_spec code paths -- replaced by TypeSpec
-    is_tensor_spec = isinstance(row_splits, tensor_spec.TensorSpec)
-    if is_tensor_spec:
-      if not (isinstance(values, tensor_spec.TensorSpec) or
-              (isinstance(values, RaggedTensor) and
-               isinstance(values.row_splits, tensor_spec.TensorSpec))):
-        raise TypeError("Expected values to be a TensorSpec, got %r" % values)
-    else:
-      # Validate the arguments.
-      if not isinstance(row_splits, ops.Tensor):
-        raise TypeError("Row-partitioning argument must be a Tensor, got %r" %
-                        row_splits)
-      if not isinstance(values, (RaggedTensor, ops.Tensor)):
-        raise TypeError("values must be a Tensor or RaggedTensor, got %r" %
-                        values)
-      if row_splits.dtype not in (dtypes.int32, dtypes.int64):
-        raise ValueError("Row-partitioning argument must be int32 or int64")
+    # Validate the arguments.
+    if not isinstance(row_splits, ops.Tensor):
+      raise TypeError("Row-partitioning argument must be a Tensor, got %r" %
+                      row_splits)
+    if not isinstance(values, (RaggedTensor, ops.Tensor)):
+      raise TypeError("values must be a Tensor or RaggedTensor, got %r" %
+                      values)
+    if row_splits.dtype not in (dtypes.int32, dtypes.int64):
+      raise ValueError("Row-partitioning argument must be int32 or int64")
 
     # Validate shapes & dtypes.
     row_splits.shape.assert_has_rank(1)
     values.shape.with_rank_at_least(1)
-    if not is_tensor_spec:
-      row_splits.set_shape([None])
+    row_splits.set_shape([None])
     if isinstance(values, RaggedTensor):
       assert row_splits.dtype == values.row_splits.dtype
 

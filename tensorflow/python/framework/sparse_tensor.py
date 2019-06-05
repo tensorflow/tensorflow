@@ -119,23 +119,14 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
     """
-    if isinstance(indices, tensor_spec.TensorSpec):
-      # TODO(b/133606651) Remove this code path -- replaced by TypeSpec.
-      if not isinstance(values, tensor_spec.TensorSpec):
-        raise TypeError("Expected values to be a TensorSpec")
-      if not isinstance(dense_shape, tensor_spec.TensorSpec):
-        raise TypeError("Expected dense_shape to be a TensorSpec")
-      if indices.dtype != dtypes.int64 or dense_shape.dtype != dtypes.int64:
-        raise TypeError("indices and dense_shape must have dtype=int64")
-    else:
-      with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
-        indices = ops.convert_to_tensor(
-            indices, name="indices", dtype=dtypes.int64)
-        # TODO(touts): Consider adding mutable_values() when 'values'
-        # is a VariableOp and updating users of SparseTensor.
-        values = ops.internal_convert_to_tensor(values, name="values")
-        dense_shape = ops.convert_to_tensor(
-            dense_shape, name="dense_shape", dtype=dtypes.int64)
+    with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
+      indices = ops.convert_to_tensor(
+          indices, name="indices", dtype=dtypes.int64)
+      # TODO(touts): Consider adding mutable_values() when 'values'
+      # is a VariableOp and updating users of SparseTensor.
+      values = ops.internal_convert_to_tensor(values, name="values")
+      dense_shape = ops.convert_to_tensor(
+          dense_shape, name="dense_shape", dtype=dtypes.int64)
     self._indices = indices
     self._values = values
     self._dense_shape = dense_shape

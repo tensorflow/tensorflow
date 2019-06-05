@@ -88,10 +88,7 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
-    # TODO(b/133606651) Remove this conditional (and get rid of the LazyLoader
-    # import of tensor_spec) once TypeSpecs have been added.
-    if not isinstance(values, tensor_spec.TensorSpec):
-      ops._get_graph_from_inputs([values, indices, dense_shape])  # pylint: disable=protected-access
+    ops._get_graph_from_inputs([values, indices, dense_shape])  # pylint: disable=protected-access
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape
