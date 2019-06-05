@@ -1059,7 +1059,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Positive) {
       "         }"
       "       }"
       "       tensor_content: "
-      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000\\000\\000\\001\\000"
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000"
+      "\\000\\000\\001\\000"
       "\\000\\000'"
       "     }"
       "   }"
@@ -1213,7 +1214,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
       "         }"
       "       }"
       "       tensor_content: "
-      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000\\000\\000\\001\\000"
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000"
+      "\\000\\000\\001\\000"
       "\\000\\000'"
       "     }"
       "   }"
@@ -1237,7 +1239,8 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
       "         }"
       "       }"
       "       tensor_content: "
-      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000\\000\\000\\001\\000"
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004\\000"
+      "\\000\\000\\001\\000"
       "\\000\\000'"
       "     }"
       "   }"
@@ -1336,16 +1339,17 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
       "node { name: 'Relu' op: 'Relu'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['Transpose1'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);"
-            "DMT/_1(Const);DMT/_2(Const);Input0(Input);Input1(Input);"
-            "Relu(_MklRelu);Transpose0(Transpose);"
-            "Transpose1(Transpose)|Const0->Transpose0:1;"
-            "Const1->Transpose1:1;Conv3D->Transpose1;"
-            "DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;DMT/_2->Relu:1;"
-            "Input0->Transpose0;Input1->Conv3D:1;Transpose0->Conv3D;"
-            "Transpose0:control->DMT/_0:control;Transpose0:control->DMT/_1:control;"
-            "Transpose1->Relu;Transpose1:control->DMT/_2:control");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);"
+      "DMT/_1(Const);DMT/_2(Const);Input0(Input);Input1(Input);"
+      "Relu(_MklRelu);Transpose0(Transpose);"
+      "Transpose1(Transpose)|Const0->Transpose0:1;"
+      "Const1->Transpose1:1;Conv3D->Transpose1;"
+      "DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;DMT/_2->Relu:1;"
+      "Input0->Transpose0;Input1->Conv3D:1;Transpose0->Conv3D;"
+      "Transpose0:control->DMT/_0:control;Transpose0:control->DMT/_1:control;"
+      "Transpose1->Relu;Transpose1:control->DMT/_2:control");
 }
 
 /////////////////////////////////////////////////////////////////////

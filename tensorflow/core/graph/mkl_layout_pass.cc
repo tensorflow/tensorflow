@@ -634,8 +634,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          CopyAttrsConv});
 
     // Transpose + Conv3d + Transpose:
-    std::vector<int> transpose_to_ndhwc = {NCDHW::dim::N, NCDHW::dim::D, NCDHW::dim::H, NCDHW::dim::W, NCDHW::dim::C};
-    std::vector<int> transpose_to_ncdhw = {NDHWC::dim::N, NDHWC::dim::C, NDHWC::dim::D, NDHWC::dim::H, NDHWC::dim::W};
+    std::vector<int> transpose_to_ndhwc = {NCDHW::dim::N, NCDHW::dim::D,
+                                           NCDHW::dim::H, NCDHW::dim::W,
+                                           NCDHW::dim::C};
+    std::vector<int> transpose_to_ncdhw = {NDHWC::dim::N, NDHWC::dim::C,
+                                           NDHWC::dim::D, NDHWC::dim::H,
+                                           NDHWC::dim::W};
 
     auto CheckForTransposeToNDHWC =
         std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_ndhwc);
