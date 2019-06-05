@@ -38,6 +38,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
+from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -54,6 +55,7 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking.tracking import AutoTrackable
+from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -81,6 +83,10 @@ sequential = LazyLoader(
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
+input_layer = LazyLoader(
+    "input_layer", globals(),
+    "tensorflow.python.keras.engine.input_layer")
+
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -713,7 +719,7 @@ def serialize_all_attributes(layer, serialization_cache):
   except (ValueError, TypeError) as e:
     logging.warning('Skipping full serialization of object {}, because an '
                     'error occurred while tracing layer functions. Error '
-                    'message: {}'.format(layer, e.message))
+                    'message: {}'.format(layer, e))
   else:
     # Add checkpointable objects and functions to the SerializedAttribute object
     # only if all functions are successfully traced.
@@ -743,10 +749,6 @@ def _should_skip_serialization(layer):
     else:
       return False
   else:
-    if not layer.input_spec:
-      logging.warning('Skipping full serialization of Keras layer {}, because '
-                      'it does not have an input spec defined.'.format(layer))
-      return True
     if not layer.built:
       logging.warning('Skipping full serialization of Keras layer {}, because '
                       'it is not built.'.format(layer))
@@ -771,8 +773,7 @@ def _wrap_layer_objects(layer, serialization_cache):
   # First, generate list of all regularization losses in this layer and
   # sublayers.
   regularization_losses = layer._callable_losses[:]  # pylint: disable=protected-access
-  for child_layer in (
-      trackable_layer_utils.filter_empty_layer_containers(layer._layers)):  # pylint: disable=protected-access
+  for child_layer in _list_all_layers(layer):
     regularization_losses.extend(child_layer._callable_losses)  # pylint: disable=protected-access
   # Next, wrap all loss functions as tf.functions. Use the serialization cache
   # to store already-wrapped functions.
@@ -791,9 +792,7 @@ def _wrap_layer_objects(layer, serialization_cache):
           layer.trainable_variables),
       non_trainable_variables=data_structures.ListWrapper(
           layer.non_trainable_variables),
-      layers=data_structures.ListWrapper(
-          trackable_layer_utils.filter_empty_layer_containers(
-              layer._layers)),  # pylint: disable=protected-access
+      layers=data_structures.ListWrapper(_list_all_layers(layer)),
       metrics=data_structures.ListWrapper(layer.metrics),
       regularization_losses=data_structures.ListWrapper(
           wrapped_loss_functions))
@@ -857,6 +856,13 @@ def _wrap_layer_functions(layer, serialization_cache,
   return fns
 
 
+def _list_all_layers(obj):
+  if isinstance(obj, training_lib.Model):
+    return obj.layers
+  else:
+    return trackable_layer_utils.filter_empty_layer_containers(obj._layers)  # pylint: disable=protected-access
+
+
 def _replace_child_layer_functions(layer, serialization_cache):
   """Replaces functions in the children layers with wrapped tf.functions.
 
@@ -882,8 +888,7 @@ def _replace_child_layer_functions(layer, serialization_cache):
       }
   """
   original_attrs = {}
-  for child_layer in trackable_layer_utils.filter_empty_layer_containers(
-      layer._layers):  # pylint: disable=protected-access
+  for child_layer in _list_all_layers(layer):
     # Save symbolic layer losses, which will be restored to maintain the same
     # state.
     original_attrs[child_layer] = {'losses': child_layer._losses[:]}  # pylint: disable=protected-access
@@ -934,14 +939,15 @@ def _use_wrapped_call(layer, call_fn):
     function that calls call_fn and returns the outputs. Losses returned by
     call_fn are added to the layer losses.
   """
-  def wrapped_call(inputs, *args, **kwargs):
+  # TODO(kathywu): Support mask argument and multi-input call functions.
+  def wrapped_call(inputs, **kwargs):
     """Returns the outputs from the call_fn, and adds the losses."""
     if layer._expects_training_arg:  # pylint: disable=protected-access
       training = kwargs.pop('training', None)
       if training is None:
         training = K.learning_phase()
       training = math_ops.cast(training, dtypes.bool)
-      outputs, losses = call_fn(inputs, training=training, *args, **kwargs)
+      outputs, losses = call_fn(inputs, training=training)
     else:
       outputs, losses = call_fn(inputs)
     layer.add_loss(losses, inputs)
@@ -963,7 +969,7 @@ def _wrap_call_and_conditional_losses(layer):
     activity regularizer
   """
   if isinstance(layer, RevivedLayer):
-    return layer.call_and_return_conditional_losses
+    return layer.keras_api.call_and_return_conditional_losses
 
   if (isinstance(layer.call, def_function.Function) and
       layer.call.input_signature is not None):
@@ -972,7 +978,7 @@ def _wrap_call_and_conditional_losses(layer):
     if (isinstance(layer, training_lib.Model) and
         saving_utils.model_input_signature(layer) is not None):
       input_signature = saving_utils.model_input_signature(layer)
-    else:
+    elif layer.input_spec is not None:
       input_signature = [nest.map_structure(
           lambda x: input_spec.to_tensor_spec(x, layer.dtype),
           layer.input_spec)]
@@ -981,6 +987,8 @@ def _wrap_call_and_conditional_losses(layer):
         if spec.shape == tensor_shape.TensorShape(None):
           input_signature = None
           break
+    else:
+      input_signature = None
 
     if input_signature is not None and layer._expects_training_arg:  # pylint: disable=protected-access
       input_signature.append(
@@ -1007,7 +1015,7 @@ def _wrap_call_and_conditional_losses(layer):
 def _extract_outputs_from_fn(layer, call_and_return_conditional_losses):
   """Returns a function that returns only call function outputs."""
   if isinstance(layer, RevivedLayer):
-    return layer._original_call  # pylint: disable=protected-access
+    return layer.keras_api.__call__  # pylint: disable=protected-access
   if layer._expects_training_arg:  # pylint: disable=protected-access
     def call(inputs, training):
       return call_and_return_conditional_losses(inputs, training)[0]
@@ -1076,7 +1084,7 @@ def _wrap_activity_regularizer(layer):
       input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
 
 
-def load_from_saved_model_v2(path):
+def load_from_saved_model_v2(path, compile=True):  # pylint: disable=redefined-builtin
   """Loads Keras objects from a SavedModel.
 
   Any Keras layer or model saved to the SavedModel will be loaded back
@@ -1092,13 +1100,27 @@ def load_from_saved_model_v2(path):
 
   Args:
     path: Path to SavedModel.
+    compile: If true, compile the model after loading it.
 
   Returns:
     Object loaded from SavedModel.
   """
   # TODO(kathywu): Add saving/loading of optimizer, compiled losses and metrics.
   # TODO(kathywu): Add code to load from objects that contain all endpoints
-  return load.load_internal(path, loader_cls=KerasObjectLoader)
+  model = load.load_internal(path, loader_cls=KerasObjectLoader)
+
+  if isinstance(model, RevivedModel) and compile:
+    # TODO(kathywu): Use compiled objects from SavedModel, instead of
+    # creating new objects from the training config.
+    if model._training_config is not None:  # pylint: disable=protected-access
+      model.compile(**saving_utils.compile_args_from_training_config(
+          model._training_config))  # pylint: disable=protected-access
+
+  return model
+
+PUBLIC_ATTRIBUTES = CommonEndpoints.all_functions.union(
+    CommonEndpoints.all_checkpointable_objects)
+PUBLIC_ATTRIBUTES.add(_KERAS_ATTR)
 
 
 class KerasObjectLoader(load.Loader):
@@ -1111,6 +1133,20 @@ class KerasObjectLoader(load.Loader):
   def _finalize(self):
     # pylint: disable=protected-access
     for node in self._nodes:
+      if isinstance(node, RevivedModel):
+        input_signature = (
+            node.keras_api.call_and_return_conditional_losses.input_signature[0]
+            )
+        if isinstance(node, RevivedSequential):
+          with trackable.no_automatic_dependency_tracking_scope(node):
+            node._layers = []
+          for layer in node.keras_api.layers:
+            node.add(layer)
+
+        if not node.inputs:
+          # Since this revived object is technically a subclassed model (even if
+          # the original model is functional/sequential), inputs should be set.
+          node._set_inputs(input_signature)
       if isinstance(node, RevivedLayer):
         losses = node._serialized_attributes.get('regularization_losses', [])
         for loss in losses:
@@ -1122,20 +1158,25 @@ class KerasObjectLoader(load.Loader):
           node.activity_regularizer = getattr(node.keras_api,
                                               'activity_regularizer_fn', None)
 
-      if isinstance(node, RevivedModel):
-        # Since this revived object is technically a subclassed model (even if
-        # the original model is functional/sequential), inputs should be set.
-        input_signature = (
-            node.keras_api.call_and_return_conditional_losses.input_signature[0]
-            )
-        node._set_inputs(input_signature)
+        # Now that the node object has been fully loaded and restored from the,
+        # checkpoint, the object no longer needs to track objects added from
+        # SerializedAttributes. (Note that saving a training checkpoint still
+        # functions correctly, because layers and variables are tracked
+        # separately by the Layer object.)
+        # TODO(kathywu): Instead of outright deleting these nodes (which would
+        # make restoring from a different checkpoint tricky), mark them as extra
+        # dependencies that are OK to overwrite.
+        for name in PUBLIC_ATTRIBUTES:
+          delete_tracking(node, name)
+
     # pylint: enable=protected-access
 
   def _recreate_base_user_object(self, proto):
     revived_classes = {
         '_tf_keras_layer': (RevivedLayer, base_layer.Layer),
         '_tf_keras_network': (RevivedNetwork, network_lib.Network),
-        '_tf_keras_model': (RevivedModel, training_lib.Model)
+        '_tf_keras_model': (RevivedModel, training_lib.Model),
+        '_tf_keras_sequential': (RevivedSequential, models_lib.Sequential)
     }
 
     parent_classes = revived_classes.get(proto.identifier, None)
@@ -1193,9 +1234,9 @@ class RevivedLayer(object):
 
   def _revive_setter(self, name, value):
     """Reattaches attributes from the SavedModel to the newly revived object."""
-    if (name in CommonEndpoints.all_functions or
-        name in CommonEndpoints.all_checkpointable_objects or
-        name == _KERAS_ATTR):
+    if name in PUBLIC_ATTRIBUTES:
+      if isinstance(value, trackable.Trackable):
+        self._track_trackable(value, name=name)
       self._serialized_attributes[name] = value
     else:
       setattr(self, name, value)
@@ -1258,7 +1299,50 @@ class RevivedModel(RevivedNetwork):
     revived_obj = super(RevivedModel, cls)._init_from_metadata(metadata)
 
     with trackable.no_automatic_dependency_tracking_scope(revived_obj):
-      if 'training_config' in metadata:
-        revived_obj._training_config = metadata['training_config']  # pylint:disable=protected-access
+      revived_obj._training_config = metadata.get('training_config')  # pylint:disable=protected-access
 
     return revived_obj
+
+
+class RevivedSequential(RevivedModel):
+  """Keras sequential model loaded from a SavedModel."""
+
+  @classmethod
+  def _init_from_metadata(cls, metadata):
+    """Create revived Sequential model from SavedModel metadata."""
+    revived_obj = super(RevivedSequential, cls)._init_from_metadata(metadata)
+    return revived_obj
+
+  def call(self, *args, **kwargs):
+    return models_lib.Sequential.call(self, *args, **kwargs)
+
+
+def save(model, filepath, overwrite, include_optimizer):
+  """Saves a model as a SavedModel to the filepath.
+
+  Args:
+    model: Keras model instance to be saved.
+    filepath: String path to save the model.
+    overwrite: whether to overwrite the existing filepath.
+    include_optimizer: If True, save the model's optimizer state.
+
+  Raises:
+    ValueError: if the model's inputs have not been defined.
+  """
+  # If file exists and should not be overwritten.
+  if not overwrite and os.path.exists(filepath):
+    proceed = ask_to_proceed_with_overwrite(filepath)
+    if not proceed:
+      return
+
+  if _should_skip_serialization(model):
+    saving_utils.raise_model_input_error(model)
+
+  if not include_optimizer:
+    orig_optimizer = model.optimizer
+    model.optimizer = None
+
+  save_lib.save(model, filepath)
+
+  if not include_optimizer:
+    model.optimizer = orig_optimizer

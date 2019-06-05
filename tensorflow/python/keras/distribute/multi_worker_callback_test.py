@@ -145,8 +145,11 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     # ensure every worker has a unique path. Note that in normal use case the
     # saving_filepath will be the same for all workers, but we use different
     # ones here just to test out chief saves checkpoint but non-chief doesn't.
+
+    # TODO(b/134551335): Must save to hdf5 until bug with copying
+    # MirroredVariables is resolved.
     saving_filepath = os.path.join(
-        test_obj.get_temp_dir(), 'checkpoint_%s_%d' %
+        test_obj.get_temp_dir(), 'checkpoint_%s_%d.h5' %
         (test_base.get_task_type(), test_base.get_task_index()))
 
     # The saving_filepath shouldn't exist at the beginning (as it's unique).
