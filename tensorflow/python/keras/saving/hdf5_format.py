@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
@@ -202,7 +203,10 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
           optimizer_config, custom_objects=custom_objects)
 
       # Recover loss functions and metrics.
-      loss = convert_custom_objects(training_config['loss'])
+      loss_config = training_config['loss']  # Deserialize loss class.
+      if isinstance(loss_config, dict) and 'class_name' in loss_config:
+        loss_config = losses.get(loss_config)
+      loss = convert_custom_objects(loss_config)
       metrics = convert_custom_objects(training_config['metrics'])
       weighted_metrics = convert_custom_objects(
           training_config.get('weighted_metrics', None))
