@@ -238,6 +238,9 @@ struct OneHotOptionsT;
 struct AbsOptions;
 struct AbsOptionsT;
 
+struct HardSwishOptions;
+struct HardSwishOptionsT;
+
 struct LogicalAndOptions;
 struct LogicalAndOptionsT;
 
@@ -573,11 +576,12 @@ enum BuiltinOperator {
   BuiltinOperator_QUANTIZE = 114,
   BuiltinOperator_MATRIX_SET_DIAG = 115,
   BuiltinOperator_ROUND = 116,
+  BuiltinOperator_HARD_SWISH = 117,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_ROUND
+  BuiltinOperator_MAX = BuiltinOperator_HARD_SWISH
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[116] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[117] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -694,7 +698,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[116] {
     BuiltinOperator_MATRIX_DIAG,
     BuiltinOperator_QUANTIZE,
     BuiltinOperator_MATRIX_SET_DIAG,
-    BuiltinOperator_ROUND
+    BuiltinOperator_ROUND,
+    BuiltinOperator_HARD_SWISH
   };
   return values;
 }
@@ -818,13 +823,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "QUANTIZE",
     "MATRIX_SET_DIAG",
     "ROUND",
+    "HARD_SWISH",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (e < BuiltinOperator_ADD || e > BuiltinOperator_ROUND) return "";
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_HARD_SWISH) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -921,11 +927,12 @@ enum BuiltinOptions {
   BuiltinOptions_MatrixDiagOptions = 88,
   BuiltinOptions_QuantizeOptions = 89,
   BuiltinOptions_MatrixSetDiagOptions = 90,
+  BuiltinOptions_HardSwishOptions = 91,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_MatrixSetDiagOptions
+  BuiltinOptions_MAX = BuiltinOptions_HardSwishOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[91] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[92] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1017,7 +1024,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[91] {
     BuiltinOptions_ReverseSequenceOptions,
     BuiltinOptions_MatrixDiagOptions,
     BuiltinOptions_QuantizeOptions,
-    BuiltinOptions_MatrixSetDiagOptions
+    BuiltinOptions_MatrixSetDiagOptions,
+    BuiltinOptions_HardSwishOptions
   };
   return values;
 }
@@ -1115,13 +1123,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "MatrixDiagOptions",
     "QuantizeOptions",
     "MatrixSetDiagOptions",
+    "HardSwishOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (e < BuiltinOptions_NONE || e > BuiltinOptions_MatrixSetDiagOptions) return "";
+  if (e < BuiltinOptions_NONE || e > BuiltinOptions_HardSwishOptions) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1488,6 +1497,10 @@ template<> struct BuiltinOptionsTraits<QuantizeOptions> {
 
 template<> struct BuiltinOptionsTraits<MatrixSetDiagOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_MatrixSetDiagOptions;
+};
+
+template<> struct BuiltinOptionsTraits<HardSwishOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_HardSwishOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2241,6 +2254,14 @@ struct BuiltinOptionsUnion {
   const MatrixSetDiagOptionsT *AsMatrixSetDiagOptions() const {
     return type == BuiltinOptions_MatrixSetDiagOptions ?
       reinterpret_cast<const MatrixSetDiagOptionsT *>(value) : nullptr;
+  }
+  HardSwishOptionsT *AsHardSwishOptions() {
+    return type == BuiltinOptions_HardSwishOptions ?
+      reinterpret_cast<HardSwishOptionsT *>(value) : nullptr;
+  }
+  const HardSwishOptionsT *AsHardSwishOptions() const {
+    return type == BuiltinOptions_HardSwishOptions ?
+      reinterpret_cast<const HardSwishOptionsT *>(value) : nullptr;
   }
 };
 
@@ -6861,6 +6882,46 @@ inline flatbuffers::Offset<AbsOptions> CreateAbsOptions(
 
 flatbuffers::Offset<AbsOptions> CreateAbsOptions(flatbuffers::FlatBufferBuilder &_fbb, const AbsOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct HardSwishOptionsT : public flatbuffers::NativeTable {
+  typedef HardSwishOptions TableType;
+  HardSwishOptionsT() {
+  }
+};
+
+struct HardSwishOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef HardSwishOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  HardSwishOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(HardSwishOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<HardSwishOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const HardSwishOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct HardSwishOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit HardSwishOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  HardSwishOptionsBuilder &operator=(const HardSwishOptionsBuilder &);
+  flatbuffers::Offset<HardSwishOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<HardSwishOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<HardSwishOptions> CreateHardSwishOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  HardSwishOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<HardSwishOptions> CreateHardSwishOptions(flatbuffers::FlatBufferBuilder &_fbb, const HardSwishOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct LogicalAndOptionsT : public flatbuffers::NativeTable {
   typedef LogicalAndOptions TableType;
   LogicalAndOptionsT() {
@@ -8199,6 +8260,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const MatrixSetDiagOptions *builtin_options_as_MatrixSetDiagOptions() const {
     return builtin_options_type() == BuiltinOptions_MatrixSetDiagOptions ? static_cast<const MatrixSetDiagOptions *>(builtin_options()) : nullptr;
   }
+  const HardSwishOptions *builtin_options_as_HardSwishOptions() const {
+    return builtin_options_type() == BuiltinOptions_HardSwishOptions ? static_cast<const HardSwishOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8588,6 +8652,10 @@ template<> inline const QuantizeOptions *Operator::builtin_options_as<QuantizeOp
 
 template<> inline const MatrixSetDiagOptions *Operator::builtin_options_as<MatrixSetDiagOptions>() const {
   return builtin_options_as_MatrixSetDiagOptions();
+}
+
+template<> inline const HardSwishOptions *Operator::builtin_options_as<HardSwishOptions>() const {
+  return builtin_options_as_HardSwishOptions();
 }
 
 struct OperatorBuilder {
@@ -11080,6 +11148,29 @@ inline flatbuffers::Offset<AbsOptions> CreateAbsOptions(flatbuffers::FlatBufferB
       _fbb);
 }
 
+inline HardSwishOptionsT *HardSwishOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new HardSwishOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void HardSwishOptions::UnPackTo(HardSwishOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<HardSwishOptions> HardSwishOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const HardSwishOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateHardSwishOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<HardSwishOptions> CreateHardSwishOptions(flatbuffers::FlatBufferBuilder &_fbb, const HardSwishOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const HardSwishOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateHardSwishOptions(
+      _fbb);
+}
+
 inline LogicalAndOptionsT *LogicalAndOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new LogicalAndOptionsT();
   UnPackTo(_o, _resolver);
@@ -12234,6 +12325,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const MatrixSetDiagOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_HardSwishOptions: {
+      auto ptr = reinterpret_cast<const HardSwishOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -12612,6 +12707,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const MatrixSetDiagOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_HardSwishOptions: {
+      auto ptr = reinterpret_cast<const HardSwishOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -12978,6 +13077,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const MatrixSetDiagOptionsT *>(value);
       return CreateMatrixSetDiagOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_HardSwishOptions: {
+      auto ptr = reinterpret_cast<const HardSwishOptionsT *>(value);
+      return CreateHardSwishOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -13342,6 +13445,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_MatrixSetDiagOptions: {
       value = new MatrixSetDiagOptionsT(*reinterpret_cast<MatrixSetDiagOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_HardSwishOptions: {
+      value = new HardSwishOptionsT(*reinterpret_cast<HardSwishOptionsT *>(u.value));
       break;
     }
     default:
@@ -13798,6 +13905,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_MatrixSetDiagOptions: {
       auto ptr = reinterpret_cast<MatrixSetDiagOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_HardSwishOptions: {
+      auto ptr = reinterpret_cast<HardSwishOptionsT *>(value);
       delete ptr;
       break;
     }
