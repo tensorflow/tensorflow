@@ -24,8 +24,10 @@
 #include "mlir/Linalg/Passes.h"
 #include "mlir/Linalg/Utils/Utils.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
@@ -38,19 +40,20 @@ using namespace mlir::linalg;
 static SmallVector<Value *, 4> emitLoopRanges(OpBuilder *b, Location loc,
                                               AffineMap map,
                                               ArrayRef<Value *> allViewSizes,
-                                              FunctionConstants &state) {
+                                              OperationFolder &state) {
   // Apply `map` to get view sizes in loop order.
   auto sizes = applyMapToValues(b, loc, map, allViewSizes, state);
   // Create a new range with the applied tile sizes.
   SmallVector<Value *, 4> res;
   for (unsigned idx = 0, e = map.getNumResults(); idx < e; ++idx) {
-    res.push_back(b->create<RangeOp>(loc, state.getOrCreateIndex(0), sizes[idx],
-                                     state.getOrCreateIndex(1)));
+    res.push_back(b->create<RangeOp>(
+        loc, state.create<ConstantIndexOp>(*b, loc, 0), sizes[idx],
+        state.create<ConstantIndexOp>(*b, loc, 1)));
   }
   return res;
 }
 
-static void emitLinalgOpAsLoops(LinalgOp &linalgOp, FunctionConstants &state) {
+static void emitLinalgOpAsLoops(LinalgOp &linalgOp, OperationFolder &state) {
   OpBuilder b(linalgOp.getOperation());
   ScopedContext scope(b, linalgOp.getOperation()->getLoc());
   auto loopRanges = emitLoopRanges(
@@ -89,7 +92,7 @@ struct LowerLinalgToLoopsPass : public FunctionPass<LowerLinalgToLoopsPass> {
 
 void LowerLinalgToLoopsPass::runOnFunction() {
   auto &f = getFunction();
-  FunctionConstants state(f);
+  OperationFolder state(&f);
   f.walk<LinalgOp>([&state](LinalgOp linalgOp) {
     emitLinalgOpAsLoops(linalgOp, state);
     linalgOp.getOperation()->erase();

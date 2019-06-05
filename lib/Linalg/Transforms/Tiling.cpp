@@ -30,6 +30,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -60,7 +61,7 @@ static bool isZero(Value *v) {
 static SmallVector<Value *, 4>
 makeTiledLoopRanges(OpBuilder *b, Location loc, AffineMap map,
                     ArrayRef<Value *> allViewSizes,
-                    ArrayRef<Value *> allTileSizes, FunctionConstants &state) {
+                    ArrayRef<Value *> allTileSizes, OperationFolder &state) {
   assert(allTileSizes.size() == map.getNumResults());
   // Apply `map` to get view sizes in loop order.
   auto viewSizes = applyMapToValues(b, loc, map, allViewSizes, state);
@@ -77,7 +78,8 @@ makeTiledLoopRanges(OpBuilder *b, Location loc, AffineMap map,
   // Create a new range with the applied tile sizes.
   SmallVector<Value *, 4> res;
   for (unsigned idx = 0, e = tileSizes.size(); idx < e; ++idx) {
-    res.push_back(b->create<RangeOp>(loc, state.getOrCreateIndex(0),
+    res.push_back(b->create<RangeOp>(loc,
+                                     state.create<ConstantIndexOp>(*b, loc, 0),
                                      viewSizes[idx], tileSizes[idx]));
   }
   return res;
@@ -131,7 +133,7 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
                                               LinalgOp &linalgOp,
                                               ArrayRef<Value *> ivs,
                                               ArrayRef<Value *> tileSizes,
-                                              FunctionConstants &state) {
+                                              OperationFolder &state) {
   assert(ivs.size() == static_cast<size_t>(llvm::count_if(
                            llvm::make_range(tileSizes.begin(), tileSizes.end()),
                            [](Value *v) { return !isZero(v); })) &&
@@ -169,8 +171,9 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
         auto *foldedRange = foldRange(view, r);
         foldedRange
             ? newRanges.push_back(foldedRange)
-            : newRanges.push_back(range(state.getOrCreateIndex(0), dim(view, r),
-                                        state.getOrCreateIndex(1)));
+            : newRanges.push_back(
+                  range(state.create<ConstantIndexOp>(*b, loc, 0), dim(view, r),
+                        state.create<ConstantIndexOp>(*b, loc, 1)));
         continue;
       }
 
@@ -192,7 +195,8 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
       ValueHandle ub = select(viewSize < steppedlb, viewSize, steppedlb);
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
-      newRanges.push_back(range(lb, ub, state.getOrCreateIndex(1)));
+      newRanges.push_back(
+          range(lb, ub, state.create<ConstantIndexOp>(*b, loc, 1)));
     }
     // res.push_back(createOrReturnView(b, loc, viewDefiningOp, newRanges));
     res.push_back(b->create<SliceOp>(loc, view, newRanges));
@@ -201,7 +205,7 @@ static SmallVector<Value *, 4> makeTiledViews(OpBuilder *b, Location loc,
 }
 
 static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
-                                  FunctionConstants &state) {
+                                  OperationFolder &state) {
   // Enforce the convention that "tiling by zero" skips tiling a particular
   // dimension. This convention is significantly simpler to handle instead of
   // adjusting affine maps to account for missing dimensions.
@@ -236,7 +240,7 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<Value *> tileSizes,
 }
 
 static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
-                                  FunctionConstants &state) {
+                                  OperationFolder &state) {
   if (tileSizes.empty())
     return failure();
 
@@ -250,15 +254,19 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
   if (llvm::all_of(tileSizes, [](int64_t v) { return v == 0; }))
     return failure();
 
+  // Create a builder for tile size constants.
+  OpBuilder builder(op);
+  auto loc = op.getLoc();
+
   // Materialize concrete tile size values to pass the generic tiling function.
   SmallVector<Value *, 8> tileSizeValues;
   tileSizeValues.reserve(tileSizes.size());
   for (auto ts : tileSizes)
-    tileSizeValues.push_back(state.getOrCreateIndex(ts));
+    tileSizeValues.push_back(state.create<ConstantIndexOp>(builder, loc, ts));
   // Pad tile sizes with zero values to enforce our convention.
   if (tileSizeValues.size() < nLoops) {
     for (unsigned i = tileSizeValues.size(); i < nLoops; ++i)
-      tileSizeValues.push_back(state.getOrCreateIndex(0));
+      tileSizeValues.push_back(state.create<ConstantIndexOp>(builder, loc, 0));
   }
 
   return tileLinalgOp(op, tileSizeValues, state);
@@ -266,14 +274,14 @@ static LogicalResult tileLinalgOp(LinalgOp &op, ArrayRef<int64_t> tileSizes,
 
 // TODO(ntv) expose as a primitive for other passes.
 static LogicalResult tileLinalgOp(Operation *op, ArrayRef<int64_t> tileSizes,
-                                  FunctionConstants &state) {
+                                  OperationFolder &state) {
   if (auto linalgOp = dyn_cast<LinalgOp>(op))
     return tileLinalgOp(linalgOp, tileSizes, state);
   return failure();
 }
 
 static void tileLinalgOps(Function &f, ArrayRef<int64_t> tileSizes) {
-  FunctionConstants state(f);
+  OperationFolder state(&f);
   f.walk([tileSizes, &state](Operation *op) {
     if (succeeded(tileLinalgOp(op, tileSizes, state)))
       op->erase();

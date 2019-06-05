@@ -77,7 +77,7 @@ OperationFolder::tryToFold(Operation *op,
 }
 
 /// Tries to perform folding on the given `op`. If successful, populates
-/// `results` with the results of the foldin.
+/// `results` with the results of the folding.
 LogicalResult OperationFolder::tryToFold(Operation *op,
                                          SmallVectorImpl<Value *> &results) {
   assert(op->getFunction() == function &&

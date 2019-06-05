@@ -22,6 +22,7 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+class OperationFolder;
 
 namespace edsc {
 
@@ -69,18 +70,6 @@ private:
 namespace linalg {
 class LinalgOp;
 
-/// Helper class to memoize the creation of redundant constants within a given
-/// function.
-class FunctionConstants {
-public:
-  FunctionConstants(Function &f) : f(f) {}
-  Value *getOrCreateIndex(int64_t v);
-
-private:
-  Function &f;
-  llvm::SmallDenseMap<int64_t, Value *> map;
-};
-
 // Returns the linearized list of all view dimensions in a linalgOp. Applying
 // the inverse, concatenated loopToOperandRangeMaps to this list allows the
 // derivation of loop ranges for any linalgOp.
@@ -91,7 +80,7 @@ SmallVector<Value *, 8> getViewSizes(LinalgOp &linalgOp);
 SmallVector<Value *, 4> applyMapToValues(OpBuilder *b, Location loc,
                                          AffineMap map,
                                          ArrayRef<Value *> values,
-                                         FunctionConstants &state);
+                                         OperationFolder &state);
 
 } // namespace linalg
 } // namespace mlir

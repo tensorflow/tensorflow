@@ -29,6 +29,7 @@
 #include "mlir/Linalg/Passes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
@@ -96,18 +97,17 @@ SmallVector<Value *, 8> mlir::linalg::getViewSizes(LinalgOp &linalgOp) {
 static Value *emitOrFoldComposedAffineApply(OpBuilder *b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operandsRef,
-                                            FunctionConstants &state) {
+                                            OperationFolder &state) {
   SmallVector<Value *, 4> operands(operandsRef.begin(), operandsRef.end());
   fullyComposeAffineMapAndOperands(&map, &operands);
-  if (auto cst = map.getResult(0).dyn_cast<AffineConstantExpr>())
-    return state.getOrCreateIndex(cst.getValue());
-  return b->createOrFold<AffineApplyOp>(loc, map, operands);
+  return state.create<AffineApplyOp>(*b, loc, map, operands);
 }
 
-SmallVector<Value *, 4>
-mlir::linalg::applyMapToValues(OpBuilder *b, Location loc, AffineMap map,
-                               ArrayRef<Value *> values,
-                               FunctionConstants &state) {
+SmallVector<Value *, 4> mlir::linalg::applyMapToValues(OpBuilder *b,
+                                                       Location loc,
+                                                       AffineMap map,
+                                                       ArrayRef<Value *> values,
+                                                       OperationFolder &state) {
   SmallVector<Value *, 4> res;
   res.reserve(map.getNumResults());
   unsigned numDims = map.getNumDims();
@@ -119,14 +119,4 @@ mlir::linalg::applyMapToValues(OpBuilder *b, Location loc, AffineMap map,
     res.push_back(emitOrFoldComposedAffineApply(b, loc, map, values, state));
   }
   return res;
-}
-
-Value *FunctionConstants::getOrCreateIndex(int64_t v) {
-  auto it = map.find(v);
-  if (it != map.end())
-    return it->second;
-  OpBuilder builder(f.getBody());
-  edsc::ScopedContext s(builder, f.getLoc());
-  return map.insert(std::make_pair(v, edsc::intrinsics::constant_index(v)))
-      .first->getSecond();
 }

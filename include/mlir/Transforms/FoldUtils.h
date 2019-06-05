@@ -23,10 +23,7 @@
 #ifndef MLIR_TRANSFORMS_FOLDUTILS_H
 #define MLIR_TRANSFORMS_FOLDUTILS_H
 
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Support/LLVM.h"
-#include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/Builders.h"
 
 namespace mlir {
 class Function;
@@ -66,9 +63,46 @@ public:
   /// externally to this OperationFolder. `op` must be a constant op.
   void notifyRemoval(Operation *op);
 
+  /// Create an operation of specific op type with the given builder,
+  /// and immediately try to fold it. This functions populates 'results' with
+  /// the results after folding the operation.
+  template <typename OpTy, typename... Args>
+  void create(OpBuilder &builder, SmallVectorImpl<Value *> &results,
+              Location location, Args &&... args) {
+    Operation *op = builder.create<OpTy>(location, std::forward<Args>(args)...);
+    if (failed(tryToFold(op, results)))
+      results.assign(op->result_begin(), op->result_end());
+    else if (op->getNumResults() != 0)
+      op->erase();
+  }
+
+  /// Overload to create or fold a single result operation.
+  template <typename OpTy, typename... Args>
+  typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
+                          Value *>::type
+  create(OpBuilder &builder, Location location, Args &&... args) {
+    SmallVector<Value *, 1> results;
+    create<OpTy>(builder, results, location, std::forward<Args>(args)...);
+    return results.front();
+  }
+
+  /// Overload to create or fold a zero result operation.
+  template <typename OpTy, typename... Args>
+  typename std::enable_if<OpTy::template hasTrait<OpTrait::ZeroResult>(),
+                          OpTy>::type
+  create(OpBuilder &builder, Location location, Args &&... args) {
+    auto op = builder.create<OpTy>(location, std::forward<Args>(args)...);
+    SmallVector<Value *, 0> unused;
+    (void)tryToFold(op.getOperation(), unused);
+
+    // Folding cannot remove a zero-result operation, so for convenience we
+    // continue to return it.
+    return op;
+  }
+
 private:
   /// Tries to perform folding on the given `op`. If successful, populates
-  /// `results` with the results of the foldin.
+  /// `results` with the results of the folding.
   LogicalResult tryToFold(Operation *op, SmallVectorImpl<Value *> &results);
 
   /// Tries to deduplicate the given constant and returns success if that can be
