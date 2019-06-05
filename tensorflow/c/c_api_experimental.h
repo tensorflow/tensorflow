@@ -71,10 +71,17 @@ TF_CAPI_EXPORT unsigned char TF_SetXlaEnableLazyCompilation(
 
 // Sets XLA's auto jit mode according to the specified string, which is parsed
 // as if passed in XLA_FLAGS. This has global effect.
-TF_CAPI_EXPORT void TF_SetXLaAutoJitMode(const char* mode);
+TF_CAPI_EXPORT void TF_SetXlaAutoJitMode(const char* mode);
 
 // Sets XLA's minimum cluster size. This has global effect.
 TF_CAPI_EXPORT void TF_SetXlaMinClusterSize(int size);
+
+// Gets/Sets TF/XLA flag for whether(true) or not(false) to disable constant
+// folding. This is for testing to ensure that XLA is being tested rather than
+// Tensorflow's CPU implementation through constant folding.
+TF_CAPI_EXPORT unsigned char TF_GetXlaConstantFoldingDisabled();
+TF_CAPI_EXPORT void TF_SetXlaConstantFoldingDisabled(
+    unsigned char should_enable);
 
 // Create a serialized tensorflow.ConfigProto proto, where:
 //

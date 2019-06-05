@@ -20,7 +20,9 @@ limitations under the License.
 %ignore "";
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
-%rename("%s") TF_SetXLaAutoJitMode;
+%rename("%s") TF_SetXlaAutoJitMode;
+%rename("%s") TF_SetXlaConstantFoldingDisabled;
+%rename("%s") TF_GetXlaConstantFoldingDisabled;
 %rename("%s") TF_SetXlaMinClusterSize;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;

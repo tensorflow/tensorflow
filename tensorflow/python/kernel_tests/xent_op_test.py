@@ -158,6 +158,7 @@ class XentTest(test.TestCase):
     self.assertAllClose(
         np.array([1.3862, 1.9401]), np_loss, rtol=1.e-3, atol=1.e-3)
 
+  @test_util.disable_xla("Broadcasting not supported for XLA")
   def testShapeBroadcast(self):
     np_f = np.array([[1., 2., 3., 4.],
                      [1., 2., 3., 4.]]).astype(np.float32)

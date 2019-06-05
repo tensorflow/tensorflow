@@ -406,6 +406,7 @@ class LeakyReluTest(test.TestCase):
     self.evaluate(optimizer.minimize(loss))
     self.assertAllClose(x.read_value(), -99.9)
 
+  @test_util.disable_xla("XLA does not support values outside of [0,1]")
   def testUnexpectedAlphaValue(self):
     self.assertAllClose(
         np.array([[-9.0, 0.7, -5.0, 0.3, -0.1], [0.1, -3.0, 0.5, -27.0, 0.9]]),
@@ -447,6 +448,7 @@ class EluTest(test.TestCase):
         self._testElu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
 
+  @test_util.disable_xla("Too much precision required for halfs")
   def testNumbersGPU(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")
@@ -548,6 +550,7 @@ class SeluTest(test.TestCase):
     self.assertAllClose(np_selu, tf_selu)
     self.assertShapeEqual(np_selu, tf_selu)
 
+  @test_util.disable_xla("Too much precision required for halfs")
   def testNumbers(self):
     for t in [np.float16, np.float32, np.float64]:
       self._testSelu(
