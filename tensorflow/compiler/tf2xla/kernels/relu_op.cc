@@ -57,8 +57,9 @@ class LeakyReluOp : public XlaOpKernel {
   }
   void Compile(XlaOpKernelContext* ctx) override {
     auto features = ctx->Input("features");
-    auto output =
-        xla::Max(features, features * xla::ScalarLike(features, alpha_));
+    auto prod_with_alpha = features * xla::ScalarLike(features, alpha_);
+    auto gt_zero = xla::Gt(features, xla::ScalarLike(features, 0));
+    auto output = xla::Select(gt_zero, features, prod_with_alpha);
     ctx->SetOutput(0, output);
   }
   float alpha_;

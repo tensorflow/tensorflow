@@ -406,7 +406,6 @@ class LeakyReluTest(test.TestCase):
     self.evaluate(optimizer.minimize(loss))
     self.assertAllClose(x.read_value(), -99.9)
 
-  @test_util.disable_xla("XLA does not support values outside of [0,1]")
   def testUnexpectedAlphaValue(self):
     self.assertAllClose(
         np.array([[-9.0, 0.7, -5.0, 0.3, -0.1], [0.1, -3.0, 0.5, -27.0, 0.9]]),
