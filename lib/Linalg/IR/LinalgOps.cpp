@@ -268,7 +268,7 @@ ParseResult mlir::linalg::LoadOp::parse(OpAsmParser *parser,
   auto affineIntTy = parser->getBuilder().getIndexType();
   return failure(
       parser->parseOperand(viewInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type) ||
       parser->resolveOperand(viewInfo, type, result->operands) ||
@@ -391,8 +391,7 @@ ParseResult mlir::linalg::SliceOp::parse(OpAsmParser *parser,
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   SmallVector<Type, 8> types;
   if (parser->parseOperand(baseInfo) ||
-      parser->parseOperandList(indexingsInfo, -1,
-                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
     return failure();
@@ -500,7 +499,7 @@ ParseResult mlir::linalg::StoreOp::parse(OpAsmParser *parser,
   return failure(
       parser->parseOperand(storeValueInfo) || parser->parseComma() ||
       parser->parseOperand(viewInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(viewType) ||
       parser->resolveOperand(storeValueInfo, viewType.getElementType(),
@@ -576,8 +575,7 @@ ParseResult mlir::linalg::ViewOp::parse(OpAsmParser *parser,
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   Type type;
   if (parser->parseOperand(bufferInfo) ||
-      parser->parseOperandList(indexingsInfo, -1,
-                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type))
     return failure();
@@ -712,12 +710,11 @@ static ParseResult parseLinalgLibraryOp(OpAsmParser *parser,
                                         OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 3> ops;
   SmallVector<Type, 3> types;
-  return failure(
-      parser->parseOperandList(ops, -1, OpAsmParser::Delimiter::Paren) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonTypeList(types) ||
-      parser->resolveOperands(ops, types, parser->getNameLoc(),
-                              result->operands));
+  return failure(parser->parseOperandList(ops, OpAsmParser::Delimiter::Paren) ||
+                 parser->parseOptionalAttributeDict(result->attributes) ||
+                 parser->parseColonTypeList(types) ||
+                 parser->resolveOperands(ops, types, parser->getNameLoc(),
+                                         result->operands));
 }
 
 namespace mlir {

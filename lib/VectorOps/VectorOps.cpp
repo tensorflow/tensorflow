@@ -129,8 +129,8 @@ ParseResult VectorTransferReadOp::parse(OpAsmParser *parser,
 
   // Parsing with support for optional paddingValue.
   if (parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
-      parser->parseTrailingOperandList(paddingInfo, -1,
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
+      parser->parseTrailingOperandList(paddingInfo,
                                        OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
@@ -293,7 +293,7 @@ ParseResult VectorTransferWriteOp::parse(OpAsmParser *parser,
   auto indexType = parser->getBuilder().getIndexType();
   if (parser->parseOperand(storeValueInfo) || parser->parseComma() ||
       parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
     return failure();

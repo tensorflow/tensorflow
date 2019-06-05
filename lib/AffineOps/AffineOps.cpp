@@ -842,8 +842,7 @@ static ParseResult parseBound(bool isLower, OperationState *result,
   }
 
   // Get the attribute location.
-  llvm::SMLoc attrLoc;
-  p->getCurrentLocation(&attrLoc);
+  llvm::SMLoc attrLoc = p->getCurrentLocation();
 
   Attribute boundAttr;
   if (p->parseAttribute(boundAttr, builder.getIndexType(), boundAttrName,
@@ -916,10 +915,9 @@ ParseResult AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
         getStepAttrName(),
         builder.getIntegerAttr(builder.getIndexType(), /*value=*/1));
   } else {
-    llvm::SMLoc stepLoc;
+    llvm::SMLoc stepLoc = parser->getCurrentLocation();
     IntegerAttr stepAttr;
-    if (parser->getCurrentLocation(&stepLoc) ||
-        parser->parseAttribute(stepAttr, builder.getIndexType(),
+    if (parser->parseAttribute(stepAttr, builder.getIndexType(),
                                getStepAttrName().data(), result->attributes))
       return failure();
 

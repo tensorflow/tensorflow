@@ -252,11 +252,11 @@ ParseResult LaunchOp::parse(OpAsmParser *parser, OperationState *result) {
   // to resolve the operands passed to the kernel arguments.
   SmallVector<Type, 4> dataTypes;
   if (!parser->parseOptionalKeyword(getArgsKeyword().data())) {
-    llvm::SMLoc argsLoc;
+    llvm::SMLoc argsLoc = parser->getCurrentLocation();
 
     regionArgs.push_back({});
     dataOperands.push_back({});
-    if (parser->getCurrentLocation(&argsLoc) || parser->parseLParen() ||
+    if (parser->parseLParen() ||
         parser->parseRegionArgument(regionArgs.back()) ||
         parser->parseEqual() || parser->parseOperand(dataOperands.back()))
       return failure();

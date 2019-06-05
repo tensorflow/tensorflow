@@ -108,14 +108,14 @@ ParseResult mlir::parseDimAndSymbolList(OpAsmParser *parser,
                                         SmallVector<Value *, 4> &operands,
                                         unsigned &numDims) {
   SmallVector<OpAsmParser::OperandType, 8> opInfos;
-  if (parser->parseOperandList(opInfos, -1, OpAsmParser::Delimiter::Paren))
+  if (parser->parseOperandList(opInfos, OpAsmParser::Delimiter::Paren))
     return failure();
   // Store number of dimensions for validation by caller.
   numDims = opInfos.size();
 
   // Parse the optional symbol operands.
   auto affineIntTy = parser->getBuilder().getIndexType();
-  if (parser->parseOperandList(opInfos, -1,
+  if (parser->parseOperandList(opInfos,
                                OpAsmParser::Delimiter::OptionalSquare) ||
       parser->resolveOperands(opInfos, affineIntTy, operands))
     return failure();
@@ -415,8 +415,7 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 4> operands;
   auto calleeLoc = parser->getNameLoc();
   if (parser->parseAttribute(calleeAttr, "callee", result->attributes) ||
-      parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
-                               OpAsmParser::Delimiter::Paren) ||
+      parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(calleeType) ||
       parser->addTypesToList(calleeType.getResults(), result->types) ||
@@ -507,8 +506,7 @@ static ParseResult parseCallIndirectOp(OpAsmParser *parser,
   return failure(
       parser->parseOperand(callee) ||
       parser->getCurrentLocation(&operandsLoc) ||
-      parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
-                               OpAsmParser::Delimiter::Paren) ||
+      parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(calleeType) ||
       parser->resolveOperand(callee, calleeType, result->operands) ||
@@ -1406,15 +1404,12 @@ ParseResult DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   // *) destination memref followed by its indices (in square brackets).
   // *) dma size in KiB.
   if (parser->parseOperand(srcMemRefInfo) ||
-      parser->parseOperandList(srcIndexInfos, -1,
-                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(srcIndexInfos, OpAsmParser::Delimiter::Square) ||
       parser->parseComma() || parser->parseOperand(dstMemRefInfo) ||
-      parser->parseOperandList(dstIndexInfos, -1,
-                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(dstIndexInfos, OpAsmParser::Delimiter::Square) ||
       parser->parseComma() || parser->parseOperand(numElementsInfo) ||
       parser->parseComma() || parser->parseOperand(tagMemrefInfo) ||
-      parser->parseOperandList(tagIndexInfos, -1,
-                               OpAsmParser::Delimiter::Square))
+      parser->parseOperandList(tagIndexInfos, OpAsmParser::Delimiter::Square))
     return failure();
 
   // Parse optional stride and elements per stride.
@@ -1537,8 +1532,7 @@ ParseResult DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Parse tag memref, its indices, and dma size.
   if (parser->parseOperand(tagMemrefInfo) ||
-      parser->parseOperandList(tagIndexInfos, -1,
-                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(tagIndexInfos, OpAsmParser::Delimiter::Square) ||
       parser->parseComma() || parser->parseOperand(numElementsInfo) ||
       parser->parseColonType(type) ||
       parser->resolveOperand(tagMemrefInfo, type, result->operands) ||
@@ -1586,7 +1580,7 @@ static ParseResult parseExtractElementOp(OpAsmParser *parser,
   auto affineIntTy = parser->getBuilder().getIndexType();
   return failure(
       parser->parseOperand(aggregateInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type) ||
       parser->resolveOperand(aggregateInfo, type, result->operands) ||
@@ -1662,7 +1656,7 @@ static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *result) {
   auto affineIntTy = parser->getBuilder().getIndexType();
   return failure(
       parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(type) ||
       parser->resolveOperand(memrefInfo, type, result->operands) ||
@@ -1845,9 +1839,8 @@ OpFoldResult RemIUOp::fold(ArrayRef<Attribute> operands) {
 static ParseResult parseReturnOp(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 2> opInfo;
   SmallVector<Type, 2> types;
-  llvm::SMLoc loc;
-  return failure(parser->getCurrentLocation(&loc) ||
-                 parser->parseOperandList(opInfo) ||
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  return failure(parser->parseOperandList(opInfo) ||
                  (!opInfo.empty() && parser->parseColonTypeList(types)) ||
                  parser->resolveOperands(opInfo, types, loc, result->operands));
 }
@@ -1963,7 +1956,7 @@ static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *result) {
   return failure(
       parser->parseOperand(storeValueInfo) || parser->parseComma() ||
       parser->parseOperand(memrefInfo) ||
-      parser->parseOperandList(indexInfo, -1, OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonType(memrefType) ||
       parser->resolveOperand(storeValueInfo, memrefType.getElementType(),

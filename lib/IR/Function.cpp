@@ -241,8 +241,7 @@ parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
   // types, or just be a type list.  It isn't ok to sometimes have SSA ID's and
   // sometimes not.
   auto parseArgument = [&]() -> ParseResult {
-    llvm::SMLoc loc;
-    parser->getCurrentLocation(&loc);
+    llvm::SMLoc loc = parser->getCurrentLocation();
 
     // Parse argument name if present.
     OpAsmParser::OperandType argument;

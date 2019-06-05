@@ -94,8 +94,7 @@ ParseResult linalg::ViewOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
   SmallVector<Type, 8> types;
   if (parser->parseOperand(memRefInfo) ||
-      parser->parseOperandList(indexingsInfo, -1,
-                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(types))
     return failure();

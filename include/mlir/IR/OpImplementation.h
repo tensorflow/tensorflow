@@ -152,7 +152,11 @@ public:
 
   /// Get the location of the next token and store it into the argument.  This
   /// always succeeds.
-  virtual ParseResult getCurrentLocation(llvm::SMLoc *loc) = 0;
+  virtual llvm::SMLoc getCurrentLocation() = 0;
+  ParseResult getCurrentLocation(llvm::SMLoc *loc) {
+    *loc = getCurrentLocation();
+    return success();
+  }
 
   /// This parses... a comma!
   virtual ParseResult parseComma() = 0;
@@ -189,8 +193,7 @@ public:
 
   /// Parse a type of a specific kind, e.g. a FunctionType.
   template <typename TypeType> ParseResult parseColonType(TypeType &result) {
-    llvm::SMLoc loc;
-    getCurrentLocation(&loc);
+    llvm::SMLoc loc = getCurrentLocation();
 
     // Parse any kind of type.
     Type type;
@@ -261,8 +264,7 @@ public:
   template <typename AttrType>
   ParseResult parseAttribute(AttrType &result, Type type, StringRef attrName,
                              SmallVectorImpl<NamedAttribute> &attrs) {
-    llvm::SMLoc loc;
-    getCurrentLocation(&loc);
+    llvm::SMLoc loc = getCurrentLocation();
 
     // Parse any kind of attribute.
     Attribute attr;
@@ -298,7 +300,7 @@ public:
 
   /// These are the supported delimiters around operand lists, used by
   /// parseOperandList.
-  enum Delimiter {
+  enum class Delimiter {
     /// Zero or more operands with no delimiters.
     None,
     /// Parens surrounding zero or more operands.
@@ -317,6 +319,10 @@ public:
   parseOperandList(SmallVectorImpl<OperandType> &result,
                    int requiredOperandCount = -1,
                    Delimiter delimiter = Delimiter::None) = 0;
+  ParseResult parseOperandList(SmallVectorImpl<OperandType> &result,
+                               Delimiter delimiter) {
+    return parseOperandList(result, /*requiredOperandCount=*/-1, delimiter);
+  }
 
   /// Parse zero or more trailing SSA comma-separated trailing operand
   /// references with a specified surrounding delimiter, and an optional
@@ -325,6 +331,11 @@ public:
   parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
                            int requiredOperandCount = -1,
                            Delimiter delimiter = Delimiter::None) = 0;
+  ParseResult parseTrailingOperandList(SmallVectorImpl<OperandType> &result,
+                                       Delimiter delimiter) {
+    return parseTrailingOperandList(result, /*requiredOperandCount=*/-1,
+                                    delimiter);
+  }
 
   /// Parses a region. Any parsed blocks are appended to "region" and must be
   /// moved to the op regions after the op is created. The first block of the

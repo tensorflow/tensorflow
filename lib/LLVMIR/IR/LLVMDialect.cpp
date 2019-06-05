@@ -196,8 +196,7 @@ static ParseResult parseGEPOp(OpAsmParser *parser, OperationState *result) {
   Type type;
   llvm::SMLoc trailingTypeLoc;
   if (parser->parseOperand(base) ||
-      parser->parseOperandList(indices, /*requiredOperandCount=*/-1,
-                               OpAsmParser::Delimiter::Square) ||
+      parser->parseOperandList(indices, OpAsmParser::Delimiter::Square) ||
       parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
       parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
     return failure();
@@ -352,8 +351,7 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
     if (parser->parseAttribute(funcAttr, "callee", attrs))
       return failure();
 
-  if (parser->parseOperandList(operands, /*requiredOperandCount=*/-1,
-                               OpAsmParser::Delimiter::Paren) ||
+  if (parser->parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
       parser->parseOptionalAttributeDict(attrs) || parser->parseColon() ||
       parser->getCurrentLocation(&trailingTypeLoc) || parser->parseType(type))
     return failure();

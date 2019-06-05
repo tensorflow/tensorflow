@@ -3193,9 +3193,8 @@ public:
   // High level parsing methods.
   //===--------------------------------------------------------------------===//
 
-  ParseResult getCurrentLocation(llvm::SMLoc *loc) override {
-    *loc = parser.getToken().getLoc();
-    return success();
+  llvm::SMLoc getCurrentLocation() override {
+    return parser.getToken().getLoc();
   }
 
   ParseResult parseComma() override {
