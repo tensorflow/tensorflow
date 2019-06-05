@@ -1409,6 +1409,18 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_PRELU>;
         }
         break;
+      case kTfLiteBuiltinTile: {
+        // NN API doesn't support int64 and boolean inputs to this op
+        const auto input_type = context->tensors[node->inputs->data[0]].type;
+        const auto multipliers_type =
+            context->tensors[node->inputs->data[1]].type;
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
+            (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
+             input_type == kTfLiteInt32) &&
+            (multipliers_type == kTfLiteInt32)) {
+          return BasicMappingFn<ANEURALNETWORKS_TILE>;
+        }
+      } break;
       default:
         // All other operators are not mapped.
         return nullptr;
