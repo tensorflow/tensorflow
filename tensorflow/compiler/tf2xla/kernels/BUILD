@@ -56,6 +56,7 @@ tf_kernel_library(
         "matrix_set_diag_op.cc",
         "matrix_triangular_solve_op.cc",
         "mirror_pad_op.cc",
+        "next_after_op.cc",
         "no_op.cc",
         "one_hot_op.cc",
         "pack_op.cc",

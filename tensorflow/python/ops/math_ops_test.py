@@ -668,7 +668,6 @@ class NextAfterTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(math_ops.nextafter(one, one), one)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.disable_xla("Broadcasting not supported for XLA")
   def testBroadcasting(self):
 
     for dtype in [dtypes.float32, dtypes.float64]:
