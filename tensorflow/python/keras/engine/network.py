@@ -940,6 +940,7 @@ class Network(base_layer.Layer):
     for layer in self.layers:  # From the earliest layers on.
       layer_class_name = layer.__class__.__name__
       layer_config = layer.get_config()
+
       filtered_inbound_nodes = []
       for original_node_index, node in enumerate(layer._inbound_nodes):
         node_key = _make_node_key(layer.name, original_node_index)
@@ -974,6 +975,7 @@ class Network(base_layer.Layer):
             # Convert ListWrapper to list for backwards compatible configs.
             node_data = tf_utils.convert_inner_node_data(node_data)
             filtered_inbound_nodes.append(node_data)
+
       layer_configs.append({
           'name': layer.name,
           'class_name': layer_class_name,
@@ -1083,12 +1085,14 @@ class Network(base_layer.Layer):
       # Call layer on its inputs, thus creating the node
       # and building the layer if needed.
       if input_tensors is not None:
-        # Preserve compatibility with older configs.
+        # Preserve compatibility with older configs
         flat_input_tensors = nest.flatten(input_tensors)
-        if len(flat_input_tensors) == 1:
-          layer(flat_input_tensors[0], **kwargs)
-        else:
-          layer(input_tensors, **kwargs)
+        # If this is a single element but not a dict, unwrap. If this is a dict,
+        # assume the first layer expects a dict (as is the case with a
+        # DenseFeatures layer); pass through.
+        if not isinstance(input_tensors, dict) and len(flat_input_tensors) == 1:
+          input_tensors = flat_input_tensors[0]
+        layer(input_tensors, **kwargs)
 
     def process_layer(layer_data):
       """Deserializes a layer, then call it on appropriate inputs.

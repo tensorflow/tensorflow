@@ -387,8 +387,10 @@ py_library(
     ],
 )
 
+# A separate build for layers without serialization to avoid circular deps
+# with feature column.
 py_library(
-    name = "layers",
+    name = "layers_base",
     srcs = [
         "layers/__init__.py",
         "layers/advanced_activations.py",
@@ -408,7 +410,6 @@ py_library(
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
         "layers/rnn_cell_wrapper_v2.py",
-        "layers/serialization.py",
         "layers/wrappers.py",
         "utils/kernelized_utils.py",
         "utils/layer_utils.py",
@@ -436,6 +437,19 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "layers",
+    srcs = [
+        "layers/serialization.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_base",
+        ":tf_utils",
+        "//tensorflow/python/feature_column:feature_column_py",
     ],
 )
 
@@ -1522,13 +1536,14 @@ tf_py_test(
 
 tf_py_test(
     name = "save_test",
-    size = "small",
+    size = "medium",
     srcs = ["saving/save_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_v2",
     ],
 )
 

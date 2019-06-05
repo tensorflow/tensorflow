@@ -20,8 +20,13 @@ from __future__ import print_function
 
 import os
 
+import numpy as np
+
+from tensorflow.python import keras
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
 from tensorflow.python.platform import test
 
@@ -65,6 +70,27 @@ class TestSaveModel(test.TestCase):
         NotImplementedError,
         'Saving the model as SavedModel is still in experimental stages.'):
       save.save_model(self.model, path, save_format='tf')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_with_dense_features(self):
+    cols = [feature_column_v2.numeric_column('a')]
+    input_layer = keras.layers.Input(shape=(1,), name='a')
+    fc_layer = feature_column_v2.DenseFeatures(cols)({'a': input_layer})
+    output = keras.layers.Dense(10)(fc_layer)
+
+    model = keras.models.Model(input_layer, output)
+
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+        metrics=[keras.metrics.categorical_accuracy])
+
+    config = model.to_json()
+    loaded_model = model_config.model_from_json(config)
+
+    inputs = np.arange(10).reshape(10, 1)
+    self.assertLen(loaded_model.predict({'a': inputs}), 10)
+
 
 if __name__ == '__main__':
   test.main()
