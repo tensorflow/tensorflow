@@ -624,8 +624,13 @@ class NNAPIOpBuilder {
         scale = tensor->params.scale;
         zeroPoint = tensor->params.zero_point;
         break;
+      case kTfLiteBool:
+        nn_type = ANEURALNETWORKS_TENSOR_BOOL8;
+        break;
       default:
-        context_->ReportError(context_, "Logic error in NN API Delegate.\n");
+        context_->ReportError(
+            context_, "Failed to add NN API tensor: type %s is not supported.",
+            TfLiteTypeGetName(tensor_type));
         return kTfLiteError;
     }
     uint32_t tensor_rank = static_cast<uint32_t>(tensor->dims->size);
