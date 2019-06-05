@@ -18,11 +18,14 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -94,6 +97,14 @@ def model_input_signature(model):
     return [input_specs]
 
 
+def raise_model_input_error(model):
+  raise ValueError(
+      'Model {} cannot be saved because the input shapes have not been '
+      'set. Usually, input shapes are automatically determined from calling'
+      ' .fit() or .predict(). To manually set the shapes, call '
+      'model._set_inputs(inputs).'.format(model))
+
+
 def trace_model_call(model, input_signature=None):
   """Trace the model call to create a tf.function for exporting a Keras model.
 
@@ -116,11 +127,7 @@ def trace_model_call(model, input_signature=None):
     input_signature = model_input_signature(model)
 
   if input_signature is None:
-    raise ValueError(
-        'Model {} cannot be saved because the input shapes have not been '
-        'set. Usually, input shapes are automatically determined from calling'
-        ' .fit() or .predict(). To manually set the shapes, call '
-        'model._set_inputs(inputs).'.format(model))
+    raise_model_input_error(model)
 
   # TODO(mdan): Should the model's call be autographed by default?
   @def_function.function(input_signature=input_signature, autograph=False)
@@ -190,3 +197,43 @@ def model_metadata(model, include_optimizer=True, require_config=True):
             'config': model.optimizer.get_config()}
       metadata['training_config']['optimizer_config'] = optimizer_config
   return metadata
+
+
+def should_overwrite(filepath, overwrite):
+  """Returns whether the filepath should be overwritten."""
+  # If file exists and should not be overwritten.
+  if not overwrite and os.path.isfile(filepath):
+    return ask_to_proceed_with_overwrite(filepath)
+  return True
+
+
+def compile_args_from_training_config(training_config, custom_objects=None):
+  """Return model.compile arguments from training config."""
+  if custom_objects is None:
+    custom_objects = {}
+
+  optimizer_config = training_config['optimizer_config']
+  optimizer = optimizers.deserialize(
+      optimizer_config, custom_objects=custom_objects)
+
+  # Recover loss functions and metrics.
+  loss_config = training_config['loss']  # Deserialize loss class.
+  if isinstance(loss_config, dict) and 'class_name' in loss_config:
+    loss_config = losses.get(loss_config)
+  loss = nest.map_structure(
+      lambda obj: custom_objects.get(obj, obj), loss_config)
+  metrics = nest.map_structure(
+      lambda obj: custom_objects.get(obj, obj), training_config['metrics'])
+  weighted_metrics = nest.map_structure(
+      lambda obj: custom_objects.get(obj, obj),
+      training_config.get('weighted_metrics', None))
+  sample_weight_mode = training_config['sample_weight_mode']
+  loss_weights = training_config['loss_weights']
+
+  return dict(
+      optimizer=optimizer,
+      loss=loss,
+      metrics=metrics,
+      weighted_metrics=weighted_metrics,
+      loss_weights=loss_weights,
+      sample_weight_mode=sample_weight_mode)
