@@ -272,7 +272,10 @@ void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
       using RandomType =
           typename std::conditional<std::is_same<T, Eigen::half>::value, float,
                                     T>::type;
-      element = T(UniformDistribution(RandomType(0), RandomType(1), &gen));
+      // Scale down the values for fp16 to have less overflows.
+      auto upper_bound =
+          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
+      element = T(UniformDistribution(RandomType(0), upper_bound, &gen));
     }
     return ret;
   }();

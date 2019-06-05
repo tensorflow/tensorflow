@@ -83,6 +83,17 @@ HloModule TestModule
 })");
 }
 
+TEST_F(GpuConvolutionRegressionTest, BackwardFilterAlgo0Incorrect) {
+  CheckForHloText(R"(
+HloModule TestModule
+
+ENTRY %TestComputation {
+  %param_0 = f16[7680,96,6,6]{1,3,2,0} parameter(0)
+  %param_1 = f16[7680,64,4,4]{1,3,2,0} parameter(1)
+  ROOT %custom-call.1 = (f16[64,96,3,3]{1,3,2,0}, u8[0]{0}) custom-call(f16[7680,96,6,6]{1,3,2,0} %param_0, f16[7680,64,4,4]{1,3,2,0} %param_1), window={size=3x3}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBackwardFilter", backend_config="{conv_result_scale:1}"
+})");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
