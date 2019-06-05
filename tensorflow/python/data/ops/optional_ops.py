@@ -24,7 +24,6 @@ import six
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
@@ -149,23 +148,9 @@ class _OptionalImpl(Optional):
   def value_structure(self):
     return self._value_structure
 
-  def _to_components(self):
-    return [self._variant_tensor]
-
-  def _component_metadata(self):
-    return self._value_structure
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return _OptionalImpl(components[0], metadata)
-
-  def _shape_invariant_to_components(self, shape=None):
-    del shape  # not used
-    return tensor_shape.TensorShape([])  # optional component is always a scalar
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._variant_tensor, "graph")
+  def _type_spec(self):
+    return OptionalStructure.from_value(self)
 
 
 # TODO(b/133606651) Rename this class to OptionalSpec
@@ -208,9 +193,3 @@ class OptionalStructure(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return self
-
-
-type_spec.register_type_spec_from_value_converter(Optional,
-                                                  OptionalStructure.from_value)
-type_spec.register_type_spec_from_value_converter(_OptionalImpl,
-                                                  OptionalStructure.from_value)

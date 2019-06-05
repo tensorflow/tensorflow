@@ -315,23 +315,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return ("<%s shapes: %s, types: %s>" % (type(self).__name__, output_shapes,
                                             output_types))
 
-  def _to_components(self):
-    return [self._variant_tensor]
-
-  def _component_metadata(self):
-    return self._element_structure
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return _VariantDataset(components[0], metadata)
-
-  def _shape_invariant_to_components(self, shape=None):
-    del shape  # not used
-    return tensor_shape.TensorShape([])  # dataset component is always a scalar.
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._variant_tensor, "graph")
+  def _type_spec(self):
+    return DatasetStructure(self._element_structure)
 
   @staticmethod
   def from_tensors(tensors):
@@ -2418,12 +2404,6 @@ class DatasetStructure(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return self
-
-
-# TODO(b/133606651) Delete this registration when CompositeTensor is updated
-# to define a _type_spec field (since registration will be automatic).
-type_spec.register_type_spec_from_value_converter(
-    DatasetV2, DatasetStructure.from_value, allow_subclass=True)
 
 
 class StructuredFunctionWrapper(object):

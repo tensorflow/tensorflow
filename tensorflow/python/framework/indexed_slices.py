@@ -145,28 +145,33 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
 
-  def _to_components(self):
-    if self._dense_shape is None:
-      return (self._values, self._indices)
-    else:
-      return (self._values, self._indices, self._dense_shape)
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return cls(*components)
-
-  def _shape_invariant_to_components(self, shape=None):
-    if shape is None:
-      shape = self._values.shape
-    if self._dense_shape is None:
-      return (shape, shape[:1])  # values, indices
-    else:
-      # values, indices, dense_shape
-      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._values, "graph")
+  def _type_spec(self):
+    indices_shape = self._indices.shape.merge_with(self._values.shape[:1])
+    dense_shape = tensor_shape.TensorShape([None]).concatenate(
+        self._values.shape[1:])
+    if self._dense_shape is not None:
+      dense_shape_dtype = self._dense_shape.dtype
+      dense_shape = dense_shape.merge_with(
+          tensor_util.constant_value_as_shape(self._dense_shape))
+    else:
+      dense_shape_dtype = None
+    return IndexedSlicesSpec(dense_shape, self.dtype, self._indices.dtype,
+                             dense_shape_dtype, indices_shape)
+
+  def _shape_invariant_to_type_spec(self, shape):
+    # From tf.while_loop docs: "If a loop variable is an IndexedSlices, the
+    # shape invariant must be a shape invariant of the values tensor of the
+    # IndexedSlices. It means the shapes of the three tensors of the
+    # IndexedSlices are (shape, [shape[0]], [shape.ndims])."
+    indices_shape = shape[:1]
+    dense_shape = tensor_shape.TensorShape([None]).concatenate(shape[1:])
+    if self._dense_shape is None:
+      dense_shape_dtype = None
+    else:
+      dense_shape_dtype = self._dense_shape.dtype
+    return IndexedSlicesSpec(dense_shape, self.dtype, self._indices.dtype,
+                             dense_shape_dtype, indices_shape)
 
   def consumers(self):
     return self._consumers()
@@ -419,4 +424,3 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
 
 tensor_conversion_registry.register_tensor_conversion_function(
     IndexedSlices, _indexed_slices_to_tensor)
-
