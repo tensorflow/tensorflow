@@ -3458,7 +3458,8 @@ class Graph(object):
     Args:
       obj: A `Tensor`, an `Operation`, or the name of a tensor or operation. Can
         also be any object with an `_as_graph_element()` method that returns a
-        value of one of these types.
+        value of one of these types. Note: `_as_graph_element` will be called
+        inside the graph's lock and so may not modify the graph.
       allow_tensor: If true, `obj` may refer to a `Tensor`.
       allow_operation: If true, `obj` may refer to an `Operation`.
 
