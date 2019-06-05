@@ -58,8 +58,11 @@ absl::flat_hash_map<std::string, std::string> GetFlagUsage() {
        "Path to a file where the profiling information is saved to when an Out "
        "Of Memory error occurs. (path)"},
       {"save_vertex_graph",
-       "Path to a file where the Poplar vertex graph should be saved to. "
+       "Path to a directory where the Poplar vertex graphs should be saved to. "
        "(path)"},
+      {"save_interval_report",
+       "Path to a directory where the Poplar interval reports should be saved "
+       "to. (path)"},
       {"executable_cache_path", "Path to the executable cache. (path)"},
       {"dump_schedule_as_dot", "Dumps the scheduler graph as a dot file."},
       {"tensor_map_file_path", "Directory for tensor map dump files."},
@@ -101,6 +104,9 @@ void AllocateAndParseFlags() {
   // Path to a file where the Poplar vertex graph should be saved to.
   poplar_xla_flags->save_vertex_graph = "";
 
+  // Path to a file where the Poplar interval report should be saved to.
+  poplar_xla_flags->save_interval_report = "";
+
   // Path to the executable cache.
   poplar_xla_flags->executable_cache_path = "";
 
@@ -135,6 +141,7 @@ void AllocateAndParseFlags() {
     ADD_FLAG(max_compilation_threads)
     ADD_FLAG(save_oom_profiler)
     ADD_FLAG(save_vertex_graph)
+    ADD_FLAG(save_interval_report)
     ADD_FLAG(executable_cache_path)
     ADD_FLAG(dump_schedule_as_dot)
     ADD_FLAG(tensor_map_file_path)

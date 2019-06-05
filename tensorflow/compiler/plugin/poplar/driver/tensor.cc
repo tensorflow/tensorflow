@@ -549,7 +549,8 @@ static StatusOr<poplar::Tensor> AddMatMulAddBiasTensor(
   poplar::Tensor acts = outputs[layout_output_idx];
   TF_ASSIGN_OR_RETURN(acts, ReversePathTransform(graph, acts, forward_path));
 
-  return poplin::createBiases(graph, acts, debug_name);
+  auto name = StrCat(debug_name, "/biases");
+  return graph.clone(acts[0], name);
 }
 
 // Compute the poplar shape of a grouped matmul's LHS

@@ -52,8 +52,11 @@ struct PoplarXlaFlags {
   // Memory occurs.
   std::string save_oom_profiler;
 
-  // Path to a file where the Poplar vertex graph should be saved to.
+  // Path to a directory where the Poplar vertex graph should be saved to.
   std::string save_vertex_graph;
+
+  // Path to a directory where the Poplar interval report should be saved to.
+  std::string save_interval_report;
 
   // Path to the executable cache.
   std::string executable_cache_path;

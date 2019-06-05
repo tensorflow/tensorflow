@@ -648,7 +648,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     progs.push_back(visitor.GetDeviceToHost());
 
     if (!tensorflow::GetPoplarXlaFlags().save_vertex_graph.empty()) {
-      std::ofstream stream(tensorflow::GetPoplarXlaFlags().save_vertex_graph);
+      auto filename = tensorflow::io::JoinPath(
+          tensorflow::GetPoplarXlaFlags().save_vertex_graph,
+          module->name() + ".vertex_graph");
+      VLOG(1) << "Dumping vertex graph " << filename;
+      std::ofstream stream(filename);
       resources.main_graph.outputVertexGraph(stream, progs);
     }
 

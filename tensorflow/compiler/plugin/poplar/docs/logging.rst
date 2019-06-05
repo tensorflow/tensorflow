@@ -599,3 +599,29 @@ file to produce a single column of data where each entry is the *data* entry:
 The file *data_usage_per_tile.txt* will contain this single column of *data*
 allocation. Further facets of the deployed graph can be extracted from this
 approach, and are well documented in the out of memory guide.
+
+Dumping auxiliary Poplar information
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two environment variable flags are available to get to extra Poplar information.
+
+Poplar vertex graph
+___________________
+
+The Poplar vertex graph is a DOT file containing a complete description of the
+lowered Poplar graph.  Each node in the graph represents one vertex in the
+Poplar graph operating on one region of a tensor.
+
+It can be used for generating a GraphCore circular graph image.
+
+Poplar interval report
+______________________
+
+The interval report is a CSV file describing the number of tiles executing,
+exchanging and syncing on each instruction cycle.
+
+It can be used for generating a GraphCore linear activity diagram.
+
+
+The :ref:`env-var-section` describes how to set the environment flags correctly.
+

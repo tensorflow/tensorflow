@@ -491,6 +491,12 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
 StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
+  // Get the broadcast instruction which is required to get the bias size.
+  const HloInstruction* root =
+      inst->fused_instructions_computation()->root_instruction();
+  const HloInstruction* broadcast = root->operand(1);
+  CHECK_EQ(broadcast->opcode(), HloOpcode::kBroadcast);
+
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence prog;
@@ -506,7 +512,9 @@ StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
       poplar::Tensor bias,
       FindInstructionInput(tensor_map, res, inst, 1, prog, false));
 
-  poplin::addBias(graph, in, bias, prog, GetDebugName(inst));
+  TF_ASSIGN_OR_RETURN(
+      bias, BroadcastTensor(bias, broadcast->shape(), broadcast->dimensions()));
+  popops::addInPlace(graph, in, bias, prog, GetDebugName(inst));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, in));
   return prog;
