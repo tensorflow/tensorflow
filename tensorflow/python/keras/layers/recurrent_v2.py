@@ -385,7 +385,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
         'recurrent_activation': self.recurrent_activation
     })
 
-    if context.executing_eagerly():
+    if ops.executing_eagerly_outside_functions():
       device_type = _get_context_device_type()
       can_use_gpu = (
           # Either user specified GPU or unspecified but GPU is available.
@@ -394,7 +394,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
           and
           (mask is None or is_sequence_right_padded(mask, self.time_major)))
       # Under eager context, check the device placement and prefer the
-      if can_use_gpu:
+      if can_use_gpu is not None:
         last_output, outputs, new_h, runtime = cudnn_gru(**cudnn_gru_kwargs)
       else:
         last_output, outputs, new_h, runtime = standard_gru(**normal_gru_kwargs)
@@ -862,7 +862,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           'recurrent_activation': self.recurrent_activation
       })
 
-      if context.executing_eagerly():
+      if ops.executing_eagerly_outside_functions():
         device_type = _get_context_device_type()
         can_use_gpu = (
             # Either user specified GPU or unspecified but GPU is available.
@@ -872,7 +872,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
             (mask is None or is_sequence_right_padded(mask, self.time_major)))
         # Under eager context, check the device placement and prefer the
         # GPU implementation when GPU is available.
-        if can_use_gpu:
+        if can_use_gpu is not None:
           last_output, outputs, new_h, new_c, runtime = cudnn_lstm(
               **cudnn_lstm_kwargs)
         else:
