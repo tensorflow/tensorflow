@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
@@ -182,6 +183,13 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
+      // If MIOpen batchnorms are enabled, rewrite batchnorm HLOs to MIOpen
+      // calls where possible.  Not every batchnorm op can be implemented as a
+      // call to MIOpen, so decompose any remaining batchnorm ops into a soup of
+      // HLOs.
+      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+        pass.AddPass<CudnnBatchNormRewriter>();
+      }
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
