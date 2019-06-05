@@ -69,6 +69,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
@@ -521,14 +522,14 @@ def set_session(session):
 
 
 def get_default_session_config():
-  if not os.environ.get('OMP_NUM_THREADS'):
-    config = config_pb2.ConfigProto(allow_soft_placement=True)
-  else:
-    num_thread = int(os.environ.get('OMP_NUM_THREADS'))
-    config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread,
-        inter_op_parallelism_threads=num_thread,
-        allow_soft_placement=True)
+  if os.environ.get('OMP_NUM_THREADS'):
+    logging.warning(
+        'OMP_NUM_THREADS is no longer used by the default Keras config. '
+        'To configure the number of threads, use tf.config.threading APIs.')
+
+  config = context.context().config
+  config.allow_soft_placement = True
+
   return config
 
 
