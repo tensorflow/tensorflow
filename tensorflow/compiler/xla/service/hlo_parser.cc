@@ -1515,7 +1515,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<int64> feature_group_count;
       optional<int64> batch_group_count;
       optional<std::vector<Shape>> operand_layout_constraints;
-      optional<bool> has_side_effect;
+      optional<bool> custom_call_has_side_effect;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -1527,8 +1527,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                                     &batch_group_count};
       attrs["operand_layout_constraints"] = {
           /*required=*/false, AttrTy::kShapeList, &operand_layout_constraints};
-      attrs["has_side_effect"] = {/*required=*/false, AttrTy::kBool,
-                                  &has_side_effect};
+      attrs["custom_call_has_side_effect"] = {/*required=*/false, AttrTy::kBool,
+                                  &custom_call_has_side_effect};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1586,8 +1586,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (batch_group_count.has_value()) {
         custom_call_instr->set_batch_group_count(*batch_group_count);
       }
-      if (has_side_effect.has_value()) {
-        custom_call_instr->set_has_side_effect(*has_side_effect);
+      if (custom_call_has_side_effect.has_value()) {
+        custom_call_instr->set_custom_call_has_side_effect(
+            *custom_call_has_side_effect);
       }
       break;
     }

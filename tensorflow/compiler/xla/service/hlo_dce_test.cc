@@ -98,7 +98,7 @@ TEST_F(HloDceTest, CustomCallInstructionsWithSideEffect) {
       HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
                                        /*operands=*/{},
                                        /*custom_call_target=*/"foo")));
-  instr->set_has_side_effect(true);
+  instr->set_custom_call_has_side_effect(true);
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
   auto module = CreateNewVerifiedModule();

@@ -479,7 +479,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
       custom_call_instr->set_batch_group_count(
           std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
-      custom_call_instr->set_has_side_effect(
+      custom_call_instr->set_custom_call_has_side_effect(
           proto.custom_call_has_side_effect());
       break;
     }
@@ -1272,7 +1272,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kAllReduce:
       return all_reduce_id().has_value();
     case HloOpcode::kCustomCall:
-      return Cast<HloCustomCallInstruction>(this)->has_side_effect();
+      return Cast<HloCustomCallInstruction>(this)
+          ->custom_call_has_side_effect();
     default:
       return false;
   }

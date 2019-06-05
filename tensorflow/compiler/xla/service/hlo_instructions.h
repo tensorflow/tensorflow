@@ -1219,12 +1219,14 @@ class HloCustomCallInstruction : public HloInstruction {
   }
   // Sets whether this custom call has a side-effect - by default a custom call
   // has no side-effects.
-  void set_has_side_effect(bool has_side_effect) {
-    has_side_effect_ = has_side_effect;
+  void set_custom_call_has_side_effect(bool custom_call_has_side_effect) {
+    custom_call_has_side_effect_ = custom_call_has_side_effect;
   }
   int64 feature_group_count() const { return feature_group_count_; }
   int64 batch_group_count() const { return batch_group_count_; }
-  bool has_side_effect() const { return has_side_effect_; }
+  bool custom_call_has_side_effect() const {
+    return custom_call_has_side_effect_;
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1264,7 +1266,7 @@ class HloCustomCallInstruction : public HloInstruction {
   // layout for each operand.
   std::vector<Shape> operand_shapes_with_layout_;
   // Whether this custom call has a side-effect.
-  bool has_side_effect_;
+  bool custom_call_has_side_effect_;
 };
 
 class HloPadInstruction : public HloInstruction {

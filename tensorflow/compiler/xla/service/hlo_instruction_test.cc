@@ -1736,7 +1736,7 @@ TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallHasSideEffect) {
   EXPECT_TRUE(instr1->Identical(*instr2));
 
   auto custom_call_instr1 = Cast<HloCustomCallInstruction>(instr1.get());
-  custom_call_instr1->set_has_side_effect(true);
+  custom_call_instr1->set_custom_call_has_side_effect(true);
   EXPECT_FALSE(instr1->Identical(*instr2));
 }
 
@@ -1769,12 +1769,12 @@ TEST_F(HloInstructionTest, CloneHasSideEffectOnCustomCall) {
                                                 /*operands=*/{},
                                                 /*custom_call_target=*/"foo");
   auto custom_call_instr = Cast<HloCustomCallInstruction>(instr.get());
-  EXPECT_FALSE(custom_call_instr->has_side_effect());
-  custom_call_instr->set_has_side_effect(true);
-  EXPECT_TRUE(custom_call_instr->has_side_effect());
+  EXPECT_FALSE(custom_call_instr->custom_call_has_side_effect());
+  custom_call_instr->set_custom_call_has_side_effect(true);
+  EXPECT_TRUE(custom_call_instr->custom_call_has_side_effect());
   auto clone = instr->Clone();
   auto custom_call_clone = Cast<HloCustomCallInstruction>(clone.get());
-  EXPECT_TRUE(custom_call_clone->has_side_effect());
+  EXPECT_TRUE(custom_call_clone->custom_call_has_side_effect());
 }
 
 TEST_F(HloInstructionTest, CustomCallHasSideEffect) {
@@ -1783,7 +1783,7 @@ TEST_F(HloInstructionTest, CustomCallHasSideEffect) {
                                                 /*custom_call_target=*/"foo");
   auto custom_call_instr = Cast<HloCustomCallInstruction>(instr.get());
   EXPECT_FALSE(instr->HasSideEffect());
-  custom_call_instr->set_has_side_effect(true);
+  custom_call_instr->set_custom_call_has_side_effect(true);
   EXPECT_TRUE(instr->HasSideEffect());
 }
 

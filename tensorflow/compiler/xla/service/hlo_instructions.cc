@@ -2055,7 +2055,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       feature_group_count_(1),
       batch_group_count_(1),
       layout_constrained_(false),
-      has_side_effect_(false) {
+      custom_call_has_side_effect_(false) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2073,7 +2073,7 @@ HloCustomCallInstruction::HloCustomCallInstruction(
       layout_constrained_(true),
       operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
                                   operand_shapes_with_layout.end()),
-      has_side_effect_(false) {
+      custom_call_has_side_effect_(false) {
   set_raw_backend_config_string(std::move(opaque));
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -2098,7 +2098,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
       *proto.add_operand_shapes_with_layout() = shape.ToProto();
     }
   }
-  proto.set_custom_call_has_side_effect(has_side_effect_);
+  proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
   return proto;
 }
 
@@ -2133,8 +2133,8 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     extra.push_back(StrCat("operand_layout_constraints={",
                            StrJoin(shape_strings, ", "), "}"));
   }
-  if (has_side_effect_) {
-    extra.push_back("has_side_effect=true");
+  if (custom_call_has_side_effect_) {
+    extra.push_back("custom_call_has_side_effect=true");
   }
   return extra;
 }
@@ -2175,7 +2175,8 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
       }
     }
   }
-  if (has_side_effect_ != casted_other.has_side_effect()) {
+  if (custom_call_has_side_effect_ !=
+      casted_other.custom_call_has_side_effect()) {
     return false;
   }
   // Note: backend_config comparison is done in Identical, which is the
@@ -2201,7 +2202,7 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
   }
   cloned->set_feature_group_count(feature_group_count_);
   cloned->set_batch_group_count(batch_group_count_);
-  cloned->set_has_side_effect(has_side_effect_);
+  cloned->set_custom_call_has_side_effect(custom_call_has_side_effect_);
   return std::move(cloned);
 }
 
