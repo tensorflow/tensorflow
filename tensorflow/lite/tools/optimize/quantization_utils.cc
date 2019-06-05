@@ -322,8 +322,7 @@ TfLiteStatus SymmetricPerLayerBiasQuantize(ModelT* model, TensorT* tensor,
 TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              float input_scale,
                                              const float* weight_scales,
-                                             int number_of_dimension,
-                                             int dimension_index) {
+                                             int number_of_dimension) {
   // Compute scales.
   std::vector<float> scales(number_of_dimension);
   for (size_t i = 0; i < number_of_dimension; i++) {
@@ -352,9 +351,8 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
   uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(final_buffer.data());
   size_t buffer_size = num_elements * sizeof(int32_t);
   std::vector<int64_t> zero_point(scales.size(), 0);
-  return AddQuantizationParams(scales, zero_point, dimension_index,
-                               uint8_buffer, buffer_size, TensorType_INT32,
-                               model, tensor);
+  return AddQuantizationParams(scales, zero_point, 0, uint8_buffer, buffer_size,
+                               TensorType_INT32, model, tensor);
 }
 
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,

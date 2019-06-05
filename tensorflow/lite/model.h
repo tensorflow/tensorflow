@@ -210,7 +210,8 @@ class InterpreterBuilder {
       Subgraph* subgraph);
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
-                                 TfLiteQuantization* quantization);
+                                 TfLiteQuantization* quantization,
+                                 const std::vector<int>& dims);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;

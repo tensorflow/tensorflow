@@ -327,7 +327,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
 
 TfLiteStatus InterpreterBuilder::ParseQuantization(
     const QuantizationParameters* src_quantization,
-    TfLiteQuantization* quantization) {
+    TfLiteQuantization* quantization, const std::vector<int>& dims) {
   quantization->type = kTfLiteNoQuantization;
   if (!src_quantization || !src_quantization->scale() ||
       src_quantization->scale()->size() == 0) {
@@ -353,11 +353,26 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   // Affine-quantization.
   quantization->type = kTfLiteAffineQuantization;
   const size_t num_scales = src_quantization->scale()->size();
+
+  // Ensure that the quantization dimension is valid.
   if (src_quantization->quantized_dimension() < 0 ||
-      src_quantization->quantized_dimension() >= num_scales) {
+      (!dims.empty() &&
+       src_quantization->quantized_dimension() >= dims.size())) {
     error_reporter_->Report(
-        "quantized_dimension must be in range [0, %d). Was %d.", num_scales,
+        "quantized_dimension must be in range [0, %d). Was %d.", dims.size(),
         src_quantization->quantized_dimension());
+    return kTfLiteError;
+  }
+
+  // Ensure that the number of scales is 1 for per-layer quantization, and
+  // matches number of quantization dimensions for per-axis quantization.
+  if (num_scales != 1 &&
+      (!dims.empty() &&
+       num_scales != dims[src_quantization->quantized_dimension()])) {
+    error_reporter_->Report(
+        "num_scales must be 1 for per-layer quantization, or %d for per-axis "
+        "quantization, but got %d.",
+        dims[src_quantization->quantized_dimension()], num_scales);
     return kTfLiteError;
   }
 
@@ -429,7 +444,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
     const auto* src_quantization = tensor->quantization();
     TfLiteQuantization quantization;
-    if (ParseQuantization(src_quantization, &quantization) != kTfLiteOk) {
+    if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
       status = kTfLiteError;
       continue;
     }
