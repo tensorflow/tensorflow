@@ -488,9 +488,9 @@ std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() {
 }
 
 void Dialect::addOperation(AbstractOperation opInfo) {
-  assert(getNamespace().empty() ||
-         opInfo.name.split('.').first == getNamespace() &&
-             "op name doesn't start with dialect namespace");
+  assert((getNamespace().empty() ||
+          opInfo.name.split('.').first == getNamespace()) &&
+         "op name doesn't start with dialect namespace");
   assert(&opInfo.dialect == this && "Dialect object mismatch");
   auto &impl = context->getImpl();
 
