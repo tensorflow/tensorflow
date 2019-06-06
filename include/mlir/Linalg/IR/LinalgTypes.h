@@ -35,6 +35,7 @@ enum LinalgTypes {
 class LinalgDialect : public Dialect {
 public:
   explicit LinalgDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "linalg"; }
 
   /// Parse a type registered to this dialect.
   Type parseType(llvm::StringRef spec, Location loc) const override;

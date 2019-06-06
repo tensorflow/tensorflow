@@ -29,7 +29,7 @@ using namespace mlir;
 using namespace mlir::linalg;
 
 mlir::linalg::LinalgDialect::LinalgDialect(MLIRContext *context)
-    : Dialect("linalg", context) {
+    : Dialect(getDialectNamespace(), context) {
   addTypes<BufferType, RangeType, ViewType>();
   addOperations<BufferAllocOp, BufferDeallocOp, ForOp, LoadOp, RangeOp, StoreOp,
                 SliceOp, ViewOp>();
