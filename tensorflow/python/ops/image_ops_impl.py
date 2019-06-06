@@ -1664,6 +1664,12 @@ def adjust_gamma(image, gamma=1, gain=1):
     gain  : A scalar or tensor. The constant multiplier.
   Returns:
     A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.adjust_gamma(x, 0.2)
+    ```
   Raises:
     ValueError: If gamma is negative.
   Notes:
