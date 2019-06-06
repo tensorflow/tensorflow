@@ -784,7 +784,8 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinConv2d:
         if (version <= 2) {
-          if ((android_sdk_version < kMinSdkVersionForNNAPI12) &&
+          // TODO(b/134571155): Fix hybrid and per-channel support in API 29.
+          if ((android_sdk_version <= kMinSdkVersionForNNAPI12) &&
               (IsHybridOperator(context, builtin_code, node) ||
                !IsFloatOrUint8Operator(context, node))) {
             // Hybrid operators not supported before NNAPI 1.2.
@@ -841,9 +842,9 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinDepthwiseConv2d:
         if (version == 1) {
-          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+          // TODO(b/134571155): Fix per-channel support in API 29.
+          if (android_sdk_version <= kMinSdkVersionForNNAPI12 &&
               !IsFloatOrUint8Operator(context, node)) {
-            // Hybrid operators not supported before NNAPI 1.2.
             return nullptr;
           }
           const auto input_type = context->tensors[node->inputs->data[0]].type;
@@ -894,7 +895,8 @@ class NNAPIDelegateKernel {
           if (output_type == kTfLiteInt16) {
             return nullptr;
           }
-          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+          // TODO(b/134571155): Fix hybrid and per-channel support in API 29.
+          if (android_sdk_version <= kMinSdkVersionForNNAPI12 &&
               (IsHybridOperator(context, builtin_code, node) ||
                !IsFloatOrUint8Operator(context, node))) {
             // Hybrid operators not supported before NNAPI 1.2.
@@ -992,6 +994,9 @@ class NNAPIDelegateKernel {
         if (version == 1) {
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
               !IsFloatOperator(context, node)) {
+            return nullptr;
+          }
+          if (!IsFloatOrUint8Operator(context, node)) {
             return nullptr;
           }
           auto builtin =
@@ -2070,22 +2075,26 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   // For NNAPI 1.2+, check if there is any accelerator available.
   // If not, don't delegate to NNAPI's CPU reference implementation.
   if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
-    uint32_t device_count = 0;
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context, nnapi->ANeuralNetworks_getDeviceCount(&device_count));
-    // Any available accelerator will make the device_count larger than 1.
-    // More sophisticated check and whitelisting can be added later.
-    if (device_count <= 1) {
-      return kTfLiteOk;
-    }
     // Check if user specified an acclelerator to use.
     const char* device_name_ptr = GetOptions(delegate).accelerator_name;
-    if (device_name_ptr && !GetDeviceHandle(device_name_ptr)) {
-      // If the selected accelerator cannot be found, NNAPI will not be used.
-      context->ReportError(context,
-                           "Could not find the specified accelerator: %s.",
-                           device_name_ptr);
-      return kTfLiteOk;
+    if (device_name_ptr) {
+      if (!GetDeviceHandle(device_name_ptr)) {
+        // If the selected accelerator cannot be found, NNAPI will not be used.
+        context->ReportError(context,
+                             "Could not find the specified accelerator: %s.",
+                             device_name_ptr);
+        return kTfLiteOk;
+      }
+    } else {
+      // If no accelerator is specified, only use NNAPI if an accelerator is
+      // available. Any available accelerator will make the device_count larger
+      // than 1. More sophisticated check and whitelisting can be added later.
+      uint32_t device_count = 0;
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context, nnapi->ANeuralNetworks_getDeviceCount(&device_count));
+      if (device_count <= 1) {
+        return kTfLiteOk;
+      }
     }
   }
   // Allocate one element in vector already since TensorFlow Lite uses
