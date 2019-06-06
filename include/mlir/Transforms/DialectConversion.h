@@ -175,6 +175,10 @@ public:
         "targets with custom legalization must override 'isLegal'");
   }
 
+  //===--------------------------------------------------------------------===//
+  // Legality Registration
+  //===--------------------------------------------------------------------===//
+
   /// Register a legality action for the given operation.
   void setOpAction(OperationName op, LegalizationAction action) {
     legalOperations[op] = action;
@@ -193,7 +197,10 @@ public:
   }
 
   /// Register the operations of the given dialects as legal.
-  void addLegalDialects(ArrayRef<StringRef> dialectNames);
+  void addLegalDialects(ArrayRef<StringRef> dialectNames) {
+    for (auto &dialect : dialectNames)
+      legalDialects[dialect] = LegalizationAction::Legal;
+  }
   template <typename... Names>
   void addLegalDialects(StringRef name, Names... names) {
     SmallVector<StringRef, 2> dialectNames({name, names...});
@@ -215,24 +222,31 @@ public:
     addDynamicallyLegalOp<OpT2, OpTs...>();
   }
 
+  //===--------------------------------------------------------------------===//
+  // Legality Querying
+  //===--------------------------------------------------------------------===//
+
   /// Get the legality action for the given operation.
   llvm::Optional<LegalizationAction> getOpAction(OperationName op) const {
+    // Check for an action for this specific operation.
     auto it = legalOperations.find(op);
     if (it != legalOperations.end())
       return it->second;
+    // Otherwise, default to checking for an action on the parent dialect.
+    auto dialectIt = legalDialects.find(op.getDialect());
+    if (dialectIt != legalDialects.end())
+      return dialectIt->second;
     return llvm::None;
-  }
-
-  /// Returns a range of operations that this target has defined to be legal in
-  /// some capacity.
-  llvm::iterator_range<LegalityMapTy::const_iterator> getLegalOps() const {
-    return llvm::make_range(legalOperations.begin(), legalOperations.end());
   }
 
 private:
   /// A deterministic mapping of operation name to the specific legality action
   /// to take.
   LegalityMapTy legalOperations;
+
+  /// A deterministic mapping of dialect name to the specific legality action to
+  /// take.
+  llvm::StringMap<LegalizationAction> legalDialects;
 
   /// The current context this target applies to.
   MLIRContext &ctx;

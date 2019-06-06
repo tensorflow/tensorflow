@@ -263,38 +263,12 @@ ConversionPattern::matchAndRewrite(Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
-// ConversionTarget
-//===----------------------------------------------------------------------===//
-
-/// Register the operations of the given dialects as legal.
-void ConversionTarget::addLegalDialects(ArrayRef<StringRef> dialectNames) {
-  SmallPtrSet<Dialect *, 2> dialects;
-  for (auto dialectName : dialectNames)
-    if (auto *dialect = ctx.getRegisteredDialect(dialectName))
-      dialects.insert(dialect);
-
-  // Set all dialect operations as legal.
-  for (auto op : ctx.getRegisteredOperations())
-    if (dialects.count(&op->dialect))
-      setOpAction(op, LegalizationAction::Legal);
-}
-
-//===----------------------------------------------------------------------===//
 // OperationLegalizer
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This class represents the information necessary for legalizing an operation
-/// kind.
-struct OpLegality {
-  /// This is the legalization action specified by the target, if it provided
-  /// one.
-  llvm::Optional<ConversionTarget::LegalizationAction> targetAction;
-
-  /// The set of patterns to apply to an instance of this operation to legalize
-  /// it.
-  SmallVector<RewritePattern *, 1> patterns;
-};
+/// A set of rewrite patterns that can be used to legalize a given operation.
+using LegalizationPatterns = SmallVector<RewritePattern *, 1>;
 
 /// This class defines a recursive operation legalizer.
 class OperationLegalizer {
@@ -316,8 +290,9 @@ private:
                                 DialectConversionRewriter &rewriter);
 
   /// Build an optimistic legalization graph given the provided patterns. This
-  /// function populates 'legalOps' with the operations that are either legal,
-  /// or transitively legal for the current target given the provided patterns.
+  /// function populates 'legalizerPatterns' with the operations that are not
+  /// directly legal, but may be transitively legal for the current target given
+  /// the provided patterns.
   void buildLegalizationGraph(OwningRewritePatternList &patterns);
 
   /// The current set of patterns that have been applied.
@@ -325,7 +300,7 @@ private:
 
   /// The set of legality information for operations transitively supported by
   /// the target.
-  DenseMap<OperationName, OpLegality> legalOps;
+  DenseMap<OperationName, LegalizationPatterns> legalizerPatterns;
 
   /// The legalization information provided by the target.
   ConversionTarget &target;
@@ -338,20 +313,13 @@ OperationLegalizer::legalize(Operation *op,
   LLVM_DEBUG(llvm::dbgs() << "Legalizing operation : " << op->getName()
                           << "\n");
 
-  auto it = legalOps.find(op->getName());
-  if (it == legalOps.end()) {
-    LLVM_DEBUG(llvm::dbgs() << "-- FAIL : no known legalization path.\n");
-    return failure();
-  }
-
   // Check if this was marked legal by the target.
-  auto &opInfo = it->second;
-  if (auto action = opInfo.targetAction) {
+  if (auto action = target.getOpAction(op->getName())) {
     // Check if this operation is always legal.
     if (*action == ConversionTarget::LegalizationAction::Legal)
       return success();
 
-    // Otherwise, handle custom legalization.
+    // Otherwise, handle dynamic legalization.
     LLVM_DEBUG(llvm::dbgs() << "- Trying dynamic legalization.\n");
     if (target.isLegal(op))
       return success();
@@ -360,9 +328,15 @@ OperationLegalizer::legalize(Operation *op,
   }
 
   // Otherwise, we need to apply a legalization pattern to this operation.
+  auto it = legalizerPatterns.find(op->getName());
+  if (it == legalizerPatterns.end()) {
+    LLVM_DEBUG(llvm::dbgs() << "-- FAIL : no known legalization path.\n");
+    return failure();
+  }
+
   // TODO(riverriddle) This currently has no cost model and doesn't prioritize
   // specific patterns in any way.
-  for (auto *pattern : opInfo.patterns)
+  for (auto *pattern : it->second)
     if (succeeded(legalizePattern(op, pattern, rewriter)))
       return success();
 
@@ -427,18 +401,12 @@ void OperationLegalizer::buildLegalizationGraph(
   // A worklist of patterns to consider for legality.
   llvm::SetVector<RewritePattern *> patternWorklist;
 
-  // Collect the initial set of valid target ops.
-  for (auto &opInfoPair : target.getLegalOps())
-    legalOps[opInfoPair.first].targetAction = opInfoPair.second;
-
   // Build the mapping from operations to the parent ops that may generate them.
   for (auto &pattern : patterns) {
     auto root = pattern->getRootKind();
 
-    // Skip operations that are known to always be legal.
-    auto it = legalOps.find(root);
-    if (it != legalOps.end() &&
-        it->second.targetAction == ConversionTarget::LegalizationAction::Legal)
+    // Skip operations that are always known to be legal.
+    if (target.getOpAction(root) == ConversionTarget::LegalizationAction::Legal)
       continue;
 
     // Add this pattern to the invalid set for the root op and record this root
@@ -447,29 +415,22 @@ void OperationLegalizer::buildLegalizationGraph(
     for (auto op : pattern->getGeneratedOps())
       parentOps[op].insert(root);
 
-    // If this pattern doesn't generate any operations, optimistically add it to
-    // the worklist.
-    if (pattern->getGeneratedOps().empty())
-      patternWorklist.insert(pattern.get());
+    // Add this pattern to the worklist.
+    patternWorklist.insert(pattern.get());
   }
-
-  // Build the initial worklist with the patterns that generate operations that
-  // are known to be legal.
-  for (auto &opInfoPair : target.getLegalOps())
-    for (auto &parentOp : parentOps[opInfoPair.first])
-      patternWorklist.set_union(invalidPatterns[parentOp]);
 
   while (!patternWorklist.empty()) {
     auto *pattern = patternWorklist.pop_back_val();
 
     // Check to see if any of the generated operations are invalid.
-    if (llvm::any_of(pattern->getGeneratedOps(),
-                     [&](OperationName op) { return !legalOps.count(op); }))
+    if (llvm::any_of(pattern->getGeneratedOps(), [&](OperationName op) {
+          return !legalizerPatterns.count(op) && !target.getOpAction(op);
+        }))
       continue;
 
     // Otherwise, if all of the generated operation are valid, this op is now
     // legal so add all of the child patterns to the worklist.
-    legalOps[pattern->getRootKind()].patterns.push_back(pattern);
+    legalizerPatterns[pattern->getRootKind()].push_back(pattern);
     invalidPatterns[pattern->getRootKind()].erase(pattern);
 
     // Add any invalid patterns of the parent operations to see if they have now
