@@ -33,6 +33,22 @@ limitations under the License.
 namespace stream_executor {
 namespace cuda {
 
+#if defined(PLATFORM_WINDOWS)
+port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
+                                              const char* ptx_contents,
+                                              PtxCompilationOptions options) {
+  // TODO(b/134675935): Subprocess invocation not supported on Windows.
+  return port::InternalError("Invoking ptxas not supported on Windows");
+}
+
+port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
+    int device_ordinal, const char* ptx,
+    PtxCompilationOptions compilation_options) {
+  return CompilePtx(device_ordinal, ptx, compilation_options);
+}
+
+#else
+
 // Prints a warning if the ptxas at ptxas_path has known bugs.
 //
 // Only prints a warning the first time it's called for a particular value of
@@ -134,10 +150,6 @@ port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
 port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
                                               const char* ptx_contents,
                                               PtxCompilationOptions options) {
-#if defined(PLATFORM_WINDOWS)
-  // Subprocess launch code does not compile on Windows.
-  return port::InternalError("Invoking ptxas not supported on Windows");
-#else
   gpu::GpuDeviceHandle handle;
   TF_RETURN_IF_ERROR(CUDADriver::GetDevice(device_ordinal, &handle));
   int cc_major;
@@ -214,8 +226,9 @@ port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
                                                   cubin_path, &cubin));
   std::vector<uint8> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
-#endif
 }
+
+#endif  // PLATFORM_WINDOWS
 
 }  // namespace cuda
 }  // namespace stream_executor

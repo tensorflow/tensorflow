@@ -113,7 +113,8 @@ cc_library(
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
-    ]) + ["@com_google_absl//absl/container:flat_hash_map"],
+        "@com_google_absl//absl/container:flat_hash_map",
+    ]),
 )
 
 cc_library(
