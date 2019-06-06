@@ -636,6 +636,9 @@ static std::vector<int64> GetParticipatingReplicas(
 }
 
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+
   auto* instr = Cast<HloAllReduceInstruction>(hlo_instruction());
   int64 device_ordinal = params.stream->parent()->device_ordinal();
 
