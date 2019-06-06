@@ -135,9 +135,9 @@ namespace {
 /// the IR.
 struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*name=*/"", context) {
-    addAttributes<AffineMapAttr, ArrayAttr, BoolAttr, DenseIntElementsAttr,
-                  DenseFPElementsAttr, DictionaryAttr, FloatAttr, FunctionAttr,
-                  IntegerAttr, IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
+    addAttributes<AffineMapAttr, ArrayAttr, BoolAttr, DenseElementsAttr,
+                  DictionaryAttr, FloatAttr, FunctionAttr, IntegerAttr,
+                  IntegerSetAttr, OpaqueAttr, OpaqueElementsAttr,
                   SparseElementsAttr, SplatElementsAttr, StringAttr, TypeAttr,
                   UnitAttr>();
     addTypes<ComplexType, FloatType, FunctionType, IndexType, IntegerType,

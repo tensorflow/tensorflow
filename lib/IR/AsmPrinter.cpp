@@ -692,8 +692,7 @@ void ModulePrinter::printAttributeOptionalType(Attribute attr,
     os << ", " << '"' << "0x" << llvm::toHex(eltsAttr.getValue()) << '"' << '>';
     break;
   }
-  case StandardAttributes::DenseIntElements:
-  case StandardAttributes::DenseFPElements: {
+  case StandardAttributes::DenseElements: {
     auto eltsAttr = attr.cast<DenseElementsAttr>();
     os << "dense<";
     printType(eltsAttr.getType());

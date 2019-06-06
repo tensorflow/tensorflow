@@ -154,8 +154,7 @@ enum Kind {
   Function,
 
   SplatElements,
-  DenseIntElements,
-  DenseFPElements,
+  DenseElements,
   OpaqueElements,
   SparseElements,
   FIRST_ELEMENTS_ATTR = SplatElements,
@@ -497,10 +496,11 @@ public:
 
 /// An attribute that represents a reference to a dense vector or tensor object.
 ///
-class DenseElementsAttr : public ElementsAttr {
+class DenseElementsAttr
+    : public Attribute::AttrBase<DenseElementsAttr, ElementsAttr,
+                                 detail::DenseElementsAttributeStorage> {
 public:
-  using ElementsAttr::ElementsAttr;
-  using ImplType = detail::DenseElementsAttributeStorage;
+  using Base::Base;
 
   /// It assumes the elements in the input array have been truncated to the bits
   /// width specified by the element type. 'type' must be a vector or tensor
@@ -547,8 +547,7 @@ public:
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool classof(Attribute attr) {
-    return attr.getKind() == StandardAttributes::DenseIntElements ||
-           attr.getKind() == StandardAttributes::DenseFPElements;
+    return attr.getKind() == StandardAttributes::DenseElements;
   }
 
 protected:
@@ -609,15 +608,13 @@ protected:
 
 /// An attribute that represents a reference to a dense integer vector or tensor
 /// object.
-class DenseIntElementsAttr
-    : public Attribute::AttrBase<DenseIntElementsAttr, DenseElementsAttr,
-                                 detail::DenseElementsAttributeStorage> {
+class DenseIntElementsAttr : public DenseElementsAttr {
 public:
   /// DenseIntElementsAttr iterates on APInt, so we can use the raw element
   /// iterator directly.
   using iterator = DenseElementsAttr::RawElementIterator;
 
-  using Base::Base;
+  using DenseElementsAttr::DenseElementsAttr;
   using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
 
@@ -645,17 +642,13 @@ public:
   iterator begin() const { return raw_begin(); }
   iterator end() const { return raw_end(); }
 
-  /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::DenseIntElements;
-  }
+  /// Method for supporting type inquiry through isa, cast and dyn_cast.
+  static bool classof(Attribute attr);
 };
 
 /// An attribute that represents a reference to a dense float vector or tensor
 /// object. Each element is stored as a double.
-class DenseFPElementsAttr
-    : public Attribute::AttrBase<DenseFPElementsAttr, DenseElementsAttr,
-                                 detail::DenseElementsAttributeStorage> {
+class DenseFPElementsAttr : public DenseElementsAttr {
 public:
   /// DenseFPElementsAttr iterates on APFloat, so we need to wrap the raw
   /// element iterator.
@@ -669,7 +662,7 @@ public:
   };
   using iterator = ElementIterator;
 
-  using Base::Base;
+  using DenseElementsAttr::DenseElementsAttr;
   using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
 
@@ -692,10 +685,8 @@ public:
   iterator begin() const;
   iterator end() const;
 
-  /// Method for support type inquiry through isa, cast and dyn_cast.
-  static bool kindof(unsigned kind) {
-    return kind == StandardAttributes::DenseFPElements;
-  }
+  /// Method for supporting type inquiry through isa, cast and dyn_cast.
+  static bool classof(Attribute attr);
 };
 
 /// An opaque attribute that represents a reference to a vector or tensor

@@ -367,8 +367,7 @@ Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   switch (getKind()) {
   case StandardAttributes::SplatElements:
     return cast<SplatElementsAttr>().getValue();
-  case StandardAttributes::DenseFPElements:
-  case StandardAttributes::DenseIntElements:
+  case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().getValue(index);
   case StandardAttributes::OpaqueElements:
     return cast<OpaqueElementsAttr>().getValue(index);
@@ -383,8 +382,7 @@ ElementsAttr ElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APInt &)> mapping) const {
   switch (getKind()) {
-  case StandardAttributes::DenseIntElements:
-  case StandardAttributes::DenseFPElements:
+  case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
   case StandardAttributes::SplatElements:
     return cast<SplatElementsAttr>().mapValues(newElementType, mapping);
@@ -397,8 +395,7 @@ ElementsAttr ElementsAttr::mapValues(
     Type newElementType,
     llvm::function_ref<APInt(const APFloat &)> mapping) const {
   switch (getKind()) {
-  case StandardAttributes::DenseIntElements:
-  case StandardAttributes::DenseFPElements:
+  case StandardAttributes::DenseElements:
     return cast<DenseElementsAttr>().mapValues(newElementType, mapping);
   case StandardAttributes::SplatElements:
     return cast<SplatElementsAttr>().mapValues(newElementType, mapping);
@@ -542,19 +539,8 @@ DenseElementsAttr DenseElementsAttr::get(ShapedType type, ArrayRef<char> data) {
   assert((type.isa<RankedTensorType>() || type.isa<VectorType>()) &&
          "type must be ranked tensor or vector");
   assert(type.hasStaticShape() && "type must have static shape");
-  switch (type.getElementType().getKind()) {
-  case StandardTypes::BF16:
-  case StandardTypes::F16:
-  case StandardTypes::F32:
-  case StandardTypes::F64:
-    return AttributeUniquer::get<DenseFPElementsAttr>(
-        type.getContext(), StandardAttributes::DenseFPElements, type, data);
-  case StandardTypes::Integer:
-    return AttributeUniquer::get<DenseIntElementsAttr>(
-        type.getContext(), StandardAttributes::DenseIntElements, type, data);
-  default:
-    llvm_unreachable("unexpected element type");
-  }
+  return Base::get(type.getContext(), StandardAttributes::DenseElements, type,
+                   data);
 }
 
 DenseElementsAttr DenseElementsAttr::get(ShapedType type,
@@ -631,22 +617,17 @@ Attribute DenseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
       readBits(getRawData().data(), valueIndex * storageBitWidth, bitWidth);
 
   // Convert the raw value data to an attribute value.
-  switch (getKind()) {
-  case StandardAttributes::DenseIntElements:
+  if (elementType.isa<IntegerType>())
     return IntegerAttr::get(elementType, rawValueData);
-  case StandardAttributes::DenseFPElements:
-    return FloatAttr::get(
-        elementType, APFloat(elementType.cast<FloatType>().getFloatSemantics(),
-                             rawValueData));
-  default:
-    llvm_unreachable("unexpected element type");
-  }
+  if (auto fType = elementType.dyn_cast<FloatType>())
+    return FloatAttr::get(elementType,
+                          APFloat(fType.getFloatSemantics(), rawValueData));
+  llvm_unreachable("unexpected element type");
 }
 
 void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto elementType = getType().getElementType();
-  switch (getKind()) {
-  case StandardAttributes::DenseIntElements: {
+  if (elementType.isa<IntegerType>()) {
     // Get the raw APInt values.
     SmallVector<APInt, 8> intValues;
     cast<DenseIntElementsAttr>().getValues(intValues);
@@ -656,7 +637,7 @@ void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
       values.push_back(IntegerAttr::get(elementType, intVal));
     return;
   }
-  case StandardAttributes::DenseFPElements: {
+  if (elementType.isa<FloatType>()) {
     // Get the raw APFloat values.
     SmallVector<APFloat, 8> floatValues;
     cast<DenseFPElementsAttr>().getValues(floatValues);
@@ -666,9 +647,7 @@ void DenseElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
       values.push_back(FloatAttr::get(elementType, floatVal));
     return;
   }
-  default:
-    llvm_unreachable("unexpected element type");
-  }
+  llvm_unreachable("unexpected element type");
 }
 
 DenseElementsAttr DenseElementsAttr::mapValues(
@@ -810,6 +789,12 @@ DenseElementsAttr DenseIntElementsAttr::mapValues(
   return get(newArrayType, elementData);
 }
 
+/// Method for supporting type inquiry through isa, cast and dyn_cast.
+bool DenseIntElementsAttr::classof(Attribute attr) {
+  return attr.isa<DenseElementsAttr>() &&
+         attr.getType().cast<ShapedType>().getElementType().isa<IntegerType>();
+}
+
 //===----------------------------------------------------------------------===//
 // DenseFPElementsAttr
 //===----------------------------------------------------------------------===//
@@ -857,6 +842,12 @@ DenseFPElementsAttr::iterator DenseFPElementsAttr::end() const {
   auto elementType = getType().getElementType().cast<FloatType>();
   const auto &elementSemantics = elementType.getFloatSemantics();
   return {elementSemantics, raw_end()};
+}
+
+/// Method for supporting type inquiry through isa, cast and dyn_cast.
+bool DenseFPElementsAttr::classof(Attribute attr) {
+  return attr.isa<DenseElementsAttr>() &&
+         attr.getType().cast<ShapedType>().getElementType().isa<FloatType>();
 }
 
 //===----------------------------------------------------------------------===//
