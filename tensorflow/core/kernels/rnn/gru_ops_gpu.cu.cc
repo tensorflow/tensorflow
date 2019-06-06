@@ -16,7 +16,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
-#include "tensorflow/contrib/rnn/kernels/gru_ops.h"
+#include "tensorflow/core/kernels/rnn/gru_ops.h"
 
 namespace tensorflow {
 namespace functor {

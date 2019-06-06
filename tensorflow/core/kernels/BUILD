@@ -1430,6 +1430,14 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    name = "rnn_ops",
+    deps = [
+        "//tensorflow/core/kernels/rnn:gru_ops",
+        "//tensorflow/core/kernels/rnn:lstm_ops",
+    ],
+)
+
+tf_kernel_library(
     name = "cudnn_rnn_kernels",
     srcs = ["cudnn_rnn_ops.cc"],
     visibility = ["//visibility:public"],

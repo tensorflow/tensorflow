@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
-#define TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RNN_GRU_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_RNN_GRU_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/contrib/rnn/kernels/blas_gemm.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/rnn/blas_gemm.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -186,4 +186,4 @@ struct GRUBlockCellBprop : public GRUCell {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RNN_GRU_OPS_H_

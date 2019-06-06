@@ -2237,6 +2237,13 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "rnn_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/rnn:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
