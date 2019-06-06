@@ -1134,8 +1134,8 @@ class CudnnParamsFormatConverterTest(test_util.TensorFlowTestCase,
                                   for c in NAMED_RNN_TESTCASES)
   @test_util.run_gpu_only
   def test_gru(self, num_units, input_size, num_layers):
-      self._test_gru_helper(num_units, input_size, num_layers,
-                            cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+    self._test_gru_helper(num_units, input_size, num_layers,
+                          cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
 
   @parameterized.named_parameters((c["testcase_name"], c["num_units"],
                                    c["input_size"], c["num_layers"])

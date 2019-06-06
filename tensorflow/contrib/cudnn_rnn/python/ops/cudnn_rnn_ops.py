@@ -250,43 +250,31 @@ class CudnnParamsFormatConverter(object):
       2 list for weights and biases respectively.
     """
     with ops.device("/gpu:0"):
-      if compat.forward_compatible(2019, 6, 26):
-        if self._num_proj:
-          num_params_weights = (self._num_params +
-                                1 * self._num_layers * self._num_dirs)
-          num_params_biases = self._num_params
-          weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical_v2(
-              num_layers=self._num_layers,
-              num_units=self._num_units,
-              input_size=self._input_size,
-              params=opaque_param,
-              rnn_mode=self._rnn_mode,
-              input_mode=self._input_mode,
-              direction=self._direction,
-              num_params_weights=num_params_weights,
-              num_params_biases=num_params_biases,
-              num_proj=self._num_proj)
-        else:
-          weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
-              num_layers=self._num_layers,
-              num_units=self._num_units,
-              input_size=self._input_size,
-              params=opaque_param,
-              num_params=self._num_params,
-              rnn_mode=self._rnn_mode,
-              input_mode=self._input_mode,
-              direction=self._direction)
-        return (weights, biases)
-
-      weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
-          num_layers=self._num_layers,
-          num_units=self._num_units,
-          input_size=self._input_size,
-          params=opaque_param,
-          num_params=self._num_params,
-          rnn_mode=self._rnn_mode,
-          input_mode=self._input_mode,
-          direction=self._direction)
+      if compat.forward_compatible(2019, 6, 26) and self._num_proj:
+        num_params_weights = (self._num_params +
+                              1 * self._num_layers * self._num_dirs)
+        num_params_biases = self._num_params
+        weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical_v2(
+            num_layers=self._num_layers,
+            num_units=self._num_units,
+            input_size=self._input_size,
+            params=opaque_param,
+            rnn_mode=self._rnn_mode,
+            input_mode=self._input_mode,
+            direction=self._direction,
+            num_params_weights=num_params_weights,
+            num_params_biases=num_params_biases,
+            num_proj=self._num_proj)
+      else:
+        weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
+            num_layers=self._num_layers,
+            num_units=self._num_units,
+            input_size=self._input_size,
+            params=opaque_param,
+            num_params=self._num_params,
+            rnn_mode=self._rnn_mode,
+            input_mode=self._input_mode,
+            direction=self._direction)
       return (weights, biases)
 
   def _cu_canonical_to_opaque(self, cu_weights, cu_biases):
@@ -300,39 +288,28 @@ class CudnnParamsFormatConverter(object):
       a single opaque tensor.
     """
     with ops.device("/gpu:0"):
-      if compat.forward_compatible(2019, 6, 26):
-        if self._num_proj:
-          return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params_v2(
-              num_layers=self._num_layers,
-              num_units=self._num_units,
-              input_size=self._input_size,
-              weights=cu_weights,
-              biases=cu_biases,
-              rnn_mode=self._rnn_mode,
-              input_mode=self._input_mode,
-              num_proj=self._num_proj,
-              direction=self._direction)
-        else:
-          return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
-              num_layers=self._num_layers,
-              num_units=self._num_units,
-              input_size=self._input_size,
-              weights=cu_weights,
-              biases=cu_biases,
-              rnn_mode=self._rnn_mode,
-              input_mode=self._input_mode,
-              direction=self._direction)
+      if compat.forward_compatible(2019, 6, 26) and self._num_proj:
+        return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params_v2(
+            num_layers=self._num_layers,
+            num_units=self._num_units,
+            input_size=self._input_size,
+            weights=cu_weights,
+            biases=cu_biases,
+            rnn_mode=self._rnn_mode,
+            input_mode=self._input_mode,
+            num_proj=self._num_proj,
+            direction=self._direction)
+      else:
+        return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
+            num_layers=self._num_layers,
+            num_units=self._num_units,
+            input_size=self._input_size,
+            weights=cu_weights,
+            biases=cu_biases,
+            rnn_mode=self._rnn_mode,
+            input_mode=self._input_mode,
+            direction=self._direction)
 
-      return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
-          num_layers=self._num_layers,
-          num_units=self._num_units,
-          input_size=self._input_size,
-          weights=cu_weights,
-          biases=cu_biases,
-          rnn_mode=self._rnn_mode,
-          input_mode=self._input_mode,
-          direction=self._direction)
-      
   def _cu_canonical_to_tf_canonical(self, cu_weights, cu_biases):
     r"""Transform from Cudnn canonical to tf canonical.
 
