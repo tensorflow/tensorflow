@@ -163,7 +163,6 @@ class OpKernel {
   const string& name() const;              // Same as def().name()
   const string& type_string() const;       // Same as def().op()
   const string& requested_device() const;  // Same as def().device()
-  bool is_internal() const { return is_internal_; }
 
   int num_inputs() const { return input_types_.size(); }
   DataType input_type(int i) const { return input_types_[i]; }
@@ -219,7 +218,6 @@ class OpKernel {
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   const int graph_def_version_;
-  const bool is_internal_;  // True if this is an internal operation
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
 
