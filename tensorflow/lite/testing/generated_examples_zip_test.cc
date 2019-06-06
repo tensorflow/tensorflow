@@ -64,6 +64,9 @@ std::map<string, string> kBrokenTests = {
     // SpaceToBatchND only supports 4D tensors.
     {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
+    // BatchToSpaceND only supports 4D tensors.
+    {R"(^\/batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\])", "70848787"},
+
     // L2Norm only works for dim=-1.
     {R"(^\/l2norm_dim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
     {R"(^\/l2norm_dim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
