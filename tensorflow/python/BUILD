@@ -4092,10 +4092,22 @@ cuda_py_test(
         ":variables",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
-        "//tensorflow/python/distribute:mirrored_strategy",
     ],
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
+)
+
+py_test(
+    name = "nn_loss_scaling_utilities_test",
+    size = "small",
+    srcs = ["ops/nn_loss_scaling_utilities_test.py"],
+    python_version = "PY2",
+    deps = [
+        ":client_testlib",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 cuda_py_test(
