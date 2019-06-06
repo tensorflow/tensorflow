@@ -342,11 +342,12 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &offset,
     const DeviceMemory<float> &estimated_mean,
     const DeviceMemory<float> &estimated_variance,
-    const dnn::BatchDescriptor &x_desc,
+    const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-    DeviceMemory<float> *y, DeviceMemory<float> *batch_mean,
-    DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
-    DeviceMemory<float> *saved_inv_var, bool is_training,
+    dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
+    DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
+    DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
+    bool is_training,
     std::function<const DeviceMemory<float> &()> var_to_inv_var,
     std::function<void()> inv_var_to_var,
     ScratchAllocator *reserve_space_allocator,
@@ -356,11 +357,11 @@ Stream &Stream::ThenBatchNormalizationForward(
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
-          this, x, scale, offset, estimated_mean, estimated_variance, x_desc,
-          scale_offset_desc, epsilon, y, batch_mean, batch_var, saved_mean,
-          saved_inv_var, is_training, reserve_space_allocator,
-          workspace_allocator, std::move(var_to_inv_var),
-          std::move(inv_var_to_var)));
+          this, x, scale, offset, estimated_mean, estimated_variance,
+          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
+          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
+          reserve_space_allocator, workspace_allocator,
+          std::move(var_to_inv_var), std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -398,11 +399,12 @@ Stream &Stream::ThenBatchNormalizationForward(
     const DeviceMemory<float> &offset,
     const DeviceMemory<float> &estimated_mean,
     const DeviceMemory<float> &estimated_variance,
-    const dnn::BatchDescriptor &x_desc,
+    const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
     const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-    DeviceMemory<Eigen::half> *y, DeviceMemory<float> *batch_mean,
-    DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
-    DeviceMemory<float> *saved_inv_var, bool is_training,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
+    DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
+    DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
+    bool is_training,
     std::function<const DeviceMemory<float> &()> var_to_inv_var,
     std::function<void()> inv_var_to_var,
     ScratchAllocator *reserve_space_allocator,
@@ -412,11 +414,11 @@ Stream &Stream::ThenBatchNormalizationForward(
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoBatchNormalizationForward(
-          this, x, scale, offset, estimated_mean, estimated_variance, x_desc,
-          scale_offset_desc, epsilon, y, batch_mean, batch_var, saved_mean,
-          saved_inv_var, is_training, reserve_space_allocator,
-          workspace_allocator, std::move(var_to_inv_var),
-          std::move(inv_var_to_var)));
+          this, x, scale, offset, estimated_mean, estimated_variance,
+          side_input, x_desc, scale_offset_desc, epsilon, activation_mode, y,
+          batch_mean, batch_var, saved_mean, saved_inv_var, is_training,
+          reserve_space_allocator, workspace_allocator,
+          std::move(var_to_inv_var), std::move(inv_var_to_var)));
     } else {
       SetErrorAndLogNoDnnSupport();
     }

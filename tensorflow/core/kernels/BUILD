@@ -1798,6 +1798,31 @@ tf_cc_test(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "fused_batch_norm_ex_op_test",
+    size = "small",
+    srcs = ["fused_batch_norm_ex_op_test.cc"],
+    deps = [
+        ":cwise_op",
+        ":fused_batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":relu_op",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/stream_executor/cuda:cudnn_plugin",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
 tf_cc_test(
     name = "in_topk_op_test",
     size = "small",
