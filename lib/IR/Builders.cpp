@@ -147,6 +147,10 @@ FloatAttr Builder::getF32FloatAttr(float value) {
   return FloatAttr::get(getF32Type(), APFloat(value));
 }
 
+FloatAttr Builder::getF16FloatAttr(float value) {
+  return FloatAttr::get(getF16Type(), value);
+}
+
 FloatAttr Builder::getFloatAttr(Type type, double value) {
   return FloatAttr::get(type, value);
 }
@@ -242,6 +246,8 @@ ArrayAttr Builder::getStrArrayAttr(ArrayRef<StringRef> values) {
 
 Attribute Builder::getZeroAttr(Type type) {
   switch (type.getKind()) {
+  case StandardTypes::F16:
+    return getF16FloatAttr(0);
   case StandardTypes::F32:
     return getF32FloatAttr(0);
   case StandardTypes::F64:

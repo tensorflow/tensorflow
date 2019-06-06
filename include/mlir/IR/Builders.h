@@ -132,6 +132,7 @@ public:
   Attribute getZeroAttr(Type type);
 
   // Convenience methods for fixed types.
+  FloatAttr getF16FloatAttr(float value);
   FloatAttr getF32FloatAttr(float value);
   FloatAttr getF64FloatAttr(double value);
   IntegerAttr getI32IntegerAttr(int32_t value);
