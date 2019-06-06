@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+
 #include <type_traits>
 
 #include "absl/algorithm/container.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
@@ -686,6 +688,10 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   optional<string> backend_config;
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
+  optional<std::vector<int64>> outer_dimension_partitions;
+  attrs["outer_dimension_partitions"] = {/*required=*/false,
+                                         AttrTy::kBracedInt64List,
+                                         &outer_dimension_partitions};
 
   HloInstruction* instruction;
   switch (opcode) {
@@ -889,6 +895,15 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReplicaId());
+      break;
+    }
+    case HloOpcode::kPartitionId: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreatePartitionId());
       break;
     }
     case HloOpcode::kReshape: {
@@ -1496,15 +1511,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCustomCall: {
       optional<string> custom_call_target;
-      optional<string> opaque;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
       optional<int64> batch_group_count;
       optional<std::vector<Shape>> operand_layout_constraints;
+      optional<bool> custom_call_has_side_effect;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
-      attrs["opaque"] = {/*required=*/false, AttrTy::kString, &opaque};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
@@ -1514,6 +1528,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                                     &batch_group_count};
       attrs["operand_layout_constraints"] = {
           /*required=*/false, AttrTy::kShapeList, &operand_layout_constraints};
+      attrs["custom_call_has_side_effect"] = {/*required=*/false, AttrTy::kBool,
+                                              &custom_call_has_side_effect};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1552,23 +1568,28 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         }
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target, *operand_layout_constraints,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       } else {
         instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
             shape, operands, *custom_call_target,
-            opaque.has_value() ? *opaque : ""));
+            backend_config ? *backend_config : ""));
       }
+      auto custom_call_instr = Cast<HloCustomCallInstruction>(instruction);
       if (window.has_value()) {
-        instruction->set_window(*window);
+        custom_call_instr->set_window(*window);
       }
       if (dnums.has_value()) {
-        instruction->set_convolution_dimension_numbers(*dnums);
+        custom_call_instr->set_convolution_dimension_numbers(*dnums);
       }
       if (feature_group_count.has_value()) {
-        instruction->set_feature_group_count(*feature_group_count);
+        custom_call_instr->set_feature_group_count(*feature_group_count);
       }
       if (batch_group_count.has_value()) {
-        instruction->set_batch_group_count(*batch_group_count);
+        custom_call_instr->set_batch_group_count(*batch_group_count);
+      }
+      if (custom_call_has_side_effect.has_value()) {
+        custom_call_instr->set_custom_call_has_side_effect(
+            *custom_call_has_side_effect);
       }
       break;
     }
@@ -1762,6 +1783,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   }
   if (backend_config) {
     instruction->set_raw_backend_config_string(std::move(*backend_config));
+  }
+  if (outer_dimension_partitions) {
+    instruction->set_outer_dimension_partitions(*outer_dimension_partitions);
   }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
@@ -4142,6 +4166,14 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     if (!ParseInstruction(&builder, &root_name)) {
       return false;
     }
+  }
+
+  if (lexer_.GetKind() != TokKind::kEof) {
+    Error(
+        lexer_.GetLoc(),
+        "Syntax error:\nExpected eof after parsing single instruction.  Did "
+        "you mean to write an HLO module and forget the \"HloModule\" header?");
+    return false;
   }
 
   module->AddEntryComputation(builder.Build());

@@ -19,9 +19,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -50,7 +51,7 @@ AttrSlice::AttrSlice(const NodeDef& node_def)
 
 AttrSlice::AttrSlice(const AttrValueMap* a) : ndef_(nullptr), attrs_(a) {}
 
-static string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
+string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
   string ret;
 
   // We sort the attrs so the output is deterministic.
@@ -81,6 +82,18 @@ string AttrSlice::SummarizeNode() const {
   return ndef_ ? SummarizeNodeDef(*ndef_)
                : strings::StrCat(
                      "[", SummarizeAttrsHelper(*this, StringPiece()), "]");
+}
+
+string AttrSlice::DebugString() const {
+  std::vector<string> attr_key_vals;
+  attr_key_vals.reserve(attrs_->size());
+  for (const auto& it : *this) {
+    const string& name = it.first;
+    const AttrValue& attr_value = it.second;
+    attr_key_vals.push_back(
+        absl::StrCat(name, "=", SummarizeAttrValue(attr_value)));
+  }
+  return absl::StrJoin(attr_key_vals, ", ");
 }
 
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
@@ -118,6 +131,13 @@ string FormatNodeForError(const Node& node) {
 
 string FormatNodeDefForError(const NodeDef& node_def) {
   return FormatNodeForError(NodeDebugInfo(node_def));
+}
+
+string FormatNodeDefForError(
+    StringPiece node_name, bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info) {
+  return FormatNodeForError(NodeDebugInfo(
+      node_name, has_experimental_debug_info, experimental_debug_info));
 }
 
 void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
@@ -183,7 +203,7 @@ Status AttrSlice::Find(StringPiece attr_name,
   // Skip AttachDef for internal attrs since it is a little bit
   // expensive and it is common for them to correctly not be included
   // in a NodeDef.
-  if (!str_util::StartsWith(attr_name, "_") && ndef_ != nullptr) {
+  if (!absl::StartsWith(attr_name, "_") && ndef_ != nullptr) {
     s = AttachDef(s, *ndef_);
   }
   return s;
@@ -480,7 +500,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   size_t num_inputs = 0;
   // TODO(josh11b): Unify the input field validation.
   for (const string& input : node_def.input()) {
-    if (str_util::StartsWith(input, "^")) {
+    if (absl::StartsWith(input, "^")) {
       seen_control = true;
       if (input.find(':') != string::npos) {
         return errors::InvalidArgument("Control input '", input,
@@ -506,7 +526,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   }
   for (const auto& attr : node_def.attr()) {
     // Allow internal optional attributes with names starting with "_".
-    if (str_util::StartsWith(attr.first, "_")) {
+    if (absl::StartsWith(attr.first, "_")) {
       continue;
     }
     auto iter = op_attrs.find(attr.first);

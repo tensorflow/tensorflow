@@ -26,13 +26,14 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.mixed_precision.experimental import loss_scale as loss_scale_module
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
@@ -207,6 +208,54 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(opt._loss_scale()),
                        initial_loss_scale * 16)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testIterations(self):
+    opt = gradient_descent.SGD(2.0)
+    lso = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
+    lso.iterations = 7
+    self.assertEqual(lso.iterations, 7)
+    self.assertEqual(opt.iterations, 7)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def testGettingAndSettingLearningRate(self, strategy_fn):
+    with strategy_fn().scope() as strategy:
+      var = variables.Variable([5.0])
+      opt = adam.Adam(learning_rate=1.0)
+      loss = lambda: var * 2.0
+      run_fn = lambda: opt.minimize(loss, [var])
+      run_op = strategy.experimental_run(run_fn)
+      self.evaluate(variables.global_variables_initializer())
+      self._run_if_in_graph_mode(run_op)
+
+      lr = self.evaluate(opt.lr)
+      self.assertEqual(1.0, lr)
+
+      opt.lr = 2.0
+      lr = self.evaluate(opt.lr)
+      self.assertEqual(2.0, lr)
+
+      self.evaluate(opt.lr.assign(3.0))
+      lr = self.evaluate(opt.lr)
+      self.assertEqual(3.0, lr)
+
+      with self.assertRaises(AttributeError):
+        opt.not_an_attr += 3
+
+  @test_util.run_in_graph_and_eager_modes
+  def testArbitraryAttributesNotExposed(self):
+    opt = adam.Adam(learning_rate=1.0)
+    # Test that Adam has attributes 'epsilon' and 'beta1'
+    opt.epsilon  # pylint: disable=pointless-statement
+    opt.beta_1  # pylint: disable=pointless-statement
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
+    # Test that attributes defined by OptimizerV2 subclasses are not exposed in
+    # LossScaleOptimizer.
+    with self.assertRaises(AttributeError):
+      opt.epsilon  # pylint: disable=pointless-statement
+    with self.assertRaises(AttributeError):
+      opt.beta_1  # pylint: disable=pointless-statement
+
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
   def testCheckpoint(self, strategy_fn):
@@ -222,7 +271,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       loss_scale = loss_scale_module.DynamicLossScale(
           initial_loss_scale=1., increment_period=2.,
           multiplier=2.)
-      opt = gradient_descent.SGD(1.)
+      opt = gradient_descent.SGD(1., momentum=1.)
       opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
       run_fn = lambda: opt.minimize(lambda: var + 1., var_list=[var])
       opt_op = strategy.experimental_run(run_fn)
@@ -230,9 +279,11 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.evaluate(opt_op)
       self.assertEqual(self.evaluate(loss_scale()), 1.)
       self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
+      slot_var = opt._optimizer.get_slot(var, 'momentum')
+      slot_value = self.evaluate(slot_var).item()
 
       # Save a checkpoint.
-      checkpoint = trackable_utils.Checkpoint(optimizer=opt)
+      checkpoint = trackable_utils.Checkpoint(optimizer=opt, var=var)
       prefix = os.path.join(self.get_temp_dir(), 'ckpt')
       save_path = checkpoint.save(prefix)
 
@@ -240,6 +291,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.evaluate(strategy.experimental_run(run_fn))
       self.assertEqual(self.evaluate(loss_scale()), 2.)
       self.assertEqual(self.evaluate(loss_scale._num_good_steps), 0)
+      self.assertNotAlmostEqual(self.evaluate(slot_var).item(), slot_value)
 
       # Load checkpoint and ensure loss scale is back to it's original value.
       status = checkpoint.restore(save_path)
@@ -247,6 +299,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       status.run_restore_ops()
       self.assertEqual(self.evaluate(loss_scale()), 1.)
       self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
+      self.assertAlmostEqual(self.evaluate(slot_var).item(), slot_value)
 
 
 if __name__ == '__main__':

@@ -34,6 +34,8 @@ absl::string_view ThunkKindToString(Thunk::Kind kind) {
       return "kCudnnBatchNormForwardInference";
     case Thunk::kCudnnBatchNormForwardTraining:
       return "kCudnnBatchNormForwardTraining";
+    case Thunk::kCustomCall:
+      return "kCustomCall";
     case Thunk::kNcclAllReduce:
       return "kNcclAllReduce";
     case Thunk::kFft:
@@ -50,6 +52,8 @@ absl::string_view ThunkKindToString(Thunk::Kind kind) {
       return "kMemzero";
     case Thunk::kOutfeed:
       return "kOutfeed";
+    case Thunk::kReplicaId:
+      return "kReplicaId";
     case Thunk::kSequential:
       return "kSequential";
     case Thunk::kTriangularSolve:

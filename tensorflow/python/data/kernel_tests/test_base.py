@@ -28,10 +28,12 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 
 
-class DatasetTestBase(test.TestCase):
+class DatasetTestBase(ragged_test_util.RaggedTensorTestCase, test.TestCase):
   """Base class for dataset tests."""
 
   @classmethod
@@ -40,6 +42,10 @@ class DatasetTestBase(test.TestCase):
       dataset_ops.Dataset = dataset_ops.DatasetV2
     else:
       dataset_ops.Dataset = dataset_ops.DatasetV1
+
+  def assert_op_cancelled(self, op):
+    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+      self.evaluate(op)
 
   def assertSparseValuesEqual(self, a, b):
     """Asserts that two SparseTensors/SparseTensorValues are equal."""
@@ -100,6 +106,8 @@ class DatasetTestBase(test.TestCase):
           nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
         if sparse_tensor.is_sparse(result_value):
           self.assertSparseValuesEqual(result_value, expected_value)
+        elif ragged_tensor.is_ragged(result_value):
+          self.assertRaggedEqual(result_value, expected_value)
         else:
           self.assertAllEqual(
               result_value,
@@ -198,6 +206,8 @@ class DatasetTestBase(test.TestCase):
       for i in range(len(op1)):
         if sparse_tensor.is_sparse(op1[i]):
           self.assertSparseValuesEqual(op1[i], op2[i])
+        elif ragged_tensor.is_ragged(op1[i]):
+          self.assertRaggedEqual(op1[i], op2[i])
         elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
         else:

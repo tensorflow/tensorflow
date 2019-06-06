@@ -154,7 +154,7 @@ TEST_F(SessionMgrTest, UnknownSessionHandle) {
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);
   EXPECT_TRUE(errors::IsAborted(s));
   EXPECT_TRUE(
-      str_util::StrContains(s.error_message(), "Session handle is not found"));
+      absl::StrContains(s.error_message(), "Session handle is not found"));
 }
 
 TEST_F(SessionMgrTest, WorkerNameFromServerDef) {

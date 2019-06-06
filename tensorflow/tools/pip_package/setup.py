@@ -53,14 +53,14 @@ REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
-    'google_pasta >= 0.1.2',
+    'google_pasta >= 0.1.6',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
     'numpy >= 1.14.5, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.13.0, < 1.14.0',
-    'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
+    'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
 ]
@@ -103,7 +103,6 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
@@ -116,6 +115,11 @@ CONSOLE_SCRIPTS = [
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
 ]
 # pylint: enable=line-too-long
+
+# Only keep freeze_graph console script in 1.X.
+if _VERSION.startswith('1.') and '_2.0' not in project_name:
+  CONSOLE_SCRIPTS.append(
+      'freeze_graph = tensorflow.python.tools.freeze_graph:run_main')
 
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
@@ -139,6 +143,7 @@ class InstallCommand(InstallCommandBase):
     ret = InstallCommandBase.finalize_options(self)
     self.install_headers = os.path.join(self.install_purelib,
                                         'tensorflow', 'include')
+    self.install_lib = self.install_platlib
     return ret
 
 

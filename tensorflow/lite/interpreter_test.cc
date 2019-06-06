@@ -14,14 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/interpreter.h"
+
+#include <stdint.h>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/version.h"
 
 namespace tflite {
 
@@ -164,7 +170,7 @@ TEST(BasicInterpreter, CheckAllocate) {
   } cases[] = {
       {kTfLiteFloat32, sizeof(float)}, {kTfLiteInt32, sizeof(int32_t)},
       {kTfLiteUInt8, sizeof(uint8_t)}, {kTfLiteInt64, sizeof(int64_t)},
-      {kTfLiteInt16, sizeof(int16_t)},
+      {kTfLiteInt16, sizeof(int16_t)}, {kTfLiteFloat16, sizeof(TfLiteFloat16)},
   };
 
   for (auto test : cases) {
@@ -237,6 +243,8 @@ TEST(BasicInterpreter, CheckResize) {
   const uint8_t uint8s[] = {3, 4};
   const int64_t int64s[] = {6, -7};
   const int16_t int16s[] = {8, -9};
+  const Eigen::half float16s[] = {Eigen::half_impl::float_to_half_rtne(-3.f),
+                                  Eigen::half_impl::float_to_half_rtne(-4.f)};
 
   struct {
     TfLiteType type;
@@ -248,6 +256,8 @@ TEST(BasicInterpreter, CheckResize) {
       {kTfLiteUInt8, sizeof(uint8_t), reinterpret_cast<const char*>(uint8s)},
       {kTfLiteInt64, sizeof(int64_t), reinterpret_cast<const char*>(int64s)},
       {kTfLiteInt16, sizeof(int16_t), reinterpret_cast<const char*>(int16s)},
+      {kTfLiteFloat16, sizeof(TfLiteFloat16),
+       reinterpret_cast<const char*>(float16s)},
   };
 
   for (auto test : cases) {
@@ -282,10 +292,8 @@ TEST(BasicInterpreter, CheckResize) {
 TEST(BasicInterpreter, CheckAlignment) {
   struct {
     TfLiteType type;
-  } cases[] = {
-      {kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt8},
-      {kTfLiteInt64},   {kTfLiteInt16},
-  };
+  } cases[] = {{kTfLiteFloat32}, {kTfLiteInt32}, {kTfLiteUInt8},
+               {kTfLiteInt64},   {kTfLiteInt16}, {kTfLiteFloat16}};
 
   for (auto test : cases) {
     Interpreter interpreter;
@@ -314,9 +322,9 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
 
   std::vector<int> sizes{2048, 4096, 1023, 2047, 1021,
                          2047, 1023, 2046, 0,    2048};
-  for (int i = 0; i < sizes.size(); ++i) {
-    interpreter.SetTensorParametersReadWrite(i, kTfLiteUInt8, "", {sizes[i]},
-                                             quant);
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    interpreter.SetTensorParametersReadWrite(static_cast<int>(i), kTfLiteUInt8,
+                                             "", {sizes[i]}, quant);
   }
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({9, 4});
@@ -733,6 +741,17 @@ TEST(BasicInterpreter, TestCustomErrorReporter) {
   ASSERT_EQ(reporter.num_calls(), 1);
 }
 
+TEST(BasicInterpreter, TestUseNNAPI) {
+  TestErrorReporter reporter;
+  Interpreter interpreter(&reporter);
+  interpreter.UseNNAPI(true);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+  interpreter.UseNNAPI(false);
+  ASSERT_EQ(reporter.error_messages(),
+            "Attempting to disable NNAPI delegate after it's applied.");
+}
+
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
@@ -1113,7 +1132,10 @@ class TestDelegate : public ::testing::Test {
     // Create a simple implementation of a TfLiteDelegate. We use the C++ class
     // SimpleDelegate and it can produce a handle TfLiteDelegate that is
     // value-copyable and compatible with TfLite.
-    explicit SimpleDelegate(const std::vector<int>& nodes) : nodes_(nodes) {
+    explicit SimpleDelegate(
+        const std::vector<int>& nodes,
+        TfLiteDelegateFlags delegate_flags = kTfLiteDelegateFlagsNone)
+        : nodes_(nodes) {
       delegate_.Prepare = [](TfLiteContext* context,
                              TfLiteDelegate* delegate) -> TfLiteStatus {
         auto* simple = reinterpret_cast<SimpleDelegate*>(delegate->data_);
@@ -1177,7 +1199,7 @@ class TestDelegate : public ::testing::Test {
              TfLiteBufferHandle* handle) { *handle = kTfLiteNullBufferHandle; };
       // Store type-punned data SimpleDelegate structure.
       delegate_.data_ = reinterpret_cast<void*>(this);
-      delegate_.flags = kTfLiteDelegateFlagsNone;
+      delegate_.flags = delegate_flags;
     }
 
     static TfLiteRegistration FakeFusedRegistration() {
@@ -1410,6 +1432,75 @@ TEST_F(TestDelegate, TestCopyFromBuffer) {
   for (int i = 0; i < tensor->dims->data[0]; ++i) {
     ASSERT_EQ(tensor->data.f[i], 6.0f);
   }
+}
+
+TEST_F(TestDelegate, DelegateCustomOpResolution) {
+  // Build a flatbuffer model that contains the "my_add" custom op which gets
+  // resolved only after SimpleDelegate is applied.
+  flatbuffers::FlatBufferBuilder builder;
+  // Tensors.
+  const int32_t shape[1] = {3};
+  flatbuffers::Offset<Tensor> tensors[3] = {
+      CreateTensor(builder, builder.CreateVector<int32_t>(shape, 1),
+                   TensorType_FLOAT32, /*buffer=*/0, builder.CreateString("X")),
+      CreateTensor(builder, builder.CreateVector<int32_t>(shape, 1),
+                   TensorType_FLOAT32, /*buffer=*/0, builder.CreateString("Y")),
+      CreateTensor(builder, builder.CreateVector<int32_t>(shape, 1),
+                   TensorType_FLOAT32, /*buffer=*/0, builder.CreateString("Z")),
+  };
+  // Custom op definition.
+  flatbuffers::Offset<OperatorCode> op_code =
+      CreateOperatorCodeDirect(builder, BuiltinOperator_CUSTOM, "my_add");
+  const int32_t inputs[2] = {0, 1};
+  const int32_t outputs[1] = {2};
+  flatbuffers::Offset<Operator> op = CreateOperator(
+      builder, /*opcode_index=*/0, builder.CreateVector<int32_t>(inputs, 2),
+      builder.CreateVector<int32_t>(outputs, 1), BuiltinOptions_NONE,
+      /*builtin_options=*/0,
+      /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS);
+  // Subgraph & Model.
+  flatbuffers::Offset<SubGraph> subgraph =
+      CreateSubGraph(builder, builder.CreateVector(tensors, 3),
+                     builder.CreateVector<int32_t>(inputs, 2),
+                     builder.CreateVector<int32_t>(outputs, 1),
+                     builder.CreateVector(&op, 1), /*name=*/0);
+  flatbuffers::Offset<Buffer> buffers[1] = {
+      CreateBuffer(builder, builder.CreateVector({})),
+  };
+  flatbuffers::Offset<Model> model_buffer = CreateModel(
+      builder, TFLITE_SCHEMA_VERSION, builder.CreateVector(&op_code, 1),
+      builder.CreateVector(&subgraph, 1), builder.CreateString("test_model"),
+      builder.CreateVector(buffers, 1));
+  builder.Finish(model_buffer);
+  std::vector<char> buffer =
+      std::vector<char>(builder.GetBufferPointer(),
+                        builder.GetBufferPointer() + builder.GetSize());
+  const Model* model = GetModel(buffer.data());
+
+  // Build an interpreter with the model. Initialization should work fine.
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(
+          model, ::tflite::ops::builtin::BuiltinOpResolver())(&interpreter),
+      kTfLiteOk);
+  // AllocateTensors should fail, since my_add hasn't been resolved.
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
+
+  // Applying static delegate won't work, since the interpreter will first try
+  // to Prepare all original nodes.
+  std::unique_ptr<SimpleDelegate> static_delegate(new SimpleDelegate({0}));
+  ASSERT_EQ(interpreter->ModifyGraphWithDelegate(
+                static_delegate->get_tf_lite_delegate()),
+            kTfLiteError);
+
+  // Applying delegate that supports dynamic tensors should work.
+  std::unique_ptr<SimpleDelegate> dynamic_delegate(
+      new SimpleDelegate({0}, kTfLiteDelegateFlagsAllowDynamicTensors));
+  ASSERT_EQ(interpreter->ModifyGraphWithDelegate(
+                dynamic_delegate->get_tf_lite_delegate()),
+            kTfLiteOk);
+  // AllocateTensors will now work.
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
 }
 
 class TestDelegateWithDynamicTensors : public ::testing::Test {

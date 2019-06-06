@@ -1,19 +1,20 @@
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-# This target bundles many scripts into a single py_binary so they can be
-# executed by saved_model_test without exploding the data dependencies.
-py_binary(
-    name = "run_script",
+py_library(
+    name = "integration_scripts",
     srcs = [
+        "deploy_mnist_cnn.py",
         "export_mnist_cnn.py",
         "export_rnn_cell.py",
         "export_simple_text_embedding.py",
         "export_text_rnn_model.py",
-        "run_script.py",
+        "integration_scripts.py",
         "use_mnist_cnn.py",
         "use_model_in_sequential_keras.py",
         "use_rnn_cell.py",
@@ -23,17 +24,8 @@ py_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":mnist_util",
-        ":util",
         "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_library(
-    name = "util",
-    srcs = ["util.py"],
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow:tensorflow_py",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -46,25 +38,33 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "saved_model_test",
     srcs = [
         "saved_model_test.py",
     ],
-    data = [
-        ":run_script",
+    additional_deps = [
+        ":integration_scripts",
+        "//tensorflow:tensorflow_py",
     ],
     shard_count = 4,
-    srcs_version = "PY2AND3",
     tags = [
-        # NOTE: Split SavedModelTest due to Forge input size limit.
-        "no_cuda_on_cpu_tap",  # forge input size exceeded
+        "no_pip",  # b/131697937 and b/132196869
         "noasan",  # forge input size exceeded
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
-        "no_pip",  # b/131697937
     ],
-    deps = [
-        "//tensorflow:tensorflow_py",
+    xla_enable_strict_auto_jit = True,
+)
+
+# b/132234211: Target added to support internal test target that runs the test
+# in an environment that has the extra dependencies required to test integration
+# with non core tensorflow packages.
+py_library(
+    name = "saved_model_test_lib",
+    srcs = [
+        "saved_model_test.py",
     ],
+    visibility = ["//tensorflow:internal"],
+    deps = [":integration_scripts"],
 )

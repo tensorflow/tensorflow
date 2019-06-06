@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -56,10 +57,13 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  bool ForwardInputs(NodeDef* node, absl::Span<const int> inputs_to_forward);
   string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
   bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;
+
+  bool GetTensorFromConstNode(const string& node_name_or_input, Tensor* tensor);
 
   Status MaterializeShapes(const GraphProperties& properties);
 
@@ -69,6 +73,8 @@ class ConstantFolding : public GraphOptimizer {
                                      const GraphProperties& properties);
   Status MaterializeConstantValuedNode(NodeDef* node,
                                        const GraphProperties& properties);
+  Status MaterializeOutputValues(NodeDef* node,
+                                 const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
 
   bool IsFoldable(const NodeDef& node) const;
@@ -100,6 +106,11 @@ class ConstantFolding : public GraphOptimizer {
                                       const GraphProperties& properties,
                                       const TensorShapeProto& shape,
                                       NodeDef* node, GraphDef* graph);
+
+  // Notice: Destroys *value.
+  Status ReplaceOperationWithConstantTensor(DataType dtype, TensorProto* value,
+                                            NodeDef* node, GraphDef* graph);
+
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output,
                    absl::flat_hash_set<string>* nodes_to_not_simplify);
@@ -153,6 +164,11 @@ class ConstantFolding : public GraphOptimizer {
   bool SimplifyReshape(const GraphProperties& properties, bool use_shape_info,
                        NodeDef* node);
 
+  // Returns true iff the node is a reduction and its reduction indices are
+  // constant. Sets *indices_is_empty to true if the set of dimensions to reduce
+  // along is empty (this happens often in the gradient graphs).
+  bool IsReductionWithConstantIndices(const NodeDef& node,
+                                      bool* indices_is_empty) const;
   // Returns true if theres a possibility that a Reduce node could be simplified
   // to an Identity/Reshape.
   bool IsReductionCandidateForSimplification(
@@ -160,11 +176,12 @@ class ConstantFolding : public GraphOptimizer {
       TensorShapeProto* input_tensor_shape,
       TensorShapeProto* output_tensor_shape, bool* is_single_element_op) const;
   // Returns true iff this reduction can be reduced to an identity (i.e if the
-  // set of dimensions to reduce along is empty). This happens often in the
-  // gradient graphs.
+  // input dimensions to reduce along are all of size 1 and keep_dims is true).
   bool IsReductionSimplifiableToIdentity(
       const NodeDef& node, const TensorShapeProto& input_shape, bool keep_dims,
       const gtl::InlinedVector<TensorValue, 4>& reduction_indices_vector) const;
+  // Changes a reduction into an Identity op, returning true on success.
+  bool ReplaceReductionWithIdentity(NodeDef* node) const;
   // Simplifies a Reduction operation to an Identity/Reshape operation if
   // applicable.
   bool SimplifyReduction(GraphDef* optimized_graph,
@@ -233,8 +250,9 @@ class ConstantFolding : public GraphOptimizer {
   void RemoveSplitOrSplitV(const GraphProperties& properties,
                            GraphDef* optimized_graph, NodeDef* node);
 
-  bool MergeConcat(const GraphProperties& properties, bool use_shape_info,
-                   GraphDef* optimized_graph, NodeDef* node);
+  bool GetConcatAxis(const NodeDef& node, int* axis);
+  bool MergeConcat(bool use_shape_info, GraphDef* optimized_graph,
+                   NodeDef* node);
 
   Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
                                                GraphDef* optimized_graph);

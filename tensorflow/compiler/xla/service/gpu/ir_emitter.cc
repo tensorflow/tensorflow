@@ -655,8 +655,8 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
 }
 
 Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
-  // TODO(b/33011107): Support cross replica sum on GPU.
-  return Unimplemented("AllReduce is not implemented on GPU.");
+  return Unimplemented(
+      "AllReduce cannot be nested inside of fusion, map, etc.");
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {

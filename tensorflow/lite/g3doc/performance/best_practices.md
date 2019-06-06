@@ -59,7 +59,7 @@ training should be used instead.
 
 We strongly recommend running benchmarks to make sure that the accuracy is not
 impacted during model compression. Check out our
-[model optimization toolkit](model_optimization.md) for details.
+[model optimization docs](model_optimization.md) for details.
 
 ## Tweak the number of threads
 

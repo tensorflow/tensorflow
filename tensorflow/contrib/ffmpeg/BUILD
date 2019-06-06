@@ -1,11 +1,12 @@
 # Ops that process audio and/or video files using FFmpeg.
 # (https://www.ffmpeg.org/)
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
@@ -155,10 +156,7 @@ tf_py_test(
     data = [
         ":test_data",
     ],
-    tags = [
-        "manual",
-        "notap",
-    ],
+    tags = ["manual"],
 )
 
 py_library(

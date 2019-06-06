@@ -36,14 +36,6 @@ struct TargetIntrinsics {
 // corresponding to the give TargetIntrinsicID.
 struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
   switch (intrin) {
-    case TargetIntrinsicID::kShflDownF32: {
-      return {llvm::Intrinsic::nvvm_shfl_sync_down_f32,
-              llvm::Intrinsic::not_intrinsic};
-    }
-    case TargetIntrinsicID::kShflDownI32: {
-      return {llvm::Intrinsic::nvvm_shfl_sync_down_i32,
-              llvm::Intrinsic::not_intrinsic};
-    }
     case TargetIntrinsicID::kThreadIdx: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
               llvm::Intrinsic::amdgcn_workitem_id_x};
@@ -84,8 +76,7 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   llvm::Intrinsic::ID llvm_intrinsic_id = llvm::Intrinsic::not_intrinsic;
 
-  if ((target_triple.getArch() == llvm::Triple::nvptx) ||
-      (target_triple.getArch() == llvm::Triple::nvptx64)) {
+  if (target_triple.isNVPTX()) {
     llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     llvm_intrinsic_id = gpu_intrinsic_id.amdgpu_intrinsic;
@@ -96,6 +87,29 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, llvm_intrinsic_id, llvm_ir::AsArrayRef(overloaded_types));
   return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
+}
+
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                                 llvm::IRBuilder<>* b) {
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  if (target_triple.isNVPTX()) {
+    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
+    // treats function as a CUDA kernel.
+    llvm::LLVMContext& context = module->getContext();
+    llvm::NamedMDNode* nvvm_annotations_node =
+        module->getOrInsertNamedMetadata("nvvm.annotations");
+    nvvm_annotations_node->addOperand(llvm::MDNode::get(
+        context, {llvm::ConstantAsMetadata::get(func),
+                  llvm::MDString::get(context, "kernel"),
+                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
+
+  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
+    func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+  } else {
+    LOG(FATAL) << "Invalid triple " << target_triple.str();
+  }
 }
 
 }  // namespace gpu

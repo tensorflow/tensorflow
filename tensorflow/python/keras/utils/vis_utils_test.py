@@ -41,15 +41,27 @@ class ModelToDotFormatTest(test.TestCase):
     except ImportError:
       pass
 
-  def test_plot_model_rnn(self):
-    model = keras.Sequential()
-    model.add(
-        keras.layers.LSTM(
-            16, return_sequences=True, input_shape=(2, 3), name='lstm'))
-    model.add(keras.layers.TimeDistributed(keras.layers.Dense(5, name='dense')))
+  def test_plot_model_with_wrapped_layers_and_models(self):
+    inputs = keras.Input(shape=(None, 3))
+    lstm = keras.layers.LSTM(6, return_sequences=True, name='lstm')
+    x = lstm(inputs)
+    # Add layer inside a Wrapper
+    bilstm = keras.layers.Bidirectional(
+        keras.layers.LSTM(16, return_sequences=True, name='bilstm'))
+    x = bilstm(x)
+    # Add model inside a Wrapper
+    submodel = keras.Sequential(
+        [keras.layers.Dense(32, name='dense', input_shape=(None, 32))]
+    )
+    wrapped_dense = keras.layers.TimeDistributed(submodel)
+    x = wrapped_dense(x)
+    # Add shared submodel
+    outputs = submodel(x)
+    model = keras.Model(inputs, outputs)
     dot_img_file = 'model_2.png'
     try:
-      vis_utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
+      vis_utils.plot_model(
+          model, to_file=dot_img_file, show_shapes=True, expand_nested=True)
       self.assertTrue(file_io.file_exists(dot_img_file))
       file_io.delete_file(dot_img_file)
     except ImportError:

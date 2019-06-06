@@ -248,7 +248,8 @@ TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty1DIn3DOut) {
   test::ExpectTensorEqual<int>(*GetOutput(3), expected_values);
 }
 
-TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty2DIn4DOut) {
+TEST_F(RaggedTensorFromVariantKernelTest,
+       NonEmpty2DIn4DOutInferredInputRaggedRank) {
   // ragged_component_1 =
   // [
   //   [ [x]            ],
@@ -301,7 +302,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty2DIn4DOut) {
   Tensor variant_component_2 = CreateVariantFromRagged<int, int64>(
       {component_split_2_1, component_split_2_2}, TensorShape({11}),
       component_values_2);
-  int input_ragged_rank = 2;
+  int input_ragged_rank = -1;
   int output_ragged_rank = 4;
   BuildDecodeRaggedTensorGraph<int, int64>(
       input_ragged_rank, output_ragged_rank, TensorShape({2, 2}),
@@ -448,6 +449,28 @@ TEST_F(RaggedTensorFromVariantKernelTest, NonEmpty1DIn3DOutInt32Splits) {
 }
 
 // Tests for invalid inputs.
+TEST_F(RaggedTensorFromVariantKernelTest, InvalidInferredInputRaggedRank) {
+  Tensor component_variant_1 =
+      CreateVariantFromRagged<int, int64>({}, TensorShape({3}), {1, 2, 3});
+  Tensor component_variant_2 =
+      CreateVariantFromRagged<int, int64>({}, TensorShape({0}), {});
+  Tensor component_variant_3 =
+      CreateVariantFromRagged<int, int64>({}, TensorShape({2}), {1, 2});
+  Tensor component_variant_4 =
+      CreateVariantFromRagged<int, int64>({}, TensorShape({1}), {1});
+
+  int input_ragged_rank = -1;
+  int output_ragged_rank = 2;
+  BuildDecodeRaggedTensorGraph<int, int64>(
+      input_ragged_rank, output_ragged_rank, TensorShape({1, 1, 1, 4}),
+      {component_variant_1, component_variant_2, component_variant_3,
+       component_variant_4});
+  EXPECT_TRUE(
+      absl::StartsWith(RunOpKernel().error_message(),
+                       "Inferred input_ragged_rank (output_ragged_rank - "
+                       "encoded_variant.dims()) must be >= 0"));
+}
+
 TEST_F(RaggedTensorFromVariantKernelTest, InputDimsAndRaggedRankAttrsMismatch) {
   const std::vector<int64> component_split_1_1 = {0, 1};
   const std::vector<int64> component_split_2_1 = {0, 1, 2};

@@ -1,11 +1,12 @@
-package(default_visibility = [
-    "//visibility:public",
-])
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "gen_selected_ops", "tflite_copts")
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 

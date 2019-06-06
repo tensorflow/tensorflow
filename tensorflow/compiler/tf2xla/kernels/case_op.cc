@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/case_op.h"
 
+#include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -34,10 +35,41 @@ XlaCaseOp::XlaCaseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
   }
+  if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
+                                     &propagate_compile_time_consts_));
+  }
 }
 
+namespace {
+
+Status ConvertCompileTimeConstArgumentsToConst(
+    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args) {
+  for (int i = 0; i < args->size(); i++) {
+    XlaCompiler::Argument& arg = (*args)[i];
+    const XlaExpression& expression = ctx->InputExpression(i + 1);
+    // If the input tensor is a compile time constant build a kConstant type
+    // argument.
+    if (arg.kind == XlaCompiler::Argument::kParameter) {
+      // NOTE: We can not simply check that this is Kind::kConstant because
+      // this could be the output of a MetadataOnly op e.g. Size.
+      xla::StatusOr<absl::optional<Tensor>> maybe_constant =
+          expression.ResolveConstant(ctx->compiler()->client());
+      if (maybe_constant.ok() && maybe_constant.ValueOrDie().has_value()) {
+        arg.kind = XlaCompiler::Argument::kConstant;
+        arg.type = expression.dtype();
+        arg.constant_value = std::move(maybe_constant.ValueOrDie().value());
+        arg.shape = expression.GetShape().ValueOrDie();
+      }
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 // TODO(b/35949885): There is duplication here with the handling of the
-// while_op. Refactor the common code out/rework.
+// while_op/if_op. Refactor the common code out/rework.
 void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   xla::XlaBuilder* b = ctx->builder();
   int num_branches = branches_.size();
@@ -84,10 +116,28 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = input_types_[i];
-      arg.shape = ctx->InputShape(i + 1);
+      // Use the xla::Shape for the input instead of ctx->InputShape. This is
+      // necessary for forwarding shapes of DT_VARIANTs, e.g. TensorLists.
+      auto shape_or = ctx->builder()->GetShape(ctx->Input(i + 1));
+      OP_REQUIRES_OK(ctx, shape_or.status());
+      arg.shape = shape_or.ValueOrDie();
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
               << " shape: " << arg.HumanString();
     }
+  }
+
+  if (propagate_compile_time_consts_) {
+    // Replaces `kParameter` type args in `arguments` with `kConstant` if
+    // the op input corresponding to that arg is a compile-time const. This
+    // is necessary to propagate compile time consts to ops in the branch
+    // functions.
+    // Note: Propagating "all" compile-time constants may not be necessary. We
+    // should ideally only propagate consts which are required to be compile
+    // time constants in the branch functions. But that would require calling
+    // BackwardsConstAnalysis here which would be expensive. However, if we
+    // start hitting memory issues we should revisit this.
+    OP_REQUIRES_OK(ctx,
+                   ConvertCompileTimeConstArgumentsToConst(ctx, &arguments));
   }
 
   // Compile each branch of the conditional.
@@ -158,8 +208,6 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     }
     OP_REQUIRES(ctx, branch_input_shape.IsTuple(),
                 errors::FailedPrecondition("Expected tuple shape"));
-    OP_REQUIRES(ctx, branch_results[j].xla_input_shapes.size() == 1,
-                errors::FailedPrecondition("Expected one input shape"));
     OP_REQUIRES(
         ctx,
         xla::ShapeUtil::Compatible(branch0_input_shape, branch_input_shape),
@@ -227,7 +275,7 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
       OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], b));
     } else {
-      inputs[i] = ctx->Input(i + 1);
+      inputs[i] = ctx->Input(input_num);
     }
   }
   auto input_tuple = xla::Tuple(b, inputs);
@@ -292,6 +340,7 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building Case";
 }
 
-REGISTER_XLA_OP(Name("Case").AllowResourceTypes(), XlaCaseOp);
+REGISTER_XLA_OP(Name("Case").AllowResourceTypes().AllowVariantTypes(),
+                XlaCaseOp);
 
 }  // namespace tensorflow

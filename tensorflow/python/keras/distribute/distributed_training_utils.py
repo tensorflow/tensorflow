@@ -26,9 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -166,6 +164,15 @@ def unwrap_outputs(distribution_strategy, grouped_outputs,
                                       grouped_outputs[0], axis=None)
   all_outputs = flatten_per_replica_values(distribution_strategy,
                                            grouped_outputs[1:])
+  if (is_tpu_strategy(distribution_strategy) and
+      ops.executing_eagerly_outside_functions()):
+    # Choose 1 value per replica in the TPU case since all replicas produce the
+    # same output.
+    # We only do this in eager mode for now since this function is used in
+    # both graph and eager mode and in the graph case we currently don't use
+    # experimental_run so would need to be removed when we converge the graph
+    # code path as well.
+    all_outputs = all_outputs[::distribution_strategy.num_replicas_in_sync]
   return [loss] + all_outputs
 
 
@@ -191,31 +198,6 @@ def flatten_per_replica_values(distribution_strategy, per_replica_values):
   # returns all the values associated with it.
   return [e for flattened in nest.flatten(per_replica_values)
           for e in distribution_strategy.unwrap(flattened)]
-
-
-def unwrap_per_replica_values(distribution_strategy, per_replica_values):
-  """Unwraps a nest of PerReplica parameters.
-
-  PerReplica values have one value associated with each device. Each entry in
-  the PerReplica dict has a device `key` and the corresponding value on the
-  device as the `value`. In this function we take a PerReplica value or a list
-  of PerReplica values, transform all the values in each PerReplica dict to a
-  list and return a list of such lists.
-
-  Args:
-    distribution_strategy: DistributionStrategy used to distribute training and
-      validation.
-    per_replica_values: List of PerReplica object or a single PerReplica object.
-
-  Returns:
-    List of lists of values of all the PerReplica objects.
-
-  """
-  flats = [
-      distribution_strategy.unwrap(flattened)
-      for flattened in nest.flatten(per_replica_values)
-  ]
-  return list(zip(*flats))
 
 
 def validate_callbacks(input_callbacks, optimizer):
@@ -469,13 +451,18 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
   use_per_replica_batch = not global_batch_size_supported(
       distribution_strategy)
 
-  # Partial batches are allowed for training as we repeat the
-  # dataset when converting numpy arrays into a dataset.
-  # For other modes uneven batch sizes are not allowed except
+  # TODO(b/128995245): In eager mode, uneven batch sizes are allowed except for
+  # `fit()` on TPUStrategy.
+  # In graph mode, the zero batch case in batch norm is not handled due to
+  # XLA-GPU regression. Uneven batch sizes are not allowed except
   # for `test()` and `predict()` on TPUStrategy.
-  allow_partial_batch = (mode == ModeKeys.TRAIN or
-                         ((mode == ModeKeys.PREDICT or mode == ModeKeys.TEST)
-                          and is_tpu_strategy(distribution_strategy)))
+  if context.executing_eagerly():
+    allow_partial_batch = (mode != ModeKeys.TRAIN or
+                           not is_tpu_strategy(distribution_strategy))
+  else:
+    allow_partial_batch = (mode == ModeKeys.TRAIN or
+                           ((mode == ModeKeys.PREDICT or mode == ModeKeys.TEST)
+                            and is_tpu_strategy(distribution_strategy)))
 
   if steps is None:
     if batch_size is None:
@@ -600,6 +587,9 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   strategy = model._distribution_strategy
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
+  if is_tpu_strategy(strategy):
+    if sample_weights is not None:
+      raise ValueError('TPUStrategy does not support sample weights.')
 
   # When the inputs are dict, then we want to flatten it in the same order as
   # the input layers, such that the data are fed into the input layers in the
@@ -609,38 +599,23 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   if is_distributing_by_cloning(model):
     inputs = flatten_per_replica_values(strategy, inputs)
     targets = flatten_per_replica_values(strategy, targets)
-  else:
-    # TODO(b/129653859):  Simplify after PerReplica can be the input of
-    # `def_function.function`.
-    # Without cloning the `inputs` and `target` are the inputs to
-    # `values.regroup`.  Instead of a flat list of `len(inputs) * num_replicas`
-    # we need a list of `len(inputs)` lists, where each per-input list has
-    # `len(num_replicas)` elements. Each element[i] in the per-input
-    # list is the input to the i-th replica.  For example, if inputs are
-    # `[[1, 2], [3, 4]]` and there are two replicas, then we want
-    # `[[1, 3], [2, 4]]` (see `values_test.testWrapAListOfTwoTuples`) so that
-    # we arrive at a `PerReplica(d0: 1, d1: 2)` and a `PerReplica(d0:3, d1:4)`.
-    inputs = unwrap_per_replica_values(strategy, inputs)
-    targets = unwrap_per_replica_values(strategy, targets)
+    # Expand 1-dimensional inputs.
+    # TODO(b/124535720): Remove once this standarize data logic is shared with
+    # main flow.
+    inputs, targets = nest.map_structure(
+        training_utils.standardize_single_array, (inputs, targets))
 
-  # Expand 1-dimensional inputs.
-  # TODO(b/124535720): Remove once this standarize data logic is shared with
-  # main flow.
-  inputs, targets = nest.map_structure(training_utils.standardize_single_array,
-                                       (inputs, targets))
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
-  elif not is_distributing_by_cloning(model):
-    sample_weights = None  # b/129503665
-  else:
-    sample_weights = [
-        None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
-    ]
+  elif sample_weights is not None and is_distributing_by_cloning(model):
+    if context.executing_eagerly() and not model._compile_distribution:
+      raise NotImplementedError('`sample_weight` is not supported when using '
+                                'tf.distribute.Strategy in eager mode and '
+                                'cloning=True.')
+    sample_weights = flatten_per_replica_values(strategy, sample_weights)
+
   ins = [inputs, targets, sample_weights]
-  if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
-                                               int):
-    ins += [True]
   return tuple(ins)
 
 
@@ -648,8 +623,8 @@ def is_distributing_by_cloning(model):
   """Decide whether this model is going to be distributed via cloning.
 
   We are going to distribute the model by cloning if the user has signaled
-  that intent by not setting `cloning=False` in `Model.compile()` unless we
-  are in graph mode or running on TPU.
+  that intent by setting `cloning=True` in `Model.compile()` unless we are in
+  graph mode.
 
   Args:
     model: Keras model to distribute.
@@ -658,8 +633,15 @@ def is_distributing_by_cloning(model):
     True if the `model` is going to be distributed using cloning and False
     otherwise.
   """
-  return (model._cloning or not context.executing_eagerly() or
-          K.is_tpu_strategy(model._distribution_strategy))
+  if (is_tpu_strategy(model._distribution_strategy) and
+      context.executing_eagerly):
+    if model._cloning:
+      logging.warning(
+          'Model cloning is not supported in TPU Strategy in Eager mode.'
+          'cloning argument will be ignored.')
+    return False
+  return (model._cloning or model._compile_distribution or
+          not ops.executing_eagerly_outside_functions())
 
 
 def _custom_compile_for_predict(model):
@@ -825,35 +807,14 @@ def _make_execution_function(model, mode):
 def _make_execution_function_without_cloning(model, mode):
   """Creates a function to run one step of distributed model execution."""
   strategy = model._distribution_strategy
-  devices = strategy.extended.worker_devices
 
   with strategy.scope():
     per_replica_function = _make_replica_execution_function(model, mode)
 
     @def_function.function
-    def distributed_function(x, y, sample_weights, learning_phase=None):
+    def distributed_function(input_fn):
       """A single step of the distributed execution across replicas."""
-      del learning_phase
-
-      # TODO(b/129653859):  Simplify after PerReplica can be the input of
-      # `def_function.function`.  `regroup` calls and re-wrapping in
-      # PerReplica won't be needed then.
-      if isinstance(strategy, one_device_strategy.OneDeviceStrategy):
-        device_map = values.SingleDeviceMap(devices[0])
-        wrap_class = lambda d, x: x
-      else:
-        device_map = values.ReplicaDeviceMap(devices)
-        wrap_class = values.PerReplica
-
-      # Transform each lists of lists of values into per replica objects
-      # in the case of mirrored strategy.  For example, for 2 replicas:
-      # [[x0, y0], [x1, y1]] > [PerReplica(d0:x0, d1:x1),
-      #                         PerReplica(d0:y0, d1:y1)]
-      x = values.regroup(device_map, x, wrap_class)
-      y = values.regroup(device_map, y, wrap_class) if y else None
-      sample_weights = values.regroup(device_map, sample_weights,
-                                      wrap_class) if sample_weights else None
-
+      x, y, sample_weights = input_fn()
       # Call `Model.{train,test,predict}_on_batch` on every replica passing
       # PerReplicas as arguments.  On every replica inside this call, each
       # PerReplica object will return the value for that replica.  The outputs
@@ -865,8 +826,10 @@ def _make_execution_function_without_cloning(model, mode):
           strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
       return all_outputs
 
-    # `numpy` translates Tensors to values in Eager mode.
-    return lambda inputs: [out.numpy() for out in distributed_function(*inputs)]
+    def execution_function(input_fn):
+      # `numpy` translates Tensors to values in Eager mode.
+      return [out.numpy() for out in distributed_function(input_fn)]
+    return execution_function
 
 
 def _make_replica_execution_function(model, mode):
@@ -891,15 +854,9 @@ def _make_replica_execution_function(model, mode):
   return func
 
 
-def _make_execution_function_with_cloning(model, mode):
-  """Clones or re-uses models to run one step of distributed model execution."""
+def _make_replicated_models_with_cloning(model, mode):
+  """Build models on each replica."""
   strategy = model._distribution_strategy
-
-  distributed_model = get_distributed_model(model, mode)
-  # If distributed model for a particular `mode` is already built, use the
-  # `_distribution_function` on that distributed model.
-  if distributed_model:
-    return distributed_model._distributed_function
 
   # If distributed_model is not built, create one for `mode`.
   if model._compile_distribution:
@@ -907,9 +864,26 @@ def _make_execution_function_with_cloning(model, mode):
   else:
     _build_distributed_network(model, strategy, mode)
 
-  # We've just created the distributed model. So `distributed_model` should be
-  # not None.
+
+def _make_execution_function_with_cloning(model, mode):
+  """Clones or re-uses models to run one step of distributed model execution."""
   distributed_model = get_distributed_model(model, mode)
+  # TODO(b/134069401): Create a cache for the distributed model and exec
+  # function that incorporates additional attributes to be part of the cache key
+  # than just the mode.
+  # If distributed model for a particular `mode` is already built, use the
+  # `_distribution_function` on that distributed model.
+  # If you have updated the sample_weight_mode on the model, then you will need
+  # to recompile metrics and recreate the execution function. This is indicated
+  # by the `_recompile_exec_function` property.
+  if (distributed_model and hasattr(distributed_model, '_distribution_function')
+      and not (hasattr(distributed_model, '_recompile_exec_function') and
+               distributed_model._recompile_exec_function)):
+    return distributed_model._distributed_function
+
+  if not distributed_model:
+    _make_replicated_models_with_cloning(model, mode)
+    distributed_model = get_distributed_model(model, mode)
   assert distributed_model
 
   # Also create an execution fuction on that distributed model.
@@ -919,8 +893,9 @@ def _make_execution_function_with_cloning(model, mode):
     distributed_function = _make_graph_execution_function(model, mode)
 
   # We cache the distributed execution function on the model since creating
-  # distributed models and exection functions are expensive.
+  # distributed models and execution functions are expensive.
   distributed_model._distributed_function = distributed_function
+  distributed_model._recompile_exec_function = False
   return distributed_function
 
 
@@ -1092,16 +1067,16 @@ def call_replica_local_fn(fn, *args, **kwargs):
   Returns:
     The result of calling `fn`.
   """
-  # TODO(b/120571621): We want to avoid reductions here since
-  # since TPUStrategy does not implement replica local variables.
-  # Remove this hack once we support TPUReplicaLocalVariables.
+  # TODO(b/132666209): Remove this function when we support assign_*
+  # for replica-local variables.
   strategy = None
   if 'strategy' in kwargs:
     strategy = kwargs.pop('strategy')
   else:
-    if ds_context.get_strategy():
+    if ds_context.has_strategy():
       strategy = ds_context.get_strategy()
 
+  # TODO(b/120571621): TPUStrategy does not implement replica-local variables.
   is_tpu = is_tpu_strategy(strategy)
   if ((not is_tpu) and strategy and ds_context.in_cross_replica_context()):
     with strategy.scope():
@@ -1144,3 +1119,24 @@ def filter_distributed_callbacks(callbacks_list):
   return [
       callback for callback in callbacks_list if not callback._chief_worker_only
   ]  # pylint: disable=protected-access
+
+
+def _update_sample_weight_modes(model, mode, sample_weights):
+  """Update sample_weight_mode of the distributed model."""
+  if is_distributing_by_cloning(model):
+    distributed_model = get_distributed_model(model, mode)
+    if not distributed_model:
+      _make_replicated_models_with_cloning(model, mode)
+      distributed_model = get_distributed_model(model, mode)
+    distributed_model._recompile_exec_function = any(
+        [e.sample_weights_mismatch() for e in model._training_endpoints])
+
+    if sample_weights:
+      distributed_models = flatten_per_replica_values(
+          model._distribution_strategy, distributed_model)
+      # sample_weights is a tuple of 1 list where the number of elements in the
+      # list is equal to the number of replicas in sync.
+      sample_weights = sample_weights[0]
+      if sample_weights and None not in sample_weights:
+        for m, sw in zip(distributed_models, sample_weights):
+          m._update_sample_weight_modes(sample_weights=[sw])

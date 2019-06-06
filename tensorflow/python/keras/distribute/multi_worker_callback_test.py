@@ -17,84 +17,26 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import os
 import sys
 import tempfile
+import threading
 
 from absl.testing import parameterized
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base as test_base
-from tensorflow.python.framework import dtypes
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.platform import test
-
-
-# TODO(b/130219403): Investigate why this test cannot depend on
-# multi_worker_test. Once resolved, depend on it for the following 3 functions.
-def _mnist_synthetic_dataset(batch_size, steps_per_epoch):
-  # train dataset
-  x_train = array_ops.ones([batch_size * steps_per_epoch, 28, 28, 1],
-                           dtype=dtypes.float32)
-  y_train = array_ops.ones([batch_size * steps_per_epoch, 1],
-                           dtype=dtypes.int32)
-  train_ds = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
-  train_ds = train_ds.repeat()
-  # train_ds = train_ds.shuffle(100)
-  train_ds = train_ds.batch(64, drop_remainder=True)
-
-  # eval dataset
-  x_test = random_ops.random_uniform([10000, 28, 28, 1], dtype=dtypes.float32)
-  y_test = random_ops.random_uniform([10000, 1],
-                                     minval=0,
-                                     maxval=9,
-                                     dtype=dtypes.int32)
-  eval_ds = dataset_ops.Dataset.from_tensor_slices((x_test, y_test))
-  eval_ds = eval_ds.repeat()
-  eval_ds = eval_ds.batch(64, drop_remainder=True)
-
-  return train_ds, eval_ds
-
-
-def _get_model(input_shape):
-  # Define a deterministically-initialized CNN model to recognize MNIST digits,
-  # commented out several layers to simplify it.
-  model = keras.models.Sequential()
-  model.add(
-      keras.layers.Conv2D(
-          32,
-          kernel_size=(3, 3),
-          activation='relu',
-          input_shape=input_shape,
-          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-  model.add(keras.layers.BatchNormalization())
-  model.add(keras.layers.Flatten())
-  model.add(
-      keras.layers.Dense(
-          10,
-          activation='softmax',
-          kernel_initializer=keras.initializers.TruncatedNormal(seed=99)))
-
-  # TODO(yuefengz): optimizer with slot variables doesn't work because of
-  # optimizer's bug.
-  # TODO(yuefengz): we should not allow non-v2 optimizer.
-  model.compile(
-      loss=keras.losses.sparse_categorical_crossentropy,
-      optimizer=gradient_descent.SGD(learning_rate=0.001),
-      metrics=['accuracy'])
-  return model
 
 
 def get_strategy_object(strategy_cls):
@@ -127,9 +69,10 @@ def generate_callback_test_function(custom_callable):
         strategy = get_strategy_object(strategy_cls)
         batch_size = 64
         steps = 2
-        train_ds, _ = _mnist_synthetic_dataset(batch_size, steps)
+        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
+            batch_size, steps)
         with strategy.scope():
-          model = _get_model((28, 28, 1))
+          model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
 
         custom_callable(
             model,
@@ -138,13 +81,21 @@ def generate_callback_test_function(custom_callable):
             num_epoch,
             steps,
             strategy,
-            saving_filepath=kwargs['saving_filepath'])
+            saving_filepath=kwargs['saving_filepath'],
+            barrier=kwargs['barrier'],
+            threading_local=kwargs['threading_local'])
 
     # Pass saving_filepath from the parent thread to ensure every worker has the
     # same fileapth to save.
     saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint.h5')
+    barrier = dc._Barrier(2)
+    threading_local = threading.local()
     threads = self.run_multiple_tasks_in_threads(
-        _independent_worker_fn, cluster_spec, saving_filepath=saving_filepath)
+        _independent_worker_fn,
+        cluster_spec,
+        saving_filepath=saving_filepath,
+        barrier=barrier,
+        threading_local=threading_local)
     if os.path.exists(saving_filepath):
       os.remove(saving_filepath)
 
@@ -166,7 +117,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
   # The callables of the actual testing content to be run go below.
   @staticmethod
   def callableForTestChiefOnlyCallback(model, test_obj, train_ds, num_epoch,
-                                       steps, strategy, saving_filepath):
+                                       steps, strategy, saving_filepath,
+                                       **kwargs):
 
     class ChiefOnly(keras.callbacks.Callback):
 
@@ -187,13 +139,17 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestModelCheckpointSavesOnChiefButNotOtherwise(
-      model, test_obj, train_ds, num_epoch, steps, strategy, saving_filepath):
+      model, test_obj, train_ds, num_epoch, steps, strategy, saving_filepath,
+      **kwargs):
     # Incorporate type/index information and thread id in saving_filepath to
     # ensure every worker has a unique path. Note that in normal use case the
     # saving_filepath will be the same for all workers, but we use different
     # ones here just to test out chief saves checkpoint but non-chief doesn't.
+
+    # TODO(b/134551335): Must save to hdf5 until bug with copying
+    # MirroredVariables is resolved.
     saving_filepath = os.path.join(
-        test_obj.get_temp_dir(), 'checkpoint_%s_%d' %
+        test_obj.get_temp_dir(), 'checkpoint_%s_%d.h5' %
         (test_base.get_task_type(), test_base.get_task_index()))
 
     # The saving_filepath shouldn't exist at the beginning (as it's unique).
@@ -240,7 +196,7 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
   @staticmethod
   def callableForTestLoadWeightFromModelCheckpoint(model, test_obj, train_ds,
                                                    num_epoch, steps, strategy,
-                                                   saving_filepath):
+                                                   saving_filepath, **kwargs):
     filepaths = []
     real_mkstemp = tempfile.mkstemp
     def mocked_mkstemp():
@@ -267,7 +223,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
       test_obj.assertAllClose(
           history_after_one_more_epoch.history,
-          history_after_loading_weight_and_one_more_epoch.history)
+          history_after_loading_weight_and_one_more_epoch.history,
+          rtol=6e-6)
 
     # Verify the temp files are indeed removed (no trace left behind).
     for filepath in filepaths:
@@ -275,7 +232,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestModelRestoreCallback(model, test_obj, train_ds, num_epoch,
-                                          steps, strategy, saving_filepath):
+                                          steps, strategy, saving_filepath,
+                                          **kwargs):
 
     saving_filepath, history_after_one_more_epoch = \
         KerasMultiWorkerCallbackTest.initialFitting(
@@ -299,7 +257,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
     # restoring are closed.
     test_obj.assertAllClose(
         history_after_one_more_epoch.history,
-        history_after_model_restoring_and_one_more_epoch.history)
+        history_after_model_restoring_and_one_more_epoch.history,
+        rtol=5e-6)
 
     history_one_more_epoch_without_model_restoring = model.fit(
         x=train_ds, epochs=1, steps_per_epoch=steps)
@@ -311,7 +270,8 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
 
   @staticmethod
   def callableForTestUnmatchedModelFile(model, test_obj, train_ds, num_epoch,
-                                        steps, strategy, saving_filepath):
+                                        steps, strategy, saving_filepath,
+                                        **kwargs):
 
     # The saving_filepath shouldn't exist at the beginning.
     test_obj.assertFalse(os.path.exists(saving_filepath))
@@ -351,6 +311,158 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
                   load_weights_on_restart=True)
           ])
 
+  @staticmethod
+  def callableForTestReduceLROnPlateau(model, test_obj, train_ds, num_epoch,
+                                       steps, strategy, saving_filepath,
+                                       **kwargs):
+
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='loss',
+            factor=0.1,
+            min_delta=1,
+            patience=1,
+            cooldown=5,
+            verbose=1)
+    ]
+
+    # It is expected that the learning rate would drop by `factor` within
+    # 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.0001, atol=1e-8)
+
+    # It is expected that the learning rate would drop by another `factor`
+    # within 3 epochs with `min_delta=1`.
+    model.fit(x=train_ds, epochs=3, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.00001, atol=1e-8)
+
+  @staticmethod
+  def callableForTestEarlyStopping(model, test_obj, train_ds, num_epoch, steps,
+                                   strategy, saving_filepath, **kwargs):
+
+    class EpochCounterCallback(callbacks.Callback):
+
+      def on_epoch_begin(self, epoch, logs):
+        self.last_epoch = epoch
+
+    epoch_counter_cbk = EpochCounterCallback()
+    cbks = [
+        callbacks.EarlyStopping(
+            monitor='loss', min_delta=0.05, patience=1, verbose=1),
+        epoch_counter_cbk
+    ]
+
+    # Empirically, it is expected that `model.fit()` would terminate around the
+    # 22th epoch. Asserting that it should have been stopped before the 50th
+    # epoch to avoid flakiness and be more predictable.
+    model.fit(x=train_ds, epochs=100, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertLess(epoch_counter_cbk.last_epoch, 50)
+
+  @staticmethod
+  def callableForTestLearningRateScheduler(model, test_obj, train_ds, num_epoch,
+                                           steps, strategy, saving_filepath,
+                                           **kwargs):
+
+    cbks = [
+        callbacks.LearningRateScheduler(
+            schedule=lambda x: 1. / (1. + x), verbose=1)
+    ]
+
+    # It is expected that with `epochs=2`, the learning rate would drop to
+    # 1 / (1 + 2) = 0.5.
+    model.fit(x=train_ds, epochs=2, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.5, atol=1e-8)
+
+    # It is expected that with `epochs=4`, the learning rate would drop to
+    # 1 / (1 + 4) = 0.25.
+    model.fit(x=train_ds, epochs=4, steps_per_epoch=steps, callbacks=cbks)
+    test_obj.assertAllClose(
+        float(K.get_value(model.optimizer.lr)), 0.25, atol=1e-8)
+
+  # pylint: disable=g-doc-args
+  @staticmethod
+  def callableForTestIntermediateDirForFTAreRemoved(model, test_obj, train_ds,
+                                                    num_epoch, steps, strategy,
+                                                    saving_filepath, **kwargs):
+    """Testing that the temporary directory are removed.
+
+    Some temporary directories are created for the purpose of fault tolerance.
+    This test ensures that such directories should have been removed at the time
+    `model.fit()` finishes successfully.
+    """
+
+    # `threading_local` and `barrier` objects have to be passed in from parent
+    # thread so both threads refer to the same object.
+    threading_local = kwargs['threading_local']
+    barrier = kwargs['barrier']
+
+    # Two threads will each has one copy of `temp_dirs_supposed_to_be_removed`
+    # list.
+    threading_local.temp_dirs_supposed_to_be_removed = []
+
+    callbacks_list = [
+        callbacks.ModelCheckpoint(
+            filepath=saving_filepath,
+            save_weights_only=True,
+            load_weights_on_restart=True),
+    ]
+
+    # Keep the references to the real function objects.
+    real_os_path_join = os.path.join
+    real_tempfile_mkdtemp = tempfile.mkdtemp
+
+    # Make a `os.path.join` wrapper, which will be patched onto the real
+    # function, so the temporary directories can be tracked.
+    def wrapper_os_path_join(path, *paths):
+      join_result = real_os_path_join(path, *paths)
+      if len(paths) == 1 and paths[0] == 'backup':
+        threading_local.temp_dirs_supposed_to_be_removed.append(join_result)
+      return join_result
+
+    # Likewise for `tempfile.mkdtemp`.
+    def wrapper_tempfile_mkdtemp():
+      result = real_tempfile_mkdtemp()
+      threading_local.temp_dirs_supposed_to_be_removed.append(result)
+      return result
+
+    # Now the two threads must sync here: if they are out of sync, one thread
+    # can go ahead and patch `os.path.join` while the other has not even
+    # assigned the real `os.path.join` to `real_os_path_join`. If this happened,
+    # the "real" `os.path.join` the slower thread would see is actually the
+    # wrapper of the other.
+    barrier.wait()
+
+    # Note that `os.path.join` will respect the second patch (there are two
+    # patches because of the two threads). Both threads will refer to the same
+    # copy of `wrapper_os_path_join` because of the `barrier` preceding
+    # `model.fit()`. Likewise for `wrapper_tempfile_mkdtemp`.
+    os.path.join = wrapper_os_path_join
+    tempfile.mkdtemp = wrapper_tempfile_mkdtemp
+
+    barrier.wait()
+    model.fit(
+        x=train_ds,
+        epochs=num_epoch,
+        steps_per_epoch=steps,
+        callbacks=callbacks_list)
+
+    # Sync before un-patching to prevent either thread from accessing the real
+    # functions. Also to make sure `model.fit()` is done on both threads (so we
+    # can safely assert the directories are removed).
+    barrier.wait()
+    os.path.join = real_os_path_join
+    tempfile.mkdtemp = real_tempfile_mkdtemp
+
+    # There should be directory (names) that are supposed to be removed.
+    test_obj.assertTrue(threading_local.temp_dirs_supposed_to_be_removed)
+    for temp_dir_supposed_to_be_removed in (
+        threading_local.temp_dirs_supposed_to_be_removed):
+      # They should have been removed and thus don't exist.
+      test_obj.assertFalse(os.path.exists(temp_dir_supposed_to_be_removed))
+
   # The actual testing methods go here.
   test_chief_only_callback = generate_callback_test_function(
       callableForTestChiefOnlyCallback.__func__)
@@ -363,6 +475,14 @@ class KerasMultiWorkerCallbackTest(test_base.IndependentWorkerTestBase,
       callableForTestModelRestoreCallback.__func__)
   test_unmatched_model_file = generate_callback_test_function(
       callableForTestUnmatchedModelFile.__func__)
+  test_reduce_lr_on_plateau = generate_callback_test_function(
+      callableForTestReduceLROnPlateau.__func__)
+  test_early_stopping = generate_callback_test_function(
+      callableForTestEarlyStopping.__func__)
+  test_learning_rate_scheduler = generate_callback_test_function(
+      callableForTestLearningRateScheduler.__func__)
+  test_intermediate_dir_for_ft_are_removed = generate_callback_test_function(
+      callableForTestIntermediateDirForFTAreRemoved.__func__)
 
 
 if __name__ == '__main__':

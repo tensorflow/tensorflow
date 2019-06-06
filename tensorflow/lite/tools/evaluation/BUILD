@@ -13,9 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
@@ -39,7 +40,6 @@ cc_library(
     hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:context",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",

@@ -1,8 +1,9 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
@@ -18,6 +19,7 @@ py_binary(
         "//tensorflow/python:platform",
         "@flatbuffers//:flatc",
     ],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
 )
 

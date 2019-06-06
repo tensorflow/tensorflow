@@ -996,10 +996,14 @@ class DnnSupport {
   //    Used for inference only; empty for training.
   //  estimated_variance: population variance estimated during training,
   //    used for inference only; empty for training.
+  //  side_input: optional input that is element-wise added to the output of
+  //    batch normalization.
   //  x_desc: dimensions of the input data, which is the same as the dimensions
-  //    of the output.
+  //    of the output and side input.
   //  scale_offset_desc: dimensions of scale and offset.
   //  epsilon: a small floating point number added to the variance of x.
+  //  activation_mode: activation applied to the result of batch normalization
+  //    (or after adding optional side input)
   //  y: output data.
   //  batch_mean: batch mean, to be used to compute the running mean.
   //  batch_variance: batch variance, to be used to compute
@@ -1019,11 +1023,14 @@ class DnnSupport {
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
       const DeviceMemory<float>& estimated_mean,
       const DeviceMemory<float>& estimated_variance,
-      const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
-      DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) {
     return false;
@@ -1036,11 +1043,14 @@ class DnnSupport {
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
       const DeviceMemory<float>& estimated_mean,
       const DeviceMemory<float>& estimated_variance,
-      const dnn::BatchDescriptor& x_desc,
+      const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-      DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
-      DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
       std::function<const DeviceMemory<float>&()> var_to_inv_var,
       std::function<void()> inv_var_to_var) {
     return false;
@@ -1070,7 +1080,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) {
+      DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -1084,8 +1096,9 @@ class DnnSupport {
       const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half>* x_backprop,
-      DeviceMemory<float>* scale_backprop,
-      DeviceMemory<float>* offset_backprop) {
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 

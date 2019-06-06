@@ -85,9 +85,6 @@ std::map<string, string> kBrokenTests = {
     // Transpose only supports 1D-4D input tensors.
     {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
 
-    // No Support for float.
-    {R"(^\/floor_div.*dtype=tf\.float32)", "112859002"},
-
     // Relu does not support int32.
     // These test cases appends a Relu after the tested ops when
     // activation=True. The tests are failing since Relu doesn't support int32.
@@ -102,6 +99,9 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/add.*dtype=tf\.int64)", "119126484"},
     {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
     {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
+
+    // Select kernel doesn't support broadcasting yet.
+    {R"(^\/where.*1,2,3,1)", "134692786"},
 };
 
 // Additional list of tests that are expected to fail when

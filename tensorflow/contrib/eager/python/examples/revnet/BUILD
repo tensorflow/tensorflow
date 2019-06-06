@@ -1,6 +1,7 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -86,6 +87,7 @@ cuda_py_test(
     additional_deps = [":blocks_test_main_lib"],
     shard_count = 4,
     tags = [
+        "no_oss",  # TODO(b/132387200): Segfaulting
         "optonly",
     ],
 )

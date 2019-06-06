@@ -34,6 +34,7 @@ from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
@@ -992,7 +993,8 @@ class PForConfig(object):
 
   def _lookup_reduction(self, pl):
     """Lookups Placeholder `pl` in the reduction map."""
-    assert isinstance(pl, ops.Tensor)
+    msg = "Expected Tensor, got {} of type {}."
+    assert isinstance(pl, ops.Tensor), msg.format(pl, type(pl))
     return self._reduce_concat_map.get(pl, None)
 
 
@@ -1485,8 +1487,8 @@ def _channel_flatten_input(x, data_format):
   return outputs
 
 
-# Note that with training=True, running FusedBatchNorm on individual examples
-# is very different from running FusedBatchNorm on a batch of those examples.
+# Note that with training=True, running FusedBatchNormV3 on individual examples
+# is very different from running FusedBatchNormV3 on a batch of those examples.
 # This is because, for the latter case, the operation can be considered as first
 # computing the mean and variance over all the examples and then using these
 # to scale all those examples. This creates a data dependency between these
@@ -1495,7 +1497,7 @@ def _channel_flatten_input(x, data_format):
 # As with other kernels, the conversion here effectively runs the kernel
 # independently for each iteration, and returns outputs by stacking outputs from
 # each of those iterations.
-@RegisterPFor("FusedBatchNorm")
+@RegisterPFor("FusedBatchNormV3")
 def _convert_fused_batch_norm(pfor_input):
   is_training = pfor_input.get_attr("is_training")
   # When BatchNorm is used with training=False, mean and variance are provided
@@ -1524,8 +1526,8 @@ def _convert_fused_batch_norm(pfor_input):
 
   pfor_input.stack_inputs()
   data_format = pfor_input.get_attr("data_format")
-  # We merge the first dimension with the "C" dimension, run FusedBatchNorm, and
-  # then transpose back.
+  # We merge the first dimension with the "C" dimension, run FusedBatchNormV3,
+  # and then transpose back.
   x = pfor_input.stacked_input(0)
   x, reverse_order, reverse_shape = _channel_flatten_input(x, data_format)
   # Note that we stack all the other inputs as well so that they are the same
@@ -1547,7 +1549,7 @@ def _convert_fused_batch_norm(pfor_input):
   return [wrap(x, True) for x in outputs]
 
 
-@RegisterPFor("FusedBatchNormGrad")
+@RegisterPFor("FusedBatchNormGradV3")
 def _convert_fused_batch_norm_grad(pfor_input):
   pfor_input.stack_inputs()
   data_format = pfor_input.get_attr("data_format")
@@ -1662,6 +1664,7 @@ def _convert_softmax(pfor_input, op_type, op_func):
 
 @RegisterPForWithArgs("Identity", array_ops.identity)
 @RegisterPForWithArgs("StopGradient", array_ops.stop_gradient)
+@RegisterPForWithArgs("MatrixDiag", array_ops.matrix_diag)
 @RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
 def _convert_identity(pfor_input, op_type, op_func):
   del op_type
@@ -1710,12 +1713,46 @@ def _convert_expanddims(pfor_input):
   return wrap(array_ops.expand_dims(t, axis=dim), True)
 
 
+@RegisterPForWithArgs("LowerBound", gen_array_ops.lower_bound)
+@RegisterPForWithArgs("UpperBound", gen_array_ops.upper_bound)
+def _convert_searchsorted(pfor_input, _, op_func):
+  pfor_input.stack_inputs()
+  sorted_inputs = _flatten_first_two_dims(pfor_input.stacked_input(0))
+  values = _flatten_first_two_dims(pfor_input.stacked_input(1))
+  out_type = pfor_input.get_attr("out_type")
+  output = op_func(sorted_inputs, values, out_type)
+  return wrap(_unflatten_first_dim(
+      output, pfor_input.pfor.loop_len_vector), True)
+
+
+@RegisterPFor("MatrixBandPart")
+def _convert_matrix_band_part(pfor_input):
+  t = pfor_input.stacked_input(0)
+  num_lower = pfor_input.unstacked_input(1)
+  num_upper = pfor_input.unstacked_input(2)
+  return wrap(array_ops.matrix_band_part(
+      t, num_lower=num_lower, num_upper=num_upper), True)
+
+
 @RegisterPFor("MatrixSetDiag")
 def _convert_matrix_set_diag(pfor_input):
   pfor_input.stack_inputs()
   t = pfor_input.stacked_input(0)
   diag = pfor_input.stacked_input(1)
   return wrap(array_ops.matrix_set_diag(t, diag), True)
+
+
+@RegisterPFor("OneHot")
+def _convert_one_hot(pfor_input):
+  indices = pfor_input.stacked_input(0)
+  depth = pfor_input.unstacked_input(1)
+  on_value = pfor_input.unstacked_input(2)
+  off_value = pfor_input.unstacked_input(3)
+  axis = pfor_input.get_attr("axis")
+  if axis >= 0:
+    axis += 1
+  return wrap(
+      array_ops.one_hot(indices, depth, on_value, off_value, axis), True)
 
 
 @RegisterPFor("Slice")
@@ -2344,6 +2381,16 @@ def _convert_select(pfor_input):
   return [wrap(out, True) for x in outputs]
 
 
+@RegisterPFor("SelectV2")
+def _convert_selectv2(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  cond = pfor_input.input(0)[0]
+  t = pfor_input.input(1)[0]
+  e = pfor_input.input(2)[0]
+  out = array_ops.where_v2(cond, t, e)
+  return wrap(out, True)
+
+
 # random_ops
 
 
@@ -2443,6 +2490,15 @@ def _convert_multinomial(pfor_input):
 def _convert_cholesky(pfor_input):
   t = pfor_input.stacked_input(0)
   return wrap(linalg_ops.cholesky(t), True)
+
+
+@RegisterPFor("LogMatrixDeterminant")
+def _convert_log_matrix_determinant(pfor_input):
+  # Input must have shape [N, M, M], so we need to flatten.
+  t = _flatten_first_two_dims(pfor_input.stacked_input(0))
+  sign, log_abs_det = linalg_ops.log_matrix_determinant(t)
+  return [wrap(_unflatten_first_dim(x, pfor_input.pfor.loop_len_vector), True)
+          for x in (sign, log_abs_det)]
 
 
 @RegisterPFor("MatrixTriangularSolve")

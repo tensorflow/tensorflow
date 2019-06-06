@@ -24,7 +24,7 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("ApproximateEqual").Device(DEVICE_CPU).TypeConstraint<double>("T"),
     ApproximateEqualOp<CPUDevice, double>);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
           uint8);
 REGISTER_KERNEL_BUILDER(

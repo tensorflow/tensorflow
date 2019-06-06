@@ -168,6 +168,7 @@ class LocalRendezvousImpl : public Rendezvous {
       // There is no waiter for this message. Append the message
       // into the queue. The waiter will pick it up when arrives.
       // Only send-related fields need to be filled.
+      VLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
       Item* item = new Item;
       item->value = val;
       item->is_dead = is_dead;
@@ -180,11 +181,13 @@ class LocalRendezvousImpl : public Rendezvous {
       return Status::OK();
     }
 
+    VLOG(2) << "Consume Recv Item (key:" << key.FullKey() << "). ";
     // There is an earliest waiter to consume this message.
     Item* item = queue->front();
 
     // Delete the queue when the last element has been consumed.
     if (queue->size() == 1) {
+      VLOG(2) << "Clean up Send/Recv queu (key:" << key.FullKey() << "). ";
       table_.erase(key_hash);
     } else {
       queue->pop_front();
@@ -217,6 +220,7 @@ class LocalRendezvousImpl : public Rendezvous {
     if (queue->empty() || !queue->front()->IsSendValue()) {
       // There is no message to pick up.
       // Only recv-related fields need to be filled.
+      VLOG(2) << "Enqueue Recv Item (key:" << key.FullKey() << "). ";
       Item* item = new Item;
       item->waiter = std::move(done);
       item->recv_args = recv_args;
@@ -228,10 +232,18 @@ class LocalRendezvousImpl : public Rendezvous {
       return;
     }
 
+    VLOG(2) << "Consume Send Item (key:" << key.FullKey() << "). ";
     // A message has already arrived and is queued in the table under
     // this key.  Consumes the message and invokes the done closure.
     Item* item = queue->front();
-    queue->pop_front();
+
+    // Delete the queue when the last element has been consumed.
+    if (queue->size() == 1) {
+      VLOG(2) << "Clean up Send/Recv queu (key:" << key.FullKey() << "). ";
+      table_.erase(key_hash);
+    } else {
+      queue->pop_front();
+    }
     mu_.unlock();
 
     // Invokes the done() by invoking its done closure, outside scope

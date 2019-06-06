@@ -442,7 +442,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                           {operand_value},
                                           {operand_value->getType()}, b_);
     case HloOpcode::kRoundNearestAfz:
-      return EmitRoundNearestAfz(op->shape().element_type(), operand_value);
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round,
+                                          {operand_value},
+                                          {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
@@ -1137,12 +1139,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto x_is_small =
       FCmpOLT(abs_x, llvm::ConstantFP::get(type, kExponentIsSmallThreshold));
   return Select(x_is_small, for_small_x, for_large_x);
-}
-
-StatusOr<llvm::Value*> ElementalIrEmitter::EmitRoundNearestAfz(
-    PrimitiveType /*prim_type*/, llvm::Value* value) {
-  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::round, {value},
-                                      {value->getType()}, b_);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitPow(PrimitiveType prim_type,

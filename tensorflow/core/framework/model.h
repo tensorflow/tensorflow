@@ -210,7 +210,7 @@ class Node {
       processing_time_ += time_nanos - iter->second;
       work_start_.erase(iter);
     } else {
-      LOG(WARNING)
+      VLOG(1)
           << "Encountered a stop event that was not preceded by a start event.";
     }
   }
@@ -295,6 +295,12 @@ class Node {
     return result;
   }
 
+  // Returns the per-element processing time spent in this node.
+  double SelfProcessingTime() const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return SelfProcessingTimeLocked();
+  }
+
   // Returns the per-element CPU time spent in the subtree rooted in this node.
   double TotalProcessingTime() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
@@ -343,7 +349,7 @@ class Node {
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
       if (input->autotune()) {
-        sum += input->SelfProcessingTimeLocked();
+        sum += input->SelfProcessingTime();
       }
     }
     return sum;

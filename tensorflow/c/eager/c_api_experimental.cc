@@ -63,7 +63,7 @@ TFE_ProfilerContext* TFE_NewProfilerContext() {
 
 void TFE_ProfilerContextSetEagerContext(TFE_ProfilerContext* profiler_context,
                                         TFE_Context* eager_context) {
-  profiler_context->profiler_context.eager_context = &eager_context->context;
+  profiler_context->profiler_context.eager_context = eager_context->context;
 }
 
 void TFE_DeleteProfilerContext(TFE_ProfilerContext* profiler_context) {
@@ -77,25 +77,28 @@ void TFE_StartProfilerServer(TFE_ProfilerContext* context, int port) {
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(true);
+  ctx->context->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreGraphs(false);
+  ctx->context->SetShouldStoreGraphs(false);
 }
 
 bool TFE_ProfilerClientStartTracing(const char* service_addr,
                                     const char* logdir, const char* worker_list,
                                     bool include_dataset_ops, int duration_ms,
-                                    int num_tracing_attempts) {
+                                    int num_tracing_attempts,
+                                    TF_Status* status) {
   tensorflow::Status s =
       tensorflow::profiler::client::ValidateHostPortPair(service_addr);
   if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
     return false;
   }
   s = tensorflow::profiler::client::StartTracing(
       service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
       num_tracing_attempts);
+  tensorflow::Set_TF_Status_from_Status(status, s);
   return s.ok();
 }
 

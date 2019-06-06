@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
 #if defined(__ANDROID__)
@@ -44,12 +43,10 @@ std::string StripTrailingSlashes(const std::string& path) {
 bool ReadFileLines(const std::string& file_path,
                    std::vector<std::string>* lines_output) {
   if (!lines_output) {
-    LOG(ERROR) << "lines_output is null";
     return false;
   }
   std::ifstream stream(file_path.c_str());
   if (!stream) {
-    LOG(ERROR) << "Unable to open file: " << file_path;
     return false;
   }
   std::string line;
@@ -64,7 +61,6 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
   DIR* dir;
   struct dirent* ent;
   if (result == nullptr) {
-    LOG(ERROR) << "result cannot be nullptr";
     return kTfLiteError;
   }
   result->clear();
@@ -77,7 +73,6 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
     }
     closedir(dir);
   } else {
-    LOG(ERROR) << "Could not open dir: " << dir_path;
     return kTfLiteError;
   }
   std::sort(result->begin(), result->end());

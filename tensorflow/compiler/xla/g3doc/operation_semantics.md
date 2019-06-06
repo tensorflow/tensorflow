@@ -595,8 +595,7 @@ executed depending on the value of `pred`.
 
 | Arguments             | Type                  | Semantics                    |
 | --------------------- | --------------------- | ---------------------------- |
-| `branch_index`        | `XlaOp`               | Scalar of type `PRED` or     |
-:                       :                       : `S32`                        :
+| `branch_index`        | `XlaOp`               | Scalar of type `S32`         |
 | `branch_computations` | sequence of N         | XlaComputations of type $$   |
 :                       : `XlaComputation`      : T_0 \to S , T_1 \to S , ..., :
 :                       :                       : T_{N-1} \to S $$             :
@@ -604,9 +603,8 @@ executed depending on the value of `pred`.
 :                       :                       : T_1 , ..., T_{N-1} $$        :
 
 Executes `branch_computations[branch_index]`, and returns the result. If
-`branch_index` is a `PRED`, then the `true` branch is in position 0 and the
-`false` branch is in position 1. If `branch_index` is an `S32` which is < 0
-or >= N, then `branch_computations[N-1]` is executed as the default branch.
+`branch_index` is an `S32` which is < 0 or >= N, then `branch_computations[N-1]`
+is executed as the default branch.
 
 Each `branch_computations[b]` must take in a single argument of type `T_b` and
 will be invoked with `branch_operands[b]` which must be of the same type. The
@@ -1483,8 +1481,8 @@ The element in the output array at index
 [`G`,`O`<sub>`0`</sub>,`O`<sub>`1`</sub>] is then the element in the input
 array at index [`X`+`O`<sub>`0`</sub>,`Y`+`O`<sub>`1`</sub>].
 
-`slice_sizes` is `[8,6]`, which decides the range of W<sub>`0`</sub> and
-W<sub>`1`</sub>, and this in turn decides the bounds of the slice.
+`slice_sizes` is `[8,6]`, which decides the range of O<sub>`0`</sub> and
+O<sub>`1`</sub>, and this in turn decides the bounds of the slice.
 
 This gather operation acts as a batch dynamic slice with `G` as the batch
 dimension.
@@ -2203,7 +2201,7 @@ Arguments                      | Type                | Semantics
 `operand`                      | `XlaOp`             | Array to be scattered into.
 `scatter_indices`              | `XlaOp`             | Array containing the starting indices of the slices that must be scattered to.
 `updates`                      | `XlaOp`             | Array containing the values that must be used for scattering.
-`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T, T -> T`.
+`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `(T, T) -> T`.
 `index_vector_dim`             | `int64`             | The dimension in `scatter_indices` that contains the starting indices.
 `update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
 `inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.
@@ -2263,7 +2261,7 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
     at `update_window_dims` in `U` according to `inserted_window_dims`. More
     formally:
     1.  `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if `k`
-        < `update_window_dims.size`, where `window_dims_to_operand_dims` is the
+        is in `update_window_dims`, where `window_dims_to_operand_dims` is the
         monotonic function with domain [`0`, `update_window_dims.size`) and
         range [`0`, `operand.rank`) \\ `inserted_window_dims`. (For example, if
         `update_window_dims.size` is `4`, `operand.rank` is `6`, and
@@ -2279,7 +2277,7 @@ In summary, the scatter operation can be defined as follows.
     `operand` array: \
     `output`[`O`] = `operand`[`O`]
 -   For every index `U` in the `updates` array and the corresponding index `O`
-    in the `operand` array: \
+    in the `operand` array, if `O` is a valid index for `output`: \
     `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
 
 The order in which updates are applied is non-deterministic. So, when multiple

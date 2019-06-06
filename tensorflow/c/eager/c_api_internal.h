@@ -62,21 +62,25 @@ struct TFE_Context {
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
               tensorflow::Rendezvous* rendezvous,
               const tensorflow::CustomKernelCreator* custom_kernel_creator)
-      : context(opts,
-                static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                    default_policy),
-                async, device_mgr, device_mgr_owned, rendezvous,
-                custom_kernel_creator) {}
+      : context(new tensorflow::EagerContext(
+            opts,
+            static_cast<tensorflow::ContextDevicePlacementPolicy>(
+                default_policy),
+            async, device_mgr, device_mgr_owned, rendezvous,
+            custom_kernel_creator)) {}
 
-  tensorflow::EagerContext context;
+  ~TFE_Context() { context->Unref(); }
+
+  tensorflow::EagerContext* context;
 };
 
 struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
-                   tensorflow::Device* op_device)
-      : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
-
-  TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
+  explicit TFE_TensorHandle(tensorflow::TensorHandle* handle)
+      : handle(handle) {}
+  explicit TFE_TensorHandle(const tensorflow::Tensor& t)
+      : handle(new tensorflow::TensorHandle(t)) {}
+  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d)
+      : handle(new tensorflow::TensorHandle(t, d, nullptr)) {}
 
   tensorflow::TensorHandle* handle;
 
@@ -108,7 +112,7 @@ struct TFE_Op {
   TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
          const tensorflow::AttrTypeMap* t,
          TFE_OpInferenceContext* inference_ctx)
-      : operation(&ctx->context, op, is_function, t),
+      : operation(ctx->context, op, is_function, t),
         inference_ctx(inference_ctx) {}
 
   tensorflow::EagerOperation operation;

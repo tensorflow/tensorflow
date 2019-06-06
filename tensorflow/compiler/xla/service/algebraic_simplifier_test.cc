@@ -336,6 +336,29 @@ TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeBroadcastedConstants) {
                                                     m::ConstantScalar(3.0))))));
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       MultiplyReassociateMultiplyOfConstantAndBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      c0 = f32[4] constant({2.0, 3.0, 4.0, 5.0})
+      c1 = f32[] constant(3.0)
+      c2 = f32[] constant(4.0)
+      b0 = f32[4] broadcast(c1), dimensions={}
+      b1 = f32[4] broadcast(c2), dimensions={}
+      multiply0 = f32[4] multiply(c0, b0)
+      ROOT multiply1 = f32[4] multiply(multiply0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Multiply(
+          m::Constant(), m::Broadcast(m::Multiply(m::ConstantScalar(3.0),
+                                                  m::ConstantScalar(4.0))))));
+}
+
 // Test that select(true, a, b) is simplified to a
 TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   Shape r0s32 = ShapeUtil::MakeShape(S32, {});
@@ -5354,15 +5377,46 @@ TEST_F(AlgebraicSimplifierTest,
   // No optimization opportunity here because the transpose does not reorder the
   // contracting dims.
   const char* kModuleStr = R"(
-    param = f32[2,5,1,3] parameter(0)
-    transpose = f32[1,5,2,3] transpose(param), dimensions={2,1,0,3}
-    reshape = f32[5,6] reshape(transpose)
-    constant = f32[6,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}})
-    ROOT dot = f32[5,4] dot(reshape, constant),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}}
+    HloModule m
+    test {
+      param = f32[2,5,1,3] parameter(0)
+      transpose = f32[1,5,2,3] transpose(param), dimensions={2,1,0,3}
+      reshape = f32[5,6] reshape(transpose)
+      constant = f32[6,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+      ROOT dot = f32[5,4] dot(reshape, constant),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareIota) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      zero = s32[] constant(0)
+      iota = s32[128] iota(), iota_dimension=0
+      broad = s32[128] broadcast(zero), dimensions={}
+      ROOT compare = pred[128] compare(iota, broad), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(false))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareSame) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param = s32[123] parameter(0)
+      ROOT compare = pred[123] compare(param, param), direction=GE
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(true))));
 }
 
 }  // namespace

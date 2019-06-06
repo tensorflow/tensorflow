@@ -24,6 +24,21 @@ package org.tensorflow;
 abstract class AbstractOperation implements Operation {
 
   @Override
+  public Output<?>[] outputList(int idx, int length) {
+    Output<?>[] outputs = new Output<?>[length];
+    for (int i = 0; i < length; ++i) {
+      outputs[i] = output(idx + i);
+    }
+    return outputs;
+  }
+
+  @Override
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public <T> Output<T> output(int idx) {
+    return new Output(this, idx);
+  }
+
+  @Override
   public String toString() {
     return String.format("<%s '%s'>", type(), name());
   }
@@ -45,7 +60,7 @@ abstract class AbstractOperation implements Operation {
   abstract long getUnsafeNativeHandle(int outputIdx);
 
   /**
-   * Returns the shape of the tensor of the {code outputIdx}th output of this operation.
+   * Returns the shape of the tensor of the {@code outputIdx}th output of this operation.
    *
    * @param outputIdx index of the output of this operation
    * @return output tensor shape
@@ -53,10 +68,20 @@ abstract class AbstractOperation implements Operation {
   abstract long[] shape(int outputIdx);
 
   /**
-   * Returns the datatype of the tensor of the {code outputIdx}th output of this operation.
+   * Returns the datatype of the tensor of the {@code outputIdx}th output of this operation.
    *
    * @param outputIdx index of the output of this operation
    * @return output tensor datatype
    */
   abstract DataType dtype(int outputIdx);
+
+  /**
+   * Returns the tensor of the {@code outputIdx}th output of this operation.
+   *
+   * <p>This is only supported in an eager execution environment.
+   *
+   * @param outputIdx index of the output of this operation
+   * @return output tensor
+   */
+  abstract Tensor<?> tensor(int outputIdx);
 }

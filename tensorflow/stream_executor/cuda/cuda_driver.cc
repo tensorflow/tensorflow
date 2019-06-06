@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
@@ -172,6 +172,9 @@ void CheckPointerIsValid(const PtrT ptr, absl::string_view name) {
   cudaPointerAttributes attributes;
   cudaError_t err =
       cudaPointerGetAttributes(&attributes, reinterpret_cast<const void*>(ptr));
+  CHECK(err == cudaSuccess || err == cudaErrorInvalidValue)
+      << "Unexpected CUDA error: " << cudaGetErrorString(err);
+
   // If we failed, reset cuda error status to avoid poisoning cuda streams.
   if (err != cudaSuccess) cudaGetLastError();
   bool points_to_host_memory = (err == cudaErrorInvalidValue ||
@@ -1204,9 +1207,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ port::Status GpuDriver::CreateEvent(GpuContext* context,
-                                                 CUevent* result,
-                                                 EventFlags flags) {
+/* static */ port::Status GpuDriver::InitEvent(GpuContext* context,
+                                               CUevent* result,
+                                               EventFlags flags) {
   int cuflags;
   switch (flags) {
     case EventFlags::kDefault:

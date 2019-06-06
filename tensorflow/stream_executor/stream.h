@@ -234,13 +234,16 @@ class Stream {
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
-      const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      DeviceMemory<float> *y, DeviceMemory<float> *batch_mean,
-      DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
-      DeviceMemory<float> *saved_inv_var, bool is_training,
+      dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
+      DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
+      DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
+      bool is_training,
       std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      std::function<void()> inv_var_to_var,
+      ScratchAllocator *reserve_space_allocator,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
@@ -248,20 +251,25 @@ class Stream {
       const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop);
+      DeviceMemory<float> *offset_backprop,
+      DeviceMemory<uint8> *reserve_space_data,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationForward(
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
       const DeviceMemory<float> &offset,
       const DeviceMemory<float> &estimated_mean,
       const DeviceMemory<float> &estimated_variance,
-      const dnn::BatchDescriptor &x_desc,
+      const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
-      DeviceMemory<Eigen::half> *y, DeviceMemory<float> *batch_mean,
-      DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
-      DeviceMemory<float> *saved_inv_var, bool is_training,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
+      DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
+      DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
+      bool is_training,
       std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      std::function<void()> inv_var_to_var,
+      ScratchAllocator *reserve_space_allocator,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
@@ -270,8 +278,9 @@ class Stream {
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half> *x_backprop,
-      DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop);
+      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+      DeviceMemory<uint8> *reserve_space_data,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
                        const DeviceMemory<float> &input_data,
@@ -1942,6 +1951,12 @@ class Stream {
   // negative effects on performance.
   Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
 
+  // Runs the given callback after the next call to BlockHostUntilDone on this
+  // stream (or after the Stream does BlockHostUntilDone iin its destructor).
+  // This can act as a faster alternative to ThenDoHostCallbackWithStatus for
+  // some use cases.
+  Stream &ThenRunAfterNextBlockHostUntilDone(std::function<void()> callback);
+
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
     CHECK(parent_ != nullptr);
@@ -1989,6 +2004,10 @@ class Stream {
                     "without DNN support";
   }
 
+  // Runs the set of callbacks that are intended to run after
+  // BlockHostUntilDone.
+  void RunAfterBlockHostUntilDoneCallbacks();
+
   // The StreamExecutor that supports the operation of this stream.
   StreamExecutor *parent_;
 
@@ -2020,6 +2039,10 @@ class Stream {
   // notes when they can be reclaimed -- reclamation is attempted when
   // BlockHostUntilDone() is called.
   internal::TemporaryMemoryManager temporary_memory_manager_;
+
+  // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
+  std::vector<std::function<void()>> after_block_host_until_done_callbacks_
+      GUARDED_BY(mu_);
 
   // Implementation of ThenConvolveBackwardBias that is shared by all types.
   template <typename T>

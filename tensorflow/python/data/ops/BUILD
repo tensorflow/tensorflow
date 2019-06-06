@@ -1,6 +1,7 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -36,6 +37,7 @@ py_library(
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/data/util:traverse",
+        "//tensorflow/python/ops/ragged",
         "//third_party/py/numpy",
     ],
 )

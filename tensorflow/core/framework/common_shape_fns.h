@@ -255,6 +255,9 @@ Status AvgPoolShape(shape_inference::InferenceContext* c);
 // Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
 Status FusedBatchNormShape(shape_inference::InferenceContext* c);
 
+// Shape function for FusedBatchNormV3 operations.
+Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c);
+
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
@@ -272,6 +275,9 @@ Status UnknownShape(shape_inference::InferenceContext* c);
 
 // Shape function for reduction operations.
 Status ReductionShape(shape_inference::InferenceContext* c);
+
+// Shape function for unsorted segment operations.
+Status UnsortedSegmentReductionShapeFn(InferenceContext* c);
 
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken

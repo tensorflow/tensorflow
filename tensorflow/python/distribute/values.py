@@ -29,14 +29,16 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -232,6 +234,69 @@ LogicalDeviceSpec = collections.namedtuple(
     "LogicalDeviceSpec", ("device_map", "logical_device"))
 
 
+class WorkerDeviceMap(DeviceMap):
+  """A device map for one value per worker."""
+
+  def __init__(self, devices, num_replicas_per_worker):
+    """Initialize a `WorkerDeviceMap`.
+
+    Args:
+      devices: `devices[i]` is the string device for worker `i` in in-graph
+        relication case; devices is single-element list for its corresponding
+        worker in between-graph case.
+      num_replicas_per_worker: number of replicas per worker, useful in in-graph
+        replication case.
+    """
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    if len(set(self._devices)) != len(self._devices):
+      raise ValueError("Duplicate devices in %s, after canonicalization: %s" %
+                       (devices, self._devices))
+    self._num_replicas_per_worker = num_replicas_per_worker
+
+  @property
+  def all_devices(self):
+    return self._devices
+
+  @property
+  def devices_by_replica(self):
+    raise ValueError("`WorkerDeviceMap` is not indexed by replicas")
+
+  @property
+  def num_logical_devices(self):
+    return 1
+
+  @property
+  def num_replicas_in_graph(self):
+    return len(self._devices)
+
+  def logical_device_from_values(self, values):
+    del values
+    return 0
+
+  def logical_to_actual_devices(self, logical_device_id):
+    assert logical_device_id == 0
+    return self._devices
+
+  def select_for_current_replica(self, values, replica_context):
+    return values[replica_context.replica_id_in_sync_group //
+                  self._num_replicas_per_worker]
+
+  def replica_for_device(self, device):
+    raise ValueError("`WorkerDeviceMap` not indexed by replicas")
+
+  def select_for_device(self, values, device):
+    # TODO(yuefengz): this should map from any device to the value on its
+    # corresponding worker.
+    return values[self._devices.index(device_util.canonicalize(device))]
+
+  def is_device_in_replica(self, device, replica_id):
+    raise ValueError("WorkerDeviceMap not indexed by replicas")
+
+  def __repr__(self):
+    return "%s(%r, num_replicas_per_worker=%d)" % (
+        self.__class__.__name__, self._devices, self._num_replicas_per_worker)
+
+
 class DistributedValues(object):
   """Holds a map from device to values. Either PerReplica or Mirrored."""
 
@@ -312,6 +377,13 @@ class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
   def __getattr__(self, name):
+    # The '_use_resource_variables' and the attrs starts with '_self' are used
+    # for restoring the saved_model proto. At the point these attrs are queried,
+    # the variable has not been initialized. Thus it should not query those of
+    # the underlying components.
+    if name.startswith("_self_") or name == "_use_resource_variables":
+      return super(DistributedDelegate, self).__getattr__(name)
+
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
     # __getattr__ and @property. See b/120402273.
     return getattr(self.get(), name)
@@ -380,13 +452,79 @@ class DistributedDelegate(DistributedValues):
   # TODO(josh11b): Even more operator overloads.
 
 
-class PerReplica(DistributedValues):
+class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
   """Holds a map from device to unsynchronized values."""
-  pass
+
+  @property
+  def _type_spec(self):
+    value_specs = [type_spec.type_spec_from_value(v) for v in self._values]
+    return PerReplicaSpec(value_specs, self._device_map, self._logical_device)
+
+
+class PerReplicaSpec(type_spec.TypeSpec):
+  """Type specification for a `PerReplica`."""
+
+  __slots__ = ["_value_specs", "_device_map", "_logical_device"]
+
+  value_type = property(lambda self: PerReplica)
+
+  def __init__(self, value_specs, device_map, logical_device):
+    if isinstance(device_map, tuple):
+      device_map = self._deserialize_device_map(device_map)
+    self._value_specs = tuple(value_specs)
+    self._device_map = device_map
+    self._logical_device = logical_device
+
+  def _serialize(self):
+    device_map = self._serialize_device_map(self._device_map)
+    return (self._value_specs, device_map, self._logical_device)
+
+  @property
+  def _component_specs(self):
+    return self._value_specs
+
+  def _to_components(self, value):
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context is not None and replica_context.num_replicas_in_sync > 1:
+      raise ValueError(
+          "Flattening a PerReplica to components is not supported in replica "
+          "context.")
+    return value._values  # pylint: disable=protected-access
+
+  def _from_components(self, tensor_list):
+    return PerReplica(self._device_map, tensor_list,
+                      logical_device=self._logical_device)
+
+  @staticmethod
+  def _serialize_device_map(device_map):
+    if isinstance(device_map, SingleDeviceMap):
+      return ("single", device_map.all_devices[0])
+    elif isinstance(device_map, ReplicaDeviceMap):
+      return ("replica", device_map.all_devices)
+    elif isinstance(device_map, WorkerDeviceMap):
+      return ("worker", device_map.all_devices,
+              device_map.num_replicas_per_worker)
+    else:
+      raise ValueError("PerReplicaSpec does not support device_map type %s"
+                       % type(device_map).__name__)
+
+  @staticmethod
+  def _deserialize_device_map(device_map_info):
+    device_map_type = device_map_info[0]
+    device_map_args = device_map_info[1:]
+    if device_map_type == "single":
+      return SingleDeviceMap(*device_map_args)
+    elif device_map_type == "replica":
+      return ReplicaDeviceMap(*device_map_args)
+    elif device_map_type == "worker":
+      return WorkerDeviceMap(*device_map_args)
+    else:
+      raise ValueError("Unexpected value in state tuple")
 
 
 # Note that unlike PerReplica, Mirrored values inherit from
 # DistributedDelegate and so can be used directly in cross-replica mode.
+# TODO(tomhennigan) Should this extend CompositeTensor?
 class Mirrored(DistributedDelegate):
   """Holds a map from device to values which are kept in sync."""
 
@@ -436,7 +574,7 @@ DistributedVarOp = collections.namedtuple(
     "DistributedVarOp", ["name", "graph", "type"])
 
 
-class DistributedVariable(DistributedDelegate, variables_lib.Variable):
+class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
   """Holds a map from device to variables."""
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
@@ -657,6 +795,23 @@ def _apply_aggregation(strategy, value, aggregation, destinations):
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 
+_aggregation_error_msg = (
+    "You must specify an aggregation method to update a "
+    "{variable_type} in Replica Context. You can do so by passing "
+    "an explicit value for argument `aggregation` to tf.Variable(..)."
+    "e.g. `tf.Variable(..., aggregation=tf.VariableAggregation.SUM)`"
+    "`tf.VariableAggregation` lists the possible aggregation methods."
+    "This is required because {variable_type} should always be "
+    "kept in sync. When updating them or assigning to them in a "
+    "replica context, we automatically try to aggregate the values "
+    "before updating the variable. For this aggregation, we need to "
+    "know the aggregation method. "
+    "Another alternative is to not try to update such "
+    "{variable_type} in replica context, but in cross replica "
+    "context. You can enter cross replica context by calling "
+    "`tf.distribute.get_replica_context().merge_call(merge_fn, ..)`."
+    "Inside `merge_fn`, you can then update the {variable_type} "
+    "using `tf.distribute.StrategyExtended.update()`.")
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
   """Class for defining how to restore a MirroredVariable."""
@@ -712,8 +867,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
         # We call the function on each of the mirrored variables with the
         # reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "MirroredVariable in Replica Context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="MirroredVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -790,6 +945,12 @@ def _enclosing_tpu_context():
   return tpu_context
 
 
+def is_distributed_variable(v):
+  """Determine if a variable is ds variable or TPU mirrored variable."""
+  return (isinstance(v, DistributedVariable)
+          or isinstance(v, TPUMirroredVariable))
+
+
 # TODO(jhseu): Deduplicate code. We copy code because we don't want to
 # inherit from DistributedDelegate. DistributedDelegate will not work in a
 # tpu.replicate() because it assumes that you're in a device context where you
@@ -849,6 +1010,13 @@ class TPUMirroredVariable(variables_lib.Variable):
       return self.read_value().numpy()
     raise NotImplementedError(
         "numpy() is only available when eager execution is enabled.")
+
+  def initialized_value(self):
+    return self.primary.initialized_value()
+
+  @property
+  def initial_value(self):
+    return self.primary.initial_value
 
   @property
   def primary(self):
@@ -1000,8 +1168,8 @@ class TPUMirroredVariable(variables_lib.Variable):
         # We call the function on each of the mirrored variables with the
         # reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "TPUMirroredVariable in Replica Context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="TPUMirroredVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1538,8 +1706,8 @@ class AggregatingVariable(variables_lib.Variable):
         # we handle the different use cases can be found in the _reduce method.
         # We call the function with the reduced value.
         if self._aggregation == vs.VariableAggregation.NONE:
-          raise ValueError("You must specify an aggregation method to update a "
-                           "a variable in replica context.")
+          raise ValueError(_aggregation_error_msg.format(
+              variable_type="AggregatingVariable"))
 
         def merge_fn(strategy, value, *other_args, **other_kwargs):
           v = _apply_aggregation(strategy, value, self._aggregation, self)
@@ -1563,6 +1731,13 @@ class AggregatingVariable(variables_lib.Variable):
   @property
   def initializer(self):
     return self._v.initializer
+
+  def initialized_value(self):
+    return self._v.initialized_value()
+
+  @property
+  def initial_value(self):
+    return self._v.initial_value
 
   @property
   def op(self):

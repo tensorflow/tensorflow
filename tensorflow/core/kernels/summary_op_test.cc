@@ -123,7 +123,7 @@ TEST_F(SummaryScalarOpTest, Error_MismatchedSize) {
   AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({3}), {1.0f, -0.73f, 10000.0f});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "not the same shape")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "not the same shape")) << s;
 }
 
 TEST_F(SummaryScalarOpTest, Error_WrongDimsTags) {
@@ -134,7 +134,7 @@ TEST_F(SummaryScalarOpTest, Error_WrongDimsTags) {
   AddInputFromArray<float>(TensorShape({2}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "tags and values not the same shape"))
+      absl::StrContains(s.ToString(), "tags and values not the same shape"))
       << s;
 }
 
@@ -146,7 +146,7 @@ TEST_F(SummaryScalarOpTest, Error_WrongDimsValues) {
   AddInputFromArray<float>(TensorShape({2, 1}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "tags and values not the same shape"))
+      absl::StrContains(s.ToString(), "tags and values not the same shape"))
       << s;
 }
 
@@ -257,7 +257,7 @@ TEST_F(SummaryHistoOpTest, Error_WrongDimsTags) {
   AddInputFromArray<string>(TensorShape({2, 1}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({2}), {1.0f, -0.73f});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "tags must be scalar")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "tags must be scalar")) << s;
 }
 
 TEST_F(SummaryHistoOpTest, Error_TooManyTagValues) {
@@ -267,7 +267,7 @@ TEST_F(SummaryHistoOpTest, Error_TooManyTagValues) {
   AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({2, 1}), {1.0f, -0.73f});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "tags must be scalar")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "tags must be scalar")) << s;
 }
 
 // --------------------------------------------------------------------------
@@ -366,7 +366,7 @@ TEST_F(SummaryMergeOpTest, Error_MismatchedSize) {
   AddInputFromArray<string>(TensorShape({2}),
                             {s1.SerializeAsString(), s2.SerializeAsString()});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "Duplicate tag")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "Duplicate tag")) << s;
 }
 
 }  // namespace

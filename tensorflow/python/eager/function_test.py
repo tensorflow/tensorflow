@@ -41,7 +41,6 @@ from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import sparse_tensor_spec
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -66,8 +65,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_tensor_spec
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -151,7 +150,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun
+    @function.defun(experimental_relax_shapes=True)
     def func(a):
       if a._shape_tuple()[0] is None:
         unknown_dim[0] = True
@@ -183,7 +182,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
-    @function.defun
+    @function.defun(experimental_relax_shapes=True)
     def func(a_, b_=None):
       del a_  # Only used to check which cache is used.
       self.assertEqual(b_[0]._shape_tuple(), ())
@@ -222,7 +221,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testFunctionRelaxationLosesInnerDimWithKerasLayer(self):
     layer = keras.layers.Dense(1)
-    fn = def_function.function()(layer)
+    fn = def_function.function(experimental_relax_shapes=True)(layer)
 
     with self.captureWritesToStream(sys.stderr) as printed:
       fn(array_ops.ones((3, 2)))
@@ -246,14 +245,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # The inner function will go through shape relaxation because the shapes it
     # receives will be [1], [2], [3], ...
-    @def_function.function
+    @def_function.function(experimental_relax_shapes=True)
     def bar(x_shape):
       got_shape[0] = x_shape._shape_tuple()
       return x_shape
 
     # The outer function will not go through shape relaxation because the shapes
     # it receives will be [1], [[1]], [[[1]]], ...
-    @def_function.function
+    @def_function.function(experimental_relax_shapes=True)
     def foo(ones):
       return bar(array_ops.shape(ones))
 
@@ -384,10 +383,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       ((a, b),) = mats
       return matmul(a, b)
 
-    with self.assertRaisesRegexp(ValueError, "two arguments named 'mats'"):
-      sq.get_concrete_function(
-          [(tensor_spec.TensorSpec((None, None), dtypes.float32),
-            tensor_spec.TensorSpec((None, None), dtypes.float32))])
+    sq_op_autonamed = sq.get_concrete_function(
+        [(tensor_spec.TensorSpec((None, None), dtypes.float32),
+          tensor_spec.TensorSpec((None, None), dtypes.float32))])
+    self.assertEqual([None, None], sq_op_autonamed.output_shapes.as_list())
+
     sq_op = sq.get_concrete_function(
         [(tensor_spec.TensorSpec((None, None), dtypes.float32,
                                  name='first_mat'),
@@ -397,11 +397,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     t2 = constant_op.constant([[1.4, 2.4], [3.4, 4.4]])
-    with self.assertRaisesRegexp(
-        TypeError, 'bound to Tensors within nested structures'):
-      sq_op(t1, t2)
     out = sq_op(first_mat=t1, second_mat=t2)
     self.assertAllEqual(out, math_ops.matmul(t1, t2).numpy())
+    self.assertAllEqual(sq_op_autonamed(t1, t2),
+                        math_ops.matmul(t1, t2).numpy())
 
   def testExecutingStatelessDefunConcurrently(self):
 
@@ -919,14 +918,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = def_function.function(sum_gather)
     self.assertAllEqual(sum_gather(), defined())
 
-  @parameterized.parameters([
-      (_example_indexed_slices_with_dense_shape,),
-      (_example_indexed_slices_without_dense_shape,),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1', ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
-      (sparse_tensor.SparseTensor,
+      ('SparseTensor', sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
   ])  # pyformat: disable
   def testReturnCompositeTensorWithDefun(self,
@@ -948,25 +950,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     for (input_component, output_component) in zip(input_flat, output_flat):
       self.assertAllEqual(input_component, output_component)
 
-  @parameterized.parameters([
-      (_example_indexed_slices_with_dense_shape,),
-      (_example_indexed_slices_without_dense_shape,),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1',
+       ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
-      (sparse_tensor.SparseTensor,
+      ('SparseTensor',
+       sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+      ('RaggedTensorRaggedRank1WithSignature',
+       ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]},
-       [ragged_tensor_spec.ragged_tensor_spec([None, None], dtypes.int32)]),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       [ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)]),
+      ('RaggedTensorRaggedRank2WithSignature',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]},
-       [ragged_tensor_spec.ragged_tensor_spec([None, None, None],
-                                              dtypes.int32)]),
-      (sparse_tensor.SparseTensor,
+       [ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.int32)]),
+      ('SparseTensorWithSignature',
+       sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]},
-       [sparse_tensor_spec.sparse_tensor_spec([None], dtypes.int32)]),
+       [sparse_tensor.SparseTensorSpec([None], dtypes.int32)]),
   ])  # pyformat: disable
   def testCompositeAsArgumentTensorWithDefun(self,
                                              factory_fn,
@@ -1404,13 +1413,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined(t)
     self.assertLen(total_function_cache(defined), 2)
 
-  def testCacheTensorUnknownShapesCollision(self):
+  def testCacheTensorUnknownShapesCollisionRelaxedShapes(self):
 
     def func(t):
       return t + t
 
     with context.graph_mode(), self.cached_session():
-      defined = function.defun(func)
+      defined = function.defun(func, experimental_relax_shapes=True)
 
       p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)
@@ -1711,7 +1720,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(x.numpy(), foo(x).numpy())
 
   def testInputSignatureWithPartialFunction(self):
-    self.skipTest('b/124441704')
     def full_function(a, b, c=3.0):
       return a, b, c
 
@@ -1788,6 +1796,43 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         ]).get_concrete_function()
     result = x(constant_op.constant(5.0), constant_op.constant(5))
     self.assertAllEqual(result, [5.0, 5])
+
+  def testInputSignatureWithCompositeTensors(self):
+    def f(rt):
+      self.assertEqual(rt.values.shape.as_list(), [None])
+      self.assertEqual(rt.row_splits.shape.as_list(), [4])
+      return rt
+
+    signature = [ragged_tensor.RaggedTensorSpec(
+        shape=[3, None], dtype=dtypes.int32)]
+    defined = function.defun(f, input_signature=signature)
+    rt1 = ragged_factory_ops.constant([[1], [], [2, 3, 4]])
+    out1 = defined(rt1)
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertAllEqual(out1.values, rt1.values)
+    self.assertAllEqual(out1.row_splits, rt1.row_splits)
+
+    # Changing the row lengths shouldn't create a new function.
+    rt2 = ragged_factory_ops.constant([[1, 2], [3, 4], [5]])
+    out2 = defined(rt2)
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertAllEqual(out2.values, rt2.values)
+    self.assertAllEqual(out2.row_splits, rt2.row_splits)
+
+    # Different number of rows
+    rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
+    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+      defined(rt3)
+
+    # Different dtype
+    rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
+    with self.assertRaisesRegexp(ValueError, 'Structure .* does not match'):
+      defined(rt4)
+
+    # Different rank
+    rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
+    with self.assertRaisesRegexp(ValueError, 'does not match'):
+      defined(rt5)
 
   def testTensorKeywordArguments(self):
 
@@ -2189,6 +2234,40 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEqual(y_value, 3.0)
 
+  def testSwapImplementationInEager(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    context.context().set_optimizer_experimental_options(
+        {'min_graph_nodes': -1, 'implementation_selector': True})
+
+    # TODO(b/133178886): Remove _noinline=True once the function is not default
+    # inlined in eager mode with api_implements attribute.
+    @function.defun_with_attributes(
+        attributes={'api_implements': 'foo',
+                    'api_preferred_device': 'CPU',
+                    '_noinline': True})
+    def on_cpu(x):
+      return x + 2
+
+    # TODO(b/133178886): Remove _noinline=True once the function is not default
+    # inlined in eager mode with api_implements attribute.
+    @function.defun_with_attributes(
+        attributes={'api_implements': 'foo',
+                    'api_preferred_device': 'GPU',
+                    '_noinline': True})
+    def on_gpu(x):
+      return x + 4
+
+    @function.defun
+    def run_on_cpu(t):
+      function.register(on_cpu, t)
+      with ops.device('CPU:0'):
+        return on_gpu(t)
+
+    # Expect to run the on_cpu branch, regardless whether gpu is available.
+    self.assertEqual(run_on_cpu(constant_op.constant(1)).numpy(), 3)
+
   def testDefunFunctionSeparateGraphs(self):
     with context.graph_mode():
 
@@ -2578,6 +2657,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Tracing more than twice per input doesn't make sense.
     self.assertLess(trace_count[0], 13)
 
+  def testLimitedRetracingWithCompositeTensors(self):
+    trace_count = [0]
+
+    @def_function.function
+    def f(x):
+      trace_count[0] += 1
+      return x
+
+    for i in range(10):
+      f(ragged_factory_ops.constant([[1, 2], [i]]))
+      f(ragged_factory_ops.constant([[1, 2], [], [3, 4, 5]]))
+      f(ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]]))
+      self.assertEqual(trace_count[0], 3)
+
   def test_concrete_function_shape_mismatch(self):
 
     @def_function.function
@@ -2963,7 +3056,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
           break
 
     train()
-
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

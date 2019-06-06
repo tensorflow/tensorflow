@@ -23,6 +23,7 @@ import copy
 
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
@@ -190,15 +191,20 @@ class Sequential(training.Model):
       # If the model is being built continuously on top of an input layer:
       # refresh its output.
       output_tensor = layer(self.outputs[0])
-      if isinstance(output_tensor, list):
+      if len(nest.flatten(output_tensor)) != 1:
         raise TypeError('All layers in a Sequential model '
                         'should have a single output tensor. '
                         'For multi-output layers, '
                         'use the functional API.')
       self.outputs = [output_tensor]
+
+    if self.outputs:
+      # True if set_inputs or self._is_graph_network or if adding a layer
+      # to an already built deferred seq model.
+      self.built = True
+
     if set_inputs or self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
-      self.built = True
     else:
       self._layers.append(layer)
     if self._layers:
@@ -228,7 +234,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
-  @base_layer.default
+  @base_layer_utils.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -360,3 +366,7 @@ class Sequential(training.Model):
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_sequential'

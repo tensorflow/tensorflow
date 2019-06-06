@@ -23,8 +23,8 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
@@ -52,6 +52,10 @@ from tensorflow.python.util.tf_export import tf_export
 local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
+
+_ops_counter = monitoring.Counter("/tensorflow/api/ops/nn",
+                                  "number of neural net ops in the graph.",
+                                  "op_name")
 
 
 def _get_sequence(value, n, channel_index, name):
@@ -961,6 +965,7 @@ def convolution_internal(
     if all(i == 1 for i in dilations):
       # fast path if no dilation as gradient only supported on GPU for dilations
       op = conv_ops[n]
+      _ops_counter.get_cell("conv{}d".format(n)).increase_by(1)
       return op(
           input,
           filters,
@@ -2168,9 +2173,9 @@ def conv2d_transpose_v2(
     input: A 4-D `Tensor` of type `float` and shape `[batch, height, width,
       in_channels]` for `NHWC` data format or `[batch, in_channels, height,
       width]` for `NCHW` data format.
-    filters: A 4-D `Tensor` with the same type as `value` and shape `[height,
+    filters: A 4-D `Tensor` with the same type as `input` and shape `[height,
       width, output_channels, in_channels]`.  `filter`'s `in_channels` dimension
-      must match that of `value`.
+      must match that of `input`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `2` or `4`.  The
@@ -2192,7 +2197,7 @@ def conv2d_transpose_v2(
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, or if
@@ -2759,12 +2764,9 @@ def leaky_relu(features, alpha=0.2, name=None):
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.cast(features, dtypes.float32)
-    if compat.forward_compatible(2018, 11, 1):
-      if isinstance(alpha, np.ndarray):
-        alpha = alpha.item()
-      return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
-    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
-    return math_ops.maximum(alpha * features, features, name=name)
+    if isinstance(alpha, np.ndarray):
+      alpha = alpha.item()
+    return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 
 def _flatten_outer_dims(logits):
@@ -3036,7 +3038,8 @@ def softmax_cross_entropy_with_logits_v2(labels, logits, axis=-1, name=None):
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
-    logits: Unscaled log probabilities.
+    logits: Per-label activations, typically a linear output. These activation
+      energies are interpreted as unnormalized log probabilities.
     axis: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
@@ -3221,7 +3224,8 @@ def softmax_cross_entropy_with_logits(
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
       probability distribution.
-    logits: Unscaled log probabilities.
+    logits: Per-label activations, typically a linear output. These activation
+      energies are interpreted as unnormalized log probabilities.
     dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
     axis: Alias for dim.
@@ -3284,9 +3288,10 @@ def sparse_softmax_cross_entropy_with_logits(
       must be an index in `[0, num_classes)`. Other values will raise an
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
-    logits: Unscaled log probabilities of shape
+    logits: Per-label activations (typically a linear output) of shape
       `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32`, or
-      `float64`.
+      `float64`. These activation energies are interpreted as unnormalized log
+      probabilities.
     name: A name for the operation (optional).
 
   Returns:
@@ -3743,6 +3748,10 @@ def max_pool(value,
 
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
+    if ((np.isscalar(ksize) and ksize == 0) or
+        (isinstance(ksize,
+                    (list, tuple, np.ndarray)) and any(v == 0 for v in ksize))):
+      raise ValueError("ksize cannot be zero.")
 
     return gen_nn_ops.max_pool(
         value,
@@ -3976,6 +3985,25 @@ def max_pool_with_argmax_v1(  # pylint: disable=missing-docstring,invalid-name
 
 
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
+
+
+@ops.RegisterStatistics("Conv3D", "flops")
+def _calc_conv3d_flops(graph, node):
+  """Calculates the compute resources needed for Conv3D."""
+  input_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
+  input_shape.assert_is_fully_defined()
+  filter_shape = graph_util.tensor_shape_from_node_def_name(
+      graph, node.input[1])
+  filter_shape.assert_is_fully_defined()
+  output_shape = graph_util.tensor_shape_from_node_def_name(graph, node.name)
+  output_shape.assert_is_fully_defined()
+  filter_time = int(filter_shape[0])
+  filter_height = int(filter_shape[1])
+  filter_width = int(filter_shape[2])
+  filter_in_depth = int(filter_shape[3])
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
+  return ops.OpStats("flops", (output_count * filter_in_depth * filter_time *
+                               filter_height * filter_width * 2))
 
 
 @ops.RegisterStatistics("Conv2D", "flops")
@@ -4733,11 +4761,11 @@ def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 
   This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-  prediction for the target class is among the top `k` predictions among
-  all predictions for example `i`. Note that the behavior of `InTopK` differs
-  from the `TopK` op in its handling of ties; if multiple classes have the
-  same prediction value and straddle the top-`k` boundary, all of those
-  classes are considered to be in the top `k`.
+  prediction for the target class is finite (not inf, -inf, or nan) and among
+  the top `k` predictions among all predictions for example `i`. Note that the
+  behavior of `InTopK` differs from the `TopK` op in its handling of ties; if
+  multiple classes have the same prediction value and straddle the top-`k`
+  boundary, all of those classes are considered to be in the top `k`.
 
   More formally, let
 

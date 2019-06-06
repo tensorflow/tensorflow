@@ -92,7 +92,7 @@ class Options(object):
     # If a particular model is affected by a known bug count it as a Toco
     # error.
     self.known_bugs_are_errors = False
-    # Raise an exception if any toco error is encountered.
+    # Raise an exception if any converter error is encountered.
     self.ignore_converter_errors = False
     # Include intermediate graphdefs in the output zip files.
     self.save_graphdefs = False
@@ -446,7 +446,7 @@ def make_zip_of_tests(options,
       fail because the one or more combination of parameters is invalid.
 
   Raises:
-    RuntimeError: if there are toco errors that can't be ignored.
+    RuntimeError: if there are converter errors that can't be ignored.
   """
   zip_path = os.path.join(options.output_path, options.zip_to_output)
   parameter_count = 0
@@ -576,11 +576,11 @@ def make_zip_of_tests(options,
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
             if re.search(pattern, label):
-              print("Ignored TOCO error due to bug %s" % bug_number)
+              print("Ignored converter error due to bug %s" % bug_number)
               ignore_error = True
         if not ignore_error:
           toco_errors += 1
-          print("-----------------\ntoco error!\n%s\n-----------------\n" %
+          print("-----------------\nconverter error!\n%s\n-----------------\n" %
                 report["toco_log"])
 
       convert_report.append((param_dict, report))
@@ -1602,6 +1602,48 @@ def make_gather_with_constant_tests(options):
         outputs, feed_dict={inputs[0]: reference_values})
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
+def make_embedding_lookup_tests(options):
+  """Make a set of tests to do gather."""
+
+  test_parameters = [
+      {
+          "params_dtype": [tf.float32],
+          "params_shape": [[10], [10, 10]],
+          "ids_dtype": [tf.int32],
+          "ids_shape": [[3], [5]],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the gather op testing graph."""
+    params = tf.placeholder(
+        dtype=parameters["params_dtype"],
+        name="params",
+        shape=parameters["params_shape"])
+    ids = tf.placeholder(
+        dtype=parameters["ids_dtype"],
+        name="ids",
+        shape=parameters["ids_shape"])
+    out = tf.nn.embedding_lookup(params, ids)
+    return [params, ids], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    params = create_tensor_data(parameters["params_dtype"],
+                                parameters["params_shape"])
+    ids = create_tensor_data(parameters["ids_dtype"],
+                             parameters["ids_shape"], 0,
+                             parameters["params_shape"][0] - 1)
+    return [params, ids], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [params, ids])))
+
+  make_zip_of_tests(
+      options,
+      test_parameters,
+      build_graph,
+      build_inputs)
 
 
 @register_make_test_function()
@@ -3585,12 +3627,38 @@ def make_ceil_tests(options):
 
 
 @register_make_test_function()
+def make_round_tests(options):
+  """Build the round op testing graph."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the round op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.round(input_value)
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(outputs, feed_dict={inputs[0]: input_value})
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
 def make_neg_tests(options):
   """Make a set of tests to do neg."""
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
-      "input_shape": [[1, 3, 4, 3], [5]],
+      "input_shape": [[1, 3, 4, 3], [5], []],
   }]
 
   def build_graph(parameters):
@@ -3707,10 +3775,18 @@ def make_square_tests(options):
 def make_where_tests(options):
   """Make a set of tests to do where."""
 
-  test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
-      "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
-  }]
+  test_parameters = [
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
+          "use_where_v2": [False, True],
+      },
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 1]),],
+          "use_where_v2": [True],
+      },
+  ]
 
   def build_graph(parameters):
     """Build the where op testing graph."""
@@ -3723,7 +3799,8 @@ def make_where_tests(options):
         name="input3",
         shape=parameters["input_shape_set"][1])
     less = tf.less(input_value1, input_value2)
-    out = tf.where(less, input_value1, input_value2)
+    where = tf.where_v2 if parameters["use_where_v2"] else tf.where
+    out = where(less, input_value1, input_value2)
     return [input_value1, input_value2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -3758,6 +3835,15 @@ def make_slice_tests(options):
           "input_shape": [[2, 3]],
           "begin": [[0, 0], [1, 0]],
           "size": [[2, 3], [2, 2]],
+      },
+      # 4-D with size -1
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4, 4, 4, 4]],
+          "begin": [[0, 0, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0],
+                    [0, 0, 0, 1]],
+          "size": [[-1, 1, 1, 1], [1, -1, 1, 1], [1, 1, -1, 1], [1, 1, 1, -1]],
       },
   ]
 

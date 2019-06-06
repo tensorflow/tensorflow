@@ -1802,7 +1802,13 @@ PyObject* GetPythonObjectFromInt(int num) {
 }
 
 bool CheckResourceVariable(PyObject* item) {
-  return PyObject_TypeCheck(item, resource_variable_type);
+  if (PyObject_TypeCheck(item, resource_variable_type)) {
+    tensorflow::Safe_PyObjectPtr handle(
+        PyObject_GetAttrString(item, "_handle"));
+    return EagerTensor_CheckExact(handle.get());
+  }
+
+  return false;
 }
 
 bool IsNumberType(PyObject* item) {
@@ -2861,7 +2867,6 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
 
 namespace {
 const char kTensor[] = "T";
-const char kIndexedSlices[] = "I";
 const char kList[] = "L";
 const char kListEnd[] = "l";
 const char kTuple[] = "U";
@@ -2872,6 +2877,7 @@ const char kShape[] = "s";
 const char kShapeDelim[] = "-";
 const char kDType[] = "d";
 const char kNone[] = "n";
+const char kCompositeTensor[] = "C";
 
 struct EncodeResult {
   string str;
@@ -3012,38 +3018,6 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
     absl::StrAppend(&result->str, kTensor);
     TF_RETURN_IF_ERROR(
         TFE_Py_EncodeTensor(arg, include_tensor_ranks_only, result));
-  } else if (tensorflow::swig::IsIndexedSlices(arg)) {
-    absl::StrAppend(&result->str, kIndexedSlices);
-    tensorflow::Safe_PyObjectPtr values(PyObject_GetAttrString(arg, "values"));
-    if (values == nullptr) {
-      PyErr_Clear();
-      return tensorflow::errors::InvalidArgument(
-          "IndexedSlices does not have a values attr");
-    }
-    TF_RETURN_IF_ERROR(
-        TFE_Py_EncodeTensor(values.get(), include_tensor_ranks_only, result));
-
-    tensorflow::Safe_PyObjectPtr indices(
-        PyObject_GetAttrString(arg, "indices"));
-    if (indices == nullptr) {
-      PyErr_Clear();
-      return tensorflow::errors::InvalidArgument(
-          "IndexedSlices does not have a indices attr");
-    }
-    TF_RETURN_IF_ERROR(
-        TFE_Py_EncodeTensor(indices.get(), include_tensor_ranks_only, result));
-
-    tensorflow::Safe_PyObjectPtr dense_shape(
-        PyObject_GetAttrString(arg, "dense_shape"));
-    if (dense_shape == nullptr) {
-      PyErr_Clear();
-      return tensorflow::errors::InvalidArgument(
-          "IndexedSlices does not have a dense_shape attr");
-    }
-    if (dense_shape.get() != Py_None) {
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(
-          dense_shape.get(), include_tensor_ranks_only, result));
-    }
   } else if (PyList_Check(arg)) {
     TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
         arg, kList, kListEnd, include_tensor_ranks_only, result));
@@ -3067,6 +3041,17 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
       TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(
           value.get(), include_tensor_ranks_only, result));
     }
+  } else if (tensorflow::swig::IsCompositeTensor(arg)) {
+    absl::StrAppend(&result->str, kCompositeTensor);
+
+    // Add the typespec to the list of objects.  (Do *not* use a weakref,
+    // since the type spec is often a temporary object.)
+    PyObject* type_spec(PyObject_GetAttrString(arg, "_type_spec"));
+    if (type_spec == nullptr) {
+      return tensorflow::errors::InvalidArgument(
+          "Error while reading CompositeTensor._type_spec.");
+    }
+    result->objects.push_back(type_spec);
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
 

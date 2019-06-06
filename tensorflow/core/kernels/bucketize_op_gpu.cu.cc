@@ -38,7 +38,7 @@ __global__ void BucketizeCustomKernel(
     GpuDeviceArrayStruct<float> boundaries_array, int32* out) {
   const float* boundaries = GetGpuDeviceArrayOnDevice(&boundaries_array);
 
-  extern __shared__ __align__(sizeof(float)) unsigned char shared_mem[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(float), unsigned char, shared_mem);
   float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
 
   if (useSharedMem) {
@@ -92,7 +92,7 @@ struct BucketizeFunctor<GPUDevice, T> {
     }
     TF_RETURN_IF_ERROR(boundaries_array.Finalize());
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(input.size(), d);
     int32 shared_mem_size = sizeof(float) * boundaries_vector.size();
     const int32 kMaxSharedMemBytes = 16384;
     if (shared_mem_size < d.sharedMemPerBlock() &&

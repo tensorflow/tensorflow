@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -107,12 +108,14 @@ class LambdaLayerTest(keras_parameterized.TestCase):
         'class_name': 'Lambda',
         'config': config
     })
+    self.assertEqual(ld.function(3), 4)
 
     # test with lambda
     ld = keras.layers.Lambda(
         lambda x: keras.backend.concatenate([math_ops.square(x), x]))
     config = ld.get_config()
     ld = keras.layers.Lambda.from_config(config)
+    self.assertAllEqual(self.evaluate(ld.function([3])), [9, 3])
 
   def test_lambda_multiple_inputs(self):
     ld = keras.layers.Lambda(lambda x: x[0], output_shape=lambda x: x[0])
@@ -184,14 +187,25 @@ class LambdaLayerTest(keras_parameterized.TestCase):
 
   def test_lambda_config_serialization(self):
     # Test serialization with output_shape and output_shape_type
-    layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
+    layer = keras.layers.Lambda(
+        lambda x: x + 1,
+        output_shape=(1, 1),
+        mask=lambda i, m: m)
     layer(keras.backend.variable(np.ones((1, 1))))
     config = layer.get_config()
+
     layer = keras.layers.deserialize({
         'class_name': 'Lambda',
         'config': config
     })
+    self.assertAllEqual(layer.function(1), 2)
+    self.assertAllEqual(layer._output_shape, (1, 1))
+    self.assertAllEqual(layer.mask(1, True), True)
+
     layer = keras.layers.Lambda.from_config(config)
+    self.assertAllEqual(layer.function(1), 2)
+    self.assertAllEqual(layer._output_shape, (1, 1))
+    self.assertAllEqual(layer.mask(1, True), True)
 
   def test_lambda_with_variable(self):
 
@@ -277,6 +291,25 @@ class CoreLayersTest(keras_parameterized.TestCase):
     self.assertTrue(hasattr(y, '_keras_mask'))
     self.assertTrue(y._keras_mask is not None)
     self.assertAllClose(self.evaluate(y._keras_mask), np.zeros((10,)))
+
+  def test_compute_mask_with_positional_mask_arg(self):
+
+    class MyLayer(keras.layers.Layer):
+
+      def call(self, inputs, mask=None):
+        return inputs
+
+      def compute_mask(self, inputs, mask=None):
+        if mask is not None:
+          return array_ops.ones(())
+        else:
+          return array_ops.zeros(())
+
+    x, mask = array_ops.ones((1, 1)), array_ops.ones((1, 1))
+    layer = MyLayer()
+    y = layer(x, mask)
+    # Check that `mask` was correctly sent to `compute_mask`.
+    self.assertEqual(keras.backend.get_value(y._keras_mask), 1)
 
   def test_activation(self):
     # with string argument

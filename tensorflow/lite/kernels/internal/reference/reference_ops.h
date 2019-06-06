@@ -26,8 +26,9 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
+#include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -312,9 +313,8 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    // Note that this implementation matches that of TensorFlow, and corresponds
-    // to the traditional LeakyRelu equation only for alpha <= 1.
-    output_data[i] = std::max(val, val * params.alpha);
+    // Note that alpha might be > 1 or < 0, so we don't use std::max here.
+    output_data[i] = val > 0 ? val : val * params.alpha;
   }
 }
 
@@ -1578,7 +1578,7 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
         const float bias = -input_zeropoint[i] * scale;
         for (int j = 0; j < copy_size; ++j) {
           const int32_t value =
-              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
           output_ptr[j] =
               static_cast<uint8_t>(std::max(std::min(255, value), 0));
@@ -1689,7 +1689,7 @@ void PackWithScaling(const PackParams& params,
         auto input_ptr = input_data[i];
         for (int j = 0; j < copy_size; ++j) {
           const int32_t value =
-              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
+              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
               output_zeropoint;
           output_ptr[j] =
               static_cast<uint8_t>(std::max(std::min(255, value), 0));
@@ -1914,23 +1914,25 @@ inline void LstmCell(
 // aiming for 16-bit fixed-point quantization of these internal nodes here.
 //
 template <int StateIntegerBits>
-inline void LstmCell(
-    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
-    const uint8* input_data_uint8,
-    const RuntimeShape& unextended_prev_activ_shape,
-    const uint8* prev_activ_data_uint8, const RuntimeShape& weights_shape,
-    const uint8* weights_data_uint8, const RuntimeShape& unextended_bias_shape,
-    const int32* bias_data_int32,
-    const RuntimeShape& unextended_prev_state_shape,
-    const int16* prev_state_data_int16,
-    const RuntimeShape& unextended_output_state_shape,
-    int16* output_state_data_int16,
-    const RuntimeShape& unextended_output_activ_shape,
-    uint8* output_activ_data_uint8,
-    const RuntimeShape& unextended_concat_temp_shape,
-    uint8* concat_temp_data_uint8,
-    const RuntimeShape& unextended_activ_temp_shape,
-    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemmlowp_context) {
+inline void LstmCell(const LstmCellParams& params,
+                     const RuntimeShape& unextended_input_shape,
+                     const uint8* input_data_uint8,
+                     const RuntimeShape& unextended_prev_activ_shape,
+                     const uint8* prev_activ_data_uint8,
+                     const RuntimeShape& weights_shape,
+                     const uint8* weights_data_uint8,
+                     const RuntimeShape& unextended_bias_shape,
+                     const int32* bias_data_int32,
+                     const RuntimeShape& unextended_prev_state_shape,
+                     const int16* prev_state_data_int16,
+                     const RuntimeShape& unextended_output_state_shape,
+                     int16* output_state_data_int16,
+                     const RuntimeShape& unextended_output_activ_shape,
+                     uint8* output_activ_data_uint8,
+                     const RuntimeShape& unextended_concat_temp_shape,
+                     uint8* concat_temp_data_uint8,
+                     const RuntimeShape& unextended_activ_temp_shape,
+                     int16* activ_temp_data_int16, void* gemmlowp_context) {
   (void)gemmlowp_context;  // only used in optimized code.
   int32 weights_zero_point = params.weights_zero_point;
   int32 accum_multiplier = params.accum_multiplier;
@@ -2489,6 +2491,15 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 }
 
+inline void Dequantize(const RuntimeShape& input_shape,
+                       const Eigen::half* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    output_data[i] = Eigen::half_impl::half_to_float(input_data[i]);
+  }
+}
+
 template <typename T>
 inline void AffineQuantize(const tflite::QuantizationParams& op_params,
                            const RuntimeShape& input_shape,
@@ -2616,6 +2627,29 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
     output_data[offset] = std::ceil(input_data[offset]);
+  }
+}
+
+inline float RoundToNearest(float value) {
+  auto floor_val = std::floor(value);
+  auto diff = value - floor_val;
+  if ((diff < 0.5f) ||
+      ((diff == 0.5f) && (static_cast<int>(floor_val) % 2 == 0))) {
+    return floor_val;
+  } else {
+    return floor_val = floor_val + 1.0f;
+  }
+}
+
+inline void Round(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    // Note that this implementation matches that of tensorFlow tf.round
+    // and corresponds to the bankers rounding method.
+    // cfenv (for fesetround) is not yet supported universally on Android, so
+    // using a work around.
+    output_data[i] = RoundToNearest(input_data[i]);
   }
 }
 
@@ -3079,19 +3113,19 @@ inline void Slice(const tflite::SliceParams& op_params,
   // We front-pad the begin and size vectors.
   const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
   const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
-                         ? ext_shape.Dims(0) - start_b
+                         ? ext_shape.Dims(0)
                          : start_b + op_params.size[0];
   const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
   const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
-                         ? ext_shape.Dims(1) - start_h
+                         ? ext_shape.Dims(1)
                          : start_h + op_params.size[size_count - 3];
   const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
   const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
-                         ? ext_shape.Dims(2) - start_w
+                         ? ext_shape.Dims(2)
                          : start_w + op_params.size[size_count - 2];
   const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
   const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
-                         ? ext_shape.Dims(3) - start_d
+                         ? ext_shape.Dims(3)
                          : start_d + op_params.size[size_count - 1];
 
   for (int in_b = start_b; in_b < stop_b; ++in_b) {
@@ -3126,7 +3160,7 @@ inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
-    output_data[idx] = exp(input_data[idx]);
+    output_data[idx] = std::exp(input_data[idx]);
   }
 }
 
@@ -3397,10 +3431,10 @@ inline void Mean(const tflite::MeanParams& op_params,
       temp_value = temp_value / num_elements_in_axis;
       if (ordinary_mean) {
         output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value));
+            static_cast<uint8_t>(std::round(temp_value));
       } else {
         output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(round(temp_value * scale + bias)) +
+            static_cast<uint8_t>(std::round(temp_value * scale + bias)) +
             output_zero_point;
       }
     }
@@ -3467,8 +3501,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
       // TODO(b/116341117): Eliminate float and do this completely in 8bit.
       const float bias = -input_zero_point * scale * num_elements_in_axis + 0.5;
       for (size_t idx = 0; idx < num_outputs; ++idx) {
-        const U value = static_cast<U>(round(temp_sum[idx] * scale + bias)) +
-                        output_zero_point;
+        const U value =
+            static_cast<U>(std::round(temp_sum[idx] * scale + bias)) +
+            output_zero_point;
         output_data[idx] = static_cast<T>(value);
       }
     } else {
@@ -3478,8 +3513,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                            static_cast<float>(num_elements_in_axis);
 
         // Convert to float value.
-        output_data[idx] = static_cast<T>(round(float_mean * scale + bias)) +
-                           output_zero_point;
+        output_data[idx] =
+            static_cast<T>(std::round(float_mean * scale + bias)) +
+            output_zero_point;
       }
     }
   }

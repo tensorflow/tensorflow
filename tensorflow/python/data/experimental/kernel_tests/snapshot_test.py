@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import snapshot
@@ -29,7 +30,8 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase):
+class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
+                          parameterized.TestCase):
 
   def setUp(self):
     super(SnapshotDatasetTest, self).setUp()
@@ -54,19 +56,19 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase):
   def assertSnapshotDirectoryContains(
       self, directory, num_fingerprints, num_runs_per_fp, num_snapshot_files):
     dirlist = os.listdir(directory)
-    self.assertEqual(len(dirlist), num_fingerprints)
+    self.assertLen(dirlist, num_fingerprints)
 
     for i in range(num_fingerprints):
       fingerprint_dir = os.path.join(directory, dirlist[i])
       fingerprint_dir_list = sorted(os.listdir(fingerprint_dir))
-      self.assertEqual(len(fingerprint_dir_list), num_runs_per_fp + 1)
+      self.assertLen(fingerprint_dir_list, num_runs_per_fp + 1)
       self.assertEqual(fingerprint_dir_list[num_runs_per_fp],
                        "snapshot.metadata")
 
       for j in range(num_runs_per_fp):
         run_dir = os.path.join(fingerprint_dir, fingerprint_dir_list[j])
         run_dirlist = sorted(os.listdir(run_dir))
-        self.assertEqual(len(run_dirlist), num_snapshot_files)
+        self.assertLen(run_dirlist, num_snapshot_files)
 
         file_counter = 0
         for filename in run_dirlist:
@@ -105,25 +107,30 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase):
     # one that lost the race would be in passthrough mode.
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
-  def testWriteSnapshotSimpleSuccessful(self):
+  @parameterized.parameters(snapshot.COMPRESSION_NONE,
+                            snapshot.COMPRESSION_GZIP)
+  def testWriteSnapshotSimpleSuccessful(self, compression):
     tmpdir = self.makeSnapshotDirectory()
 
     dataset = dataset_ops.Dataset.range(1000)
-    dataset = dataset.apply(snapshot.snapshot(tmpdir))
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
     self.assertDatasetProduces(dataset, list(range(1000)))
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
-  def testWriteSnapshotMultiFileSuccessful(self):
+  def testWriteSnapshotRepeatAfterwards(self):
     tmpdir = self.makeSnapshotDirectory()
 
-    dataset = dataset_ops.Dataset.range(20000)
+    dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(snapshot.snapshot(tmpdir))
-    self.assertDatasetProduces(dataset, list(range(20000)))
+    dataset = dataset.repeat(10)
+    self.assertDatasetProduces(dataset, list(range(10)) * 10)
 
-    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 2)
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
-  def testReadSnapshotBackAfterWrite(self):
+  @parameterized.parameters(snapshot.COMPRESSION_NONE,
+                            snapshot.COMPRESSION_GZIP)
+  def testReadSnapshotBackAfterWrite(self, compression):
     self.setUpTFRecord()
     filenames = self.test_filenames
 
@@ -135,14 +142,15 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase):
 
     tmpdir = self.makeSnapshotDirectory()
     dataset = core_readers._TFRecordDataset(filenames)
-    dataset = dataset.apply(snapshot.snapshot(tmpdir))
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
     self.assertDatasetProduces(dataset, expected)
 
     # remove the original files and try to read the data back only from snapshot
     self.removeTFRecords()
 
     dataset2 = core_readers._TFRecordDataset(filenames)
-    dataset2 = dataset2.apply(snapshot.snapshot(tmpdir))
+    dataset2 = dataset2.apply(snapshot.snapshot(
+        tmpdir, compression=compression))
     self.assertDatasetProduces(dataset2, expected)
 
   def testAdditionalOperationsAfterReadBack(self):

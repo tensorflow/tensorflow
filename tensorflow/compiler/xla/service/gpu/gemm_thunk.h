@@ -48,10 +48,7 @@ class GemmThunk : public Thunk {
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
 
-  // Does the gemm operation for the thunk on "stream", which must be non-null.
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const BufferAllocation::Slice lhs_buffer_;

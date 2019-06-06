@@ -2,11 +2,12 @@
 #   Contains ops to train linear models on top of TensorFlow.
 #   APIs here are meant to evolve over time.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 

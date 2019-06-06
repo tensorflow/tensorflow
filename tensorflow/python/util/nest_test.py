@@ -531,12 +531,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
     inp_abc = ["a", "b", "c"]
-    with self.assertRaisesWithLiteralMatch(
+    with self.assertRaisesWithLiteralMatch(  # pylint: disable=g-error-prone-assert-raises
         ValueError,
-        nest._INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
-            shallow_size=len(inp_abc),
-            input_size=len(inp_ab))):
-      nest.assert_shallow_structure(shallow_tree=inp_abc, input_tree=inp_ab)
+        nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+            input_length=len(inp_ab),
+            shallow_length=len(inp_abc))):
+      nest.assert_shallow_structure(inp_abc, inp_ab)
 
     inp_ab1 = [(1, 1), (2, 2)]
     inp_ab2 = [[1, 1], [2, 2]]
@@ -707,10 +707,18 @@ class NestTest(parameterized.TestCase, test.TestCase):
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, shallow_tree)
 
+    input_tree = [(1,), (2,), 3]
+    shallow_tree = [(1,), (2,)]
+    expected_message = nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+        input_length=len(input_tree), shallow_length=len(shallow_tree))
+    with self.assertRaisesRegexp(ValueError, expected_message):  # pylint: disable=g-error-prone-assert-raises
+      nest.assert_shallow_structure(shallow_tree, input_tree)
+
   def testFlattenWithTuplePathsUpTo(self):
-    def get_paths_and_values(shallow_tree, input_tree):
-      path_value_pairs = nest.flatten_with_tuple_paths_up_to(shallow_tree,
-                                                             input_tree)
+    def get_paths_and_values(shallow_tree, input_tree,
+                             check_subtrees_length=True):
+      path_value_pairs = nest.flatten_with_tuple_paths_up_to(
+          shallow_tree, input_tree, check_subtrees_length=check_subtrees_length)
       paths = [p for p, _ in path_value_pairs]
       values = [v for _, v in path_value_pairs]
       return paths, values
@@ -837,8 +845,17 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # Test case where len(shallow_tree) < len(input_tree)
     input_tree = {"a": "A", "b": "B", "c": "C"}
     shallow_tree = {"a": 1, "c": 2}
+
+    with self.assertRaisesWithLiteralMatch(  # pylint: disable=g-error-prone-assert-raises
+        ValueError,
+        nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
+            input_length=len(input_tree),
+            shallow_length=len(shallow_tree))):
+      get_paths_and_values(shallow_tree, input_tree)
+
     (flattened_input_tree_paths,
-     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree)
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree,
+                                                  check_subtrees_length=False)
     (flattened_shallow_tree_paths,
      flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
     self.assertEqual(flattened_input_tree_paths, [("a",), ("c",)])

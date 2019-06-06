@@ -118,10 +118,10 @@ def ast_to_object(nodes,
     nodes = (nodes,)
 
   source = ast_to_source(nodes, indentation=indentation)
-  module, filename = source_to_entity(source, delete_on_exit)
+  module, _ = source_to_entity(source, delete_on_exit)
 
   if include_source_map:
-    source_map = origin_info.create_source_map(nodes, source, filename)
+    source_map = origin_info.create_source_map(nodes, source, module.__file__)
   else:
     source_map = None
 

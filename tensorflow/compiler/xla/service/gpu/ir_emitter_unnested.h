@@ -180,6 +180,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleReplicaId(HloInstruction* hlo) override;
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,

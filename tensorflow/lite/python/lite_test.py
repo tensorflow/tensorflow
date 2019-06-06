@@ -20,19 +20,23 @@ from __future__ import print_function
 
 import os
 import tempfile
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
@@ -597,7 +601,9 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # when targeting an integer only backend, quantization is mandatory.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
-    quantized_converter.target_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
     quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
@@ -734,6 +740,84 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
+
+  def testInferenceInputOutputTypeFloatDefault(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+
+  def testInferenceInputOutputTypeQuantizedUint8Default(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = array_ops.fake_quant_with_min_max_args(
+        in_tensor + in_tensor, min=0., max=1., name='output')
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    converter.inference_type = lite_constants.QUANTIZED_UINT8
+    converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('Placeholder', input_details[0]['name'])
+    self.assertEqual(np.uint8, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('output', output_details[0]['name'])
+    self.assertEqual(np.uint8, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+
+  def testReusingConverterWithDifferentPostTrainingQuantization(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = array_ops.fake_quant_with_min_max_args(
+        in_tensor + in_tensor, min=0., max=1., name='output')
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+
+    converter.post_training_quantize = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    converter.post_training_quantize = False
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
@@ -1107,15 +1191,17 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
         input_arrays=['inputA'],
         input_shapes={'inputA': [1, 16, 16, 3]})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
     # Check case where input shape is None.
     converter = lite.TFLiteConverter.from_saved_model(
         saved_model_dir, input_arrays=['inputA'], input_shapes={'inputA': None})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
   def testSimpleModelTocoConverter(self):
     """Test a SavedModel with deprecated TocoConverter."""
@@ -1147,62 +1233,70 @@ class MyAddLayer(keras.layers.Layer):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromKerasFile(test_util.TensorFlowTestCase):
+class FromKerasFile(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def setUp(self):
-    keras.backend.clear_session()
+    super(FromKerasFile, self).setUp()
+    self._keras_file = None
+    self._custom_objects = None
+    if not context.executing_eagerly():
+      keras.backend.clear_session()
+
+  def tearDown(self):
+    if self._keras_file:
+      os.remove(self._keras_file)
+    super(FromKerasFile, self).tearDown()
 
   def _getSequentialModel(self, include_custom_layer=False):
-    with session.Session().as_default():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,)))
-      if include_custom_layer:
-        model.add(MyAddLayer(1.0))
-      model.add(keras.layers.RepeatVector(3))
-      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
-      model.compile(
-          loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(),
-          metrics=[keras.metrics.categorical_accuracy],
-          sample_weight_mode='temporal')
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3, 3))
-      model.train_on_batch(x, y)
-      model.predict(x)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, input_shape=(3,)))
+    if include_custom_layer:
+      model.add(MyAddLayer(1.0))
+    model.add(keras.layers.RepeatVector(3))
+    model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer='sgd',
+        metrics=[keras.metrics.categorical_accuracy],
+        sample_weight_mode='temporal')
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 3, 3))
+    model.train_on_batch(x, y)
+    model.predict(x)
 
-      try:
-        fd, keras_file = tempfile.mkstemp('.h5')
-        keras.models.save_model(model, keras_file)
-      finally:
-        os.close(fd)
+    try:
+      fd, self._keras_file = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, self._keras_file)
+    finally:
+      os.close(fd)
 
-      if include_custom_layer:
-        custom_objects = {'MyAddLayer': MyAddLayer}
-        return keras_file, custom_objects
-      return keras_file
+    if include_custom_layer:
+      self._custom_objects = {'MyAddLayer': MyAddLayer}
 
-  def testSequentialModel(self):
+  @parameterized.named_parameters(('_graph', context.graph_mode),
+                                  ('_eager', context.eager_mode))
+  def testSequentialModel(self, test_context):
     """Test a Sequential tf.keras model with default inputs."""
-    keras_file = self._getSequentialModel()
+    with test_context():
+      self._getSequentialModel()
 
-    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+      converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+      tflite_model = converter.convert()
+      self.assertTrue(tflite_model)
 
     # Check tensor details of converted model.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
+    self.assertLen(input_details, 1)
     self.assertEqual('dense_input', input_details[0]['name'])
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
-    self.assertEqual(1, len(output_details))
-    self.assertEqual('time_distributed/Reshape_1', output_details[0]['name'])
+    self.assertLen(output_details, 1)
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 3, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1213,22 +1307,22 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter.invoke()
     tflite_result = interpreter.get_tensor(output_details[0]['index'])
 
-    keras_model = keras.models.load_model(keras_file)
+    keras_model = keras.models.load_model(self._keras_file)
     keras_result = keras_model.predict(input_data)
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
-    os.remove(keras_file)
 
-  def testCustomLayer(self):
+  @parameterized.named_parameters(('_graph', context.graph_mode),
+                                  ('_eager', context.eager_mode))
+  def testCustomLayer(self, test_context):
     """Test a Sequential tf.keras model with default inputs."""
-    keras_file, custom_objects = self._getSequentialModel(
-        include_custom_layer=True)
+    with test_context():
+      self._getSequentialModel(include_custom_layer=True)
 
-    converter = lite.TFLiteConverter.from_keras_model_file(
-        keras_file, custom_objects=custom_objects)
-
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+      converter = lite.TFLiteConverter.from_keras_model_file(
+          self._keras_file, custom_objects=self._custom_objects)
+      tflite_model = converter.convert()
+      self.assertTrue(tflite_model)
 
     # Check tensor details of converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -1244,47 +1338,44 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     tflite_result = interpreter.get_tensor(output_details[0]['index'])
 
     keras_model = keras.models.load_model(
-        keras_file, custom_objects=custom_objects)
+        self._keras_file, custom_objects=self._custom_objects)
     keras_result = keras_model.predict(input_data)
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
-    os.remove(keras_file)
 
   def testSequentialModelInputArray(self):
     """Test a Sequential tf.keras model testing input arrays argument."""
-    keras_file = self._getSequentialModel()
+    self._getSequentialModel()
 
     # Invalid input array raises error.
     with self.assertRaises(ValueError) as error:
       lite.TFLiteConverter.from_keras_model_file(
-          keras_file, input_arrays=['invalid-input'])
+          self._keras_file, input_arrays=['invalid-input'])
     self.assertEqual("Invalid tensors 'invalid-input' were found.",
                      str(error.exception))
 
     # Valid input array.
     converter = lite.TFLiteConverter.from_keras_model_file(
-        keras_file, input_arrays=['dense_input'])
+        self._keras_file, input_arrays=['dense_input'])
     tflite_model = converter.convert()
-    os.remove(keras_file)
     self.assertTrue(tflite_model)
 
   def testSequentialModelInputShape(self):
     """Test a Sequential tf.keras model testing input shapes argument."""
-    keras_file = self._getSequentialModel()
+    self._getSequentialModel()
 
     # Passing in shape of invalid input array raises error.
     with self.assertRaises(ValueError) as error:
       converter = lite.TFLiteConverter.from_keras_model_file(
-          keras_file, input_shapes={'invalid-input': [2, 3]})
+          self._keras_file, input_shapes={'invalid-input': [2, 3]})
     self.assertEqual(
         "Invalid tensor 'invalid-input' found in tensor shapes map.",
         str(error.exception))
 
     # Passing in shape of valid input array.
     converter = lite.TFLiteConverter.from_keras_model_file(
-        keras_file, input_shapes={'dense_input': [2, 3]})
+        self._keras_file, input_shapes={'dense_input': [2, 3]})
     tflite_model = converter.convert()
-    os.remove(keras_file)
     self.assertTrue(tflite_model)
 
     # Check input shape from converted model.
@@ -1292,31 +1383,32 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
+    self.assertLen(input_details, 1)
     self.assertEqual('dense_input', input_details[0]['name'])
     self.assertTrue(([2, 3] == input_details[0]['shape']).all())
 
   def testSequentialModelOutputArray(self):
     """Test a Sequential tf.keras model testing output arrays argument."""
-    keras_file = self._getSequentialModel()
+    self._getSequentialModel()
 
     # Invalid output array raises error.
     with self.assertRaises(ValueError) as error:
       lite.TFLiteConverter.from_keras_model_file(
-          keras_file, output_arrays=['invalid-output'])
+          self._keras_file, output_arrays=['invalid-output'])
     self.assertEqual("Invalid tensors 'invalid-output' were found.",
                      str(error.exception))
 
     # Valid output array.
     converter = lite.TFLiteConverter.from_keras_model_file(
-        keras_file, output_arrays=['time_distributed/Reshape_1'])
+        self._keras_file, output_arrays=['time_distributed/Reshape_1'])
     tflite_model = converter.convert()
-    os.remove(keras_file)
     self.assertTrue(tflite_model)
 
-  def testFunctionalModel(self):
+  @parameterized.named_parameters(('_graph', context.graph_mode),
+                                  ('_eager', context.eager_mode))
+  def testFunctionalModel(self, test_context):
     """Test a Functional tf.keras model with default inputs."""
-    with session.Session().as_default():
+    with test_context():
       inputs = keras.layers.Input(shape=(3,), name='input')
       x = keras.layers.Dense(2)(inputs)
       output = keras.layers.Dense(3)(x)
@@ -1324,38 +1416,37 @@ class FromKerasFile(test_util.TensorFlowTestCase):
       model = keras.models.Model(inputs, output)
       model.compile(
           loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(),
+          optimizer='sgd',
           metrics=[keras.metrics.categorical_accuracy])
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
 
       model.predict(x)
-      fd, keras_file = tempfile.mkstemp('.h5')
+      fd, self._keras_file = tempfile.mkstemp('.h5')
       try:
-        keras.models.save_model(model, keras_file)
+        keras.models.save_model(model, self._keras_file)
       finally:
         os.close(fd)
 
-    # Convert to TFLite model.
-    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+      # Convert to TFLite model.
+      converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+      tflite_model = converter.convert()
+      self.assertTrue(tflite_model)
 
     # Check tensor details of converted model.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
+    self.assertLen(input_details, 1)
     self.assertEqual('input', input_details[0]['name'])
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
-    self.assertEqual(1, len(output_details))
-    self.assertEqual('dense_1/BiasAdd', output_details[0]['name'])
+    self.assertLen(output_details, 1)
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1366,55 +1457,51 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter.invoke()
     tflite_result = interpreter.get_tensor(output_details[0]['index'])
 
-    keras_model = keras.models.load_model(keras_file)
+    keras_model = keras.models.load_model(self._keras_file)
     keras_result = keras_model.predict(input_data)
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
-    os.remove(keras_file)
 
   def testFunctionalModelMultipleInputs(self):
     """Test a Functional tf.keras model with multiple inputs and outputs."""
-    with session.Session().as_default():
-      a = keras.layers.Input(shape=(3,), name='input_a')
-      b = keras.layers.Input(shape=(3,), name='input_b')
-      dense = keras.layers.Dense(4, name='dense')
-      c = dense(a)
-      d = dense(b)
-      e = keras.layers.Dropout(0.5, name='dropout')(c)
+    a = keras.layers.Input(shape=(3,), name='input_a')
+    b = keras.layers.Input(shape=(3,), name='input_b')
+    dense = keras.layers.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = keras.layers.Dropout(0.5, name='dropout')(c)
 
-      model = keras.models.Model([a, b], [d, e])
-      model.compile(
-          loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(),
-          metrics=[keras.metrics.mae],
-          loss_weights=[1., 0.5])
+    model = keras.models.Model([a, b], [d, e])
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer='sgd',
+        metrics=[keras.metrics.mae],
+        loss_weights=[1., 0.5])
 
-      input_a_np = np.random.random((10, 3))
-      input_b_np = np.random.random((10, 3))
-      output_d_np = np.random.random((10, 4))
-      output_e_np = np.random.random((10, 4))
-      model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+    model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
 
-      model.predict([input_a_np, input_b_np], batch_size=5)
-      fd, keras_file = tempfile.mkstemp('.h5')
-      try:
-        keras.models.save_model(model, keras_file)
-      finally:
-        os.close(fd)
+    model.predict([input_a_np, input_b_np], batch_size=5)
+    fd, self._keras_file = tempfile.mkstemp('.h5')
+    try:
+      keras.models.save_model(model, self._keras_file)
+    finally:
+      os.close(fd)
 
     # Convert to TFLite model.
-    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
-
-    os.remove(keras_file)
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
-    self.assertEqual(2, len(input_details))
+    self.assertLen(input_details, 2)
     self.assertEqual('input_a', input_details[0]['name'])
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
@@ -1426,7 +1513,7 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
-    self.assertEqual(2, len(output_details))
+    self.assertLen(output_details, 2)
     self.assertEqual('dense_1/BiasAdd', output_details[0]['name'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 4] == output_details[0]['shape']).all())
@@ -1439,32 +1526,31 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
   def testFunctionalSequentialModel(self):
     """Test a Functional tf.keras model containing a Sequential model."""
-    with session.Session().as_default():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,)))
-      model.add(keras.layers.RepeatVector(3))
-      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
-      model = keras.models.Model(model.input, model.output)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(2, input_shape=(3,)))
+    model.add(keras.layers.RepeatVector(3))
+    model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+    model = keras.models.Model(model.input, model.output)
 
-      model.compile(
-          loss=keras.losses.MSE,
-          optimizer=keras.optimizers.RMSprop(),
-          metrics=[keras.metrics.categorical_accuracy],
-          sample_weight_mode='temporal')
-      x = np.random.random((1, 3))
-      y = np.random.random((1, 3, 3))
-      model.train_on_batch(x, y)
-      model.predict(x)
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer='sgd',
+        metrics=[keras.metrics.categorical_accuracy],
+        sample_weight_mode='temporal')
+    x = np.random.random((1, 3))
+    y = np.random.random((1, 3, 3))
+    model.train_on_batch(x, y)
+    model.predict(x)
 
-      model.predict(x)
-      fd, keras_file = tempfile.mkstemp('.h5')
-      try:
-        keras.models.save_model(model, keras_file)
-      finally:
-        os.close(fd)
+    model.predict(x)
+    fd, self._keras_file = tempfile.mkstemp('.h5')
+    try:
+      keras.models.save_model(model, self._keras_file)
+    finally:
+      os.close(fd)
 
     # Convert to TFLite model.
-    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -1473,14 +1559,14 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
     input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
+    self.assertLen(input_details, 1)
     self.assertEqual('dense_input', input_details[0]['name'])
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
     output_details = interpreter.get_output_details()
-    self.assertEqual(1, len(output_details))
+    self.assertLen(output_details, 1)
     self.assertEqual('time_distributed/Reshape_1', output_details[0]['name'])
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 3, 3] == output_details[0]['shape']).all())
@@ -1492,17 +1578,16 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter.invoke()
     tflite_result = interpreter.get_tensor(output_details[0]['index'])
 
-    keras_model = keras.models.load_model(keras_file)
+    keras_model = keras.models.load_model(self._keras_file)
     keras_result = keras_model.predict(input_data)
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
-    os.remove(keras_file)
 
   def testSequentialModelTocoConverter(self):
     """Test a Sequential tf.keras model with deprecated TocoConverter."""
-    keras_file = self._getSequentialModel()
+    self._getSequentialModel()
 
-    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -1510,17 +1595,23 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
-  def testInferenceInputOutputTypeFloatDefault(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
+
+@test_util.run_v1_only('Incompatible with 2.0.')
+class GrapplerTest(test_util.TensorFlowTestCase):
+
+  def testConstantFolding(self):
+    # Constant folding handles the tf.broadcast_to operation which was not
+    # supported by the TFLite at the time this test was added.
+    in_tensor = array_ops.placeholder(shape=[3, 3], dtype=dtypes.float32)
+    y_const = constant_op.constant([1., 2., 3.])
+    y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
+    out_tensor = math_ops.matmul(in_tensor, y_broadcast, name='output')
     sess = session.Session()
 
-    # Convert model and ensure model is not None.
+    # Convert model.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
     tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
 
     # Check values from converted model.
     interpreter = Interpreter(model_content=tflite_model)
@@ -1530,63 +1621,13 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(input_details))
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual(np.float32, input_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
-
-    output_details = interpreter.get_output_details()
-    self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
-
-  def testInferenceInputOutputTypeQuantizedUint8Default(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor + in_tensor, min=0., max=1., name='output')
-    sess = session.Session()
-
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-    converter.inference_type = lite_constants.QUANTIZED_UINT8
-    converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    # Check values from converted model.
-    interpreter = Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-
-    input_details = interpreter.get_input_details()
-    self.assertEqual(1, len(input_details))
-    self.assertEqual('Placeholder', input_details[0]['name'])
-    self.assertEqual(np.uint8, input_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertTrue(([3, 3] == input_details[0]['shape']).all())
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('output', output_details[0]['name'])
-    self.assertEqual(np.uint8, output_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
-
-  def testReusingConverterWithDifferentPostTrainingQuantization(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor + in_tensor, min=0., max=1., name='output')
-    sess = session.Session()
-
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-
-    converter.post_training_quantize = True
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    converter.post_training_quantize = False
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([3, 3] == output_details[0]['shape']).all())
 
 
 class ImportOpsUtilTest(test_util.TensorFlowTestCase):

@@ -319,8 +319,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
     if not self.could_use_cudnn:
-      # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -344,7 +345,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if self.stateful:
       updates = [state_ops.assign(self.states[0], states[0])]
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -366,7 +367,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.reset_dropout_mask()
     dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     if dropout_mask is not None:
-      inputs *= dropout_mask[0]
+      inputs = inputs * dropout_mask[0]
 
     cudnn_gru_kwargs = {
         'inputs': inputs,
@@ -816,6 +817,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     if not self.could_use_cudnn:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)
@@ -841,7 +844,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self.reset_dropout_mask()
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
-        inputs *= dropout_mask[0]
+        inputs = inputs * dropout_mask[0]
       cudnn_lstm_kwargs = {
           'inputs': inputs,
           'init_h': initial_state[0],
@@ -909,7 +912,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs

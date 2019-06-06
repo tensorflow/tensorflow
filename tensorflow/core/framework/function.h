@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -361,19 +363,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // a non-OK status if "func" was not found in the library, OK otherwise.
   // Please be careful when replacing function: make sure all previous pointers
   // returned by `Find()` are no longer in use.
-  Status ReplaceFunction(const string& func, const FunctionDef& fdef);
+  Status ReplaceFunction(const string& func, const FunctionDef& fdef)
+      LOCKS_EXCLUDED(mu_);
 
   // Replaces the gradient corresponding to `grad.function_name()`. Returns
   // a non-OK status if "grad.function_name()" was not found in the library, OK
   // otherwise.
-  Status ReplaceGradient(const GradientDef& grad);
+  Status ReplaceGradient(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
 
   // Removes the function corresponding to 'func'. Returns a non-OK status if
   // 'func' was not found in the library, OK otherwise.
   // Please be careful when removing function: make sure there are no other
   // nodes using the function, and all previous pointers returned by `Find()`
   // are no longer in use.
-  Status RemoveFunction(const string& func);
+  Status RemoveFunction(const string& func) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
@@ -628,8 +631,13 @@ class FunctionLibraryRuntime {
   // In the cross-process scenario, runner isn't used for making the Async
   // RPC calls.
   struct Options {
-    // The id of the step that is calling this function.
-    int64 step_id = 0;
+    // Choose a step ID that is guaranteed not to clash with any
+    // Session-generated step ID. DirectSession only generates
+    // non-negative step IDs (contiguous, starting from 0), and
+    // MasterSession generates 56-bit random step IDs whose MSB is
+    // always 0, so a negative random step ID should suffice.
+    const int64 step_id = -std::abs(static_cast<int64>(random::New64()));
+
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
@@ -785,6 +793,12 @@ class DistributedFunctionLibraryRuntime {
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
+  virtual void CleanUp(uint64 step_id,
+                       FunctionLibraryRuntime::LocalHandle handle,
+                       FunctionLibraryRuntime::DoneCallback done) = 0;
+
+  // DeviceMgr with *all* available devices.
+  virtual DeviceMgr* remote_device_mgr() const = 0;
 };
 
 // Extracts the actual type from "attr_values" based on its definition

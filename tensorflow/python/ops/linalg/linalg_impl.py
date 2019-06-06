@@ -28,22 +28,23 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 # Linear algebra ops.
 band_part = array_ops.matrix_band_part
-cholesky = linalg_ops.cholesky
+cholesky = dispatch.add_dispatch_support(linalg_ops.cholesky)
 cholesky_solve = linalg_ops.cholesky_solve
-det = linalg_ops.matrix_determinant
+det = dispatch.add_dispatch_support(linalg_ops.matrix_determinant)
 slogdet = gen_linalg_ops.log_matrix_determinant
 tf_export('linalg.slogdet')(slogdet)
 diag = array_ops.matrix_diag
-diag_part = array_ops.matrix_diag_part
+diag_part = dispatch.add_dispatch_support(array_ops.matrix_diag_part)
 eigh = linalg_ops.self_adjoint_eig
 eigvalsh = linalg_ops.self_adjoint_eigvals
 einsum = special_math_ops.einsum
 eye = linalg_ops.eye
-inv = linalg_ops.matrix_inverse
+inv = dispatch.add_dispatch_support(linalg_ops.matrix_inverse)
 logm = gen_linalg_ops.matrix_logarithm
 lu = gen_linalg_ops.lu
 tf_export('linalg.logm')(logm)
@@ -51,16 +52,17 @@ lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr
 set_diag = array_ops.matrix_set_diag
-solve = linalg_ops.matrix_solve
+solve = dispatch.add_dispatch_support(linalg_ops.matrix_solve)
 sqrtm = linalg_ops.matrix_square_root
 svd = linalg_ops.svd
 tensordot = math_ops.tensordot
-trace = math_ops.trace
+trace = dispatch.add_dispatch_support(math_ops.trace)
 transpose = array_ops.matrix_transpose
 triangular_solve = linalg_ops.matrix_triangular_solve
 
 
 @tf_export('linalg.logdet')
+@dispatch.add_dispatch_support
 def logdet(matrix, name=None):
   """Computes log of the determinant of a hermitian positive definite matrix.
 
@@ -68,7 +70,7 @@ def logdet(matrix, name=None):
   # Compute the determinant of a matrix while reducing the chance of over- or
   underflow:
   A = ... # shape 10 x 10
-  det = tf.exp(tf.logdet(A))  # scalar
+  det = tf.exp(tf.linalg.logdet(A))  # scalar
   ```
 
   Args:
@@ -94,6 +96,7 @@ def logdet(matrix, name=None):
 
 
 @tf_export('linalg.adjoint')
+@dispatch.add_dispatch_support
 def adjoint(matrix, name=None):
   """Transposes the last two dimensions of and conjugates tensor `matrix`.
 

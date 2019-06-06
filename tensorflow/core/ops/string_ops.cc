@@ -101,6 +101,16 @@ REGISTER_OP("ReduceJoin")
     .Output("output: string")
     .SetShapeFn(shape_inference::ReductionShape);
 
+REGISTER_OP("UnsortedSegmentJoin")
+    .Input("inputs: string")
+    .Input("segment_ids: Tindices")
+    .Input("num_segments: Tnumsegments")
+    .Attr("separator: string = ''")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
@@ -205,6 +215,18 @@ REGISTER_OP("StringSplitV2")
       c->set_output(2, c->Vector(2));
       return Status::OK();
     });
+
+REGISTER_OP("StringLower")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("encoding: string =''")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringUpper")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("encoding: string =''")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("StringStrip")
     .Input("input: string")

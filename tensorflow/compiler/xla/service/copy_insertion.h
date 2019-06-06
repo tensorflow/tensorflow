@@ -94,12 +94,12 @@ class CopyInsertion : public HloModulePass {
   virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
                                       HloModule* module);
 
- private:
-  Status AddCopiesToResolveInterference(HloModule* module);
-
   // Backend specific function that decides whether a fusion can share buffer
   // with its operand.
   HloDataflowAnalysis::FusionCanShareBufferFunction fusion_can_share_buffer_;
+
+ private:
+  Status AddCopiesToResolveInterference(HloModule* module);
 };
 
 }  // namespace xla

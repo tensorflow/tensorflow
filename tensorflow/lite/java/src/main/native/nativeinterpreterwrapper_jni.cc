@@ -13,12 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/java/src/main/native/nativeinterpreterwrapper_jni.h"
+#include <jni.h>
+#include <stdio.h>
+#include <time.h>
+
+#include <vector>
+
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/model.h"
+
+namespace tflite {
+// This is to be provided at link-time by a library.
+extern std::unique_ptr<OpResolver> CreateOpResolver();
+}  // namespace tflite
+
+using tflite::jni::BufferErrorReporter;
+using tflite::jni::ThrowException;
+
 namespace {
 
 tflite::Interpreter* convertLongToInterpreter(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Invalid handle to Interpreter.");
     return nullptr;
   }
@@ -27,7 +45,7 @@ tflite::Interpreter* convertLongToInterpreter(JNIEnv* env, jlong handle) {
 
 tflite::FlatBufferModel* convertLongToModel(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Invalid handle to model.");
     return nullptr;
   }
@@ -36,7 +54,7 @@ tflite::FlatBufferModel* convertLongToModel(JNIEnv* env, jlong handle) {
 
 BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Invalid handle to ErrorReporter.");
     return nullptr;
   }
@@ -45,7 +63,7 @@ BufferErrorReporter* convertLongToErrorReporter(JNIEnv* env, jlong handle) {
 
 TfLiteDelegate* convertLongToDelegate(JNIEnv* env, jlong handle) {
   if (handle == 0) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Invalid handle to delegate.");
     return nullptr;
   }
@@ -57,7 +75,7 @@ std::vector<int> convertJIntArrayToVector(JNIEnv* env, jintArray inputs) {
   std::vector<int> outputs(size, 0);
   jint* ptr = env->GetIntArrayElements(inputs, nullptr);
   if (ptr == nullptr) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Array has empty dimensions.");
     return {};
   }
@@ -105,7 +123,7 @@ bool AreDimsDifferent(JNIEnv* env, TfLiteTensor* tensor, jintArray dims) {
   int num_dims = static_cast<int>(env->GetArrayLength(dims));
   jint* ptr = env->GetIntArrayElements(dims, nullptr);
   if (ptr == nullptr) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Empty dimensions of input array.");
     return true;
   }
@@ -132,6 +150,10 @@ bool VerifyModel(const void* buf, size_t len) {
 
 }  // namespace
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
                                                                 jclass clazz,
@@ -140,7 +162,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    throwException(env, kUnsupportedOperationException,
+    ThrowException(env, kUnsupportedOperationException,
                    "Internal error: Can not find java/lang/String class to get "
                    "input names.");
     return nullptr;
@@ -165,7 +187,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
   if (error_reporter == nullptr) return;
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    throwException(
+    ThrowException(
         env, kIllegalStateException,
         "Internal error: Unexpected failure when preparing tensor allocations:"
         " %s",
@@ -215,7 +237,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputNames(JNIEnv* env,
   if (interpreter == nullptr) return nullptr;
   jclass string_class = env->FindClass("java/lang/String");
   if (string_class == nullptr) {
-    throwException(env, kUnsupportedOperationException,
+    ThrowException(env, kUnsupportedOperationException,
                    "Internal error: Can not find java/lang/String class to get "
                    "output names.");
     return nullptr;
@@ -301,7 +323,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModel(
   auto model = tflite::FlatBufferModel::VerifyAndBuildFromFile(
       path, verifier.get(), error_reporter);
   if (!model) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Contents of %s does not encode a valid "
                    "TensorFlowLite model: %s",
                    path, error_reporter->CachedErrorMessage());
@@ -322,7 +344,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       static_cast<char*>(env->GetDirectBufferAddress(model_buffer));
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
   if (!VerifyModel(buf, capacity)) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "ByteBuffer is not a valid flatbuffer model");
     return 0;
   }
@@ -330,7 +352,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
   auto model = tflite::FlatBufferModel::BuildFromBuffer(
       buf, static_cast<size_t>(capacity), error_reporter);
   if (!model) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "ByteBuffer does not encode a valid model: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
@@ -352,7 +374,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   TfLiteStatus status = tflite::InterpreterBuilder(*model, *(resolver.get()))(
       &interpreter, static_cast<int>(num_threads));
   if (status != kTfLiteOk) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Cannot create interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
@@ -373,7 +395,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_run(
   if (error_reporter == nullptr) return;
 
   if (interpreter->Invoke() != kTfLiteOk) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
     return;
@@ -387,7 +409,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
   if (interpreter == nullptr) return -1;
   const int idx = static_cast<int>(output_idx);
   if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Failed to get %d-th output out of %d outputs", output_idx,
                    interpreter->outputs().size());
     return -1;
@@ -404,7 +426,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationZeroPoint
   if (interpreter == nullptr) return 0;
   const int idx = static_cast<int>(output_idx);
   if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Failed to get %d-th output out of %d outputs", output_idx,
                    interpreter->outputs().size());
     return 0;
@@ -420,7 +442,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationScale(
   if (interpreter == nullptr) return 1.0f;
   const int idx = static_cast<int>(output_idx);
   if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Failed to get %d-th output out of %d outputs", output_idx,
                    interpreter->outputs().size());
     return 1.0f;
@@ -441,7 +463,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
   if (interpreter == nullptr) return JNI_FALSE;
   const int idx = static_cast<int>(input_idx);
   if (idx < 0 || idx >= interpreter->inputs().size()) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Input error: Can not resize %d-th input for a model having "
                    "%d inputs.",
                    idx, interpreter->inputs().size());
@@ -454,7 +476,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_resizeInput(
     TfLiteStatus status = interpreter->ResizeInputTensor(
         interpreter->inputs()[idx], convertJIntArrayToVector(env, dims));
     if (status != kTfLiteOk) {
-      throwException(env, kIllegalArgumentException,
+      ThrowException(env, kIllegalArgumentException,
                      "Internal error: Failed to resize %d-th input: %s", idx,
                      error_reporter->CachedErrorMessage());
       return JNI_FALSE;
@@ -480,7 +502,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
 
   TfLiteStatus status = interpreter->ModifyGraphWithDelegate(delegate);
   if (status != kTfLiteOk) {
-    throwException(env, kIllegalArgumentException,
+    ThrowException(env, kIllegalArgumentException,
                    "Internal error: Failed to apply delegate: %s",
                    error_reporter->CachedErrorMessage());
   }
@@ -499,3 +521,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_delete(
     delete convertLongToErrorReporter(env, error_handle);
   }
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif

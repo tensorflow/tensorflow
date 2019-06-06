@@ -28,8 +28,8 @@ Status ValidateHostPortPair(const string& host_port);
 // Repeatedly collects profiles and shows user-friendly metrics for
 // 'num_queries' time(s). If timestamp flag is true, timestamp will be
 // displayed in "%H:%M:%S" format.
-void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, bool timestamp, int num_queries);
+Status StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
+                       int monitoring_level, bool timestamp, int num_queries);
 
 // Starts tracing on a single or multiple hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
