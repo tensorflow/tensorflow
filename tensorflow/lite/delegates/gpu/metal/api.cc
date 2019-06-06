@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/sub.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/upsample.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
@@ -50,17 +49,27 @@ namespace metal {
 namespace {
 
 std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
-    int id, ValueId input_id, ValueId output_id,
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
     const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
-  LOG(INFO) << "RRRRRRR - " << GetAppleSocVersion();
+  // Special precise version, in case we cover dst_shape poorly with standard
+  // work group size.
+  const auto dst_shape = graph.FindOutputs(id)[0]->tensor.shape;
+  if (GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+    // Special version for PowerVR >= IPhone6S/SE
+    // Metal has bad driver for PowerVR in IPhone6, so for Iphone6 we should use
+    // default kernel with shared memory.
+    if ((GetAppleSocVersion() == 9 || GetAppleSocVersion() == 10) &&
+        CheckConvolutionPrecise1x1Support(attr)) {
+      return ConvolutionPrecise1x1PowerVR(id, input_id, output_id, attr,
+                                          options);
+    }
+    if (GetAppleSocVersion() >= 11 &&
+        GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
+      return ConvolutionPrecise(id, input_id, output_id, attr, options);
+    }
+  }
   if (GetAppleSocVersion() >= 11) {
-    bool conv1x1 = attr.weights.shape.h == 1 && attr.weights.shape.w == 1 &&
-                   attr.strides.h == 1 && attr.strides.w == 1 &&
-                   attr.dilations.h == 1 && attr.dilations.w == 1 &&
-                   attr.padding.prepended.h == 0 &&
-                   attr.padding.prepended.w == 0 &&
-                   attr.padding.appended.h == 0 && attr.padding.appended.w == 0;
-    if (conv1x1) {
+    if (CheckConvolution1x1Support(attr)) {
       return Convolution1x1(id, input_id, output_id, attr, options);
     } else {
       return ConvolutionGeneric(id, input_id, output_id, attr, options);
@@ -80,6 +89,28 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     return DepthWiseConv3x3Stride2(id, input_id, output_id, attr, options);
   } else {
     return DepthWiseConvolution(id, input_id, output_id, attr, options);
+  }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectReshape(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const ReshapeAttributes& attr) {
+  const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
+    return Reshapex4(id, input_id, output_id, attr);
+  } else {
+    return Reshape(id, input_id, output_id, attr);
+  }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
+                                                    int id, ValueId input_id,
+                                                    ValueId output_id) {
+  const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
+  if (src_shape.w == 1 && src_shape.h == 1) {
+    return Softmax1x1(id, input_id, output_id, src_shape.c);
+  } else {
+    return Softmax(id, input_id, output_id, src_shape.c);
   }
 }
 
@@ -113,10 +144,11 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             Concat(node_id, inputs, outputs[0],
                    absl::any_cast<ConcatAttributes>(node->operation.attributes),
                    input_shapes);
-      } break;
+        break;
+      }
       case OperationType::CONVOLUTION_2D:
         tasks = SelectConvolution(
-            node_id, inputs[0], outputs[0],
+            graph, node_id, inputs[0], outputs[0],
             absl::any_cast<Convolution2DAttributes>(node->operation.attributes),
             options);
         break;
@@ -173,23 +205,24 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
                  absl::any_cast<ReLUAttributes>(node->operation.attributes));
         break;
       case OperationType::RESHAPE:
-        tasks = Reshape(
-            node_id, inputs[0], outputs[0],
-            absl::any_cast<ReshapeAttributes>(node->operation.attributes)
-                .new_shape);
+        tasks = SelectReshape(
+            graph, node_id, inputs[0], outputs[0],
+            absl::any_cast<ReshapeAttributes>(node->operation.attributes));
         break;
       case OperationType::SLICE:
         tasks =
             Slice(node_id, inputs[0], outputs[0],
                   absl::any_cast<SliceAttributes>(node->operation.attributes));
         break;
-      case OperationType::SOFT_MAX:
-        tasks = Softmax(node_id, inputs[0], outputs[0],
-                        graph.FindInputs(node->id)[0]->tensor.shape.c, options);
+      case OperationType::SOFT_MAX: {
+        auto attr =
+            absl::any_cast<SoftMaxAttributes>(node->operation.attributes);
+        if (attr.axis != Axis::CHANNELS) {
+          return UnimplementedError("Softmax supports only CHANNELS dimension");
+        }
+        tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
         break;
-      case OperationType::SUB:
-        tasks = Sub(node_id, inputs, outputs[0]);
-        break;
+      }
       case OperationType::UPSAMPLE_2D:
         tasks = Upsample(
             node_id, inputs[0], outputs[0],
@@ -205,14 +238,25 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       case OperationType::SQRT:
       case OperationType::SQUARE:
       case OperationType::TANH:
-        tasks = Elementwise(node_id, inputs[0], outputs[0], op_type);
+        tasks =
+            ElementwiseWithOneInput(node_id, inputs[0], outputs[0], op_type);
         break;
+
+      case OperationType::SUB:
+      case OperationType::DIV:
+      case OperationType::POW:
+      case OperationType::SQUARED_DIFF:
+        tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
+        break;
+
       case OperationType::APPLY_MASK:
       case OperationType::BATCH_NORMALIZATION:
+      case OperationType::BATCH_TO_SPACE:
       case OperationType::CONST:
       case OperationType::LSTM:
       case OperationType::MUL:
       case OperationType::RESIZE:
+      case OperationType::SPACE_TO_BATCH:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }

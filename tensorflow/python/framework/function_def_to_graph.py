@@ -87,7 +87,11 @@ def function_def_to_graph(fdef, input_shapes=None):
       output_shapes = node.attr.get("_output_shapes", None)
       if output_shapes is not None:
         op = func_graph.get_operation_by_name(node.name)
-        for output_index, shape in enumerate(output_shapes.list.shape):
+        # _output_shapes for functions can sometimes be too long because the
+        # output-intermediates-for-gradients version of the function was
+        # substituted before saving. We'll accept that here. (See b/133666530).
+        for output_index, shape in enumerate(
+            output_shapes.list.shape[:len(op.outputs)]):
           op.outputs[output_index].set_shape(shape)
   return func_graph
 
@@ -152,6 +156,12 @@ def function_def_to_graph_def(fdef, input_shapes=None):
       if not isinstance(input_shape, tensor_shape_pb2.TensorShapeProto):
         input_shape = input_shape.as_proto()
       node_def.attr["shape"].shape.CopyFrom(input_shape)
+    arg_attrs = fdef.arg_attr[i].attr
+    for k in arg_attrs:
+      # Only copy internal attributes. Normal attributes for nodes cannot be
+      # applied to these Placeholder nodes.
+      if k.startswith("_"):
+        node_def.attr[k].CopyFrom(arg_attrs[k])
 
   # 2. Copy all body NodeDefs to the GraphDef.
   graph_def.node.extend(fdef.node_def)

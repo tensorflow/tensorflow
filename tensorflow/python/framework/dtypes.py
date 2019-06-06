@@ -57,9 +57,6 @@ class DType(object):
   * `tf.resource`: Handle to a mutable resource.
   * `tf.variant`: Values of arbitrary types.
 
-  In addition, variants of these types with the `_ref` suffix are
-  defined for reference-typed tensors.
-
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
   """
@@ -83,8 +80,8 @@ class DType(object):
     type_enum = int(type_enum)
     if (type_enum not in types_pb2.DataType.values() or
         type_enum == types_pb2.DT_INVALID):
-      raise TypeError(
-          "type_enum is not a valid types_pb2.DataType: %s" % type_enum)
+      raise TypeError("type_enum is not a valid types_pb2.DataType: %s" %
+                      type_enum)
     self._type_enum = type_enum
 
   @property
@@ -226,14 +223,14 @@ class DType(object):
 
   @property
   def limits(self, clip_negative=True):
-    """Return intensity limits, i.e. (min, max) tuple, of the dtype.
+    """Return intensity limits, i.e.
+
+    (min, max) tuple, of the dtype.
     Args:
-      clip_negative : bool, optional
-          If True, clip the negative range (i.e. return 0 for min intensity)
-          even if the image dtype allows negative values.
-    Returns
-      min, max : tuple
-        Lower and upper intensity limits.
+      clip_negative : bool, optional If True, clip the negative range (i.e.
+        return 0 for min intensity) even if the image dtype allows negative
+        values. Returns
+      min, max : tuple Lower and upper intensity limits.
     """
     min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
     if clip_negative:
@@ -247,9 +244,6 @@ class DType(object):
 
     ```python
     DType(T)       .is_compatible_with(DType(T))        == True
-    DType(T)       .is_compatible_with(DType(T).as_ref) == True
-    DType(T).as_ref.is_compatible_with(DType(T))        == False
-    DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
     ```
 
     Args:
@@ -350,11 +344,11 @@ tf_export("dtypes.int8", "int8").export_constant(__name__, "int8")
 string = DType(types_pb2.DT_STRING)
 tf_export("dtypes.string", "string").export_constant(__name__, "string")
 complex64 = DType(types_pb2.DT_COMPLEX64)
-tf_export("dtypes.complex64", "complex64").export_constant(
-    __name__, "complex64")
+tf_export("dtypes.complex64",
+          "complex64").export_constant(__name__, "complex64")
 complex128 = DType(types_pb2.DT_COMPLEX128)
-tf_export("dtypes.complex128", "complex128").export_constant(
-    __name__, "complex128")
+tf_export("dtypes.complex128",
+          "complex128").export_constant(__name__, "complex128")
 int64 = DType(types_pb2.DT_INT64)
 tf_export("dtypes.int64", "int64").export_constant(__name__, "int64")
 bool = DType(types_pb2.DT_BOOL)  # pylint: disable=redefined-builtin
@@ -503,8 +497,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
 _STRING_TO_TF = {
-    value: _INTERN_TABLE[key]
-    for key, value in _TYPE_TO_STRING.items()
+    value: _INTERN_TABLE[key] for key, value in _TYPE_TO_STRING.items()
 }
 # Add non-canonical aliases.
 _STRING_TO_TF["half"] = float16
@@ -670,8 +663,8 @@ _QUANTIZED_DTYPES_REF = frozenset(
 QUANTIZED_DTYPES = _QUANTIZED_DTYPES_REF.union(_QUANTIZED_DTYPES_NO_REF)
 tf_export(
     "dtypes.QUANTIZED_DTYPES",
-    v1=["dtypes.QUANTIZED_DTYPES", "QUANTIZED_DTYPES"]).export_constant(
-        __name__, "QUANTIZED_DTYPES")
+    v1=["dtypes.QUANTIZED_DTYPES",
+        "QUANTIZED_DTYPES"]).export_constant(__name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
     builtins.float: float32,
@@ -686,12 +679,8 @@ _ANY_TO_TF.update(_PYTHON_TO_TF)
 _ANY_TO_TF.update(_NP_TO_TF)
 
 # Ensure no collisions.
-assert len(_ANY_TO_TF) == sum(len(d) for d in [
-    _INTERN_TABLE,
-    _STRING_TO_TF,
-    _PYTHON_TO_TF,
-    _NP_TO_TF
-])
+assert len(_ANY_TO_TF) == sum(
+    len(d) for d in [_INTERN_TABLE, _STRING_TO_TF, _PYTHON_TO_TF, _NP_TO_TF])
 
 
 @tf_export("dtypes.as_dtype", "as_dtype")
@@ -702,7 +691,7 @@ def as_dtype(type_value):
     type_value: A value that can be converted to a `tf.DType` object. This may
       currently be a `tf.DType` object, a [`DataType`
       enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
-      a string type name, or a `numpy.dtype`.
+        a string type name, or a `numpy.dtype`.
 
   Returns:
     A `DType` corresponding to `type_value`.
@@ -724,5 +713,5 @@ def as_dtype(type_value):
   except KeyError:
     pass
 
-  raise TypeError(
-      "Cannot convert value %r to a TensorFlow DType." % (type_value,))
+  raise TypeError("Cannot convert value %r to a TensorFlow DType." %
+                  (type_value,))

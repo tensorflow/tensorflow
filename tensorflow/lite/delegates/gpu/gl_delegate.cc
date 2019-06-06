@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <EGL/egl.h>
@@ -67,7 +68,9 @@ TfLiteStatus DelegateCopyToBufferHandle(
     TfLiteBufferHandle buffer_handle,  // ValueId
     TfLiteTensor* tensor);
 
-inline bool IsPHWC4(const BHWC& shape) { return shape.c == 4; }
+inline bool IsPHWC4(const BHWC& shape) {
+  return shape.c == 4 || (shape.h == 1 && shape.w == 1 && shape.c % 4 == 0);
+}
 
 class Delegate {
   struct ValueRef {
@@ -145,6 +148,12 @@ class Delegate {
 
     // TODO(impjdi): Remove code duplication.
     auto values = graph.values();
+    auto find_value = [&](int tensor_index) -> Value<TensorRefFloat32>* {
+      for (auto value : values) {
+        if (value->tensor.ref == tensor_index) return value;
+      }
+      return nullptr;
+    };
     tensors_.reserve(values.back()->id + 1);
     for (auto value : values) {
       if (tensors_.size() <= value->id) {
@@ -153,16 +162,29 @@ class Delegate {
       tensors_[value->id] = {value->tensor.shape, 0};
     }
 
+    std::unordered_set<int> tflite_graph_io;
+
     // Prepare graph inputs.
+    //
+    // Note that graph.inputs() cannot be used directly, as the notion of
+    // graph input has a different meaning in public API and GPU-internal API.
     {
       inputs_.reserve(delegate_params->input_tensors->size);
-      for (auto input : graph.inputs()) {
-        auto tensor_index = input->tensor.ref;
-        auto& tensor = context->tensors[tensor_index];
+      for (int i = 0; i < delegate_params->input_tensors->size; ++i) {
+        const int tensor_index = delegate_params->input_tensors->data[i];
+        auto* tensor = context->tensors + tensor_index;
+        if (tensor->allocation_type == TfLiteAllocationType::kTfLiteMmapRo) {
+          continue;
+        }
+        tflite_graph_io.insert(tensor_index);
+        const auto* input = find_value(tensor_index);
+        if (!input || tensor->type != TfLiteType::kTfLiteFloat32) {
+          return NotFoundError("Input tensor is not found in the graph.");
+        }
 
         inputs_.push_back(input->id);
-        tensor.buffer_handle = input->id;
-        tensor.delegate = &delegate_;
+        tensor->buffer_handle = input->id;
+        tensor->delegate = &delegate_;
         tensors_[input->id].tensor_index = tensor_index;
 
         // Create phwc4 input buffer.
@@ -184,15 +206,23 @@ class Delegate {
     }
 
     // Prepare graph outputs.
+    //
+    // Note that graph.outputs() cannot be used directly, as the notion of
+    // graph output has a different meaning in public API and GPU-internal API.
     {
       outputs_.reserve(delegate_params->output_tensors->size);
-      for (auto output : graph.outputs()) {
-        auto tensor_index = output->tensor.ref;
-        auto& tensor = context->tensors[tensor_index];
+      for (int i = 0; i < delegate_params->output_tensors->size; ++i) {
+        const int tensor_index = delegate_params->output_tensors->data[i];
+        auto* tensor = context->tensors + tensor_index;
+        tflite_graph_io.insert(tensor_index);
+        const auto* output = find_value(tensor_index);
+        if (!output || tensor->type != TfLiteType::kTfLiteFloat32) {
+          return NotFoundError("Output tensor is not found in the graph.");
+        }
 
         outputs_.push_back(output->id);
-        tensor.buffer_handle = output->id;
-        tensor.delegate = &delegate_;
+        tensor->buffer_handle = output->id;
+        tensor->delegate = &delegate_;
         tensors_[output->id].tensor_index = tensor_index;
 
         // Create phwc4 output buffer.
@@ -232,7 +262,7 @@ class Delegate {
     auto workgroups_calculator =
         BestEffortWorkgroupsCalculator(options_.metadata, gpu_info);
     std::unique_ptr<CompiledModel> compiled_model;
-    RETURN_IF_ERROR(Compile(compile_options, graph, *shaders,
+    RETURN_IF_ERROR(Compile(compile_options, graph, tflite_graph_io, *shaders,
                             *workgroups_calculator, &compiled_model));
 
     // Create inference context.

@@ -66,7 +66,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  tril = tf.random_normal(shape=[2, 3, 4, 4])
+  tril = tf.random.normal(shape=[2, 3, 4, 4])
   operator = LinearOperatorLowerTriangular(tril)
   ```
 
@@ -191,7 +191,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
         message="Singular operator:  Diagonal contained zero values.")
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    return linear_operator_util.matmul_with_broadcast(
+    return math_ops.matmul(
         self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _determinant(self):

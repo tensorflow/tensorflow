@@ -343,7 +343,7 @@ def freeze_graph(input_graph,
   input_saver_def = None
   if input_saver:
     input_saver_def = _parse_input_saver_proto(input_saver, input_binary)
-  freeze_graph_with_def_protos(
+  return freeze_graph_with_def_protos(
       input_graph_def,
       input_saver_def,
       input_checkpoint,

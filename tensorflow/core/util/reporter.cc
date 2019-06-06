@@ -64,7 +64,7 @@ Status TestReporter::Initialize() {
     return Status::OK();
   }
   string mangled_fname = strings::StrCat(
-      fname_, str_util::Join(str_util::Split(test_name_, '/'), "__"));
+      fname_, absl::StrJoin(str_util::Split(test_name_, '/'), "__"));
   Env* env = Env::Default();
   if (env->FileExists(mangled_fname).ok()) {
     return errors::InvalidArgument("Cannot create TestReporter, file exists: ",

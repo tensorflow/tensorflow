@@ -19,11 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import tf2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
+from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,7 +42,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
@@ -181,14 +188,14 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
     with self.cached_session():
       data = ops.IndexedSlices(
           constant_op.constant([1, 2, 3]),
-          constant_op.constant([0, 1]),
+          constant_op.constant([0, 1, 2]),
           dense_shape=constant_op.constant([3]))
       zero = constant_op.constant(0)
       one = constant_op.constant(1)
       less_op = math_ops.less(zero, one)
       _, switch_true = control_flow_ops.switch(data, less_op)
       self.assertAllEqual([1, 2, 3], switch_true.values.eval())
-      self.assertAllEqual([0, 1], switch_true.indices.eval())
+      self.assertAllEqual([0, 1, 2], switch_true.indices.eval())
 
   @test_util.run_deprecated_v1
   def testIndexedSlicesGradient(self):
@@ -416,6 +423,28 @@ class CondTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(1)
     with self.assertRaises(TypeError):
       control_flow_ops.cond(True, lambda: x, lambda: x, fn2=lambda: x)
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_in_graph_and_eager_modes
+  def testCond_gradient(self):
+    true_in, false_in = array_ops.constant(1.), array_ops.constant(5.)
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(true_in)
+      tape.watch(false_in)
+      cond_true = control_flow_ops.cond(
+          array_ops.constant(True), lambda: true_in**2., lambda: false_in**2.)
+      cond_false = control_flow_ops.cond(
+          array_ops.constant(False), lambda: true_in**2., lambda: false_in**2.)
+    grads_true = tape.gradient(
+        cond_true, [true_in, false_in], output_gradients=3.)
+    grads_false = tape.gradient(
+        cond_false, [true_in, false_in], output_gradients=3.)
+    self.assertEqual(3. * 2. * 1., self.evaluate(grads_true[0]))
+    self.assertEqual(None if context.executing_eagerly() else 0.,
+                     self.evaluate(grads_true[1]))
+    self.assertEqual(3. * 2. * 5., self.evaluate(grads_false[1]))
+    self.assertEqual(None if context.executing_eagerly() else 0.,
+                     self.evaluate(grads_false[0]))
 
 
 class ContextTest(test_util.TensorFlowTestCase):
@@ -906,6 +935,255 @@ class DataTypesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(iteration.get_shape(), tensor_shape.TensorShape([]))
     self.assertEqual(matrix.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  def make_name(self):
+    return self.id().split(".")[-1].replace("(", "_").replace(")", "")
+
+  def disabled_testCase_ticklesGpuVsHostMemoryIssueWithInt32(self):
+    nbranches = 5
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10, name="br{}_out".format(bi))
+
+    branches = [(i, make_func(i)) for i in range(nbranches)]
+    for bi in range(nbranches):
+      branch_index = array_ops.placeholder_with_default(bi, [])
+      case_out = control_flow_ops.switch_case(branch_index, branches)
+      self.assertEqual(bi * 10, self.evaluate(case_out))
+
+  @parameterized.parameters((0,), (2,), (3,))
+  def testCase(self, bi):
+    nbranches = 5
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = [(i, make_func(i)) for i in range(nbranches)]
+    branch_index = array_ops.placeholder_with_default(bi, [])
+    case_out = control_flow_ops.switch_case(
+        branch_index, branches, name=self.make_name())
+    self.assertEqual(bi * 10., self.evaluate(case_out))
+
+  @parameterized.parameters((-1,), (2,), (4,), (5,), (6,))
+  def testCase_withDefault(self, bi):
+    nbranches = 5
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = [(i, make_func(i)) for i in range(nbranches)]
+    branch_index = array_ops.placeholder_with_default(bi, [])
+    case_out = control_flow_ops.switch_case(
+        branch_index, branches, default=make_func(6), name=self.make_name())
+    if bi < 0 or bi >= nbranches:
+      expected = 60.
+    else:
+      expected = bi * 10.
+    self.assertEqual(expected, self.evaluate(case_out))
+
+  @parameterized.parameters((-1,), (0,), (3,), (5,))
+  def testCase_dictWithDefault(self, bi):
+    nbranches = 5
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = {i: make_func(i) for i in range(nbranches)}
+    branch_index = array_ops.placeholder_with_default(bi, [])
+    case_out = control_flow_ops.switch_case(
+        branch_index, branches, default=make_func(6), name=self.make_name())
+    if bi < 0 or bi >= nbranches:
+      expected = 60.
+    else:
+      expected = bi * 10.
+    self.assertEqual(expected, self.evaluate(case_out))
+
+  @parameterized.parameters((-1,), (1,), (4,), (5,))
+  def testCase_gradient(self, bi):
+    nbranches = 5
+    inputs = [
+        array_ops.constant(float(bi), name="br{}_in".format(bi))
+        for bi in range(nbranches)
+    ]
+
+    def make_func(bi):
+      return lambda: inputs[bi]**2.
+
+    branches = {bi: make_func(bi) for bi in range(nbranches)}
+
+    branch_index = array_ops.placeholder_with_default(bi, [])
+    with backprop.GradientTape() as tape:
+      for x in inputs:
+        tape.watch(x)
+      case_out = control_flow_ops.switch_case(branch_index, branches)
+    out_grad = 3.
+    actual_grads = tape.gradient(case_out, inputs, output_gradients=out_grad)
+    expected_grads = [None if context.executing_eagerly() else 0.] * nbranches
+    used_branch_idx = nbranches - 1 if bi < 0 or bi >= nbranches - 1 else bi
+    expected_grads[used_branch_idx] = out_grad * 2. * used_branch_idx
+    self.assertEqual(len(expected_grads), len(actual_grads))
+    for expected, actual in zip(expected_grads, actual_grads):
+      self.assertEqual(expected, self.evaluate(actual))
+
+  @parameterized.parameters((-2,), (2,), (5,))
+  def testCase_gradient_diffShapedIntermediates(self, bi):
+    nbranches = 5
+    inputs = [
+        array_ops.constant(
+            float(bi), shape=[bi + 1], name="br{}_in".format(bi))
+        for bi in range(nbranches)
+    ]
+
+    def make_func(bi):
+
+      def f():
+        x = inputs[bi]**2 * inputs[bi][:bi + 1, None]
+        return math_ops.reduce_sum(x)
+
+      return f
+
+    branches = {bi: make_func(bi) for bi in range(nbranches)}
+
+    branch_index = array_ops.placeholder_with_default(bi, [])
+    with backprop.GradientTape() as tape:
+      for x in inputs:
+        tape.watch(x)
+      case_out = control_flow_ops.switch_case(
+          branch_index, branches, name=self.make_name())
+    out_grad = 3.
+    actual_grads = tape.gradient(case_out, inputs, output_gradients=out_grad)
+    used_bi = (nbranches - 1) if (bi < 0 or bi >= nbranches - 1) else bi
+    expected_grads = []
+    for input_idx in range(nbranches):
+      if used_bi == input_idx:
+        with backprop.GradientTape() as tape:
+          tape.watch(inputs[used_bi])
+          y = make_func(used_bi)()
+        expected_grads.append(
+            self.evaluate(
+                tape.gradient(y, inputs[used_bi], output_gradients=out_grad)))
+      else:
+        expected_grads.append(None if context.executing_eagerly() else [0.] *
+                              (input_idx + 1))
+
+    self.assertEqual(len(expected_grads), len(actual_grads))
+    for expected, actual in zip(expected_grads, actual_grads):
+      if expected is None:
+        self.assertIsNone(actual)
+      else:
+        self.assertAllEqual(expected, self.evaluate(actual))
+
+  @test_util.run_gpu_only
+  @test_util.disable_xla("Wants RunMetadata")
+  def testParallelExecution(self):
+    """Verify disjoint branches across while iterations are run in parallel."""
+    with ops.Graph().as_default() as g:
+      nbranches = 7
+      matrices = array_ops.unstack(  # Ensure all are ready before while.
+          array_ops.matrix_diag(
+              random_ops.random_uniform([nbranches, 8, 512]) + 1e-3))
+
+      def make_branch(i, mat, name):
+        def branch_fn():
+          next_i = i + 1
+          with ops.device("gpu:0"):
+            return next_i, math_ops.reduce_sum(
+                linalg_ops.cholesky(mat, name=name + "_Cholesky"))
+        return branch_fn
+
+      def make_branches(i):
+        return [make_branch(i, matrices[bi], "br{}".format(bi))
+                for bi in range(nbranches)]
+
+      def cond(i, _):
+        return i < nbranches
+
+      def body(i, result):
+        with ops.device("cpu:0"):
+          next_i, branch_out = control_flow_ops.switch_case(i, make_branches(i))
+        return next_i, result + branch_out
+
+      _, result = control_flow_ops.while_loop(cond, body, [0, 0.])
+
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      config = config_pb2.ConfigProto(
+          allow_soft_placement=False, log_device_placement=True)
+
+      with session.Session(config=config, graph=g) as sess:
+        _ = sess.run(result, options=run_options, run_metadata=run_metadata)
+    chol_node_stats = []
+    for dev_stats in run_metadata.step_stats.dev_stats:
+      for node_stats in dev_stats.node_stats:
+        if (node_stats.node_name.endswith("Cholesky") and
+            node_stats.all_start_nanos > 0):
+          chol_node_stats.append(node_stats)
+
+    self.assertLen(chol_node_stats, nbranches)
+
+    chol_node_stats = sorted(chol_node_stats, key=lambda stats: stats.node_name)
+    op_start_nanos = [
+        stats.all_start_nanos for stats in chol_node_stats
+    ]
+    op_end_nanos = [
+        stats.all_start_nanos + stats.op_end_rel_nanos
+        for stats in chol_node_stats
+    ]
+
+    def overlap(range1, range2):
+      s1, e1 = range1
+      s2, e2 = range2
+      if s1 < s2:
+        return 0 if s2 > e1 else e1 - s2
+      return 0 if s1 > e2 else e2 - s1
+
+    timespans = list(zip(op_start_nanos, op_end_nanos))
+    overlaps_chol0 = [overlap(timespans[0], r2) for r2 in timespans[1:]]
+    # There are nbranches-1 overlaps, sometimes all nonzero, but we
+    # conservatively check for at least one here, to avoid test flakiness.
+    self.assertGreater(np.count_nonzero(overlaps_chol0), 0)
+
+  def testCase_validateIndicesContiguous(self):
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = {i: make_func(i) for i in range(0, 6, 2)}
+    with self.assertRaisesRegexp(ValueError, "must form contiguous"):
+      control_flow_ops.switch_case(array_ops.constant(0), branches)
+
+  def testCase_validateIndicesDup(self):
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = [(i, make_func(i)) for i in range(0, 6, 2)]
+    branches.append((0, make_func(7)))
+    with self.assertRaisesRegexp(ValueError, "must form contiguous"):
+      control_flow_ops.switch_case(array_ops.constant(0), branches)
+
+  def testCase_validateBranchIndex(self):
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = {i: make_func(i) for i in range(5)}
+    with self.assertRaisesRegexp(TypeError, "branch_index.*Tensor"):
+      control_flow_ops.switch_case(1, branches)
+
+  def testCase_validateNonIntKeys(self):
+
+    def make_func(bi):
+      return lambda: array_ops.constant(bi * 10., name="br{}_out".format(bi))
+
+    branches = {array_ops.constant(i): make_func(i) for i in range(5)}
+    with self.assertRaisesRegexp(TypeError, "must be a Python `int`"):
+      control_flow_ops.switch_case(array_ops.constant(1), branches)
 
 
 class CaseTest(test_util.TensorFlowTestCase):

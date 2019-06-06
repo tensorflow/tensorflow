@@ -90,7 +90,11 @@ def _run_model():
 
 
 def _run_loop_model():
-  with session.Session() as sess:
+  config = config_pb2.ConfigProto()
+  # Grappler might fuse MatMul with BiasAdd in remapper optimizer.
+  config.graph_options.rewrite_options.remapping = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  with session.Session(config=config) as sess:
     x = lib.BuildFullModel()
 
     sess.run(variables.global_variables_initializer())

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Functional operations."""
 
 from __future__ import absolute_import
@@ -44,16 +43,22 @@ from tensorflow.python.util.tf_export import tf_export
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
 @tf_export("foldl")
-def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
-          swap_memory=False, name=None):
+def foldl(fn,
+          elems,
+          initializer=None,
+          parallel_iterations=10,
+          back_prop=True,
+          swap_memory=False,
+          name=None):
   """foldl on the list of tensors unpacked from `elems` on dimension 0.
 
   This foldl operator repeatedly applies the callable `fn` to a sequence
   of elements from first to last. The elements are made of the tensors
   unpacked from `elems` on dimension 0. The callable fn takes two tensors as
   arguments. The first argument is the accumulated value computed from the
-  preceding invocation of fn. If `initializer` is None, `elems` must contain
-  at least one element, and its first element is used as the initializer.
+  preceding invocation of fn, and the second is the value at the current
+  position of `elems`. If `initializer` is None, `elems` must contain at least
+  one element, and its first element is used as the initializer.
 
   Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
   of the result tensor is fn(initializer, values[0]).shape`.
@@ -67,13 +72,13 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   Args:
     fn: The callable to be performed.
-    elems: A tensor or (possibly nested) sequence of tensors, each of which
-      will be unpacked along their first dimension.  The nested sequence
-      of the resulting slices will be the first argument to `fn`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension.  The nested sequence of the
+      resulting slices will be the first argument to `fn`.
     initializer: (optional) A tensor or (possibly nested) sequence of tensors,
       as the initial value for the accumulator.
-    parallel_iterations: (optional) The number of iterations allowed to run
-      in parallel.
+    parallel_iterations: (optional) The number of iterations allowed to run in
+      parallel.
     back_prop: (optional) True enables support for back propagation.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
@@ -120,8 +125,9 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
-         or array_ops.shape(elems_flat[0])[0])
+    n = (
+        tensor_shape.dimension_value(elems_flat[0].shape[0]) or
+        array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -138,7 +144,8 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       return [i + 1, a]
 
     _, r_a = control_flow_ops.while_loop(
-        lambda i, a: i < n, compute, [i, a],
+        lambda i, a: i < n,
+        compute, [i, a],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory,
@@ -153,16 +160,22 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
 
 @tf_export("foldr")
-def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
-          swap_memory=False, name=None):
+def foldr(fn,
+          elems,
+          initializer=None,
+          parallel_iterations=10,
+          back_prop=True,
+          swap_memory=False,
+          name=None):
   """foldr on the list of tensors unpacked from `elems` on dimension 0.
 
   This foldr operator repeatedly applies the callable `fn` to a sequence
   of elements from last to first. The elements are made of the tensors
   unpacked from `elems`. The callable fn takes two tensors as arguments.
   The first argument is the accumulated value computed from the preceding
-  invocation of fn. If `initializer` is None, `elems` must contain at least
-  one element, and its first element is used as the initializer.
+  invocation of fn, and the second is the value at the current position of
+  `elems`. If `initializer` is None, `elems` must contain at least one element,
+  and its first element is used as the initializer.
 
   Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
   of the result tensor is `fn(initializer, values[0]).shape`.
@@ -176,13 +189,13 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   Args:
     fn: The callable to be performed.
-    elems: A tensor or (possibly nested) sequence of tensors, each of which
-      will be unpacked along their first dimension.  The nested sequence
-      of the resulting slices will be the first argument to `fn`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension.  The nested sequence of the
+      resulting slices will be the first argument to `fn`.
     initializer: (optional) A tensor or (possibly nested) sequence of tensors,
       as the initial value for the accumulator.
-    parallel_iterations: (optional) The number of iterations allowed to run
-      in parallel.
+    parallel_iterations: (optional) The number of iterations allowed to run in
+      parallel.
     back_prop: (optional) True enables support for back propagation.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
@@ -229,8 +242,9 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in nest.flatten(elems)
     ]
-    n = (tensor_shape.dimension_value(elems_flat[0].shape[0])
-         or array_ops.shape(elems_flat[0])[0])
+    n = (
+        tensor_shape.dimension_value(elems_flat[0].shape[0]) or
+        array_ops.shape(elems_flat[0])[0])
 
     elems_ta = nest.map_structure(create_ta, elems)
 
@@ -264,16 +278,24 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
 
 @tf_export("scan")
-def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
-         swap_memory=False, infer_shape=True, reverse=False, name=None):
+def scan(fn,
+         elems,
+         initializer=None,
+         parallel_iterations=10,
+         back_prop=True,
+         swap_memory=False,
+         infer_shape=True,
+         reverse=False,
+         name=None):
   """scan on the list of tensors unpacked from `elems` on dimension 0.
 
   The simplest version of `scan` repeatedly applies the callable `fn` to a
   sequence of elements from first to last. The elements are made of the tensors
   unpacked from `elems` on dimension 0. The callable fn takes two tensors as
   arguments. The first argument is the accumulated value computed from the
-  preceding invocation of fn. If `initializer` is None, `elems` must contain
-  at least one element, and its first element is used as the initializer.
+  preceding invocation of fn, and the second is the value at the current
+  position of `elems`. If `initializer` is None, `elems` must contain at least
+  one element, and its first element is used as the initializer.
 
   Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
   of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
@@ -300,24 +322,24 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   `fn = lambda a, t:`, where `a` and `t` correspond to the input tuples.
 
   Args:
-    fn: The callable to be performed.  It accepts two arguments.  The first
-      will have the same structure as `initializer` if one is provided,
-      otherwise it will have the same structure as `elems`.  The second
-      will have the same (possibly nested) structure as `elems`.  Its output
-      must have the same structure as `initializer` if one is provided,
-      otherwise it must have the same structure as `elems`.
-    elems: A tensor or (possibly nested) sequence of tensors, each of which
-      will be unpacked along their first dimension.  The nested sequence
-      of the resulting slices will be the first argument to `fn`.
+    fn: The callable to be performed.  It accepts two arguments.  The first will
+      have the same structure as `initializer` if one is provided, otherwise it
+      will have the same structure as `elems`.  The second will have the same
+      (possibly nested) structure as `elems`.  Its output must have the same
+      structure as `initializer` if one is provided, otherwise it must have the
+      same structure as `elems`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension.  The nested sequence of the
+      resulting slices will be the first argument to `fn`.
     initializer: (optional) A tensor or (possibly nested) sequence of tensors,
       initial value for the accumulator, and the expected output type of `fn`.
-    parallel_iterations: (optional) The number of iterations allowed to run
-      in parallel.
+    parallel_iterations: (optional) The number of iterations allowed to run in
+      parallel.
     back_prop: (optional) True enables support for back propagation.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     infer_shape: (optional) False disables tests for consistent output shapes.
-    reverse: (optional) True scans the tensor last to first (instead of first
-      to last).
+    reverse: (optional) True scans the tensor last to first (instead of first to
+      last).
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
@@ -361,6 +383,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   input_is_sequence = nest.is_sequence(elems)
   input_flatten = lambda x: nest.flatten(x) if input_is_sequence else [x]
+
   def input_pack(x):
     return nest.pack_sequence_as(elems, x) if input_is_sequence else x[0]
 
@@ -371,6 +394,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   else:
     output_is_sequence = nest.is_sequence(initializer)
     output_flatten = lambda x: nest.flatten(x) if output_is_sequence else [x]
+
     def output_pack(x):
       return (nest.pack_sequence_as(initializer, x)
               if output_is_sequence else x[0])
@@ -394,7 +418,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     # Convert elems to tensor array.
     elems_flat = [
-        ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
+        ops.convert_to_tensor(elem, name="elem") for elem in elems_flat
+    ]
 
     # Convert elems to tensor array. n may be known statically.
     n = tensor_shape.dimension_value(elems_flat[0].shape[0])
@@ -403,35 +428,41 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     # TensorArrays are always flat
     elems_ta = [
-        tensor_array_ops.TensorArray(dtype=elem.dtype, size=n,
-                                     dynamic_size=False,
-                                     element_shape=elem.shape[1:],
-                                     infer_shape=True)
-        for elem in elems_flat]
+        tensor_array_ops.TensorArray(
+            dtype=elem.dtype,
+            size=n,
+            dynamic_size=False,
+            element_shape=elem.shape[1:],
+            infer_shape=True) for elem in elems_flat
+    ]
     # Unpack elements
     elems_ta = [
-        elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
+        elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)
+    ]
 
     if initializer is None:
       a_flat = [elem.read(n - 1 if reverse else 0) for elem in elems_ta]
-      i = constant_op.constant(1)
+      i = 1
     else:
       initializer_flat = output_flatten(initializer)
       a_flat = [ops.convert_to_tensor(init) for init in initializer_flat]
-      i = constant_op.constant(0)
+      i = 0
 
     # Create a tensor array to store the intermediate values.
     accs_ta = [
         tensor_array_ops.TensorArray(
-            dtype=init.dtype, size=n,
+            dtype=init.dtype,
+            size=n,
             element_shape=init.shape if infer_shape else None,
             dynamic_size=False,
-            infer_shape=infer_shape)
-        for init in a_flat]
+            infer_shape=infer_shape) for init in a_flat
+    ]
 
     if initializer is None:
-      accs_ta = [acc_ta.write(n - 1 if reverse else 0, a)
-                 for (acc_ta, a) in zip(accs_ta, a_flat)]
+      accs_ta = [
+          acc_ta.write(n - 1 if reverse else 0, a)
+          for (acc_ta, a) in zip(accs_ta, a_flat)
+      ]
 
     def compute(i, a_flat, tas):
       """The loop body of scan.
@@ -452,8 +483,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       packed_elems = input_pack([elem_ta.read(i) for elem_ta in elems_ta])
       packed_a = output_pack(a_flat)
       a_out = fn(packed_a, packed_elems)
-      nest.assert_same_structure(
-          elems if initializer is None else initializer, a_out)
+      nest.assert_same_structure(elems if initializer is None else initializer,
+                                 a_out)
       flat_a_out = output_flatten(a_out)
       tas = [ta.write(i, value) for (ta, value) in zip(tas, flat_a_out)]
       if reverse:
@@ -469,21 +500,26 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       initial_i = i
       condition = lambda i, _1, _2: i < n
     _, _, r_a = control_flow_ops.while_loop(
-        condition, compute, (initial_i, a_flat, accs_ta),
+        condition,
+        compute, (initial_i, a_flat, accs_ta),
         parallel_iterations=parallel_iterations,
-        back_prop=back_prop, swap_memory=swap_memory,
+        back_prop=back_prop,
+        swap_memory=swap_memory,
         maximum_iterations=n)
 
     results_flat = [r.stack() for r in r_a]
 
-    n_static = tensor_shape.Dimension(tensor_shape.dimension_value(
-        elems_flat[0].get_shape().with_rank_at_least(1)[0]))
+    n_static = tensor_shape.Dimension(
+        tensor_shape.dimension_value(
+            elems_flat[0].get_shape().with_rank_at_least(1)[0]))
     for elem in elems_flat[1:]:
-      n_static.merge_with(tensor_shape.Dimension(tensor_shape.dimension_value(
-          elem.get_shape().with_rank_at_least(1)[0])))
+      n_static.merge_with(
+          tensor_shape.Dimension(
+              tensor_shape.dimension_value(
+                  elem.get_shape().with_rank_at_least(1)[0])))
     for r in results_flat:
-      r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
-          r.get_shape()[1:]))
+      r.set_shape(
+          tensor_shape.TensorShape(n_static).concatenate(r.get_shape()[1:]))
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -495,19 +531,20 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
 # pylint: disable=invalid-name
 def If(cond, inputs, then_branch, else_branch, name=None):
-  r"""output = Cond(inputs) ? then_branch(inputs) : else_branch(inputs).
+  r"""output = Cond(inputs) ?
+
+  then_branch(inputs) : else_branch(inputs).
 
   Args:
     cond: A `Tensor`. A scalar. If the scalar is not a boolean, the scalar is
-      converted to a boolean according to the following rule: if the
-      scalar is a numerical value, non-zero means True and zero means
-      False; if the scalar is a string, non-empty means True and empty
-      means False.
+      converted to a boolean according to the following rule: if the scalar is a
+        numerical value, non-zero means True and zero means False; if the scalar
+        is a string, non-empty means True and empty means False.
     inputs: A list of input tensors.
-    then_branch: A function takes 'inputs' and returns a list of tensors,
-        whose types are the same as what else_branch returns.
-    else_branch: A function takes 'inputs' and returns a list of tensors.
-        whose types are the same as what then_branch returns.
+    then_branch: A function takes 'inputs' and returns a list of tensors, whose
+      types are the same as what else_branch returns.
+    else_branch: A function takes 'inputs' and returns a list of tensors. whose
+      types are the same as what then_branch returns.
     name: A name for the operation (optional).
 
   Returns:
@@ -528,22 +565,14 @@ def Gradient(inputs, f, name=None):
 
   Args:
     inputs: A list of tensors of size N + M.
-    f: The function we want to compute the gradient for.
-
-      The function 'f' must be a numerical function which takes N inputs and
-      produces M outputs. Its gradient function 'g', which is  a function
-      taking N + M inputs and produces N outputs.
-
-      I.e. if we have
-         (y1, y2, ..., yM) = f(x1, x2, ..., xN),
-      then, g is
-         (dL/dx1, dL/dx2, ..., dL/dxN) = g(x1, x2, ..., xN,
-                                           dL/dy1, dL/dy2, ..., dL/dyM),
-
-      where L is a scalar-value function of (x1, x2, ..., xN) (e.g., the
-      loss function). dL/dxi is the partial derivative of L with respect
-      to xi.
-
+    f: The function we want to compute the gradient for.  The function 'f' must
+      be a numerical function which takes N inputs and produces M outputs. Its
+      gradient function 'g', which is  a function taking N + M inputs and
+      produces N outputs.  I.e. if we have (y1, y2, ..., yM) = f(x1, x2, ...,
+      xN), then, g is (dL/dx1, dL/dx2, ..., dL/dxN) = g(x1, x2, ..., xN, dL/dy1,
+      dL/dy2, ..., dL/dyM),  where L is a scalar-value function of (x1, x2, ...,
+      xN) (e.g., the loss function). dL/dxi is the partial derivative of L with
+      respect to xi.
     name: A name for the operation (optional).
 
   Returns:
@@ -583,21 +612,19 @@ def While(input_, cond, body, name=None, hostmem=None):
   r"""output = input; While (Cond(output)) { output = Body(output) }.
 
   Args:
-    input_: A list of `Tensor` objects.
-      A list of input tensors whose types are T.
-    cond: . A function takes 'input' and returns a tensor.  If the tensor is
-      a scalar of non-boolean, the scalar is converted to a boolean
-      according to the following rule: if the scalar is a numerical
-      value, non-zero means True and zero means False; if the scalar is
-      a string, non-empty means True and empty means False. If the
-      tensor is not a scalar, non-emptiness means True and False
-      otherwise.
-    body: . A function takes a list of tensors and returns another
-      list tensors. Both lists have the same types as specified
-      by T.
+    input_: A list of `Tensor` objects. A list of input tensors whose types are
+      T.
+    cond: . A function takes 'input' and returns a tensor.  If the tensor is a
+      scalar of non-boolean, the scalar is converted to a boolean
+      according to the following rule: if the scalar is a numerical value,
+        non-zero means True and zero means False; if the scalar is a string,
+        non-empty means True and empty means False. If the tensor is not a
+        scalar, non-emptiness means True and False otherwise.
+    body: . A function takes a list of tensors and returns another list tensors.
+      Both lists have the same types as specified by T.
     name: A name for the operation (optional).
-    hostmem: A list of integer. If i is in the list, input[i] is a
-      host memory tensor.
+    hostmem: A list of integer. If i is in the list, input[i] is a host memory
+      tensor.
 
   Raises:
     ValueError: if `cond` has implicitly captured inputs or if `cond` and `body`
@@ -734,14 +761,14 @@ def For(start,
     start: A `Tensor` of type `int32`.
     limit: A `Tensor` of type `int32`.
     delta: A `Tensor` of type `int32`.
-    inputs: A list of `Tensor` objects.
-      A list of input tensors whose types are T.
-    body: A function takes a list of tensors and returns another
-      list of tensors. Both lists have the same types as (int32, T...).
+    inputs: A list of `Tensor` objects. A list of input tensors whose types are
+      T.
+    body: A function takes a list of tensors and returns another list of
+      tensors. Both lists have the same types as (int32, T...).
     name: A name for the operation (optional).
-    hostmem: A list of integer. If i is in the list, inputs[i] is a
-      host memory tensor. In other words, (i+1)-th argument of the body
-      function is expecting a host memory.
+    hostmem: A list of integer. If i is in the list, inputs[i] is a host memory
+      tensor. In other words, (i+1)-th argument of the body function is
+      expecting a host memory.
     rewrite_with_while: If True, using While op to implement the For.
 
   Returns:
@@ -773,10 +800,16 @@ def For(start,
     output_attr.list.i.extend(hostmem)
     ret[0].op._set_attr("_output_hostmem", output_attr)  # pylint: disable=protected-access
   return ret
+
+
 # pylint: enable=invalid-name,protected-access
 
 
-def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
+def partitioned_call(args,
+                     f,
+                     tout=None,
+                     executing_eagerly=None,
+                     config=None,
                      executor_type=None):
   """Executes a function while respecting device annotations.
 
@@ -791,9 +824,9 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
       the signature of `f`.
     executing_eagerly: (Optional) A boolean indicating whether the context is
       executing eagerly. If `None`, fetched from the global context.
-    config: (Optional) A `tensorflow::ConfigProto` proto, serialized. If
-      `None`, all optimizations are disabled. Currently only handled for eager
-      defined functions.
+    config: (Optional) A `tensorflow::ConfigProto` proto, serialized. If `None`,
+      all optimizations are disabled. Currently only handled for eager defined
+      functions.
     executor_type: (Optional) A string for the name of the executor to be used
       in the function call. If not set, or set to an empty string, the default
       tensorflow executor will be used.
@@ -819,11 +852,17 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
   if executing_eagerly or len(tout):
     if f.stateful_ops:
       outputs = gen_functional_ops.stateful_partitioned_call(
-          args=args, Tout=tout, f=f, config_proto=config,
+          args=args,
+          Tout=tout,
+          f=f,
+          config_proto=config,
           executor_type=executor_type)
     else:
       outputs = gen_functional_ops.partitioned_call(
-          args=args, Tout=tout, f=f, config_proto=config,
+          args=args,
+          Tout=tout,
+          f=f,
+          config_proto=config,
           executor_type=executor_type)
     return outputs if outputs else None
 
@@ -853,7 +892,6 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
       op_name,
       args,
       tout,
-      compute_shapes=False,
       name="PartitionedFunctionCall",
       attrs={
           "Tin": tin_attr,

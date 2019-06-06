@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import collections
 
+import numpy as np
+
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
@@ -37,7 +39,7 @@ class ControlFlowTest(converter_testing.TestCase):
       symbols = {}
     with self.converted(test_fn, control_flow, symbols,
                         constant_op.constant) as result:
-      self.assertEqual(self.evaluate(result.test_fn(*inputs)), expected)
+      self.assertAllEqual(self.evaluate(result.test_fn(*inputs)), expected)
 
   @test_util.run_deprecated_v1
   def test_while_basic(self):
@@ -135,7 +137,8 @@ class ControlFlowTest(converter_testing.TestCase):
         test_fn, control_flow, {'TestClass': TestClass}) as result:
       # The tested function would require `tc` to become part of the while loop
       # state, but TensorFlow doesn't support classes at the moment.
-      with self.assertRaisesRegexp(ValueError, 'must.*initialize.*Tensor.*tc'):
+      with self.assertRaisesRegexp(
+          ValueError, 'must be defined before the loop:.*tc.*'):
         result.test_fn(constant_op.constant(5))
 
   @test_util.run_deprecated_v1
@@ -355,6 +358,19 @@ class ControlFlowTest(converter_testing.TestCase):
       return z
 
     self.assertTransformedResult(test_fn, [3, 3], 7)
+
+  def test_for_with_comprehension_in_body(self):
+
+    def test_fn(l, n):
+      s = constant_op.constant(list(range(n)))
+      for _ in l:
+        s += constant_op.constant([a for a in range(n)])
+      return s
+
+    self.assertTransformedResult(
+        test_fn, (constant_op.constant([1, 2, 3]), 5),
+        np.array(range(5)) * 4,
+        symbols={'constant_op': constant_op})
 
 
 if __name__ == '__main__':

@@ -259,9 +259,10 @@ PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
-                 " Got tensor of type %d"
-                 " but expected type %d for input %d ",
-                 python_utils::TfLiteTypeFromPyArray(array), tensor->type, i);
+                 " Got tensor of type %s"
+                 " but expected type %s for input %d, name: %s ",
+                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(tensor->type), i, tensor->name);
     return nullptr;
   }
 

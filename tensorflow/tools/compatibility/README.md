@@ -27,8 +27,13 @@ tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded
 tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded --copyotherfiles False
 ```
 
-*Note: `tf_upgrade_v2` is installed automatically as a script by the pip install 
-after TensorFlow 1.12.
+*Note: `tf_upgrade_v2` is installed automatically as a script by the pip install
+ after TensorFlow 1.12.
+
+You may want to retain revision history, especially when preparing a CL:
+```
+g4 integrate --retroactive coolcode/... coolcode-upgraded/...
+```
 
 ## Report
 
@@ -42,9 +47,9 @@ e.g.:
 Added keyword 'input' to reordered function 'tf.argmax'
 Renamed keyword argument from 'dimension' to 'axis'
 
-    Old:         tf.argmax([[1, 3, 2]], dimension=0))
+    Old:         tf.argmax([[1, 3, 2]], dimension=0)
                                         ~~~~~~~~~~
-    New:         tf.argmax(input=[[1, 3, 2]], axis=0))
+    New:         tf.argmax(input=[[1, 3, 2]], axis=0)
 
 ```
 

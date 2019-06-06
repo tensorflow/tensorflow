@@ -29,6 +29,9 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd();
 
 std::unique_ptr<SequenceTransformation> NewRemoveDegenerateUpsampling();
 
+// Removes reshape with input shape == output shape
+std::unique_ptr<NodeTransformation> NewRemoveIdentityReshape();
+
 }  // namespace gpu
 }  // namespace tflite
 

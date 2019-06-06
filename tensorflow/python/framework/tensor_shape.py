@@ -19,12 +19,16 @@ from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
-
 _TENSORSHAPE_V2_OVERRIDE = None
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/v2_tensorshape",
+    "Whether tensor_shape.enable_v2_tensorshape() is called.")
 
 
 @tf_export(v1=["enable_v2_tensorshape"])
@@ -76,6 +80,7 @@ def enable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = True
+  _api_usage_gauge.get_cell().set(True)
 
 
 @tf_export(v1=["disable_v2_tensorshape"])
@@ -86,10 +91,11 @@ def disable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = False
+  _api_usage_gauge.get_cell().set(False)
 
 
-@tf_export("compat.dimension_value",
-           v1=["dimension_value", "compat.dimension_value"])
+@tf_export(
+    "compat.dimension_value", v1=["dimension_value", "compat.dimension_value"])
 def dimension_value(dimension):
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
@@ -121,8 +127,9 @@ def dimension_value(dimension):
   return dimension
 
 
-@tf_export("compat.dimension_at_index",
-           v1=["dimension_at_index", "compat.dimension_at_index"])
+@tf_export(
+    "compat.dimension_at_index",
+    v1=["dimension_at_index", "compat.dimension_at_index"])
 def dimension_at_index(shape, index):
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
@@ -245,7 +252,10 @@ class Dimension(object):
     Returns:
       True if this Dimension and `other` are compatible.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     return (self._value is None or other.value is None or
             self._value == other.value)
 
@@ -260,8 +270,8 @@ class Dimension(object):
         is_compatible_with).
     """
     if not self.is_compatible_with(other):
-      raise ValueError("Dimensions %s and %s are not compatible" % (self,
-                                                                    other))
+      raise ValueError("Dimensions %s and %s are not compatible" %
+                       (self, other))
 
   def merge_with(self, other):
     """Returns a Dimension that combines the information in `self` and `other`.
@@ -269,14 +279,17 @@ class Dimension(object):
     Dimensions are combined as follows:
 
     ```python
-    tf.Dimension(n)   .merge_with(tf.Dimension(n))     == tf.Dimension(n)
-    tf.Dimension(n)   .merge_with(tf.Dimension(None))  == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(n))     == tf.Dimension(n)
-    # equivalent to tf.Dimension(None)
-    tf.Dimension(None).merge_with(tf.Dimension(None))
+    tf.compat.v1.Dimension(n)   .merge_with(tf.compat.v1.Dimension(n))     ==
+    tf.compat.v1.Dimension(n)
+    tf.compat.v1.Dimension(n)   .merge_with(tf.compat.v1.Dimension(None))  ==
+    tf.compat.v1.Dimension(n)
+    tf.compat.v1.Dimension(None).merge_with(tf.compat.v1.Dimension(n))     ==
+    tf.compat.v1.Dimension(n)
+    # equivalent to tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None).merge_with(tf.compat.v1.Dimension(None))
 
     # raises ValueError for n != m
-    tf.Dimension(n)   .merge_with(tf.Dimension(m))
+    tf.compat.v1.Dimension(n)   .merge_with(tf.compat.v1.Dimension(m))
     ```
 
     Args:
@@ -290,7 +303,10 @@ class Dimension(object):
       ValueError: If `self` and `other` are not compatible (see
         is_compatible_with).
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     self.assert_is_compatible_with(other)
     if self._value is None:
       return Dimension(other.value)
@@ -303,10 +319,14 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    + tf.Dimension(n)     == tf.Dimension(m + n)
-    tf.Dimension(m)    + tf.Dimension(None)  # equiv. to tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(n)     # equiv. to tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.compat.v1.Dimension(m)    + tf.compat.v1.Dimension(n)     ==
+    tf.compat.v1.Dimension(m + n)
+    tf.compat.v1.Dimension(m)    + tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) + tf.compat.v1.Dimension(n)     # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) + tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
     ```
 
     Args:
@@ -315,7 +335,10 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the sum of `self` and `other`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -338,10 +361,14 @@ class Dimension(object):
     Dimensions are subtracted as follows:
 
     ```python
-    tf.Dimension(m)    - tf.Dimension(n)     == tf.Dimension(m - n)
-    tf.Dimension(m)    - tf.Dimension(None)  # equiv. to tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(n)     # equiv. to tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.compat.v1.Dimension(m)    - tf.compat.v1.Dimension(n)     ==
+    tf.compat.v1.Dimension(m - n)
+    tf.compat.v1.Dimension(m)    - tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) - tf.compat.v1.Dimension(n)     # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) - tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
     ```
 
     Args:
@@ -350,7 +377,10 @@ class Dimension(object):
     Returns:
       A Dimension whose value is the subtraction of `other` from `self`.
     """
-    other = as_dimension(other)
+    try:
+      other = as_dimension(other)
+    except (TypeError, ValueError):
+      return NotImplemented
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -377,10 +407,14 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    * tf.Dimension(n)     == tf.Dimension(m * n)
-    tf.Dimension(m)    * tf.Dimension(None)  # equiv. to tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(n)     # equiv. to tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.compat.v1.Dimension(m)    * tf.compat.v1.Dimension(n)     ==
+    tf.compat.v1.Dimension(m * n)
+    tf.compat.v1.Dimension(m)    * tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) * tf.compat.v1.Dimension(n)     # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) * tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
     ```
 
     Args:
@@ -416,10 +450,14 @@ class Dimension(object):
     Dimensions are divided as follows:
 
     ```python
-    tf.Dimension(m)    // tf.Dimension(n)     == tf.Dimension(m // n)
-    tf.Dimension(m)    // tf.Dimension(None)  # equiv. to tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(n)     # equiv. to tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.compat.v1.Dimension(m)    // tf.compat.v1.Dimension(n)     ==
+    tf.compat.v1.Dimension(m // n)
+    tf.compat.v1.Dimension(m)    // tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) // tf.compat.v1.Dimension(n)     # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) // tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
     ```
 
     Args:
@@ -522,10 +560,14 @@ class Dimension(object):
     Dimension moduli are computed as follows:
 
     ```python
-    tf.Dimension(m)    % tf.Dimension(n)     == tf.Dimension(m % n)
-    tf.Dimension(m)    % tf.Dimension(None)  # equiv. to tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(n)     # equiv. to tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.compat.v1.Dimension(m)    % tf.compat.v1.Dimension(n)     ==
+    tf.compat.v1.Dimension(m % n)
+    tf.compat.v1.Dimension(m)    % tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) % tf.compat.v1.Dimension(n)     # equiv. to
+    tf.compat.v1.Dimension(None)
+    tf.compat.v1.Dimension(None) % tf.compat.v1.Dimension(None)  # equiv. to
+    tf.compat.v1.Dimension(None)
     ```
 
     Args:
@@ -564,10 +606,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    (tf.Dimension(m)    < tf.Dimension(n))    == (m < n)
-    (tf.Dimension(m)    < tf.Dimension(None)) == None
-    (tf.Dimension(None) < tf.Dimension(n))    == None
-    (tf.Dimension(None) < tf.Dimension(None)) == None
+    (tf.compat.v1.Dimension(m)    < tf.compat.v1.Dimension(n))    == (m < n)
+    (tf.compat.v1.Dimension(m)    < tf.compat.v1.Dimension(None)) == None
+    (tf.compat.v1.Dimension(None) < tf.compat.v1.Dimension(n))    == None
+    (tf.compat.v1.Dimension(None) < tf.compat.v1.Dimension(None)) == None
     ```
 
     Args:
@@ -589,10 +631,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    (tf.Dimension(m)    <= tf.Dimension(n))    == (m <= n)
-    (tf.Dimension(m)    <= tf.Dimension(None)) == None
-    (tf.Dimension(None) <= tf.Dimension(n))    == None
-    (tf.Dimension(None) <= tf.Dimension(None)) == None
+    (tf.compat.v1.Dimension(m)    <= tf.compat.v1.Dimension(n))    == (m <= n)
+    (tf.compat.v1.Dimension(m)    <= tf.compat.v1.Dimension(None)) == None
+    (tf.compat.v1.Dimension(None) <= tf.compat.v1.Dimension(n))    == None
+    (tf.compat.v1.Dimension(None) <= tf.compat.v1.Dimension(None)) == None
     ```
 
     Args:
@@ -614,10 +656,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    (tf.Dimension(m)    > tf.Dimension(n))    == (m > n)
-    (tf.Dimension(m)    > tf.Dimension(None)) == None
-    (tf.Dimension(None) > tf.Dimension(n))    == None
-    (tf.Dimension(None) > tf.Dimension(None)) == None
+    (tf.compat.v1.Dimension(m)    > tf.compat.v1.Dimension(n))    == (m > n)
+    (tf.compat.v1.Dimension(m)    > tf.compat.v1.Dimension(None)) == None
+    (tf.compat.v1.Dimension(None) > tf.compat.v1.Dimension(n))    == None
+    (tf.compat.v1.Dimension(None) > tf.compat.v1.Dimension(None)) == None
     ```
 
     Args:
@@ -639,10 +681,10 @@ class Dimension(object):
     Dimensions are compared as follows:
 
     ```python
-    (tf.Dimension(m)    >= tf.Dimension(n))    == (m >= n)
-    (tf.Dimension(m)    >= tf.Dimension(None)) == None
-    (tf.Dimension(None) >= tf.Dimension(n))    == None
-    (tf.Dimension(None) >= tf.Dimension(None)) == None
+    (tf.compat.v1.Dimension(m)    >= tf.compat.v1.Dimension(n))    == (m >= n)
+    (tf.compat.v1.Dimension(m)    >= tf.compat.v1.Dimension(None)) == None
+    (tf.compat.v1.Dimension(None) >= tf.compat.v1.Dimension(n))    == None
+    (tf.compat.v1.Dimension(None) >= tf.compat.v1.Dimension(None)) == None
     ```
 
     Args:
@@ -812,8 +854,8 @@ class TensorShape(object):
 
     Args:
       key: If `key` is an integer, returns the dimension at that index;
-        otherwise if `key` is a slice, returns a TensorShape whose
-        dimensions are those selected by the slice from `self`.
+        otherwise if `key` is a slice, returns a TensorShape whose dimensions
+        are those selected by the slice from `self`.
 
     Returns:
       An integer if `key` is an integer, or a `TensorShape` if `key` is a
@@ -896,6 +938,16 @@ class TensorShape(object):
       except ValueError:
         raise ValueError("Shapes %s and %s are not compatible" % (self, other))
 
+  def __add__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return self.concatenate(other)
+
+  def __radd__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return other.concatenate(self)
+
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.
 
@@ -932,8 +984,8 @@ class TensorShape(object):
     other = as_shape(other)
     if self.rank is not None and other.rank is not None:
       if self.rank != other.rank:
-        raise ValueError("Shapes %s and %s must have the same rank" % (self,
-                                                                       other))
+        raise ValueError("Shapes %s and %s must have the same rank" %
+                         (self, other))
 
   def assert_has_rank(self, rank):
     """Raises an exception if `self` is not compatible with the given `rank`.
@@ -1099,8 +1151,8 @@ class TensorShape(object):
 
   def is_fully_defined(self):
     """Returns True iff `self` is fully defined in every dimension."""
-    return (self._dims is not None and all(dim.value is not None
-                                           for dim in self._dims))
+    return (self._dims is not None and
+            all(dim.value is not None for dim in self._dims))
 
   def assert_is_fully_defined(self):
     """Raises an exception if `self` is not fully defined in every dimension.
@@ -1130,9 +1182,8 @@ class TensorShape(object):
       return tensor_shape_pb2.TensorShapeProto(unknown_rank=True)
     else:
       return tensor_shape_pb2.TensorShapeProto(dim=[
-          tensor_shape_pb2.TensorShapeProto.Dim(size=-1
-                                                if d.value is None else d.value)
-          for d in self._dims
+          tensor_shape_pb2.TensorShapeProto.Dim(
+              size=-1 if d.value is None else d.value) for d in self._dims
       ])
 
   def __eq__(self, other):

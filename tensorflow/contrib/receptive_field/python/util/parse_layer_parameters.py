@@ -25,7 +25,7 @@ from tensorflow.python.platform import tf_logging as logging
 # White-listed layer operations, which do not affect the receptive field
 # computation.
 _UNCHANGED_RF_LAYER_OPS = [
-    "Add", "BiasAdd", "Cast", "Ceil", "ConcatV2", "Const", "Floor",
+    "Add", "AddV2", "BiasAdd", "Cast", "Ceil", "ConcatV2", "Const", "Floor",
     "FusedBatchNorm", "Identity", "Log", "Mul", "Pow", "RealDiv", "Relu",
     "Relu6", "Round", "Rsqrt", "Softplus", "Sub", "VariableV2", "LRN",
     "GreaterEqual"

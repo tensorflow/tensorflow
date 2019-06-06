@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cmath>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "third_party/cub/device/device_segmented_radix_sort.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 // Required for sorting Eigen::half
 namespace cub {

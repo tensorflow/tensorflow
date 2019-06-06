@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -64,6 +67,8 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -153,14 +158,14 @@ struct NodeItem {
   // The kernel for this node.
   OpKernel* kernel = nullptr;
 
-  bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
-  bool is_merge : 1;             // True iff IsMerge(node)
-  bool is_enter : 1;             // True iff IsEnter(node)
-  bool is_constant_enter : 1;    // True iff IsEnter(node) and
-                                 // node->GetAttr("is_constant") == true.
-  bool is_exit : 1;              // True iff IsExit(node)
-  bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
-  bool is_sink : 1;              // True iff IsSink(node)
+  bool kernel_is_async : 1;     // True iff kernel->AsAsync() != nullptr
+  bool is_merge : 1;            // True iff IsMerge(node)
+  bool is_enter : 1;            // True iff IsEnter(node)
+  bool is_constant_enter : 1;   // True iff IsEnter(node) and
+                                // node->GetAttr("is_constant") == true.
+  bool is_exit : 1;             // True iff IsExit(node)
+  bool is_control_trigger : 1;  // True iff IsControlTrigger(node)
+  bool is_sink : 1;             // True iff IsSink(node)
   // True iff IsEnter(node) || IsExit(node) || IsNextIteration(node)
   bool is_enter_exit_or_next_iter : 1;
 
@@ -1244,6 +1249,7 @@ class ExecutorState {
   int64 step_id_;
   // Not owned.
   Rendezvous* rendezvous_;
+  Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
   string session_handle_;
@@ -1378,6 +1384,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       rendezvous_(args.rendezvous),
+      create_rendezvous_(&impl->params_.rendezvous_factory),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
       session_handle_(args.session_handle),
@@ -1586,24 +1593,22 @@ bool MightTrace(const NodeItem& item,
                 bool using_annotations) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `tracing::ScopedActivity`,
-  // `tracing::ScopedAnnotation`, and `tracing::ScopedRegion` check subsets of
-  // these properties internally in their constructors, the cost of passing the
-  // necessary arguments to them can be significant, so we avoid constructing
-  // them in the common case (when we know they will not be used).
+  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // `tracing::ScopedRegion` check subsets of these properties internally in
+  // their constructors, the cost of passing the necessary arguments to them can
+  // be significant, so we avoid constructing them in the common case (when we
+  // know they will not be used).
   if (event_collector != nullptr) {
     return true;
   }
   auto* trace_collector = tracing::GetTraceCollector();
   if (trace_collector) {
-    if (using_annotations) {
-      return trace_collector->IsEnabledForAnnotations();
-    } else {
-      return trace_collector->IsEnabledForActivities(
-          item.kernel->IsExpensive());
+    if (using_annotations && trace_collector->IsEnabledForAnnotations()) {
+      return true;
     }
   }
-  return false;
+  return profiler::TraceMeRecorder::Active(
+      profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
@@ -1624,6 +1629,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
+  params.create_rendezvous = create_rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
   params.session_handle = session_handle_;
@@ -1807,16 +1813,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           if (trace_using_annotations_) {
-            // 'ScopedActivity' will trace the OpKernel scheduling time.
-            tracing::ScopedActivity activity(kernel_label);
+            // 'TraceMe' will trace the OpKernel scheduling time.
+            profiler::TraceMe activity(absl::string_view(kernel_label),
+                                       profiler::TraceMeLevel::kInfo);
             // 'ScopedAnnotation' will trace the OpKernel execution time.
             tracing::ScopedAnnotation annotation(kernel_label);
             device->Compute(op_kernel, &ctx);
           } else {
-            // Use the cheaper `ScopedActivity` to trace just the OpKernel
+            // Use the cheaper `TraceMe` to trace just the OpKernel
             // execution.
-            tracing::ScopedActivity activity(kernel_label,
-                                             op_kernel->IsExpensive());
+            profiler::TraceMe activity(
+                absl::string_view(kernel_label),
+                profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
             device->Compute(op_kernel, &ctx);
           }
         } else {
@@ -2027,14 +2035,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Set the allocator attributes of the output entry.
       out->alloc_attr = ctx->output_alloc_attr(i);
 
-      // Sanity check of output tensor types.
-      DataType dtype;
-      if (val.is_ref()) {
-        tf_shared_lock ml(*val.mutex_if_ref);
-        dtype = MakeRefType(val->dtype());
-      } else {
-        dtype = val->dtype();
-      }
+      // Sanity check of output tensor types. We need to inspect this safely as
+      // we are in the tensor buffer.
+      DataType dtype = val.dtype_safe();
       if (dtype == item.output_type(i)) {
         if (stats && val.tensor->IsInitialized()) {
           nodestats::SetOutput(stats, i, val.tensor);
@@ -2085,23 +2088,12 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
-  auto activity_handle =
-      [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
-    auto* trace_collector = tracing::GetTraceCollector();
-    if (TF_PREDICT_FALSE(trace_collector != nullptr &&
-                         trace_collector->IsEnabledForActivities(
-                             false /* is_expensive */))) {
-      const string& op_name = item->kernel->name();
-      // Intentionally using ExecutorPropagateOutputs as the first key so that
-      // users are aware that it's not the op invocation.
-      return trace_collector->CreateActivityHandle(
-          "ExecutorPropagateOutputs",
-          strings::StrCat(op_name, "#id=", step_id_, "#"),
-          false /* is_expensive */);
-    } else {
-      return nullptr;
-    }
-  }();
+  auto activity_handle = absl::make_unique<profiler::TraceMe>(
+      [&]() {
+        return strings::StrCat("ExecutorPropagateOutputs:",
+                               item->kernel->name(), "#id=", step_id_, "#");
+      },
+      profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
@@ -2221,11 +2213,28 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
     mutex_lock l(mu_);
     if (status_.ok()) {
       abort_run = true;
-      status_ = s;
+
+      // If execution has been cancelled, mark any new errors as being derived.
+      // This ensures any errors triggered by cancellation are marked as
+      // derived.
+      if (cancellation_manager_ && cancellation_manager_->IsCancelled()) {
+        status_ = StatusGroup::MakeDerived(s);
+      } else {
+        status_ = s;
+      }
     }
   }
   if (abort_run) {
     TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
+    if (cancellation_manager_) {
+      // only log when the abort happens during the actual run time.
+      auto device_name = impl_->params_.device->name();
+      // Use VLOG instead of LOG(warning) because error status is expected when
+      // the executor is run under the grappler optimization phase or when
+      // iterating through a tf.data input pipeline.
+      VLOG(1) << "[" << device_name << "] Executor start aborting: " << s;
+    }
+
     if (rendezvous_) {
       rendezvous_->StartAbort(s);
     }

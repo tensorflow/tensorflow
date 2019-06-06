@@ -4,16 +4,15 @@
 
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
     "tf_cc_binary",
+    "tf_cc_test",
 )
 
 cc_library(

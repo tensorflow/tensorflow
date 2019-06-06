@@ -31,9 +31,7 @@ namespace gpu {
 
 // Enmeration to get target specific intrinsics.
 enum class TargetIntrinsicID {
-  kShflDownF32 = 0,
-  kShflDownI32,
-  kThreadIdx,
+  kThreadIdx = 0,
   kThreadIdy,
   kThreadIdz,
   kBlockIdx,
@@ -50,6 +48,10 @@ enum class TargetIntrinsicID {
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+
+// Annotate the kernel as GPU kernel according to the GPU target.
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                                 llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla

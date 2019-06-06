@@ -22,8 +22,6 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -32,18 +30,18 @@ from tensorflow.python.platform import test
 class AutotuneBenchmark(test.Benchmark):
   """Benchmarks for autotuning performance knobs."""
 
-  def benchmarkMap(self):
-    a = self._benchmarkMap(autotune=False)
-    b = self._benchmarkMap(autotune=True)
+  def benchmark_map(self):
+    a = self._benchmark_map(autotune=False)
+    b = self._benchmark_map(autotune=True)
     print("speedup: %f" % (a / b))
 
-  def _benchmarkMap(self, autotune):
+  def _benchmark_map(self, autotune):
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
                                                 np.random.rand(4 * k,
                                                                1))).repeat()
     dataset = dataset.map(
-        math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
+        math_ops.matmul, num_parallel_calls=dataset_ops.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
@@ -67,24 +65,23 @@ class AutotuneBenchmark(test.Benchmark):
         name="map" + ("_autotune" if autotune else ""))
     return np.median(deltas)
 
-  def benchmarkMapAndBatch(self):
-    a = self._benchmarkMapAndBatch(autotune=False)
-    b = self._benchmarkMapAndBatch(autotune=True)
+  def benchmark_map_and_batch(self):
+    a = self._benchmark_map_and_batch(autotune=False)
+    b = self._benchmark_map_and_batch(autotune=True)
     print("speedup: %f" % (a / b))
 
-  def _benchmarkMapAndBatch(self, autotune):
+  def _benchmark_map_and_batch(self, autotune):
     batch_size = 16
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
                                                 np.random.rand(4 * k,
                                                                1))).repeat()
-    dataset = dataset.apply(
-        batching.map_and_batch(
-            math_ops.matmul,
-            num_parallel_calls=optimization.AUTOTUNE,
-            batch_size=batch_size))
+    dataset = dataset.map(
+        math_ops.matmul, num_parallel_calls=dataset_ops.AUTOTUNE)
+    dataset = dataset.batch(batch_size=batch_size)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.autotune = autotune
     dataset = dataset.with_options(options)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
@@ -106,12 +103,12 @@ class AutotuneBenchmark(test.Benchmark):
         name="map_and_batch" + ("_autotune" if autotune else ""))
     return np.median(deltas)
 
-  def benchmarkInterleave(self):
-    a = self._benchmarkInterleave(autotune=False)
-    b = self._benchmarkInterleave(autotune=True)
+  def benchmark_interleave(self):
+    a = self._benchmark_interleave(autotune=False)
+    b = self._benchmark_interleave(autotune=True)
     print("speedup: %f" % (a / b))
 
-  def _benchmarkInterleave(self, autotune):
+  def _benchmark_interleave(self, autotune):
     k = 1024 * 1024
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
                                                 np.random.rand(4 * k,
@@ -120,7 +117,7 @@ class AutotuneBenchmark(test.Benchmark):
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
         cycle_length=10,
-        num_parallel_calls=optimization.AUTOTUNE)
+        num_parallel_calls=dataset_ops.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune
@@ -144,12 +141,12 @@ class AutotuneBenchmark(test.Benchmark):
         name="interleave" + ("_autotune" if autotune else ""))
     return np.median(deltas)
 
-  def benchmarkMapAndInterleave(self):
-    a = self._benchmarkMapAndInterleave(autotune=False)
-    b = self._benchmarkMapAndInterleave(autotune=True)
+  def benchmark_map_and_interleave(self):
+    a = self._benchmark_map_and_interleave(autotune=False)
+    b = self._benchmark_map_and_interleave(autotune=True)
     print("speedup: %f" % (a / b))
 
-  def _benchmarkMapAndInterleave(self, autotune):
+  def _benchmark_map_and_interleave(self, autotune):
     k = 1024 * 1024
     a = (np.random.rand(1, 8 * k), np.random.rand(8 * k, 1))
     b = (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))
@@ -166,21 +163,21 @@ class AutotuneBenchmark(test.Benchmark):
       return a, math_ops.matmul(x, y)
 
     dataset = dataset_a
-    dataset = dataset.map(f1, num_parallel_calls=optimization.AUTOTUNE)
+    dataset = dataset.map(f1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
-        num_parallel_calls=optimization.AUTOTUNE,
+        num_parallel_calls=dataset_ops.AUTOTUNE,
         cycle_length=2)
 
     dataset = dataset_ops.Dataset.zip((dataset, dataset_b))
-    dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
+    dataset = dataset.map(f2, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
-        num_parallel_calls=optimization.AUTOTUNE,
+        num_parallel_calls=dataset_ops.AUTOTUNE,
         cycle_length=2)
 
     dataset = dataset_ops.Dataset.zip((dataset, dataset_c))
-    dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
+    dataset = dataset.map(f2, num_parallel_calls=dataset_ops.AUTOTUNE)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = autotune

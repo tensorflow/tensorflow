@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/where_op.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -323,7 +323,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
     const Eigen::array<TIndex, NDIM> strides =
         CalculateStrides<TIndex, T, NDIM>(input);
     const TIndex output_rows = output.dimension(0);
-    CudaLaunchConfig config = GetCudaLaunchConfig(output_rows, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(output_rows, d);
     TF_CHECK_OK(CudaLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
                                  config.block_count, config.thread_per_block, 0,
                                  d.stream(), output_rows, strides,

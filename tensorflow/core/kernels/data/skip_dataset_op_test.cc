@@ -162,7 +162,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, GetNext) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -213,7 +213,7 @@ TEST_F(SkipDatasetOpTest, DatasetNodeName) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -243,7 +243,7 @@ TEST_F(SkipDatasetOpTest, DatasetTypeString) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -273,7 +273,7 @@ TEST_F(SkipDatasetOpTest, DatasetOutputDtypes) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -304,7 +304,7 @@ TEST_F(SkipDatasetOpTest, DatasetOutputShapes) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -335,7 +335,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, Cardinality) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -365,7 +365,7 @@ TEST_F(SkipDatasetOpTest, DatasetSave) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -400,7 +400,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, IteratorOutputDtypes) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -438,7 +438,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, IteratorOutputShapes) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -476,7 +476,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, IteratorOutputPrefix) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -517,7 +517,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, Roundtrip) {
                                               &tensor_slice_dataset_tensor));
   Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
   gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {&tensor_slice_dataset_tensor, &count});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
 
   std::unique_ptr<OpKernel> skip_dataset_kernel;
   TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
@@ -553,7 +553,8 @@ TEST_P(ParameterizedSkipDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *skip_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,

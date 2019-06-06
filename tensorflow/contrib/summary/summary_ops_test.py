@@ -20,6 +20,7 @@ import os
 import tempfile
 import time
 
+import unittest
 import sqlite3
 
 import numpy as np
@@ -179,7 +180,7 @@ class EagerFileTest(test_util.TensorFlowTestCase):
         logs, max_queue=1, flush_millis=999999,
         name='lol').as_default(), summary_ops.always_record_summaries():
       get_total = lambda: len(summary_test_util.events_from_logdir(logs))
-      # Note: First tf.Event is always file_version.
+      # Note: First tf.compat.v1.Event is always file_version.
       self.assertEqual(1, get_total())
       summary_ops.scalar('scalar', 2.0, step=1)
       self.assertEqual(1, get_total())
@@ -193,7 +194,7 @@ class EagerFileTest(test_util.TensorFlowTestCase):
         logs, max_queue=999999, flush_millis=999999, name='lol')
     with writer.as_default(), summary_ops.always_record_summaries():
       get_total = lambda: len(summary_test_util.events_from_logdir(logs))
-      # Note: First tf.Event is always file_version.
+      # Note: First tf.compat.v1.Event is always file_version.
       self.assertEqual(1, get_total())
       summary_ops.scalar('scalar', 2.0, step=1)
       summary_ops.scalar('scalar', 2.0, step=2)
@@ -298,6 +299,8 @@ class EagerFileTest(test_util.TensorFlowTestCase):
 
 class EagerDbTest(summary_test_util.SummaryDbTest):
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testDbURIOpen(self):
     tmpdb_path = os.path.join(self.get_temp_dir(), 'tmpDbURITest.sqlite')
     tmpdb_uri = six.moves.urllib_parse.urljoin('file:', tmpdb_path)
@@ -311,6 +314,8 @@ class EagerDbTest(summary_test_util.SummaryDbTest):
     self.assertEqual(num, 1)
     tmpdb.close()
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testIntegerSummaries(self):
     step = training_util.create_global_step()
     writer = self.create_db_writer()
@@ -375,6 +380,8 @@ class EagerDbTest(summary_test_util.SummaryDbTest):
     with self.assertRaises(ValueError):
       self.create_db_writer(user_name='@')
 
+  # TODO(b/133791853) Re-enable these tests.
+  @unittest.skip('Skipping because of b/133791853.')
   def testGraphSummary(self):
     training_util.get_or_create_global_step()
     name = 'hi'

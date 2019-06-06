@@ -1,12 +1,11 @@
 # Description: Operations defined for XRT
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow/compiler:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
@@ -65,6 +64,7 @@ cc_library(
         ":xrt_tf_client",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:computation_placer",

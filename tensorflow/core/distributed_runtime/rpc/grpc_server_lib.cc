@@ -112,17 +112,9 @@ GrpcServer::~GrpcServer() {
 
 void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
-Status GrpcServer::Init(const GrpcServerOptions& opts) {
-  mutex_lock l(mu_);
-  CHECK_EQ(state_, NEW);
-  master_env_.env = env_;
-  worker_env_.env = env_;
-
-  // Check parameters before DeviceFactory::AddDevices,
-  // otherwise if 'task_index=-1' the program will abort.
-
-  // Look up the port that has been requested for this task in `server_def_`.
-  int requested_port = -1;
+// Look up the port that has been requested for this task in `server_def_`.
+Status GrpcServer::GetPort(int* port) const {
+  *port = -1;
   for (const auto& job : server_def_.cluster().job()) {
     if (job.name() == server_def_.job_name()) {
       auto iter = job.tasks().find(server_def_.task_index());
@@ -132,8 +124,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                        server_def_.job_name(), "\"");
       }
       auto colon_index = iter->second.find_last_of(':');
-      if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
-                                 &requested_port)) {
+      if (!strings::safe_strto32(iter->second.substr(colon_index + 1), port)) {
         return errors::InvalidArgument(
             "Could not parse port for local server from \"", iter->second,
             "\".");
@@ -141,10 +132,25 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
       break;
     }
   }
-  if (requested_port == -1) {
+  if (*port == -1) {
     return errors::Internal("Job \"", server_def_.job_name(),
                             "\" was not defined in cluster");
   }
+
+  return Status::OK();
+}
+
+Status GrpcServer::Init(const GrpcServerOptions& opts) {
+  mutex_lock l(mu_);
+  CHECK_EQ(state_, NEW);
+  master_env_.env = env_;
+  worker_env_.env = env_;
+
+  // Check parameters before DeviceFactory::AddDevices,
+  // otherwise if 'task_index=-1' the program will abort.
+
+  int requested_port;
+  TF_RETURN_IF_ERROR(GetPort(&requested_port));
 
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();
@@ -337,8 +343,8 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                    " differs from expected port ", bound_port_);
   }
 
-  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
-      channel_cache_, worker_impl_.get(), name_prefix);
+  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(channel_cache_,
+                                                    worker_impl(), name_prefix);
   return Status::OK();
 }
 

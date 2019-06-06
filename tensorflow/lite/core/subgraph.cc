@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/core/subgraph.h"
+
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/nnapi_delegate.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
@@ -48,10 +51,10 @@ TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
 }
 
 // Stub method which returns kTfLiteError when the function is forbidden.
-// We're registrating this function to several different function to save
+// We're registering this function to several different function to save
 // compiled binary size. Please note the restrictions:
 // * The type of first parameter have to be `TfLiteContext*`.
-// * All paramteters must be trivailly destructible. (E.g. No C++ class)
+// * All parameters must be trivially destructible. (E.g. No C++ class)
 TfLiteStatus ForbiddenContextFunction(TfLiteContext* context, ...) {
   context->ReportError(context,
                        "The function is forbidden if not calling in delegate.");
@@ -280,6 +283,16 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // Ignore empty node replacement sets.
+  if (!nodes_to_replace->size) {
+    return kTfLiteOk;
+  }
+
+  TFLITE_LOG(tflite::TFLITE_LOG_INFO,
+             "Replacing %d node(s) with delegate (%s) node.",
+             nodes_to_replace->size,
+             registration.custom_name ? registration.custom_name : "unknown");
+
   // Annotate the registration as DELEGATE op.
   registration.builtin_code = BuiltinOperator_DELEGATE;
 
@@ -293,7 +306,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   execution_plan_.clear();
 
   for (auto& node_subset : node_subsets) {
-    // Subsets calimed by the delegate should have a "macro" op created, the
+    // Subsets claimed by the delegate should have a "macro" op created, the
     // other node_subsets (kTfNonPartition) just have their nodes added back to
     // the execution plan.
     switch (node_subset.type) {
@@ -441,37 +454,9 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
   TF_LITE_ENSURE(context_, bytes != nullptr);
   size_t count = 1;
   for (int k = 0; k < dims_size; k++) count *= dims[k];
-  switch (type) {
-    case kTfLiteFloat32:
-      *bytes = sizeof(float) * count;
-      break;
-    case kTfLiteInt16:
-      *bytes = sizeof(int16_t) * count;
-      break;
-    case kTfLiteInt32:
-      *bytes = sizeof(int32_t) * count;
-      break;
-    case kTfLiteUInt8:
-      *bytes = sizeof(uint8_t) * count;
-      break;
-    case kTfLiteInt64:
-      *bytes = sizeof(int64_t) * count;
-      break;
-    case kTfLiteBool:
-      *bytes = sizeof(bool) * count;
-      break;
-    case kTfLiteComplex64:
-      *bytes = sizeof(std::complex<float>) * count;
-      break;
-    case kTfLiteInt8:
-      *bytes = sizeof(int8_t) * count;
-      break;
-    default:
-      ReportError(
-          "Only float32, int8, int16, int32, int64, uint8, bool, complex64 "
-          "supported currently.");
-      return kTfLiteError;
-  }
+  size_t type_size = 0;
+  TF_LITE_ENSURE_OK(context_, GetSizeOfType(context_, type, &type_size));
+  *bytes = type_size * count;
   return kTfLiteOk;
 }
 
@@ -500,7 +485,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
 
   // Reset the variable tensors to zero after (re)allocating the tensors.
   // Developers shouldn't rely on the side effect of this function to reset
-  // variable tesnsors. They should call `ResetVariableTensors` directly
+  // variable tensors. They should call `ResetVariableTensors` directly
   // instead.
   ResetVariableTensors();
 
@@ -581,6 +566,7 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   }
 
   node.delegate = nullptr;
+  // Copying of registration is required to support unresolved custom ops.
   node_and_reg.second = *registration;
   execution_plan_.push_back(new_node_index);
   return kTfLiteOk;
@@ -612,6 +598,28 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
 
   state_ = kStateUninvokable;
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
+}
+
+TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
+                                 TfLiteNode* node) {
+  if (op_reg.prepare == nullptr) {
+    // Check if it's an unresolved custom op.
+    if (op_reg.builtin_code == BuiltinOperator_CUSTOM &&
+        op_reg.custom_name != nullptr && op_reg.invoke == &UnresolvedOpInvoke) {
+      if (IsFlexOp(op_reg.custom_name)) {
+        ReportError(
+            "Regular TensorFlow ops are not supported by this interpreter. "
+            "Make sure you invoke the Flex delegate before inference.");
+      } else {
+        ReportError("Encountered unresolved custom op: %s.",
+                    op_reg.custom_name);
+      }
+      return kTfLiteError;
+    }
+    // Resolved ops can have a null Prepare function.
+    return kTfLiteOk;
+  }
+  return op_reg.prepare(context_, node);
 }
 
 TfLiteStatus Subgraph::PrepareOpsStartingAt(
@@ -675,18 +683,11 @@ TfLiteStatus Subgraph::Invoke() {
     return kTfLiteError;
   }
 
-  if (nnapi_delegate_) {
-    if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
-      TF_LITE_ENSURE_OK(context_, nnapi_delegate_->Invoke(this));
-      return kTfLiteOk;
-    } else {
-      // TODO(aselle): In the future, we would like this to be an
-      // automatic tflite CPU fallback.
-      ReportError(
-          "NNAPI was requested, but dependent sized tensors "
-          "being used.\n");
-      return kTfLiteError;
-    }
+  // This is only needed for UseNNAPI(true);
+  if (should_apply_nnapi_delegate_ && !applied_nnapi_delegate_) {
+    TF_LITE_ENSURE_OK(context_, ModifyGraphWithDelegate(NnApiDelegate()));
+    // only need to modify the graph once upon the first invocation.
+    applied_nnapi_delegate_ = true;
   }
 
   // Invocations are always done in node order.
@@ -704,7 +705,7 @@ TfLiteStatus Subgraph::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
-    SCOPED_OPERATOR_PROFILE(profiler_, node_index);
+    TFLITE_SCOPED_OPERATOR_PROFILE(profiler_, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not
@@ -970,14 +971,12 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
 }
 
 void Subgraph::UseNNAPI(bool enable) {
-  // TODO(aselle): This is a workaround for finding if NNAPI exists.
-  // We also need to make sure getLibraryHandle() is renamed to be NNAPI
-  // prefixed.
-  if (!NNAPIDelegate::IsSupported()) enable = false;
-  if (!enable) {
-    nnapi_delegate_.reset();
-  } else if (!nnapi_delegate_) {
-    nnapi_delegate_.reset(new NNAPIDelegate);
+  // Note that there is no way to disable the delegate once it modified the
+  // graph.
+  if (applied_nnapi_delegate_ && !enable) {
+    ReportError("Attempting to disable NNAPI delegate after it's applied.");
+  } else {
+    should_apply_nnapi_delegate_ = enable;
   }
 }
 

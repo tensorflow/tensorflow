@@ -77,6 +77,7 @@ public final class NativeInterpreterWrapperTest {
   @Test
   public void testConstructorWithInvalidModel() {
     try {
+      @SuppressWarnings("unused")
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
@@ -87,6 +88,7 @@ public final class NativeInterpreterWrapperTest {
   @Test
   public void testConstructorWithNonexistingModel() {
     try {
+      @SuppressWarnings("unused")
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(NONEXISTING_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
@@ -98,12 +100,11 @@ public final class NativeInterpreterWrapperTest {
   @Test
   public void testConstructorWithUnresolableCustomOp() {
     try {
+      @SuppressWarnings("unused")
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(MODEL_WITH_CUSTOM_OP_PATH);
       fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains("Cannot create interpreter: Didn't find custom op for name 'Assign'");
+    } catch (IllegalStateException e) {
+      assertThat(e).hasMessageThat().contains("Encountered unresolved custom op: Assign");
     }
   }
 

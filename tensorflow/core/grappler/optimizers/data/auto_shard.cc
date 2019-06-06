@@ -51,6 +51,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
 };
 
 constexpr std::array<const char*, 22> kPassThroughOps = {
+    "_Retval",
     "BatchDataset",
     "BatchDatasetV2",
     "ExperimentalMapAndBatchDataset",
@@ -58,7 +59,6 @@ constexpr std::array<const char*, 22> kPassThroughOps = {
     "PaddedBatchDatasetV2",
     "CacheDataset",
     "FilterDataset",
-    "FilterByLastComponentDataset",
     "Identity",
     "MapDataset",
     "ModelDataset",
@@ -121,15 +121,46 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   new_node.add_input(num_shards_node->name());
   new_node.add_input(index_node->name());
 
+  // Ensure that each shard will have at least one element.
+  (*(new_node.mutable_attr()))["require_non_empty"].set_b(true);
+
   // Add shapes and other attributes
   NodeDef* add_after = graph->GetNode(add_before.input(0));
-  graph_utils::CopyAttribute("output_shapes", *add_after, &new_node);
 
-  if (add_after->attr().find("Toutput_types") != add_after->attr().end()) {
-    (*(new_node.mutable_attr()))["output_types"] =
-        add_after->attr().at("Toutput_types");
+  if (str_util::EndsWith(add_after->op(), "Dataset") ||
+      str_util::EndsWith(add_after->op(), "DatasetV2")) {
+    // We still may or may not have the right attributes because Datasets like
+    // TFRecordDataset doesn't have a output type or shape, and by default we
+    // set them to DT_STRING and an unknown shape.
+    if (add_after->attr().count("output_shapes") > 0) {
+      graph_utils::CopyAttribute("output_shapes", *add_after, &new_node);
+    } else {
+      tensorflow::TensorShapeProto* shape =
+          (*(new_node.mutable_attr()))["output_shapes"]
+              .mutable_list()
+              ->add_shape();
+      shape->set_unknown_rank(true);
+    }
+
+    if (add_after->attr().count("output_types") > 0) {
+      graph_utils::CopyAttribute("output_types", *add_after, &new_node);
+    } else if (add_after->attr().count("Toutput_types") > 0) {
+      (*(new_node.mutable_attr()))["output_types"] =
+          add_after->attr().at("Toutput_types");
+    } else {
+      (*(new_node.mutable_attr()))["output_types"].mutable_list()->add_type(
+          tensorflow::DataType::DT_STRING);
+    }
   } else {
-    graph_utils::CopyAttribute("output_types", *add_after, &new_node);
+    // TODO(frankchn): Make this work for datasets where input(0) is a Const,
+    // and we need to shard the Const.
+    // This is probably not a dataset, so we bail because we can't infer the
+    // output types and shape.
+    LOG(WARNING)
+        << "Unable to shard this input. You may need to wrap "
+           "the inputs to your reader dataset in a TensorSliceDataset.";
+    LOG(WARNING) << "Input node is: " << add_after->DebugString();
+    return errors::NotFound("Cannot shard non-dataset node.");
   }
 
   // Add new node into graph and update edges
@@ -177,7 +208,7 @@ bool ReaderOpInFunction(const NodeDef& node,
     NodeDef node_in_func = func->node_def(i);
     if (IsDatasetNodeOfType(node_in_func, kReaderDatasetOps) &&
         node_in_func.input_size() > 0 &&
-        str_util::StartsWith(node_in_func.input(0), "args_0")) {
+        absl::StartsWith(node_in_func.input(0), "args_0")) {
       return true;
     }
     if (IsDatasetNodeOfType(func->node_def(i), kFuncDatasetOps) &&
@@ -254,16 +285,14 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
   // function in flat_map.
   if (IsDatasetNodeOfType(node, kFuncDatasetOps) &&
       ReaderOpInFunction(node, *flib)) {
-    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
-                                                num_workers, index));
-    return Status::OK();
+    return ProcessDatasetSourceNode(graph, node, nodes_to_delete, num_workers,
+                                    index);
   }
 
   if (IsDatasetNodeOfType(node, kReaderDatasetOps)) {
     // We reached a reader dataset directly and we try to shard input 0.
-    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
-                                                num_workers, index));
-    return Status::OK();
+    return ProcessDatasetSourceNode(graph, node, nodes_to_delete, num_workers,
+                                    index);
   }
 
   if (!IsDatasetNodeOfType(node, kPassThroughOps)) {
@@ -279,6 +308,10 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
 
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
                      GraphDef* output) {
+  if (num_workers == 1 && index == 0) {
+    return Status::OK();
+  }
+
   *output = item.graph;
   MutableGraphView graph(output);
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
@@ -292,11 +325,19 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   // that dataset, in effect giving a piece to each worker. Finally, we remove
   // occurences from randomness from before that point in the graph (e.g. things
   // like ShuffleDataset) to ensure that `shard` returns a sensible result.
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
+  Status s = RecursivelyHandleOp(*sink_node, num_workers, index, &flib, &graph,
+                                 &nodes_to_delete);
 
-  NodeDef sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::FindSinkNode(item.graph, &sink_node));
-  TF_RETURN_IF_ERROR(RecursivelyHandleOp(sink_node, num_workers, index, &flib,
-                                         &graph, &nodes_to_delete));
+  if (!s.ok() && errors::IsNotFound(s)) {
+    LOG(WARNING) << "Cannot find shardable dataset, adding a shard node at "
+                 << "the end of the dataset instead. This may have performance "
+                 << "implications.";
+    TF_RETURN_IF_ERROR(AddShardNode(&graph, *sink_node, num_workers, index));
+  } else if (!s.ok()) {
+    return s;
+  }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
 
@@ -340,7 +381,6 @@ Status AutoShard::OptimizeAndCollectStats(Cluster* /* cluster */,
                                           GraphDef* output,
                                           OptimizationStats* stats) {
   *output = item.graph;
-  MutableGraphView graph(output);
 
   TF_RETURN_IF_ERROR(OptimizeGraph(item, num_workers_, index_, output));
   stats->num_changes++;

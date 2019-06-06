@@ -414,7 +414,7 @@ class MklConvCustomBackpropFilterOp
         // if output tensor has more than 0 elements, we need to 0 them out.
         auto diff_filter_data = diff_filter_tensor->flat<T>().data();
         for (size_t i = 0; i < diff_filter_tf_shape.num_elements(); ++i) {
-          diff_filter_data[i] = 0;
+          diff_filter_data[i] = static_cast<T>(0);
         }
         return;
       }
@@ -731,6 +731,7 @@ class MklConvCustomBackpropFilterOp
       MklConvCustomBackpropFilterOp<CPUDevice, T, false, false>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
+TF_CALL_bfloat16(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS
 
 }  // namespace tensorflow

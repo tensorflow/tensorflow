@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 
+#include <limits>
 #include <map>
 #include <queue>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -126,6 +128,7 @@ class ListScheduler {
 
     // Create map containing the number of unscheduled uses (hlo instructions)
     // of each logical buffer.
+    unscheduled_use_count_.reserve(points_to_analysis.num_logical_buffers());
     for (auto* instruction : computation->instructions()) {
       for (auto* buffer :
            points_to_analysis.GetBuffersDefinedByInstruction(instruction)) {
@@ -242,6 +245,13 @@ class ListScheduler {
 
   // Constructs the scheduling priority of the given instruction.
   Priority GetPriority(const ReadyListEntry& entry) {
+    // Try to cluster scalars as close together as possible so that if they are
+    // in unfused hlos, they can still live in machine registers without
+    // excessive spilling.
+    if (ShapeUtil::IsEffectiveScalar(entry.instruction->shape())) {
+      return {std::numeric_limits<int64>::max(),
+              std::numeric_limits<int64>::max()};
+    }
     return {BytesFreedIfScheduled(entry), entry.instruction->user_count()};
   }
 
@@ -460,6 +470,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     sequence.push_back(hlo);
     return Status::OK();
   });
+  visitor.ReserveVisitStates(computation->instruction_count());
   TF_RETURN_IF_ERROR(computation->AcceptWithOperandOrder(
       &visitor, [&extra_users, &total_sizes](const HloInstruction* a,
                                              const HloInstruction* b) {
@@ -612,11 +623,13 @@ StatusOr<bool> HloTrivialScheduler::Run(HloModule* module) {
     if (!computation->IsFusionComputation()) {
       HloInstructionSequence& computation_sequence =
           schedule.GetOrCreateSequence(computation);
-      TF_RETURN_IF_ERROR(computation->Accept(
+      FunctionVisitor visitor(
           [&computation_sequence](HloInstruction* instruction) {
             computation_sequence.push_back(instruction);
             return Status::OK();
-          }));
+          });
+      visitor.ReserveVisitStates(computation->instruction_count());
+      TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     }
   }
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));

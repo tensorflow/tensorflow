@@ -26,7 +26,7 @@ from tensorflow.python.util import deprecation
 def shuffle_and_repeat(buffer_size, count=None, seed=None):
   """Shuffles and repeats a Dataset returning a new permutation for each epoch.
 
-  `dataset.apply(tf.contrib.data.shuffle_and_repeat(buffer_size, count))`
+  `dataset.apply(tf.data.experimental.shuffle_and_repeat(buffer_size, count))`
 
   is equivalent to
 
@@ -45,7 +45,7 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
       indefinitely.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

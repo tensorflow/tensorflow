@@ -18,8 +18,6 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/conv_grad_ops.h"
-
 #include <algorithm>
 #include <vector>
 
@@ -30,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
@@ -208,14 +207,9 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(
-        context, padding_ != Padding::EXPLICIT,
-        errors::Unimplemented("Current CPU implementation does not support "
-                              "EXPLICIT padding yet."));
-    std::vector<int64> explicit_paddings;
     OP_REQUIRES_OK(context,
-                   context->GetAttr("explicit_paddings", &explicit_paddings));
-    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings,
+                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
     OP_REQUIRES(context, dilations_.size() == 4,
@@ -247,11 +241,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                                 filter_sizes.vec<int32>(), &filter_shape));
 
     ConvBackpropDimensions dims;
-    OP_REQUIRES_OK(context,
-                   ConvBackpropComputeDimensions(
-                       "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2,
-                       input.shape(), filter_shape, out_backprop.shape(),
-                       strides_, padding_, data_format_, &dims));
+    OP_REQUIRES_OK(
+        context,
+        ConvBackpropComputeDimensionsV2(
+            "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2, input.shape(),
+            filter_shape, out_backprop.shape(), /*dilations=*/{1, 1, 1, 1},
+            strides_, padding_, explicit_paddings_, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,
@@ -264,6 +259,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
 
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
+    if (padding_ == Padding::EXPLICIT) {
+      pad_top = explicit_paddings_[2];
+      pad_bottom = explicit_paddings_[3];
+      pad_left = explicit_paddings_[4];
+      pad_right = explicit_paddings_[5];
+    }
     OP_REQUIRES_OK(
         context,
         GetWindowedOutputSizeVerbose(
@@ -402,6 +403,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   TensorFormat data_format_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DCustomBackpropFilterOp);
@@ -713,23 +715,55 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   CHECK(common_padding_rows >= 0 && common_padding_cols >= 0)  // Crash OK
       << "Negative row or col paddings: (" << common_padding_rows << ", "
       << common_padding_cols << ")";
+
+  // The Tensor Core in NVIDIA Volta+ GPUs supports efficient convolution with
+  // fp16 in NHWC data layout. In all other configurations it's more efficient
+  // to run computation in NCHW data format.
+  const bool compute_in_nhwc =
+      DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+
+  // We only do one directional conversion: NHWC->NCHW. We never convert in the
+  // other direction. Grappler layout optimizer selects the preferred layout and
+  // adds necessary annotations to the graph.
+  const TensorFormat compute_data_format =
+      (compute_in_nhwc && data_format == FORMAT_NHWC) ? FORMAT_NHWC
+                                                      : FORMAT_NCHW;
+
+  VLOG(3) << "Compute Conv2DBackpropFilter with cuDNN:"
+          << " data_format=" << ToString(data_format)
+          << " compute_data_format=" << ToString(compute_data_format);
+
+  constexpr auto kComputeInNHWC =
+      std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                      se::dnn::FilterLayout::kOutputYXInput);
+  constexpr auto kComputeInNCHW =
+      std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                      se::dnn::FilterLayout::kOutputInputYX);
+
+  se::dnn::DataLayout compute_data_layout;
+  se::dnn::FilterLayout filter_layout;
+
+  std::tie(compute_data_layout, filter_layout) =
+      compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
+
   se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(dims.batch_size)
       .set_height(GetTensorDim(compatible_input, data_format, 'H'))
       .set_width(GetTensorDim(compatible_input, data_format, 'W'))
       .set_feature_map_count(dims.in_depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(compute_data_layout);
   se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(dims.batch_size)
       .set_height(dims.spatial_dims[0].output_size)
       .set_width(dims.spatial_dims[1].output_size)
       .set_feature_map_count(dims.out_depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(compute_data_layout);
   se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
       .set_input_filter_width(dims.spatial_dims[1].filter_size)
       .set_input_feature_map_count(filter_shape.dim_size(2))
-      .set_output_feature_map_count(filter_shape.dim_size(3));
+      .set_output_feature_map_count(filter_shape.dim_size(3))
+      .set_layout(filter_layout);
   se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(dims.spatial_dims[0].dilation)
       .set_horizontal_dilation_rate(dims.spatial_dims[1].dilation)
@@ -739,10 +773,13 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       .set_zero_padding_width(common_padding_cols)
       .set_group_count(dims.in_depth / filter_shape.dim_size(2));
 
-  // NOTE(zhengxq):
-  // cuDNN only supports the filter layouts: OD x FD x R x C
-  // Whereas, we have: R x C x ID x OD
-  // TransformFilter performs (R x C x FD x OD) => (OD x FD x R x C)
+  // Tensorflow filter format: HWIO
+  // cuDNN filter formats: (data format) -> (filter format)
+  //   (1) NCHW -> OIHW
+  //   (2) NHWC -> OHWI
+  //
+  // We compute filter backprop into temporary tensor, and then convert it to
+  // the HWIO data format at the end.
 
   Tensor pre_transformed_filter_backprop;
   OP_REQUIRES_OK(
@@ -754,42 +791,45 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
           &pre_transformed_filter_backprop));
 
   Tensor transformed_out_backprop;
-  if (data_format == FORMAT_NHWC) {
-    TensorShape nchw_shape = ShapeFromFormat(
-        FORMAT_NCHW, dims.batch_size, dims.spatial_dims[0].output_size,
+  if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+    VLOG(4) << "Convert the `out_backprop` tensor from NHWC to NCHW.";
+    TensorShape compute_shape = ShapeFromFormat(
+        compute_data_format, dims.batch_size, dims.spatial_dims[0].output_size,
         dims.spatial_dims[1].output_size, dims.out_depth);
     if (dims.out_depth > 1) {
       OP_REQUIRES_OK(ctx,
-                     ctx->allocate_temp(DataTypeToEnum<T>::value, nchw_shape,
+                     ctx->allocate_temp(DataTypeToEnum<T>::value, compute_shape,
                                         &transformed_out_backprop));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           ctx->eigen_device<GPUDevice>(), out_backprop.tensor<T, 4>(),
           transformed_out_backprop.tensor<T, 4>());
     } else {
       // If depth <= 1, just reshape.
-      CHECK(transformed_out_backprop.CopyFrom(out_backprop, nchw_shape));
+      CHECK(transformed_out_backprop.CopyFrom(out_backprop, compute_shape));
     }
   } else {
     transformed_out_backprop = out_backprop;
   }
 
   Tensor transformed_input;
-  if (data_format == FORMAT_NHWC) {
-    TensorShape nchw_shape = ShapeFromFormat(
-        FORMAT_NCHW, GetTensorDim(compatible_input, data_format, 'N'),
+  if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+    VLOG(4) << "Convert the `input` tensor from NHWC to NCHW.";
+    TensorShape compute_shape = ShapeFromFormat(
+        compute_data_format, GetTensorDim(compatible_input, data_format, 'N'),
         GetTensorDim(compatible_input, data_format, 'H'),
         GetTensorDim(compatible_input, data_format, 'W'),
         GetTensorDim(compatible_input, data_format, 'C'));
-    if (nchw_shape.dim_size(1) > 1) {
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             nchw_shape, &transformed_input));
+    if (compute_shape.dim_size(1) > 1) {
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DataTypeToEnum<T>::value, compute_shape,
+                                        &transformed_input));
       functor::NHWCToNCHW<GPUDevice, T, 4>()(
           ctx->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(compatible_input).tensor<T, 4>(),
           transformed_input.tensor<T, 4>());
     } else {
       // If depth <= 1, just reshape.
-      CHECK(transformed_input.CopyFrom(compatible_input, nchw_shape));
+      CHECK(transformed_input.CopyFrom(compatible_input, compute_shape));
     }
   } else {
     transformed_input = compatible_input;
@@ -814,7 +854,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       dims.in_depth,                       // in_depths
       {{input_desc.height(),               // in_rows
         input_desc.width()}},              // in_cols
-      FORMAT_NCHW,                         // compute_data_format
+      compute_data_format,                 // compute_data_format
       dims.out_depth,                      // out_depths
       {{dims.spatial_dims[0].filter_size,  // filter_rows
         dims.spatial_dims[1].filter_size,  // filter_cols
@@ -861,9 +901,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
       }
     }
-    LogConvAutotuneResults(ctx->op_kernel().def(), transformed_input,
-                           pre_transformed_filter_backprop,
-                           transformed_out_backprop, stream->parent(), results);
+    LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_FILTER,
+                           se::dnn::ToDataType<T>::value, input_desc,
+                           filter_desc, output_desc, conv_desc,
+                           stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
@@ -885,9 +926,12 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     return;
   }
 
+  FilterTensorFormat src_filter_format =
+      compute_data_format == FORMAT_NCHW ? FORMAT_OIHW : FORMAT_OHWI;
+
   auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
   functor::ReverseTransformFilter<GPUDevice, T, 4>()(
-      ctx->eigen_device<GPUDevice>(),
+      ctx->eigen_device<GPUDevice>(), src_filter_format,
       toConstTensor(pre_transformed_filter_backprop).template tensor<T, 4>(),
       filter_backprop->tensor<T, 4>());
 }

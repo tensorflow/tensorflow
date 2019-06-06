@@ -21,13 +21,15 @@ from __future__ import print_function
 
 import weakref
 
-from tensorflow.python.eager import def_function
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.tracking import data_structures
@@ -78,10 +80,116 @@ class VariableHolder(object):
     return self.call_with_variable_creator_scope(self._fn)(*args, **kwargs)
 
   def call_with_variable_creator_scope(self, fn):
+
     def wrapped(*args, **kwargs):
       with variable_scope.variable_creator_scope(self.variable_creator_scope):
         return fn(*args, **kwargs)
+
     return wrapped
+
+
+def _get_element_from_tensor_info(tensor_info, graph):
+  """Simplified copy of the deprecated `get_tensor_from_tensor_info`."""
+  encoding = tensor_info.WhichOneof("encoding")
+  if encoding == "name":
+    # We may get operations here in some cases. TensorInfo is a bit of a
+    # misnomer if so.
+    return graph.as_graph_element(tensor_info.name)
+  elif encoding == "coo_sparse":
+    return sparse_tensor.SparseTensor(
+        graph.get_tensor_by_name(tensor_info.coo_sparse.indices_tensor_name),
+        graph.get_tensor_by_name(tensor_info.coo_sparse.values_tensor_name),
+        graph.get_tensor_by_name(
+            tensor_info.coo_sparse.dense_shape_tensor_name))
+  else:
+    raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
+
+
+def _lift_single_variable(old_variable, graph, variable_holder):
+  """Lifts `old_variable` out of the `FuncGraph` `graph`."""
+  new_variable = resource_variable_ops.UninitializedVariable(
+      shape=old_variable.shape,
+      dtype=old_variable.dtype,
+      name=old_variable.op.name,
+      trainable=old_variable.trainable,
+      extra_handle_data=old_variable.handle)
+  new_variable._initializer_op = old_variable._initializer_op  # pylint: disable=protected-access
+  graph.inputs.append(old_variable.handle)
+  graph.captures[new_variable.handle] = old_variable.handle
+  # Now that we've added the new variable to graph.captures,
+  # graph.capture will use that cached value and do some post-processing
+  # on the capture like recording it on the tape.
+  graph.capture(new_variable.handle)
+  # pylint: disable=protected-access
+  variable_name = new_variable.name.split(":")[0]
+  variable_holder._variables_by_name[variable_name] = new_variable
+  graph._weak_variables.append(weakref.ref(new_variable))
+  # pylint: enable=protected-access
+  graph.watch_variable(new_variable)
+  return new_variable
+
+
+def _lift_unlifted_variables(graph, variable_holder):
+  """Finds resource variables and lifts them into the outer context.
+
+  When we import a GraphDef inside a wrap_function, no Python graph building
+  code runs. This means we get VarHandleOps which create variable resources,
+  but no corresponding Python objects. Leaving them like this works but gives
+  the user no way to interact with or modify the variables outside the graph.
+
+  This method searches for variables and lifts them out as regular variable
+  objects when possible, indicating to the FuncGraph that they are captures.
+
+  Args:
+    graph: The FuncGraph to lift variables from.
+    variable_holder: A VariableHolder to record the lifted variables in.
+  """
+  with graph.as_default():
+    global_collection_variables = ops.get_collection(
+        ops.GraphKeys.GLOBAL_VARIABLES)
+    local_collection_variables = ops.get_collection(
+        ops.GraphKeys.LOCAL_VARIABLES)
+    existing_captures = set(graph.internal_captures)
+    lifted_variables = {}
+
+    def _should_lift_variable(v):
+      return ((v._in_graph_mode  # pylint: disable=protected-access
+               and v.graph.building_function)
+              and isinstance(v, resource_variable_ops.ResourceVariable)
+              and v.handle not in existing_captures)
+
+    for old_variable in global_collection_variables:
+      if _should_lift_variable(old_variable):
+        new_variable = _lift_single_variable(
+            old_variable, graph, variable_holder)
+        lifted_variables[old_variable] = new_variable
+        existing_captures.add(old_variable.handle)
+
+    for old_variable in local_collection_variables:
+      if _should_lift_variable(old_variable):
+        new_variable = _lift_single_variable(
+            old_variable, graph, variable_holder)
+        lifted_variables[old_variable] = new_variable
+        existing_captures.add(old_variable.handle)
+        if new_variable._in_graph_mode:  # pylint: disable=protected-access
+          outer_graph = new_variable.graph
+          # Variables are added to the global collection by default. In this
+          # case we only want the variable in the local collection, so we'll pop
+          # it out.
+          global_collection = outer_graph.get_collection_ref(
+              ops.GraphKeys.GLOBAL_VARIABLES)
+          global_collection.remove(new_variable)
+          outer_graph.add_to_collection(
+              ops.GraphKeys.LOCAL_VARIABLES, new_variable)
+
+    # Update the FuncGraph's collections, partly for the user and partly so this
+    # function is idempotent when it runs again in prune() calls.
+    for collection_name in [
+        ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.LOCAL_VARIABLES
+    ]:
+      mutable_collection = ops.get_collection_ref(collection_name)
+      for index, current in enumerate(mutable_collection):
+        mutable_collection[index] = lifted_variables.get(current, current)
 
 
 # TODO(allenl): make this trackable
@@ -89,63 +197,41 @@ class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
 
   def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):
+    self._variable_holder = variable_holder
+    _lift_unlifted_variables(fn_graph, variable_holder)
+    # We call __init__ after lifting variables so that the function's signature
+    # properly reflects the new captured inputs.
     super(WrappedFunction, self).__init__(
         fn_graph, attrs=attrs, signature=signature)
-    self._variable_holder = variable_holder
-    if ops.executing_eagerly_outside_functions():
-      # TODO(allenl): Make this work in 1.x?
-      self._lift_unlifted_variables()
-
-  def _lift_unlifted_variables(self):
-    """Finds resource variables and lifts them into the outer context.
-
-    When we import a GraphDef inside a wrap_function, no Python graph building
-    code runs. This means we get VarHandleOps which create variable resources,
-    but no corresponding Python objects. Leaving them like this works but gives
-    the user no way to interact with or modify the variables outside the graph.
-
-    This method searches for variables and lifts them out as regular variable
-    objects when possible, indicating to the FuncGraph that they are captures.
-    """
-    with self.graph.as_default():
-      collection_variables = (
-          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-          + ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES))
-      existing_captures = set(self.graph.internal_captures)
-      lifted_variables = {}
-      for old_variable in collection_variables:
-        if (old_variable._in_graph_mode  # pylint: disable=protected-access
-            and isinstance(old_variable,
-                           resource_variable_ops.ResourceVariable)):
-          if old_variable.handle in existing_captures:
-            continue
-          new_variable = def_function.UnliftedInitializerVariable(
-              array_ops.placeholder(
-                  name="unused_{}_initializer".format(old_variable.op.name),
-                  shape=old_variable.shape,
-                  dtype=old_variable.dtype),
-              name=old_variable.op.name,
-              trainable=old_variable.trainable)
-          self.graph.captures[new_variable.handle] = old_variable.handle
-          existing_captures.add(old_variable.handle)
-          lifted_variables[old_variable] = new_variable
-          # pylint: disable=protected-access
-          variable_name = new_variable.name.split(":")[0]
-          self._variable_holder._variables_by_name[variable_name] = new_variable
-          self.graph._weak_variables.append(weakref.ref(new_variable))
-          # pylint: enable=protected-access
-      # Update the graph's collections, partly for the user and partly so this
-      # function is idempotent when it runs again in prune() calls.
-      for collection_name in [ops.GraphKeys.GLOBAL_VARIABLES,
-                              ops.GraphKeys.LOCAL_VARIABLES]:
-        mutable_collection = ops.get_collection_ref(collection_name)
-        for index, current in enumerate(mutable_collection):
-          mutable_collection[index] = lifted_variables.get(current, current)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
+    """Extract a subgraph of this function's underlying graph.
+
+    Wraps the subgraph in a new `WrappedFunction` object.
+
+    Args:
+      feeds: Input tensors to the subgraph to extract, as `Tensor` objects.
+      fetches: Possibly-nested Python data structure containing information
+        about outputs of the target subgraph. Each entry can either be a
+        `Tensor` object (for data outputs), an `Operation` object (for control
+        outputs), or a `TensorInfo` proto. Any additional shape/dtype
+        information provided in a `TensorInfo` and not present in the original
+        graph will be added to the returned subgraph.
+      name: (optional) Name to give to the underlying `FuncGraph` of the
+        returned object. If no name is provided, the graph's name will be
+        `"pruned"`.
+      input_signature: (optional) possibly-nested Python data structure
+        containing `TensorSpec` objects, with which to populate the returned
+        functions's `FuncGraph`'s `structured_input_signature` field.
+
+    Returns:
+      A new `WrappedFunction` object containing a copy of the portion of this
+        object's graph that goes from `feeds` to `fetches`.
+    """
     # TODO(b/129646028): Add support for CompositeTensors.
     name = name or "pruned"
-    flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
+    feeds = nest.map_structure(self.graph.as_graph_element, feeds)
+    flat_feeds = nest.flatten(feeds)
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
         raise ValueError("Feeds must be tensors.")
@@ -153,63 +239,100 @@ class WrappedFunction(function.ConcreteFunction):
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
     internal_captures = self.graph.internal_captures
-    flat_feeds = [f for f in flat_feeds
-                  if f not in internal_captures]
+    flat_feeds = [f for f in flat_feeds if f not in internal_captures]
 
-    tensor_fetches = []
     operation_fetches = []
-    for f in flat_fetches:
-      if isinstance(f, ops.Tensor):
-        tensor_fetches.append(f)
-      elif isinstance(f, ops.Operation):
-        operation_fetches.append(f)
+    tensor_fetches = []
+    tensor_infos = []
+
+    def _fetch_preprocesing_callback(fetch):
+      """Extract out lists of ops, tensors, and tensor type info.
+
+      Turns TensorInfos into Tensors in the original `fetches` structure.
+      Also extracts ops from `fetches`.
+
+      Args:
+        fetch: The fetch to preprocess: Tensor, TensorInfo, or Operation, or
+          string identifying a Tensor or Operation.
+
+      Returns:
+        `fetch` converted to a Tensor.
+      """
+      if isinstance(fetch, ops.Operation):
+        operation_fetches.append(fetch)
+        return fetch
+      elif isinstance(fetch, meta_graph_pb2.TensorInfo):
+        tensor_infos.append(fetch)
+        decoded = _get_element_from_tensor_info(fetch, self._func_graph)
+        if tensor_util.is_tensor(decoded):
+          tensor_fetches.append(decoded)
+        else:
+          operation_fetches.append(decoded)
+        return decoded
+      elif isinstance(fetch, ops.Tensor):
+        tensor_fetches.append(fetch)
+        return fetch
       else:
-        raise ValueError("Fetches must be tensors or operations.")
-    for f in flat_feeds + flat_fetches:
+        graph_element = self.graph.as_graph_element(fetch)
+        return _fetch_preprocesing_callback(graph_element)
+
+    fetches = nest.map_structure(_fetch_preprocesing_callback, fetches)
+
+    # Expand composite tensors into their component dense Tensors.
+    tensor_fetches = nest.flatten(tensor_fetches, expand_composites=True)
+
+    for f in (flat_feeds + tensor_fetches + operation_fetches):
       if f.graph is not self._func_graph:
-        raise ValueError(
-            "Can only prune function whose feeds and fetches "
-            "are from this graph (%s). Tensor %s from graph %s" % (
-                self._func_graph, f, f.graph))
+        raise ValueError("Can only prune function whose feeds and fetches "
+                         "are from this graph (%s). Input %s is from graph %s" %
+                         (self._func_graph, f, f.graph))
     with self._func_graph.as_default():
       pruned_graph = func_graph.FuncGraph(name)
-      with ops.control_dependencies(operation_fetches):
-        if tensor_fetches:
-          identity_fetches = array_ops.identity_n(tensor_fetches)
-          sink_tensor = identity_fetches[0]
-        else:
-          identity_fetches = []
-          sink_tensor = array_ops.zeros([])
     lift_map = lift_to_graph.lift_to_graph(
-        [sink_tensor], pruned_graph, sources=flat_feeds + internal_captures)
-    for original_fetch, identity_fetch in zip(
-        tensor_fetches, identity_fetches):
-      lift_map[original_fetch] = lift_map[identity_fetch]
-    pruned_graph.outputs.extend(
-        lift_map[x] for x in flat_fetches if isinstance(x, ops.Tensor))
+        operation_fetches + tensor_fetches,
+        pruned_graph,
+        sources=flat_feeds + internal_captures)
+
+    # Note that we add the component tensors of any composite tensors to the
+    # returned function's outputs list; the list must contain these component
+    # tensors, or the function's sparse outputs won't work properly.
+    pruned_graph.outputs.extend(lift_map[x] for x in tensor_fetches)
     pruned_graph.control_outputs.extend(
         [lift_map[operation] for operation in operation_fetches])
     for external_capture, internal_capture in self.graph.captures.items():
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
     pruned_graph.inputs.extend(pruned_graph.captures.values())
+    for ti in tensor_infos:
+      if ti.WhichOneof("encoding") == "name":  # Dense tensors only
+        t = pruned_graph.as_graph_element(ti.name)
+        if tensor_util.is_tensor(t):
+          t.set_shape(tensor_shape.TensorShape(ti.tensor_shape))
+    # pylint: disable=protected-access
+    for f in self.graph._functions.values():
+      pruned_graph._add_function(f)
+    # pylint: enable=protected-access
 
     pruned_graph.variables = self.graph.variables
 
     def _structured_output_mapping(fetched):
+      """callback for `nest.map_structure()`"""
       lifted = lift_map[fetched]
       if isinstance(lifted, ops.Operation):
         return None
       return lifted
 
+    # expand_composites=True here causes composite tensors to be expanded
+    # into their component dense Tensors, mapped to the new graph, and then
+    # reconstituted into their original composite form.
     pruned_graph.structured_outputs = nest.map_structure(
-        _structured_output_mapping, fetches)
+        _structured_output_mapping, fetches, expand_composites=True)
     pruned_graph.structured_input_signature = input_signature
     pruned_fn = WrappedFunction(
         pruned_graph, variable_holder=self._variable_holder)
     pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
     # TODO(kathywu): Enable keyword arguments if an input signature is specified
-    pruned_fn._arg_keywords = []  # pylint: disable=protected-access
+    pruned_fn._arg_keywords = [tensor.op.name for tensor in flat_feeds]  # pylint: disable=protected-access
     return pruned_fn
 
 
@@ -258,12 +381,12 @@ class WrappedGraph(object):
 
   ```
   def add_v1(x):
-    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.compat.v1.AUTO_REUSE):
       v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
     return v + x
 
   def increment_var_v1(x):
-    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.compat.v1.AUTO_REUSE):
       v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
     return v.assign_add(x)
 
@@ -305,9 +428,10 @@ class WrappedGraph(object):
     """Wraps a TF 1.X function and returns an eager-compatible function.
 
     All functions wrapped in the same `WrappedGraph` will have access to the
-    same graph (`tf.get_default_graph` to get the graph object within a
-    function, or `WrappedGraph.graph` to get the graph outside a function).
-    Variables created within the function will be added to the `variables` list.
+    same graph (`tf.compat.v1.get_default_graph` to get the graph object
+    within a function, or `WrappedGraph.graph` to get the graph outside a
+    function). Variables created within the function will be added to the
+    `variables` list.
 
     Function inputs: All inputs to the function must be tensors (nested ok),
     with their shapes and dtypes defined in the `signature` argument.
@@ -350,8 +474,12 @@ class WrappedGraph(object):
     """
     return self._wrap_function(fn, signature=signature, name=name)
 
-  def _wrap_function(
-      self, fn, args=None, kwargs=None, signature=None, name=None):
+  def _wrap_function(self,
+                     fn,
+                     args=None,
+                     kwargs=None,
+                     signature=None,
+                     name=None):
     """Internal wrap function method with extended func_graph arguments."""
     fn_with_filter_and_scope, returned_ops = _filter_returned_ops(
         self._variable_holder.call_with_variable_creator_scope(fn))
@@ -359,7 +487,9 @@ class WrappedGraph(object):
     func_graph.func_graph_from_py_func(
         None,  # Name is unused.
         fn_with_filter_and_scope,
-        args=args, kwargs=kwargs, signature=signature,
+        args=args,
+        kwargs=kwargs,
+        signature=signature,
         add_control_dependencies=False,
         func_graph=self.graph)
 
@@ -433,8 +563,8 @@ def wrap_function(fn, signature, name=None):
 
   Args:
     fn: python function to be wrapped
-    signature: the placeholder and python arguments to be passed to the
-      wrapped function
+    signature: the placeholder and python arguments to be passed to the wrapped
+      function
     name: Optional. The name of the function.
 
   Returns:
@@ -448,7 +578,9 @@ def wrap_function(fn, signature, name=None):
       func_graph.func_graph_from_py_func(
           func_graph_name,
           holder,
-          args=None, kwargs=None, signature=signature,
+          args=None,
+          kwargs=None,
+          signature=signature,
           add_control_dependencies=False,
           collections={}),
       variable_holder=holder,
@@ -468,6 +600,7 @@ def function_from_graph_def(graph_def, inputs, outputs):
   Returns:
     A ConcreteFunction.
   """
+
   def _imports_graph_def():
     importer.import_graph_def(graph_def, name="")
 

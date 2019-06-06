@@ -44,6 +44,14 @@ _DEFUN_DEVICE_ATTRIBUTE = 'api_preferred_device'
 _CPU_DEVICE_NAME = 'CPU'
 _GPU_DEVICE_NAME = 'GPU'
 
+# The following number constants are used to represent the runtime of the defun
+# backend function. Since the CPU/GPU implementation are mathematically same, we
+# need some signal for the function to indicate which function is executed. This
+# is for testing purpose to verify the correctness of swapping backend function.
+_RUNTIME_UNKNOWN = 0
+_RUNTIME_CPU = 1
+_RUNTIME_GPU = 2
+
 
 @keras_export('keras.layers.GRUCell', v1=[])
 class GRUCell(recurrent.GRUCell):
@@ -311,8 +319,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
     if not self.could_use_cudnn:
-      # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -329,14 +338,14 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
           time_major=self.time_major,
           zero_output_for_mask=self.zero_output_for_mask)
       # This is a dummy tensor for testing purpose.
-      runtime = _runtime('unknown')
+      runtime = _runtime(_RUNTIME_UNKNOWN)
     else:
       last_output, outputs, runtime, states = self._defun_gru_call(
           inputs, initial_state, training, mask)
 
     if self.stateful:
       updates = [state_ops.assign(self.states[0], states[0])]
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -358,7 +367,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.reset_dropout_mask()
     dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     if dropout_mask is not None:
-      inputs *= dropout_mask[0]
+      inputs = inputs * dropout_mask[0]
 
     cudnn_gru_kwargs = {
         'inputs': inputs,
@@ -490,7 +499,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
       mask=mask,
       go_backwards=go_backwards,
       input_length=timesteps)
-  return last_output, outputs, new_states[0], _runtime('cpu')
+  return last_output, outputs, new_states[0], _runtime(_RUNTIME_CPU)
 
 
 def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
@@ -554,7 +563,7 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
   if mask is not None:
     last_output = h
 
-  return last_output, outputs, h, _runtime('cudnn')
+  return last_output, outputs, h, _runtime(_RUNTIME_GPU)
 
 
 @keras_export('keras.layers.LSTMCell', v1=[])
@@ -808,6 +817,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     if not self.could_use_cudnn:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)
@@ -823,7 +834,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           input_length=timesteps,
           time_major=self.time_major,
           zero_output_for_mask=self.zero_output_for_mask)
-      runtime = _runtime('unknown')
+      runtime = _runtime(_RUNTIME_UNKNOWN)
     else:
       # Use the new defun approach for backend implementation swap.
       # Note that different implementations need to have same function
@@ -833,7 +844,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self.reset_dropout_mask()
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
-        inputs *= dropout_mask[0]
+        inputs = inputs * dropout_mask[0]
       cudnn_lstm_kwargs = {
           'inputs': inputs,
           'init_h': initial_state[0],
@@ -901,7 +912,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       updates = []
       for i in range(len(states)):
         updates.append(state_ops.assign(self.states[i], states[i]))
-      self.add_update(updates, inputs)
+      self.add_update(updates)
 
     if self.return_sequences:
       output = outputs
@@ -1021,7 +1032,8 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
       mask=mask,
       go_backwards=go_backwards,
       input_length=timesteps)
-  return last_output, outputs, new_states[0], new_states[1], _runtime('cpu')
+  return (last_output, outputs, new_states[0], new_states[1],
+          _runtime(_RUNTIME_CPU))
 
 
 def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
@@ -1100,7 +1112,7 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # the last_output, since it is numerically same as the output.
   if mask is not None:
     last_output = h
-  return last_output, outputs, h, c, _runtime('cudnn')
+  return last_output, outputs, h, c, _runtime(_RUNTIME_GPU)
 
 
 def is_sequence_right_padded(mask, time_major):
@@ -1193,4 +1205,4 @@ def _get_context_device_type():
 def _runtime(runtime_name):
   with ops.device('/cpu:0'):
     return constant_op.constant(
-        runtime_name, dtype=dtypes.string, name='runtime')
+        runtime_name, dtype=dtypes.float32, name='runtime')

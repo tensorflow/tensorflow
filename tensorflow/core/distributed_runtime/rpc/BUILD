@@ -1,7 +1,12 @@
 # Description:
 #   RPC communication interfaces and implementations for TensorFlow.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -15,8 +20,8 @@ filegroup(
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
     "tf_cc_test",
+    "tf_cuda_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
@@ -31,10 +36,6 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-
-package(default_visibility = [
-    "//tensorflow:internal",
-])
 
 cc_library(
     name = "grpc_util",
@@ -223,6 +224,7 @@ cc_library(
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )
@@ -241,6 +243,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core/distributed_runtime:master",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,
 )

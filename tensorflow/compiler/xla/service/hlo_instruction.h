@@ -80,6 +80,7 @@ class HloPrintOptions {
         print_metadata_(true),
         print_backend_config_(true),
         compact_operands_(false),
+        include_layout_in_shapes_(true),
         print_operand_shape_(true),
         print_operand_names_(true),
         print_program_shape_(true),
@@ -178,6 +179,13 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, include the layout in any shapes that are printed (instruction
+  // and operands).
+  HloPrintOptions& set_include_layout_in_shapes(bool value) {
+    include_layout_in_shapes_ = value;
+    return *this;
+  }
+
   // If true, canonicalizes instructions' name. Instead of using "%foo.1" as
   // the name of an instruction, we use "%tmp_1", "%tmp_2" etc.
   HloPrintOptions& set_canonicalize_instruction_names(bool value) {
@@ -205,6 +213,7 @@ class HloPrintOptions {
   bool print_metadata() const { return print_metadata_; }
   bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
+  bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
   bool print_program_shape() const { return print_program_shape_; }
@@ -224,6 +233,7 @@ class HloPrintOptions {
   bool print_metadata_;
   bool print_backend_config_;
   bool compact_operands_;
+  bool include_layout_in_shapes_;
   bool print_operand_shape_;
   bool print_operand_names_;
   bool print_program_shape_;
@@ -519,6 +529,9 @@ class HloInstruction {
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId();
 
+  // Creates an instruction that returns a U32 partition ID.
+  static std::unique_ptr<HloInstruction> CreatePartitionId();
+
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
@@ -764,7 +777,7 @@ class HloInstruction {
   // backend-specific interpretation. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      absl::string_view custom_call_target, absl::string_view opaque = "");
+      absl::string_view custom_call_target, string opaque = "");
 
   // Overload which constrains the layouts of the operand and result. 'shape'
   // and 'operand_shapes_with_layout' must have layouts.
@@ -773,8 +786,7 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target,
-      absl::Span<const Shape> operand_shapes_with_layout,
-      absl::string_view opaque = "");
+      absl::Span<const Shape> operand_shapes_with_layout, string opaque = "");
 
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
@@ -1302,7 +1314,8 @@ class HloInstruction {
   // this HLO. The meaning of the field is backend specific. Not for use before
   // or during general HLO optimization, since HLO optimizations do not preserve
   // this field and they cannot interpret it due to its meaning being backend
-  // specific.
+  // specific. Except for CustomCall, where this field is preserved and no
+  // general HLO optimization needs to interpret it.
   //
   // ConfigProto should be a protobuf Message type.
   template <typename ConfigProto>

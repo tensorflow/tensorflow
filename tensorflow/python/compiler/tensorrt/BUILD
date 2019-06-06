@@ -3,9 +3,10 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 
@@ -64,6 +65,13 @@ py_library(
         ":trt_convert_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/tools:saved_model_utils",
     ],
 )
 
@@ -99,6 +107,7 @@ cuda_py_tests(
         "test/batch_matmul_test.py",
         "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
+        "test/combined_nms_test.py",
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",

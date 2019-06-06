@@ -17,6 +17,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -683,7 +686,7 @@ REGISTER_OP("SplitV")
                           : total_size != split_dim_size) {
             return errors::InvalidArgument(
                 "can't split axis of size ", split_dim_size,
-                " into pieces of size [", str_util::Join(data, ","), "]");
+                " into pieces of size [", absl::StrJoin(data, ","), "]");
           }
         }
       }
@@ -1110,6 +1113,7 @@ REGISTER_OP("GatherV2")
     .Input("params: Tparams")
     .Input("indices: Tindices")
     .Input("axis: Taxis")
+    .Attr("batch_dims: int = 0")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
@@ -1148,13 +1152,24 @@ REGISTER_OP("GatherV2")
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(
           params_shape, axis < 0 ? -axis : axis + 1, &unused));
 
+      // Note, batch_dims can be negative.
+      int32 batch_dims;
+      TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          params_shape, batch_dims < 0 ? -batch_dims : batch_dims + 1,
+          &unused));
+
       ShapeHandle params_outer_subshape;
       TF_RETURN_IF_ERROR(
           c->Subshape(params_shape, 0, axis, &params_outer_subshape));
 
+      ShapeHandle indices_inner_subshape;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(indices_shape, batch_dims, &indices_inner_subshape));
+
       ShapeHandle out;
       TF_RETURN_IF_ERROR(
-          c->Concatenate(params_outer_subshape, indices_shape, &out));
+          c->Concatenate(params_outer_subshape, indices_inner_subshape, &out));
 
       // Slice from axis + 1 to the end of params_shape to collect the inner
       // dimensions of the result. Special case -1 here since -1 + 1 wraps, and
@@ -1178,34 +1193,7 @@ REGISTER_OP("GatherNd")
     .Output("output: Tparams")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle params = c->input(0);
-      ShapeHandle indices;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices));
-      DimensionHandle r_dim = c->Dim(indices, -1);
-
-      if (!c->RankKnown(params) || !c->ValueKnown(r_dim)) {
-        c->set_output(0, c->UnknownShape());
-        return Status::OK();
-      }
-
-      if (c->Value(r_dim) > c->Rank(params)) {
-        return errors::InvalidArgument(
-            "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices),
-            " and params shape: ", c->DebugString(params));
-      }
-
-      // Remove r_dim from indices to get output.
-      ShapeHandle indices_slice;
-      ShapeHandle params_slice;
-      TF_RETURN_IF_ERROR(c->Subshape(indices, 0, -1, &indices_slice));
-      TF_RETURN_IF_ERROR(c->Subshape(params, c->Value(r_dim), &params_slice));
-      ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->Concatenate(indices_slice, params_slice, &out));
-      c->set_output(0, out);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::GatherNdShape);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Identity")
@@ -1673,6 +1661,22 @@ REGISTER_OP("ResourceStridedSliceAssign")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
     .SetShapeFn(shape_inference::NoOutputs);
+
+REGISTER_OP("TensorStridedSliceUpdate")
+    .Input("input: T")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Input("value: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipsis_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("Tile")
     .Input("input: T")
@@ -2736,6 +2740,7 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr(
         "round_mode: {'HALF_TO_EVEN', 'HALF_UP'} = "
         "'HALF_TO_EVEN'")
+    .Attr("narrow_range: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -2753,6 +2758,7 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     .Attr("range_given: bool = true")
     .Output("output: T")
     .Attr("T: {bfloat16, half, float, double}")
+    .Attr("narrow_range: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -3131,6 +3137,37 @@ REGISTER_OP("FakeQuantWithMinMaxVarsPerChannelGradient")
       c->set_output(0, inputs);
       c->set_output(1, min_max);
       c->set_output(2, min_max);
+      return Status::OK();
+    });
+
+REGISTER_OP("Fingerprint")
+    .Input("data: T")
+    .Input("method: string")
+    .Output("fingerprint: uint8")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      DimensionHandle fingerprint_size;
+      const Tensor* method = c->input_tensor(1);
+      if (method == nullptr) {
+        fingerprint_size = c->UnknownDim();
+      } else {
+        if (method->dims() != 0) {
+          return errors::InvalidArgument("`method` must be rank 0: ",
+                                         method->shape());
+        }
+        const string& method_string = method->scalar<string>()();
+        if (method_string != "farmhash64") {
+          return errors::InvalidArgument("Unsupported method: ", method_string);
+        }
+        fingerprint_size = c->MakeDim(sizeof(uint64));
+      }
+
+      DimensionHandle batch = c->Dim(c->input(0), 0);
+      c->set_output(0, c->MakeShape({batch, fingerprint_size}));
       return Status::OK();
     });
 

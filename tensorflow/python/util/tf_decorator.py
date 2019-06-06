@@ -60,7 +60,8 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
-import traceback as _traceback
+
+from tensorflow.python.util import tf_stack
 
 
 def make_decorator(target,
@@ -83,9 +84,8 @@ def make_decorator(target,
     The `decorator_func` argument with new metadata attached.
   """
   if decorator_name is None:
-    frame = _traceback.extract_stack(limit=2)[0]
-    # frame name is tuple[2] in python2, and object.name in python3
-    decorator_name = getattr(frame, 'name', frame[2])  # Caller's name
+    frame = tf_stack.extract_stack(limit=2)[0]
+    decorator_name = frame[2]  # Caller's name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)
@@ -107,6 +107,20 @@ def make_decorator(target,
   # decorator was modified using `rewrap`.
   decorator_func.__original_wrapped__ = target
   return decorator_func
+
+
+def _has_tf_decorator_attr(obj):
+  """Checks if object has _tf_decorator attribute.
+
+  This check would work for mocked object as well since it would
+  check if returned attribute has the right type.
+
+  Args:
+    obj: Python object.
+  """
+  return (
+      hasattr(obj, '_tf_decorator') and
+      isinstance(getattr(obj, '_tf_decorator'), TFDecorator))
 
 
 def rewrap(decorator_func, previous_target, new_target):
@@ -148,7 +162,7 @@ def rewrap(decorator_func, previous_target, new_target):
   cur = decorator_func
   innermost_decorator = None
   target = None
-  while hasattr(cur, '_tf_decorator'):
+  while _has_tf_decorator_attr(cur):
     innermost_decorator = cur
     target = getattr(cur, '_tf_decorator')
     if target.decorated_target is previous_target:
@@ -200,7 +214,7 @@ def unwrap(maybe_tf_decorator):
   while True:
     if isinstance(cur, TFDecorator):
       decorators.append(cur)
-    elif hasattr(cur, '_tf_decorator'):
+    elif _has_tf_decorator_attr(cur):
       decorators.append(getattr(cur, '_tf_decorator'))
     else:
       break

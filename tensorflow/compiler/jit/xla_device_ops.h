@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/host_constant_op.h"
 #include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
+#include "tensorflow/core/kernels/logging_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/kernels/queue_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
@@ -81,6 +82,11 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE), KERNEL);
 
 #define REGISTER_XLA_DEVICE_KERNELS(DEVICE, TYPES)                             \
+  REGISTER_KERNEL_BUILDER(Name("Assert")                                       \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("condition")                         \
+                              .HostMemory("data"),                             \
+                          AssertOp);                                           \
   REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE), SendOp);               \
   REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE), RecvOp);               \
   REGISTER_KERNEL_BUILDER(                                                     \
@@ -247,6 +253,9 @@ class XlaAssignVariableOp : public OpKernel {
       data::MakeIteratorOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE),            \
                           data::AnonymousIteratorHandleOp);                    \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("AnonymousIteratorV2").Device(DEVICE).HostMemory("deleter"),        \
+      data::AnonymousIteratorHandleOp);                                        \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE),              \
                           data::IteratorGetNextOp);                            \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE),    \

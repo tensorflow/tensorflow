@@ -55,6 +55,8 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
+int MaxParallelism() { return NumSchedulableCPUs(); }
+
 int NumTotalCPUs() {
   // TODO(ebrevdo): Make this more accurate.
   //

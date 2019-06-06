@@ -61,7 +61,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`select_cols` must be a vector."));
 
-    int64 buffer_size;
+    int64 buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(ctx, buffer_size > 0,

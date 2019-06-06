@@ -28,22 +28,23 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 # Linear algebra ops.
 band_part = array_ops.matrix_band_part
-cholesky = linalg_ops.cholesky
+cholesky = dispatch.add_dispatch_support(linalg_ops.cholesky)
 cholesky_solve = linalg_ops.cholesky_solve
-det = linalg_ops.matrix_determinant
+det = dispatch.add_dispatch_support(linalg_ops.matrix_determinant)
 slogdet = gen_linalg_ops.log_matrix_determinant
 tf_export('linalg.slogdet')(slogdet)
 diag = array_ops.matrix_diag
-diag_part = array_ops.matrix_diag_part
+diag_part = dispatch.add_dispatch_support(array_ops.matrix_diag_part)
 eigh = linalg_ops.self_adjoint_eig
 eigvalsh = linalg_ops.self_adjoint_eigvals
 einsum = special_math_ops.einsum
 eye = linalg_ops.eye
-inv = linalg_ops.matrix_inverse
+inv = dispatch.add_dispatch_support(linalg_ops.matrix_inverse)
 logm = gen_linalg_ops.matrix_logarithm
 lu = gen_linalg_ops.lu
 tf_export('linalg.logm')(logm)
@@ -51,16 +52,17 @@ lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr
 set_diag = array_ops.matrix_set_diag
-solve = linalg_ops.matrix_solve
+solve = dispatch.add_dispatch_support(linalg_ops.matrix_solve)
 sqrtm = linalg_ops.matrix_square_root
 svd = linalg_ops.svd
 tensordot = math_ops.tensordot
-trace = math_ops.trace
+trace = dispatch.add_dispatch_support(math_ops.trace)
 transpose = array_ops.matrix_transpose
 triangular_solve = linalg_ops.matrix_triangular_solve
 
 
 @tf_export('linalg.logdet')
+@dispatch.add_dispatch_support
 def logdet(matrix, name=None):
   """Computes log of the determinant of a hermitian positive definite matrix.
 
@@ -68,7 +70,7 @@ def logdet(matrix, name=None):
   # Compute the determinant of a matrix while reducing the chance of over- or
   underflow:
   A = ... # shape 10 x 10
-  det = tf.exp(tf.logdet(A))  # scalar
+  det = tf.exp(tf.linalg.logdet(A))  # scalar
   ```
 
   Args:
@@ -94,6 +96,7 @@ def logdet(matrix, name=None):
 
 
 @tf_export('linalg.adjoint')
+@dispatch.add_dispatch_support
 def adjoint(matrix, name=None):
   """Transposes the last two dimensions of and conjugates tensor `matrix`.
 
@@ -127,9 +130,10 @@ def _matrix_exp_pade3(matrix):
   """3rd-order Pade approximant for matrix exponential."""
   b = [120.0, 60.0, 12.0]
   b = [constant_op.constant(x, matrix.dtype) for x in b]
-  ident = linalg_ops.eye(array_ops.shape(matrix)[-2],
-                         batch_shape=array_ops.shape(matrix)[:-2],
-                         dtype=matrix.dtype)
+  ident = linalg_ops.eye(
+      array_ops.shape(matrix)[-2],
+      batch_shape=array_ops.shape(matrix)[:-2],
+      dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
   tmp = matrix_2 + b[1] * ident
   matrix_u = math_ops.matmul(matrix, tmp)
@@ -141,9 +145,10 @@ def _matrix_exp_pade5(matrix):
   """5th-order Pade approximant for matrix exponential."""
   b = [30240.0, 15120.0, 3360.0, 420.0, 30.0]
   b = [constant_op.constant(x, matrix.dtype) for x in b]
-  ident = linalg_ops.eye(array_ops.shape(matrix)[-2],
-                         batch_shape=array_ops.shape(matrix)[:-2],
-                         dtype=matrix.dtype)
+  ident = linalg_ops.eye(
+      array_ops.shape(matrix)[-2],
+      batch_shape=array_ops.shape(matrix)[:-2],
+      dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   tmp = matrix_4 + b[3] * matrix_2 + b[1] * ident
@@ -156,9 +161,10 @@ def _matrix_exp_pade7(matrix):
   """7th-order Pade approximant for matrix exponential."""
   b = [17297280.0, 8648640.0, 1995840.0, 277200.0, 25200.0, 1512.0, 56.0]
   b = [constant_op.constant(x, matrix.dtype) for x in b]
-  ident = linalg_ops.eye(array_ops.shape(matrix)[-2],
-                         batch_shape=array_ops.shape(matrix)[:-2],
-                         dtype=matrix.dtype)
+  ident = linalg_ops.eye(
+      array_ops.shape(matrix)[-2],
+      batch_shape=array_ops.shape(matrix)[:-2],
+      dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
@@ -175,9 +181,10 @@ def _matrix_exp_pade9(matrix):
       2162160.0, 110880.0, 3960.0, 90.0
   ]
   b = [constant_op.constant(x, matrix.dtype) for x in b]
-  ident = linalg_ops.eye(array_ops.shape(matrix)[-2],
-                         batch_shape=array_ops.shape(matrix)[:-2],
-                         dtype=matrix.dtype)
+  ident = linalg_ops.eye(
+      array_ops.shape(matrix)[-2],
+      batch_shape=array_ops.shape(matrix)[:-2],
+      dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
@@ -200,15 +207,15 @@ def _matrix_exp_pade13(matrix):
       33522128640.0, 1323241920.0, 40840800.0, 960960.0, 16380.0, 182.0
   ]
   b = [constant_op.constant(x, matrix.dtype) for x in b]
-  ident = linalg_ops.eye(array_ops.shape(matrix)[-2],
-                         batch_shape=array_ops.shape(matrix)[:-2],
-                         dtype=matrix.dtype)
+  ident = linalg_ops.eye(
+      array_ops.shape(matrix)[-2],
+      batch_shape=array_ops.shape(matrix)[:-2],
+      dtype=matrix.dtype)
   matrix_2 = math_ops.matmul(matrix, matrix)
   matrix_4 = math_ops.matmul(matrix_2, matrix_2)
   matrix_6 = math_ops.matmul(matrix_4, matrix_2)
   tmp_u = (
-      math_ops.matmul(matrix_6,
-                      matrix_6 + b[11] * matrix_4 + b[9] * matrix_2) +
+      math_ops.matmul(matrix_6, matrix_6 + b[11] * matrix_4 + b[9] * matrix_2) +
       b[7] * matrix_6 + b[5] * matrix_4 + b[3] * matrix_2 + b[1] * ident)
   matrix_u = math_ops.matmul(matrix, tmp_u)
   tmp_v = b[12] * matrix_6 + b[10] * matrix_4 + b[8] * matrix_2
@@ -234,8 +241,8 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   containing the exponential for all input submatrices `[..., :, :]`.
 
   Args:
-    input: A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
-      or `complex128` with shape `[..., M, M]`.
+    input: A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`, or
+      `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
   Returns:
@@ -260,10 +267,12 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
     matrix = array_ops.reshape(
         matrix, array_ops.concat(([-1], array_ops.shape(matrix)[-2:]), axis=0))
     l1_norm = math_ops.reduce_max(
-        math_ops.reduce_sum(math_ops.abs(matrix),
-                            axis=array_ops.size(array_ops.shape(matrix)) - 2),
+        math_ops.reduce_sum(
+            math_ops.abs(matrix),
+            axis=array_ops.size(array_ops.shape(matrix)) - 2),
         axis=-1)
     const = lambda x: constant_op.constant(x, l1_norm.dtype)
+
     def _nest_where(vals, cases):
       assert len(vals) == len(cases) - 1
       if len(vals) == 1:
@@ -281,12 +290,11 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
               math_ops.log(l1_norm / maxnorm) / math_ops.log(const(2.0))), 0)
       u3, v3 = _matrix_exp_pade3(matrix)
       u5, v5 = _matrix_exp_pade5(matrix)
-      u7, v7 = _matrix_exp_pade7(
-          matrix / math_ops.pow(
-              constant_op.constant(2.0, dtype=matrix.dtype),
-              math_ops.cast(squarings, matrix.dtype))[...,
-                                                      array_ops.newaxis,
-                                                      array_ops.newaxis])
+      u7, v7 = _matrix_exp_pade7(matrix / math_ops.pow(
+          constant_op.constant(2.0, dtype=matrix.dtype),
+          math_ops.cast(
+              squarings,
+              matrix.dtype))[..., array_ops.newaxis, array_ops.newaxis])
       conds = (4.258730016922831e-001, 1.880152677804762e+000)
       u = _nest_where(conds, (u3, u5, u7))
       v = _nest_where(conds, (v3, v5, v7))
@@ -299,21 +307,18 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
       u5, v5 = _matrix_exp_pade5(matrix)
       u7, v7 = _matrix_exp_pade7(matrix)
       u9, v9 = _matrix_exp_pade9(matrix)
-      u13, v13 = _matrix_exp_pade13(
-          matrix / math_ops.pow(
-              constant_op.constant(2.0, dtype=matrix.dtype),
-              math_ops.cast(squarings, matrix.dtype))[...,
-                                                      array_ops.newaxis,
-                                                      array_ops.newaxis])
-      conds = (1.495585217958292e-002,
-               2.539398330063230e-001,
-               9.504178996162932e-001,
-               2.097847961257068e+000)
+      u13, v13 = _matrix_exp_pade13(matrix / math_ops.pow(
+          constant_op.constant(2.0, dtype=matrix.dtype),
+          math_ops.cast(
+              squarings,
+              matrix.dtype))[..., array_ops.newaxis, array_ops.newaxis])
+      conds = (1.495585217958292e-002, 2.539398330063230e-001,
+               9.504178996162932e-001, 2.097847961257068e+000)
       u = _nest_where(conds, (u3, u5, u7, u9, u13))
       v = _nest_where(conds, (v3, v5, v7, v9, v13))
     else:
-      raise ValueError(
-          'tf.linalg.expm does not support matrices of type %s' % matrix.dtype)
+      raise ValueError('tf.linalg.expm does not support matrices of type %s' %
+                       matrix.dtype)
     numer = u + v
     denom = -u + v
     result = linalg_ops.matrix_solve(denom, numer)
@@ -321,9 +326,11 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
 
     i = const(0.0)
     c = lambda i, r: math_ops.less(i, max_squarings)
+
     def b(i, r):
-      return i+1, array_ops.where(math_ops.less(i, squarings),
-                                  math_ops.matmul(r, r), r)
+      return i + 1, array_ops.where(
+          math_ops.less(i, squarings), math_ops.matmul(r, r), r)
+
     _, result = control_flow_ops.while_loop(c, b, [i, result])
     if not matrix.shape.is_fully_defined():
       return array_ops.reshape(
@@ -338,13 +345,12 @@ def tridiagonal_solve(diagonals,
                       diagonals_format='compact',
                       transpose_rhs=False,
                       conjugate_rhs=False,
-                      name=None):
+                      name=None,
+                      partial_pivoting=True):
   r"""Solves tridiagonal systems of equations.
 
-  Solution is computed via Gaussian elemination with partial pivoting.
-
-  The input can be supplied in various formats: `matrix`, `tuple` and `compact`,
-  specified by the `diagonals_format` arg.
+  The input can be supplied in various formats: `matrix`, `sequence` and
+  `compact`, specified by the `diagonals_format` arg.
 
   In `matrix` format, `diagonals` must be a tensor of shape `[..., M, M]`, with
   two inner-most dimensions representing the square tridiagonal matrices.
@@ -392,6 +398,15 @@ def tridiagonal_solve(diagonals,
   invertible. `tf.debugging.check_numerics` can be applied to the output to
   detect invertibility problems.
 
+  **Note**: with large batch sizes, the computation on the GPU may be slow, if
+  either `partial_pivoting=True` or there are multiple right-hand sides
+  (`K > 1`). If this issue arises, consider if it's possible to disable pivoting
+  and have `K = 1`, or, alternatively, consider using CPU.
+
+  On CPU, solution is computed via Gaussian elimination with or without partial
+  pivoting, depending on `partial_pivoting` parameter. On GPU, Nvidia's cuSPARSE
+  library is used: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv
+
   Args:
     diagonals: A `Tensor` or tuple of `Tensor`s describing left-hand sides. The
       shape depends of `diagonals_format`, see description above. Must be
@@ -404,6 +419,10 @@ def tridiagonal_solve(diagonals,
       if the shape of rhs is [..., M]).
     conjugate_rhs: If `True`, `rhs` is conjugated before solving.
     name:  A name to give this `Op` (optional).
+    partial_pivoting: whether to perform partial pivoting. `True` by default.
+      Partial pivoting makes the procedure more stable, but slower. Partial
+      pivoting is unnecessary in some cases, including diagonally dominant and
+      symmetric positive definite matrices (see e.g. theorem 9.12 in [1]).
 
   Returns:
     A `Tensor` of shape [..., M] or [..., M, K] containing the solutions.
@@ -412,10 +431,14 @@ def tridiagonal_solve(diagonals,
     ValueError: An unsupported type is provided as input, or when the input
     tensors have incorrect shapes.
 
+  [1] Nicholas J. Higham (2002). Accuracy and Stability of Numerical Algorithms:
+  Second Edition. SIAM. p. 175. ISBN 978-0-89871-802-7.
+
   """
   if diagonals_format == 'compact':
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                             conjugate_rhs, name)
+                                             conjugate_rhs, partial_pivoting,
+                                             name)
 
   if diagonals_format == 'sequence':
     if not isinstance(diagonals, (tuple, list)) or len(diagonals) != 3:
@@ -436,8 +459,8 @@ def tridiagonal_solve(diagonals,
       if not n or n == m:
         return t
       if n == m - 1:
-        paddings = (
-            [[0, 0] for _ in range(len(t.shape) - 1)] + [last_dim_padding])
+        paddings = ([[0, 0] for _ in range(len(t.shape) - 1)] +
+                    [last_dim_padding])
         return array_ops.pad(t, paddings)
       raise ValueError('Expected {} to be have length {} or {}, got {}.'.format(
           name, m, m - 1, n))
@@ -447,7 +470,8 @@ def tridiagonal_solve(diagonals,
 
     diagonals = array_ops.stack((superdiag, maindiag, subdiag), axis=-2)
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                             conjugate_rhs, name)
+                                             conjugate_rhs, partial_pivoting,
+                                             name)
 
   if diagonals_format == 'matrix':
     m1 = tensor_shape.dimension_value(diagonals.shape[-1])
@@ -466,22 +490,20 @@ def tridiagonal_solve(diagonals,
     # gather_nd slices into first indices, whereas we need to slice into the
     # last two, so transposing back and forth is necessary.
     dummy_idx = [0, 0]
-    indices = ([[[1, 0], [0, 0], dummy_idx]] + [
-        [[i + 1, i], [i, i], [i - 1, i]] for i in range(1, m - 1)
-    ] + [[dummy_idx, [m - 1, m - 1], [m - 2, m - 1]]])
+    indices = ([[[1, 0], [0, 0], dummy_idx]] +
+               [[[i + 1, i], [i, i], [i - 1, i]] for i in range(1, m - 1)] +
+               [[dummy_idx, [m - 1, m - 1], [m - 2, m - 1]]])
     diagonals = array_ops.transpose(
         array_ops.gather_nd(array_ops.transpose(diagonals), indices))
     return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
-                                             conjugate_rhs, name)
+                                             conjugate_rhs, partial_pivoting,
+                                             name)
 
   raise ValueError('Unrecognized diagonals_format: {}'.format(diagonals_format))
 
 
-def _tridiagonal_solve_compact_format(diagonals,
-                                      rhs,
-                                      transpose_rhs=False,
-                                      conjugate_rhs=False,
-                                      name=None):
+def _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
+                                      conjugate_rhs, partial_pivoting, name):
   """Helper function used after the input has been cast to compact form."""
   diags_rank, rhs_rank = len(diagonals.shape), len(rhs.shape)
 
@@ -491,14 +513,15 @@ def _tridiagonal_solve_compact_format(diagonals,
   if rhs_rank != diags_rank and rhs_rank != diags_rank - 1:
     raise ValueError('Expected the rank of rhs to be {} or {}, got {}'.format(
         diags_rank - 1, diags_rank, rhs_rank))
-  if diagonals.shape[-2] != 3:
+  if diagonals.shape[-2] and diagonals.shape[-2] != 3:
     raise ValueError('Expected 3 diagonals got {}'.format(diagonals.shape[-2]))
   if not diagonals.shape[:-2].is_compatible_with(rhs.shape[:diags_rank - 2]):
     raise ValueError('Batch shapes {} and {} are incompatible'.format(
         diagonals.shape[:-2], rhs.shape[:diags_rank - 2]))
 
   def check_num_lhs_matches_num_rhs():
-    if diagonals.shape[-1] != rhs.shape[-2]:
+    if (diagonals.shape[-1] and rhs.shape[-2] and
+        diagonals.shape[-1] != rhs.shape[-2]):
       raise ValueError('Expected number of left-hand sided and right-hand '
                        'sides to be equal, got {} and {}'.format(
                            diagonals.shape[-1], rhs.shape[-2]))
@@ -510,7 +533,8 @@ def _tridiagonal_solve_compact_format(diagonals,
     rhs = array_ops.expand_dims(rhs, -1)
     check_num_lhs_matches_num_rhs()
     return array_ops.squeeze(
-        linalg_ops.tridiagonal_solve(diagonals, rhs, name), -1)
+        linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name),
+        -1)
 
   if transpose_rhs:
     rhs = array_ops.matrix_transpose(rhs, conjugate=conjugate_rhs)
@@ -518,5 +542,95 @@ def _tridiagonal_solve_compact_format(diagonals,
     rhs = math_ops.conj(rhs)
 
   check_num_lhs_matches_num_rhs()
-  result = linalg_ops.tridiagonal_solve(diagonals, rhs, name)
+  result = linalg_ops.tridiagonal_solve(diagonals, rhs, partial_pivoting, name)
   return array_ops.matrix_transpose(result) if transpose_rhs else result
+
+
+@tf_export('linalg.tridiagonal_matmul')
+def tridiagonal_matmul(diagonals, rhs, diagonals_format='compact', name=None):
+  r"""Multiplies tridiagonal matrix by matrix.
+
+  `diagonals` is representation of 3-diagonal NxN matrix, which depends on
+  `diagonals_format`.
+
+  In `matrix` format, `diagonals` must be a tensor of shape `[..., M, M]`, with
+  two inner-most dimensions representing the square tridiagonal matrices.
+  Elements outside of the three diagonals will be ignored.
+
+  If `sequence` format, `diagonals` is list or tuple of three tensors:
+  `[superdiag, maindiag, subdiag]`, each having shape [..., M]. Last element
+  of `superdiag` first element of `subdiag` are ignored.
+
+  In `compact` format the three diagonals are brought together into one tensor
+  of shape `[..., 3, M]`, with last two dimensions containing superdiagonals,
+  diagonals, and subdiagonals, in order. Similarly to `sequence` format,
+  elements `diagonals[..., 0, M-1]` and `diagonals[..., 2, 0]` are ignored.
+
+  The `sequence` format is recommended as the one with the best performance.
+
+  `rhs` is matrix to the right of multiplication. It has shape `[..., M, N]`.
+
+  Example:
+
+  ```python
+  superdiag = tf.constant([-1, -1, 0], dtype=tf.float64)
+  maindiag = tf.constant([2, 2, 2], dtype=tf.float64)
+  subdiag = tf.constant([0, -1, -1], dtype=tf.float64)
+  diagonals = [superdiag, maindiag, subdiag]
+  rhs = tf.constant([[1, 1], [1, 1], [1, 1]], dtype=tf.float64)
+  x = tf.linalg.tridiagonal_matmul(diagonals, rhs, diagonals_format='sequence')
+  ```
+
+  Args:
+    diagonals: A `Tensor` or tuple of `Tensor`s describing left-hand sides. The
+      shape depends of `diagonals_format`, see description above. Must be
+      `float32`, `float64`, `complex64`, or `complex128`.
+    rhs: A `Tensor` of shape [..., M, N] and with the same dtype as `diagonals`.
+    diagonals_format: one of `sequence`, or `compact`. Default is `compact`.
+    name:  A name to give this `Op` (optional).
+
+  Returns:
+    A `Tensor` of shape [..., M, N] containing the result of multiplication.
+
+  Raises:
+    ValueError: An unsupported type is provided as input, or when the input
+    tensors have incorrect shapes.
+  """
+  if diagonals_format == 'compact':
+    superdiag = diagonals[..., 0, :]
+    maindiag = diagonals[..., 1, :]
+    subdiag = diagonals[..., 2, :]
+  elif diagonals_format == 'sequence':
+    superdiag, maindiag, subdiag = diagonals
+  elif diagonals_format == 'matrix':
+    m1 = tensor_shape.dimension_value(diagonals.shape[-1])
+    m2 = tensor_shape.dimension_value(diagonals.shape[-2])
+    if not m1 or not m2:
+      raise ValueError('The size of the matrix needs to be known for '
+                       'diagonals_format="matrix"')
+    if m1 != m2:
+      raise ValueError(
+          'Expected last two dimensions of diagonals to be same, got {} and {}'
+          .format(m1, m2))
+
+    # TODO(b/131695260): use matrix_diag_part when it supports extracting
+    # arbitrary diagonals.
+    maindiag = array_ops.matrix_diag_part(diagonals)
+    diagonals = array_ops.transpose(diagonals)
+    dummy_index = [0, 0]
+    superdiag_indices = [[i + 1, i] for i in range(0, m1 - 1)] + [dummy_index]
+    subdiag_indices = [dummy_index] + [[i - 1, i] for i in range(1, m1)]
+    superdiag = array_ops.transpose(
+        array_ops.gather_nd(diagonals, superdiag_indices))
+    subdiag = array_ops.transpose(
+        array_ops.gather_nd(diagonals, subdiag_indices))
+  else:
+    raise ValueError('Unrecognized diagonals_format: %s' % diagonals_format)
+
+  # C++ backend requires matrices.
+  # Converting 1-dimensional vectors to matrices with 1 row.
+  superdiag = array_ops.expand_dims(superdiag, -2)
+  maindiag = array_ops.expand_dims(maindiag, -2)
+  subdiag = array_ops.expand_dims(subdiag, -2)
+
+  return linalg_ops.tridiagonal_mat_mul(superdiag, maindiag, subdiag, rhs, name)

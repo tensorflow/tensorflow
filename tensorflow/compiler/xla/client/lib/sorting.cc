@@ -31,11 +31,9 @@ XlaOp TopK(XlaOp input, int64 k) {
         ShapeUtil::MakeShape(S32, AsInt64Slice(input_shape.dimensions()));
     XlaOp iota_s32 = Iota(builder, iota_shape, last_dim);
     auto input_dims = input_shape.dimensions();
-    // TODO(b/122298745): Get rid of Neg() and use CreateScalarGtComputation
-    // once the TPU backend supports the comparison computations.
     XlaOp sort_result =
-        Sort({Neg(input), iota_s32},
-             CreateScalarLtComputation({input_shape.element_type(), S32},
+        Sort({input, iota_s32},
+             CreateScalarGtComputation({input_shape.element_type(), S32},
                                        iota_s32.builder()),
              last_dim, /*is_stable=*/true);
     std::vector<int64> start_indices(input_shape.dimensions_size(), 0);
@@ -43,8 +41,8 @@ XlaOp TopK(XlaOp input, int64 k) {
     limit_indices[last_dim] = k;
     std::vector<int64> strides(input_shape.dimensions_size(), 1);
 
-    XlaOp values = Neg(Slice(GetTupleElement(sort_result, 0), start_indices,
-                             limit_indices, strides));
+    XlaOp values = Slice(GetTupleElement(sort_result, 0), start_indices,
+                         limit_indices, strides);
     XlaOp indices = Slice(GetTupleElement(sort_result, 1), start_indices,
                           limit_indices, strides);
     return Tuple(builder, {values, indices});

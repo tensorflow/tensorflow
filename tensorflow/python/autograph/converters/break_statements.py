@@ -143,4 +143,6 @@ class BreakTransformer(converter.Base):
 
 
 def transform(node, ctx):
-  return BreakTransformer(ctx).visit(node)
+  transformer = BreakTransformer(ctx)
+  node = transformer.visit(node)
+  return node

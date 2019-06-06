@@ -191,7 +191,7 @@ class CudnnRnnParameters {
         std::to_string(static_cast<int>(rnn_mode_)),
         std::to_string(static_cast<int>(rnn_input_mode_)),
         std::to_string(static_cast<int>(dtype_))};
-    return str_util::Join(fields, ", ");
+    return absl::StrJoin(fields, ", ");
   }
 
  private:

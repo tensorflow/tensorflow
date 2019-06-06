@@ -72,7 +72,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_parallel_calls;
+    int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(ctx, num_parallel_calls > 0,
@@ -267,7 +267,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                    StatusCallback callback) override {
         (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
           thread::ThreadPool* device_threadpool =
-              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
+              ctx->flr()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
           for (const Tensor& t : input) {
             auto serialized_t = t.flat<string>();

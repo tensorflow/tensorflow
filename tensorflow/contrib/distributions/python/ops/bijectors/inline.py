@@ -35,9 +35,9 @@ class Inline(bijector.Bijector):
   ```python
   exp = Inline(
     forward_fn=tf.exp,
-    inverse_fn=tf.log,
+    inverse_fn=tf.math.log,
     inverse_log_det_jacobian_fn=(
-      lambda y: -tf.reduce_sum(tf.log(y), axis=-1)),
+      lambda y: -tf.reduce_sum(tf.math.log(y), axis=-1)),
     name="exp")
   ```
 
