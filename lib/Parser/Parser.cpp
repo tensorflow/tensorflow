@@ -2290,18 +2290,18 @@ ParseResult Parser::parseAffineMapOrIntegerSetReference(AffineMap &map,
 }
 
 //===----------------------------------------------------------------------===//
-// FunctionParser
+// OperationParser
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This class contains parser state that is common across CFG and ML
-/// functions, notably for dealing with operations and SSA values.
-class FunctionParser : public Parser {
+/// This class provides support for parsing operations and regions of
+/// operations.
+class OperationParser : public Parser {
 public:
-  FunctionParser(ParserState &state, Function *function)
+  OperationParser(ParserState &state, Function *function)
       : Parser(state), function(function), opBuilder(function->getBody()) {}
 
-  ~FunctionParser();
+  ~OperationParser();
 
   /// After parsing is finished, this function must be called to see if there
   /// are any remaining issues.
@@ -2465,7 +2465,7 @@ private:
 };
 } // end anonymous namespace
 
-FunctionParser::~FunctionParser() {
+OperationParser::~OperationParser() {
   for (auto &fwd : forwardRefPlaceholders) {
     // Drop all uses of undefined forward declared reference and destroy
     // defining operation.
@@ -2474,9 +2474,9 @@ FunctionParser::~FunctionParser() {
   }
 }
 
-/// After the function is finished parsing, this function checks to see if
-/// there are any remaining issues.
-ParseResult FunctionParser::finalize(SMLoc loc) {
+/// After parsing is finished, this function must be called to see if there are
+/// any remaining issues.
+ParseResult OperationParser::finalize(SMLoc loc) {
   // Check for any forward references that are left.  If we find any, error
   // out.
   if (!forwardRefPlaceholders.empty()) {
@@ -2500,13 +2500,13 @@ ParseResult FunctionParser::finalize(SMLoc loc) {
 // SSA Value Handling
 //===----------------------------------------------------------------------===//
 
-void FunctionParser::pushSSANameScope() {
+void OperationParser::pushSSANameScope() {
   blocksByName.push_back(DenseMap<StringRef, std::pair<Block *, SMLoc>>());
   forwardRef.push_back(DenseMap<Block *, SMLoc>());
   definitionsPerScope.push_back({});
 }
 
-ParseResult FunctionParser::popSSANameScope() {
+ParseResult OperationParser::popSSANameScope() {
   auto forwardRefInCurrentScope = forwardRef.pop_back_val();
 
   // Verify that all referenced blocks were defined.
@@ -2536,7 +2536,7 @@ ParseResult FunctionParser::popSSANameScope() {
 }
 
 /// Register a definition of a value with the symbol table.
-ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
+ParseResult OperationParser::addDefinition(SSAUseInfo useInfo, Value *value) {
   auto &entries = values[useInfo.name];
 
   // Make sure there is a slot for this value.
@@ -2574,7 +2574,7 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
 ///   ssa-use-list-opt ::= ssa-use-list?
 ///
 ParseResult
-FunctionParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
+OperationParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
   if (getToken().isNot(Token::percent_identifier))
     return success();
   return parseCommaSeparatedList([&]() -> ParseResult {
@@ -2590,7 +2590,7 @@ FunctionParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
 ///
 ///   ssa-use ::= ssa-id
 ///
-ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
+ParseResult OperationParser::parseSSAUse(SSAUseInfo &result) {
   result.name = getTokenSpelling();
   result.number = 0;
   result.loc = getToken().getLoc();
@@ -2611,7 +2611,7 @@ ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
 
 /// Given an unbound reference to an SSA value and its type, return the value
 /// it specifies.  This returns null on failure.
-Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
+Value *OperationParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
   auto &entries = values[useInfo.name];
 
   // If we have already seen a value of this name, return it.
@@ -2649,7 +2649,7 @@ Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
 /// Parse an SSA use with an associated type.
 ///
 ///   ssa-use-and-type ::= ssa-use `:` type
-ParseResult FunctionParser::parseSSADefOrUseAndType(
+ParseResult OperationParser::parseSSADefOrUseAndType(
     const std::function<ParseResult(SSAUseInfo, Type)> &action) {
   SSAUseInfo useInfo;
   if (parseSSAUse(useInfo) ||
@@ -2669,7 +2669,7 @@ ParseResult FunctionParser::parseSSADefOrUseAndType(
 ///   ssa-use-and-type-list
 ///     ::= ssa-use-list ':' type-list-no-parens
 ///
-ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
+ParseResult OperationParser::parseOptionalSSAUseAndTypeList(
     SmallVectorImpl<Value *> &results) {
   SmallVector<SSAUseInfo, 4> valueIDs;
   if (parseOptionalSSAUseList(valueIDs))
@@ -2700,7 +2700,7 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
 }
 
 /// Create and remember a new placeholder for a forward reference.
-Value *FunctionParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
+Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
   // Forward references are always created as operations, because we just need
   // something with a def/use chain.
   //
@@ -2727,7 +2727,7 @@ Value *FunctionParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
 ///    `:` function-type trailing-location?
 ///  operation-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
 ///
-ParseResult FunctionParser::parseOperation() {
+ParseResult OperationParser::parseOperation() {
   auto loc = getToken().getLoc();
   SmallVector<std::pair<StringRef, SMLoc>, 1> resultIDs;
   size_t numExpectedResults;
@@ -2821,8 +2821,8 @@ ParseResult FunctionParser::parseOperation() {
 ///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
 ///
 ParseResult
-FunctionParser::parseSuccessorAndUseList(Block *&dest,
-                                         SmallVectorImpl<Value *> &operands) {
+OperationParser::parseSuccessorAndUseList(Block *&dest,
+                                          SmallVectorImpl<Value *> &operands) {
   // Verify branch is identifier and get the matching block.
   if (!getToken().is(Token::caret_identifier))
     return emitError("expected block name");
@@ -2843,7 +2843,7 @@ FunctionParser::parseSuccessorAndUseList(Block *&dest,
 ///
 ///   successor-list ::= `[` successor (`,` successor )* `]`
 ///
-ParseResult FunctionParser::parseSuccessors(
+ParseResult OperationParser::parseSuccessors(
     SmallVectorImpl<Block *> &destinations,
     SmallVectorImpl<SmallVector<Value *, 4>> &operands) {
   if (parseToken(Token::l_square, "expected '['"))
@@ -2879,7 +2879,7 @@ struct CleanupOpStateRegions {
 };
 } // namespace
 
-Operation *FunctionParser::parseGenericOperation() {
+Operation *OperationParser::parseGenericOperation() {
   // Get location information for the operation.
   auto srcLocation = getEncodedSourceLocation(getToken().getLoc());
 
@@ -2922,7 +2922,7 @@ Operation *FunctionParser::parseGenericOperation() {
   CleanupOpStateRegions guard{result};
   if (consumeIf(Token::l_paren)) {
     do {
-      // Create temporary regions with function as parent.
+      // Create temporary regions with the top level region as parent.
       result.regions.emplace_back(new Region(function));
       if (parseRegion(*result.regions.back(),
                       /*entryArguments*/ {}))
@@ -2980,7 +2980,7 @@ Operation *FunctionParser::parseGenericOperation() {
 namespace {
 class CustomOpAsmParser : public OpAsmParser {
 public:
-  CustomOpAsmParser(SMLoc nameLoc, StringRef opName, FunctionParser &parser)
+  CustomOpAsmParser(SMLoc nameLoc, StringRef opName, OperationParser &parser)
       : nameLoc(nameLoc), opName(opName), parser(parser) {}
 
   /// Parse an instance of the operation described by 'opDefinition' into the
@@ -3114,7 +3114,7 @@ public:
 
   /// Parse a single operand.
   ParseResult parseOperand(OperandType &result) override {
-    FunctionParser::SSAUseInfo useInfo;
+    OperationParser::SSAUseInfo useInfo;
     if (parser.parseSSAUse(useInfo))
       return failure();
 
@@ -3215,8 +3215,8 @@ public:
   /// Resolve an operand to an SSA value, emitting an error on failure.
   ParseResult resolveOperand(const OperandType &operand, Type type,
                              SmallVectorImpl<Value *> &result) override {
-    FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
-                                              operand.location};
+    OperationParser::SSAUseInfo operandInfo = {operand.name, operand.number,
+                                               operand.location};
     if (auto *value = parser.resolveSSAUse(operandInfo, type)) {
       result.push_back(value);
       return success();
@@ -3235,12 +3235,13 @@ public:
     assert(arguments.size() == argTypes.size() &&
            "mismatching number of arguments and types");
 
-    SmallVector<std::pair<FunctionParser::SSAUseInfo, Type>, 2> regionArguments;
+    SmallVector<std::pair<OperationParser::SSAUseInfo, Type>, 2>
+        regionArguments;
     for (const auto &pair : llvm::zip(arguments, argTypes)) {
       const OperandType &operand = std::get<0>(pair);
       Type type = std::get<1>(pair);
-      FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
-                                                operand.location};
+      OperationParser::SSAUseInfo operandInfo = {operand.name, operand.number,
+                                                 operand.location};
       regionArguments.emplace_back(operandInfo, type);
 
       // Create a placeholder for this argument so that we can detect invalid
@@ -3343,14 +3344,14 @@ private:
   StringRef opName;
 
   /// The main operation parser.
-  FunctionParser &parser;
+  OperationParser &parser;
 
   /// A flag that indicates if any errors were emitted during parsing.
   bool emittedError = false;
 };
 } // end anonymous namespace.
 
-Operation *FunctionParser::parseCustomOperation() {
+Operation *OperationParser::parseCustomOperation() {
   auto opLoc = getToken().getLoc();
   auto opName = getTokenSpelling();
   CustomOpAsmParser opAsmParser(opLoc, opName, *this);
@@ -3403,9 +3404,9 @@ Operation *FunctionParser::parseCustomOperation() {
 ///
 ///   region ::= '{' region-body
 ///
-ParseResult FunctionParser::parseRegion(
+ParseResult OperationParser::parseRegion(
     Region &region,
-    ArrayRef<std::pair<FunctionParser::SSAUseInfo, Type>> entryArguments) {
+    ArrayRef<std::pair<OperationParser::SSAUseInfo, Type>> entryArguments) {
   // Parse the '{'.
   if (parseToken(Token::l_brace, "expected '{' to begin a region"))
     return failure();
@@ -3465,7 +3466,7 @@ ParseResult FunctionParser::parseRegion(
 ///
 ///   region-body ::= block* '}'
 ///
-ParseResult FunctionParser::parseRegionBody(Region &region) {
+ParseResult OperationParser::parseRegionBody(Region &region) {
   // Parse the list of blocks.
   while (!consumeIf(Token::r_brace)) {
     Block *newBlock = nullptr;
@@ -3487,7 +3488,7 @@ ParseResult FunctionParser::parseRegionBody(Region &region) {
 ///   block-id       ::= caret-id
 ///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
 ///
-ParseResult FunctionParser::parseBlock(Block *&block) {
+ParseResult OperationParser::parseBlock(Block *&block) {
   // The first block of a region may already exist, if it does the caret
   // identifier is optional.
   if (block && getToken().isNot(Token::caret_identifier))
@@ -3518,7 +3519,7 @@ ParseResult FunctionParser::parseBlock(Block *&block) {
   return parseBlockBody(block);
 }
 
-ParseResult FunctionParser::parseBlockBody(Block *block) {
+ParseResult OperationParser::parseBlockBody(Block *block) {
   // Set the insertion point to the end of the block to parse.
   opBuilder.setInsertionPointToEnd(block);
 
@@ -3533,7 +3534,7 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
 /// Get the block with the specified name, creating it if it doesn't already
 /// exist.  The location specified is the point of use, which allows
 /// us to diagnose references to blocks that are not defined precisely.
-Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
+Block *OperationParser::getBlockNamed(StringRef name, SMLoc loc) {
   auto &blockAndLoc = getBlockInfoByName(name);
   if (!blockAndLoc.first) {
     blockAndLoc = {new Block(), loc};
@@ -3545,8 +3546,8 @@ Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
 
 /// Define the block with the specified name. Returns the Block* or nullptr in
 /// the case of redefinition.
-Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
-                                        Block *existing) {
+Block *OperationParser::defineBlockNamed(StringRef name, SMLoc loc,
+                                         Block *existing) {
   auto &blockAndLoc = getBlockInfoByName(name);
   if (!blockAndLoc.first) {
     // If the caller provided a block, use it.  Otherwise create a new one.
@@ -3569,7 +3570,7 @@ Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
 ///
 ///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 ///
-ParseResult FunctionParser::parseOptionalBlockArgList(
+ParseResult OperationParser::parseOptionalBlockArgList(
     SmallVectorImpl<BlockArgument *> &results, Block *owner) {
   if (getToken().is(Token::r_brace))
     return success();
@@ -3834,15 +3835,15 @@ ParseResult ModuleParser::parseFunc() {
   auto braceLoc = getToken().getLoc();
 
   // Prepare the named function arguments.
-  SmallVector<std::pair<FunctionParser::SSAUseInfo, Type>, 4> entryArgs;
+  SmallVector<std::pair<OperationParser::SSAUseInfo, Type>, 4> entryArgs;
   for (unsigned i = 0, e = argNames.size(); i != e; ++i) {
     entryArgs.emplace_back(
-        FunctionParser::SSAUseInfo{argNames[i].second, 0, argNames[i].first},
+        OperationParser::SSAUseInfo{argNames[i].second, 0, argNames[i].first},
         type.getInput(i));
   }
 
   // Parse the function body.
-  auto parser = FunctionParser(getState(), function);
+  auto parser = OperationParser(getState(), function);
   if (parser.parseRegion(function->getBody(), entryArgs))
     return failure();
 
