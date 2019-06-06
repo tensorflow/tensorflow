@@ -29,16 +29,16 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.experimental.make_saveable_from_iterator")
 def make_saveable_from_iterator(iterator):
-  """Returns a SaveableObject for saving/restore iterator state using Saver.
+  """Returns a SaveableObject for saving/restoring iterator state using Saver.
 
   Args:
     iterator: Iterator.
     
   Returns:
-    A SaveableObject for saving/restore iterator state using Saver.
-	    
+    A SaveableObject for saving/restoring iterator state using Saver.
+
   Raises:
-    ValueError: If iterators does not support checkpointing.
+    ValueError: If iterator does not support checkpointing.
 
   For example:
 
