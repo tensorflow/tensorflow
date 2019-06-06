@@ -38,14 +38,12 @@ class BitcastTest(test.TestCase):
       self.assertEqual(tf_ans.get_shape(), shape)
       self.assertEqual(tf_ans.dtype, datatype)
 
-  @test_util.disable_xla("Different bitwidths not supported")
   def testSmaller(self):
     x = np.random.rand(3, 2)
     datatype = dtypes.int8
     shape = [3, 2, 8]
     self._testBitcast(x, datatype, shape)
 
-  @test_util.disable_xla("Different bitwidths not supported")
   def testLarger(self):
     x = np.arange(16, dtype=np.int8).reshape([4, 4])
     datatype = dtypes.int32
@@ -69,7 +67,6 @@ class BitcastTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Cannot bitcast due to shape"):
       array_ops.bitcast(x, datatype, None)
 
-  @test_util.disable_xla("Different bitwidths not supported")
   def testEmpty(self):
     x = np.ones([], np.int32)
     datatype = dtypes.int8
