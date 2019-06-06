@@ -240,7 +240,7 @@ REGISTER_OP("_FusedBatchNormEx")
     .Attr("activation_mode: string = \"Identity\"")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
-    .SetShapeFn(shape_inference::FusedBatchNormV3Shape)
+    .SetShapeFn(shape_inference::FusedBatchNormExShape)
     .Doc(R"doc(
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
 expected to create these operators.

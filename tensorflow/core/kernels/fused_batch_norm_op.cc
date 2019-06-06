@@ -50,6 +50,23 @@ string ToString(FusedBatchNormActivationMode activation_mode) {
   }
 }
 
+Status ParseActivationMode(OpKernelConstruction* context,
+                           FusedBatchNormActivationMode* activation_mode) {
+  string activation_mode_str;
+  TF_RETURN_IF_ERROR(context->GetAttr("activation_mode", &activation_mode_str));
+
+  if (activation_mode_str == "Identity") {
+    *activation_mode = FusedBatchNormActivationMode::kIdentity;
+    return Status::OK();
+  }
+  if (activation_mode_str == "Relu") {
+    *activation_mode = FusedBatchNormActivationMode::kRelu;
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Unsupported activation mode: ",
+                                 activation_mode_str);
+}
+
 // Functor used by FusedBatchNormOp to do the computations.
 template <typename Device, typename T, typename U>
 struct FusedBatchNorm;
@@ -813,7 +830,7 @@ class FusedBatchNormOpBase : public OpKernel {
 
  protected:
   explicit FusedBatchNormOpBase(OpKernelConstruction* context,
-                                bool supports_side_input_and_activation = false)
+                                bool is_batch_norm_ex = false)
       : OpKernel(context), empty_side_input_(DataTypeToEnum<T>::value, {0}) {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
@@ -824,10 +841,12 @@ class FusedBatchNormOpBase : public OpKernel {
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
 
-    if (!supports_side_input_and_activation) {
+    if (!is_batch_norm_ex) {
       has_side_input_ = false;
       activation_mode_ = FbnActivationMode::kIdentity;
     } else {
+      OP_REQUIRES_OK(context, ParseActivationMode(context, &activation_mode_));
+
       int num_side_inputs;
       OP_REQUIRES_OK(context,
                      context->GetAttr("num_side_inputs", &num_side_inputs));
@@ -835,26 +854,31 @@ class FusedBatchNormOpBase : public OpKernel {
                   errors::InvalidArgument(
                       "FusedBatchNorm accepts at most one side input."));
       has_side_input_ = (num_side_inputs == 1);
-
-      string activation_mode_str;
-      OP_REQUIRES_OK(context,
-                     context->GetAttr("activation_mode", &activation_mode_str));
-      if (activation_mode_str == "Identity") {
-        activation_mode_ = FbnActivationMode::kIdentity;
-      } else if (activation_mode_str == "Relu") {
-        activation_mode_ = FbnActivationMode::kRelu;
-      } else {
-        OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Unsupported activation mode: ",
-                                            activation_mode_str));
-      }
-
       if (has_side_input_) {
         OP_REQUIRES(
             context, activation_mode_ != FbnActivationMode::kIdentity,
             errors::InvalidArgument("Identity activation is not supported with "
                                     "non-empty side input"));
       }
+    }
+
+    if (activation_mode_ != FbnActivationMode::kIdentity) {
+      OP_REQUIRES(
+          context, is_training_,
+          errors::InvalidArgument("FusedBatchNorm with activation supported "
+                                  "only for is_training=True."));
+      // NOTE(ezhulenev): Following requirements are coming from implementation
+      // details of cudnnBatchNormalizationForwardTrainingEx.
+      OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
+                  errors::InvalidArgument("FusedBatchNorm with activation "
+                                          "supports only DT_HALF data type."));
+      OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
+                  errors::InvalidArgument("FusedBatchNorm with activation "
+                                          "supports only NHWC tensor format."));
+      OP_REQUIRES(context, functor::BatchnormSpatialPersistentEnabled(),
+                  errors::InvalidArgument(
+                      "FusedBatchNorm with activation must run with cuDNN "
+                      "spatial persistence mode enabled."));
     }
   }
 
@@ -895,23 +919,13 @@ class FusedBatchNormOpBase : public OpKernel {
                       " != ", x.shape().DebugString()));
     }
 
-    // NOTE(ezhulenev): These requirements are coming from implementation
-    // details of cudnnBatchNormalizationForwardTrainingEx.
-    if (activation_mode_ != FbnActivationMode::kIdentity && is_training_) {
-      OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
-                  errors::InvalidArgument("FusedBatchNorm with activation "
-                                          "supports only DT_HALF data type."));
-      OP_REQUIRES(context, tensor_format_ == FORMAT_NHWC,
-                  errors::InvalidArgument("FusedBatchNorm with activation "
-                                          "supports only NHWC tensor format."));
+    if (activation_mode_ != FbnActivationMode::kIdentity) {
+      // NOTE(ezhulenev): This requirement is coming from implementation
+      // details of cudnnBatchNormalizationForwardTrainingEx.
       OP_REQUIRES(
           context, x.dim_size(3) % 4 == 0,
           errors::InvalidArgument("FusedBatchNorm with activation requires "
                                   "channel dimension to be a multiple of 4."));
-      OP_REQUIRES(context, functor::BatchnormSpatialPersistentEnabled(),
-                  errors::InvalidArgument(
-                      "FusedBatchNorm with activation must run with cuDNN "
-                      "spatial persistence mode enabled."));
     }
 
     if (is_training_) {

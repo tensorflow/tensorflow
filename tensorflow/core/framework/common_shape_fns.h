@@ -258,6 +258,9 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c);
 // Shape function for FusedBatchNormV3 operations.
 Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c);
 
+// Shape function for _FusedBatchNormEx operations.
+Status FusedBatchNormExShape(shape_inference::InferenceContext* c);
+
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
