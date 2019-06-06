@@ -361,8 +361,9 @@ struct SplatElementsAttributeStorage : public AttributeStorage {
 struct DenseElementsAttributeStorage : public AttributeStorage {
   using KeyTy = std::pair<Type, ArrayRef<char>>;
 
-  DenseElementsAttributeStorage(Type ty, ArrayRef<char> data)
-      : AttributeStorage(ty), data(data) {}
+  DenseElementsAttributeStorage(Type ty, ArrayRef<char> data,
+                                bool isSplat = false)
+      : AttributeStorage(ty), data(data), isSplat(isSplat) {}
 
   /// Key equality and hash functions.
   bool operator==(const KeyTy &key) const {
@@ -373,22 +374,13 @@ struct DenseElementsAttributeStorage : public AttributeStorage {
   static DenseElementsAttributeStorage *
   construct(AttributeStorageAllocator &allocator, KeyTy key) {
     // If the data buffer is non-empty, we copy it into the allocator.
-    ArrayRef<char> data = key.second;
-    if (!data.empty()) {
-      // Rounding up the allocate size to multiples of APINT_WORD_SIZE, so
-      // the `readBits` will not fail when it accesses multiples of
-      // APINT_WORD_SIZE each time.
-      size_t sizeToAllocate =
-          llvm::alignTo(data.size(), APInt::APINT_WORD_SIZE);
-      auto *rawCopy = (char *)allocator.allocate(sizeToAllocate, 64);
-      std::uninitialized_copy(data.begin(), data.end(), rawCopy);
-      data = {rawCopy, data.size()};
-    }
+    ArrayRef<char> data = allocator.copyInto(key.second);
     return new (allocator.allocate<DenseElementsAttributeStorage>())
         DenseElementsAttributeStorage(key.first, data);
   }
 
   ArrayRef<char> data;
+  bool isSplat;
 };
 
 /// An attribute representing a reference to a tensor constant with opaque

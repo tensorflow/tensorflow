@@ -537,12 +537,12 @@ public:
 
   ArrayRef<char> getRawData() const;
 
-  /// Writes value to the bit position `bitPos` in array `rawData`. 'rawData' is
-  /// expected to be a 64-bit aligned storage address.
+  /// Writes value to the bit position `bitPos` in array `rawData`. If the
+  /// bitwidth of `value` is not 1, then `bitPos` must be 8-bit aligned.
   static void writeBits(char *rawData, size_t bitPos, APInt value);
 
   /// Reads the next `bitWidth` bits from the bit position `bitPos` in array
-  /// `rawData`. 'rawData' is expected to be a 64-bit aligned storage address.
+  /// `rawData`. If `bitWidth` is not 1, then `bitPos` must be 8-bit aligned.
   static APInt readBits(const char *rawData, size_t bitPos, size_t bitWidth);
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
