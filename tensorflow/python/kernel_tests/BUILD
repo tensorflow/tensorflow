@@ -2912,7 +2912,8 @@ cuda_py_test(
         "no_rocm",
         "optonly",  # flaky timeouts unless optimized
     ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/134677329): Re-enable this test.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
