@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
@@ -419,7 +420,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "huber_loss",
                       (predictions, labels, weights)) as scope:
-    if delta == float('inf'):
+    if not gen_math_ops.is_finite(delta):
       return mean_squared_error(labels, predictions, weights, scope,
                                 loss_collection, reduction)
     predictions = math_ops.cast(predictions, dtype=dtypes.float32)
