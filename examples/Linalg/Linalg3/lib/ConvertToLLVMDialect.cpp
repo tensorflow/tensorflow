@@ -95,8 +95,8 @@ public:
 // an LLVM IR load.
 class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
   using Base::Base;
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     auto elementType = linalg::convertLinalgType(*op->result_type_begin());
     Value *viewDescriptor = operands[0];
@@ -104,6 +104,7 @@ class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
     Value *ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     Value *element = intrinsics::load(elementType, ptr);
     rewriter.replaceOp(op, {element});
+    return matchSuccess();
   }
 };
 
@@ -111,8 +112,8 @@ class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
 // an LLVM IR store.
 class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
   using Base::Base;
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     Value *viewDescriptor = operands[1];
     Value *data = operands[0];
@@ -120,6 +121,7 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
     Value *ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     intrinsics::store(data, ptr);
     rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
   }
 };
 

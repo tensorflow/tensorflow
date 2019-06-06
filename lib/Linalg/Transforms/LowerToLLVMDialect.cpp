@@ -159,8 +159,8 @@ public:
                                    LLVMTypeConverter &lowering_)
       : LLVMOpLowering(BufferAllocOp::getOperationName(), context, lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto indexType = IndexType::get(op->getContext());
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
@@ -204,6 +204,7 @@ public:
     desc = insertvalue(bufferDescriptorType, desc, size,
                        positionAttr(rewriter, 1));
     rewriter.replaceOp(op, desc);
+    return matchSuccess();
   }
 };
 
@@ -215,8 +216,8 @@ public:
       : LLVMOpLowering(BufferDeallocOp::getOperationName(), context,
                        lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto voidPtrTy =
         LLVM::LLVMType::getInt8Ty(lowering.getDialect()).getPointerTo();
     // Insert the `free` declaration if it is not already present.
@@ -239,6 +240,7 @@ public:
                                                     positionAttr(rewriter, 0)));
     call(ArrayRef<Type>(), rewriter.getFunctionAttr(freeFunc), casted);
     rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
   }
 };
 
@@ -248,12 +250,13 @@ public:
   BufferSizeOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(BufferSizeOp::getOperationName(), context, lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto int64Ty = lowering.convertType(operands[0]->getType());
     edsc::ScopedContext context(rewriter, op->getLoc());
     rewriter.replaceOp(
         op, {extractvalue(int64Ty, operands[0], positionAttr(rewriter, 1))});
+    return matchSuccess();
   }
 };
 
@@ -263,8 +266,8 @@ public:
   explicit DimOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(linalg::DimOp::getOperationName(), context, lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto dimOp = cast<linalg::DimOp>(op);
     auto indexTy = lowering.convertType(rewriter.getIndexType());
     edsc::ScopedContext context(rewriter, op->getLoc());
@@ -273,6 +276,7 @@ public:
         {extractvalue(
             indexTy, operands[0],
             positionAttr(rewriter, {2, static_cast<int>(dimOp.getIndex())}))});
+    return matchSuccess();
   }
 };
 
@@ -318,14 +322,15 @@ public:
 // an LLVM IR load.
 class LoadOpConversion : public LoadStoreOpConversion<linalg::LoadOp> {
   using Base::Base;
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     auto elementTy = lowering.convertType(*op->result_type_begin());
     Value *viewDescriptor = operands[0];
     ArrayRef<Value *> indices = operands.drop_front();
     auto ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     rewriter.replaceOp(op, {llvm_load(elementTy, ptr)});
+    return matchSuccess();
   }
 };
 
@@ -335,8 +340,8 @@ public:
   explicit RangeOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(RangeOp::getOperationName(), context, lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto rangeOp = cast<RangeOp>(op);
     auto rangeDescriptorTy =
         convertLinalgType(rangeOp.getResult()->getType(), lowering);
@@ -352,6 +357,7 @@ public:
     desc = insertvalue(rangeDescriptorTy, desc, operands[2],
                        positionAttr(rewriter, 2));
     rewriter.replaceOp(op, desc);
+    return matchSuccess();
   }
 };
 
@@ -363,8 +369,8 @@ public:
       : LLVMOpLowering(RangeIntersectOp::getOperationName(), context,
                        lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto rangeIntersectOp = cast<RangeIntersectOp>(op);
     auto rangeDescriptorTy =
         convertLinalgType(rangeIntersectOp.getResult()->getType(), lowering);
@@ -397,6 +403,7 @@ public:
     desc = insertvalue(rangeDescriptorTy, desc, mul(step1, step2),
                        positionAttr(rewriter, 2));
     rewriter.replaceOp(op, desc);
+    return matchSuccess();
   }
 };
 
@@ -405,8 +412,8 @@ public:
   explicit SliceOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(SliceOp::getOperationName(), context, lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto sliceOp = cast<SliceOp>(op);
     auto viewDescriptorTy = convertLinalgType(sliceOp.getViewType(), lowering);
     auto viewType = sliceOp.getBaseViewType();
@@ -477,6 +484,7 @@ public:
     }
 
     rewriter.replaceOp(op, desc);
+    return matchSuccess();
   }
 };
 
@@ -484,8 +492,8 @@ public:
 // an LLVM IR store.
 class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
   using Base::Base;
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     edsc::ScopedContext edscContext(rewriter, op->getLoc());
     Value *data = operands[0];
     Value *viewDescriptor = operands[1];
@@ -493,6 +501,7 @@ class StoreOpConversion : public LoadStoreOpConversion<linalg::StoreOp> {
     Value *ptr = obtainDataPtr(op, viewDescriptor, indices, rewriter);
     llvm_store(data, ptr);
     rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
   }
 };
 
@@ -501,8 +510,8 @@ public:
   explicit ViewOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
       : LLVMOpLowering(ViewOp::getOperationName(), context, lowering_) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto viewOp = cast<ViewOp>(op);
     auto viewDescriptorTy = convertLinalgType(viewOp.getViewType(), lowering);
     auto elementTy = getPtrToElementType(viewOp.getViewType(), lowering);
@@ -548,6 +557,7 @@ public:
     }
 
     rewriter.replaceOp(op, desc);
+    return matchSuccess();
   }
 };
 
@@ -560,20 +570,21 @@ public:
 
   static StringRef libraryFunctionName() { return "linalg_dot"; }
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto *f =
         op->getFunction()->getModule()->getNamedFunction(libraryFunctionName());
     if (!f) {
       op->emitError("Could not find function: " + libraryFunctionName() +
                     "in lowering to LLVM ");
-      return;
+      return matchFailure();
     }
 
     auto fAttr = rewriter.getFunctionAttr(f);
     auto named = rewriter.getNamedAttr("callee", fAttr);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, operands,
                                               ArrayRef<NamedAttribute>{named});
+    return matchSuccess();
   }
 };
 

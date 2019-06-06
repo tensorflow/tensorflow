@@ -87,8 +87,8 @@ public:
   explicit MulOpConversion(MLIRContext *context)
       : ConversionPattern(toy::MulOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     using namespace edsc;
     using intrinsics::constant_index;
     using linalg::intrinsics::range;
@@ -117,6 +117,7 @@ public:
     auto resultView = view(result, {r0, r2});
     rewriter.create<linalg::MatmulOp>(loc, lhsView, rhsView, resultView);
     rewriter.replaceOp(op, {typeCast(rewriter, result, mul.getType())});
+    return matchSuccess();
   }
 };
 

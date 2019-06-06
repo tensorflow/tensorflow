@@ -210,10 +210,6 @@ public:
                        lowering_),
         dialect(dialect_) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    return this->matchSuccess();
-  }
-
   // Get the LLVM IR dialect.
   LLVM::LLVMDialect &getDialect() const { return dialect; }
   // Get the LLVM context.
@@ -279,8 +275,8 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
   // Convert the type of the result to an LLVM type, pass operands as is,
   // preserve attributes.
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     unsigned numResults = op->getNumResults();
 
     Type packedType;
@@ -296,9 +292,10 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
     // If the operation produced 0 or 1 result, return them immediately.
     if (numResults == 0)
-      return rewriter.replaceOp(op, llvm::None);
+      return rewriter.replaceOp(op, llvm::None), this->matchSuccess();
     if (numResults == 1)
-      return rewriter.replaceOp(op, newOp.getOperation()->getResult(0));
+      return rewriter.replaceOp(op, newOp.getOperation()->getResult(0)),
+             this->matchSuccess();
 
     // Otherwise, it had been converted to an operation producing a structure.
     // Extract individual results from the structure and return them as list.
@@ -311,6 +308,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
           this->getIntegerArrayAttr(rewriter, i)));
     }
     rewriter.replaceOp(op, results);
+    return this->matchSuccess();
   }
 };
 
@@ -500,8 +498,8 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   using LLVMLegalizationPattern<DeallocOp>::LLVMLegalizationPattern;
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     assert(operands.size() == 1 && "dealloc takes one operand");
     OperandAdaptor<DeallocOp> transformed(operands);
 
@@ -524,6 +522,7 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
         op->getLoc(), getVoidPtrType(), bufferPtr);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, ArrayRef<Type>(), rewriter.getFunctionAttr(freeFunc), casted);
+    return matchSuccess();
   }
 };
 
@@ -759,8 +758,8 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
 struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   using Base::Base;
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto loadOp = cast<LoadOp>(op);
     OperandAdaptor<LoadOp> transformed(operands);
     auto type = loadOp.getMemRefType();
@@ -771,6 +770,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 
     rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, elementType,
                                               ArrayRef<Value *>{dataPtr});
+    return matchSuccess();
   }
 };
 
@@ -779,8 +779,8 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   using Base::Base;
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto type = cast<StoreOp>(op).getMemRefType();
     OperandAdaptor<StoreOp> transformed(operands);
 
@@ -788,6 +788,7 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
                                 transformed.indices(), rewriter, getModule());
     rewriter.replaceOpWithNewOp<LLVM::StoreOp>(op, transformed.value(),
                                                dataPtr);
+    return matchSuccess();
   }
 };
 
@@ -798,12 +799,14 @@ struct OneToOneLLVMTerminatorLowering
   using LLVMLegalizationPattern<SourceOp>::LLVMLegalizationPattern;
   using Super = OneToOneLLVMTerminatorLowering<SourceOp, TargetOp>;
 
-  void rewrite(Operation *op, ArrayRef<Value *> properOperands,
-               ArrayRef<Block *> destinations,
-               ArrayRef<ArrayRef<Value *>> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     ArrayRef<Value *> properOperands,
+                                     ArrayRef<Block *> destinations,
+                                     ArrayRef<ArrayRef<Value *>> operands,
+                                     PatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<TargetOp>(op, properOperands, destinations,
                                           operands, op->getAttrs());
+    return this->matchSuccess();
   }
 };
 
@@ -816,21 +819,23 @@ struct OneToOneLLVMTerminatorLowering
 struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
   using LLVMLegalizationPattern<ReturnOp>::LLVMLegalizationPattern;
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     unsigned numArguments = op->getNumOperands();
 
     // If ReturnOp has 0 or 1 operand, create it and return immediately.
     if (numArguments == 0) {
-      return rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
+      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
           op, llvm::ArrayRef<Value *>(), llvm::ArrayRef<Block *>(),
           llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+      return matchSuccess();
     }
     if (numArguments == 1) {
-      return rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
+      rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
           op, llvm::ArrayRef<Value *>(operands.front()),
           llvm::ArrayRef<Block *>(), llvm::ArrayRef<llvm::ArrayRef<Value *>>(),
           op->getAttrs());
+      return matchSuccess();
     }
 
     // Otherwise, we need to pack the arguments into an LLVM struct type before
@@ -847,6 +852,7 @@ struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
     rewriter.replaceOpWithNewOp<LLVM::ReturnOp>(
         op, llvm::makeArrayRef(packed), llvm::ArrayRef<Block *>(),
         llvm::ArrayRef<llvm::ArrayRef<Value *>>(), op->getAttrs());
+    return matchSuccess();
   }
 };
 

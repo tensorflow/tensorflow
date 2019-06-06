@@ -135,8 +135,8 @@ public:
   explicit RangeOpConversion(MLIRContext *context)
       : ConversionPattern(linalg::RangeOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto rangeOp = cast<linalg::RangeOp>(op);
     auto rangeDescriptorType =
         linalg::convertLinalgType(rangeOp.getResult()->getType());
@@ -153,6 +153,7 @@ public:
     rangeDescriptor = insertvalue(rangeDescriptorType, rangeDescriptor,
                                   operands[2], makePositionAttr(rewriter, 2));
     rewriter.replaceOp(op, rangeDescriptor);
+    return matchSuccess();
   }
 };
 
@@ -161,8 +162,8 @@ public:
   explicit ViewOpConversion(MLIRContext *context)
       : ConversionPattern(linalg::ViewOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto viewOp = cast<linalg::ViewOp>(op);
     auto viewDescriptorType = linalg::convertLinalgType(viewOp.getViewType());
     auto memrefType =
@@ -277,6 +278,7 @@ public:
     }
 
     rewriter.replaceOp(op, viewDescriptor);
+    return matchSuccess();
   }
 };
 
@@ -285,8 +287,8 @@ public:
   explicit SliceOpConversion(MLIRContext *context)
       : ConversionPattern(linalg::SliceOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto sliceOp = cast<linalg::SliceOp>(op);
     auto newViewDescriptorType =
         linalg::convertLinalgType(sliceOp.getViewType());
@@ -366,6 +368,7 @@ public:
     }
 
     rewriter.replaceOp(op, newViewDescriptor);
+    return matchSuccess();
   }
 };
 
@@ -376,9 +379,10 @@ public:
   explicit DropConsumer(MLIRContext *context)
       : ConversionPattern("some_consumer", 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
   }
 };
 

@@ -92,8 +92,8 @@ public:
   /// the rewritten operands for `op` in the new function.
   /// The results created by the new IR with the builder are returned, and their
   /// number must match the number of result of `op`.
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto add = cast<toy::AddOp>(op);
     auto loc = add.getLoc();
     // Create a `toy.alloc` operation to allocate the output buffer for this op.
@@ -122,6 +122,7 @@ public:
     // Return the newly allocated buffer, with a type.cast to preserve the
     // consumers.
     rewriter.replaceOp(op, {typeCast(rewriter, result, add.getType())});
+    return matchSuccess();
   }
 };
 
@@ -132,8 +133,8 @@ public:
   explicit PrintOpConversion(MLIRContext *context)
       : ConversionPattern(toy::PrintOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     // Get or create the declaration of the printf function in the module.
     Function *printfFunc = getPrintf(*op->getFunction()->getModule());
 
@@ -178,6 +179,7 @@ public:
       // clang-format on
     }
     rewriter.replaceOp(op, llvm::None);
+    return matchSuccess();
   }
 
 private:
@@ -230,8 +232,8 @@ public:
   explicit ConstantOpConversion(MLIRContext *context)
       : ConversionPattern(toy::ConstantOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     toy::ConstantOp cstOp = cast<toy::ConstantOp>(op);
     auto loc = cstOp.getLoc();
     auto retTy = cstOp.getResult()->getType().cast<toy::ToyArrayType>();
@@ -264,6 +266,7 @@ public:
       }
     }
     rewriter.replaceOp(op, result);
+    return matchSuccess();
   }
 };
 
@@ -273,8 +276,8 @@ public:
   explicit TransposeOpConversion(MLIRContext *context)
       : ConversionPattern(toy::TransposeOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     auto transpose = cast<toy::TransposeOp>(op);
     auto loc = transpose.getLoc();
     Value *result = memRefTypeCast(
@@ -296,6 +299,7 @@ public:
     // clang-format on
 
     rewriter.replaceOp(op, {typeCast(rewriter, result, transpose.getType())});
+    return matchSuccess();
   }
 };
 
@@ -305,13 +309,14 @@ public:
   explicit ReturnOpConversion(MLIRContext *context)
       : ConversionPattern(toy::ReturnOp::getOperationName(), 1, context) {}
 
-  void rewrite(Operation *op, ArrayRef<Value *> operands,
-               PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                     PatternRewriter &rewriter) const override {
     // Argument is optional, handle both cases.
     if (op->getNumOperands())
       rewriter.replaceOpWithNewOp<ReturnOp>(op, operands[0]);
     else
       rewriter.replaceOpWithNewOp<ReturnOp>(op);
+    return matchSuccess();
   }
 };
 

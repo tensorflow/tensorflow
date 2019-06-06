@@ -48,13 +48,6 @@ public:
                     MLIRContext *ctx)
       : RewritePattern(rootName, benefit, ctx) {}
 
-  /// Hook for derived classes to implement matching. Dialect conversion
-  /// generally unconditionally match the root operation, so default to success
-  /// here.
-  virtual PatternMatchResult match(Operation *op) const override {
-    return matchSuccess();
-  }
-
   /// Hook for derived classes to implement rewriting. `op` is the (first)
   /// operation matched by the pattern, `operands` is a list of rewritten values
   /// that are passed to this operation, `rewriter` can be used to emit the new
@@ -84,14 +77,33 @@ public:
     llvm_unreachable("unimplemented rewrite for terminators");
   }
 
-  /// Rewrite the IR rooted at the specified operation with the result of
-  /// this pattern. If an unexpected error is encountered (an internal compiler
-  /// error), it is emitted through the normal MLIR diagnostic hooks and the IR
-  /// is left in a valid state.
-  void rewrite(Operation *op, PatternRewriter &rewriter) const final;
+  /// Hook for derived classes to implement combined matching and rewriting.
+  virtual PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> properOperands,
+                  ArrayRef<Block *> destinations,
+                  ArrayRef<ArrayRef<Value *>> operands,
+                  PatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, properOperands, destinations, operands, rewriter);
+    return matchSuccess();
+  }
+
+  /// Hook for derived classes to implement combined matching and rewriting.
+  virtual PatternMatchResult matchAndRewrite(Operation *op,
+                                             ArrayRef<Value *> operands,
+                                             PatternRewriter &rewriter) const {
+    if (!match(op))
+      return matchFailure();
+    rewrite(op, operands, rewriter);
+    return matchSuccess();
+  }
+
+  /// Attempt to match and rewrite the IR root at the specified operation.
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const final;
 
 private:
-  using RewritePattern::matchAndRewrite;
   using RewritePattern::rewrite;
 };
 

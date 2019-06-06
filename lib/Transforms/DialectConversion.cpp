@@ -226,19 +226,17 @@ struct DialectConversionRewriter final : public PatternRewriter {
 // ConversionPattern
 //===----------------------------------------------------------------------===//
 
-/// Rewrite the IR rooted at the specified operation with the result of this
-/// pattern.  If an unexpected error is encountered (an internal compiler
-/// error), it is emitted through the normal MLIR diagnostic hooks and the IR is
-/// left in a valid state.
-void ConversionPattern::rewrite(Operation *op,
-                                PatternRewriter &rewriter) const {
+/// Attempt to match and rewrite the IR root at the specified operation.
+PatternMatchResult
+ConversionPattern::matchAndRewrite(Operation *op,
+                                   PatternRewriter &rewriter) const {
   SmallVector<Value *, 4> operands;
   auto &dialectRewriter = static_cast<DialectConversionRewriter &>(rewriter);
   dialectRewriter.remapValues(op->getOperands(), operands);
 
   // If this operation has no successors, invoke the rewrite directly.
   if (op->getNumSuccessors() == 0)
-    return rewrite(op, operands, rewriter);
+    return matchAndRewrite(op, operands, rewriter);
 
   // Otherwise, we need to remap the successors.
   SmallVector<Block *, 2> destinations;
@@ -257,10 +255,11 @@ void ConversionPattern::rewrite(Operation *op,
   }
 
   // Rewrite the operation.
-  rewrite(op,
-          llvm::makeArrayRef(operands.data(),
-                             operands.data() + firstSuccessorOperand),
-          destinations, operandsPerDestination, rewriter);
+  return matchAndRewrite(
+      op,
+      llvm::makeArrayRef(operands.data(),
+                         operands.data() + firstSuccessorOperand),
+      destinations, operandsPerDestination, rewriter);
 }
 
 //===----------------------------------------------------------------------===//
