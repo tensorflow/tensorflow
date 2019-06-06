@@ -327,12 +327,8 @@ def fold_batch_norms(input_graph_def):
           1.0 / np.vectorize(math.sqrt)(var_value + variance_epsilon_value))
     offset_value = (-mean_value * scale_value) + beta_value
     scaled_weights = np.copy(weights)
-    it = np.nditer(
-        scaled_weights, flags=["multi_index"], op_flags=["readwrite"])
-    while not it.finished:
-      current_scale = scale_value[it.multi_index[3]]
-      it[0] *= current_scale
-      it.iternext()
+    new_scale_value = scale_value.reshape([1,1,1,len(scale_value)])
+    scaled_weights = scaled_weights * new_scale_value
     scaled_weights_op = node_def_pb2.NodeDef()
     scaled_weights_op.op = "Const"
     scaled_weights_op.name = weights_op.name
