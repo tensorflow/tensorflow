@@ -1015,10 +1015,10 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
     return false;
   }
 
-  // Check if one of the ancestors is a Switch node.
+  // Check if the Identity is driven by a Switch on its true path.
   Node* switch_node = nullptr;
   for (const Edge* e : node->in_edges()) {
-    if (e->src()->IsSwitch()) {
+    if (e->src()->IsSwitch() && e->src_output() == 1) {
       switch_node = e->src();
       break;
     }
@@ -1035,13 +1035,10 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   }
 
   // Check if the Identity is driving any const nodes through a control edge.
-  bool driving_any_consts = false;
-  for (const Edge* e : node->out_edges()) {
-    if (e->dst()->IsConstant() && e->IsControlEdge()) {
-      driving_any_consts = true;
-      break;
-    }
-  }
+  bool driving_any_consts =
+      absl::c_any_of(node->out_edges(), [](const Edge* e) {
+        return e->dst()->IsConstant() && e->IsControlEdge();
+      });
   if (!driving_any_consts) {
     return false;
   }
