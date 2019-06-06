@@ -738,12 +738,19 @@ bool AssertSameStructureHelper(
 
   if (check_composite_tensor_type_spec &&
       (IsCompositeTensor(o1) || IsCompositeTensor(o2))) {
-    Safe_PyObjectPtr type_spec_1(
-        IsTypeSpec(o1) ? o1 : PyObject_GetAttrString(o1, "_type_spec"));
-    if (PyErr_Occurred() || type_spec_1 == nullptr) return false;
-    Safe_PyObjectPtr type_spec_2(
-        IsTypeSpec(o2) ? o2 : PyObject_GetAttrString(o2, "_type_spec"));
-    if (PyErr_Occurred() || type_spec_2 == nullptr) return false;
+    Safe_PyObjectPtr owned_type_spec_1;
+    PyObject* type_spec_1 = o1;
+    if (IsCompositeTensor(o1)) {
+      owned_type_spec_1.reset(PyObject_GetAttrString(o1, "_type_spec"));
+      type_spec_1 = owned_type_spec_1.get();
+    }
+
+    Safe_PyObjectPtr owned_type_spec_2;
+    PyObject* type_spec_2 = o2;
+    if (IsCompositeTensor(o2)) {
+      owned_type_spec_2.reset(PyObject_GetAttrString(o2, "_type_spec"));
+      type_spec_2 = owned_type_spec_2.get();
+    }
 
     // Two composite tensors are considered to have the same structure if
     // there is some type spec that is compatible with both of them.  Thus,
@@ -754,14 +761,14 @@ bool AssertSameStructureHelper(
     static char compatible_type[] = "most_specific_compatible_type";
     static char argspec[] = "(O)";
     Safe_PyObjectPtr struct_compatible(PyObject_CallMethod(
-        type_spec_1.get(), compatible_type, argspec, type_spec_2.get()));
+        type_spec_1, compatible_type, argspec, type_spec_2));
     if (PyErr_Occurred() || struct_compatible == nullptr) {
       PyErr_Clear();
       *is_type_error = false;
       *error_msg = tensorflow::strings::StrCat(
           "Incompatible CompositeTensor TypeSpecs: ",
-          PyObjectToString(type_spec_1.get()), " vs. ",
-          PyObjectToString(type_spec_2.get()));
+          PyObjectToString(type_spec_1), " vs. ",
+          PyObjectToString(type_spec_2));
       return true;
     }
   }
