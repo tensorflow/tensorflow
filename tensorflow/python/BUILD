@@ -17,9 +17,10 @@ visibility = [
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-package(default_visibility = visibility)
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = visibility,
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
 

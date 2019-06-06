@@ -1,7 +1,9 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow:tensorflow.bzl",

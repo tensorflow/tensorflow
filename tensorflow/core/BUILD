@@ -63,6 +63,15 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
+package(
+    default_visibility = [
+        ":dependency_whitelist",
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
 package_group(
     name = "dependency_whitelist",
     packages = [
@@ -70,14 +79,6 @@ package_group(
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
     ],
 )
-
-package(default_visibility = [
-    ":dependency_whitelist",
-    "//tensorflow:internal",
-    "//tensorflow_models:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
 
 # Export the BUILD file so automated tooling can check licenses
 exports_files(["BUILD"])
