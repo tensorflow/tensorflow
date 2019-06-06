@@ -1802,6 +1802,10 @@ tf_cuda_cc_test(
     name = "fused_batch_norm_ex_op_test",
     size = "small",
     srcs = ["fused_batch_norm_ex_op_test.cc"],
+    tags = [
+        # TODO(b/134687024): Re-enable this test.
+        "notap",
+    ],
     deps = [
         ":cwise_op",
         ":fused_batch_norm_op",
