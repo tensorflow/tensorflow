@@ -68,7 +68,7 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
                                                   bool use_nnapi) {
   std::unique_ptr<Allocation> allocation;
   if (mmap_file && MMAPAllocation::IsSupported()) {
-      allocation.reset(new MMAPAllocation(filename, error_reporter));
+    allocation.reset(new MMAPAllocation(filename, error_reporter));
   } else {
     allocation.reset(new FileCopyAllocation(filename, error_reporter));
   }
@@ -228,17 +228,23 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
       }
       // If it's an unresolved custom op, allow it for now. It might be resolved
       // by a delegate later.
+      if (!opcode->custom_code()) {
+        error_reporter_->Report(
+            "Operator with CUSTOM builtin_code has no custom_code.\n");
+        return status;
+      }
+      const auto* op_name = opcode->custom_code()->c_str();
       TfLiteRegistration unresolved_op{nullptr,
                                        nullptr,
                                        nullptr,
                                        /*invoke*/ &UnresolvedOpInvoke,
                                        nullptr,
                                        BuiltinOperator_CUSTOM,
-                                       opcode->custom_code()->c_str(),
+                                       op_name,
                                        1};
       unresolved_custom_ops_.push_back(unresolved_op);
       registration = &unresolved_custom_ops_.back();
-      has_flex_op_ |= IsFlexOp(registration->custom_name);
+      has_flex_op_ |= IsFlexOp(op_name);
       status = kTfLiteOk;
     }
     flatbuffer_op_index_to_registration_.push_back(registration);
