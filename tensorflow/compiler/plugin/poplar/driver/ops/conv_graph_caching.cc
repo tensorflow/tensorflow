@@ -154,7 +154,7 @@ poplar::Tensor DoCachedConvolution(
   // If this is a backprop input convolution perform the
   // weightsTransposeChansFlipXY on weights.
   if (conv_type == ConvClassificationType::BACKPROP_INPUT &&
-      !res.disable_graph_convolution_caching) {
+      !res.disable_graph_convolution_caching && transpose_and_flip_weights) {
     conv_type = ConvClassificationType::FORWARD;
     transpose_and_flip_weights = false;
     auto fwd_opts = GetConvolutionOptions(res, conv_type);
