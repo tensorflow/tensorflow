@@ -111,6 +111,7 @@ py_library(
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
+        "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
         ":array_ops",
