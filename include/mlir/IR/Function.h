@@ -328,7 +328,7 @@ private:
 /// allowed to implicitly capture global values, and all external references
 /// must use Function arguments or attributes.
 class FuncOp : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                         OpTrait::NthRegionIsIsolatedAbove<0>::Impl> {
+                         OpTrait::IsIsolatedFromAbove> {
 public:
   using Op::Op;
   static StringRef getOperationName() { return "func"; }

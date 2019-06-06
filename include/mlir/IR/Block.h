@@ -415,7 +415,7 @@ public:
   /// Emit errors if `noteLoc` is provided; this location is used to point
   /// to the operation containing the region, the actual error is reported at
   /// the operation with an offending use.
-  bool isIsolatedAbove(llvm::Optional<Location> noteLoc = llvm::None);
+  bool isIsolatedFromAbove(llvm::Optional<Location> noteLoc = llvm::None);
 
   /// Walk the operations in this block in postorder, calling the callback for
   /// each operation.

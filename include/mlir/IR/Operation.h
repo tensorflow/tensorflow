@@ -386,6 +386,15 @@ public:
     return getTerminatorStatus() == TerminatorStatus::NonTerminator;
   }
 
+  /// Returns if the operation is known to be completely isolated from enclosing
+  /// regions, i.e. no internal regions reference values defined above this
+  /// operation.
+  bool isKnownIsolatedFromAbove() {
+    if (auto *absOp = getAbstractOperation())
+      return absOp->hasProperty(OperationProperty::IsolatedFromAbove);
+    return false;
+  }
+
   /// Attempt to fold this operation with the specified constant operand values
   /// - the elements in "operands" will correspond directly to the operands of
   /// the operation, but may be null if non-constant. If folding is successful,

@@ -720,17 +720,36 @@ public:
   }
 };
 
-/// This verifiers that all operands used in N-th region of the given operation
-/// are defined within that region.
-template <unsigned RegionIdx> class NthRegionIsIsolatedAbove {
+/// This class provides the API for ops that are known to be isolated from
+/// above.
+template <typename ConcreteType>
+class IsIsolatedFromAbove
+    : public TraitBase<ConcreteType, IsIsolatedFromAbove> {
+public:
+  static AbstractOperation::OperationProperties getTraitProperties() {
+    return static_cast<AbstractOperation::OperationProperties>(
+        OperationProperty::IsolatedFromAbove);
+  }
+  static LogicalResult verifyTrait(Operation *op) {
+    for (auto &region : op->getRegions())
+      if (!region.isIsolatedFromAbove(op->getLoc()))
+        return failure();
+    return success();
+  }
+};
+
+/// This verifies that all operands used in N-th region of the given operation
+/// are defined within that region. This is a weaker variant to the
+/// 'IsIsolatedFromAbove' trait above as it applies only to one specific region.
+template <unsigned RegionIdx> class NthRegionIsIsolatedFromAbove {
 public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType,
-                                NthRegionIsIsolatedAbove<RegionIdx>::Impl> {
+                                NthRegionIsIsolatedFromAbove<RegionIdx>::Impl> {
   public:
     static LogicalResult verifyTrait(Operation *op) {
-      return op->getRegion(RegionIdx).isIsolatedAbove(op->getLoc()) ? success()
-                                                                    : failure();
+      return success(
+          op->getRegion(RegionIdx).isIsolatedFromAbove(op->getLoc()));
     }
   };
 };

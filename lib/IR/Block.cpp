@@ -413,7 +413,7 @@ static bool isRegionIsolatedAbove(Region &region, Region &limit,
   return true;
 }
 
-bool Region::isIsolatedAbove(llvm::Optional<Location> noteLoc) {
+bool Region::isIsolatedFromAbove(llvm::Optional<Location> noteLoc) {
   return isRegionIsolatedAbove(*this, *this, noteLoc);
 }
 

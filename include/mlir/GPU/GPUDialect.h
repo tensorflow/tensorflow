@@ -56,8 +56,7 @@ struct KernelDim3 {
 /// the kernel to be executed.  This region is not allowed to use values defined
 /// outside it.
 class LaunchOp : public Op<LaunchOp, OpTrait::AtLeastNOperands<6>::Impl,
-                           OpTrait::ZeroResult,
-                           OpTrait::NthRegionIsIsolatedAbove<0>::Impl> {
+                           OpTrait::ZeroResult, OpTrait::IsIsolatedFromAbove> {
 public:
   using Op::Op;
 

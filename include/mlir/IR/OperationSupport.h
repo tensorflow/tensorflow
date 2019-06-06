@@ -74,6 +74,12 @@ enum class OperationProperty {
   /// This bit is set for an operation if it is a terminator: that means
   /// an operation at the end of a block.
   Terminator = 0x4,
+
+  /// This bit is set for operations that are completely isolated from above.
+  /// This is used for operations whose regions are explicit capture only, i.e.
+  /// they are never allowed to implicitly reference values defined above the
+  /// parent operation.
+  IsolatedFromAbove = 0x8,
 };
 
 /// This is a "type erased" representation of a registered operation.  This
