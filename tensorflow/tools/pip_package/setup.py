@@ -103,7 +103,6 @@ if sys.version_info < (3, 4):
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
-    'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
     'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
     'tflite_convert = tensorflow.lite.python.tflite_convert:main',
     'toco = tensorflow.lite.python.tflite_convert:main',
@@ -116,6 +115,11 @@ CONSOLE_SCRIPTS = [
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
 ]
 # pylint: enable=line-too-long
+
+# Only keep freeze_graph console script in 1.X.
+if _VERSION.startswith('1.') and '_2.0' not in project_name:
+  CONSOLE_SCRIPTS.append(
+      'freeze_graph = tensorflow.python.tools.freeze_graph:run_main')
 
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
