@@ -398,6 +398,11 @@ public:
   /// Parse a colon followed by a type list, which must have at least one type.
   virtual ParseResult parseColonTypeList(SmallVectorImpl<Type> &result) = 0;
 
+  /// Parse an optional colon followed by a type list, which if present must
+  /// have at least one type.
+  virtual ParseResult
+  parseOptionalColonTypeList(SmallVectorImpl<Type> &result) = 0;
+
   /// Parse a keyword followed by a type.
   ParseResult parseKeywordType(const char *keyword, Type &result) {
     return failure(parseKeyword(keyword) || parseType(result));

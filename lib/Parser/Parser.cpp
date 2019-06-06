@@ -3333,6 +3333,15 @@ public:
     return parser.parseTypeListNoParens(result);
   }
 
+  /// Parse an optional colon followed by a type list, which if present must
+  /// have at least one type.
+  ParseResult
+  parseOptionalColonTypeList(SmallVectorImpl<Type> &result) override {
+    if (!parser.consumeIf(Token::colon))
+      return success();
+    return parser.parseTypeListNoParens(result);
+  }
+
 private:
   /// A set of placeholder value definitions for parsed region arguments.
   SmallVector<Value *, 2> parsedRegionEntryArgumentPlaceholders;
