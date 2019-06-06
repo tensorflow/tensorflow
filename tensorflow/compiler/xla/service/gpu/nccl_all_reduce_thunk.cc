@@ -587,7 +587,7 @@ NcclAllReduceThunk::NcclAllReduceThunk(
 
 // Figures out which devices (named by their replica-ids) are participating in
 // the all-reduce subgroup that contains device_ordinal.
-static std::vector<int64> GetParticipatingReplicas(
+static StatusOr<std::vector<int64>> GetParticipatingReplicas(
     int64 device_ordinal, const HloAllReduceInstruction* instr,
     int64 total_replica_count, const DeviceAssignment& device_assn) {
   std::vector<int64> participating_replicas;
@@ -601,20 +601,8 @@ static std::vector<int64> GetParticipatingReplicas(
   }
 
   // Use the DeviceAssignment to figure out our replica-id.
-  int64 replica_id = -1;
-  for (int64 r = 0; r < device_assn.replica_count(); ++r) {
-    for (int64 c = 0; c < device_assn.computation_count(); ++c) {
-      if (device_assn(r, c) == device_ordinal) {
-        CHECK_EQ(replica_id, -1)
-            << "Device ordinal appears twice in DeviceAssignment? "
-            << device_assn.ToString();
-        replica_id = r;
-      }
-    }
-  }
-  CHECK_NE(replica_id, -1) << "Device ordinal " << device_ordinal
-                           << " doesn't appear in DeviceAssignment "
-                           << device_assn.ToString();
+  TF_ASSIGN_OR_RETURN(int replica_id,
+                      device_assn.ReplicaIdForDeviceOrdinal(device_ordinal));
 
   // Figure out the other replicas that go together with this one.
   absl::optional<ReplicaGroup> replica_group;
@@ -642,8 +630,10 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto* instr = Cast<HloAllReduceInstruction>(hlo_instruction());
   int64 device_ordinal = params.stream->parent()->device_ordinal();
 
-  std::vector<int64> participating_replicas = GetParticipatingReplicas(
-      device_ordinal, instr, replica_count_, *params.device_assn);
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64> participating_replicas,
+      GetParticipatingReplicas(device_ordinal, instr, replica_count_,
+                               *params.device_assn));
 
   // Find or create the rendezvous for this collective operation.
   RendezvousKey rendezvous_key(
