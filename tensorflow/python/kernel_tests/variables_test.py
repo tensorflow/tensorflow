@@ -643,13 +643,10 @@ class VariablesTestCase(test.TestCase):
         1.0, synchronization=variables.VariableSynchronization.ON_READ)
     self.assertEqual(False, v2.trainable)
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Synchronization value can be set to VariableSynchronization.ON_READ "
-        "only for non-trainable variables"):
-      _ = variables.VariableV1(
-          1.0, trainable=True,
-          synchronization=variables.VariableSynchronization.ON_READ)
+    v3 = variables.VariableV1(
+        1.0, synchronization=variables.VariableSynchronization.ON_READ,
+        trainable=True)
+    self.assertEqual(True, v3.trainable)
 
   def testTrainableVariableV2(self):
     v1 = variables.Variable(1.0)
@@ -659,13 +656,10 @@ class VariablesTestCase(test.TestCase):
         1.0, synchronization=variables.VariableSynchronization.ON_READ)
     self.assertEqual(False, v2.trainable)
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Synchronization value can be set to VariableSynchronization.ON_READ "
-        "only for non-trainable variables"):
-      _ = variables.Variable(
-          1.0, trainable=True,
-          synchronization=variables.VariableSynchronization.ON_READ)
+    v3 = variables.Variable(
+        1.0, synchronization=variables.VariableSynchronization.ON_READ,
+        trainable=True)
+    self.assertEqual(True, v3.trainable)
 
 
 class IsInitializedTest(test.TestCase):

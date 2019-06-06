@@ -161,18 +161,8 @@ def validate_synchronization_aggregation_trainable(
       raise ValueError(
           "Invalid variable synchronization mode: {} for variable: {}".format(
               synchronization, name))
-  if synchronization == VariableSynchronization.ON_READ:
-    if trainable:
-      raise ValueError(
-          "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ.")
-    else:
-      # Set trainable to be false when variable is to be synced on read.
-      trainable = False
-  elif trainable is None:
-    trainable = True
+  if trainable is None:
+    trainable = synchronization != VariableSynchronization.ON_READ
   return synchronization, aggregation, trainable
 
 
