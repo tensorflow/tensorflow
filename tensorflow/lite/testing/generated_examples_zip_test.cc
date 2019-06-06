@@ -99,6 +99,9 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/add.*dtype=tf\.int64)", "119126484"},
     {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
     {R"(^\/squared_difference.*dtype=tf\.int64)", "119126484"},
+
+    // Select kernel doesn't support broadcasting yet.
+    {R"(^\/where.*1,2,3,1)", "134692786"},
 };
 
 // Additional list of tests that are expected to fail when

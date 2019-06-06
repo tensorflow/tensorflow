@@ -2546,6 +2546,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Round", ConvertRoundOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
+      {"SelectV2", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"Shape", ConvertShapeOperator},
       {"Sigmoid", ConvertSimpleOperator<LogisticOperator, 1, 1>},
       {"Sin", ConvertSimpleOperator<SinOperator, 1, 1>},

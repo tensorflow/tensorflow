@@ -3775,10 +3775,18 @@ def make_square_tests(options):
 def make_where_tests(options):
   """Make a set of tests to do where."""
 
-  test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
-      "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
-  }]
+  test_parameters = [
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
+          "use_where_v2": [False, True],
+      },
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 1]),],
+          "use_where_v2": [True],
+      },
+  ]
 
   def build_graph(parameters):
     """Build the where op testing graph."""
@@ -3791,7 +3799,8 @@ def make_where_tests(options):
         name="input3",
         shape=parameters["input_shape_set"][1])
     less = tf.less(input_value1, input_value2)
-    out = tf.where(less, input_value1, input_value2)
+    where = tf.where_v2 if parameters["use_where_v2"] else tf.where
+    out = where(less, input_value1, input_value2)
     return [input_value1, input_value2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
